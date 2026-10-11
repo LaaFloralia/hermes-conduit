@@ -25651,7 +25651,8 @@ enum KeychainHelper {
     /// by earlier builds were readable only while unlocked, and a data
     /// update keeps an item's class, so the class is set explicitly: once
     /// per launch, when the password is read (so the phone is unlocked) or
-    /// saved.
+    /// saved. It is a synchronous Keychain call on the caller's thread,
+    /// like the read beside it.
     private static func moveCredentialsAccessibility(account: String, force: Bool) {
         credentialsAccessibilityMoves.lock()
         defer { credentialsAccessibilityMoves.unlock() }

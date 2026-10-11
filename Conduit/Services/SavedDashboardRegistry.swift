@@ -267,7 +267,11 @@ enum SavedDashboardMigrator {
     /// connection. Idempotent, retryable, and crash-safe by construction:
     /// see `SavedDashboardMigration.outcome`.
     static func loadRegistry(defaults: UserDefaults = .standard) -> SavedDashboardRegistry {
-        if let existing = SavedDashboardRegistryStore.load() {
+        // An empty registry beside an old password is an upgrade that ran on
+        // a locked phone with only that password saved, which it couldn't
+        // read: migrate again now that it can.
+        if let existing = SavedDashboardRegistryStore.load(),
+           !(existing.dashboards.isEmpty && KeychainHelper.loadCredentials() != nil) {
             // The password record is adoptLeftoverCredentials' to retire:
             // still unreadable, it waits for a load that can read it.
             adoptLeftoverCredentials(into: existing)
