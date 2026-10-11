@@ -124,6 +124,28 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertNil(KeychainHelper.loadConnection(dashboardID: dashboard.id))
     }
 
+    /// The retry really runs the saved sign-in: a dashboard with a saved
+    /// session takes it once Conduit is on screen.
+    func testRetryOnScreenTakesTheSavedSession() {
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let appState = makeSignedOutAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        )
+        let saved = HermesConnection(baseUrl: dashboard.normalizedURL, ticket: "saved-ticket")
+        var away = true
+        appState.phoneScreenIsAway = { away }
+        appState.showLogin = true
+        KeychainHelper.saveConnection(saved, dashboardID: dashboard.id)
+
+        away = false
+        appState.handleScenePhase(.background)
+        appState.handleScenePhase(.active)
+
+        XCTAssertEqual(appState.connection, saved)
+        XCTAssertFalse(appState.showLogin)
+        XCTAssertFalse(appState.signInWaitsForForeground)
+    }
+
     /// Launched before the first unlock after a restart, the saved
     /// dashboards were unreadable: the retry on screen reads them again.
     func testRetryOnScreenReadsSavedDashboardsAgain() {

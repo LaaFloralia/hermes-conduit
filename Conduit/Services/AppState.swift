@@ -9176,6 +9176,7 @@ final class AppState: ObservableObject {
         // its own.
         pendingLoginFailure = nil
         lastConnectionFailure = nil
+        errorMessage = nil
         loadSavedConnection()
     }
 
@@ -12428,6 +12429,9 @@ final class AppState: ObservableObject {
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
             if showLogin, signInWaitsForForeground {
+                // The freshness arming belongs to the session that was torn
+                // down; the retry's connect syncs from scratch.
+                foregroundFreshnessCheckArmed = false
                 retrySignInFromBackground()
                 return nil
             }
