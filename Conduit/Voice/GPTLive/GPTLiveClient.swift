@@ -51,8 +51,9 @@ struct GPTLiveSessionAnswer: Equatable {
     /// instructions; an older plugin ignores it and the briefing must be sent
     /// as context after the call starts.
     var briefingApplied: Bool = false
-    /// True when the host made the model greet first (#290); an older
-    /// plugin keeps it silent and the greeting is asked for after the call
+    /// True when the host made the model speak first: a greeting (#290) or
+    /// the opening of a call Hermes placed (`call_opening`, #544). An older
+    /// plugin keeps it silent and the opening is asked for after the call
     /// starts.
     var greetingApplied: Bool = false
 }
@@ -90,7 +91,8 @@ protocol GPTLiveSessionProviding: AnyObject {
     /// host adds it to the session's instructions. `greeting` (nil for none,
     /// empty for the model's own words) makes the model greet first.
     /// `callOpening` marks a call Hermes placed: the model speaks first with
-    /// the opening the briefing gives, instead of a greeting (#544).
+    /// the opening the briefing gives (#544). Callers send no greeting with
+    /// it; the host lets it win over one.
     func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?, callOpening: Bool) async throws -> GPTLiveSessionAnswer
 }
 

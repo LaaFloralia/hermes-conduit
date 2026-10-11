@@ -39,7 +39,8 @@ final class GPTLiveSession {
     /// True when the host already gave the model the briefing (see
     /// `GPTLiveSessionAnswer.briefingApplied`).
     private(set) var briefingApplied = false
-    /// True when the host made the model greet first.
+    /// True when the host made the model speak first: a greeting, or a call
+    /// Hermes placed (#544).
     private(set) var greetingApplied = false
 
     var onEvent: (@MainActor (GPTLiveProtocol.ServerEvent) -> Void)?
