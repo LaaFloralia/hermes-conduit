@@ -3419,11 +3419,16 @@ final class AppState: ObservableObject {
             let rows = (activeProfileSessions + activeProfileCronSessions).filter { row in
                 [row.id, row.storedSessionId].contains { ChatScrollIdentityNormalization.sessionID($0) == key }
             }
-            if rows.count == 1, let row = rows.first {
-                return row.storedSessionId.flatMap { $0.isEmpty ? nil : $0 } ?? row.id
+            if rows.count == 1, let row = rows.first,
+               let id = ChatScrollIdentityNormalization.sessionID(row.storedSessionId)
+                ?? ChatScrollIdentityNormalization.sessionID(row.id) {
+                return id
             }
         }
-        return active
+        if let stored = ChatScrollIdentityNormalization.sessionID(voiceSessionAliases.storedID(forRuntime: active)) {
+            return stored
+        }
+        return ChatScrollIdentityNormalization.sessionID(active) ?? active
     }
 
     /// The durable id Hermes confirmed for a chat's runtime id: a Bot Chat's
@@ -3442,8 +3447,9 @@ final class AppState: ObservableObject {
         if let key = ChatScrollIdentityNormalization.sessionID(record.sessionId), ownIDs.contains(key) {
             return true
         }
-        guard let durable = conversationIdentityIndex.durableID(forRuntime: record.sessionId, profile: record.profile)
-            .flatMap({ ChatScrollIdentityNormalization.sessionID($0) }) else { return false }
+        guard let durable = ChatScrollIdentityNormalization.sessionID(
+            confirmedDurableSessionID(forRuntime: record.sessionId)
+        ) else { return false }
         return ownIDs.contains(durable)
     }
 
