@@ -3700,7 +3700,7 @@ final class AppState: ObservableObject {
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
         ) ?? .dark
-        adoptLegacyProfilePreferences()
+        adoptLegacyProfilePreferences(into: initialRegistry.dashboards.first?.id)
         modelVisibility = scopedModelVisibility(dashboardID: initialDashboardID)
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
@@ -7901,8 +7901,8 @@ final class AppState: ObservableObject {
     /// One-time move of the pre-scoping global profile order and model
     /// visibility into the registry's first dashboard (the one they were set
     /// on). A later dashboard starts from its own defaults.
-    private func adoptLegacyProfilePreferences() {
-        guard let primary = savedDashboardRegistry.dashboards.first?.id else { return }
+    private func adoptLegacyProfilePreferences(into primary: UUID?) {
+        guard let primary else { return }
         let bucket = Self.dashboardPreferenceBucket(primary)
         if let legacyOrder = defaults.stringArray(forKey: profileOrderKey) {
             var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
@@ -8071,7 +8071,9 @@ final class AppState: ObservableObject {
     }
 #endif
 
-    func loadSavedConnection() {
+    /// `trigger` names what started the restore in the connection
+    /// timeline and the call trace.
+    func loadSavedConnection(trigger: String = "cold launch") {
         #if DEBUG
         if let stub = Self.uiTestFailedConnectionStub() {
             let failureKind = Self.uiTestFailureKind()
@@ -8111,7 +8113,7 @@ final class AppState: ObservableObject {
         // the flow.
         let switchGeneration = dashboardSwitchGeneration
         if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
-            beginConnectionTimeline("cold launch, browser sign-in (OAuth)")
+            beginConnectionTimeline("\(trigger), browser sign-in (OAuth)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             showLogin = false
             isConnecting = true
@@ -8126,8 +8128,8 @@ final class AppState: ObservableObject {
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
             beginConnectionTimeline(
                 credentials.requiresFaceID
-                    ? "cold launch, password sign-in with Face ID"
-                    : "cold launch, password sign-in"
+                    ? "\(trigger), password sign-in with Face ID"
+                    : "\(trigger), password sign-in"
             )
             // A Face ID-protected dashboard reveals its saved copy only after
             // this launch's Face ID succeeds (restoreSavedCredentials).
@@ -8146,7 +8148,7 @@ final class AppState: ObservableObject {
                 )
             }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
-            beginConnectionTimeline("cold launch, browser sign-in (saved ticket)")
+            beginConnectionTimeline("\(trigger), browser sign-in (saved ticket)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             // Keep the authenticated app shell in place while WebKit restores
             // its cookie process. A cold WebKit launch is not evidence that the
@@ -8833,7 +8835,7 @@ final class AppState: ObservableObject {
             // Pre-scoping appearance/preferences with no dashboard to own
             // them yet belong to the first one (same rule as launch).
             profileAppearanceStore.adoptLegacyAppearance(into: id)
-            adoptLegacyProfilePreferences()
+            adoptLegacyProfilePreferences(into: id)
             // No reload: a registered dashboard is not selected yet, and
             // selecting it (adoptDashboard/switch) reloads through didSet.
         }
@@ -9240,7 +9242,16 @@ final class AppState: ObservableObject {
         // password: it joins its dashboard now.
         if savedDashboardRegistry.dashboards.isEmpty {
             let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
-            if !stored.dashboards.isEmpty { savedDashboardRegistry = stored }
+            if let primary = stored.dashboards.first?.id {
+                // Pre-scoping appearance and preferences belong to the first
+                // dashboard (same rule as launch). Adopted before selecting
+                // it, so the selection's reload reads them.
+                profileAppearanceStore.adoptLegacyAppearance(into: primary)
+                adoptLegacyProfilePreferences(into: primary)
+                savedDashboardRegistry = stored
+                // Launch ordered the cached profiles with no dashboard's order.
+                profiles = orderedProfiles(profiles)
+            }
         } else {
             SavedDashboardMigrator.adoptLeftoverCredentials(into: savedDashboardRegistry)
         }
@@ -9253,7 +9264,7 @@ final class AppState: ObservableObject {
         pendingLoginFailure = nil
         lastConnectionFailure = nil
         errorMessage = nil
-        loadSavedConnection()
+        loadSavedConnection(trigger: "retry on screen")
     }
 
     /// Whether the dashboard has anything `loadSavedConnection` signs in
@@ -9323,7 +9334,7 @@ final class AppState: ObservableObject {
     func retryFromOfflineChat() {
         guard offlineChatPresentation != nil, !isConnecting else { return }
         if connection == nil {
-            loadSavedConnection()
+            loadSavedConnection(trigger: "retry from offline copy")
         } else {
             // Same purpose rule as a foreground recovery: with no conversation
             // selected yet (a cold launch), the automatic resume picks it.
