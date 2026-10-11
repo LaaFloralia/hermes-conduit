@@ -221,19 +221,23 @@ final class HermesWatchCalls: NSObject {
     private static func callerName(_ userInfo: [AnyHashable: Any]) -> String {
         let caller = HermesRingPush.caller(userInfo)
         let names = UserDefaults.standard.dictionary(forKey: mainProfileNamesKey) as? [String: String]
+        let active = UserDefaults.standard.string(forKey: activeDashboardKey)
+        let mainName = HermesCallerName.mainName(dashboardID: caller.dashboardID, in: names, activeDashboardID: active)
         return HermesCallerName.line(
-            name: HermesCallerName.name(profile: caller.profile, mainName: HermesCallerName.mainName(dashboardID: caller.dashboardID, in: names)),
+            name: HermesCallerName.name(profile: caller.profile, mainName: mainName),
             title: HermesRingPush.title(userInfo)
         )
     }
 
     private nonisolated static let mainProfileNamesKey = "hermesCalls.mainProfileNames"
+    private nonisolated static let activeDashboardKey = "hermesCalls.activeDashboardID"
 
     /// Kept for a call that launches the app before the iPhone's context
     /// is read; nil (an older iPhone app) keeps the last.
-    nonisolated static func keepMainProfileNames(_ names: [String: String]?) {
-        guard let names else { return }
+    nonisolated static func keepMainProfileNames(_ context: WatchPhoneContext?) {
+        guard let context, let names = context.mainProfileNames else { return }
         UserDefaults.standard.set(names, forKey: mainProfileNamesKey)
+        UserDefaults.standard.set(context.activeDashboardID, forKey: activeDashboardKey)
     }
 
     // MARK: Answering

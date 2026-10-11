@@ -7982,6 +7982,8 @@ final class AppState: ObservableObject {
     /// dashboard.
     private func removeDashboardScopedPresentation(_ id: UUID) {
         profileAppearanceStore.removeAll(dashboardID: id)
+        // The Watch forgets its main profile name.
+        shareWatchCallVoices()
         forgetActiveProfile(for: id)
         let bucket = Self.dashboardPreferenceBucket(id)
         var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]

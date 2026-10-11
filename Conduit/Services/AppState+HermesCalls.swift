@@ -202,7 +202,8 @@ extension AppState {
         WatchVoiceLink.shared.share(WatchPhoneContext(
             voices: voices.scope == hermesCallsKey(profile: activeProfile) ? voices.ready : [:],
             callsRing: supportsHermesCalls && notifications.voipToken != nil,
-            mainProfileNames: mainProfileNamesByDashboard
+            mainProfileNames: mainProfileNamesByDashboard,
+            activeDashboardID: activeDashboardID?.uuidString
         ))
     }
 

@@ -666,6 +666,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(caller.dashboardID, dashboard)
         XCTAssertEqual(HermesCallerName.mainName(dashboardID: caller.dashboardID, in: [dashboard.uuidString: "Ada"]), "Ada")
         XCTAssertNil(HermesCallerName.mainName(dashboardID: UUID(), in: [dashboard.uuidString: "Ada"]))
+        XCTAssertEqual(HermesCallerName.mainName(dashboardID: nil, in: [dashboard.uuidString: "Ada"], activeDashboardID: dashboard.uuidString.lowercased()), "Ada", "A push naming no dashboard: the iPhone's active one, as on the iPhone")
+        XCTAssertNil(HermesCallerName.mainName(dashboardID: nil, in: [dashboard.uuidString: "Ada"]))
         let sealed = HermesRingPush.caller(["body": ["conduit": ["type": "call.requested", "e2e": 1]]])
         XCTAssertNil(sealed.profile)
         XCTAssertNil(sealed.dashboardID)
@@ -679,7 +681,7 @@ extension VoiceConversationControllerTests {
         store.saveDefaultName("Unscoped", dashboardID: nil)
         XCTAssertEqual(store.defaultNamesByDashboard(), [dashboard.uuidString: "Ada"])
 
-        let context = WatchPhoneContext(callsRing: true, mainProfileNames: [dashboard.uuidString: "Ada"])
+        let context = WatchPhoneContext(callsRing: true, mainProfileNames: [dashboard.uuidString: "Ada"], activeDashboardID: dashboard.uuidString)
         XCTAssertEqual(WatchPhoneContext.decode(context.encoded()), context)
         let older = try JSONEncoder().encode(WatchPhoneContext(voices: [:], callsRing: true))
         XCTAssertNil(WatchPhoneContext.decode([WatchPhoneContext.key: older])?.mainProfileNames, "An older iPhone app names no one")

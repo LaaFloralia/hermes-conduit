@@ -54,7 +54,8 @@ enum HermesCallerName {
             let main = oneLine(mainName)
             return main.isEmpty ? fallback : String(main.prefix(maximumNameCharacters))
         }
-        // As Conduit shows a profile everywhere else (AppState.profileDisplayName).
+        // As Conduit shows a profile everywhere else (AppState.profileDisplayName),
+        // on one line: CallKit shows a caller name on one.
         let shown = String(id.prefix(1)).uppercased() + String(id.dropFirst())
         return String(shown.prefix(maximumNameCharacters))
     }
@@ -66,10 +67,11 @@ enum HermesCallerName {
     }
 
     /// The main profile's name per dashboard (UUID string), as the iPhone
-    /// last shared them with the Watch.
-    static func mainName(dashboardID: UUID?, in names: [String: String]?) -> String? {
-        guard let dashboardID else { return nil }
-        return names?[dashboardID.uuidString]
+    /// last shared them with the Watch; `activeDashboardID` stands in for a
+    /// push that names no dashboard.
+    static func mainName(dashboardID: UUID?, in names: [String: String]?, activeDashboardID: String? = nil) -> String? {
+        guard let key = dashboardID?.uuidString ?? activeDashboardID.flatMap(UUID.init(uuidString:))?.uuidString else { return nil }
+        return names?[key]
     }
 
     private static func oneLine(_ text: String?) -> String {
