@@ -28,8 +28,21 @@ final class InMemoryKeychainBackend: KeychainHelper.Backend {
         return Key(service: queryService, account: account)
     }
 
+    /// A locked phone: records readable only while unlocked read as absent.
+    var phoneLocked = false
+
+    private func readableNow(_ key: Key) -> Bool {
+        guard phoneLocked else { return true }
+        let whenUnlocked = [
+            kSecAttrAccessibleWhenUnlocked as String,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
+        ]
+        return !whenUnlocked.contains(accessibilityClasses[key] ?? "")
+    }
+
     func data(for query: [String: Any]) -> Data? {
-        key(for: query).flatMap { storage[$0] }
+        guard let key = key(for: query), readableNow(key) else { return nil }
+        return storage[key]
     }
 
     func update(_ data: Data, for query: [String: Any]) -> Int32 {

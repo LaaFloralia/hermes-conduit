@@ -268,8 +268,11 @@ enum SavedDashboardMigrator {
     /// see `SavedDashboardMigration.outcome`.
     static func loadRegistry(defaults: UserDefaults = .standard) -> SavedDashboardRegistry {
         if let existing = SavedDashboardRegistryStore.load() {
+            // The password record is adoptLeftoverCredentials' to retire:
+            // still unreadable, it waits for a load that can read it.
+            adoptLeftoverCredentials(into: existing)
             if !LegacyDashboardReader.read(defaults: defaults).isEmpty {
-                LegacyDashboardReader.retireLegacy()
+                LegacyDashboardReader.retireLegacy(keepingCredentials: true)
             }
             return existing
         }
@@ -285,7 +288,9 @@ enum SavedDashboardMigrator {
             // Unreachable with a nil registry except for the fragment branch:
             // commit the empty registry so the decision is terminal, and
             // retire the unusable fragments.
-            if retireLegacy { LegacyDashboardReader.retireLegacy() }
+            if retireLegacy {
+                LegacyDashboardReader.retireLegacy(keepingCredentials: legacy.credentials == nil)
+            }
             let registry = SavedDashboardRegistry()
             SavedDashboardRegistryStore.save(registry)
             return registry
@@ -332,9 +337,27 @@ enum SavedDashboardMigrator {
         )
         SavedDashboardRegistryStore.save(registry)
         if plan.retiresLegacy {
-            LegacyDashboardReader.retireLegacy()
+            // A password not read here may only be unreadable: earlier
+            // builds saved it readable only while unlocked, and a call can
+            // launch Conduit on a locked phone. It stays until a later load
+            // reads it (adoptLeftoverCredentials).
+            LegacyDashboardReader.retireLegacy(keepingCredentials: legacy.credentials == nil)
         }
         return registry
+    }
+
+    /// A legacy password left by a migration that ran on a locked phone
+    /// joins the dashboard saved for its address, unless that dashboard
+    /// has a password of its own by now. Once read, the legacy record goes.
+    static func adoptLeftoverCredentials(into registry: SavedDashboardRegistry) {
+        guard let credentials = KeychainHelper.loadCredentials() else { return }
+        let normalized = (try? ConnectionURLPolicy.normalizedBaseURL(credentials.baseURL))
+            ?? credentials.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let dashboardID = registry.dashboardID(atNormalizedURL: normalized),
+           KeychainHelper.loadCredentials(dashboardID: dashboardID) == nil {
+            KeychainHelper.saveCredentials(credentials, dashboardID: dashboardID)
+        }
+        KeychainHelper.clearCredentials()
     }
 }
 
@@ -355,9 +378,11 @@ enum LegacyDashboardReader {
     /// Deletes the legacy global records. The installation-wide push
     /// registration is deliberately untouched: push pairing is per-device,
     /// not per-dashboard.
-    static func retireLegacy() {
+    static func retireLegacy(keepingCredentials: Bool = false) {
         KeychainHelper.clearConnection()
-        KeychainHelper.clearCredentials()
+        if !keepingCredentials {
+            KeychainHelper.clearCredentials()
+        }
         KeychainHelper.clearCloudflareAccess()
     }
 }

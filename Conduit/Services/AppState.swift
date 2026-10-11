@@ -8076,7 +8076,8 @@ final class AppState: ObservableObject {
             Task {
                 await restoreNativeOAuthConnection(
                     baseURL: dashboard.normalizedURL,
-                    dashboardID: activeID
+                    dashboardID: activeID,
+                    switchGeneration: switchGeneration
                 )
             }
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
@@ -8120,17 +8121,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    func restoreNativeOAuthConnection(baseURL: String, dashboardID: UUID) async {
+    func restoreNativeOAuthConnection(
+        baseURL: String,
+        dashboardID: UUID,
+        switchGeneration: UInt64? = nil
+    ) async {
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
+            // A dashboard switch made meanwhile owns the flow.
+            guard restoreOwnsFlow(switchGeneration) else { return }
             await connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket), profile: activeProfile)
             if isConnected {
                 KeychainHelper.clearCredentials(dashboardID: dashboardID)
                 KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         } catch is CancellationError {
-            isConnecting = false
+            if restoreOwnsFlow(switchGeneration) { isConnecting = false }
         } catch {
+            guard restoreOwnsFlow(switchGeneration) else { return }
             // A rejected grant can clear storage while the bridge still owns
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
@@ -9184,10 +9192,14 @@ final class AppState: ObservableObject {
     private func retrySignInFromBackground() {
         signInWaitsForForeground = false
         // Launched before the first unlock after a restart, the Keychain
-        // couldn't give the saved dashboards: read them again now.
+        // couldn't give the saved dashboards: read them again now. An
+        // upgrade that ran on a locked phone couldn't read the old saved
+        // password: it joins its dashboard now.
         if savedDashboardRegistry.dashboards.isEmpty {
             let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
             if !stored.dashboards.isEmpty { savedDashboardRegistry = stored }
+        } else {
+            SavedDashboardMigrator.adoptLeftoverCredentials(into: savedDashboardRegistry)
         }
         // Nothing saved to sign in with (an off-screen switch to a dashboard
         // with no reusable auth): the sign-in card keeps its explanation.
@@ -25677,8 +25689,9 @@ enum KeychainHelper {
 
     /// The record from before saved dashboards. Only the migrator reads it,
     /// and it rewrites it as a dashboard's own record (readable after the
-    /// first unlock). Unreadable on a locked launch, it waits for the retry
-    /// on screen, which runs the migrator again.
+    /// first unlock). Unreadable on a locked launch, it stays until a later
+    /// launch or the retry on screen can read it
+    /// (`SavedDashboardMigrator.adoptLeftoverCredentials`).
     static func saveCredentials(_ credentials: DashboardCredentials) {
         guard let data = try? JSONEncoder().encode(credentials) else { return }
         save(

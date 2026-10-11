@@ -228,6 +228,30 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertTrue(appState.showLogin, "Nothing saved to sign in with")
     }
 
+    /// An upgrade that ran on a locked phone left the old password unread:
+    /// the retry on screen hands it to the dashboard and signs in with it.
+    func testRetryOnScreenAdoptsThePasswordALockedUpgradeLeft() {
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let appState = makeSignedOutAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        )
+        let credentials = DashboardCredentials(
+            baseURL: dashboard.normalizedURL, username: "hermes", password: "secret", requiresFaceID: false
+        )
+        KeychainHelper.saveCredentials(credentials)
+        var away = true
+        appState.phoneScreenIsAway = { away }
+        appState.showLogin = true
+
+        away = false
+        appState.handleScenePhase(.background)
+        appState.handleScenePhase(.active)
+
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboard.id), credentials)
+        XCTAssertNil(KeychainHelper.loadCredentials())
+        XCTAssertEqual(appState.connectionTimeline?.trigger, "cold launch, password sign-in")
+    }
+
     private func installFaceIDDashboard(savedTicket: String?) -> (AppState, SavedDashboard) {
         // Loopback port 1: nothing listens, so no request leaves the host.
         let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
