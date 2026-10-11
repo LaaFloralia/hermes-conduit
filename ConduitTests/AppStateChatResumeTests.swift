@@ -347,7 +347,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-old").map(\.review), [activity])
 
         // New chat: the reconciliation and scroll identity still name the old one.
-        _ = appState.beginReconciliation()
+        let reconciliation = appState.beginReconciliation()
         appState.activeSessionId = "rt-new"
         appState.messages = []
         index.recordAuthoritative(runtimeID: "rt-new", durableID: "st-new", profile: "default", source: .create)
@@ -355,6 +355,15 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(appState.activeChatScrollSessionIdentity.contains("rt-old"))
 
         XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-new"), [])
+        // Stream events wait while the reconciliation is open; settle it so
+        // the new chat's own review below is applied and saved.
+        XCTAssertTrue(appState.settleReconciliationAndPublish(reconciliation))
+        XCTAssertTrue(appState.applyChatResume(SessionResumeResult(
+            sessionId: "rt-new",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        )))
+        XCTAssertFalse(appState.messages.contains { $0.review != nil }, "the opened new chat shows no review card")
         // The old chat, reopened under another runtime id, still has its review.
         index.recordAuthoritative(runtimeID: "rt-old-2", durableID: "st-old", profile: "default", source: .resume)
         XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-old-2").map(\.review), [activity])

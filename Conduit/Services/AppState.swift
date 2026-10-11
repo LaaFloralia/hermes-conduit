@@ -3413,10 +3413,15 @@ final class AppState: ObservableObject {
     private func reviewRecordSessionID(eventSessionId: String) -> String {
         guard let active = activeSessionId, !active.isEmpty else { return eventSessionId }
         if let durable = confirmedDurableSessionID(forRuntime: active) { return durable }
-        if let key = ChatScrollIdentityNormalization.sessionID(active), let row = (sessions + cronSessions).first(where: { row in
-            [row.id, row.storedSessionId].contains { ChatScrollIdentityNormalization.sessionID($0) == key }
-        }) {
-            return row.storedSessionId.flatMap { $0.isEmpty ? nil : $0 } ?? row.id
+        // Only a row that alone names the chat, in this profile: two rows
+        // claiming it are not settled by list order.
+        if let key = ChatScrollIdentityNormalization.sessionID(active) {
+            let rows = (activeProfileSessions + activeProfileCronSessions).filter { row in
+                [row.id, row.storedSessionId].contains { ChatScrollIdentityNormalization.sessionID($0) == key }
+            }
+            if rows.count == 1, let row = rows.first {
+                return row.storedSessionId.flatMap { $0.isEmpty ? nil : $0 } ?? row.id
+            }
         }
         return active
     }
