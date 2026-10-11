@@ -1936,8 +1936,10 @@ final class AppState: ObservableObject {
                         + (self?.hermesCallsInstructions(delegation: true) ?? "")
                         + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                         + (self?.liveVoiceStyle.instructions ?? ""),
-                    // A call Hermes made opens with its brief instead (#449).
-                    greeting: self?.liveHermesCall == nil ? self?.liveVoiceStyle.greeting : nil
+                    // A call Hermes made opens with its brief instead (#449),
+                    // spoken first rather than waiting for the user (#544).
+                    greeting: self?.liveHermesCall == nil ? self?.liveVoiceStyle.greeting : nil,
+                    callOpening: self?.liveHermesCall != nil
                 )
             },
             availability: { [weak self] in

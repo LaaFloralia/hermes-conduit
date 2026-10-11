@@ -648,6 +648,7 @@ final class WatchBridgeCallModel: ObservableObject {
             voice: voice,
             briefing: briefing,
             greeting: rejoining ? nil : greeting,
+            callOpening: !rejoining && openingTurn != nil,
             history: history
         ), kind: .control)
         startSentAt = now
@@ -767,8 +768,9 @@ final class WatchBridgeCallModel: ObservableObject {
                 return
             }
             // A call from Hermes: the model says what it called about, as
-            // the phone's GPT-Live call asks it to. Once, never on a rejoin.
-            if !rejoining, let openingTurn {
+            // the phone's GPT-Live call asks it to. Once, never on a rejoin,
+            // and only when the host didn't already have it speak first.
+            if !rejoining, !info.greetingApplied, let openingTurn {
                 pendingSends.insert(Pending(text: openingTurn, channel: .speakable, delegationID: nil), at: 0)
             }
             flushPending()

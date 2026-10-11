@@ -97,6 +97,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(first["briefing"] as? String, "Be brief.")
         XCTAssertEqual(first["greeting"] as? String, "Say hi.")
         XCTAssertNil(first["history"])
+        XCTAssertNil(first["call_opening"])
+        // A call Hermes placed: the host has the model speak first (#544).
+        let called = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
+            engine: "gpt_live", voice: nil, briefing: "About this call", greeting: nil, callOpening: true, history: []
+        )) as? [String: Any])
+        XCTAssertEqual(called["call_opening"] as? Bool, true)
         // A rejoin: the conversation so far, no second greeting.
         let rejoin = try XCTUnwrap(JSONSerialization.jsonObject(with: WatchAudioBridgeWire.start(
             engine: "gpt_live", voice: nil, briefing: nil, greeting: nil,

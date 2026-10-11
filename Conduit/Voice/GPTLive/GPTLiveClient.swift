@@ -89,7 +89,9 @@ protocol GPTLiveSessionProviding: AnyObject {
     /// `briefing` is Conduit's rules, persona and memory for this call: the
     /// host adds it to the session's instructions. `greeting` (nil for none,
     /// empty for the model's own words) makes the model greet first.
-    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?) async throws -> GPTLiveSessionAnswer
+    /// `callOpening` marks a call Hermes placed: the model speaks first with
+    /// the opening the briefing gives, instead of a greeting (#544).
+    func createSession(offer: String, history: [[String: Any]], voice: String?, briefing: String?, greeting: String?, callOpening: Bool) async throws -> GPTLiveSessionAnswer
 }
 
 @MainActor
@@ -128,10 +130,13 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         return Self.availability(from: response)
     }
 
-    func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil, greeting: String? = nil) async throws -> GPTLiveSessionAnswer {
+    func createSession(offer: String, history: [[String: Any]], voice: String? = nil, briefing: String? = nil, greeting: String? = nil, callOpening: Bool = false) async throws -> GPTLiveSessionAnswer {
         var body: [String: Any] = ["sdp": offer]
         if let briefing, !briefing.isEmpty { body["briefing"] = briefing }
         if let greeting { body["greeting"] = greeting }
+        // An older plugin ignores it and keeps the model silent; Conduit
+        // then sends the opening turn itself (greeting_applied false).
+        if callOpening { body["call_opening"] = true }
         if !history.isEmpty { body["history"] = history }
         if let voice, !voice.isEmpty { body["voice"] = voice }
         let response: [String: Any]

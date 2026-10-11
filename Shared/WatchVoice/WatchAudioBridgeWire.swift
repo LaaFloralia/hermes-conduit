@@ -165,12 +165,14 @@ enum WatchAudioBridgeWire {
 
     /// Starts the engine. `briefing` is Conduit's rules, persona and
     /// memory (GPT-Live puts it in the instructions); `greeting` asks for
-    /// a first line; `history` seeds a rejoined call's conversation.
-    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, history: [[String: Any]]) -> Data {
+    /// a first line; `callOpening` makes the model open a call Hermes
+    /// placed (#544); `history` seeds a rejoined call's conversation.
+    static func start(engine: String, voice: String?, briefing: String?, greeting: String?, callOpening: Bool = false, history: [[String: Any]]) -> Data {
         var message: [String: Any] = ["type": "start", "engine": engine]
         if let voice, !voice.isEmpty { message["voice"] = voice }
         if let briefing, !briefing.isEmpty { message["briefing"] = briefing }
         if let greeting { message["greeting"] = greeting }
+        if callOpening { message["call_opening"] = true }
         if !history.isEmpty { message["history"] = history }
         return (try? WatchToolSeal.json(message)) ?? Data()
     }

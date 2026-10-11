@@ -270,19 +270,19 @@ struct HermesCallOpening: Equatable {
 
     private func firstTurn(canAnswer: Bool) -> String {
         if waitsOnUser, !canAnswer {
-            return "[The call just connected. You called the user because Hermes is waiting on them. Tell them what it's waiting on and where to answer, as your instructions say. Don't ask how you can help. Then wait for them.]"
+            return "[The call just connected. Speak first now; don't wait for the user to speak. You called the user because Hermes is waiting on them. Tell them what it's waiting on and where to answer, as your instructions say. Don't ask how you can help. Then wait for them.]"
         }
         switch kind {
         case .approval?:
-            return "[The call just connected. You called the user because Hermes needs their approval. Tell them what it wants to do, as your instructions say, and ask whether to allow it. Don't ask how you can help. Then wait for them.]"
+            return "[The call just connected. Speak first now; don't wait for the user to speak. You called the user because Hermes needs their approval. Tell them what it wants to do, as your instructions say, and ask whether to allow it. Don't ask how you can help. Then wait for them.]"
         case .question?:
-            return "[The call just connected. You called the user because Hermes has a question for them. Ask it now, as your instructions say. Don't ask how you can help. Then wait for them.]"
+            return "[The call just connected. Speak first now; don't wait for the user to speak. You called the user because Hermes has a question for them. Ask it now, as your instructions say. Don't ask how you can help. Then wait for them.]"
         default:
             break
         }
         let source = result == nil ? "" : ", from its final reply in your instructions"
         let why = reason == nil ? "\(job) \(outcome)" : "of what your instructions say Hermes called about"
-        return "[The call just connected. You called the user because \(why). Tell them now what came of it\(source). Don't ask how you can help. Then wait for them.]"
+        return "[The call just connected. Speak first now; don't wait for the user to speak. You called the user because \(why). Tell them now what came of it\(source). Don't ask how you can help. Then wait for them.]"
     }
 
     /// What classic voice says before it listens: spoken as is, so in the
