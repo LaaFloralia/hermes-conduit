@@ -364,6 +364,19 @@ final class AppStateChatResumeTests: XCTestCase {
         index.recordAuthoritative(runtimeID: "rt-new-2", durableID: "st-new", profile: "default", source: .resume)
         XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-new-2").count, 1)
         XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-old-2").count, 1)
+
+        // A chat whose row lists its runtime id only as an alternate, with no
+        // confirmed mapping yet, saves under that runtime id; the mapping
+        // Hermes confirms later brings the review back on a reopen.
+        appState.activeSessionId = "rt-alt"
+        appState.messages = []
+        appState.sessions = [session("st-alt", alternateIDs: ["rt-alt"])]
+        appState.handleStreamEvent(.reviewSummary(sessionId: "rt-alt", activity: activity))
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-alt").count, 1)
+        index.recordAuthoritative(runtimeID: "rt-alt", durableID: "st-alt", profile: "default", source: .create)
+        index.recordAuthoritative(runtimeID: "rt-alt-2", durableID: "st-alt", profile: "default", source: .resume)
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-alt-2").count, 1)
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("st-alt").count, 1)
     }
 
     func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {

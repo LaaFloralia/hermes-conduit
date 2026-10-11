@@ -3408,23 +3408,25 @@ final class AppState: ObservableObject {
     /// when Hermes confirmed one, else its row's stored id, else the open id.
     /// The event's runtime id is replaced on the next resume, and the scroll
     /// identity's canonical id can still be the chat open before a new one.
+    /// Never a row found through its alternate ids, which another row can
+    /// share: a runtime key Hermes confirms later still matches.
     private func reviewRecordSessionID(eventSessionId: String) -> String {
         guard let active = activeSessionId, !active.isEmpty else { return eventSessionId }
-        let durable = botConversationProfile(for: active)
-            .flatMap { conversationIdentityIndex.durableID(forRuntime: active, profile: $0) }
-            ?? conversationIdentityIndex.durableID(forRuntime: active, profile: activeProfile)
-        if let durable { return durable }
-        let rows = sessions + cronSessions
-        if let row = rows.first(where: { $0.id == active || $0.storedSessionId == active }) {
-            return row.storedSessionId.flatMap { $0.isEmpty ? nil : $0 } ?? row.id
-        }
-        // A new chat's row can list its runtime id as an alternate; only a
-        // row that alone lists it names the chat.
-        let alternates = rows.filter { $0.alternateIds.contains(active) }
-        if alternates.count == 1, let row = alternates.first {
+        if let durable = confirmedDurableSessionID(forRuntime: active) { return durable }
+        if let key = ChatScrollIdentityNormalization.sessionID(active), let row = (sessions + cronSessions).first(where: { row in
+            [row.id, row.storedSessionId].contains { ChatScrollIdentityNormalization.sessionID($0) == key }
+        }) {
             return row.storedSessionId.flatMap { $0.isEmpty ? nil : $0 } ?? row.id
         }
         return active
+    }
+
+    /// The durable id Hermes confirmed for a chat's runtime id: a Bot Chat's
+    /// mapping is under the bot's profile, and the dashboard's is tried too.
+    private func confirmedDurableSessionID(forRuntime sessionId: String) -> String? {
+        botConversationProfile(for: sessionId)
+            .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
+            ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
     }
 
     /// Whether a saved review belongs to the open chat: its key is one of the
@@ -3501,11 +3503,7 @@ final class AppState: ObservableObject {
     private func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
-        // A Bot Chat's mapping is under the bot's profile; the dashboard's
-        // is tried too, so an earlier mapping there still counts.
-        let durable = botConversationProfile(for: sessionId)
-            .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
-            ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+        let durable = confirmedDurableSessionID(forRuntime: sessionId)
         let seeds = [sessionId, durable, voiceSessionAliases.storedID(forRuntime: sessionId)].compactMap { $0 }
         return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
     }
