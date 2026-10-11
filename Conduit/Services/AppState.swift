@@ -24933,7 +24933,8 @@ final class AppState: ObservableObject {
             ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true
+                memoryRecall: memory?.canRecall == true,
+                chats: true
             ),
             googleSearch: search == .google,
             voice: geminiLiveVoice,
@@ -25015,7 +25016,11 @@ final class AppState: ObservableObject {
                 memory: memory,
                 personality: personality,
                 answerLength: style.answerLength,
-                onWatch: true
+                onWatch: true,
+                // GPT-Live on the Watch finds chats only through the grant,
+                // and has no phone to fall back on: briefed only once the host
+                // has reported them.
+                watchChats: notifierPlugin.reports(WatchToolAnswer.chatCapability)
             ) + (hermesCall?.instructionBlock(delegation: true, canAnswer: false) ?? "") + style.instructions,
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
@@ -25106,7 +25111,8 @@ final class AppState: ObservableObject {
             ) + (hermesCall?.instructionBlock(delegation: false, canAnswer: false) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(
                 webSearch: search == .hermes,
-                memoryRecall: memory?.canRecall == true
+                memoryRecall: memory?.canRecall == true,
+                chats: true
             ),
             voice: voice,
             openingPrompt: hermesCall?.watchOpeningTurn ?? style.openingPrompt,
