@@ -3700,7 +3700,7 @@ final class AppState: ObservableObject {
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
         ) ?? .dark
-        adoptLegacyProfilePreferences()
+        adoptLegacyProfilePreferences(into: initialRegistry.dashboards.first?.id)
         modelVisibility = scopedModelVisibility(dashboardID: initialDashboardID)
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
@@ -7901,8 +7901,8 @@ final class AppState: ObservableObject {
     /// One-time move of the pre-scoping global profile order and model
     /// visibility into the registry's first dashboard (the one they were set
     /// on). A later dashboard starts from its own defaults.
-    private func adoptLegacyProfilePreferences() {
-        guard let primary = savedDashboardRegistry.dashboards.first?.id else { return }
+    private func adoptLegacyProfilePreferences(into primary: UUID?) {
+        guard let primary else { return }
         let bucket = Self.dashboardPreferenceBucket(primary)
         if let legacyOrder = defaults.stringArray(forKey: profileOrderKey) {
             var orders = defaults.dictionary(forKey: profileOrderByDashboardKey) as? [String: [String]] ?? [:]
@@ -8835,7 +8835,7 @@ final class AppState: ObservableObject {
             // Pre-scoping appearance/preferences with no dashboard to own
             // them yet belong to the first one (same rule as launch).
             profileAppearanceStore.adoptLegacyAppearance(into: id)
-            adoptLegacyProfilePreferences()
+            adoptLegacyProfilePreferences(into: id)
             // No reload: a registered dashboard is not selected yet, and
             // selecting it (adoptDashboard/switch) reloads through didSet.
         }
@@ -9242,9 +9242,15 @@ final class AppState: ObservableObject {
         // password: it joins its dashboard now.
         if savedDashboardRegistry.dashboards.isEmpty {
             let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
-            if !stored.dashboards.isEmpty {
+            if let primary = stored.dashboards.first?.id {
+                // Pre-scoping appearance and preferences belong to the first
+                // dashboard (same rule as launch). Adopted before selecting
+                // it, so the selection's reload reads them.
+                profileAppearanceStore.adoptLegacyAppearance(into: primary)
+                adoptLegacyProfilePreferences(into: primary)
                 savedDashboardRegistry = stored
-                hydrateDashboardPresentation(for: stored)
+                // Launch ordered the cached profiles with no dashboard's order.
+                profiles = orderedProfiles(profiles)
             }
         } else {
             SavedDashboardMigrator.adoptLeftoverCredentials(into: savedDashboardRegistry)
@@ -9259,22 +9265,6 @@ final class AppState: ObservableObject {
         lastConnectionFailure = nil
         errorMessage = nil
         loadSavedConnection(trigger: "retry on screen")
-    }
-
-    /// The dashboard-keyed presentation init loads, for a registry read only
-    /// on the retry (the launch came before the first unlock, so init saw
-    /// none): legacy preferences adopted into its first dashboard, then the
-    /// active dashboard's default profile name, avatars and model
-    /// visibility.
-    private func hydrateDashboardPresentation(for registry: SavedDashboardRegistry) {
-        let dashboardID = registry.activeDashboardID
-        if let primaryDashboardID = registry.dashboards.first?.id {
-            profileAppearanceStore.adoptLegacyAppearance(into: primaryDashboardID)
-        }
-        defaultProfileName = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
-        profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
-        adoptLegacyProfilePreferences()
-        modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
     }
 
     /// Whether the dashboard has anything `loadSavedConnection` signs in
@@ -9344,7 +9334,7 @@ final class AppState: ObservableObject {
     func retryFromOfflineChat() {
         guard offlineChatPresentation != nil, !isConnecting else { return }
         if connection == nil {
-            loadSavedConnection()
+            loadSavedConnection(trigger: "retry from offline copy")
         } else {
             // Same purpose rule as a foreground recovery: with no conversation
             // selected yet (a cold launch), the automatic resume picks it.

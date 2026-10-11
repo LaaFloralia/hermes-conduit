@@ -210,6 +210,28 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertEqual(backend.accessibility(ofAccount: earlierAccount), afterFirstUnlock)
     }
 
+    /// On a locked phone only a dashboard's own password can be written and
+    /// read; the record from before saved dashboards stays readable only
+    /// while unlocked.
+    func testOnlyTheDashboardsOwnPasswordIsWrittenOnALockedPhone() {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let credentials = DashboardCredentials(
+            baseURL: "https://hermes.example", username: "hermes", password: "secret", requiresFaceID: false
+        )
+        let dashboardID = UUID()
+        backend.phoneLocked = true
+
+        KeychainHelper.saveCredentials(credentials)
+        KeychainHelper.saveCredentials(credentials, dashboardID: dashboardID)
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboardID), credentials)
+
+        backend.phoneLocked = false
+        XCTAssertNil(KeychainHelper.loadCredentials())
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboardID), credentials)
+    }
+
     /// Launched before the first unlock after a restart, the saved
     /// dashboards were unreadable: the retry on screen reads them again.
     func testRetryOnScreenReadsSavedDashboardsAgain() {

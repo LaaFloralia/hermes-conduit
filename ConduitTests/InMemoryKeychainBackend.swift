@@ -38,7 +38,8 @@ final class InMemoryKeychainBackend: KeychainHelper.Backend {
             kSecAttrAccessibleWhenUnlocked as String,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
         ]
-        return !whenUnlocked.contains(accessibility ?? "")
+        // No class given is Apple's default: readable only while unlocked.
+        return !whenUnlocked.contains(accessibility ?? kSecAttrAccessibleWhenUnlocked as String)
     }
 
     private func readableNow(_ key: Key) -> Bool {
