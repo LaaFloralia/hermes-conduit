@@ -9071,7 +9071,11 @@ final class AppState: ObservableObject {
                 // connects, as it does when a locked phone keeps the
                 // password unreadable.
                 if phoneScreenIsAway(), let scopedDashboardID,
-                   restoreSavedSessionOffScreen(dashboardID: scopedDashboardID, baseURL: credentials.baseURL) {
+                   restoreSavedSessionOffScreen(
+                    dashboardID: scopedDashboardID,
+                    baseURL: credentials.baseURL,
+                    switchGeneration: switchGeneration
+                   ) {
                     return
                 }
                 showLogin = true
@@ -9143,7 +9147,11 @@ final class AppState: ObservableObject {
     /// its cookies) instead of the Face ID-protected password, for a restore
     /// running off the phone screen. False when there is no saved session
     /// for that address.
-    private func restoreSavedSessionOffScreen(dashboardID: UUID, baseURL: String) -> Bool {
+    private func restoreSavedSessionOffScreen(
+        dashboardID: UUID,
+        baseURL: String,
+        switchGeneration: UInt64?
+    ) -> Bool {
         guard let saved = KeychainHelper.loadConnection(dashboardID: dashboardID),
               saved.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                 == baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) else {
@@ -9155,7 +9163,7 @@ final class AppState: ObservableObject {
         showLogin = false
         isConnecting = true
         turnState = .synchronizing
-        Task { await restoreSavedConnection(saved) }
+        Task { await restoreSavedConnection(saved, switchGeneration: switchGeneration) }
         return true
     }
 
@@ -9168,9 +9176,9 @@ final class AppState: ObservableObject {
         HermesCallTrace.shared.note("Signing in again on screen (signed out in the background)")
         // Launched before the first unlock after a restart, the Keychain
         // couldn't give the saved dashboards: read them again now.
-        if savedDashboardRegistry.dashboards.isEmpty,
-           let stored = SavedDashboardRegistryStore.load(), !stored.dashboards.isEmpty {
-            savedDashboardRegistry = stored
+        if savedDashboardRegistry.dashboards.isEmpty {
+            let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
+            if !stored.dashboards.isEmpty { savedDashboardRegistry = stored }
         }
         // The failure belongs to the background attempt; the retry reports
         // its own.
