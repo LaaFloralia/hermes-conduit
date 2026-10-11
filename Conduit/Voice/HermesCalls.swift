@@ -257,7 +257,7 @@ struct HermesCallOpening: Equatable {
         } else {
             block += "Its final reply couldn't be read here; it's in the chat. "
         }
-        block += "Your first words in this call tell the user what came of it: the substance, with the details that matter, in your own spoken words. Skip what doesn't work by ear, like code, long tables or links. Never open with a greeting question or by asking how you can help. After that, carry on as usual."
+        block += "Your first words in this call tell the user what came of it: the substance, with the details that matter, in your own spoken words. Skip what doesn't work by ear, like code, long tables or links. End it with a short question about what they want to do next, fitting what came of it (like whether to reply), not a general offer of help. Never open with a greeting question or by asking how you can help. After that, carry on as usual."
         return block
     }
 
@@ -286,7 +286,7 @@ struct HermesCallOpening: Equatable {
         }
         let source = result == nil ? "" : ", from its final reply in your instructions"
         let why = reason == nil ? "\(job) \(outcome)" : "of what your instructions say Hermes called about"
-        return "[\(Self.speakFirst) You called the user because \(why). Tell them now what came of it\(source). Don't ask how you can help. Then wait for them.]"
+        return "[\(Self.speakFirst) You called the user because \(why). Tell them now what came of it\(source), then ask in a few words what they want to do next. Don't ask how you can help. Then wait for them.]"
     }
 
     /// What classic voice says before it listens: spoken as is, so in the

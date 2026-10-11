@@ -603,6 +603,9 @@ extension VoiceConversationControllerTests {
         let done = HermesCallOpening(kind: .done, title: "Build", result: "Green")
         XCTAssertTrue(done.openingTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertTrue(done.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
+        XCTAssertTrue(done.openingTurn.contains("what they want to do next"), "#544: the opening ends asking what's next")
+        XCTAssertTrue(done.instructionBlock(delegation: true).contains("what they want to do next"))
+        XCTAssertTrue(approval.watchOpeningTurn.hasPrefix("[" + HermesCallOpening.speakFirst))
         XCTAssertFalse(approval.spokenBrief.contains("Earlier reply"))
 
         let question = HermesCallOpening(kind: .question, title: nil, result: nil, reason: "Which branch?")
