@@ -39,6 +39,10 @@
 //  gets answer_approval or answer_question: the user's spoken answer goes
 //  to the pending card in the call's chat, only once they've spoken.
 //
+//  find_chat (phone calls) is NON_BLOCKING too; on Grok, which has none,
+//  the search holds the turn until it answers, like web_search there, so
+//  it asks once rather than retrying word by word.
+//
 //  Grok Live has no NON_BLOCKING calls, so its bridge answers start_job
 //  as soon as the job is running (`holdsJobCalls` false); the outcome
 //  arrives later as a text update, like a withdrawn call's.
@@ -88,6 +92,10 @@ protocol GeminiLiveJobSupervising: AnyObject {
     var callWaitsOn: HermesCallRequest.Kind? { get }
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome
+    /// The user's earlier chats matching `query`, numbered for open_chat.
+    func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome
+    /// Opens one of the last search's chats while the call goes on.
+    func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome
 }
 
 /// Without follow-up support a request never takes one: the words go out
@@ -104,6 +112,8 @@ extension GeminiLiveJobSupervising {
     var callWaitsOn: HermesCallRequest.Kind? { nil }
     func answerApproval(choice: String) async -> VoiceCallDecisionOutcome { .nothingPending }
     func answerQuestion(_ answer: String) async -> VoiceCallDecisionOutcome { .nothingPending }
+    func findChats(query: String, retryingWords: Bool) async -> VoiceChatSearchOutcome { .failed("Searching chats isn't available on this call.") }
+    func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome { .unavailable }
 }
 
 extension VoiceBackgroundJobSupervisor: GeminiLiveJobSupervising {}
@@ -126,6 +136,8 @@ final class GeminiLiveToolBridge {
         case callMeWhenDone = "call_me_when_done"
         case answerApproval = "answer_approval"
         case answerQuestion = "answer_question"
+        case findChat = "find_chat"
+        case openChat = "open_chat"
     }
 
     /// What the bridge asks the session to send.
@@ -151,9 +163,11 @@ final class GeminiLiveToolBridge {
     /// The declarations for a session, with web_search when its lookups run
     /// on the Hermes host, recall_memory when its memory provider can be
     /// searched, call_me_when_done when the host takes call watches, and
-    /// the answer for what a call from Hermes waits on (`waitsOn`).
-    static func declarations(webSearch: Bool, memoryRecall: Bool = false, thread: Bool = false, callback: Bool = false, waitsOn: HermesCallRequest.Kind? = nil) -> [GeminiLiveProtocol.FunctionDeclaration] {
+    /// the answer for what a call from Hermes waits on (`waitsOn`), and
+    /// find_chat / open_chat on the phone (`chats`).
+    static func declarations(webSearch: Bool, memoryRecall: Bool = false, thread: Bool = false, callback: Bool = false, waitsOn: HermesCallRequest.Kind? = nil, chats: Bool = false) -> [GeminiLiveProtocol.FunctionDeclaration] {
         functionDeclarations
+            + (chats ? chatDeclarations : [])
             + (webSearch ? [webSearchDeclaration] : [])
             + (memoryRecall ? [recallMemoryDeclaration] : [])
             + (thread ? threadDeclarations : [])
@@ -161,6 +175,41 @@ final class GeminiLiveToolBridge {
             + (waitsOn == .approval ? [answerApprovalDeclaration] : [])
             + (waitsOn == .question ? [answerQuestionDeclaration] : [])
     }
+
+    /// Finding and opening the user's earlier chats. Phone calls only: the
+    /// chat opens in Conduit on the iPhone.
+    static let chatDeclarations: [GeminiLiveProtocol.FunctionDeclaration] = [
+        .init(
+            name: Tool.findChat.rawValue,
+            description: "Find one of the user's earlier Hermes chats (conversations) by what was said in it or its title, when they ask to find, pull up, open or go back to a conversation (\"find the chat where we discussed the GPU setup\"). Pass one to three distinctive words from the topic, not filler like chat, conversation or discussed. It returns up to five numbered matches, best first, each with its title, when it was last active and a line from it. If the user asked to open it and one match clearly fits, call open_chat with its number right away. If several could fit, say the titles of the top two or three, with when, and ask which one; never read the lines or ids out. If none fits, say so and offer to try other words.",
+            parameters: [
+                "type": "OBJECT",
+                "properties": [
+                    "query": [
+                        "type": "STRING",
+                        "description": "One to three distinctive words from the topic.",
+                    ],
+                ],
+                "required": ["query"],
+            ],
+            behavior: .nonBlocking
+        ),
+        .init(
+            name: Tool.openChat.rawValue,
+            description: "Open one of the chats find_chat just returned, on the user's phone in Conduit. The call keeps going, minimised, while the chat opens. Pass the match's number. Then tell the user in a few words that it's open.",
+            parameters: [
+                "type": "OBJECT",
+                "properties": [
+                    "number": [
+                        "type": "STRING",
+                        "description": "The match's number from find_chat, like \"2\".",
+                    ],
+                ],
+                "required": ["number"],
+            ],
+            behavior: .blocking
+        ),
+    ]
 
     static let answerApprovalDeclaration = GeminiLiveProtocol.FunctionDeclaration(
         name: Tool.answerApproval.rawValue,
@@ -698,6 +747,23 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "answer is required"], scheduling: .whenIdle)]
             }
             return await answerDecision(call) { await self.supervisor.answerQuestion(answer) }
+        case .findChat:
+            guard !isEnding else { return [] }
+            let query = call.arguments["query"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !query.isEmpty else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "query is required"], scheduling: .whenIdle)]
+            }
+            // Grok holds its turn on every call: one search, not three.
+            let outcome = await supervisor.findChats(query: query, retryingWords: holdsJobCalls)
+            guard !isEnding else { return [] }
+            return [.toolResponse(id: call.id, name: call.name, result: Self.chatSearchResult(outcome), scheduling: .whenIdle)]
+        case .openChat:
+            guard !isEnding else { return [] }
+            let reference = (call.arguments["number"] ?? call.arguments["chat"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !reference.isEmpty else {
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": "number is required"], scheduling: nil)]
+            }
+            return [.toolResponse(id: call.id, name: call.name, result: Self.chatOpenResult(supervisor.openFoundChat(reference)), scheduling: nil)]
         case .endConversation:
             // Deliberately unanswered: a response would prompt another turn
             // after the goodbye, and the connection closes anyway.
@@ -931,6 +997,36 @@ final class GeminiLiveToolBridge {
     /// model opened it with the same words again. Not UI copy, so not
     /// localized.
     static let lookupAnswerNote = "Answer the user now from this result; don't say again that you're checking or looking it up."
+
+    /// find_chat's answer. Not UI copy, so not localized.
+    static func chatSearchResult(_ outcome: VoiceChatSearchOutcome) -> [String: String] {
+        switch outcome {
+        case .found(let matches):
+            return [
+                "chats": VoiceChatFinder.summary(matches),
+                "message": matches.count == 1
+                    ? "One chat matches. If it fits what the user asked for, call open_chat with number 1."
+                    : "If one clearly fits what the user asked for, call open_chat with its number. Otherwise say the titles of the likeliest two or three, with when, and ask which one.",
+            ]
+        case .noMatches:
+            return ["chats": "", "message": "No chats match that. Tell the user, and offer to try other words."]
+        case .failed(let reason):
+            return ["error": reason + " Tell the user in a few words."]
+        }
+    }
+
+    /// open_chat's answer. Not UI copy, so not localized.
+    static func chatOpenResult(_ outcome: VoiceChatOpenOutcome) -> [String: String] {
+        switch outcome {
+        case .opened(let title):
+            let name = title.isEmpty ? "The chat" : "\"\(title)\""
+            return ["status": "opened", "message": "\(name) is open in Conduit; this call goes on, minimised. Tell the user in a few words."]
+        case .unknownChat:
+            return ["error": "That number isn't one of the chats find_chat returned. Call find_chat first, then open_chat with a number from its list."]
+        case .unavailable:
+            return ["error": "Conduit couldn't open the chat right now. Tell the user in a few words."]
+        }
+    }
 
     /// Results as numbered lines for the model. Not UI copy.
     static func searchSummary(_ results: [GeminiLiveWebResult]) -> String {
