@@ -25557,6 +25557,9 @@ enum KeychainHelper {
         func update(_ data: Data, for query: [String: Any]) -> Int32
         func add(_ query: [String: Any]) -> Int32
         func delete(_ query: [String: Any])
+        /// Changes an existing item's accessibility class, which a data
+        /// update never does.
+        func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32
     }
 
     struct SystemKeychainBackend: Backend {
@@ -25583,6 +25586,12 @@ enum KeychainHelper {
         func delete(_ query: [String: Any]) {
             SecItemDelete(query as CFDictionary)
         }
+
+        func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32 {
+            SecItemUpdate(query as CFDictionary, [
+                kSecAttrAccessible as String: accessibility
+            ] as CFDictionary)
+        }
     }
 
     nonisolated(unsafe) private(set) static var backend: Backend = SystemKeychainBackend()
@@ -25591,6 +25600,35 @@ enum KeychainHelper {
     /// run serially within a simulator, and the swap is restored in teardown.
     static func useBackendForTesting(_ backend: Backend) {
         Self.backend = backend
+        credentialsAccessibilityMoves.lock()
+        credentialsMovedAccounts = []
+        credentialsAccessibilityMoves.unlock()
+    }
+
+    /// Saved passwords are readable after the first unlock, like the saved
+    /// session and cookies: a call from Hermes that wakes Conduit on a
+    /// locked phone can sign in again with one (Eric's choice, 2026-10-11).
+    /// Face ID still guards using a Face ID password on screen.
+    static let credentialsAccessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    private static let credentialsAccessibilityMoves = NSLock()
+    nonisolated(unsafe) private static var credentialsMovedAccounts: Set<String> = []
+
+    /// Moves a saved password to `credentialsAccessibility`. Passwords saved
+    /// by earlier builds were readable only while unlocked, and a data
+    /// update keeps an item's class, so the class is set explicitly: once
+    /// per launch, when the password is read (so the phone is unlocked) or
+    /// saved.
+    private static func moveCredentialsAccessibility(account: String, force: Bool) {
+        credentialsAccessibilityMoves.lock()
+        defer { credentialsAccessibilityMoves.unlock() }
+        guard force || !credentialsMovedAccounts.contains(account) else { return }
+        var status = backend.setAccessibility(credentialsAccessibility, for: scopedQuery(account: account))
+        if status == errSecItemNotFound {
+            status = backend.setAccessibility(credentialsAccessibility, for: legacyQuery(account: account))
+        }
+        if status == errSecSuccess {
+            credentialsMovedAccounts.insert(account)
+        }
     }
 
     private static let key = "hermes-conduit.connection.v1"
@@ -25775,15 +25813,16 @@ enum KeychainHelper {
 
     static func saveCredentials(_ credentials: DashboardCredentials, dashboardID: UUID) {
         guard let data = try? JSONEncoder().encode(credentials) else { return }
-        save(
-            data,
-            account: scopedAccount(credentialsKey, dashboardID: dashboardID),
-            accessibility: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        )
+        let account = scopedAccount(credentialsKey, dashboardID: dashboardID)
+        save(data, account: account, accessibility: credentialsAccessibility)
+        // Saved over an earlier build's password, the item kept its class.
+        moveCredentialsAccessibility(account: account, force: true)
     }
 
     static func loadCredentials(dashboardID: UUID) -> DashboardCredentials? {
-        guard let data = load(account: scopedAccount(credentialsKey, dashboardID: dashboardID)) else { return nil }
+        let account = scopedAccount(credentialsKey, dashboardID: dashboardID)
+        guard let data = load(account: account) else { return nil }
+        moveCredentialsAccessibility(account: account, force: false)
         return try? JSONDecoder().decode(DashboardCredentials.self, from: data)
     }
 

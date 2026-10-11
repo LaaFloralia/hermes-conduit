@@ -1,4 +1,5 @@
 import XCTest
+import Security
 @testable import Conduit
 
 /// A sign-in that came up while Conduit was off the phone screen (a call
@@ -144,6 +145,36 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertEqual(appState.connection, saved)
         XCTAssertFalse(appState.showLogin)
         XCTAssertFalse(appState.signInWaitsForForeground)
+    }
+
+    /// A saved password is readable after the first unlock, so a call on a
+    /// locked phone can sign in again; one saved by an earlier build (only
+    /// while unlocked) moves the first time it is read.
+    func testSavedPasswordIsReadableAfterFirstUnlock() throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let afterFirstUnlock = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String
+        let credentials = DashboardCredentials(
+            baseURL: "https://hermes.example", username: "hermes", password: "secret", requiresFaceID: true
+        )
+
+        let saved = UUID()
+        KeychainHelper.saveCredentials(credentials, dashboardID: saved)
+        let savedAccount = KeychainHelper.scopedAccount("hermes-conduit.credentials.v1", dashboardID: saved)
+        XCTAssertEqual(backend.accessibility(ofAccount: savedAccount), afterFirstUnlock)
+
+        let earlier = UUID()
+        let earlierAccount = KeychainHelper.scopedAccount("hermes-conduit.credentials.v1", dashboardID: earlier)
+        _ = backend.add([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.milim.conduit",
+            kSecAttrAccount as String: earlierAccount,
+            kSecValueData as String: try JSONEncoder().encode(credentials),
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ])
+        XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: earlier), credentials)
+        XCTAssertEqual(backend.accessibility(ofAccount: earlierAccount), afterFirstUnlock)
     }
 
     /// Launched before the first unlock after a restart, the saved

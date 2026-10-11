@@ -19,6 +19,7 @@ final class InMemoryKeychainBackend: KeychainHelper.Backend {
     }
 
     private var storage: [Key: Data] = [:]
+    private var accessibilityClasses: [Key: String] = [:]
     private let service = "com.milim.conduit"
 
     private func key(for query: [String: Any]) -> Key? {
@@ -42,11 +43,28 @@ final class InMemoryKeychainBackend: KeychainHelper.Backend {
     func add(_ query: [String: Any]) -> Int32 {
         guard let key = key(for: query) else { return errSecParam }
         storage[key] = query[kSecValueData as String] as? Data
+        accessibilityClasses[key] = query[kSecAttrAccessible as String] as? String
         return errSecSuccess
     }
 
     func delete(_ query: [String: Any]) {
-        if let key = key(for: query) { storage.removeValue(forKey: key) }
+        if let key = key(for: query) {
+            storage.removeValue(forKey: key)
+            accessibilityClasses.removeValue(forKey: key)
+        }
+    }
+
+    func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32 {
+        guard let key = key(for: query), storage[key] != nil else {
+            return errSecItemNotFound
+        }
+        accessibilityClasses[key] = accessibility as String
+        return errSecSuccess
+    }
+
+    /// Test diagnostics: the accessibility class an account's record has.
+    func accessibility(ofAccount account: String) -> String? {
+        accessibilityClasses.first { $0.key.account == account }?.value
     }
 
     /// Test diagnostics: whether a record exists for an account.
