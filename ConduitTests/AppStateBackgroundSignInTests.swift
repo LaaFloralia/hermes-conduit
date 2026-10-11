@@ -1,15 +1,16 @@
 import XCTest
 @testable import Conduit
 
-/// A sign-in that came up while Conduit ran in the background (a call from
-/// Hermes, the Apple Watch or CarPlay launched it) runs the saved sign-in
-/// again once Conduit is on screen, instead of leaving the user signed out.
+/// A sign-in that came up while Conduit was off the phone screen (a call
+/// from Hermes or the Apple Watch launched it, or only CarPlay shows it)
+/// runs the saved sign-in again once Conduit is on screen, instead of
+/// leaving the user signed out.
 /// An extension of an existing class, so the CI test plan gains no class.
 extension AppStateForegroundLifecycleTests {
     func testSignInRaisedInBackgroundRetriesSavedSignInOnScreen() {
         let appState = makeSignedOutAppState()
         var inBackground = true
-        appState.appRunsInBackground = { inBackground }
+        appState.phoneScreenIsAway = { inBackground }
 
         appState.showLogin = true
         XCTAssertTrue(appState.signInWaitsForForeground)
@@ -28,7 +29,7 @@ extension AppStateForegroundLifecycleTests {
 
     func testSignInRaisedOnScreenDoesNotRetry() {
         let appState = makeSignedOutAppState()
-        appState.appRunsInBackground = { false }
+        appState.phoneScreenIsAway = { false }
 
         appState.showLogin = true
         XCTAssertFalse(appState.signInWaitsForForeground)
@@ -43,7 +44,7 @@ extension AppStateForegroundLifecycleTests {
 
     func testSignedInAgainInBackgroundStopsWaiting() {
         let appState = makeSignedOutAppState()
-        appState.appRunsInBackground = { true }
+        appState.phoneScreenIsAway = { true }
 
         appState.showLogin = true
         XCTAssertTrue(appState.signInWaitsForForeground)
@@ -56,7 +57,7 @@ extension AppStateForegroundLifecycleTests {
     /// instead of the sign-in screen (Eric's choice, 2026-10-11).
     func testFaceIDDashboardInBackgroundConnectsWithSavedSession() async throws {
         let (appState, dashboard) = installFaceIDDashboard(savedTicket: "saved-ticket")
-        appState.appRunsInBackground = { true }
+        appState.phoneScreenIsAway = { true }
 
         appState.loadSavedConnection()
         try await waitUntil { appState.connection != nil || appState.signInWaitsForForeground }
@@ -69,7 +70,7 @@ extension AppStateForegroundLifecycleTests {
     /// No saved session to fall back on: sign-in waits for the screen.
     func testFaceIDDashboardInBackgroundWithoutSavedSessionWaitsForTheScreen() async throws {
         let (appState, _) = installFaceIDDashboard(savedTicket: nil)
-        appState.appRunsInBackground = { true }
+        appState.phoneScreenIsAway = { true }
 
         appState.loadSavedConnection()
         try await waitUntil { appState.connection != nil || appState.signInWaitsForForeground }
@@ -83,7 +84,7 @@ extension AppStateForegroundLifecycleTests {
     /// never stands in for it there.
     func testFaceIDRefusedOnScreenStillGoesToSignIn() async throws {
         let (appState, _) = installFaceIDDashboard(savedTicket: "saved-ticket")
-        appState.appRunsInBackground = { false }
+        appState.phoneScreenIsAway = { false }
         var unlockAsked = false
         appState.unlockWithFaceID = {
             unlockAsked = true
@@ -99,12 +100,55 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertFalse(appState.signInWaitsForForeground)
     }
 
+    /// A renewal refused off screen keeps the saved session for the retry
+    /// on screen; refused on screen, it is retired as before.
+    func testForcedSignInOffScreenKeepsTheSavedSession() {
+        let (appState, dashboard) = installFaceIDDashboard(savedTicket: "saved-ticket")
+        appState.phoneScreenIsAway = { true }
+
+        appState.requireSignIn(message: "refused")
+
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertTrue(appState.signInWaitsForForeground)
+        XCTAssertNotNil(KeychainHelper.loadConnection(dashboardID: dashboard.id))
+    }
+
+    func testForcedSignInOnScreenRetiresTheSavedSession() {
+        let (appState, dashboard) = installFaceIDDashboard(savedTicket: "saved-ticket")
+        appState.phoneScreenIsAway = { false }
+
+        appState.requireSignIn(message: "refused")
+
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertFalse(appState.signInWaitsForForeground)
+        XCTAssertNil(KeychainHelper.loadConnection(dashboardID: dashboard.id))
+    }
+
+    /// Launched before the first unlock after a restart, the saved
+    /// dashboards were unreadable: the retry on screen reads them again.
+    func testRetryOnScreenReadsSavedDashboardsAgain() {
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let appState = makeSignedOutAppState()
+        SavedDashboardRegistryStore.save(SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]))
+        var away = true
+        appState.phoneScreenIsAway = { away }
+        appState.showLogin = true
+
+        away = false
+        appState.handleScenePhase(.background)
+        appState.handleScenePhase(.active)
+
+        XCTAssertEqual(appState.activeDashboardID, dashboard.id)
+        XCTAssertTrue(appState.showLogin, "Nothing saved to sign in with")
+    }
+
     private func installFaceIDDashboard(savedTicket: String?) -> (AppState, SavedDashboard) {
-        // An unsigned simulator test host can't write the system keychain.
-        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
-        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
         // Loopback port 1: nothing listens, so no request leaves the host.
         let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        // Made first: it puts the in-memory Keychain in place.
+        let appState = makeSignedOutAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        )
         KeychainHelper.saveCredentials(
             DashboardCredentials(baseURL: dashboard.normalizedURL, username: "hermes", password: "secret", requiresFaceID: true),
             dashboardID: dashboard.id
@@ -115,9 +159,6 @@ extension AppStateForegroundLifecycleTests {
                 dashboardID: dashboard.id
             )
         }
-        let appState = makeSignedOutAppState(
-            registry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
-        )
         appState.unlockWithFaceID = { false }
         return (appState, dashboard)
     }
@@ -146,6 +187,11 @@ extension AppStateForegroundLifecycleTests {
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }
+        // An unsigned simulator test host can't write the system keychain,
+        // and a signed one must never hand a retry the developer's own
+        // dashboards.
+        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
         return AppState(
             defaults: defaults,
             loadSavedConnection: false,

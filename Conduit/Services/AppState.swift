@@ -1360,20 +1360,22 @@ final class AppState: ObservableObject {
             // authentication failure it must not reappear on the next sign-in.
             // (The files stay until sign-out/removal/switch wipes them.)
             if showLogin { dismissOfflineChatPresentation() }
-            // Sign-in raised with Conduit in the background (a call from
-            // Hermes, the Apple Watch or CarPlay launched it): Face ID can't
-            // show there, and a locked phone keeps a saved password
-            // unreadable. The saved sign-in runs again once Conduit is on
-            // screen instead of leaving the user signed out.
-            signInWaitsForForeground = showLogin && appRunsInBackground()
+            // Sign-in raised with Conduit off the phone screen (a call from
+            // Hermes or the Apple Watch launched it in the background, or
+            // only CarPlay shows it): Face ID can't show there, and a locked
+            // phone keeps a saved password unreadable. The saved sign-in
+            // runs again once Conduit is on screen instead of leaving the
+            // user signed out.
+            signInWaitsForForeground = showLogin && phoneScreenIsAway()
         }
     }
-    /// A sign-in screen came up while Conduit ran in the background; the
+    /// A sign-in screen came up while Conduit was off the phone screen; the
     /// next return to the screen retries the saved sign-in.
     private(set) var signInWaitsForForeground = false
-    /// Whether Conduit runs in the background. Test seam.
-    var appRunsInBackground: @MainActor () -> Bool = {
-        UIApplication.shared.applicationState == .background
+    /// Whether no phone screen of Conduit is in the foreground: a launch in
+    /// the background, or CarPlay alone. Test seam.
+    var phoneScreenIsAway: @MainActor () -> Bool = {
+        !PhoneScenePresence.isInForeground
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
@@ -9064,11 +9066,12 @@ final class AppState: ObservableObject {
             guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
                 guard restoreOwnsFlow(switchGeneration) else { return }
-                // Face ID can't show while Conduit runs in the background (a
-                // call from Hermes woke it): the saved session connects, as
-                // it does when a locked phone keeps the password unreadable.
-                if appRunsInBackground(), let scopedDashboardID,
-                   restoreSavedSessionInBackground(dashboardID: scopedDashboardID, baseURL: credentials.baseURL) {
+                // Face ID can't show off the phone screen (a call from Hermes
+                // woke Conduit, or only CarPlay shows it): the saved session
+                // connects, as it does when a locked phone keeps the
+                // password unreadable.
+                if phoneScreenIsAway(), let scopedDashboardID,
+                   restoreSavedSessionOffScreen(dashboardID: scopedDashboardID, baseURL: credentials.baseURL) {
                     return
                 }
                 showLogin = true
@@ -9138,16 +9141,16 @@ final class AppState: ObservableObject {
 
     /// Connects with the dashboard's saved session (its ticket, renewed with
     /// its cookies) instead of the Face ID-protected password, for a restore
-    /// running in the background. False when there is no saved session for
-    /// that address.
-    private func restoreSavedSessionInBackground(dashboardID: UUID, baseURL: String) -> Bool {
+    /// running off the phone screen. False when there is no saved session
+    /// for that address.
+    private func restoreSavedSessionOffScreen(dashboardID: UUID, baseURL: String) -> Bool {
         guard let saved = KeychainHelper.loadConnection(dashboardID: dashboardID),
               saved.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
                 == baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) else {
             return false
         }
-        HermesCallTrace.shared.note("Face ID can't show in the background: using the saved session")
-        noteConnectionStep("Saved session (Face ID can't show in the background)")
+        HermesCallTrace.shared.note("Face ID can't show off screen: using the saved session")
+        noteConnectionStep("Saved session (Face ID can't show off screen)")
         connection = saved
         showLogin = false
         isConnecting = true
@@ -9163,6 +9166,12 @@ final class AppState: ObservableObject {
     private func retrySignInFromBackground() {
         signInWaitsForForeground = false
         HermesCallTrace.shared.note("Signing in again on screen (signed out in the background)")
+        // Launched before the first unlock after a restart, the Keychain
+        // couldn't give the saved dashboards: read them again now.
+        if savedDashboardRegistry.dashboards.isEmpty,
+           let stored = SavedDashboardRegistryStore.load(), !stored.dashboards.isEmpty {
+            savedDashboardRegistry = stored
+        }
         // The failure belongs to the background attempt; the retry reports
         // its own.
         pendingLoginFailure = nil
@@ -9363,12 +9372,19 @@ final class AppState: ObservableObject {
         projects = []
         supportsProjects = false
         projectsLoading = false
-        if let dashboardID = activeDashboardID {
-            // Forced sign-out is scoped like Disconnect: only the active
-            // dashboard's saved ticket (and cookie mirror) is retired.
-            KeychainHelper.clearConnection(dashboardID: dashboardID)
+        // Off the phone screen, a renewal is refused on thinner evidence: no
+        // page retries, and a locked phone can't re-sign in with the saved
+        // password. The saved session and copy stay for the retry on screen
+        // (signInWaitsForForeground), which retires them if the dashboard
+        // refuses it there too.
+        if !phoneScreenIsAway() {
+            if let dashboardID = activeDashboardID {
+                // Forced sign-out is scoped like Disconnect: only the active
+                // dashboard's saved ticket (and cookie mirror) is retired.
+                KeychainHelper.clearConnection(dashboardID: dashboardID)
+            }
+            wipeOfflineChatCache(dashboardID: activeDashboardID)
         }
-        wipeOfflineChatCache(dashboardID: activeDashboardID)
         turnState = .idle
         retireOutstandingPreferredReturnSurfaceRequests()
         // The banner content belonged to the session being torn down; with
