@@ -8063,6 +8063,10 @@ final class AppState: ObservableObject {
             return
         }
         rememberDashboardURL(dashboard.normalizedURL)
+        // A dashboard switch made while this restore runs (the sign-in
+        // retried on screen, then the user picked another dashboard) owns
+        // the flow.
+        let switchGeneration = dashboardSwitchGeneration
         if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
             beginConnectionTimeline("cold launch, browser sign-in (OAuth)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
@@ -8090,7 +8094,13 @@ final class AppState: ObservableObject {
                     isConnecting = true
                 }
             }
-            Task { await restoreSavedCredentials(credentials, dashboardID: activeID) }
+            Task {
+                await restoreSavedCredentials(
+                    credentials,
+                    dashboardID: activeID,
+                    switchGeneration: switchGeneration
+                )
+            }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
             beginConnectionTimeline("cold launch, browser sign-in (saved ticket)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
@@ -8101,7 +8111,7 @@ final class AppState: ObservableObject {
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
-            Task { await restoreSavedConnection(saved) }
+            Task { await restoreSavedConnection(saved, switchGeneration: switchGeneration) }
         } else {
             // The selected dashboard has no reusable auth left (signed out or
             // removed on another surface): present its sign-in, seeded with
@@ -25665,6 +25675,10 @@ enum KeychainHelper {
         load(account: dashboardCookieKey)
     }
 
+    /// The record from before saved dashboards. Only the migrator reads it,
+    /// and it rewrites it as a dashboard's own record (readable after the
+    /// first unlock). Unreadable on a locked launch, it waits for the retry
+    /// on screen, which runs the migrator again.
     static func saveCredentials(_ credentials: DashboardCredentials) {
         guard let data = try? JSONEncoder().encode(credentials) else { return }
         save(

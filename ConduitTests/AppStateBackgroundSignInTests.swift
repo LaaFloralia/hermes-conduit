@@ -84,15 +84,21 @@ extension AppStateForegroundLifecycleTests {
     /// ID dashboard: Face ID can't show, so the saved session connects
     /// instead of the sign-in screen (Eric's choice, 2026-10-11).
     func testFaceIDDashboardInBackgroundConnectsWithSavedSession() async throws {
-        let (appState, dashboard) = installFaceIDDashboard(savedTicket: "saved-ticket")
+        let (appState, _) = installFaceIDDashboard(savedTicket: "saved-ticket")
         appState.phoneScreenIsAway = { true }
 
         appState.loadSavedConnection()
-        try await waitUntil { appState.connection != nil || appState.signInWaitsForForeground }
+        // The route taken, not the connection: the connect to the loopback
+        // port fails soon after and may change it.
+        let steps: @MainActor () -> [String] = {
+            appState.connectionTimeline?.events.map(\.label) ?? []
+        }
+        try await waitUntil {
+            steps().contains("Saved session (Face ID can't show off screen)") || appState.signInWaitsForForeground
+        }
 
-        XCTAssertEqual(appState.connection, HermesConnection(baseUrl: dashboard.normalizedURL, ticket: "saved-ticket"))
-        XCTAssertFalse(appState.showLogin)
-        XCTAssertFalse(appState.signInWaitsForForeground)
+        XCTAssertTrue(steps().contains("Saved session (Face ID can't show off screen)"))
+        XCTAssertFalse(steps().contains { $0.hasPrefix("Password sign-in") }, "The password stays behind Face ID")
     }
 
     /// No saved session to fall back on: sign-in waits for the screen.
