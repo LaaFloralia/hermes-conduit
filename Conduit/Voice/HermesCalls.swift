@@ -101,7 +101,12 @@ struct HermesCallRequest: Equatable {
 enum HermesCallCopy {
     static var notificationTitle: String { AppLocalization.string("Hermes wants to talk") }
     /// A ringing call that didn't connect (#449 step 2).
-    static var missedCallTitle: String { AppLocalization.string("Missed call from Hermes") }
+    static var missedCallTitle: String { missedCallTitle(from: HermesCallerName.fallback) }
+    /// Names the profile that called (HermesCallerName), as the call did.
+    static func missedCallTitle(from name: String) -> String {
+        guard name != HermesCallerName.fallback else { return AppLocalization.string("Missed call from Hermes") }
+        return AppLocalization.string("Missed call from \(name)")
+    }
 
     /// The name a ringing call shows, the only text CallKit gives it: the
     /// calling profile (HermesCallerName), with the job's title when the
@@ -990,9 +995,10 @@ enum HermesCallNotifications {
     }
 
     /// The local notification for `target`, routed like a call push.
-    static func localRequest(for target: VoiceCallbackTarget, kind: HermesCallRequest.Kind?, profile: String, dashboardID: UUID?, reason: String? = nil, missed: Bool = false) -> UNNotificationRequest {
+    /// `callerName`: who a missed call was from (HermesCallerName).
+    static func localRequest(for target: VoiceCallbackTarget, kind: HermesCallRequest.Kind?, profile: String, dashboardID: UUID?, reason: String? = nil, missed: Bool = false, callerName: String = HermesCallerName.fallback) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
-        content.title = missed ? HermesCallCopy.missedCallTitle : HermesCallCopy.notificationTitle
+        content.title = missed ? HermesCallCopy.missedCallTitle(from: callerName) : HermesCallCopy.notificationTitle
         content.body = HermesCallCopy.summary(kind: kind, title: HermesCallRequest.cleanedTitle(target.title), reason: HermesCallRequest.cleanedReason(reason))
         content.sound = .default
         content.categoryIdentifier = categoryIdentifier
@@ -1016,7 +1022,7 @@ enum HermesCallNotifications {
     /// declined, late, or one Conduit couldn't start (`missed`), or one that
     /// couldn't ring because voice was already in use. Talk opens it like
     /// the call.
-    static func callRequest(for target: ConduitNotificationTarget, missed: Bool) -> UNNotificationRequest? {
+    static func callRequest(for target: ConduitNotificationTarget, missed: Bool, callerName: String = HermesCallerName.fallback) -> UNNotificationRequest? {
         guard let call = target.call else { return nil }
         let callback = VoiceCallbackTarget(
             title: call.title ?? "",
@@ -1025,7 +1031,7 @@ enum HermesCallNotifications {
             storedSessionID: target.durableSessionID,
             profile: target.profile
         )
-        return localRequest(for: callback, kind: call.kind, profile: target.profile ?? "", dashboardID: target.dashboardID, reason: call.reason, missed: missed)
+        return localRequest(for: callback, kind: call.kind, profile: target.profile ?? "", dashboardID: target.dashboardID, reason: call.reason, missed: missed, callerName: callerName)
     }
 
     /// A call Conduit couldn't read (its keys are locked away until the
