@@ -7835,6 +7835,12 @@ final class AppState: ObservableObject {
 
     func saveDefaultProfileName(_ name: String) {
         defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
+        // A call ringing on the Watch shows it.
+        shareWatchCallVoices()
+    }
+
+    var mainProfileNamesByDashboard: [String: String] {
+        profileAppearanceStore.defaultNamesByDashboard()
     }
 
     func selectAppIcon(_ choice: AppIconChoice) async -> Bool {

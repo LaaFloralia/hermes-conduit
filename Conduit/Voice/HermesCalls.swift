@@ -103,11 +103,14 @@ enum HermesCallCopy {
     /// A ringing call that didn't connect (#449 step 2).
     static var missedCallTitle: String { AppLocalization.string("Missed call from Hermes") }
 
-    /// The name a ringing call shows, the only text CallKit gives it:
-    /// "Hermes", with the job's title when the call carries one.
-    static func callerName(title: String?) -> String {
-        guard let title = HermesCallRequest.cleanedTitle(title) else { return "Hermes" }
-        return "Hermes · " + title
+    /// The name a ringing call shows, the only text CallKit gives it: the
+    /// calling profile (HermesCallerName), with the job's title when the
+    /// call carries one.
+    static func callerName(profile: String?, mainName: String?, title: String?) -> String {
+        HermesCallerName.line(
+            name: HermesCallerName.name(profile: profile, mainName: mainName),
+            title: HermesCallRequest.cleanedTitle(title)
+        )
     }
     static var talkAction: String { AppLocalization.string("Talk") }
     static var jobCardNote: String { AppLocalization.string("Calls you when done") }

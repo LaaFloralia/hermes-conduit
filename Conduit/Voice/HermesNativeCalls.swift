@@ -250,6 +250,15 @@ final class HermesNativeCalls: NSObject {
 
     // MARK: Ringing
 
+    /// Who the call says is calling: its profile, the main one by the name
+    /// the user gave it on the call's dashboard (the active one for a push
+    /// from a relay that names none).
+    private static func callerName(_ target: ConduitNotificationTarget?) -> String {
+        let dashboardID = target?.dashboardID ?? AppStateRuntimeRegistry.shared.existing?.activeDashboardID
+        let mainName = target.map { _ in ProfileAppearanceStore().loadDefaultName(dashboardID: dashboardID) }
+        return HermesCallCopy.callerName(profile: target?.profile, mainName: mainName, title: target?.call?.title)
+    }
+
     private func receive(_ userInfo: [AnyHashable: Any], completion: @escaping () -> Void) {
         if let settled = HermesRingSettled.from(userInfo) {
             ringSettled(settled, completion: completion)
@@ -279,7 +288,7 @@ final class HermesNativeCalls: NSObject {
         let id = UUID()
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
-        update.localizedCallerName = HermesCallCopy.callerName(title: call.target?.call?.title)
+        update.localizedCallerName = Self.callerName(call.target)
         update.hasVideo = false
         update.supportsHolding = false
         update.supportsGrouping = false
@@ -554,7 +563,7 @@ final class HermesNativeCalls: NSObject {
         let id = match?.key ?? UUID()
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
-        update.localizedCallerName = HermesCallCopy.callerName(title: match?.value.target.call?.title)
+        update.localizedCallerName = Self.callerName(match?.value.target)
         update.hasVideo = false
         let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
         provider.reportNewIncomingCall(with: id, update: update) { _ in

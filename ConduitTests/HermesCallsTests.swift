@@ -646,8 +646,43 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls("USA"))
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls(nil))
         XCTAssertFalse(HermesNativeCallStorefront.allowsCalls("CHN"))
-        XCTAssertEqual(HermesCallCopy.callerName(title: nil), "Hermes")
-        XCTAssertEqual(HermesCallCopy.callerName(title: "Check \"it\""), "Hermes · Check 'it'")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: nil, title: nil), "Hermes")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: "Ada", title: "Check \"it\""), "Hermes · Check 'it'")
+    }
+
+    func testACallSaysWhichProfileIsCalling() throws {
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: "Ada", title: nil), "Research")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: nil, title: "Deploy"), "Research · Deploy")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: "Ada", title: "Deploy"), "Ada · Deploy", "The main profile goes by Conduit's name, not Hermes' Default")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "Default", mainName: " ", title: nil), "Hermes")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, title: nil), "Hermes")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "  ", mainName: "Ada", title: nil), "Hermes", "No profile: nothing names the caller")
+
+        // The Watch reads the caller from a push in the clear.
+        let dashboard = UUID()
+        let clear: [AnyHashable: Any] = ["body": ["conduit": ["profile": "default", "dashboard_id": dashboard.uuidString.lowercased(), "call": ["title": "Deploy"]]]]
+        let caller = HermesRingPush.caller(clear)
+        XCTAssertEqual(caller.profile, "default")
+        XCTAssertEqual(caller.dashboardID, dashboard)
+        XCTAssertEqual(HermesCallerName.mainName(dashboardID: caller.dashboardID, in: [dashboard.uuidString: "Ada"]), "Ada")
+        XCTAssertNil(HermesCallerName.mainName(dashboardID: UUID(), in: [dashboard.uuidString: "Ada"]))
+        let sealed = HermesRingPush.caller(["body": ["conduit": ["type": "call.requested", "e2e": 1]]])
+        XCTAssertNil(sealed.profile)
+        XCTAssertNil(sealed.dashboardID)
+
+        // The iPhone shares each dashboard's main profile name.
+        let suite = "HermesCallerNameTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ProfileAppearanceStore(defaults: defaults)
+        store.saveDefaultName("Ada", dashboardID: dashboard)
+        store.saveDefaultName("Unscoped", dashboardID: nil)
+        XCTAssertEqual(store.defaultNamesByDashboard(), [dashboard.uuidString: "Ada"])
+
+        let context = WatchPhoneContext(callsRing: true, mainProfileNames: [dashboard.uuidString: "Ada"])
+        XCTAssertEqual(WatchPhoneContext.decode(context.encoded()), context)
+        let older = try JSONEncoder().encode(WatchPhoneContext(voices: [:], callsRing: true))
+        XCTAssertNil(WatchPhoneContext.decode([WatchPhoneContext.key: older])?.mainProfileNames, "An older iPhone app names no one")
     }
 
     func testAVoIPPushSaysWhenItWasSentAndTheRelayLearnsTheToken() throws {

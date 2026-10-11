@@ -64,6 +64,16 @@ final class ProfileAppearanceStore {
         return saved
     }
 
+    /// Every dashboard's main profile name, by dashboard UUID string: the
+    /// Apple Watch names a call with them (HermesCallerName).
+    func defaultNamesByDashboard() -> [String: String] {
+        defaultNames().reduce(into: [String: String]()) { result, entry in
+            let name = entry.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let id = UUID(uuidString: entry.key), !name.isEmpty else { return }
+            result[id.uuidString] = name
+        }
+    }
+
     private func defaultNames() -> [String: String] {
         defaults.dictionary(forKey: Self.defaultNamesKey) as? [String: String] ?? [:]
     }
