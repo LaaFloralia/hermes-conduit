@@ -8071,7 +8071,9 @@ final class AppState: ObservableObject {
     }
 #endif
 
-    func loadSavedConnection() {
+    /// `trigger` names what started the restore in the connection
+    /// timeline and the call trace.
+    func loadSavedConnection(trigger: String = "cold launch") {
         #if DEBUG
         if let stub = Self.uiTestFailedConnectionStub() {
             let failureKind = Self.uiTestFailureKind()
@@ -8111,7 +8113,7 @@ final class AppState: ObservableObject {
         // the flow.
         let switchGeneration = dashboardSwitchGeneration
         if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
-            beginConnectionTimeline("cold launch, browser sign-in (OAuth)")
+            beginConnectionTimeline("\(trigger), browser sign-in (OAuth)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             showLogin = false
             isConnecting = true
@@ -8126,8 +8128,8 @@ final class AppState: ObservableObject {
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
             beginConnectionTimeline(
                 credentials.requiresFaceID
-                    ? "cold launch, password sign-in with Face ID"
-                    : "cold launch, password sign-in"
+                    ? "\(trigger), password sign-in with Face ID"
+                    : "\(trigger), password sign-in"
             )
             // A Face ID-protected dashboard reveals its saved copy only after
             // this launch's Face ID succeeds (restoreSavedCredentials).
@@ -8146,7 +8148,7 @@ final class AppState: ObservableObject {
                 )
             }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
-            beginConnectionTimeline("cold launch, browser sign-in (saved ticket)")
+            beginConnectionTimeline("\(trigger), browser sign-in (saved ticket)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
             // Keep the authenticated app shell in place while WebKit restores
             // its cookie process. A cold WebKit launch is not evidence that the
@@ -9240,7 +9242,10 @@ final class AppState: ObservableObject {
         // password: it joins its dashboard now.
         if savedDashboardRegistry.dashboards.isEmpty {
             let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
-            if !stored.dashboards.isEmpty { savedDashboardRegistry = stored }
+            if !stored.dashboards.isEmpty {
+                savedDashboardRegistry = stored
+                hydrateDashboardPresentation(for: stored)
+            }
         } else {
             SavedDashboardMigrator.adoptLeftoverCredentials(into: savedDashboardRegistry)
         }
@@ -9253,7 +9258,23 @@ final class AppState: ObservableObject {
         pendingLoginFailure = nil
         lastConnectionFailure = nil
         errorMessage = nil
-        loadSavedConnection()
+        loadSavedConnection(trigger: "retry on screen")
+    }
+
+    /// The dashboard-keyed presentation init loads, for a registry read only
+    /// on the retry (the launch came before the first unlock, so init saw
+    /// none): legacy preferences adopted into its first dashboard, then the
+    /// active dashboard's default profile name, avatars and model
+    /// visibility.
+    private func hydrateDashboardPresentation(for registry: SavedDashboardRegistry) {
+        let dashboardID = registry.activeDashboardID
+        if let primaryDashboardID = registry.dashboards.first?.id {
+            profileAppearanceStore.adoptLegacyAppearance(into: primaryDashboardID)
+        }
+        defaultProfileName = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
+        profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
+        adoptLegacyProfilePreferences()
+        modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
     }
 
     /// Whether the dashboard has anything `loadSavedConnection` signs in

@@ -28,16 +28,21 @@ final class InMemoryKeychainBackend: KeychainHelper.Backend {
         return Key(service: queryService, account: account)
     }
 
-    /// A locked phone: records readable only while unlocked read as absent.
+    /// A locked phone: records readable only while unlocked read as absent,
+    /// and writing them fails as it does on a device.
     var phoneLocked = false
 
-    private func readableNow(_ key: Key) -> Bool {
+    private func availableNow(accessibility: String?) -> Bool {
         guard phoneLocked else { return true }
         let whenUnlocked = [
             kSecAttrAccessibleWhenUnlocked as String,
             kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
         ]
-        return !whenUnlocked.contains(accessibilityClasses[key] ?? "")
+        return !whenUnlocked.contains(accessibility ?? "")
+    }
+
+    private func readableNow(_ key: Key) -> Bool {
+        availableNow(accessibility: accessibilityClasses[key])
     }
 
     func data(for query: [String: Any]) -> Data? {
@@ -49,14 +54,17 @@ final class InMemoryKeychainBackend: KeychainHelper.Backend {
         guard let key = key(for: query), storage[key] != nil else {
             return errSecItemNotFound
         }
+        guard readableNow(key) else { return errSecInteractionNotAllowed }
         storage[key] = data
         return errSecSuccess
     }
 
     func add(_ query: [String: Any]) -> Int32 {
         guard let key = key(for: query) else { return errSecParam }
+        let accessibility = query[kSecAttrAccessible as String] as? String
+        guard availableNow(accessibility: accessibility) else { return errSecInteractionNotAllowed }
         storage[key] = query[kSecValueData as String] as? Data
-        accessibilityClasses[key] = query[kSecAttrAccessible as String] as? String
+        accessibilityClasses[key] = accessibility
         return errSecSuccess
     }
 
@@ -71,6 +79,7 @@ final class InMemoryKeychainBackend: KeychainHelper.Backend {
         guard let key = key(for: query), storage[key] != nil else {
             return errSecItemNotFound
         }
+        guard readableNow(key) else { return errSecInteractionNotAllowed }
         accessibilityClasses[key] = accessibility as String
         return errSecSuccess
     }

@@ -214,7 +214,10 @@ extension AppStateForegroundLifecycleTests {
     /// dashboards were unreadable: the retry on screen reads them again.
     func testRetryOnScreenReadsSavedDashboardsAgain() {
         let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
-        let appState = makeSignedOutAppState()
+        let appState = makeSignedOutAppState(prepare: { defaults in
+            ProfileAppearanceStore(defaults: defaults).saveDefaultName("Ada", dashboardID: dashboard.id)
+        })
+        XCTAssertEqual(appState.defaultProfileName, ProfileAppearanceStore.defaultName)
         SavedDashboardRegistryStore.save(SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]))
         var away = true
         appState.phoneScreenIsAway = { away }
@@ -225,6 +228,7 @@ extension AppStateForegroundLifecycleTests {
         appState.handleScenePhase(.active)
 
         XCTAssertEqual(appState.activeDashboardID, dashboard.id)
+        XCTAssertEqual(appState.defaultProfileName, "Ada", "The dashboard's own presentation loads with it")
         XCTAssertTrue(appState.showLogin, "Nothing saved to sign in with")
     }
 
@@ -249,7 +253,7 @@ extension AppStateForegroundLifecycleTests {
 
         XCTAssertEqual(KeychainHelper.loadCredentials(dashboardID: dashboard.id), credentials)
         XCTAssertNil(KeychainHelper.loadCredentials())
-        XCTAssertEqual(appState.connectionTimeline?.trigger, "cold launch, password sign-in")
+        XCTAssertEqual(appState.connectionTimeline?.trigger, "retry on screen, password sign-in")
     }
 
     private func installFaceIDDashboard(savedTicket: String?) -> (AppState, SavedDashboard) {
@@ -288,7 +292,8 @@ extension AppStateForegroundLifecycleTests {
     }
 
     private func makeSignedOutAppState(
-        registry: SavedDashboardRegistry = SavedDashboardRegistry()
+        registry: SavedDashboardRegistry = SavedDashboardRegistry(),
+        prepare: @MainActor (UserDefaults) -> Void = { _ in }
     ) -> AppState {
         let suite = "AppStateBackgroundSignInTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
@@ -297,6 +302,7 @@ extension AppStateForegroundLifecycleTests {
         addTeardownBlock {
             defaults.removePersistentDomain(forName: suite)
         }
+        prepare(defaults)
         // An unsigned simulator test host can't write the system keychain,
         // and a signed one must never hand a retry the developer's own
         // dashboards.
