@@ -1364,6 +1364,11 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
+    /// The draft the prefill is for, until ComposerBar puts it in. A new
+    /// chat's draft load can land in the same update as the prefill, so
+    /// the composer waits until this draft is the one loaded. Set only by
+    /// `prefillComposer`, with the text and then the token.
+    private(set) var composerPrefillDraftKey: ComposerDraftKey?
     /// A quote waiting for the composer (#385). ComposerBar, which owns the
     /// draft, applies it and then consumes it.
     @Published private(set) var composerQuoteRequest: ComposerQuoteRequest?
@@ -3315,7 +3320,9 @@ final class AppState: ObservableObject {
         // So do the unsaved voice calls Voice settings counts.
         publishVoiceCallSaveStatus()
         // And the Watch voice checks: this profile's decide whether calls
-        // ring the Watch.
+        // ring the Watch. Rescoped here, not only by the refresh below, so
+        // a Watch call before that refresh's first await can't read the
+        // outgoing profile's checks.
         rescopeWatchCallVoices()
         Task { await refreshWatchCallVoices() }
     }
@@ -6322,10 +6329,18 @@ final class AppState: ObservableObject {
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
     }
 
-    /// Puts `text` in the composer, replacing the draft, and focuses it.
+    /// Puts `text` in the open chat's composer, replacing the draft, and
+    /// focuses it.
     func prefillComposer(_ text: String) {
+        composerPrefillDraftKey = ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile)
         composerPrefillText = text
         composerPrefillToken = UUID()
+    }
+
+    /// The composer put the prefill in, or moved to a chat it wasn't for.
+    func consumeComposerPrefill(_ token: UUID) {
+        guard composerPrefillToken == token else { return }
+        composerPrefillDraftKey = nil
     }
 
     /// The composer took the quote: drop it, so the quoted text is not kept
@@ -18476,8 +18491,7 @@ final class AppState: ObservableObject {
             }
             let message = obj["message"]?.stringValue ?? output
             if !message.isEmpty, isCurrentComposerSubmission(context) {
-                composerPrefillText = message
-                composerPrefillToken = UUID()
+                prefillComposer(message)
             }
         case "alias":
             // Re-execute with the target command

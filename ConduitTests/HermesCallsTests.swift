@@ -794,8 +794,11 @@ extension VoiceConversationControllerTests {
 
     func testHaveHermesWatchForThisSendsTheNoteAsTheHostKeepsIt() {
         let prompt = HermesCallSettingsFormat.watchPrompt("  Only if the homelab is down for over 10 minutes. \n\n Never before 9 am. ")
-        XCTAssertTrue(prompt.hasSuffix("\nOnly if the homelab is down for over 10 minutes.\nNever before 9 am."), prompt)
-        XCTAssertFalse(prompt.hasPrefix("Only if"), "The request comes first, the note after it")
+        XCTAssertEqual(
+            prompt,
+            AppLocalization.string("Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n\("Only if the homelab is down for over 10 minutes.\nNever before 9 am.")"),
+            "The request, then the note trimmed line by line"
+        )
     }
 
     func testCallSettingsGapChoicesKeepTheCurrentValue() {
