@@ -1360,7 +1360,20 @@ final class AppState: ObservableObject {
             // authentication failure it must not reappear on the next sign-in.
             // (The files stay until sign-out/removal/switch wipes them.)
             if showLogin { dismissOfflineChatPresentation() }
+            // Sign-in raised with Conduit in the background (a call from
+            // Hermes, the Apple Watch or CarPlay launched it): Face ID can't
+            // show there, and a locked phone keeps a saved password
+            // unreadable. The saved sign-in runs again once Conduit is on
+            // screen instead of leaving the user signed out.
+            signInWaitsForForeground = showLogin && appRunsInBackground()
         }
+    }
+    /// A sign-in screen came up while Conduit ran in the background; the
+    /// next return to the screen retries the saved sign-in.
+    private(set) var signInWaitsForForeground = false
+    /// Whether Conduit runs in the background. Test seam.
+    var appRunsInBackground: @MainActor () -> Bool = {
+        UIApplication.shared.applicationState == .background
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
@@ -9110,6 +9123,20 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The saved sign-in, again, now that Conduit is on screen: the attempt
+    /// made in the background couldn't show Face ID or read a password the
+    /// locked phone kept. A dashboard with nothing saved left just shows its
+    /// sign-in, as before.
+    private func retrySignInFromBackground() {
+        signInWaitsForForeground = false
+        HermesCallTrace.shared.note("Signing in again on screen (signed out in the background)")
+        // The failure belongs to the background attempt; the retry reports
+        // its own.
+        pendingLoginFailure = nil
+        lastConnectionFailure = nil
+        loadSavedConnection()
+    }
+
     /// Whether a restore that started under this switch generation may still
     /// write state. Nil generations (non-switch restore paths) always own.
     private func restoreOwnsFlow(_ generation: UInt64?) -> Bool {
@@ -12351,6 +12378,10 @@ final class AppState: ObservableObject {
             // a stale request after the user signs back in.
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
+            if showLogin, signInWaitsForForeground {
+                retrySignInFromBackground()
+                return nil
+            }
             guard connection != nil else {
                 // A cold-launch restore that failed offline left the saved
                 // copy up without a connection: try the restore again.
