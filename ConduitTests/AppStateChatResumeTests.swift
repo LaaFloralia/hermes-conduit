@@ -323,6 +323,49 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(persisted.messages.filter { $0.review == activity }.count, 2)
     }
 
+    /// A new chat keeps the previous chat's ids in its scroll identity and
+    /// reconciliation, and matching saved reviews through them pinned that
+    /// chat's review cards to the top of every new chat.
+    func testANewChatShowsNoReviewsFromTheChatOpenBeforeIt() throws {
+        let suite = "AppStateChatResumeTests.reviewsNewChat.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let index = ConversationIdentityIndex()
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            conversationIdentityIndex: index
+        )
+        index.recordAuthoritative(runtimeID: "rt-old", durableID: "st-old", profile: "default", source: .resume)
+        appState.sessions = [session("rt-old", storedID: "st-old")]
+        appState.activeSessionId = "rt-old"
+        let activity = ReviewActivity(summary: "Memory updated", details: ["➖ Memory: old entry"], fullSessionId: nil)
+        appState.handleStreamEvent(.reviewSummary(sessionId: "rt-old", activity: activity))
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-old").map(\.review), [activity])
+
+        // New chat: the reconciliation and scroll identity still name the old one.
+        _ = appState.beginReconciliation()
+        appState.activeSessionId = "rt-new"
+        appState.messages = []
+        index.recordAuthoritative(runtimeID: "rt-new", durableID: "st-new", profile: "default", source: .create)
+        appState.sessions = [session("st-new", alternateIDs: ["rt-new"]), session("rt-old", storedID: "st-old")]
+        XCTAssertTrue(appState.activeChatScrollSessionIdentity.contains("rt-old"))
+
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-new"), [])
+        // The old chat, reopened under another runtime id, still has its review.
+        index.recordAuthoritative(runtimeID: "rt-old-2", durableID: "st-old", profile: "default", source: .resume)
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-old-2").map(\.review), [activity])
+
+        // A review in the new chat is saved under its durable id, not the old chat's.
+        appState.handleStreamEvent(.reviewSummary(sessionId: "rt-new", activity: activity))
+        index.recordAuthoritative(runtimeID: "rt-new-2", durableID: "st-new", profile: "default", source: .resume)
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-new-2").count, 1)
+        XCTAssertEqual(appState.cachedReviewRowsForTesting("rt-old-2").count, 1)
+    }
+
     func testFreshResumeRestoresInFlightToolAndReconcilesItsCompletion() {
         let suite = "AppStateChatResumeTests.inFlightTool.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
