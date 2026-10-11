@@ -3408,42 +3408,59 @@ final class AppState: ObservableObject {
     private let clearSessionPresentationCache: () -> Void
     private let initialChatResumeServerIdentity: String?
 
-    /// Every id the open conversation answers to: a review summary is keyed
-    /// by the stream's RUNTIME session id, and each resume mints a new one,
-    /// so matching the record against one id loses it on the next reload.
-    private func reviewCacheSessionIDs(for sessionId: String) -> Set<String> {
-        var ids: Set<String> = [sessionId]
-        for id in [
-            reconciliation?.requestedSessionId,
-            reconciliation?.resolvedSessionId
-        ].compactMap({ $0 }) {
-            ids.insert(id)
+    /// The id a review summary is saved under: the open chat's durable id
+    /// when Hermes confirmed one, else its row's stored id, else the open id.
+    /// The event's runtime id is replaced on the next resume, and the scroll
+    /// identity's canonical id can still be the chat open before a new one.
+    /// Never a row found through its alternate ids, which another row can
+    /// share: a runtime key Hermes confirms later still matches.
+    private func reviewRecordSessionID(eventSessionId: String) -> String {
+        guard let active = activeSessionId, !active.isEmpty else { return eventSessionId }
+        if let durable = confirmedDurableSessionID(forRuntime: active) { return durable }
+        // Only a row that alone names the chat, in this profile: two rows
+        // claiming it are not settled by list order.
+        if let key = ChatScrollIdentityNormalization.sessionID(active) {
+            let rows = (activeProfileSessions + activeProfileCronSessions).filter { row in
+                [row.id, row.storedSessionId].contains { ChatScrollIdentityNormalization.sessionID($0) == key }
+            }
+            if rows.count == 1, let row = rows.first,
+               let id = ChatScrollIdentityNormalization.sessionID(row.storedSessionId)
+                ?? ChatScrollIdentityNormalization.sessionID(row.id) {
+                return id
+            }
         }
-        // The scroll identity may still describe the OUTGOING conversation
-        // mid-switch; borrow its aliases only when it names this one.
-        if let identityIDs = activeScrollIdentityIDs(containing: ids) {
-            ids.formUnion(identityIDs)
+        if let stored = ChatScrollIdentityNormalization.sessionID(voiceSessionAliases.storedID(forRuntime: active)) {
+            return stored
         }
-        let seedIDs = ids
-        for row in sessions {
-            let rowIDs = Set([row.id, row.storedSessionId].compactMap { $0 } + row.alternateIds)
-            guard !rowIDs.isDisjoint(with: seedIDs) else { continue }
-            ids.formUnion(rowIDs)
-        }
-        return Set(ids.compactMap { ChatScrollIdentityNormalization.sessionID($0) })
+        return ChatScrollIdentityNormalization.sessionID(active) ?? active
     }
 
-    private func activeScrollIdentityIDs(containing ids: Set<String>) -> Set<String>? {
-        let identity = activeChatScrollSessionIdentity
-        var identityIDs = identity.equivalentSessionIDs
-        if let canonical = identity.canonicalSessionID { identityIDs.insert(canonical) }
-        return identityIDs.isDisjoint(with: ids) ? nil : identityIDs
+    /// The durable id Hermes confirmed for a chat's runtime id: a Bot Chat's
+    /// mapping is under the bot's profile, and the dashboard's is tried too.
+    private func confirmedDurableSessionID(forRuntime sessionId: String) -> String? {
+        botConversationProfile(for: sessionId)
+            .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
+            ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+    }
+
+    /// Whether a saved review belongs to the open chat: its key is one of the
+    /// chat's own ids, or a runtime id Hermes confirmed as one of them. Never
+    /// the scroll identity's aliases or a reconciliation's ids, which keep the
+    /// previous chat's ids after a new chat and pinned its reviews there.
+    private func reviewRecordBelongs(_ record: ReviewSummaryRecord, toOwnIDs ownIDs: Set<String>) -> Bool {
+        if let key = ChatScrollIdentityNormalization.sessionID(record.sessionId), ownIDs.contains(key) {
+            return true
+        }
+        guard let durable = ChatScrollIdentityNormalization.sessionID(
+            confirmedDurableSessionID(forRuntime: record.sessionId)
+        ) else { return false }
+        return ownIDs.contains(durable)
     }
 
     private func mergeCachedReviews(into history: [ChatMessage], sessionId: String) -> [ChatMessage] {
-        let sessionIDs = reviewCacheSessionIDs(for: sessionId)
+        let ownIDs = chatOwnSessionIDs(for: sessionId)
         let records = cachedReviews().filter {
-            $0.profile == activeProfile && sessionIDs.contains($0.sessionId)
+            $0.profile == activeProfile && reviewRecordBelongs($0, toOwnIDs: ownIDs)
         }
         guard !records.isEmpty else { return history }
         var merged = history
@@ -3501,11 +3518,7 @@ final class AppState: ObservableObject {
     private func chatOwnSessionIDs(for sessionId: String) -> Set<String> {
         // An opened saved chat resumes under a new runtime id the list may
         // not show yet; the resume (or the create) recorded its durable id.
-        // A Bot Chat's mapping is under the bot's profile; the dashboard's
-        // is tried too, so an earlier mapping there still counts.
-        let durable = botConversationProfile(for: sessionId)
-            .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
-            ?? conversationIdentityIndex.durableID(forRuntime: sessionId, profile: activeProfile)
+        let durable = confirmedDurableSessionID(forRuntime: sessionId)
         let seeds = [sessionId, durable, voiceSessionAliases.storedID(forRuntime: sessionId)].compactMap { $0 }
         return Self.ownSessionIDs(for: seeds, in: sessions + cronSessions)
     }
@@ -15313,6 +15326,11 @@ final class AppState: ObservableObject {
         chatOwnSessionIDs(for: sessionID)
     }
 
+    /// The saved review rows a chat shows when its history loads.
+    func cachedReviewRowsForTesting(_ sessionID: String) -> [ChatMessage] {
+        mergeCachedReviews(into: [], sessionId: sessionID)
+    }
+
     /// The ownership verdict a cross-profile decision would reach for this
     /// profile, so tests can pin all three cases without driving a switch.
     func profileOwnershipVerdictForTesting(_ profile: String) -> ProfileOwnershipVerdict {
@@ -23071,13 +23089,7 @@ final class AppState: ObservableObject {
             persistReview(ReviewSummaryRecord(
                 id: id,
                 profile: activeProfile,
-                // The durable key when the conversation has one: the runtime
-                // id this event carries is replaced on the next resume.
-                sessionId: activeScrollIdentityIDs(containing: [sessionId]) != nil
-                    ? (ChatScrollIdentityNormalization.sessionID(
-                        activeChatScrollSessionIdentity.canonicalSessionID
-                    ) ?? sessionId)
-                    : sessionId,
+                sessionId: reviewRecordSessionID(eventSessionId: sessionId),
                 timestamp: Self.localTimestamp(),
                 activity: activity
             ))
