@@ -9061,10 +9061,17 @@ final class AppState: ObservableObject {
         rememberDashboardURL(credentials.baseURL)
 
         if credentials.requiresFaceID {
-            guard BiometricAuth.isFaceIDAvailable,
-                  await BiometricAuth.authenticate(reason: AppLocalization.string("Unlock Conduit")) else {
+            guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
-                if restoreOwnsFlow(switchGeneration) { showLogin = true }
+                guard restoreOwnsFlow(switchGeneration) else { return }
+                // Face ID can't show while Conduit runs in the background (a
+                // call from Hermes woke it): the saved session connects, as
+                // it does when a locked phone keeps the password unreadable.
+                if appRunsInBackground(), let scopedDashboardID,
+                   restoreSavedSessionInBackground(dashboardID: scopedDashboardID, baseURL: credentials.baseURL) {
+                    return
+                }
+                showLogin = true
                 return
             }
             // Re-fence after the biometric await: a superseded switch owns
@@ -9121,6 +9128,32 @@ final class AppState: ObservableObject {
                 switchGeneration: switchGeneration
             )
         }
+    }
+
+    /// Face ID for a saved password. Test seam.
+    var unlockWithFaceID: @MainActor () async -> Bool = {
+        guard BiometricAuth.isFaceIDAvailable else { return false }
+        return await BiometricAuth.authenticate(reason: AppLocalization.string("Unlock Conduit"))
+    }
+
+    /// Connects with the dashboard's saved session (its ticket, renewed with
+    /// its cookies) instead of the Face ID-protected password, for a restore
+    /// running in the background. False when there is no saved session for
+    /// that address.
+    private func restoreSavedSessionInBackground(dashboardID: UUID, baseURL: String) -> Bool {
+        guard let saved = KeychainHelper.loadConnection(dashboardID: dashboardID),
+              saved.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                == baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) else {
+            return false
+        }
+        HermesCallTrace.shared.note("Face ID can't show in the background: using the saved session")
+        noteConnectionStep("Saved session (Face ID can't show in the background)")
+        connection = saved
+        showLogin = false
+        isConnecting = true
+        turnState = .synchronizing
+        Task { await restoreSavedConnection(saved) }
+        return true
     }
 
     /// The saved sign-in, again, now that Conduit is on screen: the attempt
