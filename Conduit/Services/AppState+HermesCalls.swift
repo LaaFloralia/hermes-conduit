@@ -195,12 +195,15 @@ extension AppState {
 
     /// The Watch app says what to set up when its voice can't start, and
     /// that calls then ring only the iPhone.
-    private func shareWatchCallVoices() {
+    /// Also how a call ringing on the Watch names the main profile.
+    func shareWatchCallVoices() {
         let notifications = PushNotificationService.shared
         let voices = notifications.watchCallVoices
         WatchVoiceLink.shared.share(WatchPhoneContext(
             voices: voices.scope == hermesCallsKey(profile: activeProfile) ? voices.ready : [:],
-            callsRing: supportsHermesCalls && notifications.voipToken != nil
+            callsRing: supportsHermesCalls && notifications.voipToken != nil,
+            mainProfileNames: mainProfileNamesByDashboard,
+            activeDashboardID: activeDashboardID?.uuidString
         ))
     }
 

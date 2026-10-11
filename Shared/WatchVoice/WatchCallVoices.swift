@@ -57,6 +57,13 @@ struct WatchPhoneContext: Codable, Equatable {
     /// Calls from Hermes ring the iPhone: the Watch says its own voice
     /// keeps them off the Watch only then.
     var callsRing = false
+    /// The main profile's name per dashboard (UUID string), which a call
+    /// ringing on the Watch shows (HermesCallerName). Optional: a context
+    /// from an older iPhone app has none.
+    var mainProfileNames: [String: String]? = nil
+    /// The iPhone's active dashboard: whose main profile a call names when
+    /// its push names no dashboard, as the iPhone does.
+    var activeDashboardID: String? = nil
 
     static let key = "phoneContext"
 

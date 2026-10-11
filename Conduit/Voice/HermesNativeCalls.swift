@@ -140,6 +140,8 @@ final class HermesNativeCalls: NSObject {
 
     private struct Call {
         let target: ConduitNotificationTarget
+        /// Who it said was calling, kept for a report again when it settles.
+        var callerName: String = HermesCallerName.fallback
         /// When the relay sent it, if it said.
         var sentAt: Date?
         /// The ring it shares with the Apple Watch, when it rings there too.
@@ -250,6 +252,24 @@ final class HermesNativeCalls: NSObject {
 
     // MARK: Ringing
 
+    /// Who the call says is calling: its profile, the main one by the name
+    /// the user gave it on the call's dashboard (the active one for a push
+    /// from a relay that names none).
+    private static func callerName(_ target: ConduitNotificationTarget?) -> String {
+        HermesCallCopy.callerName(profile: target?.profile, mainName: mainProfileName(target), title: target?.call?.title)
+    }
+
+    /// The profile alone, as a missed call names it.
+    private static func profileName(_ target: ConduitNotificationTarget) -> String {
+        HermesCallerName.name(profile: target.profile, mainName: mainProfileName(target))
+    }
+
+    private static func mainProfileName(_ target: ConduitNotificationTarget?) -> String? {
+        guard let target else { return nil }
+        let dashboardID = target.dashboardID ?? AppStateRuntimeRegistry.shared.existing?.activeDashboardID
+        return ProfileAppearanceStore().loadDefaultName(dashboardID: dashboardID)
+    }
+
     private func receive(_ userInfo: [AnyHashable: Any], completion: @escaping () -> Void) {
         if let settled = HermesRingSettled.from(userInfo) {
             ringSettled(settled, completion: completion)
@@ -279,7 +299,8 @@ final class HermesNativeCalls: NSObject {
         let id = UUID()
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
-        update.localizedCallerName = HermesCallCopy.callerName(title: call.target?.call?.title)
+        let callerName = Self.callerName(call.target)
+        update.localizedCallerName = callerName
         update.hasVideo = false
         update.supportsHolding = false
         update.supportsGrouping = false
@@ -291,7 +312,7 @@ final class HermesNativeCalls: NSObject {
             completion()
             return
         }
-        if plan == .ring, let target = call.target { calls[id] = Call(target: target, sentAt: call.sentAt, ring: ring) }
+        if plan == .ring, let target = call.target { calls[id] = Call(target: target, callerName: callerName, sentAt: call.sentAt, ring: ring) }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
                 self.reported(id, plan: plan, traced: traced, target: call.target, sentAt: call.sentAt, error: error)
@@ -554,7 +575,7 @@ final class HermesNativeCalls: NSObject {
         let id = match?.key ?? UUID()
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
-        update.localizedCallerName = HermesCallCopy.callerName(title: match?.value.target.call?.title)
+        update.localizedCallerName = match?.value.callerName ?? HermesCallerName.fallback
         update.hasVideo = false
         let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
         provider.reportNewIncomingCall(with: id, update: update) { _ in
@@ -711,7 +732,7 @@ final class HermesNativeCalls: NSObject {
         let request: UNNotificationRequest?
         switch notice {
         case .none: request = nil
-        case .missed: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: true) }
+        case .missed: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: true, callerName: Self.profileName($0)) }
         case .talk: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: false) }
         case .unreadable: request = HermesCallNotifications.unreadableMissedCallRequest()
         }

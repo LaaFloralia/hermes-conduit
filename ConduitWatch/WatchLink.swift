@@ -79,12 +79,14 @@ final class WatchLink: ObservableObject {
         isReachable = session.isReachable
         // The last one shared before this launch.
         phoneContext = WatchPhoneContext.decode(session.receivedApplicationContext) ?? phoneContext
+        HermesWatchCalls.keepMainProfileNames(phoneContext)
         WatchCallLog.shared.note("linkActivated", ["reachable": session.isReachable, "companionInstalled": session.isCompanionAppInstalled])
     }
 
     fileprivate func phoneContextChanged(_ context: WatchPhoneContext?) {
         guard let context, context != phoneContext else { return }
         phoneContext = context
+        HermesWatchCalls.keepMainProfileNames(context)
     }
 
     fileprivate func reachabilityChanged(_ reachable: Bool) {

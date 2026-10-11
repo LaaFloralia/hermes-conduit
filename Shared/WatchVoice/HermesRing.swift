@@ -36,6 +36,49 @@ struct HermesRing: Equatable {
     }
 }
 
+/// Who a call from Hermes says is calling, the only text CallKit shows on
+/// the iPhone and the Watch alike: the calling profile by the name Conduit
+/// gives it, with the job's title when the call carries one. The main
+/// ("default") profile goes by the name the user gave it in Conduit, never
+/// Hermes' own "Default"; "Hermes" when nothing names the caller.
+enum HermesCallerName {
+    static let fallback = "Hermes"
+    static let maximumNameCharacters = 40
+
+    /// `mainName`: the name the user gave the main profile on the call's
+    /// dashboard, nil when there is none.
+    static func name(profile: String?, mainName: String?) -> String {
+        let id = oneLine(profile)
+        guard !id.isEmpty else { return fallback }
+        guard id.lowercased() != "default" else {
+            let main = oneLine(mainName)
+            return main.isEmpty ? fallback : String(main.prefix(maximumNameCharacters))
+        }
+        // As Conduit shows a profile everywhere else (AppState.profileDisplayName),
+        // on one line: CallKit shows a caller name on one.
+        let shown = String(id.prefix(1)).uppercased() + String(id.dropFirst())
+        return String(shown.prefix(maximumNameCharacters))
+    }
+
+    /// "Name · Title", or the name alone.
+    static func line(name: String, title: String?) -> String {
+        guard let title, !title.isEmpty else { return name }
+        return name + " · " + title
+    }
+
+    /// The main profile's name per dashboard (UUID string), as the iPhone
+    /// last shared them with the Watch; `activeDashboardID` stands in for a
+    /// push that names no dashboard.
+    static func mainName(dashboardID: UUID?, in names: [String: String]?, activeDashboardID: String? = nil) -> String? {
+        guard let key = dashboardID?.uuidString ?? activeDashboardID.flatMap(UUID.init(uuidString:))?.uuidString else { return nil }
+        return names?[key]
+    }
+
+    private static func oneLine(_ text: String?) -> String {
+        (text ?? "").split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
+    }
+}
+
 /// How a ring was settled.
 enum HermesRingOutcome: String, Equatable {
     case answered
@@ -93,6 +136,14 @@ enum HermesRingPush {
             .split(whereSeparator: { $0.isWhitespace || $0.isNewline })
             .joined(separator: " ") ?? ""
         return words.isEmpty ? nil : String(words.prefix(60))
+    }
+
+    /// The calling Hermes profile and its dashboard, when the push carries
+    /// them in the clear; nil from a sealed push.
+    static func caller(_ userInfo: [AnyHashable: Any]) -> (profile: String?, dashboardID: UUID?) {
+        let conduit = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
+        let dashboard = (conduit?["dashboard_id"] as? String).flatMap { UUID(uuidString: $0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        return (conduit?["profile"] as? String, dashboard)
     }
 
     static func isID(_ value: String) -> Bool { value.count == 22 && value.allSatisfy(isBase64URL) }

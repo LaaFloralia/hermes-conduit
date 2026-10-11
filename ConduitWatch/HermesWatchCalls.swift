@@ -58,7 +58,8 @@ final class HermesWatchCalls: NSObject {
 
     private struct Call {
         let ring: HermesRing
-        let title: String?
+        /// Who the call says is calling (HermesCallerName).
+        let callerName: String
         var answered = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
@@ -151,12 +152,12 @@ final class HermesWatchCalls: NSObject {
         let settled = ring.map { settledRings[$0.id] != nil } ?? false
         let id = UUID()
         let rings = ring != nil && !late && !busy && !settled
-        let title = HermesRingPush.title(userInfo)
-        if rings, let ring { calls[id] = Call(ring: ring, title: title) }
+        let callerName = Self.callerName(userInfo)
+        if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName) }
         WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
-        provider.reportNewIncomingCall(with: id, update: Self.update(title: title)) { error in
+        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: callerName)) { error in
             Task { @MainActor in
                 defer { completion() }
                 if let error {
@@ -187,7 +188,7 @@ final class HermesWatchCalls: NSObject {
         let reason: CXCallEndedReason = settled.outcome == .answered ? .answeredElsewhere : .declinedElsewhere
         noteSettled(settled.id)
         WatchCallLog.shared.note("hermesCallSettledOnPhone", ["outcome": settled.outcome.rawValue, "here": calls[id] != nil])
-        provider.reportNewIncomingCall(with: id, update: Self.update(title: calls[id]?.title)) { _ in
+        provider.reportNewIncomingCall(with: id, update: Self.update(callerName: calls[id]?.callerName ?? HermesCallerName.fallback)) { _ in
             Task { @MainActor in
                 if let call = self.calls[id] {
                     // Answered here too: `connect` settles that race.
@@ -206,14 +207,37 @@ final class HermesWatchCalls: NSObject {
         settledRings[ringID] = now
     }
 
-    private static func update(title: String?) -> CXCallUpdate {
+    private static func update(callerName: String) -> CXCallUpdate {
         let update = CXCallUpdate()
         update.remoteHandle = CXHandle(type: .generic, value: "hermes")
-        // The agent's name and the job, when the push carries them in the
-        // clear; a sealed one only the iPhone can open.
-        update.localizedCallerName = title.map { "Hermes · " + $0 } ?? "Hermes"
+        update.localizedCallerName = callerName
         update.hasVideo = false
         return update
+    }
+
+    /// The calling profile and the job, when the push carries them in the
+    /// clear; "Hermes" for a sealed one, which only the iPhone can open.
+    /// The main profile goes by the name the iPhone last shared.
+    private static func callerName(_ userInfo: [AnyHashable: Any]) -> String {
+        let caller = HermesRingPush.caller(userInfo)
+        let names = UserDefaults.standard.dictionary(forKey: mainProfileNamesKey) as? [String: String]
+        let active = UserDefaults.standard.string(forKey: activeDashboardKey)
+        let mainName = HermesCallerName.mainName(dashboardID: caller.dashboardID, in: names, activeDashboardID: active)
+        return HermesCallerName.line(
+            name: HermesCallerName.name(profile: caller.profile, mainName: mainName),
+            title: HermesRingPush.title(userInfo)
+        )
+    }
+
+    private nonisolated static let mainProfileNamesKey = "hermesCalls.mainProfileNames"
+    private nonisolated static let activeDashboardKey = "hermesCalls.activeDashboardID"
+
+    /// Kept for a call that launches the app before the iPhone's context
+    /// is read; nil (an older iPhone app) keeps the last.
+    nonisolated static func keepMainProfileNames(_ context: WatchPhoneContext?) {
+        guard let context, let names = context.mainProfileNames else { return }
+        UserDefaults.standard.set(names, forKey: mainProfileNamesKey)
+        UserDefaults.standard.set(context.activeDashboardID, forKey: activeDashboardKey)
     }
 
     // MARK: Answering
