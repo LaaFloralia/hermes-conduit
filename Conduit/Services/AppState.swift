@@ -1360,7 +1360,22 @@ final class AppState: ObservableObject {
             // authentication failure it must not reappear on the next sign-in.
             // (The files stay until sign-out/removal/switch wipes them.)
             if showLogin { dismissOfflineChatPresentation() }
+            // Sign-in raised with Conduit off the phone screen (a call from
+            // Hermes or the Apple Watch launched it in the background, or
+            // only CarPlay shows it): Face ID can't show there, and a locked
+            // phone keeps a saved password unreadable. The saved sign-in
+            // runs again once Conduit is on screen instead of leaving the
+            // user signed out.
+            signInWaitsForForeground = showLogin && phoneScreenIsAway()
         }
+    }
+    /// A sign-in screen came up while Conduit was off the phone screen; the
+    /// next return to the screen retries the saved sign-in.
+    private(set) var signInWaitsForForeground = false
+    /// Whether no phone screen of Conduit is in the foreground: a launch in
+    /// the background, or CarPlay alone. Test seam.
+    var phoneScreenIsAway: @MainActor () -> Bool = {
+        !PhoneScenePresence.isInForeground
     }
     @Published private(set) var composerPrefillText = ""
     @Published private(set) var composerPrefillToken = UUID()
@@ -8091,6 +8106,10 @@ final class AppState: ObservableObject {
             return
         }
         rememberDashboardURL(dashboard.normalizedURL)
+        // A dashboard switch made while this restore runs (the sign-in
+        // retried on screen, then the user picked another dashboard) owns
+        // the flow.
+        let switchGeneration = dashboardSwitchGeneration
         if KeychainHelper.loadNativeOAuthTokens(dashboardID: activeID) != nil {
             beginConnectionTimeline("cold launch, browser sign-in (OAuth)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
@@ -8100,7 +8119,8 @@ final class AppState: ObservableObject {
             Task {
                 await restoreNativeOAuthConnection(
                     baseURL: dashboard.normalizedURL,
-                    dashboardID: activeID
+                    dashboardID: activeID,
+                    switchGeneration: switchGeneration
                 )
             }
         } else if let credentials = KeychainHelper.loadCredentials(dashboardID: activeID) {
@@ -8118,7 +8138,13 @@ final class AppState: ObservableObject {
                     isConnecting = true
                 }
             }
-            Task { await restoreSavedCredentials(credentials, dashboardID: activeID) }
+            Task {
+                await restoreSavedCredentials(
+                    credentials,
+                    dashboardID: activeID,
+                    switchGeneration: switchGeneration
+                )
+            }
         } else if let saved = KeychainHelper.loadConnection(dashboardID: activeID) {
             beginConnectionTimeline("cold launch, browser sign-in (saved ticket)")
             presentOfflineChatIfAvailable(dashboardID: activeID)
@@ -8129,7 +8155,7 @@ final class AppState: ObservableObject {
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
-            Task { await restoreSavedConnection(saved) }
+            Task { await restoreSavedConnection(saved, switchGeneration: switchGeneration) }
         } else {
             // The selected dashboard has no reusable auth left (signed out or
             // removed on another surface): present its sign-in, seeded with
@@ -8138,17 +8164,24 @@ final class AppState: ObservableObject {
         }
     }
 
-    func restoreNativeOAuthConnection(baseURL: String, dashboardID: UUID) async {
+    func restoreNativeOAuthConnection(
+        baseURL: String,
+        dashboardID: UUID,
+        switchGeneration: UInt64? = nil
+    ) async {
         do {
             let ticket = try await mintChatResumeTicket(for: HermesConnection(baseUrl: baseURL, ticket: ""))
+            // A dashboard switch made meanwhile owns the flow.
+            guard restoreOwnsFlow(switchGeneration) else { return }
             await connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket), profile: activeProfile)
             if isConnected {
                 KeychainHelper.clearCredentials(dashboardID: dashboardID)
                 KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         } catch is CancellationError {
-            isConnecting = false
+            if restoreOwnsFlow(switchGeneration) { isConnecting = false }
         } catch {
+            guard restoreOwnsFlow(switchGeneration) else { return }
             // A rejected grant can clear storage while the bridge still owns
             // its old in-memory session. Tear it down before presenting login.
             dashboardTicketBridge?.invalidate()
@@ -9091,10 +9124,22 @@ final class AppState: ObservableObject {
         rememberDashboardURL(credentials.baseURL)
 
         if credentials.requiresFaceID {
-            guard BiometricAuth.isFaceIDAvailable,
-                  await BiometricAuth.authenticate(reason: AppLocalization.string("Unlock Conduit")) else {
+            guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
-                if restoreOwnsFlow(switchGeneration) { showLogin = true }
+                guard restoreOwnsFlow(switchGeneration) else { return }
+                // Face ID can't show off the phone screen (a call from Hermes
+                // woke Conduit, or only CarPlay shows it): the saved session
+                // connects, as it does when a locked phone keeps the
+                // password unreadable.
+                if phoneScreenIsAway(), let scopedDashboardID,
+                   restoreSavedSessionOffScreen(
+                    dashboardID: scopedDashboardID,
+                    baseURL: credentials.baseURL,
+                    switchGeneration: switchGeneration
+                   ) {
+                    return
+                }
+                showLogin = true
                 return
             }
             // Re-fence after the biometric await: a superseded switch owns
@@ -9151,6 +9196,72 @@ final class AppState: ObservableObject {
                 switchGeneration: switchGeneration
             )
         }
+    }
+
+    /// Face ID for a saved password. Test seam.
+    var unlockWithFaceID: @MainActor () async -> Bool = {
+        guard BiometricAuth.isFaceIDAvailable else { return false }
+        return await BiometricAuth.authenticate(reason: AppLocalization.string("Unlock Conduit"))
+    }
+
+    /// Connects with the dashboard's saved session (its ticket, renewed with
+    /// its cookies) instead of the Face ID-protected password, for a restore
+    /// running off the phone screen. False when there is no saved session
+    /// for that address.
+    private func restoreSavedSessionOffScreen(
+        dashboardID: UUID,
+        baseURL: String,
+        switchGeneration: UInt64?
+    ) -> Bool {
+        guard let saved = KeychainHelper.loadConnection(dashboardID: dashboardID),
+              saved.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                == baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) else {
+            return false
+        }
+        HermesCallTrace.shared.note("Face ID can't show off screen: using the saved session")
+        noteConnectionStep("Saved session (Face ID can't show off screen)")
+        connection = saved
+        showLogin = false
+        isConnecting = true
+        turnState = .synchronizing
+        Task { await restoreSavedConnection(saved, switchGeneration: switchGeneration) }
+        return true
+    }
+
+    /// The saved sign-in, again, now that Conduit is on screen: the attempt
+    /// made in the background couldn't show Face ID or read a password the
+    /// locked phone kept. A dashboard with nothing saved left just shows its
+    /// sign-in, as before.
+    private func retrySignInFromBackground() {
+        signInWaitsForForeground = false
+        // Launched before the first unlock after a restart, the Keychain
+        // couldn't give the saved dashboards: read them again now. An
+        // upgrade that ran on a locked phone couldn't read the old saved
+        // password: it joins its dashboard now.
+        if savedDashboardRegistry.dashboards.isEmpty {
+            let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
+            if !stored.dashboards.isEmpty { savedDashboardRegistry = stored }
+        } else {
+            SavedDashboardMigrator.adoptLeftoverCredentials(into: savedDashboardRegistry)
+        }
+        // Nothing saved to sign in with (an off-screen switch to a dashboard
+        // with no reusable auth): the sign-in card keeps its explanation.
+        guard let dashboardID = activeDashboardID, hasSavedSignIn(dashboardID: dashboardID) else { return }
+        HermesCallTrace.shared.note("Signing in again on screen (signed out in the background)")
+        // The failure belongs to the background attempt; the retry reports
+        // its own.
+        pendingLoginFailure = nil
+        lastConnectionFailure = nil
+        errorMessage = nil
+        loadSavedConnection()
+    }
+
+    /// Whether the dashboard has anything `loadSavedConnection` signs in
+    /// with: an OAuth grant, a saved password or a saved session.
+    private func hasSavedSignIn(dashboardID: UUID) -> Bool {
+        KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID) != nil
+            || KeychainHelper.loadCredentials(dashboardID: dashboardID) != nil
+            || KeychainHelper.loadConnection(dashboardID: dashboardID) != nil
     }
 
     /// Whether a restore that started under this switch generation may still
@@ -9346,12 +9457,19 @@ final class AppState: ObservableObject {
         projects = []
         supportsProjects = false
         projectsLoading = false
-        if let dashboardID = activeDashboardID {
-            // Forced sign-out is scoped like Disconnect: only the active
-            // dashboard's saved ticket (and cookie mirror) is retired.
-            KeychainHelper.clearConnection(dashboardID: dashboardID)
+        // Off the phone screen, a renewal is refused on thinner evidence: no
+        // page retries, and a locked phone can't re-sign in with the saved
+        // password. The saved session and copy stay for the retry on screen
+        // (signInWaitsForForeground), which retires them if the dashboard
+        // refuses it there too.
+        if !phoneScreenIsAway() {
+            if let dashboardID = activeDashboardID {
+                // Forced sign-out is scoped like Disconnect: only the active
+                // dashboard's saved ticket (and cookie mirror) is retired.
+                KeychainHelper.clearConnection(dashboardID: dashboardID)
+            }
+            wipeOfflineChatCache(dashboardID: activeDashboardID)
         }
-        wipeOfflineChatCache(dashboardID: activeDashboardID)
         turnState = .idle
         retireOutstandingPreferredReturnSurfaceRequests()
         // The banner content belonged to the session being torn down; with
@@ -12394,6 +12512,13 @@ final class AppState: ObservableObject {
             // a stale request after the user signs back in.
             let didReturnFromBackground = hasEnteredBackgroundScenePhase
             hasEnteredBackgroundScenePhase = false
+            if showLogin, signInWaitsForForeground {
+                // The freshness arming belongs to the session that was torn
+                // down; the retry's connect syncs from scratch.
+                foregroundFreshnessCheckArmed = false
+                retrySignInFromBackground()
+                return nil
+            }
             guard connection != nil else {
                 // A cold-launch restore that failed offline left the saved
                 // copy up without a connection: try the restore again.
@@ -25508,6 +25633,9 @@ enum KeychainHelper {
         func update(_ data: Data, for query: [String: Any]) -> Int32
         func add(_ query: [String: Any]) -> Int32
         func delete(_ query: [String: Any])
+        /// Changes an existing item's accessibility class, which a data
+        /// update never does.
+        func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32
     }
 
     struct SystemKeychainBackend: Backend {
@@ -25534,6 +25662,12 @@ enum KeychainHelper {
         func delete(_ query: [String: Any]) {
             SecItemDelete(query as CFDictionary)
         }
+
+        func setAccessibility(_ accessibility: CFString, for query: [String: Any]) -> Int32 {
+            SecItemUpdate(query as CFDictionary, [
+                kSecAttrAccessible as String: accessibility
+            ] as CFDictionary)
+        }
     }
 
     nonisolated(unsafe) private(set) static var backend: Backend = SystemKeychainBackend()
@@ -25542,6 +25676,37 @@ enum KeychainHelper {
     /// run serially within a simulator, and the swap is restored in teardown.
     static func useBackendForTesting(_ backend: Backend) {
         Self.backend = backend
+        credentialsAccessibilityMoves.lock()
+        credentialsMovedAccounts = []
+        credentialsAccessibilityMoves.unlock()
+    }
+
+    /// Saved passwords are readable after the first unlock, like the saved
+    /// session and cookies: a call from Hermes that wakes Conduit on a
+    /// locked phone can sign in again with one (Eric's choice, 2026-10-11).
+    /// Face ID guards the on-screen launch restore only; a silent renewal
+    /// reads the password without it, as it already did while unlocked.
+    static let credentialsAccessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    private static let credentialsAccessibilityMoves = NSLock()
+    nonisolated(unsafe) private static var credentialsMovedAccounts: Set<String> = []
+
+    /// Moves a saved password to `credentialsAccessibility`. Passwords saved
+    /// by earlier builds were readable only while unlocked, and a data
+    /// update keeps an item's class, so the class is set explicitly: once
+    /// per launch, when the password is read (so the phone is unlocked) or
+    /// saved. It is a synchronous Keychain call on the caller's thread,
+    /// like the read beside it.
+    private static func moveCredentialsAccessibility(account: String, force: Bool) {
+        credentialsAccessibilityMoves.lock()
+        defer { credentialsAccessibilityMoves.unlock() }
+        guard force || !credentialsMovedAccounts.contains(account) else { return }
+        var status = backend.setAccessibility(credentialsAccessibility, for: scopedQuery(account: account))
+        if status == errSecItemNotFound {
+            status = backend.setAccessibility(credentialsAccessibility, for: legacyQuery(account: account))
+        }
+        if status == errSecSuccess {
+            credentialsMovedAccounts.insert(account)
+        }
     }
 
     private static let key = "hermes-conduit.connection.v1"
@@ -25566,6 +25731,11 @@ enum KeychainHelper {
         load(account: dashboardCookieKey)
     }
 
+    /// The record from before saved dashboards. Only the migrator reads it,
+    /// and it rewrites it as a dashboard's own record (readable after the
+    /// first unlock). Unreadable on a locked launch, it stays until a later
+    /// launch or the retry on screen can read it
+    /// (`SavedDashboardMigrator.adoptLeftoverCredentials`).
     static func saveCredentials(_ credentials: DashboardCredentials) {
         guard let data = try? JSONEncoder().encode(credentials) else { return }
         save(
@@ -25726,15 +25896,16 @@ enum KeychainHelper {
 
     static func saveCredentials(_ credentials: DashboardCredentials, dashboardID: UUID) {
         guard let data = try? JSONEncoder().encode(credentials) else { return }
-        save(
-            data,
-            account: scopedAccount(credentialsKey, dashboardID: dashboardID),
-            accessibility: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        )
+        let account = scopedAccount(credentialsKey, dashboardID: dashboardID)
+        save(data, account: account, accessibility: credentialsAccessibility)
+        // Saved over an earlier build's password, the item kept its class.
+        moveCredentialsAccessibility(account: account, force: true)
     }
 
     static func loadCredentials(dashboardID: UUID) -> DashboardCredentials? {
-        guard let data = load(account: scopedAccount(credentialsKey, dashboardID: dashboardID)) else { return nil }
+        let account = scopedAccount(credentialsKey, dashboardID: dashboardID)
+        guard let data = load(account: account) else { return nil }
+        moveCredentialsAccessibility(account: account, force: false)
         return try? JSONDecoder().decode(DashboardCredentials.self, from: data)
     }
 
