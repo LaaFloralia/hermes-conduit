@@ -9173,19 +9173,30 @@ final class AppState: ObservableObject {
     /// sign-in, as before.
     private func retrySignInFromBackground() {
         signInWaitsForForeground = false
-        HermesCallTrace.shared.note("Signing in again on screen (signed out in the background)")
         // Launched before the first unlock after a restart, the Keychain
         // couldn't give the saved dashboards: read them again now.
         if savedDashboardRegistry.dashboards.isEmpty {
             let stored = SavedDashboardMigrator.loadRegistry(defaults: defaults)
             if !stored.dashboards.isEmpty { savedDashboardRegistry = stored }
         }
+        // Nothing saved to sign in with (an off-screen switch to a dashboard
+        // with no reusable auth): the sign-in card keeps its explanation.
+        guard let dashboardID = activeDashboardID, hasSavedSignIn(dashboardID: dashboardID) else { return }
+        HermesCallTrace.shared.note("Signing in again on screen (signed out in the background)")
         // The failure belongs to the background attempt; the retry reports
         // its own.
         pendingLoginFailure = nil
         lastConnectionFailure = nil
         errorMessage = nil
         loadSavedConnection()
+    }
+
+    /// Whether the dashboard has anything `loadSavedConnection` signs in
+    /// with: an OAuth grant, a saved password or a saved session.
+    private func hasSavedSignIn(dashboardID: UUID) -> Bool {
+        KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID) != nil
+            || KeychainHelper.loadCredentials(dashboardID: dashboardID) != nil
+            || KeychainHelper.loadConnection(dashboardID: dashboardID) != nil
     }
 
     /// Whether a restore that started under this switch generation may still
@@ -25608,7 +25619,8 @@ enum KeychainHelper {
     /// Saved passwords are readable after the first unlock, like the saved
     /// session and cookies: a call from Hermes that wakes Conduit on a
     /// locked phone can sign in again with one (Eric's choice, 2026-10-11).
-    /// Face ID still guards using a Face ID password on screen.
+    /// Face ID guards the on-screen launch restore only; a silent renewal
+    /// reads the password without it, as it already did while unlocked.
     static let credentialsAccessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
     private static let credentialsAccessibilityMoves = NSLock()
     nonisolated(unsafe) private static var credentialsMovedAccounts: Set<String> = []

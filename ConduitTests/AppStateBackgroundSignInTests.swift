@@ -8,10 +8,15 @@ import Security
 /// leaving the user signed out.
 /// An extension of an existing class, so the CI test plan gains no class.
 extension AppStateForegroundLifecycleTests {
-    func testSignInRaisedInBackgroundRetriesSavedSignInOnScreen() {
-        let appState = makeSignedOutAppState()
+    func testSignInRaisedInBackgroundRetriesSavedSignInOnScreen() async throws {
+        let (appState, _) = installFaceIDDashboard(savedTicket: nil)
         var inBackground = true
         appState.phoneScreenIsAway = { inBackground }
+        var unlockAsked = false
+        appState.unlockWithFaceID = {
+            unlockAsked = true
+            return false
+        }
 
         appState.showLogin = true
         XCTAssertTrue(appState.signInWaitsForForeground)
@@ -21,9 +26,31 @@ extension AppStateForegroundLifecycleTests {
         appState.handleScenePhase(.background)
         appState.handleScenePhase(.active)
 
-        // The retry ran: the background attempt's failure is gone, and with
-        // nothing saved the sign-in stays up without waiting again.
+        // The retry ran: the background attempt's failure is gone, and the
+        // saved password's restore started.
         XCTAssertNil(appState.pendingLoginFailure)
+        XCTAssertFalse(appState.signInWaitsForForeground)
+        try await waitUntil { unlockAsked }
+    }
+
+    /// Off screen, a switch to a dashboard with nothing saved shows sign-in
+    /// too: on screen there is nothing to retry, and its explanation stays.
+    func testNothingSavedOnScreenKeepsTheSignInExplanation() {
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let appState = makeSignedOutAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        )
+        var away = true
+        appState.phoneScreenIsAway = { away }
+        let failure = ConnectionFailurePresentation.notice(title: "Sign-in didn’t complete", message: "switched")
+        appState.showLogin = true
+        appState.pendingLoginFailure = failure
+
+        away = false
+        appState.handleScenePhase(.background)
+        appState.handleScenePhase(.active)
+
+        XCTAssertEqual(appState.pendingLoginFailure, failure)
         XCTAssertTrue(appState.showLogin)
         XCTAssertFalse(appState.signInWaitsForForeground)
     }
