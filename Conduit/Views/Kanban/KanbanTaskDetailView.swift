@@ -47,6 +47,7 @@ struct KanbanTaskDetailView: View {
     @State private var isSaving = false
     @State private var isAddingComment = false
     @State private var isRequeuing = false
+    @State private var isUnblocking = false
     @State private var isLoadingDetail = false
     @State private var showDeleteConfirmation = false
     /// Triage actions (V3A): Specify / Decompose are offered ONLY for
@@ -115,6 +116,17 @@ struct KanbanTaskDetailView: View {
         displayedTask?.status == "running"
     }
 
+    private var isBlocked: Bool {
+        displayedTask?.status == "blocked"
+    }
+
+    /// The worker's question on a blocked task. Nil for a manual or
+    /// dependency block, which get neither the callout nor Reply & unblock.
+    private var blockedQuestion: String? {
+        guard isBlocked, let detail else { return nil }
+        return KanbanBlockedQuestion.reason(in: detail)
+    }
+
     private var hasUnsavedChanges: Bool {
         KanbanDetailDraftPolicy.isDirty(
             draftTitle: title,
@@ -166,9 +178,20 @@ struct KanbanTaskDetailView: View {
                         if currentTask.status == "ready", (currentTask.assignee ?? "").isEmpty, !hasDispatcherFallback {
                             readyUnassignedCallout
                         }
+                        // A blocked task is waiting on the operator: the
+                        // worker's question (when it asked one) and the reply
+                        // box sit together up top.
+                        if isBlocked {
+                            if let question = blockedQuestion {
+                                blockedCallout(question: question)
+                            }
+                            commentsSection
+                        }
                         diagnosticsSection
                         dependenciesSection
-                        commentsSection
+                        if !isBlocked {
+                            commentsSection
+                        }
                         activitySection
                         runsSection
                         workerLogLink
@@ -274,6 +297,7 @@ struct KanbanTaskDetailView: View {
                 // stay frozen forever, and A's unsent text could post to B.
                 isAddingComment = false
                 isRequeuing = false
+                isUnblocking = false
                 comment = ""
                 // No sheet/alert may stay armed over the replacement
                 // identity: a presented editor or confirmation belongs to
@@ -299,7 +323,10 @@ struct KanbanTaskDetailView: View {
                 modelOverrideSession = nil
             }
             .sheet(isPresented: $showReassignSheet) {
-                KanbanReassignSheet(taskID: displayedTaskID, currentAssignee: displayedTask?.assignee)
+                KanbanReassignSheet(taskID: displayedTaskID, currentAssignee: displayedTask?.assignee) {
+                    // Show the new assignee now rather than at the next poll.
+                    Task { await loadDetail(force: true) }
+                }
                     .environmentObject(store)
                     .presentationDetents([.medium])
             }
@@ -453,7 +480,7 @@ struct KanbanTaskDetailView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.conduitAccent)
-            .disabled(isSaving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(isSaving || isAddingComment || isRequeuing || isUnblocking || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -642,6 +669,28 @@ struct KanbanTaskDetailView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.orange.opacity(0.35), lineWidth: 1)
+        }
+    }
+
+    private func blockedCallout(question: String) -> some View {
+        let tint = KanbanStatusPresentation.forStatus("blocked").tint
+        return VStack(alignment: .leading, spacing: 6) {
+            Label("Waiting on you", systemImage: "questionmark.bubble")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(question)
+                .font(.footnote)
+                .textSelection(.enabled)
+            Text("Reply & unblock posts your answer and moves the task back to Ready, so the next run sees it.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(0.35), lineWidth: 1)
         }
     }
 
@@ -846,7 +895,8 @@ struct KanbanTaskDetailView: View {
                     }
                 }
                 .buttonStyle(.bordered)
-                .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment)
+                .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment || isUnblocking || isRequeuing)
+                .accessibilityLabel(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"))
                 if isRunning {
                     // Upstream "Note & requeue": post the note, then reclaim so
                     // the dispatcher re-runs the task with the note in context.
@@ -861,7 +911,25 @@ struct KanbanTaskDetailView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.orange)
-                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing)
+                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRequeuing || isAddingComment || isUnblocking)
+                    .accessibilityLabel("Note & requeue")
+                }
+                if blockedQuestion != nil {
+                    // A comment alone leaves the task parked in Blocked; the
+                    // worker only reads the answer once the task runs again.
+                    Button {
+                        Task { await replyAndUnblock() }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if isUnblocking { ProgressView() } else { Label("Reply & unblock", systemImage: "arrowshape.turn.up.left") }
+                            Spacer()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.conduitAccent)
+                    .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isUnblocking || isAddingComment || isRequeuing)
+                    .accessibilityLabel("Reply & unblock")
                 }
             }
         }
@@ -993,7 +1061,7 @@ struct KanbanTaskDetailView: View {
 
     private func loadDetail(force: Bool = false) async {
         // A poll never runs underneath an active save/comment write.
-        guard force || (!isSaving && !isAddingComment && !isRequeuing), !isLoadingDetail else { return }
+        guard force || (!isSaving && !isAddingComment && !isRequeuing && !isUnblocking), !isLoadingDetail else { return }
         // Freeze THIS fetch's identity up front. If the operator taps a
         // dependency mid-flight, every completion below is discarded: no
         // data, no error text, no baseline churn may cross identities.
@@ -1093,7 +1161,13 @@ struct KanbanTaskDetailView: View {
             }
             patch.status = status
         }
-        guard !patch.isEmpty else { return }
+        guard !patch.isEmpty else {
+            // Only whitespace around the title changed: nothing to send, so
+            // drop the no-op draft instead of leaving the editor dirty (which
+            // would keep every poll from adopting server changes).
+            title = baseline.title
+            return
+        }
         isSaving = true
         errorMessage = nil
         // A stale completion must not clear a saving spinner that now belongs
@@ -1167,7 +1241,7 @@ struct KanbanTaskDetailView: View {
 
     private func addComment() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isAddingComment, !isRequeuing, !isUnblocking else { return }
         let expectedID = displayedTaskID
         isAddingComment = true
         errorMessage = nil
@@ -1194,7 +1268,7 @@ struct KanbanTaskDetailView: View {
     /// success without ever reposting the note.
     private func noteAndRequeue() async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty, !isRequeuing, !isAddingComment, !isUnblocking else { return }
         let expectedID = displayedTaskID
         isRequeuing = true
         errorMessage = nil
@@ -1221,6 +1295,37 @@ struct KanbanTaskDetailView: View {
             errorMessage = message
             return
         }
+        await loadDetail(force: true)
+    }
+
+    /// Reply & unblock: the same comment-then-transition composition as Note
+    /// & requeue, with the transition being a PATCH to Ready (upstream
+    /// `unblock_task`). The draft is consumed once the reply posts, so a
+    /// failed unblock never reposts it.
+    private func replyAndUnblock() async {
+        let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !isUnblocking, !isAddingComment, !isRequeuing else { return }
+        let expectedID = displayedTaskID
+        isUnblocking = true
+        errorMessage = nil
+        defer {
+            if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                isUnblocking = false
+            }
+        }
+        let outcome = await KanbanNoteAndRequeueFlow.perform(
+            text: text,
+            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
+            reclaim: { _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready")) },
+            onCommentPosted: {
+                if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
+                    comment = ""
+                }
+            }
+        )
+        guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
+        errorMessage = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
+        // Refresh even on partial success so the posted reply shows up.
         await loadDetail(force: true)
     }
 
@@ -1571,14 +1676,27 @@ enum KanbanNoteAndRequeueFlow {
         return Outcome(commentPosted: true, requeued: true, failureDetail: nil)
     }
 
-    /// User-facing wording. A posted note + failed reclaim is PARTIAL success
-    /// and must be described as such — the note is already on the server.
-    static func message(for outcome: Outcome) -> String? {
+    /// The step that follows the note: a reclaim of a running task, or the
+    /// unblock of a blocked one (Reply & unblock).
+    enum Transition {
+        case requeue
+        case unblock
+    }
+
+    /// User-facing wording. A posted note + failed transition is PARTIAL
+    /// success and must be described as such — the note is already on the
+    /// server.
+    static func message(for outcome: Outcome, transition: Transition = .requeue) -> String? {
         switch (outcome.commentPosted, outcome.requeued, outcome.failureDetail) {
         case (false, _, let detail?):
             return detail
         case (true, false, let detail?):
-            return AppLocalization.string("The note was posted, but the task could not be requeued. (\(detail))")
+            switch transition {
+            case .requeue:
+                return AppLocalization.string("The note was posted, but the task could not be requeued. (\(detail))")
+            case .unblock:
+                return AppLocalization.string("The reply was posted, but the task could not be unblocked. (\(detail))")
+            }
         default:
             return nil
         }
@@ -1595,6 +1713,7 @@ struct KanbanReassignSheet: View {
     @Environment(\.dismiss) private var dismiss
     let taskID: String
     let currentAssignee: String?
+    var onReassigned: () -> Void = {}
 
     @State private var pendingProfile: String?
     @State private var errorMessage: String?
@@ -1659,6 +1778,7 @@ struct KanbanReassignSheet: View {
         do {
             // The dedicated reassignment endpoint (reclaim-first, upstream).
             try await store.reassignTask(taskID: taskID, profile: profile, reclaimFirst: true)
+            onReassigned()
             dismiss()
         } catch {
             errorMessage = UserFacingError.message(for: error)

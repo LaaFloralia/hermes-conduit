@@ -449,6 +449,101 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(row.detail, "parent t_p reopened")
     }
 
+    // MARK: Blocked question
+
+    private func blockedDetail(events: [KanbanEvent] = [], runsJSON: String = "[]") throws -> KanbanTaskDetail {
+        let runs = try JSONDecoder().decode([KanbanRun].self, from: Data(runsJSON.utf8))
+        return KanbanTaskDetail(task: KanbanTask(id: "t", title: "T", status: "blocked"), events: events, runs: runs)
+    }
+
+    func testBlockedQuestionIsNewestBlockedEventReason() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "blocked", payload: .object(["reason": .string("Which API key?")]), createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+            KanbanEvent(id: "3", taskID: "t", kind: "commented", payload: .object(["author": .string("me")]), createdAt: 300),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Which API key?")
+    }
+
+    func testBlockedQuestionTieGoesToTheFirstEventBecauseEventsAreNewestFirst() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "blocked", payload: .object(["reason": .string("new question")]), createdAt: 100),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "new question")
+    }
+
+    func testBlockedEventWithoutTimestampCountsAsNewest() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "blocked", payload: .object(["reason": .string("untimed question")])),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "untimed question")
+    }
+
+    func testOldQuestionIsStaleOnceANewerDependencyBlockFollows() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "3", taskID: "t", kind: "status", payload: .object(["status": .string("blocked"), "reason": .string("parent_reopened")]), createdAt: 300),
+            KanbanEvent(id: "2", taskID: "t", kind: "unblocked", payload: .object(["status": .string("ready")]), createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("old question")]), createdAt: 100),
+        ])
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail), "the current block is a dependency block, not the old question")
+    }
+
+    func testStatusRowLoggedWithTheBlockDoesNotHideTheQuestion() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "status", payload: .object(["status": .string("blocked")]), createdAt: 100),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("Which branch?")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Which branch?", "a same-second status row is the block itself, not a newer block")
+    }
+
+    func testCommentsAfterTheBlockDoNotHideTheQuestion() throws {
+        let detail = try blockedDetail(events: [
+            KanbanEvent(id: "2", taskID: "t", kind: "commented", payload: .object(["author": .string("me")]), createdAt: 200),
+            KanbanEvent(id: "1", taskID: "t", kind: "blocked", payload: .object(["reason": .string("Which branch?")]), createdAt: 100),
+        ])
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Which branch?")
+    }
+
+    func testManualBlockWithoutReasonHasNoQuestion() throws {
+        let detail = try blockedDetail(
+            events: [KanbanEvent(id: "1", taskID: "t", kind: "blocked", createdAt: 100)],
+            runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "summary": "stale run question", "ended_at": 50}]"#
+        )
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail), "the newest block is manual; an older run's question must not resurface")
+    }
+
+    func testBlockedQuestionFallsBackToNewestBlockedRun() throws {
+        let detail = try blockedDetail(runsJSON: #"""
+        [
+          {"id": "r1", "status": "done", "outcome": "blocked", "summary": "first", "ended_at": 100},
+          {"id": "r2", "status": "blocked", "summary": "Need the repo URL", "error": "traceback", "ended_at": 200},
+          {"id": "r3", "status": "done", "outcome": "completed", "summary": "done", "ended_at": 300}
+        ]
+        """#)
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: detail), "Need the repo URL", "a run marked blocked only by status still counts")
+    }
+
+    func testRunFallbackSurvivesOlderTransitionsButNotNewerOnes() throws {
+        let runs = #"[{"id": "r1", "status": "done", "outcome": "blocked", "summary": "Which region?", "ended_at": 200}]"#
+        let claimedBefore = try blockedDetail(
+            events: [KanbanEvent(id: "1", taskID: "t", kind: "claimed", createdAt: 100)],
+            runsJSON: runs
+        )
+        XCTAssertEqual(KanbanBlockedQuestion.reason(in: claimedBefore), "Which region?")
+        let unblockedAfter = try blockedDetail(
+            events: [KanbanEvent(id: "1", taskID: "t", kind: "unblocked", createdAt: 300)],
+            runsJSON: runs
+        )
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: unblockedAfter))
+    }
+
+    func testBlockedRunErrorIsNeverShownAsTheQuestion() throws {
+        let detail = try blockedDetail(runsJSON: #"[{"id": "r1", "status": "done", "outcome": "blocked", "error": "Traceback: boom", "ended_at": 100}]"#)
+        XCTAssertNil(KanbanBlockedQuestion.reason(in: detail))
+    }
+
     // MARK: - Runs presentation (V2 §17)
 
     func testRunFailureClassificationMatchesUpstreamSet() {

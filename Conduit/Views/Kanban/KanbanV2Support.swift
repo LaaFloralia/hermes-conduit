@@ -490,6 +490,60 @@ enum KanbanActivityFormatter {
     }
 }
 
+// MARK: - Blocked question
+
+/// What a blocked task is waiting on: the reason the worker gave when it
+/// blocked (upstream `kanban_block(reason)`), so the operator can answer it
+/// from the detail screen.
+///
+/// The newest `blocked` event carries the question; a backend that records
+/// the block only on the run falls back to the newest run that ended
+/// `blocked` (its summary only, never its error). Only the CURRENT block
+/// counts: a strictly newer transition - a `status` move (a dependency block
+/// such as parent_reopened), `unblocked`, claim or completion - makes the
+/// question stale and yields nil. A manual or dependency block yields nil.
+///
+/// Events arrive newest-first, so array order breaks ties between blocked
+/// events, and an event without a timestamp is taken as the newest.
+enum KanbanBlockedQuestion {
+    static let transitionKinds: Set<String> = [
+        "blocked", "unblocked", "status", "claimed", "completed", "reclaimed", "scheduled", "promoted", "archived",
+    ]
+
+    static func reason(in detail: KanbanTaskDetail) -> String? {
+        let transitions = detail.events.enumerated().filter { transitionKinds.contains($0.element.kind) }
+        let question: String?
+        let blockTime: Int
+        if let block = transitions.filter({ $0.element.kind == "blocked" }).max(by: { lhs, rhs in
+            let left = lhs.element.createdAt ?? Int.max
+            let right = rhs.element.createdAt ?? Int.max
+            return left == right ? lhs.offset > rhs.offset : left < right
+        }) {
+            question = nonEmpty(block.element.payload?.objectValue?["reason"]?.stringValue)
+            blockTime = block.element.createdAt ?? Int.max
+        } else {
+            let blockedRuns = detail.runs.filter { ($0.outcome ?? $0.status) == "blocked" }
+            guard let run = blockedRuns.max(by: { ($0.endedAt ?? $0.startedAt ?? 0) < ($1.endedAt ?? $1.startedAt ?? 0) }) else {
+                return nil
+            }
+            question = nonEmpty(run.summary)
+            blockTime = run.endedAt ?? run.startedAt ?? Int.max
+        }
+        // A transition strictly newer than the block supersedes it. One
+        // logged in the same second (a `status` row written alongside the
+        // block) does not.
+        let superseded = transitions.contains { other in
+            other.element.kind != "blocked" && (other.element.createdAt ?? Int.max) > blockTime
+        }
+        return superseded ? nil : question
+    }
+
+    private static func nonEmpty(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+}
+
 // MARK: - Run presentation
 
 /// Shared run-row classification (upstream drawer runs list).

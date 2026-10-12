@@ -1891,8 +1891,10 @@ private struct KanbanCardView: View {
                     Section {
                         // First-class archive: plain PATCH semantics upstream,
                         // so no destructive confirmation language.
-                        Button(action: onArchive) {
-                            Label("Archive", systemImage: "archivebox")
+                        if task.status != "archived" {
+                            Button(action: onArchive) {
+                                Label("Archive", systemImage: "archivebox")
+                            }
                         }
                         Button(role: .destructive, action: onDelete) {
                             Label("Delete…", systemImage: "trash")
@@ -1954,9 +1956,11 @@ private struct KanbanCardView: View {
             Button { copy(text: task.title, notice: AppLocalization.string("Title copied")) } label: {
                 Label("Copy Task Title", systemImage: "doc.on.doc.fill")
             }
-            Divider()
-            Button(action: onArchive) { Label("Archive", systemImage: "archivebox") }
-                .disabled(isMenusDisabled)
+            if task.status != "archived" {
+                Divider()
+                Button(action: onArchive) { Label("Archive", systemImage: "archivebox") }
+                    .disabled(isMenusDisabled)
+            }
             Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
                 .disabled(isMenusDisabled)
         }
