@@ -569,14 +569,7 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
-            // Hermes' @session:<id> links read as the chat's name.
-            var titles: [String: String] = [:]
-            for session in sessions where !session.title.isEmpty {
-                for id in [session.id, session.storedSessionId].compactMap({ $0 }) + session.alternateIds {
-                    titles[id] = session.title
-                }
-            }
-            HermesSessionReference.updateTitles(titles)
+            updateSessionReferenceTitles()
         }
     }
     @Published var cronSessions: [SessionSummary] = [] {
@@ -584,7 +577,31 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             // Pinned runs carry read state too (#485).
             observeChatReadState()
+            updateSessionReferenceTitles()
         }
+    }
+
+    /// Hermes' @session:<id> links read as the chat's name, cron runs' too.
+    private func updateSessionReferenceTitles() {
+        HermesSessionReference.updateTitles(Self.sessionReferenceTitles(cronSessions + sessions))
+    }
+
+    /// Titles by every id a chat answers to. A chat's own id wins over the
+    /// same id reached through a continuation's lineage root or alias.
+    nonisolated static func sessionReferenceTitles(_ sessions: [SessionSummary]) -> [String: String] {
+        var titles: [String: String] = [:]
+        let named = sessions.filter { !$0.title.isEmpty }
+        for session in named {
+            for id in [session.lineageRootId].compactMap({ $0 }) + session.alternateIds {
+                titles[id] = session.title
+            }
+        }
+        for session in named {
+            for id in [session.id, session.storedSessionId].compactMap({ $0 }) {
+                titles[id] = session.title
+            }
+        }
+        return titles
     }
     @Published private(set) var projects: [ProjectSummary] = []
     @Published private(set) var supportsProjects = false
