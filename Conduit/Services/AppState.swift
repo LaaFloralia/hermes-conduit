@@ -513,7 +513,16 @@ final class AppState: ObservableObject {
 
     @Published var connection: HermesConnection?
     @Published var client: HermesClient?
-    @Published var isConnected = false
+    @Published var isConnected = false {
+        didSet {
+            if isConnected {
+                if widgetAwaitingInteractiveAuthenticationDashboardID == activeDashboardID {
+                    widgetAwaitingInteractiveAuthenticationDashboardID = nil
+                }
+                widgetLaunchCoordinator.readinessChanged()
+            }
+        }
+    }
     @Published var isConnecting = false
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
@@ -550,6 +559,10 @@ final class AppState: ObservableObject {
     @Published private(set) var savedDashboardRegistry: SavedDashboardRegistry {
         didSet {
             if oldValue.activeDashboardID != savedDashboardRegistry.activeDashboardID {
+                widgetSettledCatalogOwner = nil
+                let selectedDashboard = savedDashboardRegistry.activeDashboardID
+                let selectedProfile = selectedDashboard.flatMap { rememberedActiveProfile(for: $0) } ?? "default"
+                publishWidgetCurrentWorkspace(dashboardID: selectedDashboard, profile: selectedProfile)
                 reloadDashboardScopedPresentation()
             }
         }
@@ -572,6 +585,37 @@ final class AppState: ObservableObject {
             updateSessionReferenceTitles()
         }
     }
+    /// Catalog owner captured only after its asynchronous load is admitted.
+    /// Widget projection checks this before pairing rows with the selected ID.
+    var widgetSettledCatalogOwner: WidgetWorkspaceID?
+    var widgetSnapshotPublicationSuppressionDepth = 0
+    var widgetBotEvidenceIsAvailable: Bool { botEvidenceIsAvailable }
+    var widgetSnapshotStoreOverride: WidgetSnapshotStore?
+    var widgetSnapshotReloadOverride: (() -> Void)?
+    var widgetAwaitingInteractiveAuthenticationDashboardID: UUID?
+    lazy var widgetLaunchCoordinator: WidgetLaunchCoordinator = {
+        let clock = ContinuousClock()
+        let origin = clock.now
+        return WidgetLaunchCoordinator(
+            now: { origin.duration(to: clock.now) },
+            prepare: { [weak self] link, lease in
+                guard let self else { return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable")) }
+                return await self.prepareWidgetLaunch(link, lease: lease)
+            },
+            perform: { [weak self] link, lease in
+                guard let self else { return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable")) }
+                return await self.performWidgetLaunch(link, lease: lease)
+            },
+            finish: { [weak self] outcome in
+                guard let self, case .failed(let message) = outcome else { return }
+                self.widgetAwaitingInteractiveAuthenticationDashboardID = nil
+                self.errorMessage = message
+            }
+        )
+    }()
+    var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive }
+    var widgetSessionMutationRequestOverride: ((String, String, [String: Any]?) async throws -> [String: Any])?
+    var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
         didSet {
             refreshActiveChatScrollSessionIdentity()
@@ -988,7 +1032,10 @@ final class AppState: ObservableObject {
     /// The read-only roster. Hermes remains authoritative; nothing bot-related
     /// is durably persisted client-side.
     @Published private(set) var botRoster: [BotProfile] = [] {
-        didSet { invalidateBotOwnershipCache() }
+        didSet {
+            invalidateBotOwnershipCache()
+            publishWidgetSnapshot()
+        }
     }
     @Published private(set) var isRefreshingBotRoster = false
     /// Bot avatars from each profile's gateway asset store (the same pictures
@@ -1717,7 +1764,7 @@ final class AppState: ObservableObject {
     /// classic conversation (and Read Aloud) is closed first so the two
     /// modes never share the audio session.
     @discardableResult
-    func openGeminiLiveConversation(attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
+    func openGeminiLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -1727,6 +1774,7 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
+            geminiLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -2004,7 +2052,7 @@ final class AppState: ObservableObject {
     /// Opens GPT-Live instead of the other voice modes, which (with Read
     /// Aloud) are closed first so they never share the audio session.
     @discardableResult
-    func openGPTLiveConversation(attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
+    func openGPTLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -2014,6 +2062,7 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
+            gptLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -2278,7 +2327,7 @@ final class AppState: ObservableObject {
     /// Opens Grok Live instead of the other voice modes, which (with Read
     /// Aloud) are closed first so they never share the audio session.
     @discardableResult
-    func openGrokLiveConversation(attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
+    func openGrokLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -2288,6 +2337,7 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         showGrokLiveSheet = true
         if !grokLiveController.isActive {
+            grokLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -3369,6 +3419,8 @@ final class AppState: ObservableObject {
     private func setActiveProfile(_ newValue: String) {
         guard newValue != activeProfile else { return }
         activeProfile = newValue
+        widgetSettledCatalogOwner = nil
+        publishWidgetCurrentWorkspace(dashboardID: activeDashboardID, profile: newValue)
         presentationCacheProfileEpoch &+= 1
         // The saved copy belongs to the outgoing profile's scope.
         dismissOfflineChatPresentation()
@@ -4644,6 +4696,7 @@ final class AppState: ObservableObject {
     /// Opens a link Conduit wrote into a chat (a voice call's job link), or
     /// one another app opened Conduit with.
     func openAppLink(_ link: ConduitAppLink) {
+        widgetLaunchCoordinator.supersede()
         switch link {
         case .session(let id, let profile):
             // A blank profile names none: the chat opens on the profile in use.
@@ -5449,6 +5502,7 @@ final class AppState: ObservableObject {
         }
         pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
         persistPinnedSessions()
+        publishWidgetSnapshot()
     }
 
     // MARK: - Read state (#454)
@@ -5792,12 +5846,18 @@ final class AppState: ObservableObject {
             activeSessionTitlesByProfile[activeProfile] = title
         }
         persistActiveSessionTitles()
+        publishWidgetSnapshot()
     }
 
     private func setActiveSessionTitle(_ title: String) {
         activeSessionTitle = title
         activeSessionTitlesByProfile[activeProfile] = title
         persistActiveSessionTitles()
+        publishWidgetSnapshot()
+    }
+
+    func chatResumeLastSessionReference(for profile: String) -> SessionReference? {
+        chatResumeCoordinator.lastSession(for: profile)
     }
 
     // MARK: - Session references (durable conversation identity)
@@ -5907,6 +5967,7 @@ final class AppState: ObservableObject {
             activeSessionId = nil
             activeSessionTitle = activeSessionTitlesByProfile[profile]
                 ?? AppLocalization.string("New conversation")
+            publishWidgetSnapshot()
             return
         }
         switch reference.kind {
@@ -5923,6 +5984,7 @@ final class AppState: ObservableObject {
             activeSessionId = reference.sessionID
             activeSessionTitle = Self.botConversationTitle(for: reference)
         }
+        publishWidgetSnapshot()
     }
 
     /// The header title for a restored Bot Chat. The bot's display label when
@@ -5998,6 +6060,7 @@ final class AppState: ObservableObject {
     var hasPendingExplicitNavigation: Bool {
         PushNotificationService.shared.pendingTarget != nil
             || PendingVoiceIntentStore.shared.hasPendingIntent
+            || widgetLaunchCoordinator.hasPendingRequest
     }
 
     /// Persisted separately from the resume store: this only changes which
@@ -6086,7 +6149,9 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
-    func beginExplicitChatViewportTransition() -> UInt64 {
+    func beginExplicitChatViewportTransition(ownedBy widgetLease: WidgetLaunchLease? = nil) -> UInt64 {
+        if widgetLease == nil { widgetLaunchCoordinator.supersede() }
+        else if widgetLease?.isCurrent != true { return chatViewportTransitionGeneration }
         if let transition = chatViewportTransition {
             finishChatViewportTransition(generation: transition.generation)
         }
@@ -7891,6 +7956,7 @@ final class AppState: ObservableObject {
 
     func saveDefaultProfileName(_ name: String) {
         defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
+        publishWidgetSnapshot()
         // A call ringing on the Watch shows it.
         shareWatchCallVoices()
     }
@@ -8730,6 +8796,7 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        widgetLaunchCoordinator.supersede()
         cancelExplicitSessionOpen()
         dismissChatTakeover()
         chatResumeCoordinator.clearResumeState()
@@ -8769,6 +8836,8 @@ final class AppState: ObservableObject {
         // captured BEFORE any state is nulled so the web/native session is
         // cleared even when there is no live connection.
         let signingOutDashboardID = activeDashboardID
+        widgetSettledCatalogOwner = nil
+        if let signingOutDashboardID { removeWidgetSnapshot(dashboardID: signingOutDashboardID) }
         wipeOfflineChatCache(dashboardID: signingOutDashboardID)
         if let dashboardID = signingOutDashboardID {
             KeychainHelper.clearConnection(dashboardID: dashboardID)
@@ -8964,7 +9033,10 @@ final class AppState: ObservableObject {
     /// server streaming behind the new target's sign-in surface. The target
     /// becomes the selected dashboard BEFORE connecting, so a failed switch
     /// leaves it selected; no other dashboard is auto-connected.
-    func switchDashboard(to id: UUID) async {
+    func switchDashboard(to id: UUID, widgetLease: WidgetLaunchLease? = nil) async {
+        if widgetLease == nil { widgetLaunchCoordinator.supersede() }
+        guard widgetLease?.isCurrent != false else { return }
+        widgetAwaitingInteractiveAuthenticationDashboardID = nil
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
         if id == activeDashboardID && (isConnected || isConnecting) {
             // Already there: a same-dashboard reconnect is not a switch.
@@ -9001,7 +9073,8 @@ final class AppState: ObservableObject {
                     isConnecting = true
                 }
             }
-            await restoreSavedCredentials(credentials, dashboardID: id, switchGeneration: generation)
+            await restoreSavedCredentials(credentials, dashboardID: id, switchGeneration: generation, widgetLease: widgetLease)
+            settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
             return
         }
         if let saved = KeychainHelper.loadConnection(dashboardID: id) {
@@ -9012,11 +9085,26 @@ final class AppState: ObservableObject {
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
-            await restoreSavedConnection(saved, switchGeneration: generation)
+            await restoreSavedConnection(saved, switchGeneration: generation, widgetLease: widgetLease)
+            settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
             return
         }
         // No reusable auth: present the sign-in surface seeded for this
         // dashboard's address.
+        turnState = .idle
+        if widgetLease != nil { widgetAwaitingInteractiveAuthenticationDashboardID = id }
+        showLogin = true
+    }
+
+    /// A widget launch that expired while its dashboard switch was restoring
+    /// stopped before connecting. The target is already selected and the
+    /// outgoing connection retired, so it gets the sign-in surface a failed
+    /// restore shows, not a connecting state nothing will finish.
+    private func settleExpiredWidgetDashboardSwitch(generation: UInt64, widgetLease: WidgetLaunchLease?) {
+        guard widgetLease?.isCurrent == false,
+              switchGenerationIsCurrent(generation),
+              !isConnected, client == nil else { return }
+        isConnecting = false
         turnState = .idle
         showLogin = true
     }
@@ -9086,6 +9174,7 @@ final class AppState: ObservableObject {
             disconnect()
             return
         }
+        removeWidgetSnapshot(dashboardID: id)
         KeychainHelper.clearConnection(dashboardID: id)
         KeychainHelper.clearCredentials(dashboardID: id)
         KeychainHelper.clearCloudflareAccess(dashboardID: id)
@@ -9162,7 +9251,8 @@ final class AppState: ObservableObject {
     /// only needed to mint a replacement ticket after that socket actually
     /// disconnects or fails. Requiring a freshly restored WebKit cookie before
     /// every launch was what turned a healthy saved Hermes session into login.
-    private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil) async {
+    private func restoreSavedConnection(_ saved: HermesConnection, switchGeneration: UInt64? = nil, widgetLease: WidgetLaunchLease? = nil) async {
+        guard widgetLease?.isCurrent != false else { return }
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
         }
@@ -9172,13 +9262,16 @@ final class AppState: ObservableObject {
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
         }
+        guard widgetLease?.isCurrent != false else { return }
         await connect(with: saved, profile: activeProfile)
+        guard widgetLease?.isCurrent != false else { return }
     }
 
     private func restoreSavedCredentials(
         _ credentials: DashboardCredentials,
         dashboardID: UUID? = nil,
-        switchGeneration: UInt64? = nil
+        switchGeneration: UInt64? = nil,
+        widgetLease: WidgetLaunchLease? = nil
     ) async {
         // A superseded dashboard switch owns the flow; this stale restore
         // must not prompt, spend network, or install its connection — and it
@@ -9186,6 +9279,7 @@ final class AppState: ObservableObject {
         if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
             return
         }
+        guard widgetLease?.isCurrent != false else { return }
         let scopedDashboardID = dashboardID ?? activeDashboardID
         rememberDashboardURL(credentials.baseURL)
 
@@ -9193,11 +9287,12 @@ final class AppState: ObservableObject {
             guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
                 guard restoreOwnsFlow(switchGeneration) else { return }
+                guard widgetLease?.isCurrent != false else { return }
                 // Face ID or Touch ID can't show off the phone screen (a call from Hermes
                 // woke Conduit, or only CarPlay shows it): the saved session
                 // connects, as it does when a locked phone keeps the
                 // password unreadable.
-                if phoneScreenIsAway(), let scopedDashboardID,
+                if widgetLease == nil, phoneScreenIsAway(), let scopedDashboardID,
                    restoreSavedSessionOffScreen(
                     dashboardID: scopedDashboardID,
                     baseURL: credentials.baseURL,
@@ -9205,7 +9300,9 @@ final class AppState: ObservableObject {
                    ) {
                     return
                 }
+                guard widgetLease?.isCurrent != false else { return }
                 showLogin = true
+                widgetLease?.fail(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
                 return
             }
             // Re-fence after the biometric await: a superseded switch owns
@@ -9213,6 +9310,9 @@ final class AppState: ObservableObject {
             if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
                 return
             }
+            // The user just unlocked the saved password for the selected
+            // dashboard: the sign-in finishes even if the widget launch
+            // expired meanwhile.
             if let scopedDashboardID {
                 presentOfflineChatIfAvailable(dashboardID: scopedDashboardID)
                 if offlineChatPresentation != nil {
@@ -9643,6 +9743,7 @@ final class AppState: ObservableObject {
             automaticSyncOperationID: automaticOperationID
         ) else { return .superseded }
         let profile = activeProfile
+        let dashboardID = activeDashboardID
         let retainedActiveTurn = activeTurnCatalogSession()
         // Capture the selected conversation's complete identity — durable id,
         // runtime id, and every positively confirmed alias — BEFORE replacing
@@ -9672,6 +9773,7 @@ final class AppState: ObservableObject {
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == reconciliationToken,
                   profile == activeProfile,
+                  dashboardID == activeDashboardID,
                   let activeClient = self.client,
                   activeClient === client else {
                 settleReconciliation(
@@ -9700,6 +9802,10 @@ final class AppState: ObservableObject {
             }
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            if let dashboardID {
+                widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
+                widgetLaunchCoordinator.readinessChanged()
+            }
             refreshVoiceSessionTags()
             // Reported per call: whether THIS sync reached the catalog is
             // independent of its outcome, which is also `.completed` for a
@@ -9708,6 +9814,7 @@ final class AppState: ObservableObject {
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
             conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
+            publishWidgetSnapshot()
 
             guard automaticChatResumeWorkIsCurrent(
                 automaticWorkToken,
@@ -10292,12 +10399,14 @@ final class AppState: ObservableObject {
         requiredViewportTransitionGeneration: UInt64? = nil,
         historySourceUnavailable: Bool = false,
         presentationMigrationSessionIDs: Set<String> = [],
-        conversationProfile: String? = nil
+        conversationProfile: String? = nil,
+        widgetLease: WidgetLaunchLease? = nil
     ) async -> Bool {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
-        ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
+        ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+              widgetLease?.isCurrent != false else {
             return false
         }
         // Canonical Bot Chats live in the bot's profile: every re-entry path
@@ -10455,6 +10564,7 @@ final class AppState: ObservableObject {
                     syncOperationID: automaticSyncOperationID
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                  widgetLease?.isCurrent != false,
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -10753,6 +10863,7 @@ final class AppState: ObservableObject {
                     syncOperationID: automaticSyncOperationID
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                  widgetLease?.isCurrent != false,
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -11078,23 +11189,31 @@ final class AppState: ObservableObject {
         automaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticSyncOperationID: UUID? = nil,
         requiredViewportTransitionGeneration: UInt64? = nil,
-        cwd: String? = nil
+        cwd: String? = nil,
+        widgetLease: WidgetLaunchLease? = nil
     ) async {
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
-        ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else { return }
+        ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+              widgetLease?.isCurrent != false else { return }
         do {
-            let created = try await client.createSession(
-                model: runtime.model.isEmpty ? nil : runtime.model,
-                provider: runtime.provider.isEmpty ? nil : runtime.provider,
-                cwd: cwd
-            )
+            let created: (sessionId: String, storedSessionId: String?, profile: String?)
+            if widgetLease != nil, let widgetSessionCreatorOverride {
+                created = try await widgetSessionCreatorOverride(client, cwd)
+            } else {
+                created = try await client.createSession(
+                    model: runtime.model.isEmpty ? nil : runtime.model,
+                    provider: runtime.provider.isEmpty ? nil : runtime.provider,
+                    cwd: cwd
+                )
+            }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticSyncOperationID
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                  widgetLease?.isCurrent != false,
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -11222,6 +11341,7 @@ final class AppState: ObservableObject {
                     syncOperationID: automaticSyncOperationID
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                  widgetLease?.isCurrent != false,
                   token == reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -12568,6 +12688,7 @@ final class AppState: ObservableObject {
             if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
+            widgetLaunchCoordinator.readinessChanged()
             noteActiveChatSeen(respectingMarks: true)
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
@@ -12729,6 +12850,7 @@ final class AppState: ObservableObject {
             return task
 
         case .background:
+            widgetLaunchCoordinator.supersede()
             // Only a departure from active counts: coming back passes
             // through .inactive too, and that is not "last used".
             if isSceneActive, sceneHasBeenActive {
@@ -14147,6 +14269,7 @@ final class AppState: ObservableObject {
         let activeClient = client
         guard activeClient != nil || sessionCatalogLoaderOverride != nil else { return false }
         let profile = activeProfile
+        let dashboardID = activeDashboardID
         let retainedActiveTurn = activeTurnCatalogSession()
         do {
             let loadedSessions: [SessionSummary]
@@ -14160,7 +14283,7 @@ final class AppState: ObservableObject {
             } else {
                 return false
             }
-            guard profile == activeProfile else { return false }
+            guard profile == activeProfile, dashboardID == activeDashboardID else { return false }
             if sessionCatalogLoaderOverride == nil {
                 guard let activeClient, self.client === activeClient else { return false }
             }
@@ -14184,6 +14307,11 @@ final class AppState: ObservableObject {
                botConversationProfile(for: activeSessionId) == nil {
                 updateActiveSessionTitle(for: activeSessionId)
             }
+            if let dashboardID {
+                widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
+                widgetLaunchCoordinator.readinessChanged()
+                publishWidgetSnapshot()
+            }
             if let activeClient {
                 Task { [weak self] in
                     await self?.loadProjects(using: activeClient, profile: profile)
@@ -14191,7 +14319,7 @@ final class AppState: ObservableObject {
             }
             return true
         } catch {
-            guard profile == activeProfile else { return false }
+            guard profile == activeProfile, dashboardID == activeDashboardID else { return false }
             if sessionCatalogLoaderOverride == nil {
                 guard let activeClient, self.client === activeClient else { return false }
             }
@@ -14242,7 +14370,7 @@ final class AppState: ObservableObject {
     private func setSessionArchived(_ session: SessionSummary, archived: Bool) async -> Bool {
         guard sessionMutationID == nil,
               sessionBelongsToProfile(session, profile: activeProfile),
-              let dashboardTicketBridge else { return false }
+              dashboardTicketBridge != nil || widgetSessionMutationRequestOverride != nil else { return false }
         if archived, isBusy, sessionMatchesActiveSession(session) {
             errorMessage = AppLocalization.string("Stop the active response before archiving this conversation.")
             return false
@@ -14252,33 +14380,42 @@ final class AppState: ObservableObject {
         sessionMutationID = session.id
         defer { sessionMutationID = nil }
         do {
-            _ = try await dashboardTicketBridge.requestJSON(
-                path: dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile),
-                method: "PATCH",
-                body: DashboardPath.bodyWithProfile(["archived": archived], profile: profile)
-            )
+            let path = dashboardPath("/api/sessions/\(encodedSessionID(session.id))", profile: profile)
+            let body = DashboardPath.bodyWithProfile(["archived": archived], profile: profile)
+            if let widgetSessionMutationRequestOverride {
+                _ = try await widgetSessionMutationRequestOverride(path, "PATCH", body)
+            } else if let dashboardTicketBridge {
+                _ = try await dashboardTicketBridge.requestJSON(path: path, method: "PATCH", body: body)
+            } else {
+                return false
+            }
             guard profile == activeProfile else { return false }
 
-            var updated = session
-            updated.isArchived = archived
-            if archived {
-                sessionYoloStore.clearOverride(
-                    for: profile,
-                    sessionIDs: [updated.id] + updated.alternateIds
-                )
-                removeSessionFromLiveCatalog(updated)
-                archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
-                removePinnedState(for: updated)
-                clearActiveSessionIfNeeded(updated, replacement: .archive)
-            } else {
-                archivedSessions.removeAll { sessionMatches($0, updated) }
-                // A restored cron run goes back to the Cron list, not the chats.
-                if updated.source == .cron {
-                    cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+            do {
+                widgetSnapshotPublicationSuppressionDepth += 1
+                defer { widgetSnapshotPublicationSuppressionDepth -= 1 }
+                var updated = session
+                updated.isArchived = archived
+                if archived {
+                    sessionYoloStore.clearOverride(
+                        for: profile,
+                        sessionIDs: [updated.id] + updated.alternateIds
+                    )
+                    removeSessionFromLiveCatalog(updated)
+                    archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
+                    removePinnedState(for: updated)
+                    clearActiveSessionIfNeeded(updated, replacement: .archive)
                 } else {
-                    sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                    archivedSessions.removeAll { sessionMatches($0, updated) }
+                    // A restored cron run goes back to the Cron list, not the chats.
+                    if updated.source == .cron {
+                        cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+                    } else {
+                        sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
+                    }
                 }
             }
+            publishWidgetSnapshot()
             return true
         } catch {
             guard profile == activeProfile else { return false }
@@ -14404,6 +14541,7 @@ final class AppState: ObservableObject {
             removePinnedState(for: session)
             updateChatReadState { $0.forget(session, profile: profile) }
             clearActiveSessionIfNeeded(session, replacement: .delete)
+            publishWidgetSnapshot()
             return true
         } catch {
             guard profile == activeProfile else { return false }
@@ -14464,14 +14602,23 @@ final class AppState: ObservableObject {
         guard let selectedID, !selectedID.isEmpty else { return nil }
         var accepted = Set([selectedID])
         var durableSessionID: String?
-        if let row = (sessions + cronSessions).first(where: {
-            $0.id == selectedID || $0.alternateIds.contains(selectedID)
+        if let row = (sessions + cronSessions).first(where: { row in
+            guard row.id == selectedID || row.alternateIds.contains(selectedID) else { return false }
+            // A typed Bot open addresses the bot's own profile. The raw
+            // dashboard catalog can contain the same runtime id, but its
+            // durable identity is not evidence about this Bot Chat.
+            guard let scopeProfile else { return true }
+            guard let owner = row.profile else { return false }
+            return profilesMatch(owner, scopeProfile)
         }) {
             accepted.formUnion([row.id] + row.alternateIds)
             // The row's stored id is the positively labeled durable identity;
             // a row without one is represented by its primary id.
             durableSessionID = row.storedSessionId ?? row.id
-        } else if activeChatScrollSessionIdentity.contains(selectedID) {
+        } else if activeChatScrollSessionIdentity.contains(selectedID),
+                  (scopeProfile == nil || activeChatScrollSessionIdentity.profile.map {
+                      profilesMatch($0, scopeProfile ?? activeProfile)
+                  } == true) {
             // Not in the catalog anymore, but the scroll identity still holds
             // positively confirmed aliases for it (mid-refresh windows).
             accepted.formUnion(activeChatScrollSessionIdentity.equivalentSessionIDs)
@@ -14490,12 +14637,13 @@ final class AppState: ObservableObject {
         // resume that produced it recorded the stored id it belongs to.
         // Without it, recovery would resume the runtime id, which Hermes
         // stops recognizing once that runtime is reaped.
-        // A Bot Chat's mapping is under the bot's profile; the dashboard's
-        // is tried too, so an earlier mapping there still counts.
+        // Index mappings are profile-owned. A Bot Chat must not inherit a
+        // same-id dashboard mapping when its own profile has none yet.
         if durableSessionID == nil,
-           let durable = scopeProfile.flatMap({
-               conversationIdentityIndex.durableID(forRuntime: selectedID, profile: $0)
-           }) ?? conversationIdentityIndex.durableID(forRuntime: selectedID, profile: activeProfile),
+           let durable = conversationIdentityIndex.durableID(
+               forRuntime: selectedID,
+               profile: scopeProfile ?? activeProfile
+           ),
            durable != selectedID {
             durableSessionID = durable
             accepted.insert(durable)
@@ -14516,7 +14664,7 @@ final class AppState: ObservableObject {
         return Set([session.id] + session.alternateIds).contains(activeSessionId)
     }
 
-    private func removeSessionFromLiveCatalog(_ session: SessionSummary) {
+    func removeSessionFromLiveCatalog(_ session: SessionSummary) {
         sessions.removeAll { sessionMatches($0, session) }
         cronSessions.removeAll { sessionMatches($0, session) }
         // Every non-forced catalog load merges the profile cache back into
@@ -14526,6 +14674,7 @@ final class AppState: ObservableObject {
         sessionCatalogCache.removeSession(
             withIDs: Set([session.id] + session.alternateIds)
         )
+        publishWidgetSnapshot()
     }
 
     func clearActiveSessionIfNeeded(
@@ -15082,6 +15231,98 @@ final class AppState: ObservableObject {
         await refreshBotRoster()
     }
 
+    func openWidgetConversation(
+        _ reference: WidgetConversationReference,
+        workspace: WidgetWorkspaceID,
+        lease: WidgetLaunchLease
+    ) async -> WidgetLaunchOutcome {
+        guard lease.isCurrent, activeDashboardID == workspace.dashboardID,
+              activeProfile == workspace.profile, let client, isConnected else { return .deferred }
+        if reference.kind == .dashboard {
+            guard reference.scopeProfile == workspace.profile,
+                  activeProfileSessions.contains(where: { $0.id == reference.sessionID
+                    || $0.alternateIds.contains(reference.sessionID)
+                    || $0.storedSessionId == reference.sessionID }) else {
+                return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            }
+            let transition = beginExplicitChatViewportTransition(ownedBy: lease)
+            guard lease.isCurrent else {
+                finishChatViewportTransition(generation: transition)
+                return .deferred
+            }
+            let outcome = await performSessionOpen(
+                reference.sessionID,
+                reusing: transition,
+                widgetLease: lease
+            )
+            guard lease.isCurrent else {
+                finishChatViewportTransition(generation: transition)
+                return .deferred
+            }
+            if outcome != .opened { finishChatViewportTransition(generation: transition) }
+            return outcome == .opened ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+        }
+
+        guard let botName = reference.botName,
+              botName == reference.scopeProfile,
+              let bot = botRoster.first(where: { $0.name == botName && !$0.isHiddenByMeta }) else {
+            return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+        }
+        do {
+            let rows: [BotChatLookupRow]
+            if let lookup = chatResumeLifecycleOperations.findBotChat {
+                rows = try await lookup(client, bot.name)
+            } else {
+                rows = try await client.findBotChatSession(profile: bot.name)
+            }
+            guard lease.isCurrent, self.client === client else { return .deferred }
+            guard case .success(.openExisting(let registryID, let resumeID)) = BotChatResolver.resolve(
+                rows: rows,
+                rosterCanonicalID: bot.canonicalSessionID
+            ), registryID == reference.sessionID || resumeID == reference.sessionID else {
+                return .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+            }
+            let transition = beginExplicitChatViewportTransition(ownedBy: lease)
+            guard lease.isCurrent else {
+                finishChatViewportTransition(generation: transition)
+                return .deferred
+            }
+            noteBotChatSession(resumeID, profile: bot.name, label: bot.displayLabel)
+            noteBotChatSession(registryID, profile: bot.name, label: bot.displayLabel)
+            let outcome = await performSessionOpen(
+                resumeID,
+                reusing: transition,
+                conversationProfile: bot.name,
+                preferredTitle: bot.displayLabel,
+                widgetLease: lease
+            )
+            guard lease.isCurrent else {
+                finishChatViewportTransition(generation: transition)
+                return .deferred
+            }
+            if outcome != .opened { finishChatViewportTransition(generation: transition) }
+            return outcome == .opened ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+        } catch {
+            return lease.isCurrent
+                ? .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+                : .deferred
+        }
+    }
+
+    func openWidgetVoice(workspace: WidgetWorkspaceID, lease: WidgetLaunchLease) async -> WidgetLaunchOutcome {
+        guard lease.isCurrent,
+              activeDashboardID == workspace.dashboardID,
+              activeProfile == workspace.profile else { return .deferred }
+        guard !isVoiceCallInProgress else {
+            return .failed(AppLocalization.string("End the call before starting another voice conversation."))
+        }
+        let authorization = lease.initialCaptureAuthorization()
+        let intent = PendingVoiceIntent(profile: workspace.profile, startsFreshConversation: true, source: .newCall)
+        let opened = await openVoiceConversation(intent, widgetLease: lease, initialCaptureAuthorization: authorization)
+        guard lease.isCurrent || authorization.mayStartCapture else { return .deferred }
+        return opened ? .handled : .deferred
+    }
+
     /// Opens a bot's canonical Bot Chat: consult the name-identity registry,
     /// open the confirmed chat (lineage tip), or — only once absence is
     /// CONFIRMED — create the one hidden "Bot Chat". Fail-closed throughout:
@@ -15378,6 +15619,10 @@ final class AppState: ObservableObject {
         chatResumeCoordinator.lastSession(for: profile)
     }
 
+    func adoptActiveSessionForWidgetTesting(_ sessionID: String) {
+        setActiveSessionState(id: sessionID)
+    }
+
     /// Whether the ownership match for a name was spelled exactly, so a test can
     /// pin the diagnostic copy's input without driving a routed push.
     func botProfileMatchForTesting(_ profile: String) -> (name: String, isExact: Bool)? {
@@ -15492,7 +15737,8 @@ final class AppState: ObservableObject {
         reusing viewportTransitionGeneration: UInt64?,
         presentationMigrationSessionIDs: Set<String> = [],
         conversationProfile: String? = nil,
-        preferredTitle: String? = nil
+        preferredTitle: String? = nil,
+        widgetLease: WidgetLaunchLease? = nil
     ) async -> SessionOpenOutcome {
         guard let client else { return .failed }
         // A session open takes the viewport back from any open room. A room
@@ -15522,8 +15768,9 @@ final class AppState: ObservableObject {
             ) else { return .superseded }
             transitionGeneration = viewportTransitionGeneration
         } else {
-            transitionGeneration = beginExplicitChatViewportTransition()
+            transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         }
+        guard widgetLease?.isCurrent != false else { return .superseded }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
             return .superseded
         }
@@ -15577,8 +15824,20 @@ final class AppState: ObservableObject {
             conversationIdentity: openedIdentity,
             requiredViewportTransitionGeneration: transitionGeneration,
             presentationMigrationSessionIDs: presentationMigrationSessionIDs,
-            conversationProfile: conversationProfile
+            conversationProfile: conversationProfile,
+            widgetLease: widgetLease
         )
+        guard widgetLease?.isCurrent != false else {
+            // The widget launch expired with nothing newer on screen: settle
+            // like a failed open, so the composer doesn't stay synchronizing
+            // a transcript this open will never publish.
+            if chatViewportTransitionIsCurrent(generation: transitionGeneration) {
+                settleReconciliation(token)
+                finishChatViewportTransition(generation: transitionGeneration)
+                if turnState == .synchronizing { turnState = .idle }
+            }
+            return .superseded
+        }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
             return .superseded
         }
@@ -15597,6 +15856,7 @@ final class AppState: ObservableObject {
     /// Routes a notification to its originating profile/session without
     /// allowing the ordinary cold-start session restoration to win first.
     func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
+        widgetLaunchCoordinator.supersede()
         // Where an open for a call from Hermes stopped (#449).
         var traceStage = "dashboard check"
         defer { HermesCallTrace.shared.note("Chat open ended at: \(traceStage)") }
@@ -16049,7 +16309,7 @@ final class AppState: ObservableObject {
         return profiles.first { $0.caseInsensitiveCompare(normalized) == .orderedSame } ?? normalized
     }
 
-    func createNewSession(cwd: String? = nil) async {
+    func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async {
         guard !isProfileSwitching, isConnected, !isConnecting, let client else {
             if isProfileSwitching || isConnecting {
                 errorMessage = AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
@@ -16062,24 +16322,40 @@ final class AppState: ObservableObject {
         if activeRoomSurface != nil {
             closeRoomSurface()
         }
-        let transitionGeneration = beginExplicitChatViewportTransition()
+        let transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         defer {
             cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
         }
+        guard widgetLease?.isCurrent != false else { return }
         let profile = activeProfile
         let previousSessionID = activeSessionId
         let previousTitle = activeSessionTitle
         cacheMessagePresentation()
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
+        let previousTurnState = turnState
         let token = beginReconciliation()
         turnState = .synchronizing
-        await createAndReconcileSession(using: client, profile: profile, token: token, cwd: cwd)
+        await createAndReconcileSession(
+            using: client,
+            profile: profile,
+            token: token,
+            cwd: cwd,
+            widgetLease: widgetLease
+        )
+        // An expired widget launch adopts nothing: the chat still open gets
+        // its own turn state back unless something newer took it over.
+        if widgetLease?.isCurrent == false, token == reconciliationToken,
+           activeSessionId == previousSessionID, turnState == .synchronizing {
+            turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
+        }
         // No chat started: the one still open keeps its own title. A title
         // set for it meanwhile (not the placeholder) is left alone.
-        if activeSessionId == previousSessionID, activeSessionTitle == newTitle {
+        if chatViewportTransitionIsCurrent(generation: transitionGeneration),
+           activeSessionId == previousSessionID, activeSessionTitle == newTitle {
             activeSessionTitle = previousTitle
         }
+        guard widgetLease?.isCurrent != false else { return }
     }
 
     /// Re-resume the currently visible conversation. This uses the same
@@ -20903,11 +21179,16 @@ final class AppState: ObservableObject {
         _ = await switchProfile(to: profile, reusing: nil)
     }
 
+    func switchProfileForWidget(to profile: String, lease: WidgetLaunchLease) async -> Bool {
+        await switchProfile(to: profile, reusing: nil, widgetLease: lease)
+    }
+
     @discardableResult
     private func switchProfile(
         to profile: String,
         reusing viewportTransitionGeneration: UInt64?,
-        sparingCalls: Bool = false
+        sparingCalls: Bool = false,
+        widgetLease: WidgetLaunchLease? = nil
     ) async -> Bool {
         let target = profile.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !target.isEmpty, target != activeProfile, let savedConnection = connection else {
@@ -20931,6 +21212,12 @@ final class AppState: ObservableObject {
                !chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration) {
                 return false
             }
+            guard widgetLease?.isCurrent != false else {
+                if let viewportTransitionGeneration {
+                    cancelChatViewportTransitionIfNoReplacement(generation: viewportTransitionGeneration)
+                }
+                return false
+            }
             guard !isProfileSwitching, target != activeProfile, connection == savedConnection else { return false }
             if let mintError {
                 errorMessage = AppLocalization.string("Could not switch workspace: \(UserFacingError.message(for: mintError))")
@@ -20951,7 +21238,7 @@ final class AppState: ObservableObject {
             ) else { return false }
             transitionGeneration = viewportTransitionGeneration
         } else {
-            transitionGeneration = beginExplicitChatViewportTransition()
+            transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         }
         cancelChatResumeTransportRecovery()
         // Hard profile boundary for this forward transition: cancel the
@@ -20975,6 +21262,7 @@ final class AppState: ObservableObject {
         let previousArchivedSessions = archivedSessions
         let previousProjects = projects
         let previousSupportsProjects = supportsProjects
+        let previousTurnState = turnState
         isProfileSwitching = true
         defer { isProfileSwitching = false }
         invalidateReconciliation()
@@ -20993,6 +21281,20 @@ final class AppState: ObservableObject {
                 ticket = sparedCallTicket
             } else {
                 ticket = try await mintChatResumeTicket(for: savedConnection)
+            }
+            guard widgetLease?.isCurrent != false else {
+                // Nothing has changed over yet: the previous profile keeps
+                // its approval state and, unless a newer navigation owns the
+                // chat, its turn state.
+                runtime.approvalsMode = previousApprovalsMode
+                runtime.yolo = previousYolo
+                lastReportedSessionYolo = previousLastReportedSessionYolo
+                if chatViewportTransitionIsCurrent(generation: transitionGeneration),
+                   turnState == .synchronizing {
+                    turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
+                }
+                cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
+                return false
             }
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
                 return false
@@ -21038,6 +21340,10 @@ final class AppState: ObservableObject {
             restoreActiveSessionState(for: target)
             restorePinnedSessions(for: target)
             try await connectChatResumeClient(nextClient)
+            // The new profile is connected and already active: an expired
+            // widget launch still finishes the switch (the caller stops
+            // before opening anything), or the old socket and a half-switched
+            // profile would be left behind.
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration),
                   self.client === nextClient else { return false }
             // Keep the previous socket alive until the new profile has
@@ -21132,6 +21438,7 @@ final class AppState: ObservableObject {
     @discardableResult
     private func readProfiles() async -> Bool {
         guard let bridge = dashboardTicketBridge else { return false }
+        let dashboardID = activeDashboardID
         do {
             let response: [String: Any]
             if let profileDiscoveryLoaderOverride {
@@ -21147,7 +21454,7 @@ final class AppState: ObservableObject {
             // prepareChatResumeForConnection(to:) already cleared with the
             // previous server's profile names. Discarded silently — profile
             // discovery has no retry loop to feed an error into.
-            guard dashboardTicketBridge === bridge else { return false }
+            guard dashboardTicketBridge === bridge, activeDashboardID == dashboardID else { return false }
             let values = response["profiles"] as? [Any] ?? []
             let names = values.compactMap { value -> String? in
                 if let name = value as? String { return name }
@@ -21164,6 +21471,9 @@ final class AppState: ObservableObject {
                 : orderedProfiles(names + ["default"])
             profiles = nextProfiles
             persistKnownProfiles(nextProfiles)
+            if !names.isEmpty, let dashboardID {
+                retainWidgetProfiles(Set(nextProfiles), dashboardID: dashboardID)
+            }
             // A non-empty response is authoritative: if the server no longer
             // knows the active profile (deleted externally), re-home onto a
             // valid fallback instead of leaving `activeProfile ∉ profiles` —
@@ -21189,7 +21499,7 @@ final class AppState: ObservableObject {
             }
             return !names.isEmpty
         } catch {
-            guard dashboardTicketBridge === bridge else { return false }
+            guard dashboardTicketBridge === bridge, activeDashboardID == dashboardID else { return false }
             // Profile discovery is additive and monotonic. A failed refresh
             // (bridge still loading, dashboard restart, transient 5xx) must
             // never shrink the visible list or overwrite a complete persisted
@@ -22558,6 +22868,7 @@ final class AppState: ObservableObject {
                 setActiveSessionTitle(title)
             }
         }
+        publishWidgetSnapshot()
     }
 
     // MARK: - Stream event handling
@@ -24620,8 +24931,17 @@ final class AppState: ObservableObject {
     }
 
     @discardableResult
-    func openVoiceConversation(_ intent: PendingVoiceIntent) async -> Bool {
+    func openVoiceConversation(
+        _ intent: PendingVoiceIntent,
+        widgetLease: WidgetLaunchLease? = nil,
+        initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil
+    ) async -> Bool {
         guard isConnected else { return false }
+        guard widgetLease?.isCurrent != false else { return false }
+        if widgetLease != nil, isVoiceCallInProgress {
+            errorMessage = AppLocalization.string("End the call before starting another voice conversation.")
+            return true
+        }
         if intent.source != .hermesCall { keepVoiceFromHermesCallCleanup() }
         voiceLaunchesInFlight += 1
         defer {
@@ -24643,7 +24963,12 @@ final class AppState: ObservableObject {
         }
         if let liveEngine {
             if targetProfile != activeProfile {
-                await switchProfile(to: targetProfile)
+                if let widgetLease {
+                    _ = await switchProfile(to: targetProfile, reusing: nil, widgetLease: widgetLease)
+                } else {
+                    await switchProfile(to: targetProfile)
+                }
+                guard widgetLease?.isCurrent != false else { return false }
                 guard targetProfile == activeProfile else {
                     errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
                     return true
@@ -24651,9 +24976,9 @@ final class AppState: ObservableObject {
                 guard isConnected else { return false }
             }
             switch liveEngine {
-            case .geminiLive: return openGeminiLiveConversation(attachingTo: thread)
-            case .gptLive: return openGPTLiveConversation(attachingTo: thread)
-            case .grokLive: return openGrokLiveConversation(attachingTo: thread)
+            case .geminiLive: return openGeminiLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .gptLive: return openGPTLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .grokLive: return openGrokLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
             }
         }
         // Mutual exclusion: the voice conversation owns playback while its
@@ -24662,8 +24987,10 @@ final class AppState: ObservableObject {
         if showVoiceSheet { closeVoiceConversation() }
         let outcome = await prepareVoiceConversation(
             profile: intent.profile,
-            startsFreshConversation: intent.startsFreshConversation
+            startsFreshConversation: intent.startsFreshConversation,
+            widgetLease: widgetLease
         )
+        guard widgetLease?.isCurrent != false else { return false }
         switch outcome {
         case .deferred:
             return false
@@ -24680,6 +25007,7 @@ final class AppState: ObservableObject {
         // attachToLiveVoiceConversation instead and never mutates
         // these presentation flags.
         showSidebar = false
+        voiceConversationController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
         // A connected car shows its voice screen before the sheet's
         // auto-listen opens the microphone.
         CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
@@ -24717,7 +25045,8 @@ final class AppState: ObservableObject {
     /// (fresh gateway on the same session) without clearing the transcript.
     func prepareVoiceConversation(
         profile: String?,
-        startsFreshConversation: Bool
+        startsFreshConversation: Bool,
+        widgetLease: WidgetLaunchLease? = nil
     ) async -> VoiceConversationPrepareOutcome {
         // The classic conversation (e.g. CarPlay) takes over from Gemini
         // Live: the two voice modes never run at once.
@@ -24727,7 +25056,12 @@ final class AppState: ObservableObject {
         if let rawProfile = profile {
             let requestedProfile = rawProfile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !requestedProfile.isEmpty, requestedProfile != activeProfile {
-                await switchProfile(to: requestedProfile)
+                if let widgetLease {
+                    _ = await switchProfile(to: requestedProfile, reusing: nil, widgetLease: widgetLease)
+                } else {
+                    await switchProfile(to: requestedProfile)
+                }
+                guard widgetLease?.isCurrent != false else { return .deferred }
             }
             guard requestedProfile.isEmpty || requestedProfile == activeProfile else {
                 errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
@@ -24754,15 +25088,18 @@ final class AppState: ObservableObject {
                 return .failed(AppLocalization.string("Stop the current response before starting voice in this conversation."))
             }
             await cancelCurrent()
+            guard widgetLease?.isCurrent != false else { return .deferred }
         }
         await refreshVoiceCapabilities()
+        guard widgetLease?.isCurrent != false else { return .deferred }
         guard canStartVoiceConversation else {
             errorMessage = voiceUnavailableReason
             return .failed(voiceUnavailableReason ?? AppLocalization.string("Voice is unavailable."))
         }
         let previousSessionID = activeSessionId
         if startsFreshConversation || activeSessionId == nil {
-            await createNewSession()
+            await createNewSession(widgetLease: widgetLease)
+            guard widgetLease?.isCurrent != false else { return .deferred }
             if startsFreshConversation, activeSessionId == previousSessionID {
                 errorMessage = AppLocalization.string("Hermes could not create the requested voice conversation.")
                 return .failed(AppLocalization.string("Hermes could not create the requested voice conversation."))
