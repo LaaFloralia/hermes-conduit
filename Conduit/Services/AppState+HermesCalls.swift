@@ -315,6 +315,10 @@ extension AppState {
                 opened = await self.openVoiceConversation(intent)
                 if !opened || !self.showVoiceSheet {
                     self.voiceBackgroundJobSupervisor.clearCallOpening(opening.spokenBrief)
+                } else {
+                    // Off screen the sheet may not run its own auto-listen;
+                    // the answered call lets it start from here.
+                    self.startDeferredVoiceSheetAutoListen()
                 }
             }
             let shown = self.errorMessage != nil && self.errorMessage != errorBefore
@@ -511,9 +515,23 @@ extension AppState {
     /// A call from Hermes rings or runs in CallKit: transport recovery runs
     /// with the phone locked until it's over.
     func setNativeHermesCallActive(_ active: Bool) {
+        // Every call over clears the answer and its mute, even one that
+        // ended before it was marked active.
+        if !active {
+            isNativeHermesCallMuted = false
+            setNativeHermesCallAnswered(false)
+        }
         guard isNativeHermesCallActive != active else { return }
         isNativeHermesCallActive = active
         if active { recoverTransportForCarPlayIfNeeded(immediately: true) }
+    }
+
+    /// The user answered the call in CallKit: the classic Voice it opens
+    /// may listen with the phone locked (#558). Cleared when the call ends.
+    func setNativeHermesCallAnswered(_ answered: Bool) {
+        guard isNativeHermesCallAnswered != answered else { return }
+        isNativeHermesCallAnswered = answered
+        reassertVoiceSurfaceGate()
     }
 
     /// The user hung up the CallKit call: the voice conversation it opened
@@ -549,6 +567,12 @@ extension AppState {
 
     /// The CallKit call's mute button.
     func setVoiceMutedForNativeCall(_ muted: Bool) {
+        isNativeHermesCallMuted = muted
+        // A classic voice still waiting to start its first listen (#558)
+        // must not open the mic against the mute, whether or not its
+        // session is prepared yet; `openVoiceConversation` reads the mute
+        // for a voice that opens after it.
+        if muted { voiceSheetShouldAutoListen = false }
         if isGeminiLiveActive {
             geminiLiveController.setMicrophoneMuted(muted)
         } else if isGPTLiveActive {
