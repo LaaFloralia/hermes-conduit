@@ -22,6 +22,31 @@ enum GrokLiveProtocol {
     /// The transcription model xAI's own voice clients use.
     static let transcriptionModel = "grok-transcribe"
 
+    /// Added to Grok Live's instructions after the shared ones. On a user's
+    /// calls Grok never called start_job for requests like "check my email",
+    /// which Gemini and GPT-Live hand to Hermes. Written for
+    /// the model and sent verbatim (the Voice settings preview shows it as
+    /// sent, like the rest of the instructions), so not localized.
+    static let delegationInstructions = "\nYou can't see the user's email, messages, calendar and schedule, to-dos, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there (\"what's on my plate today?\" included), call start_job with their request instead of saying you can't. If they only ask whether you can see it, say Hermes can check it for them. Never answer it from guesses or a web lookup, and if start_job fails, tell them plainly."
+
+    /// What Grok's instructions add after the shared ones: the delegation
+    /// rules and the clock.
+    static func grokInstructions(now: Date, timeZone: TimeZone) -> String {
+        delegationInstructions + clockInstructions(now: now, timeZone: timeZone)
+    }
+
+    /// The phone's clock at the start of the call, for Grok's instructions.
+    /// Grok has no clock of its own: asked the time, it searched the web
+    /// and answered with the wrong zone and hour. Written for the model, so
+    /// formatted in a fixed English locale, not localized.
+    static func clockInstructions(now: Date, timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "EEEE, MMMM d, yyyy, h:mm a"
+        return "\nWhen this call started it was \(formatter.string(from: now)) in the user's time zone (\(timeZone.identifier)). Use that for the time, date and day of the week, counting on from it as the call goes; never look them up on the web."
+    }
+
     // MARK: Client → server
 
     /// The session's configuration: server-side turn detection (the user's
@@ -178,6 +203,11 @@ enum GrokLiveProtocol {
         /// A response's whole spoken transcript; only used when no deltas
         /// carried it.
         case outputTranscriptDone(String)
+        /// The user's words so far in one input item. xAI sends these as
+        /// cumulative snapshots, sometimes more than once per item, not as
+        /// deltas: the session turns them into the new words only.
+        /// `itemID` is nil when xAI sent none.
+        case inputTranscriptSnapshot(itemID: String?, text: String)
         case event(GeminiLiveProtocol.ServerEvent)
     }
 
@@ -202,7 +232,8 @@ enum GrokLiveProtocol {
             return [.event(.interrupted)]
         case "conversation.item.input_audio_transcription.completed":
             guard let text = object["transcript"] as? String, !text.isEmpty else { return [] }
-            return [.event(.inputTranscription(text))]
+            let itemID = (object["item_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            return [.inputTranscriptSnapshot(itemID: itemID, text: text)]
         case "response.output_audio.delta", "response.audio.delta":
             guard let base64 = object["delta"] as? String, let pcm = Data(base64Encoded: base64), !pcm.isEmpty else { return [] }
             return [.event(.audio(pcm, sampleRate: outputSampleRate))]
@@ -218,6 +249,20 @@ enum GrokLiveProtocol {
         default:
             return []
         }
+    }
+
+    /// What a cumulative input transcript snapshot adds to the item's last
+    /// one, as the delta the shared controller appends; nil when it adds
+    /// nothing. Only a snapshot that extends the last one adds words: an
+    /// appended transcript can't take words back, so a revision of earlier
+    /// words ("send mail" then "send the mail") adds nothing rather than
+    /// repeating them. The session keeps a longer revision as the baseline:
+    /// words a later snapshot adds after it still arrive, but the revised
+    /// words themselves never reach the transcript.
+    static func inputTranscriptDelta(previous: String, snapshot: String) -> String? {
+        guard snapshot != previous, snapshot.hasPrefix(previous) else { return nil }
+        let added = String(snapshot.dropFirst(previous.count))
+        return added.isEmpty ? nil : added
     }
 
     /// `arguments` is a JSON string; Conduit's tools take string values.

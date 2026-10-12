@@ -83,6 +83,12 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
     /// Whether the current response's transcript came as deltas; if not,
     /// its final transcript is shown instead.
     private var responseHadTranscript = false
+    /// The longest input transcript snapshot seen per xAI item on this
+    /// connection, so a repeated or growing snapshot adds only its new words.
+    private var inputSnapshots: [String: String] = [:]
+    /// Item ids in the order they arrived, oldest first.
+    private var inputSnapshotOrder: [String] = []
+    private static let rememberedInputItems = 4
 
     init(
         client: GrokLiveConnecting,
@@ -328,6 +334,9 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
         awaitingSetup = (id, attempt)
         responseActive = false
         responseRequested = false
+        // Item ids belong to the xAI session, which a new connection replaces.
+        inputSnapshots = [:]
+        inputSnapshotOrder = []
         receiveTask = Task { [weak self] in await self?.receiveLoop(socket, id: id) }
         // A server that neither confirms the session nor closes would leave
         // the call connecting forever.
@@ -408,11 +417,40 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             if responseRequested { sendResponseCreate() }
         case .outputTranscriptDone(let text):
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }
+        case .inputTranscriptSnapshot(let itemID, let text):
+            // Without an item id there is nothing to compare against: the
+            // snapshot goes through as it is.
+            guard let itemID else {
+                onEvent?(.inputTranscription(text))
+                return
+            }
+            let previous = inputSnapshots[itemID] ?? ""
+            // The longest snapshot is the baseline: a shorter revision adds
+            // nothing, and must not lower what later snapshots diff against.
+            // Assumes an item id names one utterance, as conversation item
+            // ids do in the Realtime protocol xAI follows; unverified on a
+            // real xAI call.
+            if text.count > previous.count { rememberInputSnapshot(text, for: itemID) }
+            if let added = GrokLiveProtocol.inputTranscriptDelta(previous: previous, snapshot: text) {
+                onEvent?(.inputTranscription(added))
+            }
         case .event(let event):
             if case .outputTranscription = event { responseHadTranscript = true }
             if responseActive { armResponseWatchdog() }
             onEvent?(event)
         }
+    }
+
+    /// Keeps a few recent items only: xAI's snapshots belong to the item in
+    /// flight, and a long call would otherwise hold every utterance.
+    private func rememberInputSnapshot(_ text: String, for itemID: String) {
+        if inputSnapshots[itemID] == nil {
+            inputSnapshotOrder.append(itemID)
+            while inputSnapshotOrder.count > Self.rememberedInputItems {
+                inputSnapshots[inputSnapshotOrder.removeFirst()] = nil
+            }
+        }
+        inputSnapshots[itemID] = text
     }
 
     private func connectionFailed(_ id: UUID, error: Error, serverClose: GeminiLiveServerClose? = nil) {
