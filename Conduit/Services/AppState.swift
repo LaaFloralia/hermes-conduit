@@ -3845,6 +3845,7 @@ final class AppState: ObservableObject {
         )
         voiceCallChatLinks.add(link)
         voiceCallChatLinks.store(in: defaults)
+        voiceCallChatLinksRevision &+= 1
         guard profile == activeProfile, let sessionID = activeSessionId else { return }
         let merged = mergeVoiceCallMarkers(into: messages, sessionId: sessionID)
         guard merged.count != messages.count else { return }
@@ -4095,7 +4096,7 @@ final class AppState: ObservableObject {
     /// badge). Matches every id the session answers to.
     func isVoiceJobSession(_ session: SessionSummary) -> Bool {
         guard let remembered = voiceJobSessionIDsByProfile[activeProfile], !remembered.isEmpty else { return false }
-        let ids = Set([session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds)
+        let ids = Set(session.nestingIDs)
         return remembered.contains { ids.contains($0) }
     }
 
@@ -4193,6 +4194,10 @@ final class AppState: ObservableObject {
     /// Voice tags from the Hermes host, keyed by `voiceHistoryKey`, then by
     /// session id.
     @Published private(set) var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] = [:]
+    /// Bumped whenever a call-chat link lands, so observers (the Sessions
+    /// drawer's nests) can re-resolve parents the row list alone doesn't
+    /// show changing.
+    @Published private(set) var voiceCallChatLinksRevision = 0
     private var voiceTagsFetchedAt: [String: Date] = [:]
     private var voiceTagRefreshTask: Task<Void, Never>?
     static let voiceTagRefreshInterval: TimeInterval = 15
@@ -4424,7 +4429,7 @@ final class AppState: ObservableObject {
     /// The row's voice tag, matched through every id the row answers to.
     func voiceSessionTag(for session: SessionSummary) -> (id: String, tag: VoiceSessionTag)? {
         guard let tags = voiceSessionTagsByKey[voiceHistoryKey(profile: activeProfile)], !tags.isEmpty else { return nil }
-        for id in [session.id, session.storedSessionId].compactMap({ $0 }) + session.alternateIds {
+        for id in session.nestingIDs {
             if let tag = tags[id] { return (id, tag) }
         }
         return nil
@@ -4452,13 +4457,26 @@ final class AppState: ObservableObject {
             }
         case .job:
             if let parentID = tag.parentID,
-               let parent = activeProfileSessions.first(where: { ([$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds).contains(parentID) }) {
+               let parent = activeProfileSessions.first(where: { $0.nestingIDs.contains(parentID) }) {
                 return AppLocalization.string("From \(parent.title)")
             }
             return tag.parentTitle.map { AppLocalization.string("From \($0)") }
         case .classic:
             return nil
         }
+    }
+
+    /// The row this session nests under in the Sessions drawer (#556): the
+    /// call a voice job came from, or the chat a saved call was started in.
+    /// The nest only shows when that row is in the list; a row whose parent
+    /// is missing stays top level (SessionNesting.group).
+    func sessionNestingParentKey(for session: SessionSummary) -> String? {
+        SessionNesting.parentKey(
+            for: session,
+            tag: voiceSessionTag(for: session)?.tag,
+            chatLinks: voiceCallChatLinks,
+            profile: activeProfile
+        )
     }
 
     /// Reads the profile's voice tags, at most every few seconds unless
@@ -4525,7 +4543,7 @@ final class AppState: ObservableObject {
     /// the listed row's, else the call's new-row title or the open chat's.
     private func voiceJobParentTitle(_ parentID: String?) -> String? {
         guard let parentID else { return nil }
-        if let parent = activeProfileSessions.first(where: { ([$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds).contains(parentID) }) {
+        if let parent = activeProfileSessions.first(where: { $0.nestingIDs.contains(parentID) }) {
             return parent.title
         }
         if voiceCallRecorder?.sessionID == parentID { return voiceCallRecorder?.newRowTitle }

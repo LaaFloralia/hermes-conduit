@@ -186,6 +186,14 @@ struct SessionList: View {
     @State private var selectedProject: ProjectSummary?
     @State private var projectPendingRename: ProjectSummary?
     @State private var projectPendingDeletion: ProjectSummary?
+    /// Parents the user expanded in the nested list (#556). Not persisted:
+    /// every nest starts collapsed. Entries for rows that left the list
+    /// are kept for the profile's lifetime, so a row that returns keeps
+    /// its expansion.
+    @State private var expandedNestIDs: Set<String> = []
+    /// The last activation the reveal served and the ancestor path it
+    /// revealed (NestRevealLatch).
+    @State private var revealLatch = NestRevealLatch()
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
     /// Quick status filter (#454), layered on top of the source filter.
@@ -405,8 +413,8 @@ struct SessionList: View {
 
                 if layout.liveSections && !unpinnedSessions.isEmpty {
                     Section(pinnedSessions.isEmpty ? AppLocalization.string("Sessions") : AppLocalization.string("Recent")) {
-                        ForEach(unpinnedSessions) { session in
-                            sessionRow(session)
+                        ForEach(nestedSessionNodes) { node in
+                            sessionNestRow(node, depth: 0)
                         }
                     }
                 }
@@ -416,6 +424,22 @@ struct SessionList: View {
             .listStyle(.plain)
             .refreshable {
                 await appState.refreshSessionCatalog()
+            }
+            .onAppear { revealActiveNestAncestors() }
+            .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }
+            // The row list covers a parent arriving, leaving, or changing
+            // shape; a stored id backfilled into it can parent a row
+            // without changing any id.
+            .onChange(of: unpinnedSessions) { _, _ in revealActiveNestAncestors() }
+            // Tags and call-chat links can parent a row without changing
+            // the row list, so the reveal re-runs when they land too.
+            .onChange(of: appState.voiceSessionTagsByKey) { _, _ in revealActiveNestAncestors() }
+            .onChange(of: appState.voiceCallChatLinksRevision) { _, _ in revealActiveNestAncestors() }
+            // Nest keys are ids, which another profile can reuse.
+            .onChange(of: appState.activeProfile) { _, _ in
+                expandedNestIDs = []
+                revealLatch = NestRevealLatch()
+                revealActiveNestAncestors()
             }
         }
         .sheet(isPresented: $showFilterOrder) {
@@ -645,6 +669,18 @@ struct SessionList: View {
         displayedSessions.filter { !appState.isSessionPinned($0) }
     }
 
+    /// The Recent rows, voice-spawned sessions nested under the session
+    /// that started them (#556). A search or a status filter is a lookup,
+    /// not a browse: it flattens the list to the matching rows.
+    private var nestedSessionNodes: [SessionNesting.Node] {
+        SessionNesting.rows(
+            unpinnedSessions,
+            query: searchText,
+            statusFilterActive: statusFilter != nil,
+            parentKeyOf: appState.sessionNestingParentKey
+        )
+    }
+
     private var sourceFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -765,6 +801,37 @@ struct SessionList: View {
     }
 
     private func sessionRow(_ session: SessionSummary) -> some View {
+        sessionRowChrome(sessionRowButton(session, nest: nil), session: session)
+    }
+
+    /// A row of the nested list's presentation (#556): the aggregate of
+    /// its own and its children's signals, so a collapsed nest never hides
+    /// a child's activity, and whether a parent's expander replaces the
+    /// row's own chevron — a leaf keeps it. The unread dot is a summary;
+    /// the swipe actions stay per-conversation, on the row's own state —
+    /// the read ledger is per-session, so an aggregate-driven toggle would
+    /// press a button that changes nothing the row shows.
+    private struct SessionNestPresentation {
+        var isUnread: Bool
+        var liveStatus: SessionLiveStatus?
+        var showsDisclosureIndicator: Bool
+    }
+
+    /// Row chrome metrics: each nested generation indents by this much.
+    private enum SessionNestMetrics {
+        static let indent: CGFloat = 26
+    }
+
+    /// The stable identity a nest's expansion is keyed on (see
+    /// SessionNesting.nestKey).
+    private func nestKey(_ session: SessionSummary) -> String {
+        SessionNesting.nestKey(of: session)
+    }
+
+    /// The row's tap target: the card button itself. `nestParentTitle`
+    /// names the row above for VoiceOver on a nested row whose own second
+    /// line doesn't.
+    private func sessionRowButton(_ session: SessionSummary, nest: SessionNestPresentation?, nestParentTitle: String? = nil) -> some View {
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -774,57 +841,194 @@ struct SessionList: View {
                 session: session,
                 isSelected: session.id == appState.activeSessionId,
                 isPinned: appState.isSessionPinned(session),
-                isUnread: appState.isSessionUnread(session),
-                liveStatus: appState.sessionLiveStatus(session),
+                isUnread: nest?.isUnread ?? appState.isSessionUnread(session),
+                liveStatus: nest?.liveStatus ?? appState.sessionLiveStatus(session),
                 isVoiceJob: appState.isVoiceJobSession(session),
                 category: appState.sessionCategory(for: session),
-                detail: appState.voiceSessionDetail(for: session)
+                detail: appState.voiceSessionDetail(for: session),
+                showsDisclosureIndicator: nest?.showsDisclosureIndicator ?? true
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(Text(nestParentTitle.map { AppLocalization.string("From \($0)") } ?? ""))
         .accessibilityHint("Swipe or touch and hold for conversation actions.")
-        .contextMenu {
-            SessionActionMenuItems(
-                session: session,
-                onRename: { sessionPendingRename = session },
-                onDelete: { sessionPendingDeletion = session }
-            )
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                Haptics.light()
-                appState.toggleSessionPinned(session)
-            } label: {
-                Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
-            }
-            .tint(.conduitAccent)
+    }
 
-            ReadStateToggleButton(session: session)
-                .tint(.blue)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                Task {
-                    Haptics.mutationCompleted(await appState.archiveSession(session))
+    /// What every row of the sessions list carries — the touch-and-hold
+    /// menu, the swipes, the row chrome — applied at the row's root,
+    /// whether that root is the card alone or the card with its expander
+    /// beside it.
+    private func sessionRowChrome<V: View>(_ content: V, session: SessionSummary) -> some View {
+        content
+            .contextMenu {
+                SessionActionMenuItems(
+                    session: session,
+                    onRename: { sessionPendingRename = session },
+                    onDelete: { sessionPendingDeletion = session }
+                )
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    Haptics.light()
+                    appState.toggleSessionPinned(session)
+                } label: {
+                    Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
                 }
-            } label: {
-                Label("Archive", systemImage: "archivebox")
-            }
-            .tint(.orange)
-            .disabled(appState.isSessionMutationInFlight(session))
+                .tint(.conduitAccent)
 
-            Button(role: .destructive) {
-                Haptics.warning()
-                sessionPendingDeletion = session
-            } label: {
-                Label("Delete", systemImage: "trash")
+                ReadStateToggleButton(session: session)
+                    .tint(.blue)
             }
-            .disabled(appState.isSessionMutationInFlight(session))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button {
+                    Task {
+                        Haptics.mutationCompleted(await appState.archiveSession(session))
+                    }
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+                .tint(.orange)
+                .disabled(appState.isSessionMutationInFlight(session))
+
+                Button(role: .destructive) {
+                    Haptics.warning()
+                    sessionPendingDeletion = session
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .disabled(appState.isSessionMutationInFlight(session))
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+    }
+
+    /// One row of the nested list: the row itself plus, for a parent, its
+    /// expander beside it, and its children once expanded (#556). The
+    /// expander sits outside the row's own button so both keep clean hit
+    /// targets. A nested row's VoiceOver value names the row above it —
+    /// unless its own second line already does (a job's "From ‹call›").
+    private func sessionNestRow(_ node: SessionNesting.Node, depth: Int, parentTitle: String? = nil) -> some View {
+        let isExpanded = expandedNestIDs.contains(nestKey(node.session))
+        let signals = SessionNesting.signals(
+            node,
+            isUnread: appState.isSessionUnread,
+            liveStatus: appState.sessionLiveStatus
+        )
+        let nestParentTitle = SessionNesting.parentAccessibilityValueTitle(
+            detail: appState.voiceSessionDetail(for: node.session),
+            parentTitle: depth > 0 ? parentTitle : nil
+        )
+        return Group {
+            sessionRowChrome(
+                HStack(spacing: 6) {
+                    sessionRowButton(
+                        node.session,
+                        nest: SessionNestPresentation(
+                            isUnread: signals.isUnread,
+                            liveStatus: signals.liveStatus,
+                            showsDisclosureIndicator: node.children.isEmpty
+                        ),
+                        nestParentTitle: nestParentTitle
+                    )
+                    if !node.children.isEmpty {
+                        nestExpander(node: node, isExpanded: isExpanded)
+                    }
+                }
+                // Today's chains stop at chat → call → job; the cap keeps
+                // any future deeper shape from indenting off the screen.
+                .padding(.leading, CGFloat(min(depth, 3)) * SessionNestMetrics.indent),
+                session: node.session
+            )
+            if isExpanded {
+                ForEach(node.children) { child in
+                    // AnyView breaks the recursion: a nest row's opaque
+                    // type can't be defined in terms of itself.
+                    AnyView(sessionNestRow(child, depth: depth + 1, parentTitle: node.session.title))
+                }
+            }
         }
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+    }
+
+    /// Expands the parents and grandparents of the open conversation, so a
+    /// chat the drawer would otherwise hide reveals itself — even when the
+    /// rows or the links that parent them land after the list first
+    /// appeared. A collapse the user chose stands while they stay inside
+    /// the nest and behind background triggers, but never hides the row
+    /// they just opened; a path that grows under them — a late-landing
+    /// parent link — still reveals, since the alternative is hiding the
+    /// open row (NestRevealLatch). A runtime-id rebind of the same
+    /// conversation counts as a new activation and reveals too.
+    private func revealActiveNestAncestors() {
+        let nest = activeNestAncestors
+        guard let toExpand = revealLatch.reveal(
+            active: appState.activeSessionId,
+            ancestors: nest.keys,
+            listHasRows: !unpinnedSessions.isEmpty,
+            rowIsListed: nest.rowIsListed,
+            hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
+        ) else { return }
+        // The reveal moves rows the same way the expander does.
+        withAnimation(ConduitMotion.response) {
+            expandedNestIDs.formUnion(toExpand)
+        }
+    }
+
+    /// The ancestors of the open conversation within the nested list, and
+    /// whether its row is listed at all, ranked like the grouping itself
+    /// (SessionNesting.ancestorKeys).
+    private var activeNestAncestors: (keys: Set<String>, rowIsListed: Bool) {
+        SessionNesting.ancestorKeys(of: appState.activeSessionId ?? "", in: nestedSessionNodes)
+    }
+
+    /// The expander's hint names the tap's effect (#556): hiding an
+    /// expanded nest, showing a collapsed one.
+    static func nestExpanderHint(isExpanded: Bool) -> String {
+        AppLocalization.string(isExpanded ? "Hide sessions" : "Show sessions")
+    }
+
+    /// The parent's expand control: a count of everything it hides while
+    /// collapsed, and a chevron that turns with the nest. Names the row
+    /// it expands for VoiceOver.
+    private func nestExpander(node: SessionNesting.Node, isExpanded: Bool) -> some View {
+        Button {
+            Haptics.light()
+            withAnimation(ConduitMotion.response) {
+                if isExpanded {
+                    expandedNestIDs.remove(nestKey(node.session))
+                } else {
+                    expandedNestIDs.insert(nestKey(node.session))
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                // The count keeps its slot while expanded, so the chevron
+                // doesn't jump sideways on the toggle.
+                Text(String(node.descendantCount))
+                    .font(.caption2.weight(.semibold))
+                    .dynamicTypeSize(...DynamicTypeSize.listRowCap)
+                    .foregroundStyle(Color.conduitAccent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.conduitAccent.opacity(0.15), in: Capsule())
+                    .opacity(isExpanded ? 0 : 1)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .conduitFixedGlyph()
+                    .foregroundStyle(Color.secondary.opacity(0.6))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            }
+            // The target keeps its HIG minimum and grows with an
+            // accessibility-size count.
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(node.session.title) + Text(verbatim: ", ") + Text("\(node.descendantCount) sessions"))
+        .accessibilityHint(Self.nestExpanderHint(isExpanded: isExpanded))
+        .accessibilityValue(Text(AppLocalization.string(isExpanded ? "Expanded" : "Collapsed")))
     }
 }
 
