@@ -3593,6 +3593,7 @@ final class AppState: ObservableObject {
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
     private let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     private let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
+    private let hostPinsAdoptedKey = "conduit.hostPinsAdopted.v1"
     private let voiceJobSessionIDsByProfileKey = "conduit.voiceJobSessionIdsByProfile.v1"
     private let activeProfileKey = "conduit.activeProfile"
     private let themePreferenceKey = "conduit.themePreference"
@@ -3615,6 +3616,9 @@ final class AppState: ObservableObject {
     static let chatResumeServerIdentityKey = "conduit.chatResumeServerIdentity.v1"
     private var activeSessionTitlesByProfile: [String: String] = [:]
     private var pinnedSessionIDsByProfile: [String: [String]] = [:]
+    /// Pins shared with Hermes' own flag where the host has it (#555).
+    private var sessionPinSync = SessionPinSync()
+    private var hostPinWriteChain: Task<Void, Never>?
     /// Session ids of chats started as Voice background jobs, per profile,
     /// newest last. Presentation only (the session-list badge).
     @Published private(set) var voiceJobSessionIDsByProfile: [String: [String]] = [:]
@@ -3953,6 +3957,7 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
+        sessionPinSync = SessionPinSync(adopted: Set(defaults.stringArray(forKey: hostPinsAdoptedKey) ?? []))
         if let data = defaults.data(forKey: chatReadLedgerKey),
            let stored = try? JSONDecoder().decode(ChatReadLedger.self, from: data) {
             chatReadState = ChatReadState(ledger: stored)
@@ -4006,10 +4011,84 @@ final class AppState: ObservableObject {
     }
 
     private func pinID(for session: SessionSummary) -> String {
-        if let rootID = session.lineageRootId?.trimmingCharacters(in: .whitespacesAndNewlines), !rootID.isEmpty {
-            return rootID
+        SessionPinSync.pinID(for: session)
+    }
+
+    private func persistHostPinsAdopted() {
+        if sessionPinSync.adopted.isEmpty {
+            defaults.removeObject(forKey: hostPinsAdoptedKey)
+        } else {
+            defaults.set(sessionPinSync.adopted.sorted(), forKey: hostPinsAdoptedKey)
         }
-        return session.id
+    }
+
+    /// The phone's pins are gone, so no host owns them any more: the next
+    /// listing takes the host's pins as they are.
+    private func resetHostPins() {
+        sessionPinSync.reset()
+        defaults.removeObject(forKey: hostPinsAdoptedKey)
+    }
+
+    /// Folds Hermes' `pinned` flag from rows fetched just now into the
+    /// profile's pins, and sends phone-only pins up the first time the host
+    /// reports the flag (#555). A host without the flag changes nothing.
+    private func applyHostPins(_ listed: [SessionSummary], profile: String, using bridge: DashboardTicketBridge) {
+        sessionPinSync.setHost(bridge.baseURL)
+        let current = pinnedSessionIDsByProfile[profile] ?? []
+        let adoptedBefore = sessionPinSync.adopted
+        let outcome = sessionPinSync.reconcile(pins: current, listed: listed, profile: profile)
+        if sessionPinSync.adopted != adoptedBefore { persistHostPinsAdopted() }
+        if outcome.pins != current { storePins(outcome.pins, profile: profile) }
+        for upload in outcome.uploads {
+            let generation = sessionPinSync.recordWrite(pinID: upload.pinID, profile: profile, pinned: true)
+            enqueueHostPinWrite { [weak self] in
+                // Another host's sync starts over; nothing here is its.
+                guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
+                do {
+                    try await self.sendHostPin(upload.hostID, pinned: true, profile: profile, using: bridge)
+                    guard self.sessionPinSync.host == bridge.baseURL else { return }
+                    self.sessionPinSync.uploadSucceeded(pinID: upload.pinID, profile: profile)
+                } catch DashboardTicketBridgeError.http(status: let status, detail: _) where status == 404 || status == 410 {
+                    // The chat is gone from the host; so is its pin.
+                    guard self.sessionPinSync.host == bridge.baseURL,
+                          self.sessionPinSync.discardWrite(pinID: upload.pinID, profile: profile, generation: generation)
+                    else { return }
+                    let pins = self.pinnedSessionIDsByProfile[profile] ?? []
+                    if pins.contains(upload.pinID) {
+                        self.storePins(pins.filter { $0 != upload.pinID }, profile: profile)
+                        self.publishWidgetSnapshot()
+                    }
+                } catch {
+                    // Its pending value holds off a resend until it lapses.
+                    sessionCatalogLog.notice("Pin upload failed: \(String(describing: error), privacy: .public)")
+                }
+            }
+        }
+    }
+
+    /// Pin writes go out one at a time, in the order they were made, so the
+    /// newest one for a chat is the one Hermes keeps.
+    private func enqueueHostPinWrite(_ write: @escaping @MainActor () async -> Void) {
+        let previous = hostPinWriteChain
+        hostPinWriteChain = Task { @MainActor in
+            await previous?.value
+            await write()
+        }
+    }
+
+    private func storePins(_ pins: [String], profile: String) {
+        pinnedSessionIDsByProfile[profile] = pins
+        if profile == activeProfile { pinnedSessionIDs = pins }
+        persistPinnedSessions()
+    }
+
+    /// Writes Hermes' pin flag, which Desktop shows and changes too.
+    private func sendHostPin(_ hostID: String, pinned: Bool, profile: String, using bridge: DashboardTicketBridge) async throws {
+        _ = try await bridge.requestJSON(
+            path: dashboardPath("/api/sessions/\(encodedSessionID(hostID))", profile: profile),
+            method: "PATCH",
+            body: DashboardPath.bodyWithProfile(["pinned": pinned], profile: profile)
+        )
     }
 
     /// Whether a chat was started as a Voice background job (session-list
@@ -5629,22 +5708,47 @@ final class AppState: ObservableObject {
     }
 
     func isSessionPinned(_ session: SessionSummary) -> Bool {
-        let ids = Set([pinID(for: session), session.id] + session.alternateIds)
+        let ids = SessionPinSync.pinIDs(for: session)
         return pinnedSessionIDs.contains { ids.contains($0) }
     }
 
     func toggleSessionPinned(_ session: SessionSummary) {
-        guard sessionBelongsToProfile(session, profile: activeProfile) else { return }
+        let profile = activeProfile
+        guard sessionBelongsToProfile(session, profile: profile) else { return }
+        let pinned = !isSessionPinned(session)
+        setLocalPin(session, pinned: pinned, profile: profile)
+        guard let bridge = dashboardTicketBridge,
+              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
         let pinID = pinID(for: session)
-        if isSessionPinned(session) {
-            let ids = Set([pinID, session.id] + session.alternateIds)
-            pinnedSessionIDs.removeAll { ids.contains($0) }
-        } else {
-            pinnedSessionIDs.removeAll { $0 == pinID }
-            pinnedSessionIDs.append(pinID)
+        let generation = sessionPinSync.recordWrite(pinID: pinID, profile: profile, pinned: pinned)
+        enqueueHostPinWrite { [weak self] in
+            guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
+            do {
+                try await self.sendHostPin(session.id, pinned: pinned, profile: profile, using: bridge)
+            } catch {
+                // The pin flips back rather than claim a change Hermes
+                // didn't take.
+                sessionCatalogLog.notice("Pin write failed: \(String(describing: error), privacy: .public)")
+                guard self.sessionPinSync.host == bridge.baseURL,
+                      self.sessionPinSync.discardWrite(pinID: pinID, profile: profile, generation: generation),
+                      profile == self.activeProfile,
+                      self.isSessionPinned(session) == pinned else { return }
+                self.setLocalPin(session, pinned: !pinned, profile: profile)
+            }
         }
-        pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
-        persistPinnedSessions()
+    }
+
+    private func setLocalPin(_ session: SessionSummary, pinned: Bool, profile: String) {
+        let pinID = pinID(for: session)
+        var pins = pinnedSessionIDsByProfile[profile] ?? []
+        if pinned {
+            pins.removeAll { $0 == pinID }
+            pins.append(pinID)
+        } else {
+            let ids = SessionPinSync.pinIDs(for: session)
+            pins.removeAll { ids.contains($0) }
+        }
+        storePins(pins, profile: profile)
         publishWidgetSnapshot()
     }
 
@@ -5930,11 +6034,26 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func removePinnedState(for session: SessionSummary) {
-        let ids = Set([pinID(for: session), session.id] + session.alternateIds)
+    /// `unpinOnHost`: also clear Hermes' flag, so a chat restored later
+    /// doesn't come back pinned (an archived row keeps its flag there).
+    private func removePinnedState(for session: SessionSummary, unpinOnHost: Bool = false) {
+        let profile = activeProfile
+        let wasPinned = isSessionPinned(session)
+        let ids = SessionPinSync.pinIDs(for: session)
         pinnedSessionIDs.removeAll { ids.contains($0) }
-        pinnedSessionIDsByProfile[activeProfile] = pinnedSessionIDs
+        pinnedSessionIDsByProfile[profile] = pinnedSessionIDs
         persistPinnedSessions()
+        guard unpinOnHost, wasPinned, let bridge = dashboardTicketBridge,
+              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
+        sessionPinSync.recordWrite(pinID: pinID(for: session), profile: profile, pinned: false)
+        enqueueHostPinWrite { [weak self] in
+            guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
+            do {
+                try await self.sendHostPin(session.id, pinned: false, profile: profile, using: bridge)
+            } catch {
+                sessionCatalogLog.notice("Pin clear failed: \(String(describing: error), privacy: .public)")
+            }
+        }
     }
 
     private func pendingDecisionRestorationMessages(for sessionID: String) -> [ChatMessage] {
@@ -6919,6 +7038,7 @@ final class AppState: ObservableObject {
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         pinnedSessionIDs = []
+        resetHostPins()
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
@@ -9044,6 +9164,7 @@ final class AppState: ObservableObject {
         defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
+        resetHostPins()
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
         if let signingOutDashboardID { forgetActiveProfile(for: signingOutDashboardID) }
@@ -14547,7 +14668,7 @@ final class AppState: ObservableObject {
                     )
                     removeSessionFromLiveCatalog(updated)
                     archivedSessions = [updated] + archivedSessions.filter { !sessionMatches($0, updated) }
-                    removePinnedState(for: updated)
+                    removePinnedState(for: updated, unpinOnHost: true)
                     clearActiveSessionIfNeeded(updated, replacement: .archive)
                 } else {
                     archivedSessions.removeAll { sessionMatches($0, updated) }
@@ -20482,6 +20603,9 @@ final class AppState: ObservableObject {
                             continue
                         }
                         sessionCatalogLog.notice("Dashboard catalog for \(profile, privacy: .public): \(combined.count, privacy: .public) sessions; \(self.sourceSummary(combined), privacy: .public)")
+                        // Only rows fetched just now carry the host's current
+                        // pin flags; cached ones may predate a change.
+                        applyHostPins(scoped + (fetchedCronSessions ?? []), profile: profile, using: dashboardTicketBridge)
                         return combined
                     }
                     break
@@ -21753,6 +21877,8 @@ final class AppState: ObservableObject {
         // resurrecting obsolete titles and pins.
         activeSessionTitlesByProfile.removeValue(forKey: activeProfile)
         pinnedSessionIDsByProfile.removeValue(forKey: activeProfile)
+        sessionPinSync.forget(profile: activeProfile)
+        persistHostPinsAdopted()
         voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
         persistActiveSessionTitles()
         persistPinnedSessions()
