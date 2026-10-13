@@ -219,17 +219,28 @@ enum SessionNesting {
     }
 
     /// What a row's read toggle addresses: nothing for a leaf (its own
-    /// state, as every flat row), or the nest's aggregate unread and the
-    /// whole nest for a parent — whose dot is a summary and whose
-    /// "Mark as read" clears what it shows.
+    /// state, as every flat row) or a read nest, or the aggregate and the
+    /// whole nest for a parent whose dot is lit — whose "Mark as read"
+    /// clears what it shows. The sessions ride along only when they
+    /// address the displayed dot, so a read parent's toggle can never
+    /// fall into a nest-wide path by branch order.
     static func readToggleInputs(
         for node: Node,
-        isUnread: (SessionSummary) -> Bool
-    ) -> (displayedUnread: Bool?, nestSessions: [SessionSummary]?) {
-        guard !node.children.isEmpty else { return (nil, nil) }
-        let aggregate = signals(node, isUnread: isUnread, liveStatus: { _ in nil }).isUnread
-        return (aggregate, node.sessionsInNest)
+        aggregateIsUnread: Bool
+    ) -> NestReadToggle? {
+        guard !node.children.isEmpty, aggregateIsUnread else { return nil }
+        return NestReadToggle(sessions: node.sessionsInNest)
     }
+}
+
+/// What a parent row's read toggle addresses (#570): the aggregate
+/// unread its dot displays, and the nest a "Mark as read" clears. One
+/// value, so the pair cannot drift apart at a call site.
+struct NestReadToggle {
+    /// Only a lit dot gets a toggle: non-nil already says the displayed
+    /// state is unread.
+    var displayedUnread: Bool { true }
+    let sessions: [SessionSummary]
 }
 
 /// The reveal's memory: the last activation and the ancestor path it

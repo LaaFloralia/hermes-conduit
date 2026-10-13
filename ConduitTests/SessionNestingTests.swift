@@ -384,20 +384,16 @@ extension HermesVoiceGatewayTimeoutTests {
                     nestSession("job-1", source: .voiceJob)]
         let parents = ["call-1": "chat-1", "job-1": "call-1"]
         let nodes = SessionNesting.group(rows, parentKeyOf: { parents[$0.id] })
-        let unread: (SessionSummary) -> Bool = { $0.id == "job-1" }
 
-        // A leaf keeps the plain per-conversation toggle.
-        let leaf = SessionNesting.readToggleInputs(for: nodes[0].children[0].children[0], isUnread: unread)
-        XCTAssertNil(leaf.displayedUnread)
-        XCTAssertNil(leaf.nestSessions)
-        // A parent's toggle addresses the aggregate dot and the nest.
-        let parent = SessionNesting.readToggleInputs(for: nodes[0], isUnread: unread)
-        XCTAssertEqual(parent.displayedUnread, true)
-        XCTAssertEqual(parent.nestSessions?.map(\.id), ["chat-1", "call-1", "job-1"])
-        // A read nest addresses its own (absent) aggregate too: pressing
-        // would mark unread, which stays per-conversation.
-        let quiet: (SessionSummary) -> Bool = { _ in false }
-        XCTAssertEqual(SessionNesting.readToggleInputs(for: nodes[0], isUnread: quiet).displayedUnread, false)
+        // A leaf keeps the plain per-conversation toggle, and so does a
+        // read nest: its sessions ride along only when the displayed dot
+        // is lit, so a read parent's toggle can never widen by accident.
+        XCTAssertNil(SessionNesting.readToggleInputs(for: nodes[0].children[0].children[0], aggregateIsUnread: true))
+        XCTAssertNil(SessionNesting.readToggleInputs(for: nodes[0], aggregateIsUnread: false))
+        // A parent with a lit aggregate dot addresses the whole nest.
+        let parent = SessionNesting.readToggleInputs(for: nodes[0], aggregateIsUnread: true)
+        XCTAssertEqual(parent?.displayedUnread, true)
+        XCTAssertEqual(parent?.sessions.map(\.id), ["chat-1", "call-1", "job-1"])
     }
 
     func testMarkingANestReadClearsWhatTheParentShows() {
