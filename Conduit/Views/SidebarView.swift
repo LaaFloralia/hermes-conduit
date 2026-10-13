@@ -801,7 +801,7 @@ struct SessionList: View {
     }
 
     private func sessionRow(_ session: SessionSummary) -> some View {
-        sessionRowChrome(sessionRowButton(session, nest: nil), session: session)
+        sessionRowChrome(sessionRowButton(session, nest: nil), session: session, nest: nil)
     }
 
     /// A row of the nested list's presentation (#556): the aggregate of
@@ -863,7 +863,7 @@ struct SessionList: View {
     private func sessionRowChrome<V: View>(
         _ content: V,
         session: SessionSummary,
-        nest: NestReadToggle? = nil
+        nest: NestReadToggle?
     ) -> some View {
         content
             .contextMenu {
@@ -1402,9 +1402,9 @@ struct ReadStateToggleButton: View {
             )
         }
         if nest != nil {
-            // A parent's read toggle speaks its wider scope through the
-            // existing Mark-all phrasing.
-            button.accessibilityHint(AppLocalization.string("Mark all as read"))
+            // A parent's read toggle speaks its wider scope: this clears
+            // the whole nest, not just the row.
+            button.accessibilityHint(AppLocalization.string("Marks this conversation and its sessions as read"))
         } else {
             button
         }

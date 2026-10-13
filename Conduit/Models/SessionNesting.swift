@@ -234,9 +234,14 @@ enum SessionNesting {
 
 /// What a parent row's "Mark as read" clears (#570): the whole nest.
 /// A non-nil toggle IS the lit dot, so the dot and what it clears
-/// cannot drift apart at a call site.
+/// cannot drift apart at a call site: only code in this file — today,
+/// `readToggleInputs` alone — can build one.
 struct NestReadToggle {
     let sessions: [SessionSummary]
+
+    fileprivate init(sessions: [SessionSummary]) {
+        self.sessions = sessions
+    }
 }
 
 /// The reveal's memory: the last activation and the ancestor path it
