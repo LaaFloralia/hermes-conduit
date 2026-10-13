@@ -41,12 +41,12 @@ enum SessionNesting {
         // 0 = a row's own id or stored id, 1 = a borrowed alias: a
         // reconciliation alias must not steal a key its owner carries.
         var rowForKey: [String: Int] = [:]
-        var claimRank: [String: Int] = [:]
+        var rankForKey: [String: Int] = [:]
         for (index, session) in sessions.enumerated() {
             for id in session.nestingIDs {
                 let rank = (id == session.id || id == session.storedSessionId) ? 0 : 1
-                if let existing = claimRank[id], existing <= rank { continue }
-                claimRank[id] = rank
+                if let existing = rankForKey[id], existing <= rank { continue }
+                rankForKey[id] = rank
                 rowForKey[id] = index
             }
         }
@@ -155,6 +155,71 @@ enum SessionNesting {
         case .classic:
             return nil
         }
+    }
+
+    /// The stable identity a nest's expansion is keyed on: the stored id
+    /// outlives the runtime id a reconciling row may be re-listed under.
+    static func nestKey(of session: SessionSummary) -> String {
+        guard let stored = session.storedSessionId, !stored.isEmpty else { return session.id }
+        return stored
+    }
+
+    /// The ancestors of the row `active` identifies within `nodes`,
+    /// ranked like the grouping's parent resolution: of the rows that
+    /// answer to the id, the one carrying it as its own id or stored id
+    /// beats one borrowing it as an alias. Equal ranks fall to the tree's
+    /// own order (roots in listing order, children newest-first), which
+    /// matches the grouping's earlier-row rule except in the degenerate
+    /// case of two same-rank claimants in different subtrees.
+    static func ancestorKeys(of active: String, in nodes: [Node]) -> Set<String> {
+        var bestRank = Int.max
+        var bestAncestors: [String] = []
+        func walk(_ nodes: [Node], ancestors: [String]) {
+            for node in nodes {
+                if let rank = claimRank(node.session, for: active), rank < bestRank {
+                    bestRank = rank
+                    bestAncestors = ancestors
+                }
+                walk(node.children, ancestors: ancestors + [nestKey(of: node.session)])
+            }
+        }
+        walk(nodes, ancestors: [])
+        return Set(bestAncestors)
+    }
+
+    /// 0 = the row owns the id (its own or its stored one), 1 = it borrows
+    /// the id as an alias; nil = no claim. An empty id claims nothing,
+    /// like the ids `nestingIDs` filters out.
+    private static func claimRank(_ session: SessionSummary, for id: String) -> Int? {
+        guard !id.isEmpty else { return nil }
+        if session.id == id || session.storedSessionId == id { return 0 }
+        return session.alternateIds.contains(id) ? 1 : nil
+    }
+}
+
+/// The reveal's memory: which activation and ancestor path were last
+/// revealed (#556). Pure, so the re-reveal rules stay testable without
+/// a view.
+struct NestRevealLatch {
+    private(set) var activeID: String?
+    private(set) var ancestors: Set<String> = []
+
+    /// The ancestors to expand, or nil when nothing latches: before any
+    /// row arrives, the tags or links that parent them may still land;
+    /// once the list has rows an empty answer is real — the active row is
+    /// top level, or pinned — and latches like any other, so a later
+    /// re-activation of the same session reveals its path again.
+    mutating func reveal(active: String?, ancestors: Set<String>, listHasRows: Bool) -> Set<String>? {
+        guard let active else {
+            activeID = nil
+            self.ancestors = []
+            return nil
+        }
+        guard !ancestors.isEmpty || listHasRows else { return nil }
+        guard activeID != active || self.ancestors != ancestors else { return nil }
+        activeID = active
+        self.ancestors = ancestors
+        return ancestors
     }
 }
 

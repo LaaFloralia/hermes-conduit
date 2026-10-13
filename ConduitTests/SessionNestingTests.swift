@@ -142,6 +142,51 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(SessionNesting.signals(nest, isUnread: { _ in false }, liveStatus: quiet).liveStatus)
     }
 
+    func testTheRevealedPathFollowsTheOwnIDBeatsAliasRanking() {
+        // The active session appears twice: a row owns its id, an earlier
+        // row borrows it as an alias. The owner's ancestors are revealed.
+        let rows = [nestSession("chat-0"),
+                    nestSession("dup", aliases: ["job-1"], source: .voice),
+                    nestSession("chat-1"),
+                    nestSession("call-1", source: .voice),
+                    nestSession("job-1", source: .voiceJob)]
+        let parents = ["dup": "chat-0", "call-1": "chat-1", "job-1": "call-1"]
+        let nodes = SessionNesting.group(rows, parentKeyOf: { parents[$0.id] })
+
+        XCTAssertEqual(SessionNesting.ancestorKeys(of: "job-1", in: nodes), Set(["call-1", "chat-1"]))
+        // A top-level row names no ancestors.
+        XCTAssertEqual(SessionNesting.ancestorKeys(of: "chat-0", in: nodes), Set([]))
+        XCTAssertEqual(SessionNesting.ancestorKeys(of: "gone", in: nodes), Set([]))
+    }
+
+    func testTheRevealLatchReRevealsOnReactivation() {
+        var latch = NestRevealLatch()
+        // Before any row arrives, nothing latches: the tags or links that
+        // parent them may still land.
+        XCTAssertNil(latch.reveal(active: "job-1", ancestors: [], listHasRows: false))
+        // Rows exist: a nested activation reveals its path.
+        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true), Set(["call-1"]))
+        // A top-level activation latches its empty answer...
+        XCTAssertEqual(latch.reveal(active: "chat-9", ancestors: [], listHasRows: true), Set([]))
+        // ...so coming back to the nested session reveals again, even
+        // though its path is unchanged.
+        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true), Set(["call-1"]))
+        // The same activation and path latch nothing new: a collapse the
+        // user chose stands.
+        XCTAssertNil(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true))
+        // A nil activation forgets everything, so the same session
+        // reveals again on its return.
+        XCTAssertNil(latch.reveal(active: nil, ancestors: [], listHasRows: true))
+        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true), Set(["call-1"]))
+    }
+
+    func testNestKeysPreferTheStoredID() {
+        XCTAssertEqual(SessionNesting.nestKey(of: nestSession("rt-1", stored: "st-1")), "st-1")
+        // An empty stored id names nothing; the row id stands in.
+        XCTAssertEqual(SessionNesting.nestKey(of: nestSession("rt-1", stored: "")), "rt-1")
+        XCTAssertEqual(SessionNesting.nestKey(of: nestSession("rt-1")), "rt-1")
+    }
+
     func testTheExpandersHintNamesItsNextTap() {
         XCTAssertEqual(SessionList.nestExpanderHint(isExpanded: true), AppLocalization.string("Hide sessions"))
         XCTAssertEqual(SessionList.nestExpanderHint(isExpanded: false), AppLocalization.string("Show sessions"))

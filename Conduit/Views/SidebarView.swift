@@ -187,13 +187,13 @@ struct SessionList: View {
     @State private var projectPendingRename: ProjectSummary?
     @State private var projectPendingDeletion: ProjectSummary?
     /// Parents the user expanded in the nested list (#556). Not persisted:
-    /// every nest starts collapsed.
+    /// every nest starts collapsed. Entries for rows that left the list
+    /// are kept for the profile's lifetime, so a row that returns keeps
+    /// its expansion.
     @State private var expandedNestIDs: Set<String> = []
-    /// The activation the nests were last revealed for, and the ancestor
-    /// path that reveal expanded: a re-run re-reveals only when either
-    /// changed, so a collapse the user chose stands until then.
-    @State private var revealedActiveSessionID: String?
-    @State private var revealedActiveNestAncestorIDs: Set<String> = []
+    /// The last reveal: which activation, and which ancestor path it
+    /// expanded (NestRevealLatch).
+    @State private var revealLatch = NestRevealLatch()
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
     /// Quick status filter (#454), layered on top of the source filter.
@@ -438,8 +438,7 @@ struct SessionList: View {
             // Nest keys are ids, which another profile can reuse.
             .onChange(of: appState.activeProfile) { _, _ in
                 expandedNestIDs = []
-                revealedActiveSessionID = nil
-                revealedActiveNestAncestorIDs = []
+                revealLatch = NestRevealLatch()
                 revealActiveNestAncestors()
             }
         }
@@ -823,11 +822,10 @@ struct SessionList: View {
         static let indent: CGFloat = 26
     }
 
-    /// The stable identity a nest's expansion is keyed on: the stored id
-    /// outlives the runtime id a reconciling row may be re-listed under.
+    /// The stable identity a nest's expansion is keyed on (see
+    /// SessionNesting.nestKey).
     private func nestKey(_ session: SessionSummary) -> String {
-        guard let stored = session.storedSessionId, !stored.isEmpty else { return session.id }
-        return stored
+        SessionNesting.nestKey(of: session)
     }
 
     /// The row's tap target: the card button itself.
@@ -950,33 +948,19 @@ struct SessionList: View {
     /// appeared. Reveals once per activation and ancestor path; the user
     /// stays free to collapse what was revealed.
     private func revealActiveNestAncestors() {
-        guard let active = appState.activeSessionId else {
-            revealedActiveSessionID = nil
-            revealedActiveNestAncestorIDs = []
-            return
-        }
-        let ancestors = activeNestAncestorIDs
-        // An empty ancestor set latches nothing: the rows, the voice tags
-        // or the call-chat links that parent them may not have arrived.
-        guard !ancestors.isEmpty else { return }
-        guard revealedActiveSessionID != active || revealedActiveNestAncestorIDs != ancestors else { return }
-        revealedActiveSessionID = active
-        revealedActiveNestAncestorIDs = ancestors
+        guard let ancestors = revealLatch.reveal(
+            active: appState.activeSessionId,
+            ancestors: activeNestAncestorIDs,
+            listHasRows: !unpinnedSessions.isEmpty
+        ) else { return }
         expandedNestIDs.formUnion(ancestors)
     }
 
-    /// The ancestors of the open conversation within the nested list.
+    /// The ancestors of the open conversation within the nested list,
+    /// ranked like the grouping itself (SessionNesting.ancestorKeys).
     private var activeNestAncestorIDs: Set<String> {
         guard let active = appState.activeSessionId else { return [] }
-        var keys: Set<String> = []
-        func walk(_ nodes: [SessionNesting.Node], ancestors: [String]) {
-            for node in nodes {
-                if node.session.nestingIDs.contains(active) { keys.formUnion(ancestors) }
-                walk(node.children, ancestors: ancestors + [nestKey(node.session)])
-            }
-        }
-        walk(nestedSessionNodes, ancestors: [])
-        return keys
+        return SessionNesting.ancestorKeys(of: active, in: nestedSessionNodes)
     }
 
     /// The expander's hint names the tap's effect (#556): hiding an
