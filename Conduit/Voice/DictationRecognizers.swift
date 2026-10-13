@@ -54,6 +54,7 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
     private let recognizer: SFSpeechRecognizer
     private let words: [String]
     private var task: SFSpeechRecognitionTask?
+    private var request: SFSpeechAudioBufferRecognitionRequest?
     private var transcript = DictationTranscript()
     private var onUpdate: (@MainActor (DictationUpdate) -> Void)?
 
@@ -78,6 +79,7 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
         request.contextualStrings = words
         // On the device when the language allows it.
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        self.request = request
         task = recognizer.recognitionTask(with: request) { [weak self] result, error in
             let text = result?.bestTranscription.formattedString
             // Set on the result that closes an utterance (a pause); the
@@ -91,10 +93,14 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
         return SpeechRequestAudioInput(request: request)
     }
 
-    func endAudio() {}
+    func endAudio() {
+        // The sink already ended the request; again is harmless.
+        request?.endAudio()
+    }
 
     func cancel() {
         onUpdate = nil
+        request = nil
         task?.cancel()
         task = nil
     }
@@ -209,7 +215,7 @@ final class SpeechAnalyzerDictationRecognizer: DictationRecognizer {
                 self?.resultsEnded(failed: true)
             }
         }
-        return AnalyzerAudioInput(input: input, format: analyzerFormat.flatMap { $0 == format ? nil : $0 })
+        return AnalyzerAudioInput(input: input, format: analyzerFormat ?? format)
     }
 
     func endAudio() {
@@ -266,18 +272,16 @@ struct AnalyzerTranscript: Equatable {
 @available(iOS 26.0, *)
 private final class AnalyzerAudioInput: DictationAudioInput, @unchecked Sendable {
     private let input: AsyncStream<AnalyzerInput>.Continuation
-    private let converter: DictationAudioConverter?
+    private let converter: DictationAudioConverter
 
-    init(input: AsyncStream<AnalyzerInput>.Continuation, format: AVAudioFormat?) {
+    init(input: AsyncStream<AnalyzerInput>.Continuation, format: AVAudioFormat) {
         self.input = input
-        converter = format.map(DictationAudioConverter.init(output:))
+        converter = DictationAudioConverter(output: format)
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
-        guard let converter else {
-            input.yield(AnalyzerInput(buffer: buffer))
-            return
-        }
+        // Always a fresh buffer, even in the microphone's own format: the
+        // tap's buffer is only valid during its callback.
         guard let converted = converter.convert(buffer) else { return }
         input.yield(AnalyzerInput(buffer: converted))
     }
@@ -293,10 +297,15 @@ private final class AnalyzerAudioInput: DictationAudioInput, @unchecked Sendable
 @MainActor
 final class HermesDictationRecognizer: DictationRecognizer {
     nonisolated static let sampleRate = VoiceAudioSessionConfiguration.capture.outputSampleRate
-    /// An upload to a remote provider can take a while.
-    let settleTimeout: Duration = .seconds(60)
+    /// Profiles whose Hermes answered that it has no live speech to text,
+    /// so later dictations go straight to the upload until relaunch.
+    private static var liveUnavailableProfiles = Set<String>()
+    /// A watchdog only: the upload has the gateway's own request budget,
+    /// sized for long recordings and remote providers.
+    let settleTimeout: Duration = .milliseconds(HermesVoiceGateway.transcriptionMaximumRequestTimeoutMilliseconds + 10_000)
     private let gateway: HermesVoiceGateway
     private var onUpdate: (@MainActor (DictationUpdate) -> Void)?
+    private var input: HermesAudioInput?
     private var live: VoiceLiveTranscription?
     private var opening: Task<Void, Never>?
     private var finishing: Task<Void, Never>?
@@ -304,7 +313,6 @@ final class HermesDictationRecognizer: DictationRecognizer {
     private var recorded = Data()
     private var sentBytes = 0
     private var partial = ""
-    private var ended = false
 
     init(gateway: HermesVoiceGateway) {
         self.gateway = gateway
@@ -314,28 +322,35 @@ final class HermesDictationRecognizer: DictationRecognizer {
         format: AVAudioFormat,
         onUpdate: @escaping @MainActor (DictationUpdate) -> Void
     ) throws -> any DictationAudioInput {
+        guard let output = AVAudioFormat(standardFormatWithSampleRate: Self.sampleRate, channels: 1) else {
+            throw ComposerDictationService.DictationError.message(AppLocalization.string("The microphone is not available right now."))
+        }
         self.onUpdate = onUpdate
-        opening = Task { [weak self, gateway] in
-            let session = await gateway.openLiveTranscription(
-                sampleRate: Self.sampleRate,
-                onPartial: { [weak self] text in self?.receivePartial(text) },
-                onUnavailable: {}
-            )
-            guard let self, !Task.isCancelled else {
-                session?.cancel()
-                return
+        let profile = gateway.profile
+        if !Self.liveUnavailableProfiles.contains(profile) {
+            opening = Task { [weak self, gateway] in
+                let session = await gateway.openLiveTranscription(
+                    sampleRate: Self.sampleRate,
+                    onPartial: { [weak self] text in self?.receivePartial(text) },
+                    onUnavailable: { Self.liveUnavailableProfiles.insert(profile) }
+                )
+                guard let self, !Task.isCancelled else {
+                    session?.cancel()
+                    return
+                }
+                self.live = session
+                // What was recorded while the socket opened goes first.
+                self.pump()
             }
-            self.live = session
-            // What was recorded while the socket opened goes first.
-            self.pump()
         }
-        return HermesAudioInput { [weak self] pcm in
-            Task { @MainActor [weak self] in self?.receiveAudio(pcm) }
+        let input = HermesAudioInput(output: output) { [weak self] in
+            Task { @MainActor [weak self] in self?.pump() }
         }
+        self.input = input
+        return input
     }
 
     func endAudio() {
-        ended = true
         finishing = Task { [weak self] in
             guard let self else { return }
             // The live socket may still be opening: give it the recording.
@@ -360,15 +375,11 @@ final class HermesDictationRecognizer: DictationRecognizer {
         live = nil
     }
 
-    private func receiveAudio(_ pcm: Data) {
-        // Buffers still on their way after the stop belong to it too.
-        guard onUpdate != nil else { return }
-        recorded.append(pcm)
-        pump()
-    }
-
-    /// Sends what was recorded since the last push to the live socket.
+    /// Takes what the microphone recorded since last time, in order, and
+    /// sends what the live socket hasn't had yet.
     private func pump() {
+        guard onUpdate != nil else { return }
+        if let pcm = input?.drain() { recorded.append(pcm) }
         guard let live, recorded.count > sentBytes else { return }
         live.push(recorded.subdata(in: sentBytes..<recorded.count))
         sentBytes = recorded.count
@@ -402,24 +413,49 @@ final class HermesDictationRecognizer: DictationRecognizer {
     }
 }
 
+/// Converts the microphone to PCM16 on the render thread and keeps it,
+/// in order, until the recognizer drains it on the main actor. One wake
+/// is in flight at a time, not one per buffer.
 private final class HermesAudioInput: DictationAudioInput, @unchecked Sendable {
-    private let converter = DictationAudioConverter(
-        output: AVAudioFormat(standardFormatWithSampleRate: HermesDictationRecognizer.sampleRate, channels: 1)!
-    )
-    private let deliver: @Sendable (Data) -> Void
+    private struct Pending {
+        var pcm = Data()
+        var wakeScheduled = false
+    }
 
-    init(deliver: @escaping @Sendable (Data) -> Void) {
-        self.deliver = deliver
+    private let converter: DictationAudioConverter
+    private let pending = OSAllocatedUnfairLock(initialState: Pending())
+    private let wake: @Sendable () -> Void
+
+    init(output: AVAudioFormat, wake: @escaping @Sendable () -> Void) {
+        converter = DictationAudioConverter(output: output)
+        self.wake = wake
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
         guard let converted = converter.convert(buffer),
               let channel = converted.floatChannelData?[0] else { return }
         let pcm = VoicePCMEncoding.encode(channel, count: Int(converted.frameLength)).data
-        if !pcm.isEmpty { deliver(pcm) }
+        guard !pcm.isEmpty else { return }
+        let shouldWake = pending.withLock { state in
+            state.pcm.append(pcm)
+            defer { state.wakeScheduled = true }
+            return !state.wakeScheduled
+        }
+        if shouldWake { wake() }
     }
 
     func end() {}
+
+    /// Everything recorded since the last drain.
+    func drain() -> Data {
+        pending.withLock { state in
+            defer {
+                state.pcm = Data()
+                state.wakeScheduled = false
+            }
+            return state.pcm
+        }
+    }
 }
 
 // MARK: - Conversion

@@ -33,7 +33,9 @@ extension ComposerFullEditorTests {
     }
 
     func testCustomWordsRoundTripThroughDefaults() throws {
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: "DictationWords.\(UUID().uuidString)"))
+        let suite = "DictationWords.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(DictationCustomWords.load(defaults: defaults), [])
         DictationCustomWords.save(["Acme", "acme", "Zyx Corp"], defaults: defaults)
         XCTAssertEqual(DictationCustomWords.load(defaults: defaults), ["Acme", "Zyx Corp"])
