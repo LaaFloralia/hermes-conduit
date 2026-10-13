@@ -4,8 +4,8 @@
 //
 //  Grok Live: the xAI realtime wire format, the session over the Hermes
 //  host's relay, the bridge's immediate start_job answer and the mode
-//  switch. Extensions of existing suites: the CI test planner is at
-//  capacity for new XCTestCase classes.
+//  switch. Extensions of existing suites: the CI test planner was at
+//  capacity for new XCTestCase classes when this file landed.
 //
 
 import XCTest

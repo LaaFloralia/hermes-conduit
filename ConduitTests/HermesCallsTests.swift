@@ -8,8 +8,8 @@
 //  ended untold, posts Conduit's own notification. Steps 2 to 4: a ringing
 //  call's plan, the call's reason and what it waits on in the model's
 //  brief, voice answers, the VoIP token and missed-call notifications.
-//  Written as extensions of existing suites: the CI test planner is at
-//  capacity for new classes.
+//  Written as extensions of existing suites: the CI test planner was
+//  at capacity for new classes when this file landed.
 //
 
 import CryptoKit

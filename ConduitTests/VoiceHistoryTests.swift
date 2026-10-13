@@ -4,8 +4,9 @@
 //
 //  Saved live voice calls: the plugin client, the transcript recorder, the
 //  outbox, the resume plan, and the Voice filters. Written as extensions of
-//  an existing Voice suite: the CI test planner is at capacity for new
-//  XCTestCase classes.
+//  an existing Voice suite: the CI test planner was at capacity for new
+//  XCTestCase classes when this file landed (its sharded plan carries new
+//  classes again — SessionNestingModelTests is its own suite).
 //
 
 import XCTest

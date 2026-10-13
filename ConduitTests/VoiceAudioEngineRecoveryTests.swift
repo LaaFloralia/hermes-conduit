@@ -9,8 +9,8 @@ import XCTest
 /// engine subclass, so no test renders audio or starts a real engine.
 ///
 /// Hosted as an extension of an existing voice-audio test class rather than a
-/// new XCTestCase: the CI planner's per-job batch policy is at capacity, and
-/// one more planned class fails plan validation.
+/// new XCTestCase: the CI planner's per-job batch policy was at capacity, and
+/// one more planned class would have failed plan validation.
 extension VoiceAudioSessionCoordinatorTests {
     private var formatNotSupported: NSError {
         NSError(

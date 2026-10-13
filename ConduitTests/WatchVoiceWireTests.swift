@@ -4,8 +4,8 @@
 //
 //  Apple Watch voice (designs/apple-watch-voice-direct.md): the link
 //  format and measurements both devices share. Written as an
-//  extension of an existing suite: the CI test planner is at capacity for
-//  new XCTestCase classes.
+//  extension of an existing suite: the CI test planner was at capacity for
+//  new XCTestCase classes when this file landed (its sharded plan carries new classes again).
 //
 
 import CryptoKit

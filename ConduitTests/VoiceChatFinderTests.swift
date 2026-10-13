@@ -6,8 +6,8 @@
 //  while the call goes on: Hermes' search response, the supervisor's
 //  numbered matches, Gemini/Grok's find_chat, open_chat and read_chat, and
 //  GPT-Live's "Find chat:", "Open chat:" and "Read chat:" delegations. An
-//  extension of an existing suite: the CI test planner is at capacity for
-//  new XCTestCase classes.
+//  extension of an existing suite: the CI test planner was at capacity for
+//  new XCTestCase classes when this file landed (its sharded plan carries new classes again).
 //
 
 import XCTest
