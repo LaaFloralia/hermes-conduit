@@ -528,7 +528,13 @@ extension VoiceAudioSessionCoordinatorTests {
     /// reply drains, the next reply's chunks must report playing again, or
     /// a hands-free end closes the call over the goodbye still queued.
     func testChunkAfterADrainReportsPlayingAgain() throws {
-        let service = AVSpeechPlaybackService(coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()))
+        // An offline engine: a real output I/O unit talks to the simulator's
+        // audio server, which on hosted CI stalls until CoreAudio aborts the
+        // test process ("RPC timeout. Apparently deadlocked").
+        let service = AVSpeechPlaybackService(
+            coordinator: VoiceAudioSessionCoordinator(session: InertVoiceAudioSession()),
+            makeEngine: { OfflineRenderingEngine.make() }
+        )
         defer { service.stop() }
         let chunk = Data(count: 480)
         do {
@@ -557,6 +563,20 @@ private final class InertVoiceAudioSession: VoiceAudioSessionControlling {
     ) throws {}
 
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {}
+}
+
+/// An engine in offline manual rendering mode, switched before anything
+/// reads its output node, so no output I/O unit is ever built. It starts and
+/// plays like a device engine but renders only when pulled, which these
+/// tests never do: drains are driven by hand.
+private enum OfflineRenderingEngine {
+    static func make() -> AVAudioEngine {
+        let engine = AVAudioEngine()
+        if let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2) {
+            try? engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4_096)
+        }
+        return engine
+    }
 }
 
 private final class CountingEngineFactory {
