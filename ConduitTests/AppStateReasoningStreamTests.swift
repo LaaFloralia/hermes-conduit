@@ -787,12 +787,51 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Waiting on you."))
         state.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-1")))
         XCTAssertEqual(state.messages.map(\.role), [.reasoning, .partial, .clarify])
+        forceFlushPendingReasoning(on: state)
+        XCTAssertEqual(state.streamingText, "Waiting on you.")
 
         // A clarify with nothing buffered adds no empty partial row.
         let quiet = makeAppState()
         installActiveSession(quiet, id: "stored-a")
         quiet.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-2")))
         XCTAssertEqual(quiet.messages.map(\.role), [.clarify])
+    }
+
+    /// Approval and masked-input cards are the same kind of boundary: text
+    /// streamed ahead of a live one commits above it.
+    func testApprovalAndInputPromptCardsCommitPrecedingAssistantTextAboveThem() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "I need to run the tests."))
+        state.handleStreamEvent(.approval(
+            sessionId: "stored-a",
+            activity: ApprovalActivity(
+                sessionId: "stored-a",
+                command: "run tests",
+                description: "wants to run tests",
+                choices: nil,
+                allowPermanent: false,
+                smartDenied: false,
+                status: .pending,
+                choice: nil,
+                error: nil
+            )
+        ))
+        XCTAssertEqual(state.messages.map(\.role), [.partial, .approval])
+        XCTAssertEqual(state.messages.first?.content, "I need to run the tests.")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Now the token."))
+        state.handleStreamEvent(.inputPrompt(sessionId: "stored-a", activity: inputPromptActivity()))
+        XCTAssertEqual(state.messages.map(\.role), [.partial, .approval, .partial, .inputPrompt])
+        XCTAssertEqual(state.messages[2].content, "Now the token.")
+    }
+
+    private func inputPromptActivity() -> InputPromptActivity {
+        var activity = InputPromptActivity(requestId: "srq-1", sessionId: "stored-a", kind: .secret)
+        activity.envVar = "API_TOKEN"
+        activity.prompt = "Paste the token"
+        return activity
     }
 
     private func clarifyActivity(_ requestId: String) -> ClarifyActivity {
