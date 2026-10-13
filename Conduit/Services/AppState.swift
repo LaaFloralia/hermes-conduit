@@ -5934,17 +5934,27 @@ final class AppState: ObservableObject {
     }
 
     func markAllSessionsRead() {
-        let profile = activeProfile
         // What All lists: the chats and pinned cron runs (#485).
-        let listed = activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) }
-        let unread = listed.filter { !$0.isArchived && isSessionUnread($0) }
+        markSessionsRead(activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) })
+    }
+
+    /// Marks a whole nest read at once (#556 follow-up): a parent row's
+    /// "Mark as read" clears the aggregate dot it shows — its own unread
+    /// and every descendant's.
+    func markSessionNestRead(_ sessions: [SessionSummary]) {
+        markSessionsRead(sessions)
+    }
+
+    /// One ledger update (and one persisted encode) for the whole batch,
+    /// then one request at a time through the dashboard bridge.
+    private func markSessionsRead(_ sessions: [SessionSummary]) {
+        let profile = activeProfile
+        let unread = sessions.filter { !$0.isArchived && isSessionUnread($0) }
         guard !unread.isEmpty else { return }
         let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
-        // One ledger update (and one persisted encode) for the whole batch.
         updateChatReadState { state in
             for session in unread { state.markSeen(session, profile: profile) }
         }
-        // One request at a time through the dashboard bridge.
         let writes = flagged.compactMap { preparedUnreadFlagWrite($0, unread: false, profile: profile) }
         guard !writes.isEmpty else { return }
         Task {

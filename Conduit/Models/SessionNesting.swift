@@ -28,6 +28,12 @@ enum SessionNesting {
         var descendantCount: Int {
             children.reduce(children.count) { $0 + $1.descendantCount }
         }
+
+        /// The row and every row below it, for actions that address what
+        /// the parent shows (its aggregate read state).
+        var sessionsInNest: [SessionSummary] {
+            [session] + children.flatMap(\.sessionsInNest)
+        }
     }
 
     /// Groups `sessions` by `parentKeyOf`. A row nests only under a row in
@@ -210,6 +216,19 @@ enum SessionNesting {
     static func parentAccessibilityValueTitle(detail: String?, parentTitle: String?) -> String? {
         guard let parent = parentTitle, !parent.isEmpty else { return nil }
         return detail == AppLocalization.string("From \(parent)") ? nil : parent
+    }
+
+    /// What a row's read toggle addresses: nothing for a leaf (its own
+    /// state, as every flat row), or the nest's aggregate unread and the
+    /// whole nest for a parent — whose dot is a summary and whose
+    /// "Mark as read" clears what it shows.
+    static func readToggleInputs(
+        for node: Node,
+        isUnread: (SessionSummary) -> Bool
+    ) -> (displayedUnread: Bool?, nestSessions: [SessionSummary]?) {
+        guard !node.children.isEmpty else { return (nil, nil) }
+        let aggregate = signals(node, isUnread: isUnread, liveStatus: { _ in nil }).isUnread
+        return (aggregate, node.sessionsInNest)
     }
 }
 
