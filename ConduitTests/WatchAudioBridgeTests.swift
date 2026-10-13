@@ -6,8 +6,8 @@
 //  (designs/apple-watch-gpt-live.md): the sealing both ends share, the
 //  control messages, the iPhone's hand-off, the delegation requests and
 //  the call ledger's audio grant.
-//  Written as an extension of an existing suite: the CI test planner is at
-//  capacity for new XCTestCase classes.
+//  Written as an extension of an existing suite: the CI test planner was
+//  at capacity for new XCTestCase classes when this file landed.
 //
 
 import CryptoKit

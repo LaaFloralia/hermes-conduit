@@ -1,18 +1,19 @@
 //
-//  SessionNestingTests.swift
+//  SessionNestingModelTests.swift
 //  Conduit
 //
 //  The Sessions drawer's nested list (#556): grouping rows under the
-//  session that started them, and the parent key each voice row resolves
-//  to. Written as an extension of an existing Voice suite, like
-//  VoiceHistoryTests: the CI test planner is at capacity for new
-//  XCTestCase classes.
+//  session that started them, the parent key each voice row resolves
+//  to, and the nest read toggle's rules. Its own suite: the planner's
+//  capacity constraint that once forced the extension-of-a-voice-suite
+//  shape is gone.
 //
 
 import XCTest
 @testable import Conduit
 
-extension HermesVoiceGatewayTimeoutTests {
+@MainActor
+final class SessionNestingModelTests: XCTestCase {
     // MARK: - Grouping
 
     private func nestSession(_ id: String, title: String = "Chat", stored: String? = nil, aliases: [String] = [], activity: TimeInterval? = nil, source: SessionSource = .chat) -> SessionSummary {
@@ -397,7 +398,7 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testMarkingANestReadClearsWhatTheParentShows() {
-        let suite = "SessionNestingTests.\(UUID().uuidString)"
+        let suite = "SessionNestingModelTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let appState = AppState(

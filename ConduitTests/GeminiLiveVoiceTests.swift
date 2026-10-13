@@ -5,7 +5,7 @@
 //  Gemini Live voice mode: wire format, Hermes-hosted token client, the
 //  resumable session, the background-job tool bridge, and the controller's
 //  "never talk over the user" rules. Written as extensions of existing
-//  Voice suites: the CI test planner is at capacity for new XCTestCase
+//  Voice suites: the CI test planner was at capacity for new XCTestCase
 //  classes.
 //
 

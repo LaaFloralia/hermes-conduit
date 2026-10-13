@@ -6,7 +6,8 @@
 //  session exchange, the WebRTC session over a fake peer, delegations as
 //  Hermes background jobs, and the controller's rules. Written as
 //  extensions of existing Voice suites, like the Gemini Live tests: the CI
-//  test planner is at capacity for new XCTestCase classes.
+//  test planner was at capacity for new XCTestCase classes when
+//  this file landed (its sharded plan carries new classes again).
 //
 
 import AVFAudio

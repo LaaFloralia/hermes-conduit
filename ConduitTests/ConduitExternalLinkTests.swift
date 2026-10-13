@@ -5,8 +5,8 @@
 //  `conduit://session/<id>` opened by another app (a notification, a
 //  Shortcut): only plain chat links are accepted from outside; bot and
 //  Settings links open only from inside the app. Written as
-//  an extension of the existing link suite: the CI test planner is at
-//  capacity for new XCTestCase classes.
+//  an extension of the existing link suite: the CI test planner was
+//  at capacity for new XCTestCase classes when this file landed.
 //
 
 import XCTest

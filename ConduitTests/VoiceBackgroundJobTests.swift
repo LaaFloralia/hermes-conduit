@@ -5,7 +5,8 @@
 //  Voice background jobs (issue #163, phase 1): spoken job commands, the
 //  job supervisor's ledger, and the Voice controller's hand-back of finished
 //  jobs. Written as extensions of existing Voice suites: the CI test planner
-//  is at capacity for new XCTestCase classes.
+//  was at capacity for new XCTestCase classes when this file landed
+//  (its sharded plan carries new classes again).
 //
 
 import SwiftUI
