@@ -969,7 +969,10 @@ struct SessionList: View {
             rowIsListed: nest.rowIsListed,
             hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
         ) else { return }
-        expandedNestIDs.formUnion(toExpand)
+        // The reveal moves rows the same way the expander does.
+        withAnimation(ConduitMotion.response) {
+            expandedNestIDs.formUnion(toExpand)
+        }
     }
 
     /// The ancestors of the open conversation within the nested list, and
