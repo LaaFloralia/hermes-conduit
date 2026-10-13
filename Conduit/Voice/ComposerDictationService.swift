@@ -57,7 +57,9 @@ final class ComposerDictationService: ObservableObject {
 
     /// Reserves a start, synchronously: a `cancel()` that lands before
     /// `start(token:)` runs still stops it. A dictation still settling its
-    /// last words ends here, so its results never reach the new one.
+    /// last words ends here, so its results never reach the new one; one
+    /// still transcribing words the draft hasn't had (a Hermes upload)
+    /// is waited for instead.
     /// Returns nil while one is starting, capturing or transcribing.
     func reserveStart() -> UInt64? {
         guard !isStarting, !isCapturing, !isTranscribing else { return nil }
@@ -181,6 +183,10 @@ final class ComposerDictationService: ObservableObject {
         finishTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: timeout)
             guard let self, !Task.isCancelled, self.generation == generation else { return }
+            // Its words never came: say so rather than end in silence.
+            if self.isTranscribing {
+                self.onFailure?(AppLocalization.string("Hermes didn't answer in time. Check that your Hermes server is running, then try again."))
+            }
             self.finish()
         }
     }

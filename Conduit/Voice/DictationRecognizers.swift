@@ -114,7 +114,8 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
             transcript.receive(text, endsUtterance: endsUtterance)
         }
         // A final result after the stop ends it; one while still
-        // listening (a recognizer error) does too.
+        // listening (a recognizer error) does too, quietly, as before
+        // engines: its words are already in the draft.
         onUpdate?(.text(transcript.text, isFinal: isFinal))
     }
 }
