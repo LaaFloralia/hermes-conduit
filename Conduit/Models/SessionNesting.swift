@@ -197,28 +197,29 @@ enum SessionNesting {
     }
 }
 
-/// The reveal's memory: which activation and ancestor path were last
-/// revealed (#556). Pure, so the re-reveal rules stay testable without
-/// a view.
+/// The reveal's memory: the ancestor path it last revealed (#556). Pure,
+/// so the re-reveal rules stay testable without a view.
 struct NestRevealLatch {
-    private(set) var activeID: String?
     private(set) var ancestors: Set<String> = []
 
-    /// The ancestors to expand, or nil when nothing latches: before any
-    /// row arrives, the tags or links that parent them may still land;
-    /// once the list has rows an empty answer is real — the active row is
-    /// top level, or pinned — and latches like any other, so a later
-    /// re-activation of the same session reveals its path again.
+    /// The ancestors to expand, or nil when nothing expands: a path other
+    /// than the one the latch holds — an activation arriving from
+    /// elsewhere, or the same activation whose parenting links just
+    /// landed. A new sibling inside the path the latch holds expands
+    /// nothing, so a collapse the user chose stands until the path next
+    /// changes. Before any row arrives nothing latches: the tags or links
+    /// that parent them may still land; once the list has rows an empty
+    /// answer is real — the active row is top level, or pinned — and
+    /// latches like any other.
     mutating func reveal(active: String?, ancestors: Set<String>, listHasRows: Bool) -> Set<String>? {
-        guard let active else {
-            activeID = nil
+        guard active != nil else {
             self.ancestors = []
             return nil
         }
         guard !ancestors.isEmpty || listHasRows else { return nil }
-        guard activeID != active || self.ancestors != ancestors else { return nil }
-        activeID = active
+        let pathChanged = ancestors != self.ancestors
         self.ancestors = ancestors
+        guard pathChanged, !ancestors.isEmpty else { return nil }
         return ancestors
     }
 }

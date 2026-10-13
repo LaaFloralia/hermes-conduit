@@ -191,8 +191,7 @@ struct SessionList: View {
     /// are kept for the profile's lifetime, so a row that returns keeps
     /// its expansion.
     @State private var expandedNestIDs: Set<String> = []
-    /// The last reveal: which activation, and which ancestor path it
-    /// expanded (NestRevealLatch).
+    /// The last reveal's ancestor path (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
@@ -945,8 +944,9 @@ struct SessionList: View {
     /// Expands the parents and grandparents of the open conversation, so a
     /// chat the drawer would otherwise hide reveals itself — even when the
     /// rows or the links that parent them land after the list first
-    /// appeared. Reveals once per activation and ancestor path; the user
-    /// stays free to collapse what was revealed.
+    /// appeared. A path reveals when the latch isn't already holding it,
+    /// so a collapse the user chose stands while they stay inside the
+    /// nest (NestRevealLatch).
     private func revealActiveNestAncestors() {
         guard let ancestors = revealLatch.reveal(
             active: appState.activeSessionId,
@@ -988,7 +988,7 @@ struct SessionList: View {
                 // doesn't jump sideways on the toggle.
                 Text(String(node.descendantCount))
                     .font(.caption2.weight(.semibold))
-                    .conduitFixedGlyph()
+                    .dynamicTypeSize(...DynamicTypeSize.listRowCap)
                     .foregroundStyle(Color.conduitAccent)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -1000,7 +1000,9 @@ struct SessionList: View {
                     .foregroundStyle(Color.secondary.opacity(0.6))
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
             }
-            .frame(width: 44, height: 44)
+            // The target keeps its HIG minimum and grows with an
+            // accessibility-size count.
+            .frame(minWidth: 44, minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
