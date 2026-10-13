@@ -220,7 +220,12 @@ struct NestRevealLatch {
     /// hides the row they just opened (`hiddenAncestors`). Before any row
     /// arrives nothing latches: the tags or links that parent them may
     /// still land; once the list has rows an empty answer is real — the
-    /// active row is top level, or pinned — and latches like any other.
+    /// active row is top level, or pinned — and latches like any other,
+    /// except for the activation the latch already holds: there an empty
+    /// answer is read as the row momentarily absent (or newly top
+    /// level), and the remembered path stands so a collapse survives the
+    /// row's return. A stale path only ever suppresses a reveal, never
+    /// forces one: any future nest differs from it.
     mutating func reveal(
         active: String?,
         ancestors: Set<String>,
@@ -236,7 +241,9 @@ struct NestRevealLatch {
         let pathChanged = ancestors != self.ancestors
         let activeChanged = activeID != active
         activeID = active
-        self.ancestors = ancestors
+        if !ancestors.isEmpty || activeChanged {
+            self.ancestors = ancestors
+        }
         guard pathChanged || (activeChanged && !hiddenAncestors.isEmpty) else { return nil }
         guard !ancestors.isEmpty else { return nil }
         return ancestors

@@ -183,6 +183,11 @@ extension HermesVoiceGatewayTimeoutTests {
         // growth (a late-landing parent link), even behind a collapse —
         // the alternative hides the open row.
         XCTAssertEqual(latch.reveal(active: "job-2", ancestors: ["call-1", "chat-1"], listHasRows: true, hiddenAncestors: ["call-1"]), Set(["call-1", "chat-1"]))
+        // A transient absence of the same activation (a refresh race)
+        // forgets nothing: the remembered path stands, so the row's return
+        // keeps the collapse the user chose.
+        XCTAssertNil(latch.reveal(active: "job-2", ancestors: [], listHasRows: true, hiddenAncestors: []))
+        XCTAssertNil(latch.reveal(active: "job-2", ancestors: ["call-1", "chat-1"], listHasRows: true, hiddenAncestors: []))
         // A nil activation forgets everything, so the same session
         // reveals again on its return.
         XCTAssertNil(latch.reveal(active: nil, ancestors: [], listHasRows: true, hiddenAncestors: []))
