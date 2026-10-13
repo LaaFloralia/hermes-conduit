@@ -5945,8 +5945,9 @@ final class AppState: ObservableObject {
         markSessionsRead(sessions)
     }
 
-    /// One ledger update (and one persisted encode) for the whole batch,
-    /// then one request at a time through the dashboard bridge.
+    /// One mark-seen ledger update for the batch (each server-flagged
+    /// session records its own generation), then one request at a time
+    /// through the dashboard bridge.
     private func markSessionsRead(_ sessions: [SessionSummary]) {
         let profile = activeProfile
         let unread = sessions.filter { !$0.isArchived && isSessionUnread($0) }

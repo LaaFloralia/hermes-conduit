@@ -391,8 +391,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(SessionNesting.readToggleInputs(for: nodes[0].children[0].children[0], aggregateIsUnread: true))
         XCTAssertNil(SessionNesting.readToggleInputs(for: nodes[0], aggregateIsUnread: false))
         // A parent with a lit aggregate dot addresses the whole nest.
+        // Non-nil is the lit dot itself; the sessions are what it clears.
         let parent = SessionNesting.readToggleInputs(for: nodes[0], aggregateIsUnread: true)
-        XCTAssertEqual(parent?.displayedUnread, true)
         XCTAssertEqual(parent?.sessions.map(\.id), ["chat-1", "call-1", "job-1"])
     }
 

@@ -1316,8 +1316,8 @@ struct SessionActionMenuItems: View {
     let session: SessionSummary
     var excludingProjectID: String? = nil
     /// What the row's read toggle addresses (#556 follow-up): nil = the
-    /// row's own state (the chat title and project sheets), or the nest's
-    /// aggregate and whole nest for a drawer parent.
+    /// row's own state (the chat title and project sheets), or the whole
+    /// nest for a drawer parent whose dot is lit.
     var nest: NestReadToggle? = nil
     let onRename: () -> Void
     let onDelete: () -> Void
@@ -1376,13 +1376,15 @@ struct ReadStateToggleButton: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     /// What the toggle addresses (#556): a parent displays its children's
-    /// activity, and its "Mark as read" clears the aggregate dot it
-    /// shows. Nil reads the row's own state, as every flat row.
+    /// activity, and its "Mark as read" clears the whole nest — non-nil
+    /// IS the lit dot. Nil reads the row's own state, as every flat row.
     var nest: NestReadToggle? = nil
 
     var body: some View {
-        let isUnread = nest?.displayedUnread ?? appState.isSessionUnread(session)
-        Button {
+        // A nest rides along only with its lit dot: non-nil is the
+        // displayed-unread state itself.
+        let isUnread = nest != nil || appState.isSessionUnread(session)
+        let button = Button {
             Haptics.light()
             if isUnread {
                 if let nest {
@@ -1399,9 +1401,13 @@ struct ReadStateToggleButton: View {
                 systemImage: isUnread ? "envelope.open" : "envelope.badge"
             )
         }
-        // A parent's read toggle speaks its wider scope through the
-        // existing Mark-all phrasing.
-        .accessibilityHint(nest == nil ? "" : AppLocalization.string("Mark all as read"))
+        if nest != nil {
+            // A parent's read toggle speaks its wider scope through the
+            // existing Mark-all phrasing.
+            button.accessibilityHint(AppLocalization.string("Mark all as read"))
+        } else {
+            button
+        }
     }
 }
 
