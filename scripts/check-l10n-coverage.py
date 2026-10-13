@@ -230,6 +230,11 @@ REGRESSION_KEYS = (
     "Hype",
     "Session",
     "Skills & extensions",
+    # Sessions drawer nest expander (#556): the hint is a runtime ternary
+    # (isExpanded ? "Hide sessions" : "Show sessions") the extractor
+    # cannot see. "Show sessions" also has a static site elsewhere; this
+    # key exists only at the ternary.
+    "Hide sessions",
 )
 
 CALL_RE = re.compile(

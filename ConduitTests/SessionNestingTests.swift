@@ -142,6 +142,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(SessionNesting.signals(nest, isUnread: { _ in false }, liveStatus: quiet).liveStatus)
     }
 
+    func testTheExpandersHintNamesItsNextTap() {
+        XCTAssertEqual(SessionList.nestExpanderHint(isExpanded: true), AppLocalization.string("Hide sessions"))
+        XCTAssertEqual(SessionList.nestExpanderHint(isExpanded: false), AppLocalization.string("Show sessions"))
+    }
+
     func testSignalsCarryUpAWholeChain() {
         // A job waiting two levels down still surfaces on the chat.
         let rows = [nestSession("chat-1"),

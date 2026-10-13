@@ -929,7 +929,9 @@ struct SessionList: View {
                         nestExpander(node: node, isExpanded: isExpanded)
                     }
                 }
-                .padding(.leading, CGFloat(depth) * SessionNestMetrics.indent),
+                // Today's chains stop at chat → call → job; the cap keeps
+                // any future deeper shape from indenting off the screen.
+                .padding(.leading, CGFloat(min(depth, 3)) * SessionNestMetrics.indent),
                 session: node.session
             )
             if isExpanded {
@@ -977,6 +979,12 @@ struct SessionList: View {
         return keys
     }
 
+    /// The expander's hint names the tap's effect (#556): hiding an
+    /// expanded nest, showing a collapsed one.
+    static func nestExpanderHint(isExpanded: Bool) -> String {
+        AppLocalization.string(isExpanded ? "Hide sessions" : "Show sessions")
+    }
+
     /// The parent's expand control: a count of everything it hides while
     /// collapsed, and a chevron that turns with the nest. Names the row
     /// it expands for VoiceOver.
@@ -1014,7 +1022,7 @@ struct SessionList: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(node.session.title) + Text(verbatim: ", ") + Text("\(node.descendantCount) conversations"))
-        .accessibilityHint(AppLocalization.string("Show sessions"))
+        .accessibilityHint(Self.nestExpanderHint(isExpanded: isExpanded))
         .accessibilityValue(Text(AppLocalization.string(isExpanded ? "Expanded" : "Collapsed")))
     }
 }
