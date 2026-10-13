@@ -189,6 +189,11 @@ struct SessionList: View {
     /// Parents the user expanded in the nested list (#556). Not persisted:
     /// every nest starts collapsed.
     @State private var expandedNestIDs: Set<String> = []
+    /// The activation the nests were last revealed for, and the ancestor
+    /// path that reveal expanded: a re-run re-reveals only when either
+    /// changed, so a collapse the user chose stands until then.
+    @State private var revealedActiveSessionID: String?
+    @State private var revealedActiveNestAncestorIDs: Set<String> = []
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
     /// Quick status filter (#454), layered on top of the source filter.
@@ -422,7 +427,21 @@ struct SessionList: View {
             }
             .onAppear { revealActiveNestAncestors() }
             .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }
-            .onChange(of: unpinnedSessions.map(\.id)) { _, _ in revealActiveNestAncestors() }
+            // The row list covers a parent arriving, leaving, or changing
+            // shape; a stored id backfilled into it can parent a row
+            // without changing any id.
+            .onChange(of: unpinnedSessions) { _, _ in revealActiveNestAncestors() }
+            // Tags and call-chat links can parent a row without changing
+            // the row list, so the reveal re-runs when they land too.
+            .onChange(of: appState.voiceSessionTagsByKey) { _, _ in revealActiveNestAncestors() }
+            .onChange(of: appState.voiceCallChatLinksRevision) { _, _ in revealActiveNestAncestors() }
+            // Nest keys are ids, which another profile can reuse.
+            .onChange(of: appState.activeProfile) { _, _ in
+                expandedNestIDs = []
+                revealedActiveSessionID = nil
+                revealedActiveNestAncestorIDs = []
+                revealActiveNestAncestors()
+            }
         }
         .sheet(isPresented: $showFilterOrder) {
             SessionFilterOrderSheet()
@@ -923,17 +942,24 @@ struct SessionList: View {
         }
     }
 
-    /// Expands the parents and grandparents of the open conversation once
-    /// per activation, so a chat the drawer would otherwise hide reveals
-    /// itself — even when the catalog lands after the list first appeared
-    /// — and the user stays free to collapse it again.
-    @State private var revealedActiveSessionID: String?
-
+    /// Expands the parents and grandparents of the open conversation, so a
+    /// chat the drawer would otherwise hide reveals itself — even when the
+    /// rows or the links that parent them land after the list first
+    /// appeared. Reveals once per activation and ancestor path; the user
+    /// stays free to collapse what was revealed.
     private func revealActiveNestAncestors() {
-        guard let active = appState.activeSessionId, revealedActiveSessionID != active else { return }
+        guard let active = appState.activeSessionId else {
+            revealedActiveSessionID = nil
+            revealedActiveNestAncestorIDs = []
+            return
+        }
         let ancestors = activeNestAncestorIDs
+        // An empty ancestor set latches nothing: the rows, the voice tags
+        // or the call-chat links that parent them may not have arrived.
         guard !ancestors.isEmpty else { return }
+        guard revealedActiveSessionID != active || revealedActiveNestAncestorIDs != ancestors else { return }
         revealedActiveSessionID = active
+        revealedActiveNestAncestorIDs = ancestors
         expandedNestIDs.formUnion(ancestors)
     }
 
@@ -987,7 +1013,8 @@ struct SessionList: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: "\(node.session.title), \(AppLocalization.string("Sessions")) \(String(node.descendantCount))"))
+        .accessibilityLabel(Text(node.session.title) + Text(verbatim: ", ") + Text("\(node.descendantCount) conversations"))
+        .accessibilityHint(AppLocalization.string("Show sessions"))
         .accessibilityValue(Text(AppLocalization.string(isExpanded ? "Expanded" : "Collapsed")))
     }
 }

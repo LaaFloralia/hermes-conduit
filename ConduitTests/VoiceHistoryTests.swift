@@ -809,6 +809,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(link.chatStoredSessionID, "st-chat")
         XCTAssertEqual(link.endedAt, start.addingTimeInterval(120), "the call's own end, not when the retry saved it")
         XCTAssertEqual(VoiceCallChatLinks.load(from: defaults).latest(forCall: "row-1", profile: appState.activeProfile)?.thread.runtimeSessionID, "st-chat")
+        XCTAssertEqual(appState.voiceCallChatLinksRevision, 1, "the drawer re-arms its nest reveal when a link lands")
     }
 }
 

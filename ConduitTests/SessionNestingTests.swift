@@ -118,25 +118,28 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testANestSurfacesItsChildrensSignals() {
         let unread: (SessionSummary) -> Bool = { $0.id == "job-1" }
-        let status: (SessionSummary) -> SessionLiveStatus? = { _ in nil }
-        let working: (SessionSummary) -> SessionLiveStatus? = { $0.id == "job-1" ? .working : nil }
-        let waiting: (SessionSummary) -> SessionLiveStatus? = { $0.id == "job-1" ? .needsInput : nil }
-        let ownWorking: (SessionSummary) -> SessionLiveStatus? = { $0.id == "call-1" ? .working : nil }
+        let quiet: (SessionSummary) -> SessionLiveStatus? = { _ in nil }
+        let childWorking: (SessionSummary) -> SessionLiveStatus? = { $0.id == "job-1" ? .working : nil }
+        let childWaiting: (SessionSummary) -> SessionLiveStatus? = { $0.id == "job-1" ? .needsInput : nil }
+        // The parent itself works while a child waits: waiting wins.
+        let ownWorkingWhileChildWaits: (SessionSummary) -> SessionLiveStatus? = {
+            $0.id == "call-1" ? .working : $0.id == "job-1" ? .needsInput : nil
+        }
 
         let parents = ["job-1": "call-1"]
-        func nest(_ liveStatus: @escaping (SessionSummary) -> SessionLiveStatus?) -> SessionNesting.Node {
-            SessionNesting.group([nestSession("call-1", source: .voice), nestSession("job-1", source: .voiceJob)],
-                                 parentKeyOf: { parents[$0.id] })[0]
-        }
+        let nest = SessionNesting.group(
+            [nestSession("call-1", source: .voice), nestSession("job-1", source: .voiceJob)],
+            parentKeyOf: { parents[$0.id] }
+        )[0]
 
         // A collapsed nest never hides activity: the parent carries its
         // children's unread dot and loudest status, and a child waiting on
-        // the user outranks one still working.
-        XCTAssertTrue(SessionNesting.signals(nest(status), isUnread: unread, liveStatus: status).isUnread)
-        XCTAssertEqual(SessionNesting.signals(nest(working), isUnread: unread, liveStatus: working).liveStatus, .working)
-        XCTAssertEqual(SessionNesting.signals(nest(waiting), isUnread: unread, liveStatus: waiting).liveStatus, .needsInput)
-        XCTAssertEqual(SessionNesting.signals(nest(ownWorking), isUnread: unread, liveStatus: waiting).liveStatus, .needsInput)
-        XCTAssertNil(SessionNesting.signals(nest(status), isUnread: { _ in false }, liveStatus: status).liveStatus)
+        // the user outranks one still working — its own state included.
+        XCTAssertTrue(SessionNesting.signals(nest, isUnread: unread, liveStatus: quiet).isUnread)
+        XCTAssertEqual(SessionNesting.signals(nest, isUnread: unread, liveStatus: childWorking).liveStatus, .working)
+        XCTAssertEqual(SessionNesting.signals(nest, isUnread: unread, liveStatus: childWaiting).liveStatus, .needsInput)
+        XCTAssertEqual(SessionNesting.signals(nest, isUnread: unread, liveStatus: ownWorkingWhileChildWaits).liveStatus, .needsInput)
+        XCTAssertNil(SessionNesting.signals(nest, isUnread: { _ in false }, liveStatus: quiet).liveStatus)
     }
 
     func testSignalsCarryUpAWholeChain() {

@@ -3845,6 +3845,7 @@ final class AppState: ObservableObject {
         )
         voiceCallChatLinks.add(link)
         voiceCallChatLinks.store(in: defaults)
+        voiceCallChatLinksRevision &+= 1
         guard profile == activeProfile, let sessionID = activeSessionId else { return }
         let merged = mergeVoiceCallMarkers(into: messages, sessionId: sessionID)
         guard merged.count != messages.count else { return }
@@ -4193,6 +4194,10 @@ final class AppState: ObservableObject {
     /// Voice tags from the Hermes host, keyed by `voiceHistoryKey`, then by
     /// session id.
     @Published private(set) var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] = [:]
+    /// Bumped whenever a call-chat link lands, so observers (the Sessions
+    /// drawer's nests) can re-resolve parents the row list alone doesn't
+    /// show changing.
+    @Published private(set) var voiceCallChatLinksRevision = 0
     private var voiceTagsFetchedAt: [String: Date] = [:]
     private var voiceTagRefreshTask: Task<Void, Never>?
     static let voiceTagRefreshInterval: TimeInterval = 15
