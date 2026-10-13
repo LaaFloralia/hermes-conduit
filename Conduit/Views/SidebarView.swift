@@ -828,8 +828,10 @@ struct SessionList: View {
         SessionNesting.nestKey(of: session)
     }
 
-    /// The row's tap target: the card button itself.
-    private func sessionRowButton(_ session: SessionSummary, nest: SessionNestPresentation?) -> some View {
+    /// The row's tap target: the card button itself. `nestParentTitle`
+    /// names the row above for VoiceOver on a nested row whose own second
+    /// line doesn't.
+    private func sessionRowButton(_ session: SessionSummary, nest: SessionNestPresentation?, nestParentTitle: String? = nil) -> some View {
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -849,6 +851,7 @@ struct SessionList: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(Text(nestParentTitle.map { AppLocalization.string("From \($0)") } ?? ""))
         .accessibilityHint("Swipe or touch and hold for conversation actions.")
     }
 
@@ -904,13 +907,18 @@ struct SessionList: View {
     /// One row of the nested list: the row itself plus, for a parent, its
     /// expander beside it, and its children once expanded (#556). The
     /// expander sits outside the row's own button so both keep clean hit
-    /// targets.
-    private func sessionNestRow(_ node: SessionNesting.Node, depth: Int) -> some View {
+    /// targets. A nested row's VoiceOver value names the row above it —
+    /// unless its own second line already does (a job's "From ‹call›").
+    private func sessionNestRow(_ node: SessionNesting.Node, depth: Int, parentTitle: String? = nil) -> some View {
         let isExpanded = expandedNestIDs.contains(nestKey(node.session))
         let signals = SessionNesting.signals(
             node,
             isUnread: appState.isSessionUnread,
             liveStatus: appState.sessionLiveStatus
+        )
+        let nestParentTitle = SessionNesting.parentAccessibilityValueTitle(
+            detail: appState.voiceSessionDetail(for: node.session),
+            parentTitle: depth > 0 ? parentTitle : nil
         )
         return Group {
             sessionRowChrome(
@@ -921,7 +929,8 @@ struct SessionList: View {
                             isUnread: signals.isUnread,
                             liveStatus: signals.liveStatus,
                             showsDisclosureIndicator: node.children.isEmpty
-                        )
+                        ),
+                        nestParentTitle: nestParentTitle
                     )
                     if !node.children.isEmpty {
                         nestExpander(node: node, isExpanded: isExpanded)
@@ -936,7 +945,7 @@ struct SessionList: View {
                 ForEach(node.children) { child in
                     // AnyView breaks the recursion: a nest row's opaque
                     // type can't be defined in terms of itself.
-                    AnyView(sessionNestRow(child, depth: depth + 1))
+                    AnyView(sessionNestRow(child, depth: depth + 1, parentTitle: node.session.title))
                 }
             }
         }

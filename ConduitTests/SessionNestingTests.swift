@@ -189,6 +189,16 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true, hiddenAncestors: []), Set(["call-1"]))
     }
 
+    func testANestedRowsValueNamesItsParentUnlessItsDetailDoes() {
+        XCTAssertNil(SessionNesting.parentAccessibilityValueTitle(detail: nil, parentTitle: nil))
+        XCTAssertNil(SessionNesting.parentAccessibilityValueTitle(detail: nil, parentTitle: ""))
+        // A call's second line is its engine; the value names the chat
+        // above it.
+        XCTAssertEqual(SessionNesting.parentAccessibilityValueTitle(detail: AppLocalization.string("Gemini Live"), parentTitle: "Daily brief"), "Daily brief")
+        // A job's second line already reads "From ‹call›"; no value.
+        XCTAssertNil(SessionNesting.parentAccessibilityValueTitle(detail: AppLocalization.string("From Daily brief"), parentTitle: "Daily brief"))
+    }
+
     func testNestKeysPreferTheStoredID() {
         XCTAssertEqual(SessionNesting.nestKey(of: nestSession("rt-1", stored: "st-1")), "st-1")
         // An empty stored id names nothing; the row id stands in.

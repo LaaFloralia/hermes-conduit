@@ -195,6 +195,14 @@ enum SessionNesting {
         if session.id == id || session.storedSessionId == id { return 0 }
         return session.alternateIds.contains(id) ? 1 : nil
     }
+
+    /// The parent a nested row's VoiceOver value names, or nil when there
+    /// is nothing to name — no parent, an empty title — or the row's own
+    /// second line already names it (a job's "From ‹call›").
+    static func parentAccessibilityValueTitle(detail: String?, parentTitle: String?) -> String? {
+        guard let parent = parentTitle, !parent.isEmpty else { return nil }
+        return detail == AppLocalization.string("From \(parent)") ? nil : parent
+    }
 }
 
 /// The reveal's memory: the last activation and the ancestor path it
