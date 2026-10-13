@@ -24113,9 +24113,13 @@ final class AppState: ObservableObject {
                 sessionIDs: cacheSessionIDs
             )
         }
-        // The clarify row must sit above the live reasoning card's
-        // eventual commit — settle the segment before it lands.
+        // The clarify row must sit below everything the turn produced before
+        // it: settle the live reasoning segment, then commit streamed
+        // assistant text (the explanation leading up to the question).
+        // Hermes' clarify tool.start is skipped above, so nothing else
+        // flushes that text and it would render below the card (#572).
         settleReasoningSegmentIntoTranscript()
+        flushStreamingPartial()
         messages.append(ChatMessage(
             id: "clarify-\(activity.requestId)",
             role: .clarify,

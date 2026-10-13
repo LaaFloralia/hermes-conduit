@@ -764,6 +764,49 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertNil(state.liveReasoningSegment)
     }
 
+    /// #572: Hermes' clarify tool.start is skipped, so the clarify card is
+    /// the first boundary after the explanation streamed ahead of it. The
+    /// explanation must commit above the card instead of staying in the
+    /// live tail below it.
+    func testClarifyCardCommitsPrecedingAssistantTextAboveIt() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+
+        feedReasoning(["weighing options "], sessionId: "stored-a", state: state)
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Two ways to do this. "))
+        state.handleStreamEvent(.toolStart(sessionId: "stored-a", toolName: "clarify", toolInput: "{}", toolID: "clarify-tool"))
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "A is faster, B is safer."))
+        state.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-1")))
+
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .partial, .clarify])
+        XCTAssertEqual(state.messages[1].content, "Two ways to do this. A is faster, B is safer.")
+        XCTAssertEqual(state.streamingText, "")
+
+        // A replayed request updates the existing card in place: text that
+        // streamed after the card stays live below it, not above.
+        state.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Waiting on you."))
+        state.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-1")))
+        XCTAssertEqual(state.messages.map(\.role), [.reasoning, .partial, .clarify])
+
+        // A clarify with nothing buffered adds no empty partial row.
+        let quiet = makeAppState()
+        installActiveSession(quiet, id: "stored-a")
+        quiet.handleStreamEvent(.clarify(sessionId: "stored-a", activity: clarifyActivity("req-2")))
+        XCTAssertEqual(quiet.messages.map(\.role), [.clarify])
+    }
+
+    private func clarifyActivity(_ requestId: String) -> ClarifyActivity {
+        ClarifyActivity(
+            requestId: requestId,
+            questions: [
+                ClarifyQuestion(id: "q0", question: "which one?", choices: [
+                    ClarifyChoice(label: "A", value: "a"),
+                    ClarifyChoice(label: "B", value: "b")
+                ])
+            ]
+        )
+    }
+
     func testSessionSwitchDiscardsPendingReasoningPublishForNewSession() async {
         let replacementMessages = [
             ChatMessage(id: "new-1", role: .assistant, content: "Other session", timestamp: "1")
