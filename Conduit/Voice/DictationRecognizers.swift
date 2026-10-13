@@ -302,9 +302,9 @@ private final class AnalyzerAudioInput: DictationAudioInput, @unchecked Sendable
 @MainActor
 final class HermesDictationRecognizer: DictationRecognizer {
     nonisolated static let sampleRate = VoiceAudioSessionConfiguration.capture.outputSampleRate
-    /// Profiles whose Hermes answered that it has no live speech to text,
-    /// so later dictations go straight to the upload until relaunch.
-    private static var liveUnavailableProfiles = Set<String>()
+    /// Hosts and profiles that answered they have no live speech to text,
+    /// so later dictations there go straight to the upload until relaunch.
+    private static var liveUnavailable = Set<String>()
     /// A watchdog only: the upload has the gateway's own request budget,
     /// sized for long recordings and remote providers.
     let settleTimeout: Duration = .milliseconds(HermesVoiceGateway.transcriptionMaximumRequestTimeoutMilliseconds + 10_000)
@@ -332,13 +332,13 @@ final class HermesDictationRecognizer: DictationRecognizer {
             throw ComposerDictationService.DictationError.message(AppLocalization.string("The microphone is not available right now."))
         }
         self.onUpdate = onUpdate
-        let profile = gateway.profile
-        if !Self.liveUnavailableProfiles.contains(profile) {
+        let identity = gateway.identity
+        if !Self.liveUnavailable.contains(identity) {
             opening = Task { [weak self, gateway] in
                 let session = await gateway.openLiveTranscription(
                     sampleRate: Self.sampleRate,
                     onPartial: { [weak self] text in self?.receivePartial(text) },
-                    onUnavailable: { Self.liveUnavailableProfiles.insert(profile) }
+                    onUnavailable: { Self.liveUnavailable.insert(identity) }
                 )
                 guard let self, !Task.isCancelled else {
                     session?.cancel()

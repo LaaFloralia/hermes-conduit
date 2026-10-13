@@ -533,7 +533,7 @@ struct ComposerBar: View {
                     // Typing ends a dictation: its next result would rewrite
                     // the draft from where it began and drop the keystrokes.
                     // The words so far stay.
-                    if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+                    dictation.yieldToTyping()
                 }
             )
             .id(editorIdentity)
@@ -589,7 +589,7 @@ struct ComposerBar: View {
                     dictatedDraft = nil
                     appState.noteComposerUserEdit()
                     // As inline: typing ends a dictation, keeping its words.
-                    if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+                    dictation.yieldToTyping()
                 },
                 onCollapse: { isShowingFullEditor = false },
                 attachments: {
@@ -1145,8 +1145,12 @@ struct ComposerBar: View {
         // the words so far go out, and late results must not refill the
         // emptied field.
         // The send haptic stands for both.
-        dictation.onFinish = nil
-        dictation.cancel()
+        // A Hermes dictation still transcribing keeps going instead: none
+        // of its words were sent, and they land in the emptied field.
+        if !dictation.isTranscribing {
+            dictation.onFinish = nil
+            dictation.cancel()
+        }
         isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
@@ -1266,7 +1270,8 @@ struct ComposerBar: View {
             switch ComposerDictation.tap(
                 isCapturing: dictation.isCapturing,
                 isStarting: dictation.isStarting,
-                canDictate: canDictate
+                canDictate: canDictate,
+                isTranscribing: dictation.isTranscribing
             ) {
             case .start: beginDictation()
             case .stop: dictation.stop()
@@ -1294,10 +1299,11 @@ struct ComposerBar: View {
         )
         .accessibilityLabel(isCapturing
             ? Text("Stop dictation")
-            : (dictation.isStarting ? Text("Cancel dictation") : Text("Dictate")))
+            : (dictation.isStarting ? Text("Cancel dictation")
+                : (dictation.isTranscribing ? Text("Transcribing") : Text("Dictate"))))
         .accessibilityHint(isCapturing
             ? AppLocalization.string("Stops dictating; the words stay in the message")
-            : (dictation.isStarting ? "" : (appState.isVoiceInUse
+            : (dictation.isStarting || dictation.isTranscribing ? "" : (appState.isVoiceInUse
                 ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
                 : AppLocalization.string("Types what you say into the message"))))
     }
@@ -1335,13 +1341,21 @@ struct ComposerBar: View {
             // Typed or replaced since dictation last wrote it: the sheet
             // reports typing only on its next update, which can trail this
             // result. End the dictation instead of writing over the change.
-            guard ComposerDictation.draftIsAsDictationLeftIt(
+            let prefix: String
+            if ComposerDictation.draftIsAsDictationLeftIt(
                 text, prefix: dictationPrefix, lastWrite: dictatedDraft
-            ) else {
+            ) {
+                prefix = dictationPrefix
+            } else if dictation.isTranscribing {
+                // Words that never reached the draft (a Hermes upload)
+                // go after whatever it holds now, sent or typed.
+                prefix = text
+                dictationPrefix = text
+            } else {
                 dictation.cancel()
                 return
             }
-            let draft = ComposerDictation.draft(before: dictationPrefix, dictated: transcript)
+            let draft = ComposerDictation.draft(before: prefix, dictated: transcript)
             dictatedDraft = draft
             // The cursor follows the words, so the next dictation or typing
             // carries on after them.
@@ -1449,7 +1463,7 @@ struct ComposerBar: View {
         switch request.content {
         case .text(let quote):
             // A running dictation would rewrite the draft from where it began.
-            if dictation.isDictating || dictation.isStarting { dictation.cancel() }
+            dictation.yieldToTyping()
             replaceComposerText(ChatQuote.inserting(quote, into: text), cursorAtEnd: true)
             isShowingSlashSuggestions = false
             announcement = AppLocalization.string("Quoted in your message")

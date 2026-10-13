@@ -55,4 +55,15 @@ extension ComposerFullEditorTests {
         transcript.receive(" Send it to Milim.", isFinal: true)
         XCTAssertEqual(transcript.text, "Hello there. Send it to Milim.")
     }
+
+    func testATapWhileTranscribingWaitsForTheWords() {
+        XCTAssertEqual(
+            ComposerDictation.tap(isCapturing: false, isStarting: false, canDictate: true, isTranscribing: true),
+            .nothing
+        )
+        XCTAssertEqual(
+            ComposerDictation.tap(isCapturing: false, isStarting: false, canDictate: true, isTranscribing: false),
+            .start
+        )
+    }
 }

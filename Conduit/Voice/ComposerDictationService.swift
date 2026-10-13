@@ -172,7 +172,9 @@ final class ComposerDictationService: ObservableObject {
         releaseAudio()
         audioSink.replace(with: nil)
         recognizer?.endAudio()
-        isTranscribing = recognizer?.holdsWordsWhileSettling ?? false
+        // Only while none of its words have reached the draft: live words
+        // already there are kept like any engine's.
+        isTranscribing = (recognizer?.holdsWordsWhileSettling ?? false) && !producedText
         let generation = generation
         let timeout = recognizer?.settleTimeout ?? .milliseconds(1_500)
         finishTask?.cancel()
@@ -181,6 +183,14 @@ final class ComposerDictationService: ObservableObject {
             guard let self, !Task.isCancelled, self.generation == generation else { return }
             self.finish()
         }
+    }
+
+    /// The person typed or replaced the draft: a dictation ends there,
+    /// keeping its words, unless it is still transcribing words that never
+    /// reached the draft. Those keep coming and land at the draft's end.
+    func yieldToTyping() {
+        guard !isTranscribing else { return }
+        if isDictating || isStarting { cancel() }
     }
 
     /// Ends it now (the composer went away or was disabled), including a
@@ -322,9 +332,11 @@ enum ComposerDictation {
         case nothing
     }
 
-    static func tap(isCapturing: Bool, isStarting: Bool, canDictate: Bool) -> Tap {
+    static func tap(isCapturing: Bool, isStarting: Bool, canDictate: Bool, isTranscribing: Bool = false) -> Tap {
         if isCapturing { return .stop }
         if isStarting { return .cancelStart }
+        // Its words are on their way; a new dictation waits for them.
+        if isTranscribing { return .nothing }
         return canDictate ? .start : .nothing
     }
 
