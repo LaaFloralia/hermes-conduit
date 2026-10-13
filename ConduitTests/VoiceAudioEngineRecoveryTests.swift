@@ -537,11 +537,9 @@ extension VoiceAudioSessionCoordinatorTests {
         )
         defer { service.stop() }
         let chunk = Data(count: 480)
-        do {
-            _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
-        } catch {
-            throw XCTSkip("no audio output available: \(error)")
-        }
+        // An offline engine needs no audio output, so a start failure is a
+        // real failure, not a missing device.
+        _ = try service.enqueuePCM16(chunk, sampleRate: 24_000)
         XCTAssertTrue(service.isPlaying)
 
         // The first reply finished rendering; the stream stays open.
@@ -568,13 +566,15 @@ private final class InertVoiceAudioSession: VoiceAudioSessionControlling {
 /// An engine in offline manual rendering mode, switched before anything
 /// reads its output node, so no output I/O unit is ever built. It starts and
 /// plays like a device engine but renders only when pulled, which these
-/// tests never do: drains are driven by hand.
+/// tests never do: drains are driven by hand. A failed switch traps rather
+/// than quietly handing back a device engine, which would bring back the
+/// CoreAudio abort this exists to avoid.
 private enum OfflineRenderingEngine {
     static func make() -> AVAudioEngine {
         let engine = AVAudioEngine()
-        if let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2) {
-            try? engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4_096)
-        }
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2)!
+        try! engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4_096)
+        precondition(engine.isInManualRenderingMode, "the test engine must render offline")
         return engine
     }
 }

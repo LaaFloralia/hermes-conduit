@@ -129,7 +129,11 @@ final class DashboardSessionIsolationTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(100))
             cookiesA = try await awaitWebKit("allCookies on A") { await storeA.httpCookieStore.allCookies() }
         }
-        XCTAssertTrue(cookiesA.contains(where: isASession), "dashboard A reads back its own cookie")
+        // Without A's write landing, B's empty store would prove nothing.
+        guard cookiesA.contains(where: isASession) else {
+            XCTFail("dashboard A never read back its own cookie")
+            return
+        }
 
         let cookiesB = try await awaitWebKit("allCookies on B") { await storeB.httpCookieStore.allCookies() }
         XCTAssertFalse(

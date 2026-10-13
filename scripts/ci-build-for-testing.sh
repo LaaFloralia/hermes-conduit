@@ -19,7 +19,7 @@ SCHEME="Conduit"
 # GitHub-hosted runners for the same repository, which is what makes the
 # absolute paths inside the .xctestrun portable without rewriting anything.
 DERIVED_DATA_PATH="${DERIVED_DATA_PATH:-$PWD/ci-derived-data}"
-BUILD_TIMEOUT_SECS="${BUILD_TIMEOUT_SECS:-900}"
+BUILD_TIMEOUT_SECS="${BUILD_TIMEOUT_SECS:-1200}"
 LOG_DIR="ci-lane/build"
 mkdir -p "$LOG_DIR"
 
@@ -45,9 +45,10 @@ fi
 #   compile (it was on: `-index-store-path` on each swift-frontend call).
 # - -enableCodeCoverage NO: the scheme gathers coverage, which instruments
 #   every Conduit file (`-profile-generate`); nothing in CI reads coverage.
-# - ARCHS=arm64: the embedded Watch app is a dependency on another platform,
-#   so ONLY_ACTIVE_ARCH did not apply and it compiled for x86_64 too. Hosted
-#   macos-26 runners are arm64.
+# - ARCHS = the destination's arch (SIMULATOR_ARCH, arm64 by default, as in
+#   build_destination): the embedded Watch app is a dependency on another
+#   platform, so ONLY_ACTIVE_ARCH did not apply and it compiled for x86_64
+#   too.
 started_at=$(now_iso)
 start=$(date +%s)
 status=0
@@ -60,7 +61,7 @@ run_with_deadline "$BUILD_TIMEOUT_SECS" "$LOG_DIR/build.log" \
   -derivedDataPath "$DERIVED_DATA_PATH" \
   -enableCodeCoverage NO \
   COMPILER_INDEX_STORE_ENABLE=NO \
-  ARCHS=arm64 \
+  ARCHS="${SIMULATOR_ARCH:-arm64}" \
   CODE_SIGN_IDENTITY="" \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGNING_ALLOWED=NO \
