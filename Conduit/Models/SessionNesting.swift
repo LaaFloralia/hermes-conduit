@@ -197,29 +197,40 @@ enum SessionNesting {
     }
 }
 
-/// The reveal's memory: the ancestor path it last revealed (#556). Pure,
-/// so the re-reveal rules stay testable without a view.
+/// The reveal's memory: the last activation and the ancestor path it
+/// revealed (#556). Pure, so the re-reveal rules stay testable without
+/// a view.
 struct NestRevealLatch {
+    private(set) var activeID: String?
     private(set) var ancestors: Set<String> = []
 
     /// The ancestors to expand, or nil when nothing expands: a path other
     /// than the one the latch holds — an activation arriving from
     /// elsewhere, or the same activation whose parenting links just
-    /// landed. A new sibling inside the path the latch holds expands
-    /// nothing, so a collapse the user chose stands until the path next
-    /// changes. Before any row arrives nothing latches: the tags or links
-    /// that parent them may still land; once the list has rows an empty
-    /// answer is real — the active row is top level, or pinned — and
-    /// latches like any other.
-    mutating func reveal(active: String?, ancestors: Set<String>, listHasRows: Bool) -> Set<String>? {
-        guard active != nil else {
+    /// landed. A sibling activation inside the path the latch holds
+    /// expands nothing, so a collapse the user chose stands — unless it
+    /// hides the row they just opened (`hiddenAncestors`). Before any row
+    /// arrives nothing latches: the tags or links that parent them may
+    /// still land; once the list has rows an empty answer is real — the
+    /// active row is top level, or pinned — and latches like any other.
+    mutating func reveal(
+        active: String?,
+        ancestors: Set<String>,
+        listHasRows: Bool,
+        hiddenAncestors: Set<String>
+    ) -> Set<String>? {
+        guard let active else {
+            activeID = nil
             self.ancestors = []
             return nil
         }
         guard !ancestors.isEmpty || listHasRows else { return nil }
         let pathChanged = ancestors != self.ancestors
+        let activeChanged = activeID != active
+        activeID = active
         self.ancestors = ancestors
-        guard pathChanged, !ancestors.isEmpty else { return nil }
+        guard pathChanged || (activeChanged && !hiddenAncestors.isEmpty) else { return nil }
+        guard !ancestors.isEmpty else { return nil }
         return ancestors
     }
 }

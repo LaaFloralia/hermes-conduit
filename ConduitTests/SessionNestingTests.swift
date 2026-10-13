@@ -159,30 +159,34 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SessionNesting.ancestorKeys(of: "gone", in: nodes), Set([]))
     }
 
-    func testTheRevealLatchReRevealsOnReactivation() {
+    func testTheRevealLatchKeepsACollapseUntilItHidesTheOpenRow() {
         var latch = NestRevealLatch()
         // Before any row arrives, nothing latches: the tags or links that
         // parent them may still land.
-        XCTAssertNil(latch.reveal(active: "job-1", ancestors: [], listHasRows: false))
+        XCTAssertNil(latch.reveal(active: "job-1", ancestors: [], listHasRows: false, hiddenAncestors: []))
         // Rows exist: a nested activation reveals its path.
-        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true), Set(["call-1"]))
+        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true, hiddenAncestors: ["call-1"]), Set(["call-1"]))
         // The same activation and path expand nothing new: a collapse the
-        // user chose stands.
-        XCTAssertNil(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true))
-        // A new sibling inside the same path expands nothing either.
-        XCTAssertNil(latch.reveal(active: "job-2", ancestors: ["call-1"], listHasRows: true))
+        // user chose stands, even behind a background trigger.
+        XCTAssertNil(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true, hiddenAncestors: ["call-1"]))
+        // A sibling inside an expanded nest expands nothing either.
+        XCTAssertNil(latch.reveal(active: "job-2", ancestors: ["call-1"], listHasRows: true, hiddenAncestors: []))
+        // But a sibling opened behind the user's collapse would be hidden:
+        // the drawer never hides the row it is on.
+        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true, hiddenAncestors: ["call-1"]), Set(["call-1"]))
         // A top-level detour latches its empty answer, expanding nothing.
-        XCTAssertNil(latch.reveal(active: "chat-9", ancestors: [], listHasRows: true))
+        XCTAssertNil(latch.reveal(active: "chat-9", ancestors: [], listHasRows: true, hiddenAncestors: []))
         // ...so coming back to the nest reveals again, even for a sibling
         // whose path was revealed before the detour.
-        XCTAssertEqual(latch.reveal(active: "job-2", ancestors: ["call-1"], listHasRows: true), Set(["call-1"]))
+        XCTAssertEqual(latch.reveal(active: "job-2", ancestors: ["call-1"], listHasRows: true, hiddenAncestors: []), Set(["call-1"]))
         // A path that grew while the activation stayed put reveals the
-        // growth (a late-landing parent link).
-        XCTAssertEqual(latch.reveal(active: "job-2", ancestors: ["call-1", "chat-1"], listHasRows: true), Set(["call-1", "chat-1"]))
+        // growth (a late-landing parent link), even behind a collapse —
+        // the alternative hides the open row.
+        XCTAssertEqual(latch.reveal(active: "job-2", ancestors: ["call-1", "chat-1"], listHasRows: true, hiddenAncestors: ["call-1"]), Set(["call-1", "chat-1"]))
         // A nil activation forgets everything, so the same session
         // reveals again on its return.
-        XCTAssertNil(latch.reveal(active: nil, ancestors: [], listHasRows: true))
-        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true), Set(["call-1"]))
+        XCTAssertNil(latch.reveal(active: nil, ancestors: [], listHasRows: true, hiddenAncestors: []))
+        XCTAssertEqual(latch.reveal(active: "job-1", ancestors: ["call-1"], listHasRows: true, hiddenAncestors: []), Set(["call-1"]))
     }
 
     func testNestKeysPreferTheStoredID() {

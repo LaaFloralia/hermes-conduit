@@ -191,7 +191,8 @@ struct SessionList: View {
     /// are kept for the profile's lifetime, so a row that returns keeps
     /// its expansion.
     @State private var expandedNestIDs: Set<String> = []
-    /// The last reveal's ancestor path (NestRevealLatch).
+    /// The last activation the reveal served and the ancestor path it
+    /// revealed (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
@@ -944,16 +945,21 @@ struct SessionList: View {
     /// Expands the parents and grandparents of the open conversation, so a
     /// chat the drawer would otherwise hide reveals itself — even when the
     /// rows or the links that parent them land after the list first
-    /// appeared. A path reveals when the latch isn't already holding it,
-    /// so a collapse the user chose stands while they stay inside the
-    /// nest (NestRevealLatch).
+    /// appeared. A collapse the user chose stands while they stay inside
+    /// the nest and behind background triggers, but never hides the row
+    /// they just opened; a path that grows under them — a late-landing
+    /// parent link — still reveals, since the alternative is hiding the
+    /// open row (NestRevealLatch). A runtime-id rebind of the same
+    /// conversation counts as a new activation and reveals too.
     private func revealActiveNestAncestors() {
-        guard let ancestors = revealLatch.reveal(
+        let ancestors = activeNestAncestorIDs
+        guard let toExpand = revealLatch.reveal(
             active: appState.activeSessionId,
-            ancestors: activeNestAncestorIDs,
-            listHasRows: !unpinnedSessions.isEmpty
+            ancestors: ancestors,
+            listHasRows: !unpinnedSessions.isEmpty,
+            hiddenAncestors: ancestors.subtracting(expandedNestIDs)
         ) else { return }
-        expandedNestIDs.formUnion(ancestors)
+        expandedNestIDs.formUnion(toExpand)
     }
 
     /// The ancestors of the open conversation within the nested list,
