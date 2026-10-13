@@ -363,4 +363,70 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(SessionNesting.parentKey(for: job, tag: VoiceSessionTag(kind: .job, engine: nil, parentID: nil, parentTitle: nil), chatLinks: links, profile: "default"))
         XCTAssertNil(SessionNesting.parentKey(for: classic, tag: nil, chatLinks: links, profile: "default"))
     }
+
+    // MARK: - Marking a nest read (#556 follow-up)
+
+    func testSessionsInNestFlattensTheTree() {
+        let rows = [nestSession("chat-1"),
+                    nestSession("call-1", source: .voice),
+                    nestSession("job-1", source: .voiceJob)]
+        let parents = ["call-1": "chat-1", "job-1": "call-1"]
+        let tree = SessionNesting.group(rows, parentKeyOf: { parents[$0.id] })
+
+        XCTAssertEqual(tree[0].sessionsInNest.map(\.id), ["chat-1", "call-1", "job-1"])
+        XCTAssertEqual(tree[0].children[0].sessionsInNest.map(\.id), ["call-1", "job-1"])
+        XCTAssertEqual(tree[0].children[0].children[0].sessionsInNest.map(\.id), ["job-1"])
+    }
+
+    func testAReadToggleAddressesLeavesDirectlyAndParentsAsANest() {
+        let rows = [nestSession("chat-1"),
+                    nestSession("call-1", source: .voice),
+                    nestSession("job-1", source: .voiceJob)]
+        let parents = ["call-1": "chat-1", "job-1": "call-1"]
+        let nodes = SessionNesting.group(rows, parentKeyOf: { parents[$0.id] })
+
+        // A leaf keeps the plain per-conversation toggle, and so does a
+        // read nest: its sessions ride along only when the displayed dot
+        // is lit, so a read parent's toggle can never widen by accident.
+        XCTAssertNil(SessionNesting.readToggleInputs(for: nodes[0].children[0].children[0], aggregateIsUnread: true))
+        XCTAssertNil(SessionNesting.readToggleInputs(for: nodes[0], aggregateIsUnread: false))
+        // A parent with a lit aggregate dot addresses the whole nest.
+        // Non-nil is the lit dot itself; the sessions are what it clears.
+        let parent = SessionNesting.readToggleInputs(for: nodes[0], aggregateIsUnread: true)
+        XCTAssertEqual(parent?.sessions.map(\.id), ["chat-1", "call-1", "job-1"])
+    }
+
+    func testMarkingANestReadClearsWhatTheParentShows() {
+        let suite = "SessionNestingTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let parent = nestSession("chat-1")
+        let call = nestSession("call-1", source: .voice)
+        let job = nestSession("job-1", source: .voiceJob)
+        let outsider = nestSession("chat-2")
+        // The parent itself is unread too: its own state participates in
+        // the batch, not just the children's.
+        appState.markSessionUnread(parent)
+        appState.markSessionUnread(call)
+        appState.markSessionUnread(job)
+        appState.markSessionUnread(outsider)
+
+        appState.markSessionNestRead([parent, call, job])
+
+        XCTAssertFalse(appState.isSessionUnread(parent))
+        XCTAssertFalse(appState.isSessionUnread(call))
+        XCTAssertFalse(appState.isSessionUnread(job))
+        // A conversation outside the batch keeps its state, and an
+        // already-read batch is a no-op.
+        XCTAssertTrue(appState.isSessionUnread(outsider))
+        appState.markSessionNestRead([parent, call, job])
+        XCTAssertFalse(appState.isSessionUnread(parent))
+        XCTAssertTrue(appState.isSessionUnread(outsider))
+    }
 }

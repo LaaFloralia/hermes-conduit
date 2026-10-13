@@ -28,6 +28,12 @@ enum SessionNesting {
         var descendantCount: Int {
             children.reduce(children.count) { $0 + $1.descendantCount }
         }
+
+        /// The row and every row below it, for actions that address what
+        /// the parent shows (its aggregate read state).
+        var sessionsInNest: [SessionSummary] {
+            [session] + children.flatMap(\.sessionsInNest)
+        }
     }
 
     /// Groups `sessions` by `parentKeyOf`. A row nests only under a row in
@@ -210,6 +216,31 @@ enum SessionNesting {
     static func parentAccessibilityValueTitle(detail: String?, parentTitle: String?) -> String? {
         guard let parent = parentTitle, !parent.isEmpty else { return nil }
         return detail == AppLocalization.string("From \(parent)") ? nil : parent
+    }
+
+    /// What a row's read toggle addresses: nothing for a leaf (its own
+    /// state, as every flat row) or a read nest, or the whole nest for a
+    /// parent whose dot is lit — whose "Mark as read" clears what it
+    /// shows. A non-nil answer IS the lit dot, so a read parent's toggle
+    /// can never fall into a nest-wide path by branch order.
+    static func readToggleInputs(
+        for node: Node,
+        aggregateIsUnread: Bool
+    ) -> NestReadToggle? {
+        guard !node.children.isEmpty, aggregateIsUnread else { return nil }
+        return NestReadToggle(sessions: node.sessionsInNest)
+    }
+}
+
+/// What a parent row's "Mark as read" clears (#570): the whole nest.
+/// A non-nil toggle IS the lit dot, so the dot and what it clears
+/// cannot drift apart at a call site: only code in this file — today,
+/// `readToggleInputs` alone — can build one.
+struct NestReadToggle {
+    let sessions: [SessionSummary]
+
+    fileprivate init(sessions: [SessionSummary]) {
+        self.sessions = sessions
     }
 }
 

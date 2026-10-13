@@ -801,16 +801,15 @@ struct SessionList: View {
     }
 
     private func sessionRow(_ session: SessionSummary) -> some View {
-        sessionRowChrome(sessionRowButton(session, nest: nil), session: session)
+        sessionRowChrome(sessionRowButton(session, nest: nil), session: session, nest: nil)
     }
 
     /// A row of the nested list's presentation (#556): the aggregate of
     /// its own and its children's signals, so a collapsed nest never hides
     /// a child's activity, and whether a parent's expander replaces the
-    /// row's own chevron — a leaf keeps it. The unread dot is a summary;
-    /// the swipe actions stay per-conversation, on the row's own state —
-    /// the read ledger is per-session, so an aggregate-driven toggle would
-    /// press a button that changes nothing the row shows.
+    /// row's own chevron — a leaf keeps it. The unread dot is a summary,
+    /// and a parent's "Mark as read" clears it honestly: the toggle marks
+    /// the whole nest read (AppState.markSessionNestRead).
     private struct SessionNestPresentation {
         var isUnread: Bool
         var liveStatus: SessionLiveStatus?
@@ -858,12 +857,19 @@ struct SessionList: View {
     /// What every row of the sessions list carries — the touch-and-hold
     /// menu, the swipes, the row chrome — applied at the row's root,
     /// whether that root is the card alone or the card with its expander
-    /// beside it.
-    private func sessionRowChrome<V: View>(_ content: V, session: SessionSummary) -> some View {
+    /// beside it. `nest` comes from the nested list, where a parent
+    /// displays its children's activity and its "Mark as read" clears
+    /// the nest.
+    private func sessionRowChrome<V: View>(
+        _ content: V,
+        session: SessionSummary,
+        nest: NestReadToggle?
+    ) -> some View {
         content
             .contextMenu {
                 SessionActionMenuItems(
                     session: session,
+                    nest: nest,
                     onRename: { sessionPendingRename = session },
                     onDelete: { sessionPendingDeletion = session }
                 )
@@ -877,7 +883,7 @@ struct SessionList: View {
                 }
                 .tint(.conduitAccent)
 
-                ReadStateToggleButton(session: session)
+                ReadStateToggleButton(session: session, nest: nest)
                     .tint(.blue)
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -920,6 +926,7 @@ struct SessionList: View {
             detail: appState.voiceSessionDetail(for: node.session),
             parentTitle: depth > 0 ? parentTitle : nil
         )
+        let readToggle = SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread)
         return Group {
             sessionRowChrome(
                 HStack(spacing: 6) {
@@ -939,7 +946,8 @@ struct SessionList: View {
                 // Today's chains stop at chat → call → job; the cap keeps
                 // any future deeper shape from indenting off the screen.
                 .padding(.leading, CGFloat(min(depth, 3)) * SessionNestMetrics.indent),
-                session: node.session
+                session: node.session,
+                nest: readToggle
             )
             if isExpanded {
                 ForEach(node.children) { child in
@@ -1307,6 +1315,10 @@ struct SessionActionMenuItems: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
+    /// What the row's read toggle addresses (#556 follow-up): nil = the
+    /// row's own state (the chat title and project sheets), or the whole
+    /// nest for a drawer parent whose dot is lit.
+    var nest: NestReadToggle? = nil
     let onRename: () -> Void
     let onDelete: () -> Void
     /// Runs after a mutation that changes which list the row belongs in.
@@ -1330,7 +1342,7 @@ struct SessionActionMenuItems: View {
             Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
         }
 
-        ReadStateToggleButton(session: session)
+        ReadStateToggleButton(session: session, nest: nest)
 
         // A cron run keeps the job's workspace (#485).
         if session.source != .cron {
@@ -1363,13 +1375,23 @@ struct SessionActionMenuItems: View {
 struct ReadStateToggleButton: View {
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
+    /// What the toggle addresses (#556): a parent displays its children's
+    /// activity, and its "Mark as read" clears the whole nest — non-nil
+    /// IS the lit dot. Nil reads the row's own state, as every flat row.
+    var nest: NestReadToggle? = nil
 
     var body: some View {
-        let isUnread = appState.isSessionUnread(session)
-        Button {
+        // A nest rides along only with its lit dot: non-nil is the
+        // displayed-unread state itself.
+        let isUnread = nest != nil || appState.isSessionUnread(session)
+        let button = Button {
             Haptics.light()
             if isUnread {
-                appState.markSessionRead(session)
+                if let nest {
+                    appState.markSessionNestRead(nest.sessions)
+                } else {
+                    appState.markSessionRead(session)
+                }
             } else {
                 appState.markSessionUnread(session)
             }
@@ -1378,6 +1400,13 @@ struct ReadStateToggleButton: View {
                 isUnread ? AppLocalization.string("Mark as read") : AppLocalization.string("Mark as unread"),
                 systemImage: isUnread ? "envelope.open" : "envelope.badge"
             )
+        }
+        if nest != nil {
+            // A parent's read toggle speaks its wider scope: this clears
+            // the whole nest, not just the row.
+            button.accessibilityHint(AppLocalization.string("Marks this conversation and its sessions as read"))
+        } else {
+            button
         }
     }
 }
