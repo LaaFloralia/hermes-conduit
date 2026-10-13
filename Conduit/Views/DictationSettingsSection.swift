@@ -60,7 +60,11 @@ struct DictationSettingsSection: View {
                 .padding(.vertical, 2)
             }
             HStack(spacing: 8) {
-                TextField(AppLocalization.string("Add a word or name"), text: $draft)
+                TextField(AppLocalization.string("Add a word or name"), text: Binding(
+                    get: { draft },
+                    // Longer entries are cut, so the field shows what is kept.
+                    set: { draft = String($0.prefix(DictationCustomWords.maximumLength)) }
+                ))
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -83,7 +87,7 @@ struct DictationSettingsSection: View {
 
     private func add() {
         let word = DictationCustomWords.canonicalized(draft)
-        guard !word.isEmpty else { return }
+        guard !word.isEmpty, words.count < DictationCustomWords.maximumCount else { return }
         save(words + [word])
         draft = ""
     }

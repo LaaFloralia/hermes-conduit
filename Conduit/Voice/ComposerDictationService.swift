@@ -22,6 +22,9 @@ final class ComposerDictationService: ObservableObject {
     /// The microphone is open. A dictation still settling its last words
     /// after the release is dictating but no longer capturing.
     @Published private(set) var isCapturing = false
+    /// Stopped, and the words are still on their way (a Hermes upload).
+    /// A new dictation waits for them rather than dropping them.
+    @Published private(set) var isTranscribing = false
 
     /// The whole transcript of this dictation so far, each time it changes.
     /// Cleared when the dictation ends: the view that set it is captured.
@@ -55,9 +58,9 @@ final class ComposerDictationService: ObservableObject {
     /// Reserves a start, synchronously: a `cancel()` that lands before
     /// `start(token:)` runs still stops it. A dictation still settling its
     /// last words ends here, so its results never reach the new one.
-    /// Returns nil while one is starting or capturing.
+    /// Returns nil while one is starting, capturing or transcribing.
     func reserveStart() -> UInt64? {
-        guard !isStarting, !isCapturing else { return nil }
+        guard !isStarting, !isCapturing, !isTranscribing else { return nil }
         if isDictating { finish() }
         startToken &+= 1
         isStarting = true
@@ -169,6 +172,7 @@ final class ComposerDictationService: ObservableObject {
         releaseAudio()
         audioSink.replace(with: nil)
         recognizer?.endAudio()
+        isTranscribing = recognizer?.holdsWordsWhileSettling ?? false
         let generation = generation
         let timeout = recognizer?.settleTimeout ?? .milliseconds(1_500)
         finishTask?.cancel()
@@ -242,6 +246,7 @@ final class ComposerDictationService: ObservableObject {
         stopAudio()
         releaseAudio()
         isCapturing = false
+        isTranscribing = false
         isDictating = false
         let onFinish = onFinish
         clearCallbacks()

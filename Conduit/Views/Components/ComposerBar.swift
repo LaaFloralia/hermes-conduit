@@ -1259,7 +1259,9 @@ struct ComposerBar: View {
     private var dictateButton: some View {
         let canDictate = canDictateFromComposer
         let isCapturing = dictation.isCapturing
-        let isActive = isCapturing || dictation.isStarting
+        // A Hermes dictation still transcribing pulses too, and a tap
+        // waits for its words.
+        let isActive = isCapturing || dictation.isStarting || dictation.isTranscribing
         return Button {
             switch ComposerDictation.tap(
                 isCapturing: dictation.isCapturing,

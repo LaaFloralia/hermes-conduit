@@ -35,6 +35,9 @@ protocol DictationAudioInput: AnyObject, Sendable {
 protocol DictationRecognizer: AnyObject {
     /// How long its last words may take once the microphone closes.
     var settleTimeout: Duration { get }
+    /// Its words reach the draft only once it settles (an upload), so a
+    /// new dictation must not cut that short.
+    var holdsWordsWhileSettling: Bool { get }
     /// Starts recognizing the microphone's audio, which comes in `format`.
     func begin(
         format: AVAudioFormat,
@@ -51,6 +54,7 @@ protocol DictationRecognizer: AnyObject {
 @MainActor
 final class AppleSpeechDictationRecognizer: DictationRecognizer {
     let settleTimeout: Duration = .milliseconds(1_500)
+    let holdsWordsWhileSettling = false
     private let recognizer: SFSpeechRecognizer
     private let words: [String]
     private var task: SFSpeechRecognitionTask?
@@ -132,6 +136,7 @@ private final class SpeechRequestAudioInput: DictationAudioInput, @unchecked Sen
 @MainActor
 final class SpeechAnalyzerDictationRecognizer: DictationRecognizer {
     let settleTimeout: Duration = .seconds(3)
+    let holdsWordsWhileSettling = false
     private let transcriber: SpeechTranscriber
     private let analyzer: SpeechAnalyzer
     /// The format the model wants; nil takes the microphone's as it is.
@@ -303,6 +308,7 @@ final class HermesDictationRecognizer: DictationRecognizer {
     /// A watchdog only: the upload has the gateway's own request budget,
     /// sized for long recordings and remote providers.
     let settleTimeout: Duration = .milliseconds(HermesVoiceGateway.transcriptionMaximumRequestTimeoutMilliseconds + 10_000)
+    let holdsWordsWhileSettling = true
     private let gateway: HermesVoiceGateway
     private var onUpdate: (@MainActor (DictationUpdate) -> Void)?
     private var input: HermesAudioInput?
