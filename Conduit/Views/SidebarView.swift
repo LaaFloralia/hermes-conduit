@@ -186,6 +186,9 @@ struct SessionList: View {
     @State private var selectedProject: ProjectSummary?
     @State private var projectPendingRename: ProjectSummary?
     @State private var projectPendingDeletion: ProjectSummary?
+    /// Parents the user expanded in the nested list (#556). Not persisted:
+    /// every nest starts collapsed.
+    @State private var expandedNestIDs: Set<String> = []
     @AppStorage("conduit.sessionSourceFilter") private var selectedSourceRaw: String = "all"
     @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
     /// Quick status filter (#454), layered on top of the source filter.
@@ -405,8 +408,8 @@ struct SessionList: View {
 
                 if layout.liveSections && !unpinnedSessions.isEmpty {
                     Section(pinnedSessions.isEmpty ? AppLocalization.string("Sessions") : AppLocalization.string("Recent")) {
-                        ForEach(unpinnedSessions) { session in
-                            sessionRow(session)
+                        ForEach(nestedSessionNodes) { node in
+                            sessionNestRow(node, depth: 0)
                         }
                     }
                 }
@@ -417,6 +420,9 @@ struct SessionList: View {
             .refreshable {
                 await appState.refreshSessionCatalog()
             }
+            .onAppear { revealActiveNestAncestors() }
+            .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }
+            .onChange(of: unpinnedSessions.map(\.id)) { _, _ in revealActiveNestAncestors() }
         }
         .sheet(isPresented: $showFilterOrder) {
             SessionFilterOrderSheet()
@@ -645,6 +651,18 @@ struct SessionList: View {
         displayedSessions.filter { !appState.isSessionPinned($0) }
     }
 
+    /// The Recent rows, voice-spawned sessions nested under the session
+    /// that started them (#556). A search or a status filter is a lookup,
+    /// not a browse: it flattens the list to the matching rows.
+    private var nestedSessionNodes: [SessionNesting.Node] {
+        SessionNesting.rows(
+            unpinnedSessions,
+            query: searchText,
+            statusFilterActive: statusFilter != nil,
+            parentKeyOf: appState.sessionNestingParentKey
+        )
+    }
+
     private var sourceFilters: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -765,6 +783,36 @@ struct SessionList: View {
     }
 
     private func sessionRow(_ session: SessionSummary) -> some View {
+        sessionRowChrome(sessionRowButton(session, nest: nil), session: session)
+    }
+
+    /// A row of the nested list's presentation (#556): the aggregate of
+    /// its own and its children's signals, so a collapsed nest never hides
+    /// a child's activity, and whether a parent's expander replaces the
+    /// row's own chevron — a leaf keeps it. The unread dot is a summary;
+    /// the swipe actions stay per-conversation, on the row's own state —
+    /// the read ledger is per-session, so an aggregate-driven toggle would
+    /// press a button that changes nothing the row shows.
+    private struct SessionNestPresentation {
+        var isUnread: Bool
+        var liveStatus: SessionLiveStatus?
+        var showsDisclosureIndicator: Bool
+    }
+
+    /// Row chrome metrics: each nested generation indents by this much.
+    private enum SessionNestMetrics {
+        static let indent: CGFloat = 26
+    }
+
+    /// The stable identity a nest's expansion is keyed on: the stored id
+    /// outlives the runtime id a reconciling row may be re-listed under.
+    private func nestKey(_ session: SessionSummary) -> String {
+        guard let stored = session.storedSessionId, !stored.isEmpty else { return session.id }
+        return stored
+    }
+
+    /// The row's tap target: the card button itself.
+    private func sessionRowButton(_ session: SessionSummary, nest: SessionNestPresentation?) -> some View {
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -774,57 +822,173 @@ struct SessionList: View {
                 session: session,
                 isSelected: session.id == appState.activeSessionId,
                 isPinned: appState.isSessionPinned(session),
-                isUnread: appState.isSessionUnread(session),
-                liveStatus: appState.sessionLiveStatus(session),
+                isUnread: nest?.isUnread ?? appState.isSessionUnread(session),
+                liveStatus: nest?.liveStatus ?? appState.sessionLiveStatus(session),
                 isVoiceJob: appState.isVoiceJobSession(session),
                 category: appState.sessionCategory(for: session),
-                detail: appState.voiceSessionDetail(for: session)
+                detail: appState.voiceSessionDetail(for: session),
+                showsDisclosureIndicator: nest?.showsDisclosureIndicator ?? true
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityHint("Swipe or touch and hold for conversation actions.")
-        .contextMenu {
-            SessionActionMenuItems(
-                session: session,
-                onRename: { sessionPendingRename = session },
-                onDelete: { sessionPendingDeletion = session }
-            )
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            Button {
-                Haptics.light()
-                appState.toggleSessionPinned(session)
-            } label: {
-                Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
-            }
-            .tint(.conduitAccent)
+    }
 
-            ReadStateToggleButton(session: session)
-                .tint(.blue)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                Task {
-                    Haptics.mutationCompleted(await appState.archiveSession(session))
+    /// What every row of the sessions list carries — the touch-and-hold
+    /// menu, the swipes, the row chrome — applied at the row's root,
+    /// whether that root is the card alone or the card with its expander
+    /// beside it.
+    private func sessionRowChrome<V: View>(_ content: V, session: SessionSummary) -> some View {
+        content
+            .contextMenu {
+                SessionActionMenuItems(
+                    session: session,
+                    onRename: { sessionPendingRename = session },
+                    onDelete: { sessionPendingDeletion = session }
+                )
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    Haptics.light()
+                    appState.toggleSessionPinned(session)
+                } label: {
+                    Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
                 }
-            } label: {
-                Label("Archive", systemImage: "archivebox")
-            }
-            .tint(.orange)
-            .disabled(appState.isSessionMutationInFlight(session))
+                .tint(.conduitAccent)
 
-            Button(role: .destructive) {
-                Haptics.warning()
-                sessionPendingDeletion = session
-            } label: {
-                Label("Delete", systemImage: "trash")
+                ReadStateToggleButton(session: session)
+                    .tint(.blue)
             }
-            .disabled(appState.isSessionMutationInFlight(session))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button {
+                    Task {
+                        Haptics.mutationCompleted(await appState.archiveSession(session))
+                    }
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+                .tint(.orange)
+                .disabled(appState.isSessionMutationInFlight(session))
+
+                Button(role: .destructive) {
+                    Haptics.warning()
+                    sessionPendingDeletion = session
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .disabled(appState.isSessionMutationInFlight(session))
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+    }
+
+    /// One row of the nested list: the row itself plus, for a parent, its
+    /// expander beside it, and its children once expanded (#556). The
+    /// expander sits outside the row's own button so both keep clean hit
+    /// targets.
+    private func sessionNestRow(_ node: SessionNesting.Node, depth: Int) -> some View {
+        let isExpanded = expandedNestIDs.contains(nestKey(node.session))
+        let signals = SessionNesting.signals(
+            node,
+            isUnread: appState.isSessionUnread,
+            liveStatus: appState.sessionLiveStatus
+        )
+        return Group {
+            sessionRowChrome(
+                HStack(spacing: 6) {
+                    sessionRowButton(
+                        node.session,
+                        nest: SessionNestPresentation(
+                            isUnread: signals.isUnread,
+                            liveStatus: signals.liveStatus,
+                            showsDisclosureIndicator: node.children.isEmpty
+                        )
+                    )
+                    if !node.children.isEmpty {
+                        nestExpander(node: node, isExpanded: isExpanded)
+                    }
+                }
+                .padding(.leading, CGFloat(depth) * SessionNestMetrics.indent),
+                session: node.session
+            )
+            if isExpanded {
+                ForEach(node.children) { child in
+                    // AnyView breaks the recursion: a nest row's opaque
+                    // type can't be defined in terms of itself.
+                    AnyView(sessionNestRow(child, depth: depth + 1))
+                }
+            }
         }
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 3, leading: 0, bottom: 3, trailing: 0))
+    }
+
+    /// Expands the parents and grandparents of the open conversation once
+    /// per activation, so a chat the drawer would otherwise hide reveals
+    /// itself — even when the catalog lands after the list first appeared
+    /// — and the user stays free to collapse it again.
+    @State private var revealedActiveSessionID: String?
+
+    private func revealActiveNestAncestors() {
+        guard let active = appState.activeSessionId, revealedActiveSessionID != active else { return }
+        let ancestors = activeNestAncestorIDs
+        guard !ancestors.isEmpty else { return }
+        revealedActiveSessionID = active
+        expandedNestIDs.formUnion(ancestors)
+    }
+
+    /// The ancestors of the open conversation within the nested list.
+    private var activeNestAncestorIDs: Set<String> {
+        guard let active = appState.activeSessionId else { return [] }
+        var keys: Set<String> = []
+        func walk(_ nodes: [SessionNesting.Node], ancestors: [String]) {
+            for node in nodes {
+                if node.session.nestingIDs.contains(active) { keys.formUnion(ancestors) }
+                walk(node.children, ancestors: ancestors + [nestKey(node.session)])
+            }
+        }
+        walk(nestedSessionNodes, ancestors: [])
+        return keys
+    }
+
+    /// The parent's expand control: a count of everything it hides while
+    /// collapsed, and a chevron that turns with the nest. Names the row
+    /// it expands for VoiceOver.
+    private func nestExpander(node: SessionNesting.Node, isExpanded: Bool) -> some View {
+        Button {
+            Haptics.light()
+            withAnimation(ConduitMotion.response) {
+                if isExpanded {
+                    expandedNestIDs.remove(nestKey(node.session))
+                } else {
+                    expandedNestIDs.insert(nestKey(node.session))
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                // The count keeps its slot while expanded, so the chevron
+                // doesn't jump sideways on the toggle.
+                Text(String(node.descendantCount))
+                    .font(.caption2.weight(.semibold))
+                    .conduitFixedGlyph()
+                    .foregroundStyle(Color.conduitAccent)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.conduitAccent.opacity(0.15), in: Capsule())
+                    .opacity(isExpanded ? 0 : 1)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .conduitFixedGlyph()
+                    .foregroundStyle(Color.secondary.opacity(0.6))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            }
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: "\(node.session.title), \(AppLocalization.string("Sessions")) \(String(node.descendantCount))"))
+        .accessibilityValue(Text(AppLocalization.string(isExpanded ? "Expanded" : "Collapsed")))
     }
 }
 

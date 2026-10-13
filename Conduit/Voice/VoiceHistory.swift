@@ -649,6 +649,17 @@ struct VoiceCallChatLinks: Codable, Equatable {
         links.last { $0.callSessionID == callSessionID && $0.profile == profile }
     }
 
+    /// The chat a saved call nests under in the Sessions drawer (#556): the
+    /// last link on `profile` whose call row is one of `callIDs`, named by
+    /// the id that opens it.
+    func chatKey(forCallIDs callIDs: [String], profile: String) -> String? {
+        let ids = Set(callIDs.filter { !$0.isEmpty })
+        guard !ids.isEmpty,
+              let link = links.last(where: { $0.profile == profile && ids.contains($0.callSessionID) })
+        else { return nil }
+        return link.chatSessionID
+    }
+
     func link(markerID: String) -> VoiceCallChatLink? {
         links.first { $0.markerID == markerID || $0.originMarkerID == markerID }
     }

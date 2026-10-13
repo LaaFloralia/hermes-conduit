@@ -1,0 +1,166 @@
+//
+//  SessionNesting.swift
+//  Conduit
+//
+//  The Sessions drawer nests voice-spawned rows under the session that
+//  started them (#556): a background job under the call that started it,
+//  a call attached to a chat under that chat. Pure list shaping: the view
+//  resolves nothing, SessionNesting.parentKey reads the voice tag and the
+//  device's call-chat links, and the rules (alias matching, orphan rows,
+//  parent cycles, flattening, signal aggregation) stay testable without
+//  a gateway.
+//
+
+import Foundation
+
+/// The Sessions drawer's rows: parents with the rows they spawned nested
+/// underneath. Roots keep the server's recent order; children sort newest
+/// first.
+enum SessionNesting {
+    struct Node: Identifiable, Equatable {
+        let session: SessionSummary
+        let children: [Node]
+
+        var id: String { session.id }
+
+        /// Every row this nest hides while collapsed, grandchildren
+        /// included — what a parent's count badge reports.
+        var descendantCount: Int {
+            children.reduce(children.count) { $0 + $1.descendantCount }
+        }
+    }
+
+    /// Groups `sessions` by `parentKeyOf`. A row nests only under a row in
+    /// the same list, matched on any id it answers to; of two rows
+    /// answering to the same id, the one carrying it as its own id or
+    /// stored id beats one borrowing it as an alias, and the earlier row
+    /// breaks what's left. A row that names itself, names no row in the
+    /// list, or closes a parent cycle stays at the top level, so a missing
+    /// link degrades to today's flat list instead of losing a row.
+    static func group(_ sessions: [SessionSummary], parentKeyOf: (SessionSummary) -> String?) -> [Node] {
+        // 0 = a row's own id or stored id, 1 = a borrowed alias: a
+        // reconciliation alias must not steal a key its owner carries.
+        var rowForKey: [String: Int] = [:]
+        var claimRank: [String: Int] = [:]
+        for (index, session) in sessions.enumerated() {
+            for id in session.nestingIDs {
+                let rank = (id == session.id || id == session.storedSessionId) ? 0 : 1
+                if let existing = claimRank[id], existing <= rank { continue }
+                claimRank[id] = rank
+                rowForKey[id] = index
+            }
+        }
+
+        var parentRow = [Int?](repeating: nil, count: sessions.count)
+        for (index, session) in sessions.enumerated() {
+            guard let key = parentKeyOf(session).flatMap({ $0.isEmpty ? nil : $0 }),
+                  let parent = rowForKey[key], parent != index else { continue }
+            parentRow[index] = parent
+        }
+
+        // A parent cycle would swallow its every member below the top
+        // level; the row where a cycle closes is freed as a root.
+        // 0 = new, 1 = on the current path, 2 = resolved.
+        var state = [UInt8](repeating: 0, count: sessions.count)
+        for start in sessions.indices {
+            var path: [Int] = []
+            var row = start
+            while state[row] == 0 {
+                state[row] = 1
+                path.append(row)
+                guard let next = parentRow[row] else { break }
+                row = next
+            }
+            if state[row] == 1 { parentRow[row] = nil }
+            for visited in path { state[visited] = 2 }
+        }
+
+        var childrenByRow = [[Int]](repeating: [], count: sessions.count)
+        for row in sessions.indices {
+            if let parent = parentRow[row] { childrenByRow[parent].append(row) }
+        }
+        let byNewest: (Int, Int) -> Bool = { lhs, rhs in
+            switch (sessions[lhs].lastActivityAt, sessions[rhs].lastActivityAt) {
+            case let (left?, right?):
+                // A total order: sorted(by:) is not guaranteed stable, so
+                // equal timestamps fall back to the listing's order.
+                return left == right ? lhs < rhs : left > right
+            // A row without a timestamp keeps its list position after
+            // every row that has one.
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return lhs < rhs
+            }
+        }
+        func node(_ row: Int) -> Node {
+            Node(session: sessions[row], children: childrenByRow[row].sorted(by: byNewest).map(node))
+        }
+
+        return sessions.indices.filter { parentRow[$0] == nil }.map(node)
+    }
+
+    /// Whether the drawer groups its rows. A search or a status filter is
+    /// a lookup, not a browse: it flattens the list to the matching rows.
+    static func shouldGroup(query: String, statusFilterActive: Bool) -> Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !statusFilterActive
+    }
+
+    /// The drawer's rows: nested while browsing, flat while narrowing.
+    /// A parent the user pinned or a filter excluded leaves the list, and
+    /// its children degrade to top-level rows by design — the nest never
+    /// hides a row.
+    static func rows(
+        _ sessions: [SessionSummary],
+        query: String,
+        statusFilterActive: Bool,
+        parentKeyOf: (SessionSummary) -> String?
+    ) -> [Node] {
+        guard shouldGroup(query: query, statusFilterActive: statusFilterActive) else {
+            return sessions.map { Node(session: $0, children: []) }
+        }
+        return group(sessions, parentKeyOf: parentKeyOf)
+    }
+
+    /// The nest's own signals: the row's own unread/live status merged
+    /// with its children's, so a collapsed nest never hides activity. A
+    /// child waiting on the user outranks one still working.
+    static func signals(
+        _ node: Node,
+        isUnread: (SessionSummary) -> Bool,
+        liveStatus: (SessionSummary) -> SessionLiveStatus?
+    ) -> (isUnread: Bool, liveStatus: SessionLiveStatus?) {
+        let childSignals = node.children.map { signals($0, isUnread: isUnread, liveStatus: liveStatus) }
+        let unread = isUnread(node.session) || childSignals.contains { $0.isUnread }
+        let statuses = [liveStatus(node.session)] + childSignals.map(\.liveStatus)
+        if statuses.contains(.needsInput) { return (unread, .needsInput) }
+        if statuses.contains(.working) { return (unread, .working) }
+        return (unread, nil)
+    }
+
+    /// The key of the row `session` nests under: the call that started a
+    /// voice job, or the chat a saved call was attached to. Classic voice
+    /// runs in its chat's own session and untagged rows stay top level.
+    static func parentKey(
+        for session: SessionSummary,
+        tag: VoiceSessionTag?,
+        chatLinks: VoiceCallChatLinks,
+        profile: String
+    ) -> String? {
+        guard let tag else { return nil }
+        switch tag.kind {
+        case .job:
+            return tag.parentID
+        case .call:
+            return chatLinks.chatKey(forCallIDs: session.nestingIDs, profile: profile)
+        case .classic:
+            return nil
+        }
+    }
+}
+
+extension SessionSummary {
+    /// Every id the row answers to: its own, its stored id and its aliases.
+    var nestingIDs: [String] {
+        ([id, storedSessionId].compactMap { $0 } + alternateIds).filter { !$0.isEmpty }
+    }
+}
