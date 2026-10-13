@@ -1348,9 +1348,12 @@ struct ComposerBar: View {
         dictation.onFinish = { _ in
             Haptics.light()
         }
+        dictation.onFailure = { message in
+            composerErrorMessage = message
+        }
         Task {
             do {
-                try await dictation.start(token: token)
+                try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() })
             } catch {
                 composerErrorMessage = UserFacingError.message(for: error)
             }
