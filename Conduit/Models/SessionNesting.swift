@@ -164,27 +164,35 @@ enum SessionNesting {
         return stored
     }
 
-    /// The ancestors of the row `active` identifies within `nodes`,
-    /// ranked like the grouping's parent resolution: of the rows that
-    /// answer to the id, the one carrying it as its own id or stored id
-    /// beats one borrowing it as an alias. Equal ranks fall to the tree's
-    /// own order (roots in listing order, children newest-first), which
-    /// matches the grouping's earlier-row rule except in the degenerate
-    /// case of two same-rank claimants in different subtrees.
-    static func ancestorKeys(of active: String, in nodes: [Node]) -> Set<String> {
+    /// The ancestors of the row `active` identifies within `nodes`, and
+    /// whether any row there answers to the id, even as a borrowed alias
+    /// — the drawer treats an empty ancestor answer differently when the
+    /// row is listed (it is genuinely top level, or its parent left the
+    /// list) than when it is absent (the list is mid-refresh). Rows
+    /// answering to the id rank like the grouping's parent resolution:
+    /// the one carrying it as its own id or stored id beats one borrowing
+    /// it as an alias. Equal ranks fall to the tree's own order (roots in
+    /// listing order, children newest-first), which matches the
+    /// grouping's earlier-row rule except in the degenerate case of two
+    /// same-rank claimants in different subtrees.
+    static func ancestorKeys(of active: String, in nodes: [Node]) -> (keys: Set<String>, rowIsListed: Bool) {
         var bestRank = Int.max
         var bestAncestors: [String] = []
+        var rowIsListed = false
         func walk(_ nodes: [Node], ancestors: [String]) {
             for node in nodes {
-                if let rank = claimRank(node.session, for: active), rank < bestRank {
-                    bestRank = rank
-                    bestAncestors = ancestors
+                if let rank = claimRank(node.session, for: active) {
+                    rowIsListed = true
+                    if rank < bestRank {
+                        bestRank = rank
+                        bestAncestors = ancestors
+                    }
                 }
                 walk(node.children, ancestors: ancestors + [nestKey(of: node.session)])
             }
         }
         walk(nodes, ancestors: [])
-        return Set(bestAncestors)
+        return (Set(bestAncestors), rowIsListed)
     }
 
     /// 0 = the row owns the id (its own or its stored one), 1 = it borrows
@@ -219,17 +227,20 @@ struct NestRevealLatch {
     /// expands nothing, so a collapse the user chose stands — unless it
     /// hides the row they just opened (`hiddenAncestors`). Before any row
     /// arrives nothing latches: the tags or links that parent them may
-    /// still land; once the list has rows an empty answer is real — the
-    /// active row is top level, or pinned — and latches like any other,
-    /// except for the activation the latch already holds: there an empty
-    /// answer is read as the row momentarily absent (or newly top
-    /// level), and the remembered path stands so a collapse survives the
-    /// row's return. A stale path only ever suppresses a reveal, never
-    /// forces one: any future nest differs from it.
+    /// still land; once the list has rows an empty answer is real while
+    /// the row is listed — top level, or its parent left the list — and
+    /// latches like any other, except for the activation the latch
+    /// already holds while its row is absent: that empty answer is the
+    /// list mid-refresh, and the remembered path stands so a collapse
+    /// survives the row's return. The two are indistinguishable when it
+    /// is the parent link that is mid-refresh, so a collapse may then be
+    /// forgotten and re-revealed: the latch errs toward revealing, never
+    /// hiding, the open row.
     mutating func reveal(
         active: String?,
         ancestors: Set<String>,
         listHasRows: Bool,
+        rowIsListed: Bool,
         hiddenAncestors: Set<String>
     ) -> Set<String>? {
         guard let active else {
@@ -241,7 +252,7 @@ struct NestRevealLatch {
         let pathChanged = ancestors != self.ancestors
         let activeChanged = activeID != active
         activeID = active
-        if !ancestors.isEmpty || activeChanged {
+        if !ancestors.isEmpty || activeChanged || rowIsListed {
             self.ancestors = ancestors
         }
         guard pathChanged || (activeChanged && !hiddenAncestors.isEmpty) else { return nil }

@@ -961,21 +961,22 @@ struct SessionList: View {
     /// open row (NestRevealLatch). A runtime-id rebind of the same
     /// conversation counts as a new activation and reveals too.
     private func revealActiveNestAncestors() {
-        let ancestors = activeNestAncestorIDs
+        let nest = activeNestAncestors
         guard let toExpand = revealLatch.reveal(
             active: appState.activeSessionId,
-            ancestors: ancestors,
+            ancestors: nest.keys,
             listHasRows: !unpinnedSessions.isEmpty,
-            hiddenAncestors: ancestors.subtracting(expandedNestIDs)
+            rowIsListed: nest.rowIsListed,
+            hiddenAncestors: nest.keys.subtracting(expandedNestIDs)
         ) else { return }
         expandedNestIDs.formUnion(toExpand)
     }
 
-    /// The ancestors of the open conversation within the nested list,
-    /// ranked like the grouping itself (SessionNesting.ancestorKeys).
-    private var activeNestAncestorIDs: Set<String> {
-        guard let active = appState.activeSessionId else { return [] }
-        return SessionNesting.ancestorKeys(of: active, in: nestedSessionNodes)
+    /// The ancestors of the open conversation within the nested list, and
+    /// whether its row is listed at all, ranked like the grouping itself
+    /// (SessionNesting.ancestorKeys).
+    private var activeNestAncestors: (keys: Set<String>, rowIsListed: Bool) {
+        SessionNesting.ancestorKeys(of: appState.activeSessionId ?? "", in: nestedSessionNodes)
     }
 
     /// The expander's hint names the tap's effect (#556): hiding an
