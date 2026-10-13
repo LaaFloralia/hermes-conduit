@@ -1026,7 +1026,7 @@ struct SessionList: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(node.session.title) + Text(verbatim: ", ") + Text("\(node.descendantCount) conversations"))
+        .accessibilityLabel(Text(node.session.title) + Text(verbatim: ", ") + Text("\(node.descendantCount) sessions"))
         .accessibilityHint(Self.nestExpanderHint(isExpanded: isExpanded))
         .accessibilityValue(Text(AppLocalization.string(isExpanded ? "Expanded" : "Collapsed")))
     }
