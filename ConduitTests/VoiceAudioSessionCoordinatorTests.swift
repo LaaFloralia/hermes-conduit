@@ -471,12 +471,193 @@ extension VoiceAudioSessionCoordinatorTests {
         await Task.yield()
         XCTAssertGreaterThanOrEqual(notifications, 2)
     }
+
+    // MARK: Calls from Hermes in CallKit
+
+    func testNativeCallDropsDefaultToSpeakerSoTheSpeakerButtonCanTurnItOff() throws {
+        coordinator.configureForIncomingCall()
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertFalse(session.categoryCalls.contains { $0.options.contains(.defaultToSpeaker) },
+                       "with .defaultToSpeaker a cleared override still plays on the loudspeaker")
+        XCTAssertTrue(session.categoryCalls.last?.options.contains(.allowBluetoothHFP) ?? false)
+        XCTAssertEqual(session.categoryCalls.last?.mode, .voiceChat)
+    }
+
+    func testNativeCallStartsOnTheSpeaker() {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 1)
+    }
+
+    func testReactivatedCallAudioLeavesTheEarpieceTheUserChose() {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        // The Speaker button turned the speaker off, then an interruption
+        // ended and CallKit activated the audio again.
+        session.isOutputOnBuiltInSpeaker = false
+        session.isOutputOnBuiltInReceiver = true
+        session.resetRecordings()
+
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testCallAnsweredOnHeadphonesStaysOnThem() {
+        session.isOutputOnBuiltInReceiver = false
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 0, "the override would take the call off the headset")
+
+        // The headphones come off mid-call: iOS's earpiece stands.
+        session.isOutputOnBuiltInReceiver = true
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testFailedSpeakerMoveRetriesOnTheNextActivation() {
+        coordinator.configureForIncomingCall()
+        session.overrideError = VoiceAudioSessionMockError.configurationFailed
+        coordinator.nativeCallAudioActivated()
+        session.overrideError = nil
+
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 1, "the call must not be left on the earpiece by one failure")
+    }
+
+    func testReapplyInANativeCallKeepsTheSpeakerWhileItIsOn() throws {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        try coordinator.reassert()
+
+        XCTAssertEqual(session.speakerOverrides, 1, "the category change clears the override: put it back")
+    }
+
+    func testReassertAfterTheCallsOwnSpeakerMoveDoesNotLoop() throws {
+        session.reportsCurrentCategory = true
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        let categoryChanges = session.categoryCalls.count
+        let overrides = session.speakerOverrides
+
+        // The override's own route change reasserts (GPT-Live's link
+        // reasserts on every route change but a category change).
+        try coordinator.reassert()
+
+        XCTAssertEqual(session.categoryCalls.count, categoryChanges, "the call's category is already in place")
+        XCTAssertEqual(session.speakerOverrides, overrides, "no new override, so no new route change to loop on")
+        XCTAssertEqual(session.activationCount, 2, "the session is still reactivated")
+    }
+
+    func testReapplyThatLeavesTheSpeakerOnDoesNotOverrideAgain() throws {
+        coordinator.configureForIncomingCall()
+        session.isOutputOnBuiltInReceiver = false
+        // On the speaker without an override to clear (as if the category
+        // change didn't touch it).
+        session.isOutputOnBuiltInSpeaker = true
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.speakerOverrides, 0, "an override posts a route change: only when it's needed")
+    }
+
+    func testOptionsTheSystemAddsStillCountAsTheCallsCategory() throws {
+        session.reportsCurrentCategory = true
+        session.systemAddedOptions = [.allowBluetoothA2DP]
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        try coordinator.reassert()
+
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testASpeakerDefaultReportedByTheSessionIsNotTheCallsCategory() throws {
+        session.reportsCurrentCategory = true
+        session.systemAddedOptions = [.defaultToSpeaker]
+        coordinator.configureForIncomingCall()
+        let before = session.categoryCalls.count
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.categoryCalls.count, before + 1, "a speaker default must be cleared, or the Speaker button can't reach the earpiece")
+    }
+
+    func testReapplyInANativeCallLeavesTheEarpieceTheUserChose() throws {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        // The Speaker button turned the speaker off.
+        session.isOutputOnBuiltInSpeaker = false
+        session.isOutputOnBuiltInReceiver = true
+        session.resetRecordings()
+
+        try coordinator.reassert()
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertFalse(session.categoryCalls.last?.options.contains(.defaultToSpeaker) ?? true)
+    }
+
+    func testCallEndingUnderALiveConversationRestoresItsOwnPolicy() throws {
+        coordinator.configureForIncomingCall()
+        _ = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        coordinator.nativeCallEnded()
+
+        XCTAssertTrue(session.categoryCalls.last?.options.contains(.defaultToSpeaker) ?? false)
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testCallEndingWithNoOwnersLeavesTheSessionAlone() {
+        coordinator.configureForIncomingCall()
+        session.resetRecordings()
+
+        coordinator.nativeCallEnded()
+
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+        XCTAssertTrue(session.activationCalls.isEmpty)
+    }
+
+    func testFailedCallCategoryStillReappliesOnTheNextTransition() throws {
+        _ = try coordinator.acquire(.conversationCapture)
+        session.categoryError = VoiceAudioSessionMockError.configurationFailed
+        coordinator.configureForIncomingCall()
+        session.categoryError = nil
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationPlayback)
+
+        XCTAssertEqual(session.categoryCalls.count, 1, "the call's policy must still be applied")
+        XCTAssertFalse(session.categoryCalls.last?.options.contains(.defaultToSpeaker) ?? true)
+    }
+
+    func testSpeakerActivationOutsideACallDoesNothing() {
+        coordinator.nativeCallAudioActivated()
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
 }
 
 private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     /// Other media playing keeps standalone speech mixing and ducking
     /// (the pre-#373 policy) unless a test opts out.
     var isOtherAudioPlaying = true
+    var isOutputOnBuiltInSpeaker = false
+    /// A call answered with nothing connected starts on the earpiece.
+    var isOutputOnBuiltInReceiver = true
+    private(set) var speakerOverrides = 0
     struct CategoryCall: Equatable {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode
@@ -485,6 +666,11 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
 
     private(set) var categoryCalls: [CategoryCall] = []
     private(set) var activationCalls: [(active: Bool, options: AVAudioSession.SetActiveOptions)] = []
+    /// Off by default: every policy transition sets the category.
+    var reportsCurrentCategory = false
+    /// The session's category as last set. Session state, not a
+    /// recording: `resetRecordings()` leaves it, as on a device.
+    private var currentCategory: CategoryCall?
     var categoryError: Error?
     var activateError: Error?
     var deactivateError: Error?
@@ -501,9 +687,38 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         activationCalls.last(where: { !$0.active })?.options
     }
 
+    /// Clears what was recorded, not the session's state: the category,
+    /// the route and a live speaker override all survive it, as on a device.
     func resetRecordings() {
         categoryCalls.removeAll()
         activationCalls.removeAll()
+        speakerOverrides = 0
+    }
+
+    var overrideError: Error?
+    private var speakerOverridden = false
+
+    /// Option bits the system adds on its own, reported on top of the
+    /// last category set.
+    var systemAddedOptions: AVAudioSession.CategoryOptions = []
+
+    /// The production rule: category and mode match, the options cover the
+    /// configuration's, and both agree on the speaker default.
+    func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool {
+        guard reportsCurrentCategory, let last = currentCategory else { return false }
+        let reported = last.options.union(systemAddedOptions)
+        return last.category == configuration.category
+            && last.mode == configuration.mode
+            && reported.isSuperset(of: configuration.options)
+            && reported.contains(.defaultToSpeaker) == configuration.options.contains(.defaultToSpeaker)
+    }
+
+    func overrideOutputToSpeaker() throws {
+        if let overrideError { throw overrideError }
+        speakerOverrides += 1
+        speakerOverridden = true
+        isOutputOnBuiltInSpeaker = true
+        isOutputOnBuiltInReceiver = false
     }
 
     func setCategory(
@@ -513,6 +728,13 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
     ) throws {
         if let categoryError { throw categoryError }
         categoryCalls.append(CategoryCall(category: category, mode: mode, options: options))
+        currentCategory = CategoryCall(category: category, mode: mode, options: options)
+        // A category change clears a speaker override, as on a device.
+        if speakerOverridden {
+            speakerOverridden = false
+            isOutputOnBuiltInSpeaker = false
+            isOutputOnBuiltInReceiver = true
+        }
     }
 
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
