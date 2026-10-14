@@ -435,7 +435,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, phone, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
@@ -443,6 +443,7 @@ private enum SettingsDestination: Hashable {
         case .voice: self = .voice
         case .plugin: self = .conduitPlugin
         case .health: self = .health
+        case .phone: self = .phone
         }
     }
 }
@@ -784,6 +785,8 @@ struct SettingsView: View {
                 .navigationTitle("Calls from Hermes")
         case .health:
             HealthSettingsPage(engine: appState.healthSync)
+        case .phone:
+            PhoneSettingsPage(engine: appState.phoneSync)
         case .screenQuestion:
             SettingsDetailContainer {
                 ScreenQuestionSettingsSection()
@@ -894,6 +897,9 @@ private struct SettingsHome: View {
                         settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
                         if appState.showsHealthSettings {
                             settingsLink(.health, icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health")
+                        }
+                        if appState.showsPhoneSettings {
+                            settingsLink(.phone, icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes"), identifier: "settings.phone")
                         }
                         settingsLink(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
                         settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))

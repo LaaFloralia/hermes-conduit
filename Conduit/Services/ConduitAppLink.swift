@@ -46,6 +46,8 @@ enum ConduitAppLink: Equatable {
         case plugin
         /// Health, where sharing Apple Health data is turned on.
         case health
+        /// Calendar & phone: calendar, reminders, Focus and phone status.
+        case phone
     }
 
     static let scheme = "conduit"
