@@ -13267,6 +13267,8 @@ final class AppState: ObservableObject {
             sceneHasBeenActive = true
             widgetLaunchCoordinator.readinessChanged()
             noteActiveChatSeen(respectingMarks: true)
+            // Health data the phone gathered while Conduit was away.
+            Task { await runHealthSync(reason: .foreground) }
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -18095,6 +18097,10 @@ final class AppState: ObservableObject {
 
     /// What the host's notifier plugin serves; Settings nudges an update.
     @Published private(set) var notifierPlugin = NotifierPluginStatus()
+    /// Apple Health sharing with one Hermes profile.
+    /// Off until the user turns it on in Settings > Health.
+    @Published var healthSyncPreferences = HealthSyncPreferences.load()
+    lazy var healthSync = HealthSyncEngine(source: HealthKitDataSource(), deviceName: { UIDevice.current.name })
 
     /// The settings Hermes may change, and the changes it asked for
     /// (AgentSettings.swift).
@@ -18120,6 +18126,8 @@ final class AppState: ObservableObject {
         // Settings Hermes may change: share them, take its requests.
         Task { await syncAgentSettings() }
         await provisionNotificationEncryption(bridge: bridge)
+        // Health data catches up once this host is known to serve it.
+        Task { await runHealthSync(reason: .connected) }
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end
@@ -26838,6 +26846,7 @@ enum KeychainHelper {
     private static let nativeOAuthTokensKey = "hermes-conduit.native-oauth-tokens.v1"
     private static let pushRegistrationKey = "hermes-conduit.push-registration.v1"
     private static let customHeadersKey = "hermes-conduit.custom-headers.v1"
+    private static let healthSyncKeyAccount = "hermes-conduit.health-sync-key.v1"
     private static let service = "com.milim.conduit"
 
     static func saveConnection(_ conn: HermesConnection) {
@@ -26934,6 +26943,22 @@ enum KeychainHelper {
 
     static func clearPushRegistration() {
         delete(account: pushRegistrationKey)
+    }
+
+    // MARK: Health sync key
+
+    /// The key this phone agreed with the Hermes profile it shares health
+    /// data with. Readable after first unlock: background syncs need it.
+    static func saveHealthSyncKey(_ data: Data) {
+        save(data, account: healthSyncKeyAccount)
+    }
+
+    static func loadHealthSyncKey() -> Data? {
+        load(account: healthSyncKeyAccount)
+    }
+
+    static func clearHealthSyncKey() {
+        delete(account: healthSyncKeyAccount)
     }
 
     // MARK: Dashboard registry (multi-server, #148)
