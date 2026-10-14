@@ -18598,6 +18598,9 @@ final class AppState: ObservableObject {
         // ahead of it.
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
         await locationShare?.value
+        // Events that arrive while prompt.submit is in flight are held for
+        // the turn's Live Activity (#605), which starts once it's accepted.
+        LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
@@ -18647,6 +18650,13 @@ final class AppState: ObservableObject {
                         sessionIDs: submissionSessionIDs,
                         optimisticUserRowID: userMessage.id,
                         preSubmitOrderingBaseline: preSubmitOrderingBaseline
+                    )
+                    // The new turn's progress on the Lock Screen (#605).
+                    LiveTurnActivities.shared.turnStarted(
+                        sessionIDs: submissionSessionIDs,
+                        primaryID: sessionId,
+                        title: activeSessionTitle,
+                        profile: activeProfile
                     )
                 case .queued:
                     // Hermes normally drains queued input as a later full turn,
@@ -23987,6 +23997,7 @@ final class AppState: ObservableObject {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
+        LiveTurnActivities.shared.observe(event, sessionID: streamSessionId)
         if let signal = ResponseHapticPolicy.signal(for: event) {
             applyResponseHapticSignal(signal)
         }

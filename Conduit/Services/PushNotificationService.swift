@@ -936,6 +936,51 @@ final class PushNotificationService: ObservableObject {
         case released
     }
 
+    // MARK: - Live Activities (#605)
+
+    /// The installation whose relay answered 404 for the Live Activity
+    /// route; pairing with another relay tries again.
+    private var liveActivitiesUnsupportedInstallation: String?
+
+    /// Registers the push token of the Live Activity Conduit started for a
+    /// chat, under the ids the chat is known by (at most 6, the relay's
+    /// limit), so the host's progress reports reach it. Best effort: without
+    /// notifications, or on a relay without the route, the activity is only
+    /// updated while Conduit runs.
+    func registerLiveActivity(token: String, sessionIDs: [String]) async {
+        guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID,
+              !sessionIDs.isEmpty else { return }
+        await sendLiveActivity(
+            LiveActivityRegistration(pushToken: token, sessionIDs: Array(sessionIDs.prefix(6))),
+            method: "PUT",
+            registration: registration
+        )
+    }
+
+    /// The activity ended on the phone: the relay forgets its token.
+    func unregisterLiveActivity(token: String) async {
+        guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID else { return }
+        await sendLiveActivity(LiveActivityRemoval(pushToken: token), method: "DELETE", registration: registration)
+    }
+
+    private func sendLiveActivity<Body: Encodable>(_ body: Body, method: String, registration: StoredRegistration) async {
+        do {
+            let request = try jsonRequest(
+                path: "/v1/installations/\(registration.installationID)/live-activities",
+                method: method,
+                body: body,
+                credential: registration.credential
+            )
+            let (_, response) = try await URLSession.shared.data(for: request)
+            // Only a registration's 404 means the relay has no route.
+            if method == "PUT", (response as? HTTPURLResponse)?.statusCode == 404 {
+                liveActivitiesUnsupportedInstallation = registration.installationID
+            }
+        } catch {
+            // The activity still updates while Conduit runs.
+        }
+    }
+
     /// Answers a plugin-minted clarify decision through the relay. The gateway
     /// polls the relay for this answer while its clarify middleware blocks, so
     /// the agent thread unblocks exactly as if `clarify.respond` had been used.
@@ -1863,6 +1908,24 @@ final class PushNotificationService: ObservableObject {
     private func persistRegistration() {
         guard let registration, let data = try? JSONEncoder().encode(registration) else { return }
         KeychainHelper.savePushRegistration(data)
+    }
+}
+
+private struct LiveActivityRegistration: Encodable {
+    let pushToken: String
+    let sessionIDs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case pushToken = "push_token"
+        case sessionIDs = "session_ids"
+    }
+}
+
+private struct LiveActivityRemoval: Encodable {
+    let pushToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case pushToken = "push_token"
     }
 }
 
