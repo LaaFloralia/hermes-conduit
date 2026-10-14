@@ -226,7 +226,7 @@ struct PhoneSettingsPage: View {
                     .padding(.top, 4)
                 ForEach(voiceUses.entries.suffix(20).reversed()) { entry in
                     HStack {
-                        Text(verbatim: "\(entry.mode): \(entry.action)")
+                        Text(verbatim: "\(entry.modeName): \(entry.action)")
                         Spacer()
                         Text(entry.at.formatted(.relative(presentation: .named)))
                             .foregroundStyle(.secondary)
