@@ -632,7 +632,10 @@ final class AppState: ObservableObject {
             }
         )
     }()
-    var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive }
+    /// A widget action waits out the return-to-app refresh: that refresh
+    /// can drop a socket that died in the background and restore the last
+    /// chat, which would fail a new chat or take over the screen it opened.
+    var widgetForegroundReady: Bool { isSceneActive && sceneHasBeenActive && scenePhaseAttemptID == nil }
     var widgetSessionMutationRequestOverride: ((String, String, [String: Any]?) async throws -> [String: Any])?
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
@@ -1451,6 +1454,13 @@ final class AppState: ObservableObject {
     /// A Settings page a link asked for (`conduit://settings/calls`):
     /// MainView opens Settings there and clears it.
     @Published var settingsLinkRequest: ConduitAppLink.SettingsLink?
+    /// Bumped when something that opens a chat needs Settings out of the
+    /// way (a widget's New Chat or Talk); MainView owns the sheet.
+    @Published private(set) var settingsDismissRequest: UInt64 = 0
+    /// Also asked while Settings is only queued behind a closing drawer.
+    func requestSettingsDismissal() {
+        settingsDismissRequest &+= 1
+    }
     @Published var errorMessage: String?
     /// A reasoning write is in flight, from the composer chip or the Model
     /// sheet; both wait for it so picks land in order.
@@ -5251,6 +5261,13 @@ final class AppState: ObservableObject {
             }
         }
         return stored
+    }
+
+    /// Closes a call transcript and outdates its fetch still in flight, so
+    /// it can't come back over whatever opens next.
+    func dismissChatCallTranscript() {
+        chatCallTranscriptRequest = nil
+        chatCallTranscript = nil
     }
 
     /// Opens the saved transcript behind a chat's voice call card. Looked up
@@ -13728,16 +13745,21 @@ final class AppState: ObservableObject {
     }
 
     private func cancelScenePhaseAttempt() {
+        let hadAttempt = scenePhaseAttemptID != nil
         scenePhaseAttemptID = nil
         scenePhaseTask?.cancel()
         scenePhaseTask = nil
         cancelOwnedAutomaticOperations()
+        // The cancelled attempt's finish no longer matches and says
+        // nothing, so a waiting widget hears it here.
+        if hadAttempt, widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
     }
 
     private func finishScenePhaseAttempt(id: UUID) {
         guard scenePhaseAttemptID == id else { return }
         scenePhaseAttemptID = nil
         scenePhaseTask = nil
+        if widgetForegroundReady { widgetLaunchCoordinator.readinessChanged() }
     }
 
     private var turnStateLogValue: String {
