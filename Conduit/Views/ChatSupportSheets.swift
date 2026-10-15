@@ -15,45 +15,61 @@ struct GatewayDiagnosticsSheet: View {
     /// The report copied last, so "Copied" clears once a newer step lands.
     @State private var copiedTimelineReport: String?
     @State private var confirmingRestart = false
+    /// Pushed inside Settings > Gateway rather than shown as its own sheet.
+    var embedded = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(spacing: 14) {
-                        summary
-                        lastConnection
-                        connectors
-                        logs
-                    }
-                    .padding(16)
-                }
-            }
-            .navigationTitle("Gateway")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button { confirmingRestart = true } label: {
-                        Image(systemName: "restart")
-                    }
-                    .disabled(!appState.canRestartGateway)
-                    .accessibilityLabel("Restart Gateway")
-                    .accessibilityIdentifier("gateway.restart")
-                    Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
-                        if appState.gatewayDiagnosticsLoading {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                    }
-                    .accessibilityLabel("Refresh gateway diagnostics")
-                }
-            }
-            .gatewayRestartConfirmation(isPresented: $confirmingRestart)
+        if embedded {
+            page
+        } else {
+            NavigationStack { page }
         }
-        .task { await appState.loadGatewayDiagnostics() }
+    }
+
+    private var page: some View {
+        ZStack {
+            ConduitBackdrop()
+            ScrollView {
+                VStack(spacing: 14) {
+                    summary
+                    lastConnection
+                    connectors
+                    logs
+                }
+                .padding(16)
+            }
+        }
+        .navigationTitle(embedded ? AppLocalization.string("Diagnostics & logs") : AppLocalization.string("Gateway"))
+        .navigationBarTitleDisplayMode(.inline)
+        // Pushed, it keeps the Settings pages' bar.
+        .toolbarBackground(embedded ? .automatic : .hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { confirmingRestart = true } label: {
+                    Image(systemName: "restart")
+                }
+                .disabled(!appState.canRestartGateway)
+                .accessibilityLabel(AppLocalization.string("Restart Gateway"))
+                .accessibilityIdentifier("gateway.restart")
+                Button { Task { await appState.refreshGatewayDiagnostics() } } label: {
+                    if appState.gatewayDiagnosticsLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics"))
+            }
+        }
+        .gatewayRestartConfirmation(isPresented: $confirmingRestart)
+        // Pushed from Settings it only reloads; loading also raises the sheet.
+        .task {
+            if embedded {
+                await appState.refreshGatewayDiagnostics()
+            } else {
+                await appState.loadGatewayDiagnostics()
+            }
+        }
     }
 
     private var summary: some View {
@@ -69,7 +85,7 @@ struct GatewayDiagnosticsSheet: View {
             GatewayRestartStatusView()
             if !running && !appState.activeGatewayRestart.isInProgress {
                 Button { Task { await appState.reconnect() } } label: {
-                    Label("Retry connection", systemImage: "arrow.clockwise")
+                    Label(AppLocalization.string("Retry connection"), systemImage: "arrow.clockwise")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)

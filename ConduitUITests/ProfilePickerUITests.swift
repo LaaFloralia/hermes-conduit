@@ -26,7 +26,6 @@ final class ProfilePickerUITests: XCTestCase {
     private enum Identity {
         static let connectedDashboard = "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD"
         static let seededProfiles = "-CONDUIT_UI_TEST_PROFILES"
-        static let openSidebar = "Open sessions"
         static let workspace = "sidebar.workspace"
         static let pickerTitle = "Profiles"
         static let currentMarker = "Current"
@@ -187,12 +186,10 @@ final class ProfilePickerUITests: XCTestCase {
     }
 
     private func openProfilePicker(_ app: XCUIApplication) {
-        let drawer = app.buttons[Identity.openSidebar]
-        XCTAssertTrue(drawer.waitForExistence(timeout: 10), "Main UI did not appear. Tree:\n\(app.debugDescription)")
-        drawer.tap()
-
+        // The profile strip's selected chip opens the profile manager.
         let workspace = app.buttons[Identity.workspace]
-        XCTAssertTrue(workspace.waitForExistence(timeout: 10), "Sidebar did not appear. Tree:\n\(app.debugDescription)")
+        app.returnToV2Tabs(revealing: workspace)
+        XCTAssertTrue(workspace.waitForExistence(timeout: 10), "Profile strip did not appear. Tree:\n\(app.debugDescription)")
         workspace.tap()
 
         XCTAssertTrue(

@@ -2890,12 +2890,14 @@ enum MessageNormalizer {
                 let groupObject = group.objectValue ?? [:]
                 let groupID = groupObject["id"]?.stringValue ?? UUID().uuidString
                 let groupLabel = firstNonEmptyString([groupObject["label"], groupObject["path"]]) ?? AppLocalization.string("Sessions")
+                let groupPath = firstNonEmptyString([groupObject["path"], groupObject["cwd"]])
                 let sessions = normalizeSessions(.array(groupObject["sessions"]?.arrayValue ?? []), profile: profile)
                 guard !sessions.isEmpty else { continue }
                 lanes.append(ProjectSessionLane(
                     id: groupID,
                     title: multipleRepos ? "\(repoLabel) · \(groupLabel)" : groupLabel,
-                    sessions: sessions
+                    sessions: sessions,
+                    path: groupPath == groupLabel ? nil : groupPath
                 ))
             }
         }
@@ -2970,9 +2972,23 @@ enum MessageNormalizer {
                 isUnread: obj["unread"]?.boolValue,
                 readWatermark: obj["last_read_at"]?.doubleValue,
                 isPinned: obj["pinned"]?.boolValue,
-                lineageRootId: obj["_lineage_root_id"]?.stringValue
+                lineageRootId: obj["_lineage_root_id"]?.stringValue,
+                preview: Self.sessionListPreview(in: obj)
             )
         }
+    }
+
+    /// A row's `preview`, kept only when the row also has a title: an
+    /// untitled row already shows its preview as the title.
+    static func sessionListPreview(in obj: [String: AnyCodable]) -> String? {
+        guard let title = obj["title"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty,
+              let preview = obj["preview"]?.stringValue?
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !preview.isEmpty,
+              preview != title else { return nil }
+        return preview
     }
 
     /// The ordering instant for a session row, so restoration can rank

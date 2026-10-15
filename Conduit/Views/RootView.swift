@@ -70,6 +70,9 @@ struct RootView: View {
 struct MainView: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
+    /// Conduit V2's tab shell (V2Shell.swift). Off brings back the drawer
+    /// shell, the fallback while V2 is on its branch.
+    @AppStorage(V2ShellPreference.key) private var useV2Shell = V2ShellPreference.defaultValue
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @State private var availableWindowWidth: CGFloat = 0
     @State private var settingsPresentation: SettingsSnapshot?
@@ -87,7 +90,7 @@ struct MainView: View {
         )
     }
 
-    private var isPersistentSidebarActive: Bool { sidebarPresentation == .persistent }
+    private var isPersistentSidebarActive: Bool { !useV2Shell && sidebarPresentation == .persistent }
 
     var body: some View {
         sidebarLayoutContent
@@ -99,6 +102,13 @@ struct MainView: View {
                 NotifierPluginUpdateBanner()
                 // Calendar changes Hermes asked for (AppState+PhoneSync.swift).
                 PhoneChangeOverlay(engine: appState.phoneSync)
+            }
+        }
+        // Confirmations Hermes asks to present (PresentedScreens.swift); a
+        // call's screen shows its own over the call.
+        .overlay(alignment: .bottom) {
+            if !appState.isVoiceCallScreenPresented {
+                presentedConfirmOverlay(inCall: false)
             }
         }
         .sheet(isPresented: $appState.showModelPicker) {
@@ -161,6 +171,7 @@ struct MainView: View {
                 onRetry: { Task { await appState.geminiLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -174,6 +185,7 @@ struct MainView: View {
                 onRetry: { Task { await appState.grokLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -186,6 +198,7 @@ struct MainView: View {
                 onRetry: { Task { await appState.gptLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
@@ -198,6 +211,7 @@ struct MainView: View {
                 shouldAutoListen: { appState.consumeVoiceSheetAutoListenIfPresenting() }
             )
                 .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+                .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -265,7 +279,8 @@ struct MainView: View {
             settingsPresentation = nil
         }
         .onChange(of: appState.settingsLinkRequest) { _, page in
-            guard let page else { return }
+            // V2 opens the page in its Settings tab (V2Shell).
+            guard !useV2Shell, let page else { return }
             appState.settingsLinkRequest = nil
             openSettings(at: page)
         }
@@ -314,7 +329,11 @@ struct MainView: View {
     /// column beside the chat.
     @ViewBuilder
     private var sidebarLayoutContent: some View {
-        if isPersistentSidebarActive {
+        if useV2Shell {
+            // V2 always opens on the Chats list (Eric, 2026-10-15); a chat
+            // a notification or widget opens is pushed over it.
+            V2Shell()
+        } else if isPersistentSidebarActive {
             HStack(spacing: 0) {
                 SidebarView(
                     onRequestSettings: presentSettingsFromPersistentSidebar,
@@ -489,6 +508,20 @@ struct MainView: View {
         appState.showSidebar = true
     }
 
+    /// The confirmation Hermes is waiting on, answered by tap.
+    private func presentedConfirmOverlay(inCall: Bool) -> some View {
+        PresentedConfirmOverlay(
+            sync: appState.presentedScreens,
+            inCall: inCall,
+            onAnswer: { prompt, outcome in
+                Task { await appState.answerPresentedConfirm(prompt, outcome: outcome, via: .tap) }
+            },
+            onEdit: inCall ? nil : { prompt in
+                Task { await appState.editPresentedConfirm(prompt) }
+            }
+        )
+    }
+
     private var windowWidthReader: some View {
         GeometryReader { proxy in
             Color.clear.preference(key: MainViewWindowWidthKey.self, value: proxy.size.width)
@@ -518,10 +551,13 @@ private struct MainViewWindowWidthKey: PreferenceKey {
 /// leaving the chat (#446), cron runs included (#512). A chat without a row of
 /// its own (a new chat, a Bot Chat, an offline copy) keeps the plain tap-only
 /// title.
-private struct ChatTitleControl: View {
+struct ChatTitleControl: View {
     @EnvironmentObject var appState: AppState
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    /// Plain title without its capsule, for a header that also carries a
+    /// subtitle line (V2's link back to a child session's parent).
+    var compact = false
 
     var body: some View {
         if let session = appState.activeChatSessionSummary {
@@ -560,16 +596,25 @@ private struct ChatTitleControl: View {
         }
     }
 
+    @ViewBuilder
     private var titleLabel: some View {
-        Text(appState.displayedChatTitle)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
-            // The navigation bar doesn't grow; touch and hold shows it large.
-            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        if compact {
+            Text(appState.displayedChatTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        } else {
+            Text(appState.displayedChatTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .conduitGlassSurface(cornerRadius: 16, tint: .conduitAccent.opacity(0.06))
+                // The navigation bar doesn't grow; touch and hold shows it large.
+                .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        }
     }
 }
 

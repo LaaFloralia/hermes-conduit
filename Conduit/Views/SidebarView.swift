@@ -275,9 +275,9 @@ struct SessionList: View {
                     .conduitGlassControl(cornerRadius: 14)
                     .disabled(!appState.canStartPhoneVoiceConversation || appState.isVoiceInUse)
                     .accessibilityShowsLargeContentViewer {
-                        Label("New voice call", systemImage: "waveform")
+                        Label(AppLocalization.string("New voice call"), systemImage: "waveform")
                     }
-                    .accessibilityLabel("New voice call")
+                    .accessibilityLabel(AppLocalization.string("New voice call"))
                     .accessibilityHint(appState.phoneVoiceUnavailableReason ?? AppLocalization.string("Starts a voice call that isn't tied to a chat"))
                 }
 
@@ -286,21 +286,21 @@ struct SessionList: View {
                         Haptics.selection()
                         showFilterOrder = true
                     } label: {
-                        Label("Reorder filters", systemImage: "arrow.left.arrow.right")
+                        Label(AppLocalization.string("Reorder filters"), systemImage: "arrow.left.arrow.right")
                     }
 
                     Button {
                         Haptics.selection()
                         showArchivedSessions = true
                     } label: {
-                        Label("Archived conversations", systemImage: "archivebox")
+                        Label(AppLocalization.string("Archived conversations"), systemImage: "archivebox")
                     }
 
                     Button {
                         Haptics.light()
                         appState.markAllSessionsRead()
                     } label: {
-                        Label("Mark all as read", systemImage: "envelope.open")
+                        Label(AppLocalization.string("Mark all as read"), systemImage: "envelope.open")
                     }
                     .disabled(!sourceRows(nil).contains { appState.isSessionUnread($0) })
 
@@ -309,7 +309,7 @@ struct SessionList: View {
                         sessionPresentationRaw = SessionPresentation.projects.rawValue
                         showProjectCreator = true
                     } label: {
-                        Label("New project", systemImage: "folder.badge.plus")
+                        Label(AppLocalization.string("New project"), systemImage: "folder.badge.plus")
                     }
                     .disabled(!appState.supportsProjects)
                 } label: {
@@ -618,14 +618,14 @@ struct SessionList: View {
                             Haptics.selection()
                             DispatchQueue.main.async { projectPendingRename = project }
                         } label: {
-                            Label("Rename…", systemImage: "pencil")
+                            Label(AppLocalization.string("Rename…"), systemImage: "pencil")
                         }
                         .disabled(appState.isProjectMutationInFlight)
                         Button(role: .destructive) {
                             Haptics.warning()
                             projectPendingDeletion = project
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Label(AppLocalization.string("Delete"), systemImage: "trash")
                         }
                         .disabled(appState.isProjectMutationInFlight)
                     }
@@ -635,14 +635,14 @@ struct SessionList: View {
                                 Haptics.warning()
                                 projectPendingDeletion = project
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label(AppLocalization.string("Delete"), systemImage: "trash")
                             }
                             .disabled(appState.isProjectMutationInFlight)
                             Button {
                                 Haptics.selection()
                                 DispatchQueue.main.async { projectPendingRename = project }
                             } label: {
-                                Label("Rename…", systemImage: "pencil")
+                                Label(AppLocalization.string("Rename…"), systemImage: "pencil")
                             }
                             .tint(.conduitAccent)
                             .disabled(appState.isProjectMutationInFlight)
@@ -770,7 +770,7 @@ struct SessionList: View {
                 Haptics.selection()
                 showFilterOrder = true
             } label: {
-                Label("Reorder filters", systemImage: "arrow.left.arrow.right")
+                Label(AppLocalization.string("Reorder filters"), systemImage: "arrow.left.arrow.right")
             }
         }
     }
@@ -894,7 +894,7 @@ struct SessionList: View {
                         Haptics.mutationCompleted(await appState.archiveSession(session))
                     }
                 } label: {
-                    Label("Archive", systemImage: "archivebox")
+                    Label(AppLocalization.string("Archive"), systemImage: "archivebox")
                 }
                 .tint(.orange)
                 .disabled(appState.isSessionMutationInFlight(session))
@@ -903,7 +903,7 @@ struct SessionList: View {
                     Haptics.warning()
                     sessionPendingDeletion = session
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(AppLocalization.string("Delete"), systemImage: "trash")
                 }
                 .disabled(appState.isSessionMutationInFlight(session))
             }
@@ -1075,7 +1075,7 @@ private struct SessionFilterOrderSheet: View {
     }
 }
 
-private struct ArchivedSessionsSheet: View {
+struct ArchivedSessionsSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -1315,6 +1315,7 @@ private extension View {
 /// offer the same menu. Rename and Delete need a host-owned sheet or alert,
 /// so the host supplies those two actions.
 struct SessionActionMenuItems: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
@@ -1334,7 +1335,7 @@ struct SessionActionMenuItems: View {
             // isn't presented in the same update as the menu's dismissal.
             DispatchQueue.main.async { onRename() }
         } label: {
-            Label("Rename…", systemImage: "pencil")
+            Label(AppLocalization.string("Rename…"), systemImage: "pencil")
         }
         .disabled(appState.isSessionMutationInFlight(session))
 
@@ -1359,7 +1360,7 @@ struct SessionActionMenuItems: View {
                 if archived { onChanged() }
             }
         } label: {
-            Label("Archive", systemImage: "archivebox")
+            Label(AppLocalization.string("Archive"), systemImage: "archivebox")
         }
         .disabled(appState.isSessionMutationInFlight(session))
 
@@ -1367,7 +1368,7 @@ struct SessionActionMenuItems: View {
             Haptics.warning()
             onDelete()
         } label: {
-            Label("Delete", systemImage: "trash")
+            Label(AppLocalization.string("Delete"), systemImage: "trash")
         }
         .disabled(appState.isSessionMutationInFlight(session))
     }
@@ -1376,6 +1377,7 @@ struct SessionActionMenuItems: View {
 /// Mark as read / Mark as unread for one conversation (#454). Writes Hermes'
 /// shared read flag too, so Hermes Desktop follows.
 struct ReadStateToggleButton: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     /// What the toggle addresses (#556): a parent displays its children's
@@ -1477,6 +1479,7 @@ enum SessionStatusFilter: String, CaseIterable, Identifiable {
 /// The session row's "Move to Project" submenu. Hidden when the gateway has
 /// no projects capability or no project with a folder to move into.
 struct MoveToProjectMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     let session: SessionSummary
     var excludingProjectID: String? = nil
@@ -1544,6 +1547,7 @@ private struct ProjectRow: View {
 }
 
 private struct ProjectSessionsSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     let project: ProjectSummary
@@ -1558,18 +1562,18 @@ private struct ProjectSessionsSheet: View {
                 ConduitBackdrop()
                 List {
                     if isLoading {
-                        ProgressView("Loading conversations…")
+                        ProgressView(AppLocalization.string("Loading conversations…"))
                             .frame(maxWidth: .infinity, minHeight: 140)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                     } else if let detail, detail.lanes.isEmpty {
                         ContentUnavailableView {
-                            Label("No Conversations", systemImage: "tray")
+                            Label(AppLocalization.string("No Conversations"), systemImage: "tray")
                         } description: {
-                            Text("This project does not have any conversations yet.")
+                            Text(AppLocalization.string("This project does not have any conversations yet."))
                         } actions: {
                             if newConversationPath != nil {
-                                Button("New conversation", action: startNewConversation)
+                                Button(AppLocalization.string("New conversation"), action: startNewConversation)
                                     .buttonStyle(.borderedProminent)
                             }
                         }
@@ -1597,7 +1601,7 @@ private struct ProjectSessionsSheet: View {
                                             .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
-                                    .accessibilityHint("Swipe or touch and hold for conversation actions.")
+                                    .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
                                     .contextMenu {
                                         SessionActionMenuItems(
                                             session: session,
@@ -1624,7 +1628,7 @@ private struct ProjectSessionsSheet: View {
                                                 if archived { reloadDetail() }
                                             }
                                         } label: {
-                                            Label("Archive", systemImage: "archivebox")
+                                            Label(AppLocalization.string("Archive"), systemImage: "archivebox")
                                         }
                                         .tint(.orange)
                                         .disabled(appState.isSessionMutationInFlight(session))
@@ -1633,7 +1637,7 @@ private struct ProjectSessionsSheet: View {
                                             Haptics.warning()
                                             sessionPendingDeletion = session
                                         } label: {
-                                            Label("Delete", systemImage: "trash")
+                                            Label(AppLocalization.string("Delete"), systemImage: "trash")
                                         }
                                         .disabled(appState.isSessionMutationInFlight(session))
                                     }
@@ -1711,7 +1715,8 @@ private struct ProjectSessionsSheet: View {
     }
 }
 
-private struct ProjectCreateSheet: View {
+struct ProjectCreateSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -1758,7 +1763,7 @@ private struct ProjectCreateSheet: View {
                             }
                             showFolderPicker = true
                         } label: {
-                            Label("Add folder", systemImage: "plus")
+                            Label(AppLocalization.string("Add folder"), systemImage: "plus")
                         }
                     }
 
@@ -2170,7 +2175,7 @@ private struct CronJobRow: View {
     }
 }
 
-private struct CronJobDetailSheet: View {
+struct CronJobDetailSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss

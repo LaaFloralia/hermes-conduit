@@ -25,6 +25,12 @@ private struct OptionalAccessibilityHint: ViewModifier {
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
+    /// V2: the composer is expanded, which hides the minimised call's bar.
+    @State private var composerExpanded = false
+    @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
+    /// V2: the composer floats over the transcript, which scrolls on under
+    /// it and fades, instead of ending at a hard edge above it.
+    @Environment(\.v2ComposerRests) private var composerFloats
     /// Owns the viewport: follows the latest message, holds the reader's
     /// place while browsing, restores saved positions. It reads and sets the
     /// transcript's UIScrollView directly (ChatScrollSurfaceLocator), so
@@ -172,6 +178,21 @@ struct ChatView: View {
         }
     }
 
+    /// The minimised call bar and the composer, below the transcript.
+    @ViewBuilder
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
+            // A live call swiped down keeps running; its bar sits here
+            // (in V2, not while the composer is expanded).
+            if !composerExpanded {
+                MinimisedLiveVoiceBar()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            // Composer + control bar
+            ComposerBar()
+        }
+    }
+
     private var renderedScrollScope: ChatRenderedScrollScope? {
         viewportInputs.renderedScrollScope
     }
@@ -226,10 +247,21 @@ struct ChatView: View {
                 }
             }
 
-            // A live call swiped down keeps running; its bar sits here.
-            MinimisedLiveVoiceBar()
-            // Composer + control bar
-            ComposerBar()
+            if !composerFloats {
+                bottomBar
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if composerFloats {
+                bottomBar
+                    .background { V2ScrollEdgeBackground(edge: .bottom) }
+            }
+        }
+        .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
+            // In step with the voice button retreating beside it.
+            withAnimation(ConduitMotion.ease(reduceMotion: composerReduceMotion)) {
+                composerExpanded = expanded
+            }
         }
         .environment(\.chatTextSize, chatTextSize)
         // Gateway videos, audio and documents open from a download (#569).
@@ -350,6 +382,7 @@ struct ChatView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
         .onTapGesture {
             UIApplication.shared.sendAction(
                 #selector(UIResponder.resignFirstResponder),
@@ -3253,6 +3286,21 @@ private struct ConduitBreathingTimeline<Content: View>: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / ConduitAgentMark.breathingFramesPerSecond)) { _ in
             content(ConduitAgentMark.breath(at: ProcessInfo.processInfo.systemUptime - startedAt))
+        }
+    }
+}
+
+/// V2 (iOS 26): the transcript fades out under the header instead of the
+/// navigation bar's edge ending it at a line.
+private struct V2SoftTopScrollEdge: ViewModifier {
+    let isOn: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *), isOn {
+            content.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            content
         }
     }
 }

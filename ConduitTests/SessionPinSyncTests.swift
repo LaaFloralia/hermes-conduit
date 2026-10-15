@@ -168,3 +168,264 @@ extension ChatReadStateTests {
         XCTAssertNil(sessions.first { $0.id == "c" }?.isPinned)
     }
 }
+
+// MARK: - Session mutation identity
+
+/// Hermes main refuses a session PATCH or DELETE without a request id and
+/// the row's revision (409 mutation_identity_required).
+extension ChatReadStateTests {
+    func testSessionMutationIdentityReadsTheSnapshotRevision() throws {
+        let snapshot: [String: Any] = [
+            "session_id": "abc", "exists": true,
+            "runtime_revision": NSNumber(value: 7), "runtime_generation": NSNumber(value: 2)
+        ]
+        let fields = try XCTUnwrap(SessionMutationIdentity.fields(snapshot: snapshot, requestID: "req-1"))
+        XCTAssertEqual(fields["request_id"] as? String, "req-1")
+        XCTAssertEqual(fields["expected_revision"] as? Int, 7)
+        XCTAssertEqual(fields["expected_generation"] as? Int, 2)
+    }
+
+    func testSessionMutationIdentityKeepsARevisionOfZeroOrOne() throws {
+        let zero = try XCTUnwrap(SessionMutationIdentity.fields(snapshot: ["runtime_revision": NSNumber(value: 0), "runtime_generation": NSNull()], requestID: "r"))
+        XCTAssertEqual(zero["expected_revision"] as? Int, 0)
+        XCTAssertNil(zero["expected_generation"])
+        let one = try XCTUnwrap(SessionMutationIdentity.fields(snapshot: ["runtime_revision": NSNumber(value: 1)], requestID: "r"))
+        XCTAssertEqual(one["expected_revision"] as? Int, 1)
+    }
+
+    func testSessionMutationIdentityIsAbsentForAnOlderHost() {
+        XCTAssertNil(SessionMutationIdentity.fields(snapshot: [:]))
+        XCTAssertNil(SessionMutationIdentity.fields(snapshot: ["runtime_revision": NSNumber(value: true)]))
+    }
+
+    func testSessionMutationIdentityGoesInADeleteQuery() {
+        let path = SessionMutationIdentity.path(
+            "/api/sessions/abc?profile=work",
+            adding: ["request_id": "r-1", "expected_revision": 3]
+        )
+        XCTAssertEqual(path, "/api/sessions/abc?profile=work&expected_revision=3&request_id=r-1")
+        XCTAssertEqual(SessionMutationIdentity.path("/api/sessions/abc", adding: ["expected_revision": 3]), "/api/sessions/abc?expected_revision=3")
+    }
+
+    func testSessionMutationRetriesOnlyHermesConflicts() {
+        func retries(_ status: Int, _ detail: String) -> Bool {
+            SessionMutationIdentity.warrantsRetry(DashboardTicketBridgeError.http(status: status, detail: detail))
+        }
+        XCTAssertTrue(retries(409, "revision_conflict"))
+        XCTAssertTrue(retries(409, #"{"detail":"stale_generation"}"#))
+        XCTAssertTrue(retries(409, "mutation_identity_required"))
+        XCTAssertFalse(retries(409, "session_busy"))
+        XCTAssertFalse(retries(409, "lock held by another gateway"))
+        XCTAssertFalse(retries(404, "not_found"))
+    }
+
+    func testSessionWriteConflictReadsAsBusy() {
+        let busy = AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
+        XCTAssertEqual(DashboardTicketBridgeError.describe(status: 409, detail: #"{"detail":"mutation_identity_required"}"#), busy)
+        XCTAssertEqual(DashboardTicketBridgeError.describe(status: 409, detail: "session_busy"), busy)
+    }
+
+    @MainActor
+    private func mutationAppState() -> AppState {
+        let suite = "SessionMutation.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite) ?? .standard
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return AppState(defaults: defaults, loadSavedConnection: false)
+    }
+
+    @MainActor
+    func testSessionPatchReadsTheSnapshotThenCarriesItsIdentity() async throws {
+        let appState = mutationAppState()
+        var calls: [(path: String, method: String, body: [String: Any]?)] = []
+        _ = try await appState.sendSessionMutation("abc", body: ["pinned": true], profile: "work") { path, method, body in
+            calls.append((path, method, body))
+            return method == "GET" ? ["runtime_revision": 4, "runtime_generation": 2] : ["ok": true]
+        }
+        XCTAssertEqual(calls.map(\.method), ["GET", "PATCH"])
+        XCTAssertTrue(calls[0].path.hasPrefix("/api/sessions/abc/mutation-snapshot"))
+        let body = try XCTUnwrap(calls[1].body)
+        XCTAssertEqual(body["pinned"] as? Bool, true)
+        XCTAssertEqual(body["profile"] as? String, "work")
+        XCTAssertEqual(body["expected_revision"] as? Int, 4)
+        XCTAssertEqual(body["expected_generation"] as? Int, 2)
+        XCTAssertNotNil(body["request_id"] as? String)
+    }
+
+    @MainActor
+    func testSessionDeleteCarriesTheIdentityInItsQuery() async throws {
+        let appState = mutationAppState()
+        var paths: [String] = []
+        _ = try await appState.sendSessionMutation("abc", body: nil, profile: "default") { path, method, _ in
+            paths.append("\(method) \(path)")
+            return method == "GET" ? ["runtime_revision": 7] : [:]
+        }
+        XCTAssertEqual(paths.count, 2)
+        XCTAssertTrue(paths[1].hasPrefix("DELETE /api/sessions/abc?expected_revision=7&request_id="))
+    }
+
+    @MainActor
+    func testSessionWriteRetriesOnceWithAFreshSnapshot() async throws {
+        let appState = mutationAppState()
+        var revisions: [Int] = []
+        var requestIDs: [String] = []
+        var snapshots = 0
+        _ = try await appState.sendSessionMutation("abc", body: ["archived": true], profile: "default") { _, method, body in
+            if method == "GET" {
+                snapshots += 1
+                // The first snapshot read fails, so the first write goes bare.
+                if snapshots == 1 { throw DashboardTicketBridgeError.http(status: 0, detail: "Load failed") }
+                return ["runtime_revision": 9]
+            }
+            if let id = body?["request_id"] as? String { requestIDs.append(id) }
+            guard let revision = body?["expected_revision"] as? Int else {
+                throw DashboardTicketBridgeError.http(status: 409, detail: "mutation_identity_required")
+            }
+            revisions.append(revision)
+            return [:]
+        }
+        XCTAssertEqual(snapshots, 2)
+        XCTAssertEqual(revisions, [9])
+        XCTAssertEqual(requestIDs.count, 1)
+    }
+
+    @MainActor
+    func testSessionWriteDoesNotRetryABusySession() async {
+        let appState = mutationAppState()
+        var writes = 0
+        do {
+            _ = try await appState.sendSessionMutation("abc", body: ["title": "x"], profile: "default") { _, method, _ in
+                if method == "GET" { return ["runtime_revision": 1] }
+                writes += 1
+                throw DashboardTicketBridgeError.http(status: 409, detail: "session_busy")
+            }
+            XCTFail("A busy session should fail the write")
+        } catch {
+            XCTAssertEqual(writes, 1)
+        }
+    }
+
+    @MainActor
+    func testSessionWritesSkipTheSnapshotOnAnOlderHost() async throws {
+        let appState = mutationAppState()
+        var methods: [String] = []
+        let olderHost: (String, String, [String: Any]?) async throws -> [String: Any] = { _, method, _ in
+            methods.append(method)
+            if method == "GET" { throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") }
+            return [:]
+        }
+        _ = try await appState.sendSessionMutation("abc", body: ["pinned": true], profile: "default", using: olderHost)
+        _ = try await appState.sendSessionMutation("abc", body: ["pinned": false], profile: "default", using: olderHost)
+        XCTAssertEqual(methods, ["GET", "PATCH", "PATCH"])
+    }
+
+    func testOnlyAFrameworkNotFoundMeansNoSnapshotRoute() {
+        XCTAssertTrue(SessionMutationIdentity.isMissingRoute(#"{"detail":"Not Found"}"#))
+        XCTAssertFalse(SessionMutationIdentity.isMissingRoute("not_found"))
+        XCTAssertFalse(SessionMutationIdentity.isMissingRoute("Session not found"))
+    }
+
+    func testPinsHermesRefusedStayOnThePhone() {
+        var sync = pinSync(adopted: true)
+        let write = sync.recordWrite(pinID: "old", profile: "default", pinned: true, at: Self.pinT0)
+        XCTAssertTrue(sync.keepOnPhone(pinID: "old", profile: "default", generation: write))
+        XCTAssertTrue(sync.isPhoneOnly(pinID: "old", profile: "default"))
+        XCTAssertFalse(sync.isPhoneOnly(pinID: "old", profile: "work"))
+        let outcome = sync.reconcile(
+            pins: ["old"],
+            listed: [pinRow("old", pinned: false), pinRow("b", pinned: true)],
+            profile: "default",
+            now: Self.pinT0
+        )
+        XCTAssertEqual(outcome.pins, ["old", "b"], "The host's unpinned flag can't drop a pin it refused")
+        XCTAssertEqual(outcome.uploads, [])
+    }
+
+    func testPinsHermesRefusedNeverGoUpAndDontHoldOffAdoption() {
+        var sync = pinSync()
+        let oldDefaultWrite = sync.recordWrite(pinID: "old", profile: "default", pinned: true)
+        sync.keepOnPhone(pinID: "old", profile: "default", generation: oldDefaultWrite)
+        let unlistedDefaultWrite = sync.recordWrite(pinID: "unlisted", profile: "default", pinned: true)
+        sync.keepOnPhone(pinID: "unlisted", profile: "default", generation: unlistedDefaultWrite)
+        let outcome = sync.reconcile(
+            pins: ["old", "unlisted"],
+            listed: [pinRow("old", pinned: false)],
+            profile: "default",
+            now: Self.pinT0
+        )
+        XCTAssertEqual(outcome, SessionPinSync.Reconciliation(pins: ["old", "unlisted"], uploads: []))
+        XCTAssertTrue(sync.isAdopted(profile: "default"))
+    }
+
+    func testPinsHermesRefusedAreKeptPerHostAndProfile() {
+        var sync = pinSync()
+        let oldDefaultWrite = sync.recordWrite(pinID: "old", profile: "default", pinned: true)
+        sync.keepOnPhone(pinID: "old", profile: "default", generation: oldDefaultWrite)
+        let oldWorkWrite = sync.recordWrite(pinID: "old", profile: "work", pinned: true)
+        sync.keepOnPhone(pinID: "old", profile: "work", generation: oldWorkWrite)
+        var restored = SessionPinSync(phoneOnly: sync.phoneOnly)
+        restored.setHost(Self.pinHost)
+        XCTAssertTrue(restored.isPhoneOnly(pinID: "old", profile: "default"), "Survives a relaunch")
+        restored.forget(profile: "default")
+        XCTAssertFalse(restored.isPhoneOnly(pinID: "old", profile: "default"))
+        XCTAssertTrue(restored.isPhoneOnly(pinID: "old", profile: "work"))
+        restored.setHost("https://other.example")
+        XCTAssertFalse(restored.isPhoneOnly(pinID: "old", profile: "work"))
+        restored.reset()
+        XCTAssertTrue(restored.phoneOnly.isEmpty)
+    }
+
+    func testHermesRefusalIsNotAnExpiredSignIn() {
+        XCTAssertTrue(SessionMutationIdentity.isRefusal(DashboardTicketBridgeError.http(status: 403, detail: "permission_denied")))
+        XCTAssertTrue(SessionMutationIdentity.isRefusal(DashboardTicketBridgeError.http(status: 403, detail: " profile_mismatch\n")))
+        XCTAssertTrue(SessionMutationIdentity.isRefusal(DashboardTicketBridgeError.http(status: 403, detail: "permission_denied: history claim required")))
+        XCTAssertFalse(SessionMutationIdentity.isRefusal(DashboardTicketBridgeError.http(status: 403, detail: "Forbidden")))
+        XCTAssertFalse(SessionMutationIdentity.isRefusal(DashboardTicketBridgeError.http(status: 409, detail: "permission_denied")))
+        XCTAssertFalse(SessionMutationIdentity.isRefusal(DashboardTicketBridgeError.signInRequired))
+        XCTAssertEqual(
+            DashboardTicketBridgeError.describe(status: 403, detail: "permission_denied"),
+            AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.")
+        )
+        XCTAssertEqual(
+            DashboardTicketBridgeError.describe(status: 403, detail: "profile_mismatch"),
+            AppLocalization.string("Hermes says this chat belongs to another profile. Switch to that profile, then try again.")
+        )
+        XCTAssertEqual(
+            DashboardTicketBridgeError.describe(status: 403, detail: "Forbidden"),
+            AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.")
+        )
+    }
+
+    func testPinsAStaleRefusalLeavesANewerWriteAlone() {
+        var sync = pinSync(adopted: true)
+        let pin = sync.recordWrite(pinID: "old", profile: "default", pinned: true, at: Self.pinT0)
+        sync.recordWrite(pinID: "old", profile: "default", pinned: false, at: Self.pinT0)
+        XCTAssertFalse(sync.keepOnPhone(pinID: "old", profile: "default", generation: pin))
+        XCTAssertFalse(sync.isPhoneOnly(pinID: "old", profile: "default"))
+        XCTAssertEqual(sync.pendingWrites["default\u{1F}old"]?.pinned, false, "The newer write still stands")
+    }
+
+    func testPinsClearingThePhoneOnlyMarkLetsListingsFollowHermes() {
+        var sync = pinSync(adopted: true)
+        let oldDefaultWrite = sync.recordWrite(pinID: "old", profile: "default", pinned: true)
+        sync.keepOnPhone(pinID: "old", profile: "default", generation: oldDefaultWrite)
+        XCTAssertTrue(sync.clearPhoneOnly(pinID: "old", profile: "default"))
+        XCTAssertFalse(sync.isPhoneOnly(pinID: "old", profile: "default"))
+        XCTAssertFalse(sync.clearPhoneOnly(pinID: "old", profile: "default"))
+        let outcome = sync.reconcile(pins: [], listed: [pinRow("old", pinned: true)], profile: "default", now: Self.pinT0)
+        XCTAssertEqual(outcome.pins, ["old"], "Listings follow Hermes for the chat again")
+    }
+
+    func testPinsARefusalAfterThePendingWriteLapsedStillMarks() {
+        var sync = pinSync(adopted: true)
+        let write = sync.recordWrite(pinID: "old", profile: "default", pinned: true, at: Self.pinT0)
+        _ = sync.reconcile(
+            pins: ["old"],
+            listed: [pinRow("b", pinned: false)],
+            profile: "default",
+            now: Self.pinT0.addingTimeInterval(SessionPinSync.pendingWriteLifetime + 1)
+        )
+        XCTAssertNil(sync.pendingWrites["default\u{1F}old"], "The pending entry lapsed")
+        XCTAssertTrue(sync.keepOnPhone(pinID: "old", profile: "default", generation: write))
+        XCTAssertTrue(sync.isPhoneOnly(pinID: "old", profile: "default"))
+    }
+}
