@@ -225,8 +225,16 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
 
     // MARK: - Composer voice button visibility (#194)
 
-    func testComposerHidesVoiceButtonWhenVoiceWasNeverEnabled() {
+    /// Voice is on out of the box: a switch never touched shows the button.
+    func testComposerShowsVoiceButtonWhenVoiceWasNeverTouched() {
         let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+
+        XCTAssertTrue(appState.showsComposerVoiceButton)
+    }
+
+    func testComposerHidesVoiceButtonWhenTheUserTurnedVoiceOff() async {
+        let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        _ = await appState.setVoiceEnabled(false)
 
         XCTAssertFalse(appState.showsComposerVoiceButton)
     }
@@ -271,8 +279,12 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
 
     /// Switching away from a voice-enabled profile must not leak its state
     /// while `isVoiceEnabled` still holds the previous profile's value.
-    func testSwitchingToNeverEnabledProfileHidesVoiceButton() async {
+    func testSwitchingToProfileWithVoiceOffHidesVoiceButton() async {
         let appState = makeAppState(snapshot: readySnapshot, isVoiceEnabled: false)
+        let original = appState.activeProfile
+        appState.setActiveProfileForTesting("other-profile")
+        _ = await appState.setVoiceEnabled(false)
+        appState.setActiveProfileForTesting(original)
         _ = await appState.setVoiceEnabled(true)
 
         appState.setActiveProfileForTesting("other-profile")

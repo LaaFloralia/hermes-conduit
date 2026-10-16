@@ -82,6 +82,31 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
         XCTAssertFalse(appState.voiceConversationController.isContinuousConversationEnabled)
     }
 
+    /// Voice is on out of the box: a profile whose switch was never touched
+    /// comes back on from the first capability refresh, and stays saved on.
+    func testRefreshVoiceCapabilitiesTurnsUntouchedVoiceOn() async {
+        let (appState, defaults, suite) = makeAppState(profile: "default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = "conduit.voice.enabled.v1.https://example.com.default"
+        XCTAssertNil(defaults.object(forKey: key))
+
+        await appState.refreshVoiceCapabilities()
+
+        XCTAssertTrue(appState.isVoiceEnabled)
+        XCTAssertEqual(defaults.object(forKey: key) as? Bool, true)
+    }
+
+    func testRefreshVoiceCapabilitiesKeepsVoiceTheUserTurnedOff() async {
+        let (appState, defaults, suite) = makeAppState(profile: "default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(false, forKey: "conduit.voice.enabled.v1.https://example.com.default")
+
+        await appState.refreshVoiceCapabilities()
+
+        XCTAssertFalse(appState.isVoiceEnabled)
+        XCTAssertFalse(appState.showsComposerVoiceButton)
+    }
+
     func testSetContinuousConversationPreservesLiveMuteOverStalePersistedUnmuted() throws {
         let (appState, defaults, suite) = makeAppState(profile: "default")
         defer { defaults.removePersistentDomain(forName: suite) }
