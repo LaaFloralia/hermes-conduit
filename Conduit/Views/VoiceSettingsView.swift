@@ -159,6 +159,12 @@ struct VoiceSettingsView: View {
 
     @State private var values: [String: String] = [:]
     @State private var savingField: String?
+    @State private var scrollTarget: String?
+    /// The voice server address typed into the Private voice card before
+    /// OpenAI speech is picked; nil while the field is hidden.
+    @State private var voiceServerDraft: String?
+    /// Hermes' error for the last failed address save, shown under the field.
+    @State private var voiceServerSaveError: String?
     @State private var testStatus: String?
     @State private var isRunningTest = false
     @State private var isRecordingASRTest = false
@@ -173,6 +179,7 @@ struct VoiceSettingsView: View {
     /// elsewhere while this page is open is kept too.
     let savedTranscriptionModeChosen: Bool
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var voiceMode: VoiceMode
     @State private var isApplyingDefaults = false
     @State private var microphonePermission: AVAudioApplication.recordPermission
@@ -281,33 +288,49 @@ struct VoiceSettingsView: View {
     var body: some View {
         ZStack {
             SettingsBackdrop()
-            ScrollView {
-                // Setup first, then what most people change. Provider
-                // detail, models and tuning wait under Advanced.
-                VStack(alignment: .leading, spacing: 24) {
-                    if let callSaves, callSaves.pendingCount > 0 {
-                        VoiceCallSaveStatusSection(model: callSaves)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // Setup first, then what most people change. Provider
+                    // detail, models and tuning wait under Advanced.
+                    VStack(alignment: .leading, spacing: 24) {
+                        if let callSaves, callSaves.pendingCount > 0 {
+                            VoiceCallSaveStatusSection(model: callSaves)
+                        }
+                        setupSection
+                        voiceModeSection
+                        liveModeSettings
+                        conversationSection
+                        if let agentSettingsChanged {
+                            AgentSettingsModeSection(onChange: agentSettingsChanged)
+                        }
+                        wakeSection
+                        CarPlaySettingsSection()
+                        WatchSettingsSection()
+                        readAloudSection
+                        DictationSettingsSection()
+                        advancedSection
                     }
-                    setupSection
-                    voiceModeSection
-                    liveModeSettings
-                    conversationSection
-                    if let agentSettingsChanged {
-                        AgentSettingsModeSection(onChange: agentSettingsChanged)
-                    }
-                    wakeSection
-                    CarPlaySettingsSection()
-                    WatchSettingsSection()
-                    readAloudSection
-                    DictationSettingsSection()
-                    advancedSection
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 24)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 24)
+                .scrollDismissesKeyboard(.interactively)
+                .modifier(V2SoftTopScrollEdge(isOn: true))
+                // The Private voice card's buttons open Advanced, then bring
+                // the provider section they set up into view. A newer tap or
+                // leaving the screen cancels a pending scroll.
+                .task(id: scrollTarget) {
+                    // One scroll once Advanced has opened, so a user who then
+                    // scrolls away is never pulled back.
+                    guard let target = scrollTarget else { return }
+                    try? await Task.sleep(for: .milliseconds(350))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.snappy) { proxy.scrollTo(target, anchor: .top) }
+                    scrollTarget = nil
+                    // Tell VoiceOver the page moved under it.
+                    UIAccessibility.post(notification: .layoutChanged, argument: nil)
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
-            .modifier(V2SoftTopScrollEdge(isOn: true))
         }
         .navigationTitle("Voice")
         .navigationBarTitleDisplayMode(.inline)
@@ -743,7 +766,7 @@ struct VoiceSettingsView: View {
     private var liveModeSettings: some View {
         switch voiceMode {
         case .classic:
-            EmptyView()
+            privateVoiceSection
         case .gemini:
             if let geminiLive {
                 GeminiLiveSettingsSection(model: geminiLive, showsModeToggle: false)
@@ -760,6 +783,200 @@ struct VoiceSettingsView: View {
                 liveModeKey(Self.xAIKeys, note: AppLocalization.string("Not needed when your Hermes server is signed in with SuperGrok."))
             }
         }
+    }
+
+    static let sttSectionID = "voice.provider.stt"
+    static let ttsSectionID = "voice.provider.tts"
+
+    /// Classic voice on servers the user runs: their own speech server for
+    /// recognition and an OpenAI-compatible voice server (Chatterbox) for
+    /// replies. Both settings live under Advanced; this card picks them
+    /// and opens the section to finish setup.
+    @ViewBuilder
+    private var privateVoiceSection: some View {
+        if service.isLoading || service.snapshot.capability.isGatewayConnected {
+            ConduitSettingsSection(title: AppLocalization.string("Private voice"), symbol: "lock.shield", tint: .conduitAura) {
+                Text(AppLocalization.string("Keep your voice on machines you run. Hermes still does the work."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                privateVoiceRow(
+                    title: AppLocalization.string("Your speech server"),
+                    detail: AppLocalization.string("Understands what you say. For example, the speech-to-speech server Hermes Live Voice runs."),
+                    inUse: transcriptionMode == .speechServer,
+                    chosen: transcriptionMode == .speechServer,
+                    available: true,
+                    identifier: "voice.private.speechServer"
+                ) { usePrivateProvider(Self.speechServerProviderID, kind: .stt) }
+                privateVoiceRow(
+                    title: AppLocalization.string("Your voice server"),
+                    detail: AppLocalization.string("Speaks the replies. Any OpenAI-compatible speech server, such as Chatterbox."),
+                    inUse: usesOwnVoiceServer,
+                    chosen: service.snapshot.selectedTTSProvider == Self.openAITTSProviderID,
+                    available: service.snapshot.ttsProviders.contains { $0.descriptor.id == Self.openAITTSProviderID },
+                    identifier: "voice.private.voiceServer"
+                ) { useVoiceServer() }
+                if voiceServerDraft != nil { voiceServerAddressField }
+            }
+        }
+    }
+
+    static let openAITTSProviderID = "openai"
+
+    /// OpenAI speech pointed at a server other than OpenAI's, as saved on
+    /// Hermes (not an unsaved draft). The managed Nous row shares the
+    /// tts.openai section but is the gateway's own voice, so it never counts.
+    private var usesOwnVoiceServer: Bool {
+        service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
+            && Self.isOwnVoiceServer(service.snapshot.values["tts.openai.base_url"] ?? "")
+    }
+
+    /// A Base URL that isn't empty and isn't OpenAI's own API.
+    static func isOwnVoiceServer(_ baseURL: String) -> Bool {
+        let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        // "api.openai.com/v1" has no scheme, so URL finds no host in it.
+        let withScheme = trimmed.contains("://") ? trimmed : "http://" + trimmed
+        let host = (URL(string: withScheme)?.host?.lowercased() ?? "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return !host.isEmpty && host != "api.openai.com"
+    }
+
+    /// OpenAI speech is only picked once a private Base URL is saved, so
+    /// no reply is ever sent to OpenAI's cloud on the way to setting it up.
+    /// Without one, the card asks for the address first.
+    private func useVoiceServer() {
+        guard savingField == nil else { return }
+        let chosen = service.snapshot.selectedTTSProvider == Self.openAITTSProviderID
+        if chosen || Self.isOwnVoiceServer(service.snapshot.values["tts.openai.base_url"] ?? "") {
+            usePrivateProvider(Self.openAITTSProviderID, kind: .tts)
+        } else {
+            withAnimation(.snappy) { voiceServerDraft = voiceServerDraft ?? "" }
+        }
+    }
+
+    private var voiceServerAddressField: some View {
+        let draft = (voiceServerDraft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(alignment: .leading, spacing: 8) {
+            TextField(AppLocalization.string("Voice server address"), text: Binding(
+                get: { voiceServerDraft ?? "" },
+                set: {
+                    voiceServerDraft = $0
+                    voiceServerSaveError = nil
+                }
+            ), prompt: Text(verbatim: "http://192.168.1.20:4123/v1"))
+                .textContentType(.URL)
+                .keyboardType(.URL)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .onSubmit { saveVoiceServerAddress() }
+                .accessibilityIdentifier("voice.private.voiceServer.address")
+            if !draft.isEmpty, !Self.isOwnVoiceServer(draft) {
+                Text(AppLocalization.string("Enter your own server's address, not OpenAI's."))
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if let voiceServerSaveError {
+                Text(verbatim: voiceServerSaveError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Button(AppLocalization.string("Cancel"), role: .cancel) {
+                    voiceServerSaveError = nil
+                    withAnimation(.snappy) { voiceServerDraft = nil }
+                }
+                .disabled(savingField != nil)
+                Spacer()
+                Button { saveVoiceServerAddress() } label: {
+                    if savingField == "tts.openai.base_url" { ProgressView() } else { Text(AppLocalization.string("Save and use")) }
+                }
+                .accessibilityLabel(Text(AppLocalization.string("Save and use")))
+                .buttonStyle(.borderedProminent)
+                .disabled(savingField != nil || !Self.isOwnVoiceServer(draft))
+                .accessibilityIdentifier("voice.private.voiceServer.save")
+            }
+        }
+    }
+
+    /// Saves the address, then picks OpenAI speech and opens its section
+    /// for the key. A failed save keeps the field, with Hermes' error under
+    /// it.
+    private func saveVoiceServerAddress() {
+        let address = (voiceServerDraft ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard savingField == nil, Self.isOwnVoiceServer(address) else { return }
+        let key = "tts.openai.base_url"
+        savingField = key
+        Task { @MainActor in
+            voiceServerSaveError = nil
+            let saved = await service.save(value: address, for: key)
+            values[key] = service.snapshot.values[key]
+            savingField = nil
+            guard saved, Self.isOwnVoiceServer(service.snapshot.values[key] ?? "") else {
+                voiceServerSaveError = service.errorMessage ?? AppLocalization.string("Could not save \(key).")
+                return
+            }
+            voiceServerDraft = nil
+            usePrivateProvider(Self.openAITTSProviderID, kind: .tts)
+        }
+    }
+
+    private func privateVoiceRow(
+        title: String, detail: String, inUse: Bool, chosen: Bool, available: Bool, identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        // Once picked, the button leads to the rest of setup (for the voice
+        // server, its Base URL) rather than offering to pick it again.
+        let buttonTitle = chosen || inUse ? AppLocalization.string("Set up") : AppLocalization.string("Use")
+        // At accessibility text sizes the button goes under the text so
+        // neither is squeezed.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+        return layout {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: title).font(.subheadline.weight(.semibold))
+                Text(verbatim: detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if inUse {
+                    Label(AppLocalization.string("In use"), systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
+            }
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
+            Button(action: action) { Text(verbatim: buttonTitle) }
+                .buttonStyle(.bordered)
+                .disabled(service.isLoading || savingField != nil || !available)
+                .accessibilityLabel(Text(verbatim: "\(buttonTitle), \(title)"))
+                .accessibilityIdentifier(identifier)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Picks the provider when it isn't already, then opens its section
+    /// under Advanced, where its address and key are set. A failed pick
+    /// stays put: its error shows in Set up voice, just above the card.
+    private func usePrivateProvider(_ provider: String, kind: VoiceProviderDescriptor.Kind) {
+        // One pick at a time; the buttons are also disabled while saving.
+        guard savingField == nil else { return }
+        let providers = kind == .stt ? service.snapshot.sttProviders : service.snapshot.ttsProviders
+        let selectable = provider == Self.speechServerProviderID || providers.contains { $0.descriptor.id == provider }
+        if selectable, provider != selectedProviderChoice(kind) {
+            savingField = "\(kind.rawValue).provider"
+            Task { @MainActor in
+                await applyProvider(provider, kind: kind)
+                if provider == selectedProviderChoice(kind) { openProviderSection(kind) }
+            }
+        } else {
+            openProviderSection(kind)
+        }
+    }
+
+    private func openProviderSection(_ kind: VoiceProviderDescriptor.Kind) {
+        withAnimation(.snappy) { advancedExpanded = true }
+        scrollTarget = kind == .stt ? Self.sttSectionID : Self.ttsSectionID
     }
 
     /// Keys each live mode reads on the Hermes host, in the host's order.
@@ -830,7 +1047,9 @@ struct VoiceSettingsView: View {
                         .padding(.horizontal, 4)
                 } else if service.snapshot.capability.isGatewayConnected {
                     providerSection(title: AppLocalization.string("Speech to text"), symbol: "waveform", kind: .stt, providers: service.snapshot.sttProviders)
+                        .id(Self.sttSectionID)
                     providerSection(title: AppLocalization.string("Assistant speech"), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
+                        .id(Self.ttsSectionID)
                     credentialsSection
                 }
                 if let voiceReplies {
@@ -984,7 +1203,9 @@ struct VoiceSettingsView: View {
                 ) {
                     Text("Provider").foregroundStyle(.secondary)
                 }
-                .disabled(service.isLoading || savingField == "\(kind.rawValue).provider")
+                // Any save in flight, including a Private voice pick of the
+                // other kind, holds both pickers so picks never overlap.
+                .disabled(service.isLoading || savingField != nil)
                 .accessibilityHint(kind == .stt ? AppLocalization.string("Choose on-device Apple speech or a provider reported by Hermes") : AppLocalization.string("Provider options are reported by Hermes for this profile"))
 
                 if kind == .stt, transcriptionMode == .appleOnDevice {
@@ -1268,7 +1489,7 @@ struct VoiceSettingsView: View {
 
     private func selectProvider(_ provider: String, kind: VoiceProviderDescriptor.Kind, force: Bool = false) {
         // `force` re-runs a selection already shown, to ask iOS again.
-        guard force || provider != selectedProviderChoice(kind) else { return }
+        guard savingField == nil, force || provider != selectedProviderChoice(kind) else { return }
         Task { await applyProvider(provider, kind: kind) }
     }
 
