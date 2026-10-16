@@ -142,19 +142,35 @@ struct LoginAddressStep: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
-            // The system paste control: it reads the clipboard only when
-            // tapped, so iOS asks nothing first.
-            PasteButton(payloadType: String.self) { strings in
-                guard let pasted = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !pasted.isEmpty else { return }
-                DispatchQueue.main.async {
-                    flow.address = pasted
-                    flow.clearFailure()
+            HStack(spacing: 10) {
+                // The system paste control: it reads the clipboard only when
+                // tapped, so iOS asks nothing first.
+                PasteButton(payloadType: String.self) { strings in
+                    guard let pasted = strings.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !pasted.isEmpty else { return }
+                    DispatchQueue.main.async {
+                        flow.address = pasted
+                        flow.clearFailure()
+                    }
                 }
+                .buttonBorderShape(.capsule)
+                .labelStyle(.titleAndIcon)
+                .tint(.conduitAccent)
+                .accessibilityIdentifier("\(prefix).paste")
+                // A sign-in code from Hermes, or an address on another screen.
+                Button {
+                    Haptics.selection()
+                    focusedField = nil
+                    flow.showsScanner = true
+                } label: {
+                    Label(AppLocalization.string("Scan Code"), systemImage: "qrcode.viewfinder")
+                }
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+                .tint(.conduitAccent)
+                .disabled(flow.isWorking)
+                .accessibilityIdentifier("\(prefix).scan")
             }
-            .buttonBorderShape(.capsule)
-            .labelStyle(.titleAndIcon)
-            .accessibilityIdentifier("\(prefix).paste")
             .padding(.top, 2)
         }
     }
@@ -335,7 +351,7 @@ struct LoginCredentialsPage: View {
                 targetCard(target)
             }
             fields
-            optionsCard
+            LoginSignInOptionsCard(flow: flow)
             if let failure = flow.failure(at: .credentials) {
                 LoginFailureCard(failure: failure, flow: flow)
             }
@@ -457,7 +473,23 @@ struct LoginCredentialsPage: View {
         }
     }
 
-    private var optionsCard: some View {
+    private func submit(from field: LoginField) {
+        if let next = field.submitDestination(cloudflareTokenEntryEnabled: false) {
+            focusedField = next
+        } else {
+            focusedField = nil
+            Task { await flow.signIn() }
+        }
+    }
+}
+
+/// Save sign-in, and Face ID or Touch ID, for a password sign-in: on the
+/// sign-in step and a sign-in code's sheet.
+struct LoginSignInOptionsCard: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @ObservedObject var flow: LoginFlowModel
+
+    var body: some View {
         VStack(spacing: 0) {
             LoginSwitchRow(
                 title: AppLocalization.string("Save sign-in"),
@@ -483,15 +515,6 @@ struct LoginCredentialsPage: View {
             }
         }
         .settingsCard()
-    }
-
-    private func submit(from field: LoginField) {
-        if let next = field.submitDestination(cloudflareTokenEntryEnabled: false) {
-            focusedField = next
-        } else {
-            focusedField = nil
-            Task { await flow.signIn() }
-        }
     }
 }
 
@@ -766,6 +789,8 @@ struct LoginRowLabel: View {
         case collapsed
         case expanded
         case progress
+        /// Nothing to tap: the row only tells.
+        case hidden
     }
 
     struct Status {
@@ -825,6 +850,8 @@ struct LoginRowLabel: View {
                     .accessibilityHidden(true)
             case .progress:
                 ProgressView()
+            case .hidden:
+                EmptyView()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1116,6 +1143,17 @@ struct LoginFlowPresentations: ViewModifier {
                     }
                 )
             }
+            .sheet(isPresented: $flow.showsScanner, onDismiss: { flow.scannerDismissed() }) {
+                DashboardCodeScannerSheet { text in
+                    flow.scanned(text)
+                }
+            }
+            .sheet(item: $flow.pendingLink) { link in
+                ConnectLinkSheet(link: link) {
+                    flow.onSignedIn()
+                }
+                .environmentObject(appState)
+            }
             .sheet(item: $flow.browserRequest) { request in
                 AuthWebView(
                     url: request.baseURL,
@@ -1166,7 +1204,10 @@ struct AddDashboardSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
+                    // A sign-in under way finishes or fails first, as the
+                    // swipe down waits for it.
                     Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(flow.isWorking)
                         .accessibilityIdentifier("add-dashboard.cancel")
                 }
             }
@@ -1186,5 +1227,8 @@ struct AddDashboardSheet: View {
             seeded = true
             if let seed { flow.apply(seed) }
         }
+        // Cancel leaves nothing behind: a browser or single sign-on attempt
+        // saves its dashboard before anyone signs in.
+        .onDisappear { flow.discardUnfinishedDashboards() }
     }
 }
