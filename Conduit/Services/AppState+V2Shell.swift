@@ -10,9 +10,11 @@
 import SwiftUI
 
 extension AppState {
-    /// The color the backdrop's warm glow takes for a profile: the color its
-    /// bot was given in Hermes, or nil (the gold accent) when it has none.
+    /// The color the backdrop's warm glow takes for a profile: the one
+    /// picked for it or drawn from its photo (`profileGlowColors`), else the
+    /// color its bot was given in Hermes, or nil (the gold accent).
     func profileGlowTint(_ profile: String) -> Color? {
+        if let glow = profileGlowColors()[profile] { return glow.color }
         guard let bot = botRoster.first(where: { profilesMatch($0.name, profile) }),
               let color = bot.appearanceColor?.trimmingCharacters(in: .whitespacesAndNewlines),
               !color.isEmpty else { return nil }

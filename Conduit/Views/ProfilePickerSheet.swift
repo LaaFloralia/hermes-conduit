@@ -24,7 +24,9 @@ struct ProfilePickerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                ConduitBackdrop()
+                // Shows the active profile's glow, so a picked color is seen
+                // as it is picked.
+                ConduitBackdrop(glowTint: appState.profileGlowTint(appState.activeProfile))
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .top, spacing: 12) {
@@ -112,6 +114,53 @@ private struct ProfilePickerRow: View {
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            profileLine
+            if !isReordering { glowLine }
+            if let saveError {
+                Text(saveError).font(.caption2).foregroundStyle(.red)
+            }
+        }
+        .padding(12)
+        // The card's empty area selects the profile. The selection surface has
+        // to be a card-sized button BEHIND the row, not a container
+        // `.onTapGesture`: a gesture on an ancestor also recognizes taps that
+        // land on the nested controls, so tapping the avatar or the
+        // photo-removal button would switch profiles (and dismiss the sheet)
+        // as well as running its own action. As a sibling behind the row it is
+        // reached only where nothing interactive sits above it — the padding,
+        // the trailing accessory column, and the space beside the name — and
+        // the nested controls keep every tap that lands on them.
+        //
+        // Accessibility stays on the inner select button, which VoiceOver
+        // already exposes with the profile name and the `canSelect` disabled
+        // state; this surface is hidden to avoid a duplicate target. The
+        // Kanban card's `.accessibilityElement(children: .combine)` treatment
+        // is wrong here for the same reason the gesture is — this row carries
+        // further controls (photo, removal, glow color) that combining would
+        // fold into the card.
+        .background {
+            Button(action: select) {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.clear)
+                    .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canSelect)
+            .accessibilityHidden(true)
+        }
+        .conduitGlassSurface(cornerRadius: 20, tint: isCurrent ? .conduitAccent.opacity(0.12) : .clear)
+        .sheet(isPresented: $showingImagePicker) {
+            ImagePicker(image: $pickedImage)
+        }
+        .onChange(of: pickedImage) { _, newImage in
+            guard let newImage else { return }
+            pickedImage = nil
+            savePhoto(newImage)
+        }
+    }
+
+    private var profileLine: some View {
         HStack(spacing: 12) {
             Group {
                 if isReordering {
@@ -173,45 +222,54 @@ private struct ProfilePickerRow: View {
                 .accessibilityLabel("Remove photo for \(appState.profileDisplayName(profile))")
             }
         }
-        .padding(12)
-        // The card's empty area selects the profile. The selection surface has
-        // to be a card-sized button BEHIND the row, not a container
-        // `.onTapGesture`: a gesture on an ancestor also recognizes taps that
-        // land on the nested controls, so tapping the avatar or the
-        // photo-removal button would switch profiles (and dismiss the sheet)
-        // as well as running its own action. As a sibling behind the row it is
-        // reached only where nothing interactive sits above it — the padding,
-        // the trailing accessory column, and the space beside the name — and
-        // the nested controls keep every tap that lands on them.
-        //
-        // Accessibility stays on the inner select button, which VoiceOver
-        // already exposes with the profile name and the `canSelect` disabled
-        // state; this surface is hidden to avoid a duplicate target. The
-        // Kanban card's `.accessibilityElement(children: .combine)` treatment
-        // is wrong here for the same reason the gesture is — this row carries
-        // two further controls that combining would fold into the card.
-        .background {
-            Button(action: select) {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.clear)
-                    .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    /// The backdrop glow for this profile: drawn from its photo until a
+    /// color is picked here; Automatic goes back to the photo's color.
+    private var glowLine: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sparkles")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(AppLocalization.string("Background glow"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Spacer(minLength: 0)
+            if appState.profileGlowPicks[profile] != nil {
+                Button(AppLocalization.string("Automatic")) {
+                    Haptics.selection()
+                    appState.setProfileGlowColor(nil, for: profile)
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.conduitAccent)
+                .buttonStyle(.plain)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .accessibilityLabel("Automatic background glow for \(appState.profileDisplayName(profile))")
             }
-            .buttonStyle(.plain)
-            .disabled(!canSelect)
-            .accessibilityHidden(true)
+            ColorPicker(selection: glowColor, supportsOpacity: false) {
+                Text(AppLocalization.string("Background glow"))
+            }
+            .labelsHidden()
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+            .accessibilityLabel("Background glow for \(appState.profileDisplayName(profile))")
+            .accessibilityIdentifier("profile-glow-color-\(profile)")
         }
-        .conduitGlassSurface(cornerRadius: 20, tint: isCurrent ? .conduitAccent.opacity(0.12) : .clear)
-        .overlay(alignment: .bottomLeading) {
-            if let saveError { Text(saveError).font(.caption2).foregroundStyle(.red).padding(.horizontal, 12).padding(.bottom, 4) }
-        }
-        .sheet(isPresented: $showingImagePicker) {
-            ImagePicker(image: $pickedImage)
-        }
-        .onChange(of: pickedImage) { _, newImage in
-            guard let newImage else { return }
-            pickedImage = nil
-            savePhoto(newImage)
-        }
+        // Lines up with the name, past the 48 pt avatar.
+        .padding(.leading, 60)
+    }
+
+    private var glowColor: Binding<Color> {
+        Binding(
+            get: { appState.profileGlowTint(profile) ?? Color.conduitAccent },
+            set: { color in
+                guard let picked = ProfileGlowRGB(UIColor(color)) else { return }
+                appState.setProfileGlowColor(picked, for: profile)
+            }
+        )
     }
 
     /// Nil removes the photo.

@@ -257,6 +257,12 @@ struct ConduitBackdrop: View {
         // colour and bottom shade never change between ticks.
         ZStack {
             base
+            // Light mode: a faint wash of the glow color over the whole
+            // screen, so the profile's color reads beyond the glow itself
+            // and the page isn't plain white.
+            if colorScheme != .dark {
+                glowColor.opacity(0.05)
+            }
 
             TimelineView(
                 .animation(
@@ -268,7 +274,9 @@ struct ConduitBackdrop: View {
                     let drift = motionClock.progress(at: ProcessInfo.processInfo.systemUptime)
                     ZStack {
                         Circle()
-                            .fill((glowTint ?? Color.conduitAccent).opacity(colorScheme == .dark ? 0.20 : 0.055))
+                            // On the light base a dark-mode-strength glow
+                            // washes out, so light mode draws it stronger.
+                            .fill(glowColor.opacity(colorScheme == .dark ? 0.20 : 0.24))
                             .frame(width: proxy.size.width * 0.92)
                             .blur(radius: 72)
                             .offset(
@@ -277,7 +285,7 @@ struct ConduitBackdrop: View {
                             )
 
                         Circle()
-                            .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.055))
+                            .fill(Color.conduitAura.opacity(colorScheme == .dark ? 0.14 : 0.10))
                             .frame(width: proxy.size.width * 0.84)
                             .blur(radius: 84)
                             .offset(
@@ -302,6 +310,8 @@ struct ConduitBackdrop: View {
         .ignoresSafeArea()
         .accessibilityHidden(true)
     }
+
+    private var glowColor: Color { glowTint ?? Color.conduitAccent }
 
     private var base: Color {
         colorScheme == .dark

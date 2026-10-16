@@ -33,6 +33,9 @@ final class ProfileAppearanceStore {
     /// asset. A photo NOT listed was picked on this device before photos
     /// moved to Hermes (or on a gateway without the asset store).
     static let mirroredAvatarsKey = "conduit.profileAvatarsMirroredFromHermes.v1"
+    /// Per dashboard, the backdrop glow color picked for a profile
+    /// (`#rrggbb`). A device-local presentation choice, like the order.
+    static let glowColorsKey = "conduit.profileGlowColorByDashboard.v1"
     /// The bucket for writes made while no dashboard is selected.
     private static let unscopedBucket = "unscoped"
 
@@ -171,8 +174,33 @@ final class ProfileAppearanceStore {
         defaults.set(all, forKey: Self.mirroredAvatarsKey)
     }
 
-    /// Remove Dashboard: its label and photos go with it.
+    // MARK: Glow colors
+
+    func loadGlowColors(dashboardID: UUID?) -> [String: String] {
+        glowColors()[Self.bucket(dashboardID)] ?? [:]
+    }
+
+    /// Nil goes back to the color drawn from the profile's photo.
+    func saveGlowColor(_ hex: String?, for profile: String, dashboardID: UUID?) {
+        var all = glowColors()
+        let bucket = Self.bucket(dashboardID)
+        var colors = all[bucket] ?? [:]
+        guard colors[profile] != hex else { return }
+        colors[profile] = hex
+        all[bucket] = colors.isEmpty ? nil : colors
+        defaults.set(all, forKey: Self.glowColorsKey)
+    }
+
+    private func glowColors() -> [String: [String: String]] {
+        defaults.dictionary(forKey: Self.glowColorsKey) as? [String: [String: String]] ?? [:]
+    }
+
+    /// Remove Dashboard: its label, photos and glow colors go with it.
     func removeAll(dashboardID: UUID) {
+        var glows = glowColors()
+        if glows.removeValue(forKey: Self.bucket(dashboardID)) != nil {
+            defaults.set(glows, forKey: Self.glowColorsKey)
+        }
         var names = defaultNames()
         if names.removeValue(forKey: Self.bucket(dashboardID)) != nil {
             defaults.set(names, forKey: Self.defaultNamesKey)

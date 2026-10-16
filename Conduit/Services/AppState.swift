@@ -593,7 +593,19 @@ final class AppState: ObservableObject {
     /// The dashboard a connection currently belongs to (the selected target).
     var activeDashboardID: UUID? { savedDashboardRegistry.activeDashboardID }
     @Published private(set) var defaultProfileName: String
-    @Published private(set) var profileAvatarURLs: [String: URL]
+    @Published private(set) var profileAvatarURLs: [String: URL] {
+        // Also bumped when a photo's bytes change under the same URL, so the
+        // glow colors drawn from the photos are worked out again.
+        didSet { profileAvatarRevision &+= 1 }
+    }
+    /// Backdrop glow colors picked in the profile picker (`#rrggbb`), for
+    /// the selected dashboard.
+    @Published private(set) var profileGlowPicks: [String: String] = [:]
+    private var profileAvatarRevision = 0
+    private var profileGlowCache: (key: ProfileGlowCacheKey, colors: [String: ProfileGlowRGB])?
+    /// Each photo's colors, kept while the photos stay the same, so a pick
+    /// (a color drag sets one per tick) never samples the photos again.
+    private var profileGlowPalettes: (avatarRevision: Int, byURL: [URL: [ProfileGlowRGB]]) = (0, [:])
     @Published private(set) var isProfileSwitching = false
     @Published private(set) var appIconChoice: AppIconChoice
     @Published private(set) var dashboardTicketBridge: DashboardTicketBridge?
@@ -4100,6 +4112,7 @@ final class AppState: ObservableObject {
         }
         defaultProfileName = self.profileAppearanceStore.loadDefaultName(dashboardID: initialDashboardID)
         profileAvatarURLs = self.profileAppearanceStore.loadAvatarURLs(dashboardID: initialDashboardID)
+        profileGlowPicks = self.profileAppearanceStore.loadGlowColors(dashboardID: initialDashboardID)
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
@@ -8591,6 +8604,50 @@ final class AppState: ObservableObject {
         profileAvatarURLs[profile]
     }
 
+    /// Each profile's backdrop glow color from its pick or its photo
+    /// (`ProfileGlowAssignment`). The backdrop asks on every redraw, so the
+    /// photos are only read again when the profiles, their photos or the
+    /// picks change.
+    func profileGlowColors() -> [String: ProfileGlowRGB] {
+        var order = profiles
+        if !order.contains(activeProfile) { order.append(activeProfile) }
+        let key = ProfileGlowCacheKey(order: order, avatarRevision: profileAvatarRevision, picks: profileGlowPicks)
+        if let profileGlowCache, profileGlowCache.key == key { return profileGlowCache.colors }
+        if profileGlowPalettes.avatarRevision != profileAvatarRevision {
+            profileGlowPalettes = (profileAvatarRevision, [:])
+        }
+        var palettes: [String: [ProfileGlowRGB]] = [:]
+        var unreadable = false
+        for profile in order {
+            guard let url = profileAvatarURLs[profile] else { continue }
+            if let known = profileGlowPalettes.byURL[url] {
+                palettes[profile] = known
+                continue
+            }
+            guard let image = ProfileAvatarImageCache.image(at: url)?.cgImage else {
+                unreadable = true
+                continue
+            }
+            let colors = ProfileGlowPalette.colors(from: image)
+            profileGlowPalettes.byURL[url] = colors
+            palettes[profile] = colors
+        }
+        let picked = profileGlowPicks.compactMapValues(ProfileGlowRGB.init(hex:))
+        let colors = ProfileGlowAssignment.assign(order: order, palettes: palettes, picked: picked)
+        // A photo that could not be read yet is tried again on a later redraw.
+        if !unreadable { profileGlowCache = (key, colors) }
+        return colors
+    }
+
+    /// The glow color picked in the profile picker; nil goes back to the
+    /// color drawn from the profile's photo.
+    func setProfileGlowColor(_ color: ProfileGlowRGB?, for profile: String) {
+        let hex = color?.hex
+        guard profileGlowPicks[profile] != hex else { return }
+        profileAppearanceStore.saveGlowColor(hex, for: profile, dashboardID: activeDashboardID)
+        profileGlowPicks[profile] = hex
+    }
+
     func saveDefaultProfileName(_ name: String) {
         defaultProfileName = profileAppearanceStore.saveDefaultName(name, dashboardID: activeDashboardID)
         publishWidgetSnapshot()
@@ -8791,6 +8848,7 @@ final class AppState: ObservableObject {
         let dashboardID = activeDashboardID
         defaultProfileName = profileAppearanceStore.loadDefaultName(dashboardID: dashboardID)
         profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
+        profileGlowPicks = profileAppearanceStore.loadGlowColors(dashboardID: dashboardID)
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
     }
 
@@ -22493,6 +22551,14 @@ final class AppState: ObservableObject {
             persistKnownProfiles(nextProfiles)
             if !names.isEmpty, let dashboardID {
                 retainWidgetProfiles(Set(nextProfiles), dashboardID: dashboardID)
+            }
+            // A deleted profile's glow pick goes with it, so a new profile
+            // given the same name later starts from its photo's color.
+            if !names.isEmpty {
+                let stale = profileGlowPicks.keys.filter { !nextProfiles.contains($0) }
+                for profile in stale {
+                    setProfileGlowColor(nil, for: profile)
+                }
             }
             // A non-empty response is authoritative: if the server no longer
             // knows the active profile (deleted externally), re-home onto a
