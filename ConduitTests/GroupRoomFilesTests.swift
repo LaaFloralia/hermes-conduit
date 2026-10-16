@@ -113,3 +113,63 @@ extension GroupChatModelsTests {
         }
     }
 }
+
+/// Group chat pictures: the plugin's answers, Desktop's synced picture and
+/// the default icon's member layout.
+extension GroupChatModelsTests {
+    func testRoomPicturePathsEscapeNothingAndRefuseOddIDs() {
+        XCTAssertEqual(GroupRoomPictures.path(for: "room_1:a.b-c"), "/api/plugins/conduit_push/room-images/room_1:a.b-c")
+        XCTAssertNil(GroupRoomPictures.path(for: ""))
+        XCTAssertNil(GroupRoomPictures.path(for: "a/b"))
+        XCTAssertNil(GroupRoomPictures.path(for: "a b"))
+    }
+
+    func testRoomPictureAnswersDecode() {
+        XCTAssertEqual(
+            GroupRoomPictures.revisions(from: ["ok": true, "revisions": ["r1": "1-a", "r2": "", "r3": 4]]),
+            ["r1": "1-a"]
+        )
+        XCTAssertNil(GroupRoomPictures.revisions(from: ["ok": false]))
+        let picture = GroupRoomPictures.picture(from: [
+            "ok": true, "rev": "2-b", "data_base64": Data([0xFF, 0xD8, 0xFF]).base64EncodedString(),
+        ])
+        XCTAssertEqual(picture?.data, Data([0xFF, 0xD8, 0xFF]))
+        XCTAssertEqual(picture?.revision, "2-b")
+        XCTAssertNil(GroupRoomPictures.picture(from: ["ok": true, "rev": "2-b", "data_base64": "%%"]))
+        XCTAssertEqual(GroupRoomPictures.storedRevision(from: ["ok": true, "rev": "3-c"]), "3-c")
+        XCTAssertNil(GroupRoomPictures.storedRevision(from: ["ok": true]))
+    }
+
+    func testDesktopProjectionCarriesTheRoomPictureAndID() {
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let room: [String: Any] = [
+            "name": "Pictured", "roomId": "r-pic", "revision": 1,
+            "image": "data:image/png;base64," + png.base64EncodedString(),
+            "members": [["name": "Writer"]],
+            "log": [["id": "m1", "from": ["kind": "user", "name": "You"], "text": "hi", "at": 1_000.0]],
+        ]
+        let plain: [String: Any] = ["name": "Plain", "revision": 1, "image": "https://example.com/a.png", "log": []]
+        let groups = DesktopGroupChatDecoder.decode(snapshot: AnyCodable.from([
+            "version": 3, "rooms": ["id:r-pic": room, "name:Plain": plain],
+        ] as [String: Any]))
+        let pictured = groups.first { $0.name == "Pictured" }
+        XCTAssertEqual(pictured?.imageData, png)
+        XCTAssertEqual(pictured?.roomID, "r-pic")
+        XCTAssertEqual(pictured?.groupMembers.first?.displayName, "Writer")
+        let unpictured = groups.first { $0.name == "Plain" }
+        XCTAssertNil(unpictured?.imageData)
+        XCTAssertNil(unpictured?.roomID)
+    }
+
+    func testDefaultGroupIconKeepsEveryMemberInsideItsFrame() {
+        XCTAssertTrue(GroupRoomIcon.layout(count: 0).isEmpty)
+        for count in 1...5 {
+            let spots = GroupRoomIcon.layout(count: count)
+            XCTAssertEqual(spots.count, min(count, 3))
+            for spot in spots {
+                XCTAssertLessThanOrEqual(abs(spot.x) + spot.diameter / 2, 0.5 + 0.0001)
+                XCTAssertLessThanOrEqual(abs(spot.y) + spot.diameter / 2, 0.5 + 0.0001)
+            }
+        }
+    }
+}

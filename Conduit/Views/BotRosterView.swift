@@ -417,7 +417,9 @@ struct GroupRosterRow: View {
             appState.dismissSidebarDrawer()
             Task { await appState.openGroupRoom(room) }
         } label: {
-            RosterGlyphRow(symbol: "person.3", title: room.name, subtitle: subtitleText)
+            RosterIconRow(title: room.name, subtitle: subtitleText) { size in
+                GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: size)
+            }
         }
         .buttonStyle(.plain)
         .rosterListRow()
@@ -608,29 +610,24 @@ private struct BotModeNoticeRow: View {
 }
 
 /// What isn't a bot in the Bots list (group chats, create actions), in the
-/// bots' chat-style row: a round glyph in place of the picture, a title and
-/// a subtitle, no card.
-struct RosterGlyphRow: View {
-    let symbol: String
+/// bots' chat-style row: an icon in place of the picture, a title and a
+/// subtitle, no card.
+struct RosterIconRow<Icon: View>: View {
     let title: String
     var subtitle: String? = nil
     /// A create action: the title in gold.
     var isAction = false
     /// A marker after the text (Desktop's computer on its mirrored groups).
     var trailingSymbol: String? = nil
-    @ScaledMetric(relativeTo: .body) private var glyphSize: CGFloat = 36
+    /// Draws the icon at the given size.
+    @ViewBuilder let icon: (CGFloat) -> Icon
+    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 36
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.conduitAccent.opacity(0.16))
-                Image(systemName: symbol)
-                    .font(Font.caption.weight(isAction ? .bold : .regular))
-                    .foregroundStyle(Color.conduitAccent)
-            }
-            .frame(width: glyphSize, height: glyphSize)
-            .accessibilityHidden(true)
+            icon(iconSize)
+                .frame(width: iconSize, height: iconSize)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.callout.weight(.semibold))
@@ -653,6 +650,27 @@ struct RosterGlyphRow: View {
         }
         .padding(.vertical, 9)
         .contentShape(Rectangle())
+    }
+}
+
+/// A roster row with a round gold glyph for its icon (create actions).
+struct RosterGlyphRow: View {
+    let symbol: String
+    let title: String
+    var subtitle: String? = nil
+    var isAction = false
+    var trailingSymbol: String? = nil
+
+    var body: some View {
+        RosterIconRow(title: title, subtitle: subtitle, isAction: isAction, trailingSymbol: trailingSymbol) { _ in
+            ZStack {
+                Circle()
+                    .fill(Color.conduitAccent.opacity(0.16))
+                Image(systemName: symbol)
+                    .font(Font.caption.weight(isAction ? .bold : .regular))
+                    .foregroundStyle(Color.conduitAccent)
+            }
+        }
     }
 }
 

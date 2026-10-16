@@ -40,6 +40,7 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
+    @State private var choosesRoomPicture = false
     /// The open chat's ids while its Artifacts sheet shows.
     @State private var artifactSessionIDs: ArtifactSheetIDs?
 
@@ -129,6 +130,7 @@ struct V2ConversationScreen: View {
                     onRename: { chatTitlePendingRename = $0 },
                     onDelete: { chatTitlePendingDeletion = $0 },
                     onDisbandRoom: { confirmsRoomDisband = true },
+                    onChooseRoomPicture: { choosesRoomPicture = true },
                     onArtifacts: { artifactSessionIDs = ArtifactSheetIDs(ids: appState.activeChatArtifactSessionIDs) }
                 )
             }
@@ -157,6 +159,7 @@ struct V2ConversationScreen: View {
         }
         // On the screen, not the menu: a dialog raised as a menu closes
         // may never show.
+        .modifier(GroupRoomPicturePicker(isPresented: $choosesRoomPicture))
         .confirmationDialog(
             AppLocalization.string("Disband this group chat?"),
             isPresented: $confirmsRoomDisband,
@@ -227,6 +230,7 @@ private struct V2ConversationMenu: View {
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
     let onDisbandRoom: () -> Void
+    let onChooseRoomPicture: () -> Void
     let onArtifacts: () -> Void
 
     private var statusColor: Color {
@@ -242,7 +246,7 @@ private struct V2ConversationMenu: View {
     var body: some View {
         Menu {
             if appState.activeRoomSurface != nil {
-                GroupRoomActionItems(onDisband: onDisbandRoom)
+                GroupRoomActionItems(onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture)
             } else {
                 Button {
                     Task { await appState.refreshActiveSession() }

@@ -13,6 +13,7 @@ struct GroupChatView: View {
     /// actions.
     @Environment(\.v2ComposerRests) private var isV2
     @State private var showingDisbandConfirmation = false
+    @State private var choosingPicture = false
 
     var body: some View {
         Group {
@@ -31,6 +32,7 @@ struct GroupChatView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         .toolbar { toolbarContent }
+        .modifier(GroupRoomPicturePicker(isPresented: $choosingPicture))
         .confirmationDialog(
             AppLocalization.string("Disband this group chat?"),
             isPresented: $showingDisbandConfirmation,
@@ -144,7 +146,11 @@ struct GroupChatView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            GroupMemberAvatarStack(members: members, size: 44)
+            GroupRoomIcon(
+                picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) },
+                members: members,
+                size: 56
+            )
             Text(AppLocalization.string("No messages yet. Say something to the room."))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
@@ -184,14 +190,18 @@ struct GroupChatView: View {
             GroupRoomTitle(
                 name: surface?.room.name ?? "",
                 subtitle: memberSummary,
-                members: members
+                members: members,
+                picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }
             )
         }
         if !isV2 {
             // V2's conversation menu carries these with the gateway's state.
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    GroupRoomActionItems(onDisband: { showingDisbandConfirmation = true })
+                    GroupRoomActionItems(
+                        onDisband: { showingDisbandConfirmation = true },
+                        onChoosePicture: { choosingPicture = true }
+                    )
                 } label: {
                     Image(systemName: "ellipsis.circle")
                         .font(.callout.weight(.semibold))
@@ -263,8 +273,21 @@ struct GroupChatView: View {
 struct GroupRoomActionItems: View {
     @EnvironmentObject private var appState: AppState
     let onDisband: () -> Void
+    let onChoosePicture: () -> Void
 
     var body: some View {
+        if appState.canSetGroupRoomPictures, let roomID = appState.activeRoomSurface?.room.roomID {
+            Button(action: onChoosePicture) {
+                Label(AppLocalization.string("Choose Group Picture"), systemImage: "photo")
+            }
+            if appState.hasCustomGroupRoomPicture(roomID: roomID) {
+                Button {
+                    Task { await appState.setGroupRoomPicture(nil, roomID: roomID) }
+                } label: {
+                    Label(AppLocalization.string("Remove Group Picture"), systemImage: "photo.badge.minus")
+                }
+            }
+        }
         if appState.groupCapabilities?.supports("groups.stop") == true,
            let driver = appState.activeRoomDriverStatus,
            driver.running || driver.working {
@@ -288,10 +311,11 @@ struct GroupRoomTitle: View {
     let name: String
     let subtitle: String
     let members: [GroupMember]
+    var picture: UIImage? = nil
 
     var body: some View {
         HStack(spacing: 8) {
-            GroupMemberAvatarStack(members: members, size: 22)
+            GroupRoomIcon(picture: picture, members: members, size: 28)
             VStack(alignment: .leading, spacing: 0) {
                 Text(name)
                     .font(.subheadline.weight(.semibold))
@@ -743,26 +767,89 @@ struct GroupMemberAvatar: View {
     }
 }
 
-/// Up to three members' pictures overlapping, then a count of the rest.
-struct GroupMemberAvatarStack: View {
+/// Picks a picture for the open room and saves it. On the screen, not in
+/// its menu: a sheet raised as a menu closes may never show.
+struct GroupRoomPicturePicker: ViewModifier {
+    @EnvironmentObject private var appState: AppState
+    @Binding var isPresented: Bool
+    @State private var picked: UIImage?
+    @State private var roomID: String?
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $isPresented) {
+                ImagePicker(image: $picked)
+            }
+            .onChange(of: isPresented) { _, presented in
+                // The room the menu was for, even if another opens meanwhile.
+                if presented { roomID = appState.activeRoomSurface?.room.roomID }
+            }
+            .onChange(of: picked) { _, image in
+                guard let image else { return }
+                picked = nil
+                guard let roomID else { return }
+                Task { await appState.setGroupRoomPicture(image, roomID: roomID) }
+            }
+    }
+}
+
+/// A group chat's picture: the one set for it, else up to three members'
+/// pictures packed into one circle, like a group in Messages, else a quiet
+/// gray glyph.
+struct GroupRoomIcon: View {
+    let picture: UIImage?
     let members: [GroupMember]
     let size: CGFloat
 
+    /// Where each of `count` member pictures sits, as offsets from the
+    /// center and a diameter, all in fractions of the icon's size. Every
+    /// circle stays inside the icon.
+    nonisolated static func layout(count: Int) -> [(x: CGFloat, y: CGFloat, diameter: CGFloat)] {
+        switch count {
+        case ..<1: return []
+        case 1: return [(0, 0, 1)]
+        case 2: return [(-0.17, -0.17, 0.64), (0.17, 0.17, 0.64)]
+        default: return [(0, -0.22, 0.54), (-0.22, 0.17, 0.54), (0.22, 0.17, 0.54)]
+        }
+    }
+
     var body: some View {
-        let shown = Array(members.prefix(3))
-        HStack(spacing: -size * 0.32) {
-            ForEach(shown.indices, id: \.self) { index in
-                let member = shown[index]
-                GroupMemberAvatar(member: member, name: GroupRoomTurns.displayName(of: member), size: size)
-                    .overlay { Circle().strokeBorder(Color.black.opacity(0.25), lineWidth: 1) }
-                    .zIndex(Double(shown.count - index))
-            }
-            if members.count > shown.count {
-                Text(verbatim: "+\(members.count - shown.count)")
-                    .font(.system(size: max(9, size * 0.4), weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
+        Group {
+            if let picture {
+                Image(uiImage: picture)
+                    .resizable()
+                    .scaledToFill()
                     .frame(width: size, height: size)
-                    .background(Color.primary.opacity(0.10), in: Circle())
+                    .clipShape(Circle())
+            } else if members.isEmpty {
+                ZStack {
+                    Circle().fill(Color.primary.opacity(0.08))
+                    Image(systemName: "person.3")
+                        .font(.system(size: size * 0.32))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: size, height: size)
+            } else {
+                let shown = Array(members.prefix(3))
+                let spots = Self.layout(count: shown.count)
+                ZStack {
+                    ForEach(shown.indices, id: \.self) { index in
+                        let spot = spots[index]
+                        let diameter = size * spot.diameter
+                        GroupMemberAvatar(
+                            member: shown[index],
+                            name: GroupRoomTurns.displayName(of: shown[index]),
+                            size: diameter
+                        )
+                        .overlay {
+                            if shown.count > 1 {
+                                Circle().strokeBorder(Color.conduitBackgroundColor, lineWidth: max(1, size * 0.03))
+                            }
+                        }
+                        .offset(x: size * spot.x, y: size * spot.y)
+                    }
+                }
+                .frame(width: size, height: size)
             }
         }
         .accessibilityHidden(true)
@@ -1086,12 +1173,13 @@ struct DesktopGroupRosterRow: View {
             Haptics.light()
             onOpen()
         } label: {
-            RosterGlyphRow(
-                symbol: "person.3",
-                title: group.name,
-                subtitle: subtitleText,
-                trailingSymbol: "desktopcomputer"
-            )
+            RosterIconRow(title: group.name, subtitle: subtitleText, trailingSymbol: "desktopcomputer") { size in
+                GroupRoomIcon(
+                    picture: GroupRoomPictureImages.image(from: group.imageData),
+                    members: group.groupMembers,
+                    size: size
+                )
+            }
         }
         .buttonStyle(.plain)
         .rosterListRow()
@@ -1120,18 +1208,7 @@ struct DesktopGroupChatView: View {
     /// Mention styling reuses the hosted-room classifier: the projection's
     /// members carry a display name and, on current Desktop builds, the
     /// room handle.
-    private var mentionMembers: [GroupMember] {
-        group.members.map {
-            GroupMember(
-                memberID: nil,
-                profile: nil,
-                handle: $0.handle,
-                displayName: $0.name,
-                target: nil,
-                extra: [:]
-            )
-        }
-    }
+    private var mentionMembers: [GroupMember] { group.groupMembers }
 
     var body: some View {
         NavigationStack {
@@ -1175,18 +1252,12 @@ struct DesktopGroupChatView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    VStack(spacing: 1) {
-                        Text(group.name)
-                            .font(.subheadline.weight(.semibold))
-                            .lineLimit(1)
-                        Text(AppLocalization.string("\(group.members.count) members"))
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityShowsLargeContentViewer()
+                    GroupRoomTitle(
+                        name: group.name,
+                        subtitle: AppLocalization.string("\(group.members.count) members"),
+                        members: mentionMembers,
+                        picture: GroupRoomPictureImages.image(from: group.imageData)
+                    )
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Done")) { dismiss() }

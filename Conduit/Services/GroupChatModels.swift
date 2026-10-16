@@ -966,8 +966,21 @@ struct DesktopGroupChat: Equatable, Identifiable {
     let messages: [Message]
     /// At least this many earlier entries exist that the projection omits.
     let omitted: Int
+    /// The gateway room this group is, when Desktop recorded one.
+    var roomID: String? = nil
+    /// The group's picture as Desktop synced it (PNG or JPEG bytes). Desktop
+    /// leaves it out when the group's sync is near its size cap.
+    var imageData: Data? = nil
 
     var id: String { key }
+
+    /// The members as room members, for the shared avatar and mention views:
+    /// a display name and, on current Desktop builds, the room handle.
+    var groupMembers: [GroupMember] {
+        members.map {
+            GroupMember(memberID: nil, profile: nil, handle: $0.handle, displayName: $0.name, target: nil, extra: [:])
+        }
+    }
     var lastActivity: Double { messages.last?.timestamp ?? 0 }
 }
 
@@ -1047,7 +1060,9 @@ enum DesktopGroupChatDecoder {
                 name: rawName.isEmpty ? fallbackName : rawName,
                 members: members,
                 messages: messages,
-                omitted: max(0, HermesClient.exactIntValue(room["omitted"]) ?? 0)
+                omitted: max(0, HermesClient.exactIntValue(room["omitted"]) ?? 0),
+                roomID: roomID.isEmpty ? nil : roomID,
+                imageData: room["image"]?.stringValue.flatMap(GroupRoomPictures.imageData(fromDataURL:))
             ))
         }
         // Most recently active first; the key breaks ties deterministically.

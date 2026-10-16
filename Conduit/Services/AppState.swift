@@ -7727,6 +7727,10 @@ final class AppState: ObservableObject {
     /// `default` profile (refreshed with the bot roster). Read-only here:
     /// Desktop drives their rounds, and `groups.*` cannot address them.
     @Published private(set) var desktopGroupChats: [DesktopGroupChat] = []
+    /// Hosted rooms' custom pictures (JPEG/PNG bytes) and the plugin's
+    /// revision of each, keyed by room id (`GroupRoomPictures`).
+    @Published var groupRoomPictureData: [String: Data] = [:]
+    var groupRoomPictureRevisions: [String: String] = [:]
     @Published private(set) var activeRoomSurface: GroupRoomSurface?
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
@@ -7795,7 +7799,7 @@ final class AppState: ObservableObject {
     /// Fences every in-flight room response and stops the poller. Runs at
     /// the server-identity boundary (with the rest of Bot Mode teardown), on
     /// a dashboard switch, and when a session open takes the viewport back.
-    private var groupRoomEpoch = 0
+    private(set) var groupRoomEpoch = 0
     private var groupRoomPollTask: Task<Void, Never>?
 
     // Group Chat RPC routing: the injectable seam first (tests), then the
@@ -7860,6 +7864,8 @@ final class AppState: ObservableObject {
         groupCapabilities = nil
         groupRooms = []
         desktopGroupChats = []
+        groupRoomPictureData = [:]
+        groupRoomPictureRevisions = [:]
         // Identity/sign-out teardown: the caller owns `errorMessage` (it may
         // have just set a connection error), so the room must not wipe it.
         // Parked sends and drafts belong to the outgoing identity.
@@ -8031,6 +8037,7 @@ final class AppState: ObservableObject {
             if nextOffset == nil {
                 pruneRoomStores(liveRoomIDs: Set(groupRooms.map(\.roomID)))
             }
+            await refreshGroupRoomPictures()
         } catch is CancellationError {
             return
         } catch {
