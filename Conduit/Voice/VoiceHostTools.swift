@@ -191,7 +191,16 @@ struct VoiceHostTool {
     }
 
     static func gptLiveRules(_ tools: [VoiceHostTool]) -> String {
-        tools.isEmpty ? "" : "\n\n" + tools.map(\.gptLiveRule).joined(separator: "\n\n")
+        tools.isEmpty ? "" : "\n\n" + gptLiveFirst(tools) + "\n\n" + tools.map(\.gptLiveRule).joined(separator: "\n\n")
+    }
+
+    /// Leads the tools' rules: the briefing's first rule sends anything
+    /// needing facts or accounts to Hermes, and without this GPT-Live often
+    /// delegates "what's on my calendar" as a Hermes job, which is many
+    /// seconds slower and may take another route to the same data.
+    private static func gptLiveFirst(_ tools: [VoiceHostTool]) -> String {
+        let markers = tools.map { "\"\($0.marker):\"" }.joined(separator: ", ")
+        return "[Conduit's own tools: \(markers). Conduit answers these itself, much faster than a Hermes job. Use them first. When the user asks about something one of them covers, delegate its marker, not a request for Hermes: this takes precedence over the first rule, which sends real work to Hermes. Don't say you'll have Hermes look: no acknowledgement is needed, answer from what comes back. Delegate to Hermes only what they can't do, or when the user asks for Hermes.]"
     }
 
     /// "Health: {...}" at the very start of a delegation: the tool and its
