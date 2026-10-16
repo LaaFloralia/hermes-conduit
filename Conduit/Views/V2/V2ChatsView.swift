@@ -609,6 +609,14 @@ struct V2ChatsView: View {
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
 
+            // After the first connection to a dashboard added here.
+            if appState.showsFinishSetup && !isSearching {
+                V2FinishSetupCard()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 12, trailing: 16))
+            }
+
             if layout.savedSection, let offline = appState.offlineChatPresentation {
                 Section {
                     ForEach(offline.snapshot.sessions) { session in

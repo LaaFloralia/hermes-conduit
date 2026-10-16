@@ -10,6 +10,7 @@
 //
 
 import UIKit
+import UserNotifications
 import XCTest
 @testable import Conduit
 
@@ -790,5 +791,77 @@ extension AppStateMultiDashboardTests {
         _ = try store.saveAvatar(photoData(.green, side: 300), for: "default", dashboardID: dashboardID)
         let restored = try XCTUnwrap(ProfileAvatarImageCache.image(at: url))
         XCTAssertGreaterThan(try averageColor(of: restored).green, 0.6)
+    }
+}
+
+// MARK: - Finish setting up
+
+extension AppStateMultiDashboardTests {
+    func testANewDashboardOffersFinishSetupUntilItEnds() {
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        let id = track(appState.adoptDashboard(forNormalizedURL: "https://mac.tailnet.ts.net"))
+        XCTAssertEqual(appState.dashboardsFinishingSetup, [id])
+        // Only a connected dashboard shows the card.
+        XCTAssertFalse(appState.showsFinishSetup)
+        appState.isConnected = true
+        XCTAssertTrue(appState.showsFinishSetup)
+
+        appState.endFinishSetup()
+        XCTAssertTrue(appState.dashboardsFinishingSetup.isEmpty)
+        XCTAssertFalse(appState.showsFinishSetup)
+        // Connecting again doesn't bring it back.
+        _ = appState.adoptDashboard(forNormalizedURL: "https://mac.tailnet.ts.net")
+        XCTAssertTrue(appState.dashboardsFinishingSetup.isEmpty)
+    }
+
+    func testDashboardsSavedBeforeAreNotOfferedFinishSetup() {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac]))
+        _ = appState.adoptDashboard(forNormalizedURL: mac.normalizedURL)
+        XCTAssertTrue(appState.dashboardsFinishingSetup.isEmpty)
+    }
+
+    func testRemovingADashboardForgetsItsFinishSetup() throws {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac]))
+        let added = track(try XCTUnwrap(appState.resolveDashboardID(forURL: "https://hermes.example.com", registerIfMissing: true)))
+        XCTAssertEqual(appState.dashboardsFinishingSetup, [added])
+
+        appState.removeDashboard(added)
+        XCTAssertTrue(appState.dashboardsFinishingSetup.isEmpty)
+    }
+
+    func testFinishSetupPluginStepFollowsTheHostsReport() {
+        let current = NotifierPluginStatus.recommendedVersion
+        let running = NotifierPluginStatus.Runtime(loadedVersion: current, restartNeeded: false, bootID: nil)
+        let reported = NotifierPluginStatus.State.reported(version: current, capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: .unknown), updating: false), .unknown)
+        XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: .predatesCapabilities), updating: false), .install)
+        XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: .predatesCapabilities), updating: true), .updating)
+        XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: reported, runtime: running), updating: false), .done)
+        XCTAssertEqual(
+            FinishSetupStatus.plugin(NotifierPluginStatus(
+                state: .reported(version: "0.10.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
+            ), updating: false),
+            .update
+        )
+        var waiting = running
+        waiting.restartNeeded = true
+        XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: reported, runtime: waiting), updating: false), .restart)
+    }
+
+    func testFinishSetupNotificationsStepNeedsIOSPermissionToo() {
+        XCTAssertEqual(FinishSetupStatus.notifications(enabled: false, authorization: .notDetermined), .off)
+        XCTAssertEqual(FinishSetupStatus.notifications(enabled: true, authorization: .authorized), .done)
+        XCTAssertEqual(FinishSetupStatus.notifications(enabled: true, authorization: .provisional), .done)
+        // Registered but iOS not asked (a reinstall keeps the registration).
+        XCTAssertEqual(FinishSetupStatus.notifications(enabled: true, authorization: .notDetermined), .off)
+        XCTAssertEqual(FinishSetupStatus.notifications(enabled: true, authorization: .denied), .denied)
+        XCTAssertEqual(FinishSetupStatus.notifications(enabled: false, authorization: .denied), .denied)
+
+        XCTAssertTrue(FinishSetupStatus(plugin: .done, notifications: .done, voiceReady: true).isComplete)
+        XCTAssertFalse(FinishSetupStatus(plugin: .unknown, notifications: .done, voiceReady: true).isComplete)
+        XCTAssertFalse(FinishSetupStatus(plugin: .done, notifications: .off, voiceReady: true).isComplete)
+        XCTAssertFalse(FinishSetupStatus(plugin: .done, notifications: .done, voiceReady: false).isComplete)
     }
 }

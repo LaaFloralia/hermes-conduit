@@ -83,9 +83,14 @@ struct DashboardCodeScannerSheet: View {
                     if onScan(text) { return }
                     showsUnreadable = true
                     unreadableCount += 1
+                    UIAccessibility.post(
+                        notification: .announcement,
+                        argument: AppLocalization.string("That code isn't a dashboard address.")
+                    )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .accessibilityLabel(AppLocalization.string("Camera"))
+                .accessibilityLabel(AppLocalization.string("Scan Code"))
+                .accessibilityHint(AppLocalization.string("Point the camera at the code Hermes shows. For an address shown as text, tap it."))
             case .denied:
                 cameraNotice(
                     AppLocalization.string("Scanning a code needs camera access. You can allow it in Settings."),

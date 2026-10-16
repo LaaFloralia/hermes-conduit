@@ -9102,6 +9102,7 @@ final class AppState: ObservableObject {
     /// dashboard.
     private func removeDashboardScopedPresentation(_ id: UUID) {
         profileAppearanceStore.removeAll(dashboardID: id)
+        if dashboardsFinishingSetup.contains(id) { dashboardsFinishingSetup.remove(id) }
         // The Watch forgets its main profile name.
         shareWatchCallVoices()
         forgetActiveProfile(for: id)
@@ -9968,6 +9969,8 @@ final class AppState: ObservableObject {
         registry.dashboards.append(SavedDashboard(id: id, label: label, normalizedURL: normalized))
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        // Its first connection offers Finish setting up on Chats.
+        dashboardsFinishingSetup.insert(id)
         if isFirstDashboard {
             // Pre-scoping appearance/preferences with no dashboard to own
             // them yet belong to the first one (same rule as launch).
@@ -18745,6 +18748,16 @@ final class AppState: ObservableObject {
         get { Set(defaults.stringArray(forKey: Self.dismissedPluginUpdateKey) ?? []) }
         set {
             defaults.set(newValue.sorted(), forKey: Self.dismissedPluginUpdateKey)
+            objectWillChange.send()
+        }
+    }
+
+    /// Dashboards added on this iPhone whose Finish setting up card hasn't
+    /// been closed or finished yet (AppState+FinishSetup.swift).
+    var dashboardsFinishingSetup: Set<UUID> {
+        get { Set((defaults.stringArray(forKey: Self.finishSetupDashboardsKey) ?? []).compactMap(UUID.init(uuidString:))) }
+        set {
+            defaults.set(newValue.map(\.uuidString).sorted(), forKey: Self.finishSetupDashboardsKey)
             objectWillChange.send()
         }
     }
