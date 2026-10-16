@@ -22,26 +22,99 @@ shard or the nightly list, and a renamed class fails the plan job.
 
 Each macOS job (`unit` shard, `ui-smoke`, and the nightly jobs) runs
 `scripts/ci-hosted-build.sh`. It starts `ci-prepare-smoke.sh` (the pinned
-simulator's lookup, boot and `bootstatus`) in the background, compiles the test
-products with `ci-build-for-testing.sh` on the same runner, then waits for the
-boot. On the v3 runs, boot readiness was a serial ~2.5 minutes after a separate
-build job and an artifact hop; now it hides behind the ~3 minute build.
+simulator's lookup, boot and `bootstatus`) in the background and runs
+`ci-build-for-testing.sh` on the same runner, which waits for the preparation
+to end and then resolves packages and compiles the test products. On the v3
+runs, boot readiness was a serial ~2.5 minutes after a separate build job and
+an artifact hop.
 
-Unit shards run their classes as sequential `test-without-building` batches of
-at most `UNIT_BATCH_SIZE` (35) classes on the one booted simulator. A failing
-batch does not stop the shard: every batch runs, and the job fails at the end
-listing the failed batches. `-test-timeouts-enabled YES` with a 180s allowance
+What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
+
+- **The app without its Watch app and extensions.** Unit shards generate the
+  project from `project-tests.yml`, an xcodegen overlay of `project.yml` whose
+  only change is that the Conduit target no longer embeds the Apple Watch app
+  and the three app extensions. No test runs them, and the Watch app is a
+  second platform compiled from scratch. UI smoke builds the same slim project
+  unless the PR touches those targets' sources (`ConduitWatch/`,
+  `ConduitWidgets/`, `ConduitNotificationService/`, `ConduitLocationPush/`,
+  `Shared/`, `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` or either project
+  spec); then it builds the full app. `Conduit/Localizable.xcstrings` is left
+  out on purpose: the app target compiles the same catalog in the slim build,
+  and nearly every PR edits it. Every push to `main` builds the full app too,
+  as do the nightly run and TestFlight archives. The plan job makes that choice (`ui-spec`).
+- **Incremental builds from main's last build.** Each push to `main` saves
+  its DerivedData to the Actions cache after the tests (unit shard 1 the
+  app-only build, UI smoke the full app), keyed by project kind, Xcode build
+  and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`). Every test job
+  restores the newest matching entry before building (from the same runner
+  image if there is one, otherwise from any image with the same Xcode build,
+  which happens while GitHub rolls out a new image), so a PR recompiles only
+  what it changed. Xcode trusts a restored build only when each input's file
+  info matches exactly, and a fresh checkout stamps every file with the clone
+  time, so `ci-build-for-testing.sh` first gives every tracked file (and the
+  generated project) a timestamp derived from its content
+  (`ci-normalize-mtimes.py`) and sets XCBuild's
+  `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
+  no error in a source file is retried once from scratch. A new Xcode build
+  misses the cache and builds clean; the nightly never restores one.
+- **Packages from the restored checkout.** When the restored DerivedData
+  holds the WebRTC checkout (the only package), the build passes
+  `-skipPackageUpdates` and resolves from it instead of the network. A new
+  pinned version fails that build, and the clean retry resolves it from the
+  network.
+- **A generic build destination, built after the boot.** With nothing to
+  compile, the first incremental builds still took 139-340 s: 4-64 s finding
+  the pinned device, then 116-213 s with no output around "Resolve Package
+  Graph", with or without `-skipPackageUpdates`. The silence ended 30-75 s
+  after the simulator booting alongside was ready: with that device as its
+  destination, xcodebuild waited for it. Hosted jobs now build for
+  `generic/platform=iOS Simulator` (`BUILD_DESTINATION`, set by
+  `ci-hosted-build.sh`), which needs no device; the products and `.xctestrun`
+  are the same, and the tests still run on the booted device. Building during
+  the boot was tried in #629 and starved it on the 3-core runners: 2 of 3
+  boots missed their 200 s readiness budget, and the tests then waited 4-7
+  minutes for the device. Even a `-resolvePackageDependencies` call alone
+  during the boot sat at "Resolve Package Graph" until 43-73 s after the boot
+  ended (2 of 3 jobs). So `ci-build-for-testing.sh` calls xcodebuild only once
+  the preparation has ended (`BUILD_AFTER`): a separate, timed package
+  resolution, then the build.
+- **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
+  the full app in 20.5 minutes against 11-16 before, because the app is one
+  large module type-checked on one core.
+
+Each build posts two notices on its job: the slowest build phases from
+`-showBuildTimingSummary` (with the cache it restored and the seconds spent
+on the destination, waiting for the simulator and the packages before the
+build), and the longest
+stretches where the build log stopped growing, with the lines around each
+(`ci-build-quiet-stretches.py`). The second shows time the first cannot:
+package resolution, build planning, waiting on the simulator service.
+
+Unit shards run their classes as sequential `test-without-building` batches on
+the one booted simulator: the fewest batches of at most `UNIT_BATCH_SIZE` (45)
+classes, split evenly, so a shard of about 78 classes runs as two batches of
+about 39. A failing batch does not stop the shard: every batch runs, and the
+job fails at the end listing the failed batches. Each failed batch also posts
+its failing cases as an annotation, since the job log API returns only a job's
+last 5,000 lines and a large first batch's failures fall outside them. Every
+batch also posts how long it took and how much of that ran tests: on a freshly
+booted simulator, the first batch spent 154 s outside its tests and the second
+20 s (#629).
+`-test-timeouts-enabled YES` with a 180s allowance
 kills a hung test instead of letting it burn the job ceiling. UI smoke uses a
 480s allowance (`UI_TEST_ALLOWANCE_S`; the slowest passing hosted UI test took
 246s), so a hung launch or idle-wait stall ends and the targeted retry still
 runs inside the job timeout.
 
-Why 35 and not 7: the 7-class cap came from hosted stalls in PRs #178-#183.
+Why 45 and not 7: the 7-class cap came from hosted stalls in PRs #178-#183.
 Since then the hosted hangs we have traced were test bugs, for example the
 scene-phase fixtures fixed in #272/#273 and the dropped fake-socket frames
-fixed in #274. Every invocation costs minutes of fixed hosted overhead, so
-fewer, larger batches are what make the full suite affordable per PR. If a
-stall reappears, lower `UNIT_BATCH_SIZE` in `ci.yml` and root-cause the test.
+fixed in #274. Every invocation has a fixed hosted cost, so fewer, larger
+batches are what make the full suite affordable per PR: measured 2026-10-15
+(#629), an invocation spends 40-60 s before its first test, and the first one
+on a fresh simulator about 100 s. With a cap of 35 each shard ran a third
+batch of 7-9 classes, one of them 39 s for 0.8 s of tests. If a stall
+reappears, lower `UNIT_BATCH_SIZE` in `ci.yml` and root-cause the test.
 
 ### Budget
 
@@ -279,6 +352,13 @@ follow-up accepts only those known leaves on failed cases; unknown,
 nested or inconsistent children still force the whole-selection fallback.
 Regressions cover class attribution and the actual workflow retry command.
 This correction has local evidence, but no hosted timing measurement yet.
+Hosted UI failures still fell back to the whole selection ("unattributable
+raw test case child"), so since #629 a failed case may also carry what
+xcresulttool hangs under it in practice: failure messages with their own
+result and source references, attachments such as the failure screenshot,
+and runtime warnings. A nested test, a repetition, an unknown node or a
+failure message under a case that did not fail still keeps the whole
+selection.
 Neither candidate run demonstrates an overall wall-time improvement;
 the first UI attempt and simulator preparation remain substantial costs.
 
@@ -634,6 +714,11 @@ everything else in this shape.
    batch or class completed successfully.
 
 ### Destination readiness gate
+
+Hosted test jobs skip this gate for the build, which targets a generic
+simulator (see "What gets compiled"); their preparation step still waits for
+the pinned device before the tests run. The gate applies when
+`ci-build-for-testing.sh` runs without `BUILD_DESTINATION`.
 
 The build job pins one known simulator name (`SIMULATOR_NAME`, no `simctl`
 enumeration on the happy path). Fresh hosted runners occasionally reach the

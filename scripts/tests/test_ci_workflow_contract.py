@@ -4,8 +4,10 @@ These tests pin the workflow/script interface so it cannot silently diverge
 again (e.g. passing observation files positionally when the script requires
 --observations).
 
-CI v4 shape (docs/CI.md): GitHub-hosted CI is the merge gate. It compiles
-everything, runs the cheap Linux validation, every unit class except the
+CI v4 shape (docs/CI.md): GitHub-hosted CI is the merge gate. It compiles the
+app (without its Watch app and extensions unless the plan job's ui-spec says
+otherwise, incrementally from main's last build) and every test target, runs
+the cheap Linux validation, every unit class except the
 nightly-only timing families (scripts/hosted-suite.json, split into shards),
 and the curated UI smoke selection (scripts/smoke-suite.json). The timing
 families and the complete UI suite run in nightly.yml. There is NO lane
@@ -91,8 +93,8 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_test_jobs_build_while_the_simulator_boots(self):
         """Each macOS test job builds its own products with the simulator
-        booting in the background: no shared-artifact hop, and the boot hides
-        behind the build."""
+        booting in the background: no shared-artifact hop, and package
+        resolution runs during the boot."""
         for job in ("unit", "ui-smoke"):
             text = self._job_text(job)
             self.assertIn("bash scripts/ci-hosted-build.sh", text, job)
@@ -105,6 +107,113 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("ci-build-for-testing.sh", build)
         self.assertIn('wait "$prepare_pid"', build)
         self.assertIn("XCRUN_FILE=", build)
+
+    def test_hosted_builds_need_no_simulator_device(self):
+        """The build targets a generic simulator, so it never waits on the
+        CoreSimulator service the background boot keeps busy; the tests still
+        get the pinned device from the preparation step."""
+        with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
+            hosted = fh.read()
+        export = 'export BUILD_DESTINATION="${BUILD_DESTINATION:-generic/platform=iOS Simulator}"'
+        self.assertIn(export, hosted)
+        self.assertLess(hosted.index(export), hosted.index("ci-build-for-testing.sh"))
+        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
+            build = fh.read()
+        generic = build.index('if [ -n "${BUILD_DESTINATION:-}" ]; then')
+        self.assertLess(generic, build.index("wait_for_destination_device"),
+                        "without BUILD_DESTINATION the build still waits for its device")
+        self.assertIn("-resolvePackageDependencies", build)
+        self.assertIn("s::the step took $(( $(date +%s) - step_start ))s$outcome", hosted,
+                      "the timing notice names a failed build or preparation")
+
+    def test_hosted_builds_wait_for_the_simulator_boot(self):
+        """Side by side on the 3-core runners, the build starved the first
+        boot, and even a package resolution stalled until after it; no
+        xcodebuild call starts before the preparation has ended."""
+        with open(os.path.join(SCRIPTS_DIR, "ci-hosted-build.sh"), encoding="utf-8") as fh:
+            hosted = fh.read()
+        export = 'export BUILD_AFTER="$PWD/ci-lane/prepare.end"'
+        self.assertIn(export, hosted)
+        self.assertLess(hosted.index(export), hosted.index("ci-build-for-testing.sh"))
+        self.assertIn("date +%s > ci-lane/prepare.end", hosted,
+                      "the preparation must leave the marker whether or not it succeeds")
+        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
+            build = fh.read()
+        wait = build.index('while [ ! -e "$BUILD_AFTER" ]')
+        resolve = build.index("XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages\nfi")
+        self.assertLess(wait, resolve, "packages resolve only after the wait")
+        self.assertLess(resolve, build.index("start_sampler\n\nstarted_at"),
+                        "package resolution is timed before the build's own timeline starts")
+        self.assertEqual(build.count("resolve_packages\n"), 1, "packages resolve once")
+
+    def test_test_builds_leave_out_the_watch_app_and_extensions(self):
+        """Unit shards build project-tests.yml (the app alone); UI smoke builds
+        the plan job's choice, the full app whenever a change reaches the
+        targets the overlay drops."""
+        self.assertIn("xcodegen generate --spec project-tests.yml",
+                      self._job_text("unit"))
+        self.assertIn('xcodegen generate --spec "${{ needs.plan.outputs.ui-spec }}"',
+                      self._job_text("ui-smoke"))
+        with open(os.path.join(REPO_ROOT, "project-tests.yml"), encoding="utf-8") as fh:
+            overlay = fh.read()
+        self.assertIn("- path: project.yml", overlay)
+        self.assertIn("dependencies:REPLACE:", overlay)
+        self.assertNotIn("- target:", overlay)
+        plan = self._job_text("plan")
+        self.assertIn("fetch-depth: 2", plan)
+        self.assertIn("^(ConduitWatch|ConduitWidgets|ConduitNotificationService"
+                      "|ConduitLocationPush|Shared)/", plan,
+                      "a change to any dropped target's folder must build the full app")
+        self.assertIn(r"^project(-tests)?\.yml$", plan)
+        self.assertIn(r"^Conduit/Voice/GPTLive/GPTLiveProtocol\.swift$", plan)
+        self.assertIn("HEAD^2", plan, "only a merge-commit checkout may pick the slim build")
+        self.assertIn('= "$PR_HEAD" ]', plan, "the merge commit's second parent must be this PR's head")
+        self.assertIn("spec=project.yml\n", plan, "the plan job must fail closed to the full app")
+        with open(os.path.join(REPO_ROOT, "project.yml"), encoding="utf-8") as fh:
+            spec = fh.read()
+        # Every target the overlay drops must still be a dependency in the
+        # real spec, or the list above is out of date.
+        for target in ("ConduitWatch", "ConduitNotificationService",
+                       "ConduitWidgets", "ConduitLocationPush"):
+            self.assertIn(f"- target: {target}", spec)
+
+    def test_test_jobs_build_incrementally_from_main_builds(self):
+        """Each test job restores the newest main build's DerivedData before
+        building, and one job per project kind saves its own: only on pushes
+        to main, only after a successful build, with the same path list (a
+        different list is a different cache)."""
+        cache_path = ("          path: |\n"
+                      "            ci-derived-data\n"
+                      "            !ci-derived-data/Logs\n")
+        for job, saver in (("unit", "matrix.shard == 1"),
+                           ("ui-smoke", "steps.cache-key.outputs.kind == 'full'")):
+            text = self._job_text(job)
+            self.assertIn("uses: actions/cache/restore@v5", text, job)
+            self.assertIn("uses: actions/cache/save@v5", text, job)
+            self.assertEqual(2, text.count(cache_path), job)
+            self.assertLess(text.index("actions/cache/restore@v5"),
+                            text.index("bash scripts/ci-hosted-build.sh"), job)
+            self.assertIn("id: build", text, job)
+            self.assertIn("steps.build.outcome == 'success'", text, job)
+            self.assertIn("&& github.event_name == 'push'\n", text, job)
+            self.assertNotIn("head_ref", text, f"{job}: a PR's build must never be saved")
+            self.assertIn(saver, text, job)
+            self.assertIn("dd-v1-$kind-$xcode-${ImageVersion:-image}", text, job)
+            # The key still names the image, and the image-specific prefix is
+            # tried before the any-image one.
+            self.assertIn("key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}", text, job)
+            self.assertIn("restore-keys: |\n"
+                          "            ${{ steps.cache-key.outputs.prefix }}-\n"
+                          "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", text, job)
+        with open(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"), encoding="utf-8") as fh:
+            build = fh.read()
+        self.assertIn("ci-normalize-mtimes.py", build)
+        self.assertIn("IgnoreFileSystemDeviceInodeChanges", build)
+        self.assertIn('[ "${GITHUB_ACTIONS:-}" = "true" ]', build,
+                      "never restamp a developer checkout or change their Xcode defaults")
+        self.assertIn('[ -d "$DERIVED_DATA_PATH/SourcePackages/checkouts" ] || return 0', build,
+                      "-skipPackageUpdates only when the restored cache holds the checkout")
+        self.assertIn('${package_flag:+"$package_flag"}', build)
 
     def test_no_shared_build_job_remains(self):
         text = self._workflow_text()
@@ -178,8 +287,9 @@ class WorkflowContractTests(unittest.TestCase):
         text = self._workflow_text()
         self.assertNotIn("fromJSON(needs.plan.outputs.matrix)", text)
         self.assertNotIn("fromJSON(needs.plan.outputs.ui-matrix)", text)
-        self.assertNotIn("actions/cache/restore", text,
-                         "the timing-history cache is gone with its job")
+        # The only cache left is the build cache (DerivedData); the
+        # timing-history cache is gone with its job.
+        self.assertNotIn("timing-history", text)
         for obsolete in ("report:", "timing-history-update:", "unit-smoke:"):
             self.assertFalse(
                 any(line.startswith("  ") and line.strip() == obsolete
