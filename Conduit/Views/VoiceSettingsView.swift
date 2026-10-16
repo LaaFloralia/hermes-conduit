@@ -467,6 +467,15 @@ struct VoiceSettingsView: View {
                 )
             }
         }
+        if transcriptionMode == .speechServer {
+            if let server = service.speechServer, server.available, let url = server.url {
+                return setupStep(title, detail: url, state: .done)
+            }
+            if let server = service.speechServer, server.configured || server.pluginMissing {
+                return setupStep(title, detail: server.reason ?? AppLocalization.string("Your speech server. Use Test connection under Speech to text to check it."), state: .attention)
+            }
+            return setupStep(title, detail: AppLocalization.string("Your speech server. Use Test connection under Speech to text to check it."), state: .pending)
+        }
         if service.isLoading || !service.snapshot.capability.isGatewayConnected {
             return setupStep(title, detail: AppLocalization.string("Not checked yet"), state: .pending)
         }
@@ -960,12 +969,14 @@ struct VoiceSettingsView: View {
 
                 if kind == .stt, transcriptionMode == .appleOnDevice {
                     appleOnDeviceDetail
+                } else if kind == .stt, transcriptionMode == .speechServer {
+                    SpeechServerSettingsView(service: service)
                 } else if let selected = providers.first(where: { $0.descriptor.id == selectedProvider(kind) }) {
                     providerDetail(selected)
                 } else if let fallback = providers.first {
                     providerDetail(fallback)
                 }
-                if kind == .stt, transcriptionMode != .appleOnDevice {
+                if kind == .stt, transcriptionMode == .hermes {
                     liveTranscriptionToggle
                 }
             }
@@ -1208,7 +1219,12 @@ struct VoiceSettingsView: View {
     }
 
     private func selectedProviderChoice(_ kind: VoiceProviderDescriptor.Kind) -> String {
-        kind == .stt && transcriptionMode == .appleOnDevice ? Self.appleProviderID : selectedProvider(kind)
+        guard kind == .stt else { return selectedProvider(kind) }
+        switch transcriptionMode {
+        case .appleOnDevice: return Self.appleProviderID
+        case .speechServer: return Self.speechServerProviderID
+        case .hermes: return selectedProvider(kind)
+        }
     }
 
     private func providerChoices(
@@ -1218,12 +1234,15 @@ struct VoiceSettingsView: View {
         let hermes = providers.map { (id: $0.descriptor.id, title: $0.descriptor.displayName) }
         guard kind == .stt else { return hermes }
         return [(id: Self.appleProviderID, title: AppLocalization.string("On this iPhone"))] + hermes
+            + [(id: Self.speechServerProviderID, title: AppLocalization.string("Your speech server"))]
     }
 
     private var supportsSelectedTranscription: Bool {
-        transcriptionMode == .appleOnDevice
-            ? appleSpeechAvailability.canAttemptRecognition
-            : service.snapshot.capability.supportsTranscription
+        switch transcriptionMode {
+        case .appleOnDevice: return appleSpeechAvailability.canAttemptRecognition
+        case .speechServer: return true
+        case .hermes: return service.snapshot.capability.supportsTranscription
+        }
     }
 
     private func selectProvider(_ provider: String, kind: VoiceProviderDescriptor.Kind, force: Bool = false) {
@@ -1249,6 +1268,12 @@ struct VoiceSettingsView: View {
                 testStatus = AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
             } else if case .unsupported = appleSpeechAvailability {
                 testStatus = AppLocalization.string("On-device speech recognition is not available for your current language locale.")
+            }
+        } else if kind == .stt, provider == Self.speechServerProviderID {
+            if await setTranscriptionMode(.speechServer) {
+                transcriptionMode = .speechServer
+                transcriptionModeChosen = true
+                testStatus = nil
             }
         } else {
             let providerSaved: Bool
@@ -1315,6 +1340,7 @@ struct VoiceSettingsView: View {
     }
 
     private static let appleProviderID = "apple_on_device"
+    private static let speechServerProviderID = "conduit_speech_server"
 }
 
 /// Compact phrase-list editor for one spoken-command category: view, add,

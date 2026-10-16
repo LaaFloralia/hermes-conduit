@@ -121,6 +121,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
     @Published private(set) var snapshot: VoiceConfigurationSnapshot
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
+    /// The last speech server status read for this profile, for the setup step.
+    @Published private(set) var speechServer: SpeechServerStatus?
 
     private let requester: VoiceConfigurationRequesting
     let profile: String
@@ -172,6 +174,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
             ttsToolsetConfigAvailable: (try? tts.get()) != nil
         )
         snapshot = parsed
+        // The speech server step refreshes with the rest once it was shown.
+        if speechServer != nil { _ = await speechServerStatus() }
         // Toolset config was added after some public gateways. Its absence is
         // a capability limitation, not a failed text-chat connection.
         if (try? stt.get()) == nil && (try? tts.get()) == nil {
@@ -296,8 +300,9 @@ final class HermesVoiceConfigurationService: ObservableObject {
                 body: ["config": config]
             )
             // The snapshot only reflects a confirmed write; a failed PUT
-            // must leave it matching the server.
-            if clears {
+            // must leave it matching the server. A key saved into the config
+            // (the speech server's) is never kept in memory.
+            if clears || key.hasSuffix("api_key") {
                 snapshot.values.removeValue(forKey: key)
             } else {
                 snapshot.values[key] = stored
@@ -332,6 +337,39 @@ final class HermesVoiceConfigurationService: ObservableObject {
         } catch {
             errorMessage = AppLocalization.string("Could not save live transcription: \(UserFacingError.message(for: error))")
             return false
+        }
+    }
+
+    /// The user's own speech server as the notifier reads it
+    /// (`voice.speech_server`). A plugin without the route predates it.
+    func speechServerStatus() async -> SpeechServerStatus {
+        let status: SpeechServerStatus
+        do {
+            let response = try await requester.requestJSON(
+                path: profilePath(SpeechServerTranscription.statusPath), method: "GET", body: nil)
+            status = SpeechServerStatus(response: response)
+        } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+            status = .pluginMissing
+        } catch {
+            status = SpeechServerStatus(configured: false, available: false, url: nil, hasKey: false,
+                                        reason: UserFacingError.message(for: error), pluginMissing: false)
+        }
+        // A profile switch cancels the older read; it must not overwrite the
+        // newer profile's status.
+        if !Task.isCancelled { speechServer = status }
+        return status
+    }
+
+    /// Asks the Hermes host to dial the speech server and report back.
+    func testSpeechServer() async -> SpeechServerTestResult {
+        do {
+            let response = try await requester.requestJSON(
+                path: profilePath(SpeechServerTranscription.testPath), method: "POST", body: [:])
+            return SpeechServerTestResult(response: response)
+        } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
+            return SpeechServerTestResult(connected: false, latencyMilliseconds: nil, reason: SpeechServerStatus.pluginMissingReason)
+        } catch {
+            return SpeechServerTestResult(connected: false, latencyMilliseconds: nil, reason: UserFacingError.message(for: error))
         }
     }
 
