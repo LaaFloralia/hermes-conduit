@@ -18,7 +18,9 @@ struct V2SettingsTab: View {
 
     var body: some View {
         ZStack {
-            V2Backdrop()
+            // Shows while the page loads or fades for a profile switch; the
+            // home page draws its own over it.
+            V2Backdrop(drifts: false)
             if let snapshot {
                 settingsView(snapshot)
                     .id(snapshot.id)
@@ -81,5 +83,7 @@ struct V2SettingsTab: View {
             disconnect: { appState.disconnect() },
             homeHeader: AnyView(V2TopBar())
         )
+        // Pushed pages keep the home page's profile glow.
+        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.activeProfile))
     }
 }
