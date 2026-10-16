@@ -1257,8 +1257,8 @@ final class AppState: ObservableObject {
     /// Refuses a push whose target is bot-owned, with copy that matches how
     /// confident the match is: ownership folds case, so an exact spelling IS that
     /// bot's profile while a case-only match may be an unrelated workspace that
-    /// merely shares the name. Both refusal sites use this, so the copy cannot
-    /// depend on which check happened to fire first.
+    /// merely shares the name. Every bot-owned refusal goes through here, so
+    /// the copy reflects how confident the match was, not which check fired.
     private func refuseBotOwnedRouting(for profile: String) {
         let exact = botOwnership.botProfileMatch(for: profile)?.isExact ?? true
         errorMessage = exact
@@ -1270,31 +1270,126 @@ final class AppState: ObservableObject {
             )
     }
 
-    /// A push from a Bot Chat is refused: its decisions are answered in
-    /// Bots. A call from Hermes is the exception. Answering it opens voice
-    /// in the call's own chat, so that Bot Chat opens the way Bots opens it,
-    /// under the bot's own profile with the workspace left as it is. Only a
-    /// bot positively named as the chat's owner opens: `rowIDs` are the
-    /// catalog row's ids, and `canonicalProfile` is a profile the gateway
-    /// confirmed this is the canonical chat of. A chat that only carries
-    /// the reserved title proves no owner and stays refused. Call pushes
-    /// never carry a decision payload (the notifier sends none with
-    /// `call.requested`), so no card is recorded here.
+    /// A push from a Bot Chat opens that Bot Chat the way Bots opens it:
+    /// under the bot's own profile, with the workspace left as it is. A
+    /// reply opens where it was written, a decision opens where it is
+    /// answered (the resume reads the bot's pending approvals and clarify
+    /// cards from the gateway), and an answered call opens voice there.
+    /// Only a bot positively named as the chat's owner opens: `rowIDs` are
+    /// the catalog row's ids, and `canonicalProfile` is a profile the
+    /// gateway confirmed this is the canonical chat of. A chat that only
+    /// carries the reserved title proves no owner and stays refused, and so
+    /// does a reply or decision whose profile names the owner only with case
+    /// folded: on a case-sensitive host that is a different profile. A call
+    /// keeps opening as it did before, by the chat's ids alone. A decision
+    /// the push carries is recorded for the bot's chat before it opens.
     private func routeBotOwnedNotification(
         _ target: ConduitNotificationTarget,
         notifiedProfile: String,
         rowIDs: Set<String> = [],
-        canonicalProfile: String? = nil
+        canonicalProfile: String? = nil,
+        attemptID: UUID,
+        transitionGeneration: UInt64
     ) async -> Bool {
-        guard target.call != nil,
-              let bot = botOwningNotificationTarget(target, rowIDs: rowIDs, canonicalProfile: canonicalProfile) else {
+        guard let bot = botOwningNotificationTarget(target, rowIDs: rowIDs, canonicalProfile: canonicalProfile),
+              target.call != nil || !Self.namesProfileOnlyWithCaseFolded(notifiedProfile, bot: bot) else {
             refuseBotOwnedRouting(for: notifiedProfile)
             return false
         }
-        HermesCallTrace.shared.note("Call from a Bot Chat: opening it in Bots")
-        guard await openBotChat(for: bot) else { return false }
+        if target.call != nil {
+            HermesCallTrace.shared.note("Call from a Bot Chat: opening it in Bots")
+        }
+        // A decision raised while the app was backgrounded rides the push
+        // (a relay clarify exists nowhere else), so its card is recorded in
+        // the bot's namespace under the id the push named, and the open
+        // promotes it into the chat, as the workspace route does.
+        let requestedID = target.sessionId
+        var migrationIDs: Set<String> = []
+        if let decision = target.decision {
+            recordNotificationDecision(
+                decision,
+                sessionIDs: [requestedID] + [target.durableSessionID].compactMap { $0 },
+                cacheSessionIDs: [requestedID],
+                profile: bot.name
+            )
+            migrationIDs = [requestedID]
+        }
+        guard await openBotChat(
+            for: bot,
+            presentationMigrationSessionIDs: migrationIDs,
+            viewportTransitionGeneration: transitionGeneration
+        ) else {
+            // A failed open evicts the pre-open card, as the workspace route
+            // does, so no later open promotes it from the push-named id.
+            if let decision = target.decision,
+               let evictionKey = Self.pendingDecisionEvictionKey(for: decision) {
+                sessionPresentationCache.removePendingDecision(
+                    key: evictionKey,
+                    profile: bot.name,
+                    sessionIDs: [requestedID]
+                )
+            }
+            return false
+        }
+        // The resume restores cards only from the chat's tip ids, and the
+        // card may sit under the durable id the push named. Once the chat is
+        // on screen, a relay clarify still missing is recorded under the open
+        // chat's own ids and merged into its transcript. Approvals are left
+        // to the gateway's pending list, which the open already read.
+        // A newer notification tap that replaced this attempt owns the
+        // screen: the cache is still settled, but nothing is published over
+        // it. (The chat open reused this attempt's viewport transition, so a
+        // newer chat open already superseded it before it selected a chat.)
+        let attemptIsCurrent = activeNotificationOpenAttemptID == attemptID
+        if let decision = target.decision,
+           let evictionKey = Self.pendingDecisionEvictionKey(for: decision),
+           let openID = activeSessionId,
+           activeBotChatProfile == bot.name {
+            let openIDs = presentationCacheSessionIDs(for: openID)
+            let restoresClarify = evictionKey.hasPrefix("clarify:")
+                && !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == evictionKey })
+            if restoresClarify {
+                recordNotificationDecision(
+                    decision,
+                    sessionIDs: [requestedID] + [target.durableSessionID].compactMap { $0 } + openIDs,
+                    cacheSessionIDs: openIDs,
+                    profile: bot.name
+                )
+            }
+            // A pre-open copy the open did not promote (a joined flight
+            // carries the first caller's ids only) is dropped rather than
+            // left to linger under the push-named id.
+            let trimmedRequestedID = requestedID.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !openIDs.contains(where: {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedRequestedID
+            }) {
+                sessionPresentationCache.removePendingDecision(
+                    key: evictionKey,
+                    profile: bot.name,
+                    sessionIDs: [requestedID]
+                )
+            }
+            if restoresClarify, attemptIsCurrent {
+                messages = sessionPresentationCache.merge(
+                    messages,
+                    profile: bot.name,
+                    sessionIDs: openIDs,
+                    includePendingClarifications: true
+                )
+            }
+        }
+        guard attemptIsCurrent else { return false }
         showSidebar = false
         return true
+    }
+
+    /// Whether a push's profile stamp differs from the owning bot's name
+    /// only by case. An empty stamp names no profile.
+    private static func namesProfileOnlyWithCaseFolded(_ profile: String, bot: BotProfile) -> Bool {
+        let stamped = profile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = bot.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stamped.isEmpty, stamped != name else { return false }
+        return stamped.caseInsensitiveCompare(name) == .orderedSame
     }
 
     /// The roster's bot that owns the chat a push names: the bot whose
@@ -16369,16 +16464,38 @@ final class AppState: ObservableObject {
     /// CONFIRMED — create the one hidden "Bot Chat". Fail-closed throughout:
     /// a failed or unconfirmable lookup NEVER mints a chat, because that is
     /// the one remaining way to fork a bot's forever chat. Concurrent opens
-    /// of the same bot share one flight.
+    /// of the same bot share one flight. `presentationMigrationSessionIDs`
+    /// are the ids a notification recorded its decision card under; the
+    /// open (existing, created or adopted chat) promotes that card into the
+    /// chat (a flight already running for the bot keeps its own).
+    /// `viewportTransitionGeneration` is the transition a notification open
+    /// already began: the chat open reuses it, so a newer tap that began its
+    /// own supersedes this open before it selects the chat.
     @discardableResult
-    func openBotChat(for bot: BotProfile) async -> Bool {
+    func openBotChat(
+        for bot: BotProfile,
+        presentationMigrationSessionIDs: Set<String> = [],
+        viewportTransitionGeneration: UInt64? = nil
+    ) async -> Bool {
         guard let client, isConnected else {
             errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
             return false
         }
         let flightKey = bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let flight = botChatOpenFlights[flightKey] {
-            return await flight.task?.value ?? false
+            let joined = await flight.task?.value ?? false
+            // A notification that joined a flight its own newer transition
+            // superseded would otherwise inherit that stand-down and do
+            // nothing. While its transition is still current, it opens the
+            // chat itself; the finished flight has left the map, so the
+            // one-flight-per-bot fence still holds.
+            guard !joined,
+                  let viewportTransitionGeneration,
+                  chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration),
+                  isConnected, client === self.client,
+                  botChatOpenFlights[flightKey] == nil else {
+                return joined
+            }
         }
         // The closure captures the box WEAKLY: a strong capture would form
         // a flight<->task retain cycle that outlives the map entry.
@@ -16396,7 +16513,12 @@ final class AppState: ObservableObject {
                     self.botChatOpenFlights.removeValue(forKey: flightKey)
                 }
             }
-            return await self.resolveAndOpenBotChat(bot, client: client)
+            return await self.resolveAndOpenBotChat(
+                bot,
+                client: client,
+                presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                viewportTransitionGeneration: viewportTransitionGeneration
+            )
         }
         flight.task = task
         botChatOpenFlights[flightKey] = flight
@@ -16411,7 +16533,12 @@ final class AppState: ObservableObject {
         epoch == botRosterEpoch && client === self.client
     }
 
-    private func resolveAndOpenBotChat(_ bot: BotProfile, client: HermesClient) async -> Bool {
+    private func resolveAndOpenBotChat(
+        _ bot: BotProfile,
+        client: HermesClient,
+        presentationMigrationSessionIDs: Set<String> = [],
+        viewportTransitionGeneration: UInt64? = nil
+    ) async -> Bool {
         let epoch = botRosterEpoch
         // THE identity lookup, on the bot's own profile. A failed RPC is not
         // "no Bot Chat exists" — it is "unknown", and unknown means retry.
@@ -16437,10 +16564,18 @@ final class AppState: ObservableObject {
                 registryID: registryID,
                 resumeID: resumeID,
                 epoch: epoch,
-                client: client
+                client: client,
+                presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                viewportTransitionGeneration: viewportTransitionGeneration
             )
         case .success(.create):
-            return await createAndOpenBotChat(bot, client: client, epoch: epoch)
+            return await createAndOpenBotChat(
+                bot,
+                client: client,
+                epoch: epoch,
+                presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                viewportTransitionGeneration: viewportTransitionGeneration
+            )
         }
     }
 
@@ -16453,13 +16588,16 @@ final class AppState: ObservableObject {
         registryID: String,
         resumeID: String,
         epoch: Int,
-        client: HermesClient
+        client: HermesClient,
+        presentationMigrationSessionIDs: Set<String> = [],
+        viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
         noteBotChatSession(resumeID, profile: bot.name, label: bot.displayLabel)
         noteBotChatSession(registryID, profile: bot.name, label: bot.displayLabel)
         let outcome = await performSessionOpen(
             resumeID,
-            reusing: nil,
+            reusing: viewportTransitionGeneration,
+            presentationMigrationSessionIDs: presentationMigrationSessionIDs,
             conversationProfile: bot.name,
             preferredTitle: bot.displayLabel
         )
@@ -16488,7 +16626,13 @@ final class AppState: ObservableObject {
     /// winner instead of forking. The in-memory registry is only seeded
     /// AFTER the canonical title has landed, so an abandoned lazy session
     /// never leaves a stale entry behind.
-    private func createAndOpenBotChat(_ bot: BotProfile, client: HermesClient, epoch: Int) async -> Bool {
+    private func createAndOpenBotChat(
+        _ bot: BotProfile,
+        client: HermesClient,
+        epoch: Int,
+        presentationMigrationSessionIDs: Set<String> = [],
+        viewportTransitionGeneration: UInt64? = nil
+    ) async -> Bool {
         let created: (sessionId: String, storedSessionId: String?)
         do {
             if let createBotChat = chatResumeLifecycleOperations.createBotChat {
@@ -16498,7 +16642,13 @@ final class AppState: ObservableObject {
             }
         } catch {
             if BotChatTitleCollision.isError(error) {
-                return await adoptWinningBotChat(bot, client: client, epoch: epoch)
+                return await adoptWinningBotChat(
+                    bot,
+                    client: client,
+                    epoch: epoch,
+                    presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                    viewportTransitionGeneration: viewportTransitionGeneration
+                )
             }
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
             return failBotChatOpen(bot, error: error, stage: .create)
@@ -16516,7 +16666,13 @@ final class AppState: ObservableObject {
             }
         } catch {
             if BotChatTitleCollision.isError(error) {
-                return await adoptWinningBotChat(bot, client: client, epoch: epoch)
+                return await adoptWinningBotChat(
+                    bot,
+                    client: client,
+                    epoch: epoch,
+                    presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                    viewportTransitionGeneration: viewportTransitionGeneration
+                )
             }
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
             return failBotChatOpen(bot, error: error, stage: .title)
@@ -16531,7 +16687,9 @@ final class AppState: ObservableObject {
             registryID: created.storedSessionId ?? created.sessionId,
             resumeID: created.sessionId,
             epoch: epoch,
-            client: client
+            client: client,
+            presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+            viewportTransitionGeneration: viewportTransitionGeneration
         )
     }
 
@@ -16540,7 +16698,13 @@ final class AppState: ObservableObject {
     /// Our abandoned lazy session holds zero messages and the gateway prunes
     /// it. If the winner cannot be confirmed, fail closed — never open our
     /// untitled stray, never mint again.
-    private func adoptWinningBotChat(_ bot: BotProfile, client: HermesClient, epoch: Int) async -> Bool {
+    private func adoptWinningBotChat(
+        _ bot: BotProfile,
+        client: HermesClient,
+        epoch: Int,
+        presentationMigrationSessionIDs: Set<String> = [],
+        viewportTransitionGeneration: UInt64? = nil
+    ) async -> Bool {
         let rows: [BotChatLookupRow]
         do {
             if let findBotChat = chatResumeLifecycleOperations.findBotChat {
@@ -16563,7 +16727,9 @@ final class AppState: ObservableObject {
                 registryID: registryID,
                 resumeID: resumeID,
                 epoch: epoch,
-                client: client
+                client: client,
+                presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                viewportTransitionGeneration: viewportTransitionGeneration
             )
         }
         refuseBotChatConfirmation(bot)
@@ -16965,7 +17131,12 @@ final class AppState: ObservableObject {
         // match keeps its own diagnostic.
         if notificationTargetIsBotChat(target) {
             traceStage = "bot chat"
-            return await routeBotOwnedNotification(target, notifiedProfile: target.profile ?? "")
+            return await routeBotOwnedNotification(
+                target,
+                notifiedProfile: target.profile ?? "",
+                attemptID: notificationAttemptID,
+                transitionGeneration: transitionGeneration
+            )
         }
         let targetProfile = notificationProfileID(target.profile)
         if let notified = target.profile, let targetProfile,
@@ -16992,11 +17163,16 @@ final class AppState: ObservableObject {
                 transitionGeneration: transitionGeneration
             ) else { return false }
             if notificationTargetIsBotChat(target) {
-                // Routing a push INTO the Bots surface is out of scope; making
-                // the bot's profile this dashboard's workspace would turn its
-                // Bot Chat into the workspace's own context.
+                // Opened in Bots, never by switching: making the bot's
+                // profile this dashboard's workspace would turn its Bot Chat
+                // into the workspace's own context.
                 traceStage = "bot chat"
-                return await routeBotOwnedNotification(target, notifiedProfile: notified)
+                return await routeBotOwnedNotification(
+                    target,
+                    notifiedProfile: notified,
+                    attemptID: notificationAttemptID,
+                    transitionGeneration: transitionGeneration
+                )
             }
             guard botEvidenceIsAvailable else {
                 // No usable Bot Mode evidence (the roster could not be
@@ -17039,7 +17215,9 @@ final class AppState: ObservableObject {
                 return await routeBotOwnedNotification(
                     target,
                     notifiedProfile: notified,
-                    canonicalProfile: targetProfile
+                    canonicalProfile: targetProfile,
+                    attemptID: notificationAttemptID,
+                    transitionGeneration: transitionGeneration
                 )
             }
         }
@@ -17065,7 +17243,9 @@ final class AppState: ObservableObject {
                 return await routeBotOwnedNotification(
                     target,
                     notifiedProfile: notified,
-                    canonicalProfile: targetProfile
+                    canonicalProfile: targetProfile,
+                    attemptID: notificationAttemptID,
+                    transitionGeneration: transitionGeneration
                 )
             }
         }
@@ -17130,10 +17310,11 @@ final class AppState: ObservableObject {
         )
         // Last look at Bot Chat ownership, with the fresh catalog of the
         // (now active) profile: a Bot Chat linked to its canonical id only
-        // through the row's lineage root or aliases is refused before its
-        // conversation opens. The same row-level rules the sessions list and
-        // resume selection use decide it. A cross-profile Bot Chat was
-        // already refused before the switch by the target's canonical lookup.
+        // through the row's lineage root or aliases goes to Bots before it
+        // opens as this workspace's conversation. The same row-level rules
+        // the sessions list and resume selection use decide it. A
+        // cross-profile Bot Chat already went to Bots before the switch, by
+        // the target's canonical lookup.
         let routedIDs = Set([requestedID, route.resumeTargetID, route.durableSessionID].compactMap {
             ChatScrollIdentityNormalization.sessionID($0)
         })
@@ -17149,7 +17330,9 @@ final class AppState: ObservableObject {
             return await routeBotOwnedNotification(
                 target,
                 notifiedProfile: target.profile ?? activeProfile,
-                rowIDs: Set([botRow.id, botRow.storedSessionId, botRow.lineageRootId].compactMap { $0 } + botRow.alternateIds)
+                rowIDs: Set([botRow.id, botRow.storedSessionId, botRow.lineageRootId].compactMap { $0 } + botRow.alternateIds),
+                attemptID: notificationAttemptID,
+                transitionGeneration: transitionGeneration
             )
         }
         // A decision raised while the app was backgrounded is delivered as a
@@ -17252,14 +17435,16 @@ final class AppState: ObservableObject {
     private func recordNotificationDecision(
         _ decision: PendingDecisionPayload,
         sessionIDs: [String],
-        cacheSessionIDs: [String]? = nil
+        cacheSessionIDs: [String]? = nil,
+        profile: String? = nil
     ) {
         let persistedIDs = cacheSessionIDs ?? sessionIDs
         // The notified conversation's own namespace: the live session on
         // screen is not necessarily the conversation the push named, and
         // the later open/eviction of the named conversation must find the
         // card under the same key it was recorded under.
-        let recordProfile = presentationProfile(for: persistedIDs.first ?? activeSessionId)
+        // A Bot Chat's card names its bot's namespace outright.
+        let recordProfile = profile ?? presentationProfile(for: persistedIDs.first ?? activeSessionId)
         switch decision {
         case let .approval(sessionKey, description, choices):
             // Compare trimmed on both sides: the payload parser trims the
