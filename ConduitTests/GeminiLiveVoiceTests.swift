@@ -600,7 +600,7 @@ extension VoiceConversationControllerTests {
         sockets()[1].serverClose(resumptionLost)
         await settle(until: { sockets().count == 3 })
         sockets()[2].serverClose(resumptionLost)
-        await settle(80)
+        await settle(until: { session.state.isFailed })
 
         XCTAssertEqual(sockets().count, 3, "only one fresh start per lost session")
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live lost this conversation on its side. Tap Try again to start a new one.")))
@@ -693,7 +693,7 @@ extension VoiceConversationControllerTests {
         first.serverClose(nil)
         await settle(until: { sockets().count == 2 })
         sockets()[1].serverClose(.init(code: 1008, reason: "API key expired. Please renew the API key."))
-        await settle(80)
+        await settle(until: { session.state.isFailed })
 
         XCTAssertEqual(sockets().count, 2)
         XCTAssertEqual(session.state, .failed(AppLocalization.string("Gemini Live refused the connection: \("API key expired. Please renew the API key.")")))
