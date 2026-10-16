@@ -3113,6 +3113,11 @@ final class AppState: ObservableObject {
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
     })
+    /// Which sources' replies notify (Settings > Notifications, #115).
+    lazy var replySourcesClient = ReplySourcesClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
 
     // MARK: - Lifecycle coordination
 
