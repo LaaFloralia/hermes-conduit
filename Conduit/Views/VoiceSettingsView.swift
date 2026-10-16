@@ -158,7 +158,6 @@ struct VoiceSettingsView: View {
     let setContinuousConversation: (Bool) async -> Bool
 
     @State private var values: [String: String] = [:]
-    @State private var credentialDrafts: [String: String] = [:]
     @State private var savingField: String?
     @State private var testStatus: String?
     @State private var isRunningTest = false
@@ -748,11 +747,34 @@ struct VoiceSettingsView: View {
         case .classic:
             EmptyView()
         case .gemini:
-            if let geminiLive { GeminiLiveSettingsSection(model: geminiLive, showsModeToggle: false) }
+            if let geminiLive {
+                GeminiLiveSettingsSection(model: geminiLive, showsModeToggle: false)
+                liveModeKey(Self.geminiKeys, note: AppLocalization.string("Gemini Live connects to Google with this key on your Hermes server."))
+            }
         case .gpt:
-            if let gptLive { GPTLiveSettingsSection(model: gptLive, showsModeToggle: false) }
+            if let gptLive {
+                GPTLiveSettingsSection(model: gptLive, showsModeToggle: false)
+                liveModeKey(Self.openAIVoiceKeys, note: AppLocalization.string("Only used for calls billed to the API key. Calls on your ChatGPT plan don't need it."))
+            }
         case .grok:
-            if let grokLive { GrokLiveSettingsSection(model: grokLive, showsModeToggle: false) }
+            if let grokLive {
+                GrokLiveSettingsSection(model: grokLive, showsModeToggle: false)
+                liveModeKey(Self.xAIKeys, note: AppLocalization.string("Not needed when your Hermes server is signed in with SuperGrok."))
+            }
+        }
+    }
+
+    /// Keys each live mode reads on the Hermes host, in the host's order.
+    static let geminiKeys = ["GEMINI_API_KEY", "GOOGLE_API_KEY"]
+    static let openAIVoiceKeys = ["VOICE_TOOLS_OPENAI_KEY", "OPENAI_API_KEY"]
+    static let xAIKeys = ["XAI_API_KEY"]
+
+    /// The live mode's key, right under its settings. Hidden when this
+    /// Hermes can't take voice settings at all, since saving would fail.
+    @ViewBuilder
+    private func liveModeKey(_ keys: [String], note: String) -> some View {
+        if service.isLoading || service.snapshot.capability.isGatewayConnected {
+            VoiceAPIKeySection(service: service, keys: keys, note: note)
         }
     }
 
@@ -1044,6 +1066,14 @@ struct VoiceSettingsView: View {
                 valueColor: isReady ? .green : .secondary,
                 statusDot: isReady ? .green : nil
             )
+            ForEach(Self.keyGroups(readiness.requiredCredentials)) { group in
+                VoiceAPIKeyRow(service: service, keys: group.keys, note: group.note)
+            }
+        }
+        if descriptor.id == "openai", descriptor.kind == .tts {
+            Text(AppLocalization.string("Using your own OpenAI-compatible speech server, such as Chatterbox? Set its address in Base URL below. If the server doesn't check keys, any placeholder key works."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         if descriptor.id == "local", descriptor.kind == .stt {
             Label("Runs on the Hermes host using its local Whisper installation—not on this iPhone.", systemImage: "server.rack")
@@ -1079,61 +1109,55 @@ struct VoiceSettingsView: View {
         }
     }
 
+    /// Keys not already shown next to the selected providers above.
+    @ViewBuilder
     private var credentialsSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Credentials on Hermes"), symbol: "key.fill", tint: .conduitAura) {
-            Text("Keys stay on your Hermes host. Conduit only receives whether each key is set; it never reads a key back.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            if service.snapshot.credentials.isEmpty {
-                Text("No StepFun or Xiaomi credential metadata was reported by this gateway.")
+        let shown = keysShownWithProviders
+        let others = service.snapshot.credentials.filter { !shown.contains($0.key) }
+        if service.snapshot.credentials.isEmpty || !others.isEmpty {
+            ConduitSettingsSection(title: AppLocalization.string("Credentials on Hermes"), symbol: "key.fill", tint: .conduitAura) {
+                Text(AppLocalization.string("Keys stay on your Hermes host. Conduit only shows the masked key Hermes reports, never the whole key."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-            }
-            ForEach(service.snapshot.credentials) { credential in
-                credentialEditor(credential)
+                if service.snapshot.credentials.isEmpty {
+                    Text(AppLocalization.string("Hermes didn’t report any voice keys for this profile."))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                ForEach(Self.keyGroups(others)) { group in
+                    VoiceAPIKeyRow(service: service, keys: group.keys)
+                }
             }
         }
     }
 
-    @ViewBuilder
-    private func credentialEditor(_ credential: VoiceCredentialStatus) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(credential.key).font(.subheadline.weight(.semibold))
-                    Text(credential.isSet ? AppLocalization.string("Configured on Hermes") : AppLocalization.string("Not configured"))
-                        .font(.caption)
-                        .foregroundStyle(credential.isSet ? .green : .secondary)
-                }
-                Spacer()
-                Image(systemName: credential.isSet ? "checkmark.shield.fill" : "key")
-                    .foregroundStyle(credential.isSet ? .green : .secondary)
-                    .accessibilityHidden(true)
+    /// Keys the provider sections show beside the provider they belong to.
+    private var keysShownWithProviders: Set<String> {
+        var keys = Set(providerKeys(.tts, service.snapshot.ttsProviders))
+        if transcriptionMode == .hermes { keys.formUnion(providerKeys(.stt, service.snapshot.sttProviders)) }
+        return keys
+    }
+
+    private func providerKeys(_ kind: VoiceProviderDescriptor.Kind, _ providers: [VoiceProviderConfiguration]) -> [String] {
+        let provider = providers.first { $0.descriptor.id == selectedProvider(kind) } ?? providers.first
+        return Self.keyGroups(provider?.readiness?.requiredCredentials ?? []).flatMap(\.keys)
+    }
+
+    /// One row per key Hermes reads, with variables it reads in order kept
+    /// together, so a save goes to the one it reads first and a shared
+    /// fallback (OPENAI_API_KEY, also used for chat) is never overwritten.
+    static func keyGroups(_ credentials: [VoiceCredentialStatus]) -> [VoiceKeyGroup] {
+        var groups: [VoiceKeyGroup] = []
+        for credential in credentials {
+            let keys = [openAIVoiceKeys, geminiKeys].first { $0.contains(credential.key) } ?? [credential.key]
+            let note = credential.description == credential.key ? nil : credential.description
+            if let index = groups.firstIndex(where: { $0.keys == keys }) {
+                if groups[index].note == nil, let note { groups[index] = .init(keys: keys, note: note) }
+                continue
             }
-            SecureField("Replace credential", text: Binding(
-                get: { credentialDrafts[credential.key, default: ""] },
-                set: { credentialDrafts[credential.key] = $0 }
-            ))
-            .textContentType(.password)
-            .autocorrectionDisabled()
-            .textInputAutocapitalization(.never)
-            HStack {
-                Text("Enter a replacement only if needed.").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Save") {
-                    let candidate = credentialDrafts[credential.key, default: ""]
-                    Task {
-                        savingField = credential.key
-                        let saved = await service.saveCredential(candidate, key: credential.key)
-                        if saved { credentialDrafts[credential.key] = "" }
-                        savingField = nil
-                    }
-                }
-                .disabled(credentialDrafts[credential.key, default: ""].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || savingField == credential.key)
-            }
+            groups.append(.init(keys: keys, note: note))
         }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .contain)
+        return groups
     }
 
     private var spokenControlsSection: some View {
@@ -1341,6 +1365,13 @@ struct VoiceSettingsView: View {
 
     private static let appleProviderID = "apple_on_device"
     private static let speechServerProviderID = "conduit_speech_server"
+}
+
+/// Variables Hermes reads in order for one key, shown as one row.
+struct VoiceKeyGroup: Equatable, Identifiable {
+    let keys: [String]
+    let note: String?
+    var id: String { keys.joined(separator: ",") }
 }
 
 /// Compact phrase-list editor for one spoken-command category: view, add,
