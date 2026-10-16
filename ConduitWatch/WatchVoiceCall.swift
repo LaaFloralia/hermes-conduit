@@ -110,7 +110,8 @@ final class WatchVoiceCall: ObservableObject {
     /// The scene's last phase, nil until SwiftUI reports the first.
     private var scenePhase: ScenePhase?
     /// A call asked for from outside the app (`requestCall`) while the app
-    /// wasn't in front yet: it starts once the app is.
+    /// wasn't in front yet: it starts once the app is. Only the latest
+    /// request is kept; every source asks for the same call.
     private var pendingRequest: (source: String, at: Date)?
     /// The engine of the call on screen, which a change of `engine` during
     /// the call doesn't move.
@@ -254,7 +255,12 @@ final class WatchVoiceCall: ObservableObject {
         if newPhase == .active {
             if let request = pendingRequest {
                 pendingRequest = nil
-                if Date().timeIntervalSince(request.at) < Self.requestLifetime { startRequested(source: request.source) }
+                let age = Date().timeIntervalSince(request.at)
+                if age < Self.requestLifetime {
+                    startRequested(source: request.source)
+                } else {
+                    WatchCallLog.shared.note("callRequestExpired", ["source": request.source, "seconds": Int(age)])
+                }
             }
             if !hasBeenActive || wasBackgrounded { startOnOpenIfWanted() }
             hasBeenActive = true
@@ -276,6 +282,9 @@ final class WatchVoiceCall: ObservableObject {
     func requestCall(source: String) {
         WatchCallLog.shared.note("callRequested", ["source": source, "screen": scenePhase.map { "\($0)" } ?? "launching"])
         guard scenePhase == .active else {
+            if let older = pendingRequest {
+                WatchCallLog.shared.note("callRequestReplaced", ["source": older.source, "by": source])
+            }
             pendingRequest = (source, Date())
             return
         }
@@ -284,7 +293,10 @@ final class WatchVoiceCall: ObservableObject {
 
     private func startRequested(source: String) {
         // A call from Hermes ringing or answered is the call.
-        guard !isActive, !HermesWatchCalls.shared.holdsCall else { return }
+        guard !isActive, !HermesWatchCalls.shared.holdsCall else {
+            WatchCallLog.shared.note("callRequestDropped", ["source": source, "callOn": isActive, "hermesCall": HermesWatchCalls.shared.holdsCall])
+            return
+        }
         WatchCallLog.shared.note("callStartedOnRequest", ["source": source, "engine": engine.rawValue])
         dismissEnded()
         start()
