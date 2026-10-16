@@ -531,6 +531,15 @@ final class AppState: ObservableObject {
         }
     }
     @Published var isConnecting = false
+    /// For status words and dots only: connecting now, or between the first
+    /// few retries after a dropped connection. A drop waits 1-5 s before
+    /// each retry with `isConnecting` false, which would otherwise read as
+    /// "Disconnected" on every short network blip. After three failed
+    /// retries the gateway is likely down, and the words say so.
+    var isRecoveringConnection: Bool {
+        isConnecting
+            || (!isConnected && connection != nil && turnState == .reconnecting && reconnectAttempts < 3)
+    }
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
     static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
@@ -3466,7 +3475,8 @@ final class AppState: ObservableObject {
     /// `/api/profiles` fetch inside `loadProfiles()` so success, failure, and
     /// late-response ordering can be modeled without a live WebKit bridge.
     private let profileDiscoveryLoaderOverride: (@MainActor () async throws -> [String: Any])?
-    private var reconnectAttempts = 0
+    /// Published because `isRecoveringConnection` reads it.
+    @Published private var reconnectAttempts = 0
     /// Whether the UI scene is active. Backgrounded scene updates must
     /// complete within ~10s of wall clock before the watchdog kills the app
     /// (0x8BADF00D), so reconnect work is deferred while this is false.

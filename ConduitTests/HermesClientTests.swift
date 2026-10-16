@@ -2814,6 +2814,60 @@ extension HermesClientTests {
         client.disconnect()
     }
 
+    /// `onSend` is installed before the handshake so a keepalive ping sent
+    /// right after it is never missed.
+    private func connectKeepaliveClient(
+        onSend: (() -> Void)? = nil
+    ) async throws -> (client: HermesClient, socket: FakeSocket) {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        socket.onSend = onSend
+        transport.nextSocket = { socket }
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://test.example", ticket: "ticket"),
+            transportFactory: { transport },
+            keepaliveInterval: 0.3,
+            keepalivePingTimeout: 0.3,
+            monitorsPath: false
+        )
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+        return (client, socket)
+    }
+
+    func testQuietSocketGetsAKeepalivePingAndStaysOpenWhenAnswered() async throws {
+        let sent = Gate()
+        let (client, socket) = try await connectKeepaliveClient(onSend: { sent.signal() })
+        try await sent.wait("a keepalive ping on a quiet socket")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "ping")
+        let id = try XCTUnwrap(request["id"] as? Int)
+        try deliverReply(["jsonrpc": "2.0", "id": id, "result": ["pong": true]], on: socket)
+        await flushMainActor()
+        XCTAssertFalse(socket.cancelled, "An answered keepalive leaves the socket alone")
+        XCTAssertTrue(client.isConnected)
+        client.disconnect()
+    }
+
+    func testUnansweredKeepalivePingsCloseTheSocketAndReportTheDrop() async throws {
+        let (client, socket) = try await connectKeepaliveClient()
+        let dropped = Gate()
+        client.onDisconnected = { dropped.signal() }
+        // Two pings go unanswered: the socket is dead, so the client closes
+        // it and AppState hears about the drop as for any other.
+        try await dropped.wait("the keepalive to give up on a silent socket")
+        XCTAssertTrue(socket.cancelled)
+        XCTAssertFalse(client.isConnected)
+        XCTAssertEqual(
+            socket.sentTexts.filter { $0.contains("\"ping\"") }.count, 2,
+            "One retry before giving up"
+        )
+        client.disconnect()
+    }
+
     func testPingBudgetIsShorterThanTheOldProbe() {
         XCTAssertEqual(HermesClient.pingTimeout, 5)
         XCTAssertLessThan(HermesClient.pingTimeout, HermesClient.livenessProbeTimeout)

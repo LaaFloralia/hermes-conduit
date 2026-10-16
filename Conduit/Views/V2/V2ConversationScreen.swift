@@ -121,7 +121,7 @@ struct V2ConversationScreen: View {
                         V2ConnectionLine()
                     }
                     .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnecting)
+                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isRecoveringConnection)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -200,7 +200,7 @@ private struct V2ConnectionLine: View {
 
     var body: some View {
         if !appState.isConnected {
-            let connecting = appState.isConnecting
+            let connecting = appState.isRecoveringConnection
             HStack(spacing: 4) {
                 Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")
                     .font(.caption2.weight(.bold))
@@ -231,12 +231,12 @@ private struct V2ConversationMenu: View {
 
     private var statusColor: Color {
         if appState.isConnected { return .green }
-        return appState.isConnecting ? .orange : .red
+        return appState.isRecoveringConnection ? .orange : .red
     }
 
     private var statusWord: String {
         if appState.isConnected { return AppLocalization.string("Connected") }
-        return appState.isConnecting ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected")
+        return appState.isRecoveringConnection ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Disconnected")
     }
 
     var body: some View {

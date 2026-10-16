@@ -629,7 +629,7 @@ struct ConnectionStatusIndicator: View {
     private var color: Color {
         if appState.isConnected {
             return .green
-        } else if appState.isConnecting {
+        } else if appState.isRecoveringConnection {
             return .orange
         } else {
             return .red
@@ -653,7 +653,9 @@ struct ConnectionStatusIndicator: View {
         }
         .conduitGlassControl(cornerRadius: 20, tint: color.opacity(0.10))
         .animation(ConduitMotion.response, value: appState.isConnected)
-        .accessibilityLabel(appState.isConnected ? AppLocalization.string("Gateway connected") : AppLocalization.string("Gateway disconnected"))
+        .accessibilityLabel(appState.isConnected
+            ? AppLocalization.string("Gateway connected")
+            : (appState.isRecoveringConnection ? AppLocalization.string("Reconnecting…") : AppLocalization.string("Gateway disconnected")))
     }
 }
 

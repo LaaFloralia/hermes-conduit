@@ -1029,7 +1029,7 @@ private struct SettingsHome: View {
                 title: AppLocalization.string("Connection"),
                 detail: v2ConnectionDetail,
                 identifier: "settings.gateway",
-                statusDot: appState.isConnected ? Color.green : (appState.isConnecting ? Color.orange : Color.red),
+                statusDot: appState.isConnected ? Color.green : (appState.isRecoveringConnection ? Color.orange : Color.red),
                 first: true
             )
             v2Link(.workspace, icon: "checkmark.shield", title: AppLocalization.string("Approvals"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
@@ -1183,7 +1183,7 @@ private struct SettingsHome: View {
     private var v2ConnectionDetail: String {
         let state = appState.isConnected
             ? AppLocalization.string("Connected")
-            : (appState.isConnecting ? AppLocalization.string("Connecting…") : AppLocalization.string("Not connected"))
+            : (appState.isRecoveringConnection ? AppLocalization.string("Connecting…") : AppLocalization.string("Not connected"))
         guard let server = snapshot.server, !server.isEmpty else { return state }
         let host = URL(string: server)?.host ?? server
         return "\(state) · \(host)"
