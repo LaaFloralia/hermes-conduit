@@ -97,6 +97,9 @@ struct VoiceTranscriptSaveRequest: Equatable, Codable {
     /// kept with that chat instead of in a row. A plugin that predates it
     /// makes a row as before.
     var chatID: String? = nil
+    /// The profile `chatID` lives in when it isn't the call's own: a Bot
+    /// Chat's is its bot's. The turns are kept there, with the chat.
+    var chatProfile: String? = nil
 }
 
 struct VoiceTranscriptSaveResult: Equatable {
@@ -153,13 +156,15 @@ final class VoiceHistoryClient {
             "engine": save.engine.rawValue,
             "turns": save.turns.map(\.payload)
         ]
+        var target = profile
         if let sessionID = save.sessionID {
             body["session_id"] = sessionID
         } else if let chatID = save.chatID, !chatID.isEmpty {
             body["chat_id"] = chatID
+            if let chatProfile = save.chatProfile, !chatProfile.isEmpty { target = chatProfile }
         }
         if let title = save.title, !title.isEmpty { body["title"] = title }
-        let response = try await send(Self.sessionsPath, profile: profile, method: "POST", body: body)
+        let response = try await send(Self.sessionsPath, profile: target, method: "POST", body: body)
         return try Self.saveResult(from: response)
     }
 
@@ -282,6 +287,8 @@ final class VoiceTranscriptRecorder {
     /// The attached chat's stored id: a new call's turns are kept with it
     /// rather than in a row of their own (#556).
     var chatID: String?
+    /// The profile `chatID` lives in, when it isn't `profile` (a Bot Chat).
+    var chatProfile: String?
     /// The host kept the call with `chatID`.
     private(set) var savedWithChat = false
     /// A reconnect in the same chat went on as this call: the newer
@@ -331,6 +338,7 @@ final class VoiceTranscriptRecorder {
             callID = previous.callID
             sessionID = previous.sessionID
             chatID = previous.chatID
+            chatProfile = previous.chatProfile
             savedWithChat = previous.savedWithChat
             turns = previous.turns
             written = previous.written
@@ -411,7 +419,8 @@ final class VoiceTranscriptRecorder {
             sessionID: sessionID,
             title: rowTitle,
             turns: pending,
-            chatID: withChat ? chatID : nil
+            chatID: withChat ? chatID : nil,
+            chatProfile: withChat ? chatProfile : nil
         )
         do {
             let result = try await save(request)
@@ -422,6 +431,7 @@ final class VoiceTranscriptRecorder {
             // The chat is gone: the call is saved on its own, whole.
             voiceHistoryLogger.notice("Voice call's chat is gone; saving the call as a new session")
             chatID = nil
+            chatProfile = nil
             savedWithChat = false
             written = 0
             callID = UUID().uuidString
@@ -452,7 +462,8 @@ final class VoiceTranscriptRecorder {
         return VoiceTranscriptSaveRequest(
             callID: callID, engine: engine, sessionID: sessionID,
             title: sessionID == nil ? newRowTitle : nil, turns: pending,
-            chatID: sessionID == nil ? chatID : nil
+            chatID: sessionID == nil ? chatID : nil,
+            chatProfile: sessionID == nil ? chatProfile : nil
         )
     }
 }

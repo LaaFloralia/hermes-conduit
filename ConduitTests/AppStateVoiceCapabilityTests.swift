@@ -388,16 +388,16 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertEqual(lastWord.text, "Meet me at the stadium")
     }
 
-    func testACallFromANewEmptyChatIsNotAttachedToIt() {
-        XCTAssertFalse(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .idle),
-                       "an empty chat has nothing to continue")
-        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: true, turnState: .idle))
-        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .synchronizing),
-                      "a chat still loading may have history")
-        XCTAssertTrue(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .running),
-                      "its first message is on its way")
-        XCTAssertFalse(AppState.attachesLiveVoiceCall(chatHasMessages: false, turnState: .reconnecting),
-                       "reconnecting doesn't give an empty chat anything to continue")
+    func testVoiceInASavedCallsRowResumesThatCall() {
+        XCTAssertEqual(AppState.savedCallToResume(source: .composer, openCallID: "call-1", canResume: true), "call-1",
+                       "the chat's voice button picks the call up rather than starting another row")
+        XCTAssertNil(AppState.savedCallToResume(source: .composer, openCallID: nil, canResume: true),
+                     "a chat that isn't a saved call gets a call attached to it")
+        XCTAssertNil(AppState.savedCallToResume(source: .composer, openCallID: "call-1", canResume: false),
+                     "with saving off (or no live mode) there is no row to add to")
+        XCTAssertNil(AppState.savedCallToResume(source: .siri, openCallID: "call-1", canResume: true),
+                     "only the chat's own buttons resume it")
+        XCTAssertNil(AppState.savedCallToResume(source: .newCall, openCallID: "call-1", canResume: true))
     }
 
     func testTheQuickHintCountsEachAttachedCallOnce() {

@@ -4164,17 +4164,25 @@ final class AppState: ObservableObject {
     /// its stored id later.
     private func storedChatID(for thread: VoiceThreadTarget, profile: String) -> String? {
         let runtimeID = thread.runtimeSessionID
+        // The catalog lists the active profile's chats: a Bot Chat isn't one.
+        let listed = (thread.profile ?? profile) == activeProfile
         return thread.storedSessionID.flatMap { $0.isEmpty ? nil : $0 }
-            ?? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
+            ?? (listed ? sessions.first(where: { $0.id == runtimeID || $0.alternateIds.contains(runtimeID) })?.storedSessionId.flatMap { $0.isEmpty ? nil : $0 } : nil)
             ?? conversationIdentityIndex.durableID(forRuntime: runtimeID, profile: thread.profile ?? profile)
     }
 
-    /// The chat a call on `profile` is kept with (#556): its stored id, when
-    /// the chat is on that profile. A Bot Chat lives in the bot's profile,
-    /// so its calls keep rows of their own.
+    /// The chat a call on `profile` is kept with (#556): its stored id. A
+    /// Bot Chat's is in the bot's profile, where its calls are kept too
+    /// (`voiceCallChatProfile`).
     private func voiceCallChatID(for thread: VoiceThreadTarget, profile: String) -> String? {
-        guard thread.profile == nil || thread.profile == profile else { return nil }
-        return storedChatID(for: thread, profile: profile)
+        storedChatID(for: thread, profile: thread.profile ?? profile)
+    }
+
+    /// The profile a call on `profile` kept with `thread` is saved to, when
+    /// it isn't `profile`: a Bot Chat's bot.
+    static func voiceCallChatProfile(for thread: VoiceThreadTarget, profile: String) -> String? {
+        guard let bot = thread.profile, !bot.isEmpty, bot != profile else { return nil }
+        return bot
     }
 
     /// Whether a call starting now goes on as the last call kept with a
@@ -4961,7 +4969,7 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         let thread = voiceBackgroundJobSupervisor.liveThread
         // A call attached to a chat is kept with it, not as a row of its own
-        // (#556). A Bot Chat lives in the bot's profile: its calls keep rows.
+        // (#556); a Bot Chat's in the bot's profile, where the chat lives.
         let chatID = resume == nil ? thread.flatMap { voiceCallChatID(for: $0, profile: profile) } : nil
         let previous = lastChatCall.flatMap { last in
             Self.continuesChatCall(
@@ -4992,7 +5000,10 @@ final class AppState: ObservableObject {
         // starts, which can be after the first capture below: they aren't
         // this call's.
         recorder.ignore(liveVoiceTranscript(engine))
-        if previous == nil { recorder.chatID = chatID }
+        if previous == nil {
+            recorder.chatID = chatID
+            recorder.chatProfile = thread.flatMap { Self.voiceCallChatProfile(for: $0, profile: profile) }
+        }
         if resume != nil || previous != nil { recorder.note(AppLocalization.string("Voice call resumed")) }
         // A reconnect picks up where the call left off; a Hermes call
         // opens with its own news instead.
@@ -5089,6 +5100,7 @@ final class AppState: ObservableObject {
         if recorder.chatID == nil, !recorder.savedWithChat, recorder.sessionID == nil,
            let attachment, !attachment.resumed {
             recorder.chatID = voiceCallChatID(for: attachment.thread, profile: recorder.profile)
+            recorder.chatProfile = Self.voiceCallChatProfile(for: attachment.thread, profile: recorder.profile)
         }
         if let chatID = recorder.chatID, let attachment {
             lastChatCall = (recorder, chatID, attachment.startedAt, attachment.endedAt ?? Date())
@@ -5296,6 +5308,7 @@ final class AppState: ObservableObject {
                     continue
                 }
                 request.chatID = nil
+                request.chatProfile = nil
                 request.callID = UUID().uuidString
                 request.title = request.title ?? Self.fallbackVoiceCallTitle(at: entry.queuedAt)
                 settled.append((entry, .init(dashboard: entry.dashboard, profile: entry.profile, request: request, queuedAt: entry.queuedAt, jobSessionIDs: entry.jobSessionIDs, chatAttachment: nil)))
@@ -5586,7 +5599,8 @@ final class AppState: ObservableObject {
             guard let self else { return }
             let calls: [VoiceChatCall]
             do {
-                calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, callID: link.callID, profile: link.profile)
+                // A Bot Chat's calls are kept in its bot's profile.
+                calls = try await self.voiceHistoryClient.chatCalls(chatID: chatID, callID: link.callID, profile: link.chatProfile ?? link.profile)
             } catch VoiceHistoryError.pluginMissing, VoiceHistoryError.rowUnavailable, VoiceHistoryError.unsupported {
                 guard self.chatCallTranscriptRequest == request else { return }
                 self.errorMessage = unavailable
@@ -5796,15 +5810,13 @@ final class AppState: ObservableObject {
 
     // MARK: Live voice attached to a chat
 
-    /// The open chat as a target for a live call started from it. A saved
-    /// call's row or a group room isn't a chat to work in.
+    /// The open chat as a target for a live call started from it, new and
+    /// empty ones too: voice started in a chat stays in it, rather than
+    /// leaving the chat empty beside a row of its own. A saved call's row
+    /// (voice there resumes it) or a group room isn't a chat to work in.
     func liveVoiceThreadForOpenChat() -> VoiceThreadTarget? {
         guard let sessionID = activeSessionId, !sessionID.isEmpty,
-              activeRoomSurface == nil, activeVoiceCallSessionID == nil,
-              Self.attachesLiveVoiceCall(
-                chatHasMessages: !messages.isEmpty || pendingScreenshot(forSession: sessionID) != nil,
-                turnState: turnState
-              ) else { return nil }
+              activeRoomSurface == nil, activeVoiceCallSessionID == nil else { return nil }
         // A Bot Chat's runtime, history and live rows are in the bot's own
         // profile: the call reads and resumes it there.
         let bot = botConversationProfile(for: sessionID)
@@ -5814,14 +5826,6 @@ final class AppState: ObservableObject {
         let stored = row.map { $0.storedSessionId ?? $0.id }
             ?? conversationIdentityIndex.durableID(forRuntime: sessionID, profile: bot ?? activeProfile)
         return VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: stored, title: activeSessionTitle, profile: bot)
-    }
-
-    /// A new, empty chat has nothing to continue: a call started from it
-    /// works on its own, with jobs on the Voice Jobs model. A chat still
-    /// loading (its history may not be here yet) or running its first turn
-    /// counts as having messages.
-    static func attachesLiveVoiceCall(chatHasMessages: Bool, turnState: TurnState) -> Bool {
-        chatHasMessages || turnState == .synchronizing || turnState == .running
     }
 
     /// Whether `thread` is the chat on screen now.
@@ -6090,31 +6094,52 @@ final class AppState: ObservableObject {
             || isWatchVoiceCallActive || isNativeHermesCallActive
     }
 
+    /// The saved call voice started in a chat continues: the open chat's,
+    /// when it is one and can be resumed. Only the chat's own voice buttons
+    /// resume; Siri, the widget and the other launches start their own.
+    static func savedCallToResume(source: PendingVoiceIntent.Source, openCallID: String?, canResume: Bool) -> String? {
+        guard source == .composer, canResume, let openCallID, !openCallID.isEmpty else { return nil }
+        return openCallID
+    }
+
+    /// The saved call the open chat's voice buttons resume, when they do.
+    var openChatCallToResume: String? {
+        Self.savedCallToResume(source: .composer, openCallID: activeVoiceCallSessionID, canResume: canResumeVoiceCall)
+    }
+
     /// Continues a saved call with a new live call on the selected engine.
     /// It is seeded with the row (a summary when it's long) and appends to
-    /// the same row.
-    func resumeVoiceCall(sessionID: String) async {
-        guard canResumeVoiceCall, !isPreparingVoiceResume else { return }
+    /// the same row. False when no call started (one is already being
+    /// prepared, or the chat, dashboard or profile changed meanwhile).
+    @discardableResult
+    func resumeVoiceCall(sessionID: String) async -> Bool {
+        guard canResumeVoiceCall, !isPreparingVoiceResume else { return false }
         keepVoiceFromHermesCallCleanup()
         isPreparingVoiceResume = true
         defer { isPreparingVoiceResume = false }
         let profile = activeProfile
+        let dashboard = activeDashboardID
+        let openChat = activeSessionId
         let context = await voiceResumeContext(sessionID: sessionID, profile: profile)
-        guard profile == activeProfile, canResumeVoiceCall else { return }
+        // Another chat or server opened meanwhile: that isn't this call's.
+        guard profile == activeProfile, dashboard == activeDashboardID, openChat == activeSessionId,
+              canResumeVoiceCall else { return false }
         // Without the saved turns the call still continues the row.
         pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
         // A call started from a chat goes back to that chat.
         let thread = voiceCallChatLinks.latest(forCall: sessionID, profile: profile)?.thread
+        let started: Bool
         if isGeminiLiveEnabled {
-            openGeminiLiveConversation(attachingTo: thread)
+            started = openGeminiLiveConversation(attachingTo: thread)
         } else if isGrokLiveEnabled {
-            openGrokLiveConversation(attachingTo: thread)
+            started = openGrokLiveConversation(attachingTo: thread)
         } else {
-            openGPTLiveConversation(attachingTo: thread)
+            started = openGPTLiveConversation(attachingTo: thread)
         }
         // Starting the call took it; a call already running didn't, and a
         // later unrelated call must not.
         pendingVoiceResume = nil
+        return started
     }
 
     /// What a resumed call gets from the row. A long row's older turns are
@@ -26630,6 +26655,12 @@ final class AppState: ObservableObject {
         let startsInOpenChat = intent.source == .composer || intent.source == .screenQuestion || intent.source == .hermesCall
         let thread = startsInOpenChat && targetProfile == activeProfile ? liveVoiceThreadForOpenChat() : nil
         var liveEngine = configuredLiveVoiceEngine(profile: targetProfile)
+        // Voice from a saved call's row picks that call up: the same row,
+        // not another one beside it.
+        if liveEngine != nil, targetProfile == activeProfile,
+           let callID = Self.savedCallToResume(source: intent.source, openCallID: activeVoiceCallSessionID, canResume: canResumeVoiceCall) {
+            return await resumeVoiceCall(sessionID: callID)
+        }
         if intent.source == .screenQuestion {
             // The device-test gate: an engine not cleared for screen
             // questions takes them in classic voice.

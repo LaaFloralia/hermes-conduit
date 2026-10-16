@@ -1169,7 +1169,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
     func testScreenshotChatAttachesLiveCallAndTellsTheModel() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChat("composer-origin", in: harness)
-        XCTAssertNil(harness.appState.liveVoiceThreadForOpenChat(), "An empty chat's call works on its own")
+        XCTAssertNotNil(harness.appState.liveVoiceThreadForOpenChat(), "A call from a new, empty chat stays in it")
         let shot = try stagedScreenshot()
         harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
 

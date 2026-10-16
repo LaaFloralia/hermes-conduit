@@ -890,6 +890,47 @@ extension HermesVoiceGatewayTimeoutTests {
         )
     }
 
+    func testABotChatsCallIsKeptWithItInTheBotsProfile() async throws {
+        let script = ScriptedVoiceHistoryRequests()
+        script.responses = [
+            .success(["ok": true, "session_id": NSNull(), "chat_id": "st-bot", "written": 1]),
+            .success(["ok": true, "session_id": "row-1", "written": 1]),
+        ]
+        let client = VoiceHistoryClient(request: script.request)
+        let turn = VoiceTranscriptTurn(index: 0, role: .user, text: "Hi", at: Date(timeIntervalSince1970: 10))
+        _ = try await client.save(
+            VoiceTranscriptSaveRequest(callID: "c1", engine: .geminiLive, sessionID: nil, title: nil, turns: [turn], chatID: "st-bot", chatProfile: "coder"),
+            profile: "default"
+        )
+        XCTAssertEqual(script.calls[0].path, DashboardPath.withProfile(VoiceHistoryClient.sessionsPath, profile: "coder"),
+                       "saved where the Bot Chat lives")
+        _ = try await client.save(
+            VoiceTranscriptSaveRequest(callID: "c2", engine: .geminiLive, sessionID: "row-1", title: nil, turns: [turn], chatID: nil, chatProfile: "coder"),
+            profile: "default"
+        )
+        XCTAssertEqual(script.calls[1].path, DashboardPath.withProfile(VoiceHistoryClient.sessionsPath, profile: "default"),
+                       "a call with a row of its own stays on the call's profile")
+
+        let bot = VoiceThreadTarget(runtimeSessionID: "rt", storedSessionID: "st-bot", title: "Coder", profile: "coder")
+        XCTAssertEqual(AppState.voiceCallChatProfile(for: bot, profile: "default"), "coder")
+        XCTAssertNil(AppState.voiceCallChatProfile(for: bot, profile: "coder"))
+        XCTAssertNil(AppState.voiceCallChatProfile(
+            for: VoiceThreadTarget(runtimeSessionID: "rt", storedSessionID: "st", title: "Chat"), profile: "default"))
+    }
+
+    func testARecorderKeepsItsBotChatsProfileOnEverySave() async {
+        let harness = RecorderHarness()
+        let recorder = harness.makeRecorder()
+        recorder.chatID = "st-bot"
+        recorder.chatProfile = "coder"
+        let said = [entry(.user, "Hello"), entry(.assistant, "Hi")]
+        recorder.capture(said, unsettled: [])
+        await recorder.flush()
+        XCTAssertEqual(harness.requests.first?.chatProfile, "coder")
+        recorder.capture(said + [entry(.user, "Bye")], unsettled: [])
+        XCTAssertEqual(recorder.outboxRequest?.chatProfile, "coder")
+    }
+
     func testVoiceHistoryReadsAChatsCalls() async throws {
         let script = ScriptedVoiceHistoryRequests()
         script.responses = [.success(["ok": true, "chat_id": "st chat", "calls": [

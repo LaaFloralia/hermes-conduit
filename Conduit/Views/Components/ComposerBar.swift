@@ -1272,8 +1272,7 @@ struct ComposerBar: View {
     }
 
     /// A saved live call: pick it up with a new live call that continues
-    /// the same row. A phone glyph, not the waveform, so it isn't mistaken
-    /// for the voice button, which always starts a new call.
+    /// the same row, as the voice button there does too.
     private func resumeVoiceCallButton(_ callID: String) -> some View {
         Button {
             dismissComposer()
