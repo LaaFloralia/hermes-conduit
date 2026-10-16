@@ -117,11 +117,13 @@ final class MessageReadAloudController: ObservableObject {
     static func unavailableReason(
         isConnected: Bool,
         isVoiceEnabled: Bool,
-        snapshot: VoiceCapabilitySnapshot
+        snapshot: VoiceCapabilitySnapshot,
+        speechOutput: VoiceSpeechOutput = .hermes
     ) -> String? {
         if !isConnected { return AppLocalization.string("Connect to Hermes before reading responses aloud.") }
         if !isVoiceEnabled { return VoiceSetupIssue.voiceOff.message }
-        if !snapshot.supportsSpeech {
+        // This iPhone's voice needs nothing from Hermes' speech setup.
+        if speechOutput == .hermes, !snapshot.supportsSpeech {
             return VoiceSetupIssue.noTextToSpeech.message
         }
         return nil

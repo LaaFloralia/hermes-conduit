@@ -4,10 +4,11 @@
 //
 //  The one-switch happy path for classic Voice. Turning Voice on picks
 //  defaults that work on any Hermes host without installing anything:
-//  speech to text on this iPhone (Apple's on-device model) and Edge TTS for
-//  the assistant's voice (Hermes' own default, no key needed). A reviewer
-//  whose Voice was never set up read CarPlay's "Voice unavailable" as
-//  CarPlay not working; with these defaults the switch alone is enough.
+//  speech to text on this iPhone (Apple's on-device model), and replies
+//  spoken with this iPhone's voice unless the profile has its own Hermes
+//  voice (`VoiceSpeechOutput.resolved`). A reviewer whose Voice was never
+//  set up read CarPlay's "Voice unavailable" as CarPlay not working; with
+//  these defaults the switch alone is enough.
 //
 
 import Foundation
@@ -19,31 +20,18 @@ enum VoiceSetupDefaults {
     struct Plan: Equatable {
         /// Choose "On this iPhone" for speech to text.
         var usesOnDeviceTranscription = false
-        /// Switch the profile's assistant voice to Edge TTS.
-        var switchesSpeechToEdge = false
     }
 
     /// What turning Voice on should change. Only fills in what is missing:
-    /// a speech-to-text choice the user already made is kept, and the
-    /// assistant voice changes only when the current one isn't ready and
-    /// Edge TTS is.
+    /// a speech-to-text choice the user already made is kept. The
+    /// assistant voice needs nothing: this iPhone speaks unless the profile
+    /// has its own Hermes voice.
     static func plan(
         transcriptionModeChosen: Bool,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability,
         snapshot: VoiceConfigurationSnapshot
     ) -> Plan {
-        Plan(
-            usesOnDeviceTranscription: !transcriptionModeChosen && appleSpeechAvailability.canAttemptRecognition,
-            switchesSpeechToEdge: canSwitchSpeechToEdge(snapshot)
-        )
-    }
-
-    /// Whether Edge TTS would fix an assistant voice that isn't ready.
-    static func canSwitchSpeechToEdge(_ snapshot: VoiceConfigurationSnapshot) -> Bool {
-        guard snapshot.capability.isGatewayConnected,
-              !snapshot.capability.supportsSpeech,
-              snapshot.selectedTTSProvider != edgeTTSProviderID else { return false }
-        return providerReadiness(edgeTTSProviderID, in: snapshot.ttsProviders) == .ready
+        Plan(usesOnDeviceTranscription: !transcriptionModeChosen && appleSpeechAvailability.canAttemptRecognition)
     }
 
     enum Readiness: Equatable {

@@ -143,6 +143,20 @@ final class AppStateReadAloudTests: XCTestCase {
         )
     }
 
+    func testChoosingASpeechOutputGivesReadAloudAFreshGateway() {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        XCTAssertTrue(harness.appState.setVoiceSpeechOutput(.hermes))
+        let first = harness.appState.messageReadAloudController.gateway
+        XCTAssertNotNil(first)
+
+        // A kept gateway may have given up on Hermes speech; choosing Hermes
+        // again must not keep that one.
+        XCTAssertTrue(harness.appState.setVoiceSpeechOutput(.hermes))
+        let second = harness.appState.messageReadAloudController.gateway
+        XCTAssertNotNil(second)
+        XCTAssertFalse(first === second)
+    }
+
     func testTTSOnlyAvailabilityIsIndependentOfTranscription() {
         let harness = makeHarness(snapshot: ttsOnlySnapshot)
 
@@ -159,7 +173,8 @@ final class AppStateReadAloudTests: XCTestCase {
         harness.appState.installVoiceCapabilityStateForTesting(
             bridge: harness.bridge,
             snapshot: sttOnly,
-            isVoiceEnabled: true
+            isVoiceEnabled: true,
+            speechOutput: .hermes
         )
         XCTAssertEqual(
             harness.appState.readAloudUnavailableReason,

@@ -24,7 +24,6 @@ private let lifecycleLog = Logger(subsystem: "com.milim.conduit", category: "Tur
 /// when the outgoing server's ownership was revoked. Ids and booleans only —
 /// never prompt text, credentials, or speech content.
 private let speechOwnershipLog = Logger(subsystem: "com.milim.conduit", category: "SpeechOwnership")
-private let voiceSetupLog = Logger(subsystem: "com.milim.conduit", category: "VoiceSetup")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
 typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
@@ -1780,6 +1779,9 @@ final class AppState: ObservableObject {
     @Published private(set) var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published private(set) var isVoiceEnabled = false
     @Published private(set) var voiceTranscriptionMode: VoiceTranscriptionMode = .hermes
+    /// The active profile's saved choice of who speaks Classic voice
+    /// replies; nil is automatic (`voiceSpeechOutput`).
+    @Published private(set) var voiceSpeechOutputChoice: VoiceSpeechOutput?
     @Published private(set) var continuousConversationEnabled = true
     /// "Keep listening when locked" for the active profile.
     @Published private(set) var keepVoiceListeningWhenLocked = false
@@ -26239,12 +26241,23 @@ final class AppState: ObservableObject {
         await cancelCurrent()
     }
 
-    func makeVoiceGateway() -> HermesVoiceGateway? {
+    /// Who speaks Classic voice replies for the active profile.
+    var voiceSpeechOutput: VoiceSpeechOutput {
+        .resolved(chosen: voiceSpeechOutputChoice, snapshot: voiceCapabilitySnapshot)
+    }
+
+    /// `fallsBackToOnDeviceSpeech`: a Hermes reply that fails before any
+    /// audio is spoken on this iPhone instead. Settings' speech test turns it
+    /// off, because it checks the Hermes provider itself.
+    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true) -> HermesVoiceGateway? {
         guard let dashboardTicketBridge, let connection else { return nil }
         return HermesVoiceGateway(
             bridge: dashboardTicketBridge,
             baseURL: connection.baseUrl,
-            profile: activeProfile
+            profile: activeProfile,
+            speechOutput: { [weak self] in self?.voiceSpeechOutput ?? .onDevice },
+            makeOnDeviceSpeech: { onStart, onPCM16 in OnDeviceSpeechStream(onStart: onStart, onPCM16: onPCM16) },
+            fallsBackToOnDeviceSpeech: fallsBackToOnDeviceSpeech
         )
     }
 
@@ -26266,7 +26279,7 @@ final class AppState: ObservableObject {
         if voiceTranscriptionMode == .hermes, !voiceCapabilitySnapshot.supportsTranscription {
             return .noSpeechToText(detail: voiceCapabilitySnapshot.unavailableReason)
         }
-        if !voiceCapabilitySnapshot.supportsSpeech {
+        if voiceSpeechOutput == .hermes, !voiceCapabilitySnapshot.supportsSpeech {
             return .noTextToSpeech
         }
         return nil
@@ -26330,7 +26343,8 @@ final class AppState: ObservableObject {
         return MessageReadAloudController.unavailableReason(
             isConnected: isConnected,
             isVoiceEnabled: isVoiceEnabled,
-            snapshot: voiceCapabilitySnapshot
+            snapshot: voiceCapabilitySnapshot,
+            speechOutput: voiceSpeechOutput
         )
     }
 
@@ -26403,6 +26417,7 @@ final class AppState: ObservableObject {
             preferences.outputMuted = voiceConversationController.isOutputMuted
         }
         voiceTranscriptionMode = preferences.resolvedTranscriptionMode
+        voiceSpeechOutputChoice = preferences.speechOutput
         continuousConversationEnabled = preferences.continuousConversation
         keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
         voiceConversationController.setProfilePreferences(preferences)
@@ -26415,9 +26430,9 @@ final class AppState: ObservableObject {
     /// Voice settings' one-switch defaults (VoiceSetupDefaults), applied
     /// once to a profile whose Voice was never set up, so classic Voice
     /// (and CarPlay) work without a visit to Settings: speech to text on
-    /// this iPhone unless a choice was saved, and Edge TTS only when the
-    /// profile's assistant voice isn't ready and Edge is. A live mode
-    /// brings its own speech, so Hermes' speech config is left alone then.
+    /// this iPhone unless a choice was saved. Replies are spoken on this
+    /// iPhone unless the profile has its own Hermes voice
+    /// (`voiceSpeechOutput`), so Hermes' speech config is never changed.
     /// Everything is written for `profile`, the one `service` reads, even
     /// if the active profile changes while Hermes answers.
     private func applyFirstVoiceSetupDefaults(profile: String, service: HermesVoiceConfigurationService) async {
@@ -26433,13 +26448,6 @@ final class AppState: ObservableObject {
             // caller loads these preferences into the controller next.
             preferences.transcriptionMode = .appleOnDevice
             saveVoiceProfilePreferences(preferences, profile: profile)
-        }
-        guard plan.switchesSpeechToEdge else { return }
-        // saveProvider reloads the snapshot itself on success.
-        let switchedToEdge = await service.saveProvider(VoiceSetupDefaults.edgeTTSProviderID, kind: .tts)
-        if !switchedToEdge {
-            // Settings' Set up voice offers "Use Edge TTS" for this.
-            voiceSetupLog.notice("First voice setup could not switch the assistant voice to Edge TTS")
         }
     }
 
@@ -26487,6 +26495,20 @@ final class AppState: ObservableObject {
         voiceTranscriptionMode = mode
         refreshVoiceControllerGateway()
         refreshReadAloudGateway()
+        return true
+    }
+
+    /// Who speaks Classic voice replies for the active profile. The
+    /// gateways read it per reply, so the next reply uses the new choice.
+    @discardableResult
+    func setVoiceSpeechOutput(_ output: VoiceSpeechOutput) -> Bool {
+        guard isConnected else { return false }
+        updateActiveProfileVoicePreferences { $0.speechOutput = output }
+        voiceSpeechOutputChoice = output
+        refreshVoiceControllerGateway()
+        // A fresh gateway: the kept one may have given up on Hermes speech,
+        // which must not outlast the person choosing it again.
+        refreshReadAloudGateway(rebuild: true)
         return true
     }
 
@@ -27302,10 +27324,10 @@ final class AppState: ObservableObject {
         guard isVoiceEnabled else {
             return .failure(AppLocalization.string("Enable voice for this profile before running a speech playback test."))
         }
-        guard voiceCapabilitySnapshot.supportsSpeech else {
+        guard voiceSpeechOutput == .onDevice || voiceCapabilitySnapshot.supportsSpeech else {
             return .failure(voiceUnavailableReason ?? AppLocalization.string("The selected assistant speech provider is unavailable."))
         }
-        guard let gateway = makeVoiceGateway() else {
+        guard let gateway = makeVoiceGateway(fallsBackToOnDeviceSpeech: false) else {
             return .failure(AppLocalization.string("Conduit could not connect this test to the selected profile."))
         }
         // The speech test speaks through the voice controller's own playback
@@ -27361,13 +27383,13 @@ final class AppState: ObservableObject {
         readAloudGatewayBridge = dashboardTicketBridge
     }
 
-    private func refreshReadAloudGateway() {
+    private func refreshReadAloudGateway(rebuild: Bool = false) {
         if readAloudUnavailableReason != nil {
             messageReadAloudController.setGateway(nil)
             readAloudGatewayBridge = nil
             return
         }
-        guard !readAloudGatewayIsCurrent else { return }
+        guard rebuild || !readAloudGatewayIsCurrent else { return }
         assignReadAloudGateway()
     }
 
@@ -27384,9 +27406,11 @@ final class AppState: ObservableObject {
         snapshot: VoiceCapabilitySnapshot,
         isVoiceEnabled: Bool,
         transcriptionMode: VoiceTranscriptionMode? = nil,
-        appleSpeechAvailability: AppleSpeechRecognitionAvailability? = nil
+        appleSpeechAvailability: AppleSpeechRecognitionAvailability? = nil,
+        speechOutput: VoiceSpeechOutput? = nil
     ) {
         dashboardTicketBridge = bridge
+        if let speechOutput { voiceSpeechOutputChoice = speechOutput }
         readAloudGatewayBridge = bridge
         voiceCapabilitySnapshot = snapshot
         self.isVoiceEnabled = isVoiceEnabled

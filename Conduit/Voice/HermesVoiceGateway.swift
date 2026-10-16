@@ -4,6 +4,9 @@
 //
 
 import Foundation
+import OSLog
+
+private let hermesSpeechFallbackLog = Logger(subsystem: "com.milim.conduit", category: "OnDeviceSpeech")
 
 @MainActor
 final class HermesVoiceGateway: VoiceGatewayService {
@@ -30,12 +33,33 @@ final class HermesVoiceGateway: VoiceGatewayService {
     let profile: String
     let bridge: DashboardTicketBridge
     let baseURL: String
+    /// Who speaks replies, read when each reply's stream opens so a change
+    /// in Settings applies to the next reply.
+    private let speechOutput: @MainActor () -> VoiceSpeechOutput
+    /// This iPhone's voice; nil leaves every reply to Hermes.
+    private let makeOnDeviceSpeech: FallbackSpeechStream.OpenOnDevice?
+    /// Whether a Hermes reply that fails before any audio is spoken on this
+    /// iPhone instead. Off for Settings' speech test, which checks Hermes.
+    private let fallsBackToOnDeviceSpeech: Bool
+    /// Set once Hermes speech failed and this iPhone spoke instead: later
+    /// replies go straight to the iPhone rather than waiting on Hermes.
+    private(set) var hermesSpeechFailed = false
 
-    init(bridge: DashboardTicketBridge, baseURL: String, profile: String) {
+    init(
+        bridge: DashboardTicketBridge,
+        baseURL: String,
+        profile: String,
+        speechOutput: @escaping @MainActor () -> VoiceSpeechOutput = { .hermes },
+        makeOnDeviceSpeech: FallbackSpeechStream.OpenOnDevice? = nil,
+        fallsBackToOnDeviceSpeech: Bool = false
+    ) {
         self.bridge = bridge
         self.baseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL))
             ?? baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.profile = profile
+        self.speechOutput = speechOutput
+        self.makeOnDeviceSpeech = makeOnDeviceSpeech
+        self.fallsBackToOnDeviceSpeech = fallsBackToOnDeviceSpeech
     }
 
     func transcribe(_ audio: VoiceCapturedAudio) async throws -> String {
@@ -70,6 +94,36 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 
     func openSpeechStream(
+        onStart: @escaping @MainActor (Double) throws -> Void,
+        onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
+        onEncodedAudio: @escaping @MainActor (Data) throws -> Void
+    ) async throws -> VoiceSpeechStream {
+        guard let makeOnDeviceSpeech else {
+            return try await openHermesSpeechStream(onStart: onStart, onPCM16: onPCM16, onEncodedAudio: onEncodedAudio)
+        }
+        if speechOutput() == .onDevice || (fallsBackToOnDeviceSpeech && hermesSpeechFailed) {
+            return makeOnDeviceSpeech(onStart, onPCM16)
+        }
+        guard fallsBackToOnDeviceSpeech else {
+            return try await openHermesSpeechStream(onStart: onStart, onPCM16: onPCM16, onEncodedAudio: onEncodedAudio)
+        }
+        return try await FallbackSpeechStream.open(
+            hermes: { [weak self] start, pcm, encoded in
+                guard let self else { throw CancellationError() }
+                return try await self.openHermesSpeechStream(onStart: start, onPCM16: pcm, onEncodedAudio: encoded)
+            },
+            onDevice: makeOnDeviceSpeech,
+            onFallback: { [weak self] error in
+                self?.hermesSpeechFailed = true
+                hermesSpeechFallbackLog.notice("Hermes speech failed, speaking on this iPhone: \(String(describing: error), privacy: .private)")
+            },
+            onStart: onStart,
+            onPCM16: onPCM16,
+            onEncodedAudio: onEncodedAudio
+        )
+    }
+
+    private func openHermesSpeechStream(
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void

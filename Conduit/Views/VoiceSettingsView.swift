@@ -17,12 +17,14 @@ struct VoiceSettingsRoute: View {
     let voiceEnabled: Bool
     let transcriptionMode: VoiceTranscriptionMode
     let transcriptionModeChosen: Bool
+    let speechOutput: VoiceSpeechOutput?
     let appleSpeechAvailability: AppleSpeechRecognitionAvailability
     let continuousConversation: Bool
     let spokenStopPhrases: [String]
     let spokenEndConversationPhrases: [String]
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
+    let setSpeechOutput: (VoiceSpeechOutput) async -> Bool
     let setContinuousConversation: (Bool) async -> Bool
     let setStopPhrases: ([String]) -> Bool
     let setEndConversationPhrases: ([String]) -> Bool
@@ -48,12 +50,14 @@ struct VoiceSettingsRoute: View {
         voiceEnabled: Bool,
         transcriptionMode: VoiceTranscriptionMode,
         transcriptionModeChosen: Bool = false,
+        speechOutput: VoiceSpeechOutput? = nil,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability,
         continuousConversation: Bool = true,
         spokenStopPhrases: [String] = VoiceSpokenCommandDefaults.stopPhrases,
         spokenEndConversationPhrases: [String] = VoiceSpokenCommandDefaults.endConversationPhrases,
         setVoiceEnabled: @escaping (Bool) async -> Bool,
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool,
+        setSpeechOutput: @escaping (VoiceSpeechOutput) async -> Bool = { _ in false },
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
         setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
         setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
@@ -86,12 +90,14 @@ struct VoiceSettingsRoute: View {
         self.voiceEnabled = voiceEnabled
         self.transcriptionMode = transcriptionMode
         self.transcriptionModeChosen = transcriptionModeChosen
+        self.speechOutput = speechOutput
         self.appleSpeechAvailability = appleSpeechAvailability
         self.continuousConversation = continuousConversation
         self.spokenStopPhrases = spokenStopPhrases
         self.spokenEndConversationPhrases = spokenEndConversationPhrases
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
+        self.setSpeechOutput = setSpeechOutput
         self.setContinuousConversation = setContinuousConversation
         self.setStopPhrases = setStopPhrases
         self.setEndConversationPhrases = setEndConversationPhrases
@@ -105,12 +111,14 @@ struct VoiceSettingsRoute: View {
             voiceEnabled: voiceEnabled,
             transcriptionMode: transcriptionMode,
             transcriptionModeChosen: transcriptionModeChosen,
+            speechOutput: speechOutput,
             appleSpeechAvailability: appleSpeechAvailability,
             continuousConversation: continuousConversation,
             spokenStopPhrases: spokenStopPhrases,
             spokenEndConversationPhrases: spokenEndConversationPhrases,
             setVoiceEnabled: setVoiceEnabled,
             setTranscriptionMode: setTranscriptionMode,
+            setSpeechOutput: setSpeechOutput,
             setContinuousConversation: setContinuousConversation,
             setStopPhrases: setStopPhrases,
             setEndConversationPhrases: setEndConversationPhrases,
@@ -155,6 +163,7 @@ struct VoiceSettingsView: View {
     var actions = VoiceSettingsActions()
     let setVoiceEnabled: (Bool) async -> Bool
     let setTranscriptionMode: (VoiceTranscriptionMode) async -> Bool
+    let setSpeechOutput: (VoiceSpeechOutput) async -> Bool
     let setContinuousConversation: (Bool) async -> Bool
 
     @State private var values: [String: String] = [:]
@@ -170,6 +179,11 @@ struct VoiceSettingsView: View {
     @State private var isRecordingASRTest = false
     @State private var voiceEnabled: Bool
     @State private var transcriptionMode: VoiceTranscriptionMode
+    /// Who speaks replies as saved; nil is automatic.
+    @State private var speechOutputChoice: VoiceSpeechOutput?
+    /// The saved choice as the host last rendered it, so a profile switch
+    /// or a choice made elsewhere shows here too.
+    let savedSpeechOutput: VoiceSpeechOutput?
     @State private var appleSpeechAvailability: AppleSpeechRecognitionAvailability
     @State private var continuousConversation: Bool
     /// Whether the profile has a saved speech-to-text choice. Turning voice
@@ -223,12 +237,14 @@ struct VoiceSettingsView: View {
         voiceEnabled: Bool = false,
         transcriptionMode: VoiceTranscriptionMode = .hermes,
         transcriptionModeChosen: Bool = false,
+        speechOutput: VoiceSpeechOutput? = nil,
         appleSpeechAvailability: AppleSpeechRecognitionAvailability = .permissionRequired(localeIdentifier: Locale.current.identifier),
         continuousConversation: Bool = true,
         spokenStopPhrases: [String] = VoiceSpokenCommandDefaults.stopPhrases,
         spokenEndConversationPhrases: [String] = VoiceSpokenCommandDefaults.endConversationPhrases,
         setVoiceEnabled: @escaping (Bool) async -> Bool = { _ in false },
         setTranscriptionMode: @escaping (VoiceTranscriptionMode) async -> Bool = { _ in false },
+        setSpeechOutput: @escaping (VoiceSpeechOutput) async -> Bool = { _ in false },
         setContinuousConversation: @escaping (Bool) async -> Bool = { _ in true },
         setStopPhrases: @escaping ([String]) -> Bool = { _ in true },
         setEndConversationPhrases: @escaping ([String]) -> Bool = { _ in true },
@@ -262,6 +278,7 @@ struct VoiceSettingsView: View {
         self.actions = actions
         self.setVoiceEnabled = setVoiceEnabled
         self.setTranscriptionMode = setTranscriptionMode
+        self.setSpeechOutput = setSpeechOutput
         self.setContinuousConversation = setContinuousConversation
         self.spokenStopPhrases = spokenStopPhrases
         self.spokenEndConversationPhrases = spokenEndConversationPhrases
@@ -274,6 +291,8 @@ struct VoiceSettingsView: View {
         _voiceEnabled = State(initialValue: voiceEnabled)
         _transcriptionMode = State(initialValue: transcriptionMode)
         _transcriptionModeChosen = State(initialValue: transcriptionModeChosen)
+        _speechOutputChoice = State(initialValue: speechOutput)
+        self.savedSpeechOutput = speechOutput
         self.savedTranscriptionModeChosen = transcriptionModeChosen
         _microphonePermission = State(initialValue: AVAudioApplication.shared.recordPermission)
         _voiceMode = State(initialValue: Self.mode(
@@ -364,6 +383,9 @@ struct VoiceSettingsView: View {
         .onChange(of: savedTranscriptionModeChosen) { _, chosen in
             if chosen { transcriptionModeChosen = true }
         }
+        .onChange(of: savedSpeechOutput) { _, saved in
+            speechOutputChoice = saved
+        }
         // Back from iPhone Settings: the permission steps show what was allowed.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -385,7 +407,7 @@ struct VoiceSettingsView: View {
             .accessibilityIdentifier("voice.enableToggle")
             Text(voiceEnabled
                  ? AppLocalization.string("Voice is on for \(profileDisplayName) on this iPhone. Each step below turns green when it's ready; an orange step has a fix.")
-                 : AppLocalization.string("Turn this on to talk to \(profileDisplayName). Conduit asks for the microphone and Speech Recognition, uses this iPhone for speech to text, and switches the assistant's voice to Edge TTS on Hermes if the current one isn't ready."))
+                 : AppLocalization.string("Turn this on to talk to \(profileDisplayName). Conduit asks for the microphone and Speech Recognition, and uses this iPhone to hear you and to speak the replies. Nothing to set up on Hermes."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if isApplyingDefaults {
@@ -530,30 +552,26 @@ struct VoiceSettingsView: View {
 
     private var assistantVoiceStep: some View {
         let title = AppLocalization.string("Assistant voice")
+        if resolvedSpeechOutput == .onDevice {
+            return setupStep(title, detail: AppLocalization.string("On this iPhone"), state: .done)
+        }
         let name = providerName(service.snapshot.selectedTTSProvider, kind: .tts)
         if service.snapshot.capability.supportsSpeech {
             return setupStep(title, detail: AppLocalization.string("\(name) on Hermes"), state: .done)
-        }
-        if VoiceSetupDefaults.canSwitchSpeechToEdge(service.snapshot) {
-            return setupStep(
-                title,
-                detail: service.snapshot.selectedTTSProvider.isEmpty
-                    ? AppLocalization.string("No assistant voice is set up yet. Edge TTS is free and ready.")
-                    : AppLocalization.string("\(name) isn't ready on Hermes. Edge TTS is free and ready."),
-                state: .attention,
-                fix: (label: AppLocalization.string("Use Edge TTS"), action: { selectProvider(VoiceSetupDefaults.edgeTTSProviderID, kind: .tts) })
-            )
         }
         if service.isLoading || !service.snapshot.capability.isGatewayConnected {
             return setupStep(title, detail: AppLocalization.string("Not checked yet"), state: .pending)
         }
         return setupStep(
             title,
-            detail: service.snapshot.selectedTTSProvider.isEmpty
-                ? AppLocalization.string("No assistant voice is set up yet. Choose one under Assistant speech below.")
-                : AppLocalization.string("\(name) isn't ready on Hermes. Choose another under Assistant speech below."),
-            state: .attention
+            detail: AppLocalization.string("\(name) isn't ready on Hermes. This iPhone can speak the replies instead, with nothing to set up."),
+            state: .attention,
+            fix: (label: AppLocalization.string("Use this iPhone"), action: { selectProvider(Self.iPhoneVoiceProviderID, kind: .tts) })
         )
+    }
+
+    private var resolvedSpeechOutput: VoiceSpeechOutput {
+        .resolved(chosen: speechOutputChoice, snapshot: service.snapshot.capability)
     }
 
     private enum SetupStepState {
@@ -622,7 +640,7 @@ struct VoiceSettingsView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 46)
                 }
-                .disabled(actions.runTTSTest == nil || isRunningTest || !service.snapshot.capability.supportsSpeech)
+                .disabled(actions.runTTSTest == nil || isRunningTest || !supportsSelectedSpeech)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
                 .accessibilityHint(AppLocalization.string("Plays a short sample in the assistant's voice"))
             }
@@ -684,9 +702,6 @@ struct VoiceSettingsView: View {
         )
         if plan.usesOnDeviceTranscription {
             await applyProvider(Self.appleProviderID, kind: .stt)
-        }
-        if plan.switchesSpeechToEdge {
-            await applyProvider(VoiceSetupDefaults.edgeTTSProviderID, kind: .tts)
         }
         await load()
     }
@@ -1067,7 +1082,11 @@ struct VoiceSettingsView: View {
     private var classicSpeechNeedsAttention: Bool {
         guard voiceEnabled, voiceMode == .classic, !service.isLoading,
               service.snapshot.capability.isGatewayConnected else { return false }
-        return !supportsSelectedTranscription || !service.snapshot.capability.supportsSpeech
+        return !supportsSelectedTranscription || !supportsSelectedSpeech
+    }
+
+    private var supportsSelectedSpeech: Bool {
+        resolvedSpeechOutput == .onDevice || service.snapshot.capability.supportsSpeech
     }
 
     private func selectVoiceMode(_ id: String) {
@@ -1210,6 +1229,8 @@ struct VoiceSettingsView: View {
 
                 if kind == .stt, transcriptionMode == .appleOnDevice {
                     appleOnDeviceDetail
+                } else if kind == .tts, resolvedSpeechOutput == .onDevice {
+                    iPhoneVoiceDetail
                 } else if kind == .stt, transcriptionMode == .speechServer {
                     SpeechServerSettingsView(service: service)
                 } else if let selected = providers.first(where: { $0.descriptor.id == selectedProvider(kind) }) {
@@ -1233,6 +1254,17 @@ struct VoiceSettingsView: View {
             ))
             .disabled(service.isLoading)
             Text("Hermes transcribes while you talk, so your words show up as you say them and are ready as soon as you stop. Works with OpenAI, xAI and ElevenLabs speech to text. This is a Hermes setting, so Hermes Desktop and the terminal use it too.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var iPhoneVoiceDetail: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(AppLocalization.string("Replies are spoken with the voices built into iOS, on this iPhone. Nothing to set up or pay for on Hermes."), systemImage: "iphone")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text(AppLocalization.string("For a more natural voice, download an Enhanced or Premium voice in iPhone Settings > Accessibility: search Settings for “Voices” to find them. Conduit uses the best one installed for the reply's language."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1461,7 +1493,9 @@ struct VoiceSettingsView: View {
     }
 
     private func selectedProviderChoice(_ kind: VoiceProviderDescriptor.Kind) -> String {
-        guard kind == .stt else { return selectedProvider(kind) }
+        guard kind == .stt else {
+            return resolvedSpeechOutput == .onDevice ? Self.iPhoneVoiceProviderID : selectedProvider(kind)
+        }
         switch transcriptionMode {
         case .appleOnDevice: return Self.appleProviderID
         case .speechServer: return Self.speechServerProviderID
@@ -1474,7 +1508,9 @@ struct VoiceSettingsView: View {
         providers: [VoiceProviderConfiguration]
     ) -> [(id: String, title: String)] {
         let hermes = providers.map { (id: $0.descriptor.id, title: $0.descriptor.displayName) }
-        guard kind == .stt else { return hermes }
+        guard kind == .stt else {
+            return [(id: Self.iPhoneVoiceProviderID, title: AppLocalization.string("On this iPhone"))] + hermes
+        }
         return [(id: Self.appleProviderID, title: AppLocalization.string("On this iPhone"))] + hermes
             + [(id: Self.speechServerProviderID, title: AppLocalization.string("Your speech server"))]
     }
@@ -1517,6 +1553,13 @@ struct VoiceSettingsView: View {
                 transcriptionModeChosen = true
                 testStatus = nil
             }
+        } else if kind == .tts, provider == Self.iPhoneVoiceProviderID {
+            if await setSpeechOutput(.onDevice) {
+                speechOutputChoice = .onDevice
+                testStatus = nil
+            } else {
+                testStatus = AppLocalization.string("Connect to Hermes to configure voice for this profile.")
+            }
         } else {
             let providerSaved: Bool
             if provider == selectedProvider(kind) {
@@ -1528,6 +1571,14 @@ struct VoiceSettingsView: View {
                 if (await setTranscriptionMode(.hermes)) {
                     transcriptionMode = .hermes
                     transcriptionModeChosen = true
+                }
+            }
+            if providerSaved, kind == .tts {
+                if await setSpeechOutput(.hermes) {
+                    speechOutputChoice = .hermes
+                    testStatus = nil
+                } else {
+                    testStatus = AppLocalization.string("Connect to Hermes to configure voice for this profile.")
                 }
             }
         }
@@ -1583,6 +1634,7 @@ struct VoiceSettingsView: View {
 
     private static let appleProviderID = "apple_on_device"
     private static let speechServerProviderID = "conduit_speech_server"
+    private static let iPhoneVoiceProviderID = "conduit_iphone_voice"
 }
 
 /// Variables Hermes reads in order for one key, shown as one row.

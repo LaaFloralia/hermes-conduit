@@ -23,6 +23,9 @@ struct VoiceCapabilitySnapshot: Equatable {
     var supportsTranscription: Bool
     var supportsSpeech: Bool
     var unavailableReason: String?
+    /// Hermes' text-to-speech provider for the profile ("edge", "openai"…),
+    /// empty when unknown.
+    var selectedTTSProvider: String = ""
 
     /// Computed so the reason re-resolves under the in-app App Language.
     static var unavailable: VoiceCapabilitySnapshot {
@@ -117,6 +120,10 @@ struct VoiceProfilePreferences: Codable, Equatable {
     }
     /// Nil decodes older preferences as the Hermes-hosted route.
     var transcriptionMode: VoiceTranscriptionMode? = nil
+    /// Who speaks Classic voice replies. Nil is automatic
+    /// (`VoiceSpeechOutput.resolved`): this iPhone unless the profile has
+    /// its own ready Hermes voice.
+    var speechOutput: VoiceSpeechOutput? = nil
     /// Opt-in Gemini Live voice mode (off by default; older blobs decode off).
     var geminiLiveEnabled: Bool = false
     /// Where Gemini Live's quick lookups search. Nil is automatic.
@@ -232,6 +239,8 @@ struct VoiceProfilePreferences: Codable, Equatable {
                 ]) ? nil : stored
             }
         transcriptionMode = try container.decodeIfPresent(VoiceTranscriptionMode.self, forKey: .transcriptionMode)
+        // An unknown choice (a newer build's) is automatic.
+        speechOutput = (try? container.decodeIfPresent(VoiceSpeechOutput.self, forKey: .speechOutput)) ?? nil
         geminiLiveEnabled = try container.decodeIfPresent(Bool.self, forKey: .geminiLiveEnabled) ?? false
         // An unknown mode (a newer build's) falls back to automatic rather
         // than failing the whole blob.

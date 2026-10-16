@@ -104,9 +104,13 @@ extension CarPlayVoiceCoordinatorTests {
                 supportsSpeech: false,
                 unavailableReason: nil
             ),
-            isVoiceEnabled: true
+            isVoiceEnabled: true,
+            speechOutput: .hermes
         )
         XCTAssertEqual(appState.voiceSetupIssue, .noTextToSpeech)
+        // This iPhone's voice needs no Hermes speech provider.
+        _ = appState.setVoiceSpeechOutput(.onDevice)
+        XCTAssertNil(appState.voiceSetupIssue)
 
         appState.installVoiceCapabilityStateForTesting(
             bridge: DashboardTicketBridge(baseURL: "https://example.com"),

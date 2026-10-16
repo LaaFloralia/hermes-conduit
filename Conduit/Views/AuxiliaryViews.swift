@@ -589,6 +589,7 @@ struct SettingsView: View {
                     voiceEnabled: appState.isVoiceEnabled,
                     transcriptionMode: appState.voiceTranscriptionMode,
                     transcriptionModeChosen: voicePreferences.transcriptionMode != nil,
+                    speechOutput: voicePreferences.speechOutput,
                     appleSpeechAvailability: appState.appleSpeechAvailability,
                     continuousConversation: appState.continuousConversationEnabled,
                     spokenStopPhrases: voicePreferences.resolvedSpokenStopPhrases,
@@ -598,6 +599,9 @@ struct SettingsView: View {
                     },
                     setTranscriptionMode: { mode in
                         await appState.setVoiceTranscriptionMode(mode)
+                    },
+                    setSpeechOutput: { output in
+                        appState.setVoiceSpeechOutput(output)
                     },
                     setContinuousConversation: { enabled in
                         appState.setContinuousConversation(enabled)

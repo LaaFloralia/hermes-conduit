@@ -526,7 +526,8 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
                 supportsSpeech: false,
                 unavailableReason: nil
             ),
-            isVoiceEnabled: true
+            isVoiceEnabled: true,
+            speechOutput: .hermes
         )
         harness.foregroundForRestoration()
 
@@ -1187,6 +1188,13 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
 
     func testCapabilityRefreshBeforeRestoreFailsClosedWhenSupportIsGone() async {
         let harness = makeHarness()
+        // Replies spoken by Hermes, so losing Hermes speech matters (this
+        // iPhone's own voice needs none).
+        var preferences = VoiceProfilePreferences()
+        preferences.speechOutput = .hermes
+        if let data = try? JSONEncoder().encode(preferences) {
+            harness.defaults.set(data, forKey: "conduit.voice.preferences.v1.https://example.com.default")
+        }
         harness.openVoice(session: "session-1")
         await harness.driveToThinking()
         XCTAssertTrue(harness.appState.voiceCapabilitySnapshot.supportsSpeech, "pre-background the snapshot is capable")

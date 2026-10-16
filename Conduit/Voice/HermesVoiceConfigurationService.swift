@@ -550,7 +550,8 @@ enum VoiceConfigurationParser {
             isGatewayConnected: true,
             supportsTranscription: supportsTranscription,
             supportsSpeech: supportsSpeech,
-            unavailableReason: unavailableReason
+            unavailableReason: unavailableReason,
+            selectedTTSProvider: selectedTTS
         )
         return .init(
             profile: profile, capability: capability, sttProviders: stt, ttsProviders: tts,

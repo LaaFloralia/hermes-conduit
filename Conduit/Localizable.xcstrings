@@ -10335,170 +10335,6 @@
         }
       }
     },
-    "No assistant voice is set up yet. Choose one under Assistant speech below." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Es ist noch keine Assistentenstimme eingerichtet. Wähle unten unter „Sprachausgabe“ eine aus."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aún no hay ninguna voz del asistente configurada. Elige una en Voz del asistente, más abajo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucune voix d'assistant n'est encore configurée. Choisissez-en une sous Parole de l'assistant ci-dessous."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Belum ada suara asisten yang disiapkan. Pilih salah satu di Ucapan asisten di bawah."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessuna voce dell'assistente ancora configurata. Scegline una in Voce dell'assistente qui sotto."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アシスタントの音声がまだ設定されていません。下の「アシスタントの読み上げ」で選択してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "아직 설정된 어시스턴트 목소리가 없어요. 아래 ‘어시스턴트 음성’에서 하나를 선택하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Głos asystenta nie jest jeszcze skonfigurowany. Wybierz go poniżej w sekcji „Mowa asystenta”."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhuma voz do assistente foi configurada ainda. Escolha uma em Fala do assistente abaixo."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Голос ассистента ещё не настроен. Выберите его в разделе «Речь ассистента» ниже."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Henüz asistan sesi ayarlanmadı. Aşağıdaki Asistan konuşması bölümünden bir ses seçin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未设置助手语音。请在下方“助手语音”中选择一个。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未設定助理聲音。請在下方的「助理語音」中選擇一個。"
-          }
-        }
-      }
-    },
-    "No assistant voice is set up yet. Edge TTS is free and ready." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Es ist noch keine Assistentenstimme eingerichtet. Edge TTS ist kostenlos und sofort bereit."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aún no hay ninguna voz del asistente configurada. Edge TTS es gratis y está listo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucune voix d'assistant n'est encore configurée. Edge TTS est gratuit et prêt."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Belum ada suara asisten yang disiapkan. Edge TTS gratis dan siap digunakan."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessuna voce dell'assistente ancora configurata. Edge TTS è gratuito e pronto."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "アシスタントの音声がまだ設定されていません。Edge TTSは無料ですぐに使えます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "아직 설정된 어시스턴트 목소리가 없어요. Edge TTS는 무료이고 바로 사용할 수 있어요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Głos asystenta nie jest jeszcze skonfigurowany. Edge TTS jest bezpłatny i gotowy do użycia."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nenhuma voz do assistente foi configurada ainda. O Edge TTS é gratuito e está pronto."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Голос ассистента ещё не настроен. Edge TTS бесплатен и готов к работе."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Henüz asistan sesi ayarlanmadı. Edge TTS ücretsiz ve kullanıma hazır."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未设置助手语音。Edge TTS 免费且已就绪。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尚未設定助理聲音。Edge TTS 免費且可立即使用。"
-          }
-        }
-      }
-    },
     "%@ brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them." : {
       "localizations" : {
         "de" : {
@@ -10577,170 +10413,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 自帶聆聽與說話功能，因此語音轉文字和助理聲音這兩個步驟不適用。若要使用這些步驟，請在「語音模式」中選擇「經典」。"
-          }
-        }
-      }
-    },
-    "%@ isn't ready on Hermes. Choose another under Assistant speech below." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ist auf Hermes nicht bereit. Wähle unten unter „Sprachausgabe“ eine andere aus."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ no está listo en Hermes. Elige otro en Voz del asistente, más abajo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ n'est pas prêt sur Hermes. Choisissez-en un autre sous Parole de l'assistant ci-dessous."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ belum siap di Hermes. Pilih yang lain di Ucapan asisten di bawah."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ non è pronto su Hermes. Scegline un altro in Voce dell'assistente qui sotto."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesの%@は準備ができていません。下の「アシスタントの読み上げ」で別の音声を選択してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes의 %@ 사용 준비가 되지 않았어요. 아래 ‘어시스턴트 음성’에서 다른 것을 선택하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dostawca %@ nie jest gotowy w Hermesie. Wybierz innego poniżej w sekcji „Mowa asystenta”."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ não está pronto no Hermes. Escolha outro em Fala do assistente abaixo."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ в Hermes не готов. Выберите другой вариант в разделе «Речь ассистента» ниже."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, Hermes'te hazır değil. Aşağıdaki Asistan konuşması bölümünden başka bir ses seçin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 在 Hermes 上尚未就绪。请在下方“助手语音”中选择其他选项。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 在 Hermes 上尚未就緒。請在下方的「助理語音」中選擇其他選項。"
-          }
-        }
-      }
-    },
-    "%@ isn't ready on Hermes. Edge TTS is free and ready." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ist auf Hermes nicht bereit. Edge TTS ist kostenlos und sofort bereit."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ no está listo en Hermes. Edge TTS es gratis y está listo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ n'est pas prêt sur Hermes. Edge TTS est gratuit et prêt."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ belum siap di Hermes. Edge TTS gratis dan siap digunakan."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ non è pronto su Hermes. Edge TTS è gratuito e pronto."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesの%@は準備ができていません。Edge TTSは無料ですぐに使えます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes의 %@ 사용 준비가 되지 않았어요. Edge TTS는 무료이고 바로 사용할 수 있어요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dostawca %@ nie jest gotowy w Hermesie. Edge TTS jest bezpłatny i gotowy do użycia."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ não está pronto no Hermes. O Edge TTS é gratuito e está pronto."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ в Hermes не готов. Edge TTS бесплатен и готов к работе."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, Hermes'te hazır değil. Edge TTS ücretsiz ve kullanıma hazır."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 在 Hermes 上尚未就绪。Edge TTS 免费且已就绪。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 在 Hermes 上尚未就緒。Edge TTS 免費且可立即使用。"
           }
         }
       }
@@ -13037,170 +12709,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這部 iPhone 無法在裝置上轉寫你的語言。請在下方的「語音轉文字」中選擇 Hermes 供應商。"
-          }
-        }
-      }
-    },
-    "Turn this on to talk to %@. Conduit asks for the microphone and Speech Recognition, uses this iPhone for speech to text, and switches the assistant's voice to Edge TTS on Hermes if the current one isn't ready." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktiviere dies, um mit %@ zu sprechen. Conduit fragt nach Mikrofon und Spracherkennung, nutzt dieses iPhone für die Spracherkennung und stellt die Assistentenstimme auf Edge TTS auf Hermes um, falls die aktuelle nicht bereit ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activa esto para hablar con %@. Conduit pide acceso al micrófono y al reconocimiento de voz, usa este iPhone para la voz a texto y cambia la voz del asistente a Edge TTS en Hermes si la actual no está lista."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activez cette option pour parler à %@. Conduit demande l'accès au micro et à la reconnaissance vocale, utilise cet iPhone pour la transcription vocale et passe la voix de l'assistant à Edge TTS sur Hermes si la voix actuelle n'est pas prête."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nyalakan ini untuk berbicara dengan %@. Conduit meminta akses mikrofon dan Pengenalan Ucapan, menggunakan iPhone ini untuk ucapan ke teks, dan mengganti suara asisten ke Edge TTS di Hermes jika suara saat ini belum siap."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Attiva questa opzione per parlare con %@. Conduit chiede l'accesso al microfono e al riconoscimento vocale, usa questo iPhone per la trascrizione vocale e passa la voce dell'assistente a Edge TTS su Hermes se quella attuale non è pronta."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "オンにすると%@と話せます。Conduitはマイクと音声認識へのアクセスを求め、このiPhoneで音声認識を行います。現在のアシスタントの音声の準備ができていない場合は、HermesのEdge TTSに切り替えます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 기능을 켜면 %@에게 말할 수 있어요. Conduit이 마이크와 음성 인식 권한을 요청하고, 이 iPhone으로 음성 텍스트 변환을 하며, 현재 어시스턴트 목소리가 준비되지 않았으면 Hermes의 Edge TTS로 바꿔요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Włącz, aby rozmawiać z profilem %@. Conduit poprosi o dostęp do mikrofonu i rozpoznawania mowy, użyje tego iPhone’a do zamiany mowy na tekst i przełączy głos asystenta na Edge TTS w Hermesie, jeśli obecny nie jest gotowy."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ative para falar com %@. O Conduit pede acesso ao microfone e ao Reconhecimento de Fala, usa este iPhone para a fala para texto e muda a voz do assistente para o Edge TTS no Hermes se a atual não estiver pronta."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Включите, чтобы говорить с профилем %@. Conduit запросит доступ к микрофону и распознаванию речи, будет распознавать речь на этом iPhone и переключит голос ассистента на Edge TTS в Hermes, если текущий не готов."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ile konuşmak için bunu açın. Conduit mikrofon ve Konuşma Tanıma izni ister, konuşmayı metne dönüştürmek için bu iPhone'u kullanır ve mevcut asistan sesi hazır değilse Hermes'teki Edge TTS'e geçer."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开此项即可与 %@ 对话。Conduit 会请求麦克风和语音识别权限，使用这台 iPhone 进行语音转文字；如果当前助手语音未就绪，会切换为 Hermes 上的 Edge TTS。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "開啟此選項即可與 %@ 對話。Conduit 會要求麥克風和語音辨識的取用權限，使用這部 iPhone 進行語音轉文字；若目前的助理聲音尚未就緒，則會切換為 Hermes 上的 Edge TTS。"
-          }
-        }
-      }
-    },
-    "Use Edge TTS" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edge TTS verwenden"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usar Edge TTS"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utiliser Edge TTS"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gunakan Edge TTS"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usa Edge TTS"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edge TTSを使用"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edge TTS 사용"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Użyj Edge TTS"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Usar Edge TTS"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Использовать Edge TTS"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edge TTS'i kullan"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Edge TTS"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用 Edge TTS"
           }
         }
       }
@@ -271146,6 +270654,334 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的 Hermes 主機上的 edge-tts 套件已過時，因此 Microsoft 拒絕了 Edge TTS。請在主機上更新（pip install -U edge-tts）並重新啟動 Hermes，或在「設定」>「語音」中選擇其他語音服務。"
+          }
+        }
+      }
+    },
+    "Turn this on to talk to %@. Conduit asks for the microphone and Speech Recognition, and uses this iPhone to hear you and to speak the replies. Nothing to set up on Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schalte das ein, um mit %@ zu sprechen. Conduit fragt nach dem Mikrofon und der Spracherkennung und nutzt dieses iPhone, um dich zu hören und die Antworten zu sprechen. Auf Hermes musst du nichts einrichten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actívalo para hablar con %@. Conduit pide acceso al micrófono y al Reconocimiento de voz, y usa este iPhone para escucharte y para decir las respuestas. No hay nada que configurar en Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Active cette option pour parler à %@. Conduit demande l’accès au micro et à la Reconnaissance vocale, et utilise cet iPhone pour t’écouter et lire les réponses à voix haute. Rien à configurer sur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktifkan ini untuk berbicara dengan %@. Conduit meminta akses mikrofon dan Pengenalan Ucapan, lalu memakai iPhone ini untuk mendengarmu dan mengucapkan balasan. Tidak ada yang perlu diatur di Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attivalo per parlare con %@. Conduit chiede l’accesso al microfono e al Riconoscimento vocale, e usa questo iPhone per ascoltarti e per leggere le risposte. Niente da configurare su Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンにすると%@と話せます。Conduitはマイクと音声認識へのアクセスを求め、このiPhoneであなたの声を聞き取り、返答を読み上げます。Hermes側の設定は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@와(과) 대화하려면 켜세요. Conduit는 마이크와 음성 인식 권한을 요청하고, 이 iPhone으로 사용자의 말을 듣고 답변을 읽어 줍니다. Hermes에서 설정할 것은 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Włącz, aby rozmawiać z %@. Conduit poprosi o dostęp do mikrofonu i rozpoznawania mowy, a następnie użyje tego iPhone’a, aby cię słuchać i czytać odpowiedzi. Na Hermesie nie trzeba nic konfigurować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ative para conversar com %@. O Conduit pede acesso ao microfone e ao Reconhecimento de Fala, e usa este iPhone para ouvir você e falar as respostas. Nada para configurar no Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Включите, чтобы говорить с %@. Conduit запросит доступ к микрофону и распознаванию речи и будет использовать этот iPhone, чтобы слышать вас и озвучивать ответы. На Hermes ничего настраивать не нужно."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ile konuşmak için bunu açın. Conduit mikrofon ve Konuşma Tanıma izni ister, sizi duymak ve yanıtları seslendirmek için bu iPhone'u kullanır. Hermes'te ayarlanacak bir şey yok."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开后即可与 %@ 对话。Conduit 会请求麦克风和语音识别权限，并用这台 iPhone 听你说话、朗读回复。Hermes 上无需任何设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟後即可與 %@ 對話。Conduit 會要求麥克風和語音辨識權限，並用這支 iPhone 聽你說話、朗讀回覆。Hermes 上無需任何設定。"
+          }
+        }
+      }
+    },
+    "%@ isn't ready on Hermes. This iPhone can speak the replies instead, with nothing to set up." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist auf Hermes nicht bereit. Stattdessen kann dieses iPhone die Antworten sprechen, ohne dass du etwas einrichten musst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ no está listo en Hermes. Este iPhone puede decir las respuestas en su lugar, sin configurar nada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ n’est pas prêt sur Hermes. Cet iPhone peut lire les réponses à la place, sans rien configurer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ belum siap di Hermes. iPhone ini bisa mengucapkan balasan sebagai gantinya, tanpa perlu mengatur apa pun."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ non è pronto su Hermes. Questo iPhone può leggere le risposte al suo posto, senza configurare nulla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@はHermesで準備ができていません。代わりにこのiPhoneが返答を読み上げられます。設定は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) Hermes에서 준비되지 않았습니다. 대신 이 iPhone이 설정 없이 답변을 읽어 줄 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nie jest gotowy na Hermesie. Ten iPhone może zamiast tego czytać odpowiedzi, bez żadnej konfiguracji."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ não está pronto no Hermes. Este iPhone pode falar as respostas no lugar, sem configurar nada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ не готов на Hermes. Вместо него ответы может озвучивать этот iPhone, без всякой настройки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Hermes'te hazır değil. Bunun yerine bu iPhone yanıtları hiçbir ayar gerekmeden seslendirebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 在 Hermes 上尚未就绪。可以改由这台 iPhone 朗读回复，无需任何设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 在 Hermes 上尚未就緒。可以改由這支 iPhone 朗讀回覆，無需任何設定。"
+          }
+        }
+      }
+    },
+    "Replies are spoken with the voices built into iOS, on this iPhone. Nothing to set up or pay for on Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antworten werden mit den in iOS integrierten Stimmen auf diesem iPhone gesprochen. Auf Hermes musst du nichts einrichten oder bezahlen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las respuestas se dicen con las voces integradas en iOS, en este iPhone. No hay nada que configurar ni pagar en Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les réponses sont lues avec les voix intégrées à iOS, sur cet iPhone. Rien à configurer ni à payer sur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balasan diucapkan dengan suara bawaan iOS, di iPhone ini. Tidak ada yang perlu diatur atau dibayar di Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le risposte vengono lette con le voci integrate in iOS, su questo iPhone. Niente da configurare o pagare su Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返答はこのiPhone上で、iOSに内蔵された声で読み上げられます。Hermes側での設定や費用は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답변은 이 iPhone에서 iOS에 내장된 음성으로 읽어 줍니다. Hermes에서 설정하거나 비용을 낼 필요가 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odpowiedzi są czytane głosami wbudowanymi w iOS, na tym iPhonie. Na Hermesie nie trzeba nic konfigurować ani płacić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As respostas são faladas com as vozes integradas ao iOS, neste iPhone. Nada para configurar ou pagar no Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ответы озвучиваются встроенными голосами iOS на этом iPhone. На Hermes ничего не нужно настраивать или оплачивать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtlar bu iPhone'da iOS'un yerleşik sesleriyle seslendirilir. Hermes'te ayarlanacak ya da ödenecek bir şey yok."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回复会在这台 iPhone 上用 iOS 内置的声音朗读。Hermes 上无需设置，也无需付费。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "回覆會在這支 iPhone 上用 iOS 內建的聲音朗讀。Hermes 上無需設定，也無需付費。"
+          }
+        }
+      }
+    },
+    "For a more natural voice, download an Enhanced or Premium voice in iPhone Settings > Accessibility: search Settings for “Voices” to find them. Conduit uses the best one installed for the reply's language." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für eine natürlichere Stimme lade in den iPhone-Einstellungen unter Bedienungshilfen eine erweiterte oder Premium-Stimme. Suche in den Einstellungen nach „Stimmen“, um sie zu finden. Conduit nutzt die beste installierte Stimme für die Sprache der Antwort."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para una voz más natural, descarga una voz mejorada o premium en Ajustes del iPhone > Accesibilidad: busca «Voces» en Ajustes para encontrarlas. Conduit usa la mejor instalada para el idioma de la respuesta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour une voix plus naturelle, télécharge une voix améliorée ou premium dans Réglages de l’iPhone > Accessibilité : cherche « Voix » dans Réglages pour les trouver. Conduit utilise la meilleure voix installée pour la langue de la réponse."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untuk suara yang lebih alami, unduh suara Ditingkatkan atau Premium di Pengaturan iPhone > Aksesibilitas: cari “Suara” di Pengaturan untuk menemukannya. Conduit memakai suara terbaik yang terpasang untuk bahasa balasan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per una voce più naturale, scarica una voce migliorata o premium in Impostazioni dell’iPhone > Accessibilità: cerca “Voci” in Impostazioni per trovarle. Conduit usa la migliore installata per la lingua della risposta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "より自然な声にするには、iPhoneの「設定」>「アクセシビリティ」で拡張またはプレミアムの声をダウンロードしてください。「設定」で「声」を検索すると見つかります。Conduitは返答の言語に合う、インストール済みの最も良い声を使います。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "더 자연스러운 음성을 원하면 iPhone 설정 > 손쉬운 사용에서 향상된 음성 또는 프리미엄 음성을 다운로드하세요. 설정에서 '음성'을 검색하면 찾을 수 있습니다. Conduit는 답변 언어에 맞게 설치된 가장 좋은 음성을 사용합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby głos brzmiał naturalniej, pobierz głos rozszerzony lub premium w Ustawieniach iPhone’a > Dostępność: wyszukaj „Głosy” w Ustawieniach, aby je znaleźć. Conduit używa najlepszego zainstalowanego głosu dla języka odpowiedzi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para uma voz mais natural, baixe uma voz aprimorada ou premium em Ajustes do iPhone > Acessibilidade: busque “Vozes” nos Ajustes para encontrá-las. O Conduit usa a melhor voz instalada para o idioma da resposta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для более естественного голоса скачайте улучшенный голос или голос премиум в «Настройки» iPhone > «Универсальный доступ»: найдите «Голоса» через поиск в Настройках. Conduit использует лучший установленный голос для языка ответа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Daha doğal bir ses için iPhone Ayarlar > Erişilebilirlik bölümünden Geliştirilmiş veya Premium bir ses indirin: bulmak için Ayarlar'da “Sesler” diye arayın. Conduit, yanıtın dili için yüklü en iyi sesi kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "想要更自然的声音，请在 iPhone 的“设置”>“辅助功能”中下载增强版或高级版声音：在“设置”中搜索“声音”即可找到。Conduit 会为回复的语言使用已安装的最佳声音。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "想要更自然的聲音，請在 iPhone 的「設定」>「輔助使用」中下載加強版或高級版聲音：在「設定」中搜尋「聲音」即可找到。Conduit 會為回覆的語言使用已安裝的最佳聲音。"
           }
         }
       }
