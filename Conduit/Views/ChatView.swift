@@ -1058,19 +1058,24 @@ struct UserMessageContent: View, Equatable {
         }
         .padding(.horizontal, 17)
         .padding(.vertical, 11)
-        .background(
-            LinearGradient(
-                colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 21, style: .continuous)
-        )
+        .background {
+            // The shadow is the bubble shape's own. Cast by the whole bubble,
+            // it was worked out again from the text's UIKit views on every
+            // frame the chat scrolled.
+            RoundedRectangle(cornerRadius: 21, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
+        }
         .overlay {
             RoundedRectangle(cornerRadius: 21, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
         }
-        .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
         .textSelection(.enabled)
     }
 }
@@ -1805,11 +1810,11 @@ private struct ReviewSummaryCard: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 42)
                 }
-                .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.14))
+                .background(Color.conduitAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
         .padding(14)
-        .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.09))
+        .chatCard(cornerRadius: 18, tint: .conduitAura.opacity(0.09))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.conduitAura.opacity(0.18), lineWidth: 1)
@@ -1850,7 +1855,7 @@ private struct ModelChangeSummaryCard: View {
             MessageTimestampLabel(timestamp: timestamp, tone: .supporting)
         }
         .padding(14)
-        .conduitGlassSurface(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
+        .chatCard(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.conduitAccent.opacity(0.16), lineWidth: 1)
@@ -1938,7 +1943,7 @@ private struct VoiceCallMarkerCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .conduitGlassSurface(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
+        .chatCard(cornerRadius: 18, tint: .conduitAccent.opacity(0.07))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.conduitAccent.opacity(0.16), lineWidth: 1)
@@ -2399,7 +2404,7 @@ struct ClarifyCard: View {
                 }
             }
             .padding(16)
-            .conduitGlassSurface(cornerRadius: 22, tint: .conduitAccent.opacity(0.08))
+            .chatCard(cornerRadius: 22, tint: .conduitAccent.opacity(0.08))
         }
     }
 
@@ -2585,7 +2590,7 @@ struct ClarifyQuestionRow: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.12))
+                .background(Color.conduitAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .foregroundStyle(.primary)
             }
             .disabled(!isAnswerable)
@@ -2637,7 +2642,10 @@ struct ClarifyQuestionRow: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .conduitGlassControl(cornerRadius: 14, tint: selection.contains(choice.value) ? .conduitAccent.opacity(0.2) : .conduitAccent.opacity(0.12))
+                    .background(
+                        Color.conduitAccent.opacity(selection.contains(choice.value) ? 0.2 : 0.12),
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
                 }
                 .buttonStyle(.plain)
                 .disabled(!isAnswerable)
@@ -2659,7 +2667,7 @@ struct ClarifyQuestionRow: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .conduitGlassControl(cornerRadius: 14, tint: .conduitAccent.opacity(0.14))
+                .background(Color.conduitAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .foregroundStyle(.primary)
             }
             .disabled(selection.isEmpty || !isAnswerable)
@@ -2830,7 +2838,7 @@ struct ApprovalCard: View {
                 }
             }
             .padding(16)
-            .conduitGlassSurface(cornerRadius: 22, tint: statusColor(for: approval.status).opacity(0.08))
+            .chatCard(cornerRadius: 22, tint: statusColor(for: approval.status).opacity(0.08))
             .confirmationDialog(
                 "Always allow this command?",
                 isPresented: $confirmAlways,
@@ -3036,7 +3044,7 @@ struct InputPromptCard: View {
                 }
             }
             .padding(16)
-            .conduitGlassSurface(cornerRadius: 22, tint: statusColor(for: prompt.status).opacity(0.08))
+            .chatCard(cornerRadius: 22, tint: statusColor(for: prompt.status).opacity(0.08))
             .onChange(of: prompt.status) { _, status in
                 // Drop the typed value once the request is settled either
                 // way. A failed send (.error) keeps it so the user can retry
@@ -3329,5 +3337,16 @@ struct V2SoftTopScrollEdge: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+extension View {
+    /// A card inside the transcript (a question, an approval, a call): a
+    /// faint fill in its tint with a hairline, like the settings cards. Not
+    /// glass: glass redraws what is behind it on every frame the content
+    /// under it moves, so each glass card cost a redraw per frame of scroll.
+    func chatCard(cornerRadius: CGFloat, tint: Color = .clear) -> some View {
+        background(tint, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .settingsCard(cornerRadius: cornerRadius)
     }
 }
