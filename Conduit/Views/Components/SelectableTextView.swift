@@ -119,6 +119,7 @@ struct SelectableTextView: UIViewRepresentable {
         return textView
     }
 
+    @MainActor
     private static func configureBaseTextView(_ textView: UITextView) {
         textView.isEditable = false
         textView.isSelectable = true
@@ -150,8 +151,10 @@ struct SelectableTextView: UIViewRepresentable {
         updateUIViewForTests(uiView, coordinator: context.coordinator)
     }
 
+    @MainActor
     static func dismantleUIView(_ uiView: SelectableTextViewHostView, coordinator: Coordinator) {
         tearDownMountedTextView(in: uiView)
+        SelectableTextViewPool.recycle(uiView.mountedTextView)
     }
 
     @MainActor
@@ -177,6 +180,8 @@ struct SelectableTextView: UIViewRepresentable {
         unregisterMountedTextViewIfNeeded(in: uiView, coordinator: coordinator)
 
         let needsCoordinatedTextView = selectionCoordinator != nil && selectionSegment != nil
+        // Not recycled: the kind only changes when a block gains or loses
+        // its selection coordinator, never as rows scroll.
         if uiView.isUsingCoordinatedTextView != needsCoordinatedTextView {
             let replacementTextView = makeMountedTextView(needsCoordinatedTextView: needsCoordinatedTextView)
             replacementTextView.attributedText = uiView.mountedTextView.attributedText
@@ -461,7 +466,11 @@ struct SelectableTextView: UIViewRepresentable {
         }
     }
 
+    @MainActor
     private func makeMountedTextView(needsCoordinatedTextView: Bool) -> UITextView {
+        if let reused = SelectableTextViewPool.take(coordinated: needsCoordinatedTextView) {
+            return reused
+        }
         if needsCoordinatedTextView {
             let textView = MarkdownSelectionTextView(frame: .zero)
             Self.configureBaseTextView(textView)
@@ -470,6 +479,7 @@ struct SelectableTextView: UIViewRepresentable {
         return Self.makeTextView()
     }
 
+    @MainActor
     private static func tearDownMountedTextView(in hostView: SelectableTextViewHostView) {
         let textView = hostView.mountedTextView
         textView.delegate = nil
@@ -789,6 +799,14 @@ private final class MarkdownSelectionTextView: UITextView {
         onTouchBegan?(self, localPoint)
     }
 
+    /// Clears what a touch in progress left behind, before the pool hands
+    /// this view to another block.
+    func prepareForReuse() {
+        gestureRecognizers?
+            .compactMap { $0 as? MarkdownSelectionObserverGestureRecognizer }
+            .forEach { $0.prepareForReuse() }
+    }
+
     func coordinatedCopiedAttributedText() -> NSAttributedString? {
         guard
             let selectionCoordinator,
@@ -888,6 +906,10 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
         coordinator.updateSelection(windowPoint: windowPoint)
     }
 
+    fileprivate func prepareForReuse() {
+        isDrivingSelectionTouch = false
+    }
+
     func handleTouchEnd() {
         let wasDriving = isDrivingSelectionTouch
         isDrivingSelectionTouch = false
@@ -896,6 +918,65 @@ final class MarkdownSelectionObserverGestureRecognizer: UIGestureRecognizer, UIG
             coordinator.isSelectionGestureActive || wasDriving
         else { return }
         coordinator.endSelection()
+    }
+}
+
+/// Text views whose rows scrolled out of view, kept for the rows that
+/// scroll in next. Making a UITextView is the larger part of what a Markdown
+/// block costs to mount, and a chat takes rows down and builds them again
+/// all the time it scrolls. Only the empty view is kept: teardown clears its
+/// delegate and coordinator, and recycling drops its text and selection,
+/// so a reused view starts out like a new one.
+@MainActor
+enum SelectableTextViewPool {
+    /// Rows leave at one end as they enter at the other, so the pool only
+    /// has to cover a burst, such as a jump to the latest message.
+    static let capacity = 32
+    private static var plain: [UITextView] = []
+    private static var coordinated: [UITextView] = []
+    /// Emptied on a memory warning, and in the background, where no chat
+    /// scrolls.
+    private static let drainObservers = [
+        UIApplication.didReceiveMemoryWarningNotification,
+        UIApplication.didEnterBackgroundNotification,
+    ].map { name in
+        NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+            // Delivered on the main queue.
+            MainActor.assumeIsolated { SelectableTextViewPool.removeAll() }
+        }
+    }
+
+    static func take(coordinated wantsCoordinated: Bool) -> UITextView? {
+        _ = drainObservers
+        return wantsCoordinated ? coordinated.popLast() : plain.popLast()
+    }
+
+    /// Call after `tearDownMountedTextView`, which clears the delegate,
+    /// the coordinator and the selection registration.
+    static func recycle(_ textView: UITextView) {
+        assert(
+            textView.delegate == nil && (textView as? MarkdownSelectionTextView)?.onTouchBegan == nil,
+            "recycle after tearDownMountedTextView"
+        )
+        _ = drainObservers
+        // Pooled twice, one view would be handed to two blocks.
+        guard !plain.contains(where: { $0 === textView }),
+              !coordinated.contains(where: { $0 === textView })
+        else { return }
+        textView.removeFromSuperview()
+        textView.attributedText = NSAttributedString()
+        textView.selectedRange = NSRange(location: 0, length: 0)
+        if let coordinatedTextView = textView as? MarkdownSelectionTextView {
+            coordinatedTextView.prepareForReuse()
+            if coordinated.count < capacity { coordinated.append(textView) }
+        } else if plain.count < capacity {
+            plain.append(textView)
+        }
+    }
+
+    static func removeAll() {
+        plain.removeAll()
+        coordinated.removeAll()
     }
 }
 
