@@ -49,7 +49,7 @@ extension AppState {
     /// Whether a voice call's screen is up or on its way up. Opening a call
     /// uncovers the chat the old drawer hid; the V2 shell keeps its list.
     var isVoiceCallScreenPresented: Bool {
-        showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet
+        showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
     }
 
     /// The conversation a nested row (a call's job, a chat's call) sits

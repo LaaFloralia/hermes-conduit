@@ -302,7 +302,9 @@ extension AppState {
             }
             let errorBefore = self.errorMessage
             let opened: Bool
-            if let engine = self.configuredLiveVoiceEngine(profile: profile) {
+            // Local Live has no model of its own to say the call's news:
+            // classic voice takes it, as openVoiceConversation does.
+            if let engine = self.configuredLiveVoiceEngine(profile: profile), engine != .localLive {
                 HermesCallTrace.shared.note("Opening live voice (\(engine))")
                 self.pendingHermesCall = opening
                 opened = await self.openVoiceConversation(intent)
@@ -560,7 +562,7 @@ extension AppState {
 
     /// What the call trace says of voice: which surfaces are up and running.
     var hermesCallVoiceTraceSummary: String {
-        let liveSheet = showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet
+        let liveSheet = showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
         return "voice sheet: \(showVoiceSheet), live sheet: \(liveSheet), live call: \(isLiveVoiceCallActive), "
             + "classic session: \(voiceConversationController.hasLiveVoiceSession), app on screen: \(isSceneActive)"
     }
@@ -579,6 +581,8 @@ extension AppState {
             gptLiveController.setMicrophoneMuted(muted)
         } else if isGrokLiveActive {
             grokLiveController.setMicrophoneMuted(muted)
+        } else if isLocalLiveActive {
+            localLiveController.setMicrophoneMuted(muted)
         } else if voiceConversationController.hasLiveVoiceSession {
             if muted {
                 voiceConversationController.pauseMicrophone()

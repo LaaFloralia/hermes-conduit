@@ -737,6 +737,10 @@ struct SettingsView: View {
                         speakerBargeIn: appState.liveVoiceSpeakerBargeInEnabled,
                         setSpeakerBargeIn: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
                     ),
+                    localLive: LocalLiveSettingsModel(
+                        enabled: appState.isLocalLiveEnabled,
+                        setEnabled: { appState.setLocalLiveEnabled($0) }
+                    ),
                     liveStyle: appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
                         ? LiveVoiceStyleSettingsModel(
                             profile: appState.activeProfile,

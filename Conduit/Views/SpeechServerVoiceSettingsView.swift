@@ -13,6 +13,9 @@ import UIKit
 
 struct SpeechServerVoiceSettingsView: View {
     @ObservedObject var service: HermesVoiceConfigurationService
+    /// Classic's line about the server speaking replies; Local Live's
+    /// section says it its own way.
+    var showsIntro = true
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var status: SpeechServerVoiceStatus?
@@ -24,9 +27,11 @@ struct SpeechServerVoiceSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(AppLocalization.string("Your speech server speaks the replies in its own voice, so one server listens and speaks. It uses the address set under Speech to text."), systemImage: "server.rack")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            if showsIntro {
+                Label(AppLocalization.string("Your speech server speaks the replies in its own voice, so one server listens and speaks. It uses the address set under Speech to text."), systemImage: "server.rack")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
 
             if let status {
                 if let address = status.modelAddress, let key = status.apiKey {

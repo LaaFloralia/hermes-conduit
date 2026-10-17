@@ -1413,6 +1413,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         liveThread = thread
     }
 
+    /// A call that says nothing but its own replies (Local Live) drops what
+    /// would be said to it: notes on the attached chat's turns, its own turns
+    /// among them, and any job update.
+    func dropPendingNotices() {
+        chatNotes.removeAll()
+        // Each take consumes a notice; the cap only guards the loop, far
+        // above what the job limits (3 running, 10 settled) can queue.
+        var dropped = 0
+        while dropped < 256, takePendingNotice() != nil { dropped += 1 }
+    }
+
     func detachLiveThread() {
         liveThread = nil
         chatNotes.removeAll()

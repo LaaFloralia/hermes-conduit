@@ -161,6 +161,7 @@ struct MainView: View {
                 enabled: keepScreenAwake,
                 voiceSheetShown: appState.showVoiceSheet,
                 liveSheetShown: appState.showGeminiLiveSheet || appState.showGPTLiveSheet || appState.showGrokLiveSheet
+                    || appState.showLocalLiveSheet
             ),
             initial: true
         ) { _, holds in
@@ -190,6 +191,20 @@ struct MainView: View {
                 engine: .grok,
                 onClose: appState.closeGrokLiveConversation,
                 onRetry: { Task { await appState.grokLiveController.start() } }
+            )
+            .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
+            .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $appState.showLocalLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.localLive) }) {
+            GeminiLiveVoiceSheet(
+                controller: appState.localLiveController,
+                jobs: appState.voiceBackgroundJobSupervisor,
+                appState: appState,
+                engine: .local,
+                onClose: appState.closeLocalLiveConversation,
+                onRetry: { Task { await appState.localLiveController.start() } }
             )
             .safeAreaInset(edge: .top, spacing: 0) { voiceScreenshotBanner }
             .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }
@@ -304,6 +319,7 @@ struct MainView: View {
         let otherSheetUp = appState.showModelPicker || appState.showContextSheet || appState.showWorkspaceSheet
             || appState.showGatewaySheet || appState.showAgentsSheet || appState.showVoiceSheet
             || appState.showGeminiLiveSheet || appState.showGrokLiveSheet || appState.showGPTLiveSheet
+            || appState.showLocalLiveSheet
         guard !otherSheetUp else { return }
         // A host without calls (or not heard from yet) has no such page:
         // Settings opens at its start.

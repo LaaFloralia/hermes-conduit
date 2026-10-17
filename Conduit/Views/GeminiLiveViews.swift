@@ -209,12 +209,21 @@ struct GeminiLiveSettingsSection: View {
     }
 }
 
-/// Gemini Live's sheet, which Grok Live shares: they run on the same
-/// conversation controller.
+/// Gemini Live's sheet, which Grok Live and Local Live share: they run on
+/// the same conversation controller.
 struct GeminiLiveVoiceSheet: View {
     enum Engine {
         case gemini
         case grok
+        case local
+
+        var title: String {
+            switch self {
+            case .gemini: return "Gemini Live"
+            case .grok: return "Grok Live"
+            case .local: return AppLocalization.string("Local Live")
+            }
+        }
     }
 
     @ObservedObject var controller: GeminiLiveConversationController
@@ -227,7 +236,7 @@ struct GeminiLiveVoiceSheet: View {
 
     var body: some View {
         LiveVoiceCallSheet(
-            title: engine == .grok ? "Grok Live" : "Gemini Live",
+            title: engine.title,
             phase: Self.callPhase(controller.phase, microphoneMuted: controller.isMicrophoneMuted),
             statusText: statusText,
             transcript: controller.transcript,
@@ -284,16 +293,23 @@ struct GeminiLiveVoiceSheet: View {
     }
 
     private func speakerLabel(_ text: String) -> String {
-        engine == .grok ? AppLocalization.string("Grok: \(text)") : AppLocalization.string("Gemini: \(text)")
+        switch engine {
+        case .gemini: return AppLocalization.string("Gemini: \(text)")
+        case .grok: return AppLocalization.string("Grok: \(text)")
+        // Hermes writes a Local Live call's replies; the server only speaks them.
+        case .local: return AppLocalization.string("Hermes: \(text)")
+        }
     }
 
     private var statusText: String {
         switch controller.phase {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting:
-            return engine == .grok
-                ? AppLocalization.string("Connecting to Grok Live…")
-                : AppLocalization.string("Connecting to Gemini Live…")
+            switch engine {
+            case .gemini: return AppLocalization.string("Connecting to Gemini Live…")
+            case .grok: return AppLocalization.string("Connecting to Grok Live…")
+            case .local: return AppLocalization.string("Connecting to your speech server…")
+            }
         case .reconnecting: return AppLocalization.string("Reconnecting…")
         case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
         case .speaking: return controller.isSpeakerMuted ? AppLocalization.string("Speaking, silenced") : AppLocalization.string("Speaking")

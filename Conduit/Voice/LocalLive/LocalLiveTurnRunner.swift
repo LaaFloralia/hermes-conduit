@@ -1,0 +1,293 @@
+//
+//  LocalLiveTurnRunner.swift
+//  Conduit
+//
+//  A Local Live call's turns, run as Hermes chat turns. The speech server
+//  asks for each reply through the plugin (`conduit.turn`); the words go to
+//  the call's chat as a spoken turn, and Hermes' reply streams back as it
+//  is written, for the server to speak.
+//
+//  One turn at a time, as the plugin sends them. A turn that arrives while
+//  Hermes is still on the last one (the user spoke again) goes into that
+//  reply as a correction, which keeps its work so far, rather than starting
+//  a second turn the chat couldn't take. A cancelled turn only stops being
+//  spoken: Hermes' reply still lands in the chat.
+//
+
+import Foundation
+
+@MainActor
+final class LocalLiveTurnRunner {
+    /// A chat a turn runs in: its live runtime, and the bot profile a Bot
+    /// Chat lives in (nil for the profile in use).
+    struct Chat: Equatable {
+        var runtimeID: String
+        var profile: String? = nil
+    }
+
+    enum Submission: Equatable {
+        /// Hermes started the turn on this runtime.
+        case started(runtimeID: String)
+        /// Hermes took the words without starting a turn for them; the call
+        /// says `message` instead.
+        case notStarted(message: String)
+    }
+
+    struct Backend {
+        /// The chat the next turn runs in, live: the call's chat (resumed
+        /// when it isn't), or one made for a call that has none.
+        var resolveChat: @MainActor () async throws -> Chat
+        /// Whether a turn (typed, or from another device) runs there now.
+        /// Throws when that can't be read: the words aren't sent then, so a
+        /// typed turn is never steered.
+        var isBusy: @MainActor (_ chat: Chat) async throws -> Bool
+        /// Sends `text` as the chat's next spoken turn. Throws
+        /// `VoiceThreadBusyError` when a turn got there first.
+        var submit: @MainActor (_ chat: Chat, _ text: String) async throws -> Submission
+        /// Puts `text` into the reply running on `runtimeID`.
+        var redirect: @MainActor (_ runtimeID: String, _ text: String) async throws -> VoiceRedirectResult
+    }
+
+    var onDelta: (@MainActor (_ turnID: String, _ text: String) -> Void)?
+    var onDone: (@MainActor (_ turnID: String) -> Void)?
+
+    private let backend: Backend
+
+    /// The plugin's open turn, still waiting for its words.
+    private var turn: (id: String, spoke: Bool)?
+    /// The Hermes reply the call follows, from its send until it ends.
+    private struct Reply {
+        let token = UUID()
+        var runtimeID: String
+        /// A correction is on its way to Hermes: its marker or the reply's
+        /// end can arrive before Hermes answers the redirect.
+        var correcting = false
+        /// The completion that arrived while correcting, until Hermes says
+        /// what it did with the words.
+        var heldCompletion: String??
+        /// A correction went into it: the marker for the words it cut off
+        /// isn't its end.
+        var skipsInterruption = false
+        /// Corrections Hermes queued behind it: the current reply's end
+        /// isn't the one the call waits for.
+        var skipsCompletions = 0
+    }
+    private var reply: Reply?
+    private var task: Task<Void, Never>?
+    /// Bumped by every new turn and reset, so older work stops at its next step.
+    private var generation = 0
+
+    init(backend: Backend) {
+        self.backend = backend
+    }
+
+    /// Whether a reply is still being followed (for tests and the trace).
+    var isFollowingReply: Bool { reply != nil }
+    /// Whether a correction is still on its way to Hermes (for tests).
+    var isCorrecting: Bool { reply?.correcting == true }
+
+    func start(turnID: String, text: String) {
+        // The plugin cancels a turn before sending the next: whatever is
+        // still open here has nobody waiting for it.
+        turn = (turnID, false)
+        generation += 1
+        let generation = generation
+        // After the last turn's work: one send or correction at a time, in
+        // the order the user spoke.
+        let previous = task
+        task = Task { @MainActor [weak self] in
+            await previous?.value
+            await self?.run(turnID: turnID, text: text, generation: generation)
+        }
+    }
+
+    func cancel(turnID: String) {
+        guard turn?.id == turnID else { return }
+        turn = nil
+    }
+
+    /// The connection the turns came on ended: none can be answered. The
+    /// reply Hermes is writing is still followed, for the next turn.
+    func dropTurn() {
+        turn = nil
+    }
+
+    /// The call ended.
+    func reset() {
+        generation += 1
+        task?.cancel()
+        task = nil
+        turn = nil
+        reply = nil
+    }
+
+    private func run(turnID: String, text: String, generation: Int) async {
+        // A newer turn came while this one waited: the plugin let it go.
+        guard generation == self.generation else { return }
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else {
+            finish(turnID)
+            return
+        }
+        var sentToken: UUID?
+        do {
+            if let running = reply {
+                reply?.correcting = true
+                reply?.skipsInterruption = true
+                let result: VoiceRedirectResult
+                do {
+                    result = try await backend.redirect(running.runtimeID, words)
+                } catch {
+                    _ = settleCorrection(running.token, result: .notRunning)
+                    throw error
+                }
+                let startsTurn = settleCorrection(running.token, result: result)
+                guard generation == self.generation, startsTurn else { return }
+            }
+            let chat = try await backend.resolveChat()
+            guard generation == self.generation else { return }
+            if try await backend.isBusy(chat) {
+                say(Self.busyLine, to: turnID, generation: generation)
+                return
+            }
+            guard generation == self.generation else { return }
+            // Its events are this turn's from the send on.
+            let following = Reply(runtimeID: chat.runtimeID)
+            reply = following
+            sentToken = following.token
+            switch try await backend.submit(chat, words) {
+            case .started(let runtimeID):
+                if reply?.token == following.token, !runtimeID.isEmpty { reply?.runtimeID = runtimeID }
+            case .notStarted(let message):
+                if reply?.token == following.token { reply = nil }
+                say(message, to: turnID, generation: generation)
+            }
+        } catch {
+            if let sentToken, reply?.token == sentToken { reply = nil }
+            say(error is VoiceThreadBusyError ? Self.busyLine : Self.failureLine, to: turnID, generation: generation)
+        }
+    }
+
+    /// What Hermes did with a correction: true when nothing was running to
+    /// take it, so the words start a turn of their own.
+    private func settleCorrection(_ token: UUID, result: VoiceRedirectResult) -> Bool {
+        // The reply ended meanwhile (an error said so): nothing more here.
+        guard var current = reply, current.token == token else { return false }
+        let held = current.heldCompletion
+        current.correcting = false
+        current.heldCompletion = nil
+        switch result {
+        case .redirected:
+            // The running reply carries on with the new words; a completion
+            // that came first was the cut-off reply's.
+            reply = current
+            return false
+        case .queued:
+            // Hermes runs the words after the reply it was finishing. If that
+            // reply already ended, the next completion is theirs.
+            current.skipsInterruption = false
+            if held == nil { current.skipsCompletions += 1 }
+            reply = current
+            return false
+        case .notRunning:
+            reply = nil
+            return true
+        }
+    }
+
+    // MARK: Hermes' events
+
+    func observe(_ event: StreamEvent) {
+        guard let current = reply else { return }
+        switch event {
+        case .messageStart(let id), .reasoningDelta(let id, _), .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _):
+            guard id == current.runtimeID else { return }
+            // Hermes is writing again after the correction: a marker after
+            // this ends the reply.
+            if !current.correcting { reply?.skipsInterruption = false }
+        case .messageDelta(let id, let text):
+            guard id == current.runtimeID else { return }
+            // Until Hermes takes the correction, the words are the reply
+            // the user talked over: the new turn doesn't say them.
+            guard !current.correcting else { return }
+            reply?.skipsInterruption = false
+            speak(text)
+        case .messageComplete(let id, _, let content, _):
+            guard id == current.runtimeID else { return }
+            // The notice for a reply a correction cut off is never its answer.
+            if VoiceBackgroundJobSupervisor.isInterruptionNotice(content) { return }
+            if current.correcting {
+                reply?.heldCompletion = .some(content)
+                return
+            }
+            if current.skipsCompletions > 0 {
+                reply?.skipsCompletions -= 1
+                return
+            }
+            reply = nil
+            if let turn, !turn.spoke, let content { speak(content) }
+            finishTurn()
+        case .messageInterrupted(let id):
+            guard id == current.runtimeID else { return }
+            if current.skipsInterruption {
+                reply?.skipsInterruption = false
+                return
+            }
+            reply = nil
+            finishTurn()
+        case .messageError(let id, _):
+            guard id == current.runtimeID else { return }
+            reply = nil
+            if let turn { say(Self.errorLine, to: turn.id, generation: generation) }
+        case .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
+            guard id == current.runtimeID, let turn else { return }
+            // Hermes waits on the user: the call says where to answer, and
+            // the reply is still followed for the turn after.
+            say(Self.needsInputLine, to: turn.id, generation: generation)
+        default:
+            return
+        }
+    }
+
+    // MARK: Speaking
+
+    private func speak(_ text: String) {
+        guard let current = turn, !text.isEmpty else { return }
+        turn?.spoke = true
+        onDelta?(current.id, text)
+    }
+
+    private func say(_ text: String, to turnID: String, generation: Int) {
+        guard generation == self.generation, turn?.id == turnID else { return }
+        speak(text)
+        finish(turnID)
+    }
+
+    private func finishTurn() {
+        guard let current = turn else { return }
+        finish(current.id)
+    }
+
+    private func finish(_ turnID: String) {
+        guard turn?.id == turnID else { return }
+        turn = nil
+        onDone?(turnID)
+    }
+
+    // Spoken to the user by their speech server.
+    static var busyLine: String {
+        AppLocalization.string("Hermes is still busy in this chat. Try again in a moment.")
+    }
+
+    static var failureLine: String {
+        AppLocalization.string("Hermes couldn't take that just now.")
+    }
+
+    static var errorLine: String {
+        AppLocalization.string("Hermes ran into a problem with that.")
+    }
+
+    static var needsInputLine: String {
+        AppLocalization.string("Hermes needs your answer in the chat before it can go on.")
+    }
+}

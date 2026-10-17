@@ -280989,6 +280989,1482 @@
           }
         }
       }
+    },
+    "Could not open the Local Live connection." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Local-Live-Verbindung konnte nicht geöffnet werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo abrir la conexión de Local Live."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’ouvrir la connexion Local Live."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat membuka koneksi Local Live."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile aprire la connessione Local Live."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live の接続を開けませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live 연결을 열 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się otworzyć połączenia Local Live."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível abrir a conexão do Local Live."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось открыть подключение Local Live."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live bağlantısı açılamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开 Local Live 连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開啟 Local Live 連線。"
+          }
+        }
+      }
+    },
+    "Update the Conduit plugin on your Hermes host to use Local Live." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere das Conduit-Plugin auf deinem Hermes-Host, um Local Live zu nutzen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualiza el plugin de Conduit en tu servidor Hermes para usar Local Live."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mettez à jour le plugin Conduit sur votre hôte Hermes pour utiliser Local Live."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui plugin Conduit di host Hermes Anda untuk memakai Local Live."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiorna il plugin Conduit sul tuo host Hermes per usare Local Live."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live を使うには、Hermes ホストの Conduit プラグインを更新してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live를 사용하려면 Hermes 호스트의 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaktualizuj wtyczkę Conduit na hoście Hermes, aby używać Local Live."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atualize o plugin do Conduit no seu host Hermes para usar o Local Live."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновите плагин Conduit на хосте Hermes, чтобы пользоваться Local Live."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live'ı kullanmak için Hermes sunucunuzdaki Conduit eklentisini güncelleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 主机上的 Conduit 插件以使用 Local Live。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新 Hermes 主機上的 Conduit 外掛程式以使用 Local Live。"
+          }
+        }
+      }
+    },
+    "Local Live is not available on this Hermes server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live ist auf diesem Hermes-Server nicht verfügbar."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live no está disponible en este servidor Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live n’est pas disponible sur ce serveur Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live tidak tersedia di server Hermes ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live non è disponibile su questo server Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Hermes サーバーでは Local Live を利用できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes 서버에서는 Local Live를 사용할 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live nie jest dostępne na tym serwerze Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Local Live não está disponível neste servidor Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live недоступен на этом сервере Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live bu Hermes sunucusunda kullanılamıyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 服务器无法使用 Local Live。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 伺服器無法使用 Local Live。"
+          }
+        }
+      }
+    },
+    "Your speech server refused the call." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Sprachserver hat den Anruf abgelehnt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor de voz rechazó la llamada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur vocal a refusé l’appel."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suara Anda menolak panggilan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server vocale ha rifiutato la chiamata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーが通話を拒否しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버가 통화를 거부했습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój serwer mowy odrzucił połączenie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor de voz recusou a chamada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш речевой сервер отклонил звонок."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuz aramayı reddetti."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的语音服务器拒绝了通话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的語音伺服器拒絕了通話。"
+          }
+        }
+      }
+    },
+    "Your speech server refused the call: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Sprachserver hat den Anruf abgelehnt: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor de voz rechazó la llamada: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur vocal a refusé l’appel : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suara Anda menolak panggilan: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server vocale ha rifiutato la chiamata: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーが通話を拒否しました：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버가 통화를 거부했습니다: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój serwer mowy odrzucił połączenie: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor de voz recusou a chamada: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш речевой сервер отклонил звонок: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuz aramayı reddetti: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的语音服务器拒绝了通话：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的語音伺服器拒絕了通話：%@"
+          }
+        }
+      }
+    },
+    "Couldn't connect to your speech server: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Verbindung zu deinem Sprachserver: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar con tu servidor de voz: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de se connecter à votre serveur vocal : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat terhubung ke server suara Anda: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile connettersi al tuo server vocale: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーに接続できませんでした：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버에 연결할 수 없습니다: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z twoim serwerem mowy: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível conectar ao seu servidor de voz: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось подключиться к вашему речевому серверу: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuza bağlanılamadı: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到你的语音服务器：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到你的語音伺服器：%@"
+          }
+        }
+      }
+    },
+    "Couldn't connect to your speech server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Verbindung zu deinem Sprachserver."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo conectar con tu servidor de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de se connecter à votre serveur vocal."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat terhubung ke server suara Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile connettersi al tuo server vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーに接続できませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버에 연결할 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się połączyć z twoim serwerem mowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível conectar ao seu servidor de voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось подключиться к вашему речевому серверу."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuza bağlanılamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到你的语音服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到你的語音伺服器。"
+          }
+        }
+      }
+    },
+    "Hermes is still busy in this chat. Try again in a moment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ist in diesem Chat noch beschäftigt. Versuch es gleich noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sigue ocupado en este chat. Inténtalo de nuevo en un momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes est encore occupé dans cette discussion. Réessayez dans un instant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes masih sibuk di obrolan ini. Coba lagi sebentar lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes è ancora occupato in questa chat. Riprova tra un momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes はこのチャットでまだ作業中です。少ししてからもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 채팅에서 아직 작업 중입니다. 잠시 후 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes jest nadal zajęty w tym czacie. Spróbuj ponownie za chwilę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes ainda está ocupado nesta conversa. Tente de novo em um instante."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ещё занят в этом чате. Попробуйте чуть позже."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bu sohbette hâlâ meşgul. Birazdan tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍在这个聊天中忙碌，请稍后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍在這個聊天中忙碌，請稍後再試。"
+          }
+        }
+      }
+    },
+    "Hermes couldn't take that just now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte das gerade nicht annehmen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo atender eso ahora mismo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n’a pas pu prendre cela pour l’instant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak bisa menerimanya saat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito a prenderlo in carico adesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は今それを受け付けられませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 지금은 그 요청을 받을 수 없었습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł teraz tego przyjąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu receber isso agora."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes сейчас не смог это принять."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bunu şu anda alamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 现在无法接收这个请求。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 現在無法接收這個請求。"
+          }
+        }
+      }
+    },
+    "Hermes ran into a problem with that." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ist dabei auf ein Problem gestoßen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tuvo un problema con eso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a rencontré un problème avec cela."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes mengalami masalah dengan itu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha avuto un problema con questa richiesta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes で問題が発生しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에 문제가 생겼습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes napotkał z tym problem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes teve um problema com isso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У Hermes возникла с этим проблема."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bununla ilgili bir sorunla karşılaştı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 处理时遇到了问题。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 處理時遇到了問題。"
+          }
+        }
+      }
+    },
+    "Hermes needs your answer in the chat before it can go on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes braucht deine Antwort im Chat, bevor es weitergeht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes necesita tu respuesta en el chat para continuar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a besoin de votre réponse dans la discussion pour continuer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes perlu jawaban Anda di obrolan sebelum bisa melanjutkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha bisogno della tua risposta nella chat prima di continuare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続けるには、チャットで Hermes に回答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계속하려면 채팅에서 Hermes에 답해 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes potrzebuje twojej odpowiedzi w czacie, zanim będzie mógł kontynuować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes precisa da sua resposta na conversa para continuar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы продолжить, Hermes нужен ваш ответ в чате."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in devam edebilmesi için sohbette yanıtınıza ihtiyacı var."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你在聊天中回答后才能继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 需要你在聊天中回答後才能繼續。"
+          }
+        }
+      }
+    },
+    "Local Live" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local Live"
+          }
+        }
+      }
+    },
+    "Hermes: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes：%@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes：%@"
+          }
+        }
+      }
+    },
+    "Connecting to your speech server…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbindung zu deinem Sprachserver…"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectando con tu servidor de voz…"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion à votre serveur vocal…"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menghubungkan ke server suara Anda…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connessione al tuo server vocale…"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーに接続中…"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버에 연결 중…"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Łączenie z twoim serwerem mowy…"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectando ao seu servidor de voz…"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключение к вашему речевому серверу…"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuza bağlanılıyor…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在连接你的语音服务器…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在連線到你的語音伺服器…"
+          }
+        }
+      }
+    },
+    "A real-time conversation through a speech server you run, with Hermes answering each turn. Needs the Hermes notifier plugin." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Echtzeitgespräch über einen Sprachserver, den du selbst betreibst, bei dem Hermes jede Runde beantwortet. Benötigt das Hermes-Notifier-Plugin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una conversación en tiempo real a través de un servidor de voz propio, en la que Hermes responde cada turno. Requiere el plugin notificador de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une conversation en temps réel via un serveur vocal que vous gérez, où Hermes répond à chaque tour. Nécessite le plugin de notifications Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Percakapan waktu nyata melalui server suara yang Anda jalankan, dengan Hermes menjawab setiap giliran. Memerlukan plugin notifier Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una conversazione in tempo reale tramite un server vocale che gestisci tu, con Hermes che risponde a ogni turno. Richiede il plugin di notifica di Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自分で運用する音声サーバーを使ったリアルタイムの会話で、各ターンに Hermes が答えます。Hermes 通知プラグインが必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 운영하는 음성 서버를 통한 실시간 대화로, 매 턴마다 Hermes가 답합니다. Hermes 알림 플러그인이 필요합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowa w czasie rzeczywistym przez twój własny serwer mowy, w której Hermes odpowiada w każdej turze. Wymaga wtyczki powiadomień Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma conversa em tempo real por um servidor de voz que você mantém, com o Hermes respondendo a cada turno. Requer o plugin notificador do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разговор в реальном времени через ваш собственный речевой сервер, где Hermes отвечает на каждую реплику. Нужен плагин уведомлений Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi çalıştırdığınız bir konuşma sunucusu üzerinden, her sırayı Hermes'in yanıtladığı gerçek zamanlı bir konuşma. Hermes bildirim eklentisi gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过你自己运行的语音服务器进行实时对话，每一轮都由 Hermes 回答。需要 Hermes 通知插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過你自己執行的語音伺服器進行即時對話，每一輪都由 Hermes 回答。需要 Hermes 通知外掛程式。"
+          }
+        }
+      }
+    },
+    "Talk with Hermes through a speech server you run, such as Hugging Face speech-to-speech. The server listens and speaks in its own voice; what you say goes to Hermes as a turn in the call's chat, and Hermes' reply is spoken as it is written. Turning this on turns Gemini Live, GPT-Live and Grok Live off." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprich mit Hermes über einen Sprachserver, den du selbst betreibst, etwa Hugging Face speech-to-speech. Der Server hört zu und spricht mit seiner eigenen Stimme; was du sagst, geht als Runde im Chat des Anrufs an Hermes, und Hermes' Antwort wird gesprochen, während sie entsteht. Wenn du das einschaltest, werden Gemini Live, GPT-Live und Grok Live ausgeschaltet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Habla con Hermes a través de un servidor de voz propio, como Hugging Face speech-to-speech. El servidor escucha y habla con su propia voz; lo que dices llega a Hermes como un turno en el chat de la llamada, y la respuesta de Hermes se dice a medida que se escribe. Al activarlo se desactivan Gemini Live, GPT-Live y Grok Live."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parlez avec Hermes via un serveur vocal que vous gérez, comme Hugging Face speech-to-speech. Le serveur écoute et parle avec sa propre voix ; ce que vous dites est envoyé à Hermes comme un tour dans la discussion de l’appel, et la réponse de Hermes est lue au fur et à mesure qu’elle s’écrit. Activer cette option désactive Gemini Live, GPT-Live et Grok Live."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bicara dengan Hermes melalui server suara yang Anda jalankan, seperti Hugging Face speech-to-speech. Server mendengarkan dan berbicara dengan suaranya sendiri; yang Anda ucapkan dikirim ke Hermes sebagai giliran di obrolan panggilan, dan balasan Hermes diucapkan sambil ditulis. Menyalakan ini akan mematikan Gemini Live, GPT-Live, dan Grok Live."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parla con Hermes tramite un server vocale che gestisci tu, come Hugging Face speech-to-speech. Il server ascolta e parla con la propria voce; ciò che dici arriva a Hermes come un turno nella chat della chiamata, e la risposta di Hermes viene letta mentre viene scritta. Attivandolo si disattivano Gemini Live, GPT-Live e Grok Live."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hugging Face speech-to-speech など、自分で運用する音声サーバーを通して Hermes と話します。サーバーが聞き取り、自分の声で話します。話した内容は通話のチャットのターンとして Hermes に送られ、Hermes の返答は書かれるそばから読み上げられます。オンにすると Gemini Live、GPT-Live、Grok Live はオフになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hugging Face speech-to-speech 같은 직접 운영하는 음성 서버를 통해 Hermes와 대화합니다. 서버가 듣고 자기 목소리로 말합니다. 말한 내용은 통화 채팅의 한 턴으로 Hermes에 전달되고, Hermes의 답은 작성되는 대로 읽어 줍니다. 켜면 Gemini Live, GPT-Live, Grok Live가 꺼집니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmawiaj z Hermesem przez własny serwer mowy, na przykład Hugging Face speech-to-speech. Serwer słucha i mówi własnym głosem; to, co mówisz, trafia do Hermesa jako tura w czacie połączenia, a odpowiedź Hermesa jest czytana na bieżąco, w miarę pisania. Włączenie tej opcji wyłącza Gemini Live, GPT-Live i Grok Live."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fale com o Hermes por um servidor de voz que você mantém, como o Hugging Face speech-to-speech. O servidor escuta e fala com a própria voz; o que você diz vai para o Hermes como um turno na conversa da chamada, e a resposta do Hermes é falada enquanto é escrita. Ativar isto desativa o Gemini Live, o GPT-Live e o Grok Live."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Говорите с Hermes через собственный речевой сервер, например Hugging Face speech-to-speech. Сервер слушает и говорит своим голосом; сказанное уходит в Hermes репликой в чате звонка, а ответ Hermes озвучивается по мере написания. Если включить этот режим, Gemini Live, GPT-Live и Grok Live выключатся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hugging Face speech-to-speech gibi kendi çalıştırdığınız bir konuşma sunucusu üzerinden Hermes ile konuşun. Sunucu dinler ve kendi sesiyle konuşur; söyledikleriniz aramanın sohbetinde bir sıra olarak Hermes'e gider ve Hermes'in yanıtı yazıldıkça okunur. Bunu açmak Gemini Live, GPT-Live ve Grok Live'ı kapatır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过你自己运行的语音服务器（例如 Hugging Face speech-to-speech）与 Hermes 交谈。服务器负责聆听，并用它自己的声音说话；你说的话会作为通话聊天中的一轮发给 Hermes，Hermes 的回复边写边读出来。打开后会关闭 Gemini Live、GPT-Live 和 Grok Live。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過你自己執行的語音伺服器（例如 Hugging Face speech-to-speech）與 Hermes 交談。伺服器負責聆聽，並用它自己的聲音說話；你說的話會作為通話聊天中的一輪傳給 Hermes，Hermes 的回覆邊寫邊唸出來。開啟後會關閉 Gemini Live、GPT-Live 和 Grok Live。"
+          }
+        }
+      }
+    },
+    "1. Your speech server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Dein Sprachserver"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Tu servidor de voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Votre serveur vocal"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Server suara Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Il tuo server vocale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. 音声サーバー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. 음성 서버"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Twój serwer mowy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Seu servidor de voz"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Ваш речевой сервер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. Konuşma sunucunuz"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. 你的语音服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1. 你的語音伺服器"
+          }
+        }
+      }
+    },
+    "2. Point the server at Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Den Server auf Hermes richten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Apunta el servidor a Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Diriger le serveur vers Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Arahkan server ke Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Collega il server a Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. サーバーを Hermes に向ける"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. 서버를 Hermes에 연결"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Skieruj serwer na Hermesa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Aponte o servidor para o Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Направьте сервер на Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. Sunucuyu Hermes'e yönlendirin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. 让服务器指向 Hermes"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "2. 讓伺服器指向 Hermes"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

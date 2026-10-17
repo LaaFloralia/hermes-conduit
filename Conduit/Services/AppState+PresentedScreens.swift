@@ -133,6 +133,8 @@ extension AppState {
             transcript = grokLiveController.transcript
         } else if isGPTLiveActive {
             transcript = gptLiveController.transcript
+        } else if isLocalLiveActive {
+            transcript = localLiveController.transcript
         } else {
             return (nil, "")
         }

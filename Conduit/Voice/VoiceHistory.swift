@@ -56,6 +56,7 @@ enum VoiceCallEngine: String, Equatable, Codable {
     case geminiLive = "gemini-live"
     case gptLive = "gpt-live"
     case grokLive = "grok-live"
+    case localLive = "local-live"
 }
 
 extension VoiceCallEngine {

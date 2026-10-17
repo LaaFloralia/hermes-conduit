@@ -31,6 +31,7 @@ struct VoiceSettingsRoute: View {
     let geminiLive: GeminiLiveSettingsModel?
     let gptLive: GPTLiveSettingsModel?
     let grokLive: GrokLiveSettingsModel?
+    let localLive: LocalLiveSettingsModel?
     let liveStyle: LiveVoiceStyleSettingsModel?
     let voiceJobs: VoiceJobModelSettingsModel?
     let voiceReplies: VoiceReplyModelSettingsModel?
@@ -64,6 +65,7 @@ struct VoiceSettingsRoute: View {
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
+        localLive: LocalLiveSettingsModel? = nil,
         liveStyle: LiveVoiceStyleSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
         voiceReplies: VoiceReplyModelSettingsModel? = nil,
@@ -77,6 +79,7 @@ struct VoiceSettingsRoute: View {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
+        self.localLive = localLive
         self.liveStyle = liveStyle
         self.voiceJobs = voiceJobs
         self.voiceReplies = voiceReplies
@@ -125,6 +128,7 @@ struct VoiceSettingsRoute: View {
             geminiLive: geminiLive,
             gptLive: gptLive,
             grokLive: grokLive,
+            localLive: localLive,
             liveStyle: liveStyle,
             voiceJobs: voiceJobs,
             voiceReplies: voiceReplies,
@@ -208,6 +212,7 @@ struct VoiceSettingsView: View {
     var geminiLive: GeminiLiveSettingsModel?
     var gptLive: GPTLiveSettingsModel?
     var grokLive: GrokLiveSettingsModel?
+    var localLive: LocalLiveSettingsModel?
     var liveStyle: LiveVoiceStyleSettingsModel?
     var voiceJobs: VoiceJobModelSettingsModel?
     var voiceReplies: VoiceReplyModelSettingsModel?
@@ -251,6 +256,7 @@ struct VoiceSettingsView: View {
         geminiLive: GeminiLiveSettingsModel? = nil,
         gptLive: GPTLiveSettingsModel? = nil,
         grokLive: GrokLiveSettingsModel? = nil,
+        localLive: LocalLiveSettingsModel? = nil,
         liveStyle: LiveVoiceStyleSettingsModel? = nil,
         voiceJobs: VoiceJobModelSettingsModel? = nil,
         voiceReplies: VoiceReplyModelSettingsModel? = nil,
@@ -264,6 +270,7 @@ struct VoiceSettingsView: View {
         self.geminiLive = geminiLive
         self.gptLive = gptLive
         self.grokLive = grokLive
+        self.localLive = localLive
         self.liveStyle = liveStyle
         self.voiceJobs = voiceJobs
         self.voiceReplies = voiceReplies
@@ -298,7 +305,8 @@ struct VoiceSettingsView: View {
         _voiceMode = State(initialValue: Self.mode(
             gemini: geminiLive?.enabled == true,
             gpt: gptLive?.enabled == true,
-            grok: grokLive?.enabled == true
+            grok: grokLive?.enabled == true,
+            local: localLive?.enabled == true
         ))
         _appleSpeechAvailability = State(initialValue: appleSpeechAvailability)
         _continuousConversation = State(initialValue: continuousConversation)
@@ -721,7 +729,7 @@ struct VoiceSettingsView: View {
     // MARK: Voice mode
 
     private enum VoiceMode: String, CaseIterable {
-        case classic, gemini, gpt, grok
+        case classic, gemini, gpt, grok, local
 
         var title: String {
             switch self {
@@ -729,6 +737,7 @@ struct VoiceSettingsView: View {
             case .gemini: return AppLocalization.string("Gemini Live")
             case .gpt: return AppLocalization.string("GPT-Live")
             case .grok: return AppLocalization.string("Grok Live")
+            case .local: return AppLocalization.string("Local Live")
             }
         }
 
@@ -742,19 +751,22 @@ struct VoiceSettingsView: View {
                 return AppLocalization.string("A real-time conversation on your Hermes server's ChatGPT sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
             case .grok:
                 return AppLocalization.string("A real-time conversation with Grok through your Hermes server's SuperGrok sign-in that hands the work to Hermes. Needs the Hermes notifier plugin.")
+            case .local:
+                return AppLocalization.string("A real-time conversation through a speech server you run, with Hermes answering each turn. Needs the Hermes notifier plugin.")
             }
         }
     }
 
     /// The mode the profile's saved preferences say is on.
     private var modelVoiceMode: VoiceMode {
-        Self.mode(gemini: geminiLive?.enabled == true, gpt: gptLive?.enabled == true, grok: grokLive?.enabled == true)
+        Self.mode(gemini: geminiLive?.enabled == true, gpt: gptLive?.enabled == true, grok: grokLive?.enabled == true, local: localLive?.enabled == true)
     }
 
-    private static func mode(gemini: Bool, gpt: Bool, grok: Bool) -> VoiceMode {
+    private static func mode(gemini: Bool, gpt: Bool, grok: Bool, local: Bool) -> VoiceMode {
         if gemini { return .gemini }
         if gpt { return .gpt }
         if grok { return .grok }
+        if local { return .local }
         return .classic
     }
 
@@ -765,6 +777,7 @@ struct VoiceSettingsView: View {
             case .gemini: return geminiLive != nil
             case .gpt: return gptLive != nil
             case .grok: return grokLive != nil
+            case .local: return localLive != nil
             }
         }
     }
@@ -808,6 +821,10 @@ struct VoiceSettingsView: View {
             if let grokLive {
                 GrokLiveSettingsSection(model: grokLive, showsModeToggle: false)
                 liveModeKey(Self.xAIKeys, note: AppLocalization.string("Not needed when your Hermes server is signed in with SuperGrok."))
+            }
+        case .local:
+            if localLive != nil {
+                LocalLiveSettingsSection(service: service)
             }
         }
     }
@@ -1121,9 +1138,11 @@ struct VoiceSettingsView: View {
             geminiLive?.setEnabled(false)
             gptLive?.setEnabled(false)
             grokLive?.setEnabled(false)
+            localLive?.setEnabled(false)
         case .gemini: geminiLive?.setEnabled(true)
         case .gpt: gptLive?.setEnabled(true)
         case .grok: grokLive?.setEnabled(true)
+        case .local: localLive?.setEnabled(true)
         }
     }
 
