@@ -58,8 +58,14 @@ struct ChatView: View {
     /// The saved copy is on screen: over an empty transcript, or over any
     /// transcript for a chat picked in the saved list.
     private var showsOfflineCopy: Bool {
-        guard let offline = appState.offlineChatPresentation else { return false }
-        return appState.messages.isEmpty || offline.isPickedChat
+        appState.showsOfflineChatCopy
+    }
+
+    /// A message sent while this live chat was on its way, waiting below
+    /// its rows. The saved copy and a New Chat show their own.
+    private var livePendingComposerSend: PendingComposerSend? {
+        guard !showsOfflineCopy, !appState.showsPendingNewChat else { return nil }
+        return appState.pendingComposerSendOnScreen
     }
 
     private var renderedScrollSessionKey: ChatScrollSessionKey? { viewportInputs.renderedSessionKey }
@@ -360,7 +366,8 @@ struct ChatView: View {
                     transcriptTopBackfillControl
                 }
 
-                if appState.messages.isEmpty && appState.offlineChatPresentation == nil {
+                if appState.messages.isEmpty && appState.offlineChatPresentation == nil
+                    && livePendingComposerSend == nil {
                     EmptyChatState().padding(.top, 60)
                 }
 
@@ -410,6 +417,10 @@ struct ChatView: View {
                     currentToolName: runningToolName,
                     turnStartedAt: turnStartedAt
                 )
+
+                if let pending = livePendingComposerSend {
+                    PendingComposerSendBubble(pending: pending)
+                }
 
                 // Fallback target for ScrollViewProxy before the engine has
                 // found the scroll view.
@@ -3416,6 +3427,7 @@ struct StreamingBubble: View {
 /// A New Chat Hermes hasn't created yet, drawn as the live transcript draws
 /// an empty chat, so the real one takes its place without a jump.
 private struct PendingNewChatView: View {
+    @EnvironmentObject var appState: AppState
     @Environment(\.v2ComposerRests) private var composerFloats
 
     var body: some View {
@@ -3423,7 +3435,12 @@ private struct PendingNewChatView: View {
             LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
                 Color.clear
                     .frame(height: 1)
-                EmptyChatState().padding(.top, 60)
+                // A message sent before Hermes created the chat waits in it.
+                if let pending = appState.pendingComposerSendOnScreen {
+                    PendingComposerSendBubble(pending: pending)
+                } else {
+                    EmptyChatState().padding(.top, 60)
+                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)

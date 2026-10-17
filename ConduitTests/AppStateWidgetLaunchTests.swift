@@ -836,8 +836,13 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertFalse(appState.showSidebar, "the new chat shows straight away")
         XCTAssertEqual(appState.displayedChatTitle, AppLocalization.string("New conversation"))
         XCTAssertNil(appState.activeChatSessionSummary)
-        XCTAssertFalse(appState.composerIsEnabled, "nothing typed there could be sent yet")
-        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Connecting…"))
+        XCTAssertFalse(appState.composerIsEnabled, "remote controls wait for the chat's creation")
+        XCTAssertTrue(appState.composerTakesText, "text can wait for the new chat")
+        XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .send)
+        XCTAssertEqual(
+            appState.composerPlaceholder,
+            AppLocalization.string("Message \(appState.profileDisplayName(appState.activeProfile))…")
+        )
         appState.startNewChat()
         XCTAssertEqual(appState.pendingNewChat, workspace, "another tap shows the same new chat")
 

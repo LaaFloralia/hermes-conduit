@@ -341,9 +341,32 @@ struct OfflineChatPresentation: Equatable {
         let title: String
         /// Every id the row answers to, so the open it leads to is known.
         var sessionIDs: Set<String>
+        /// The id its saved copy and its draft are kept under.
+        var durableSessionID: String? = nil
     }
 
     var isPickedChat: Bool { picked != nil }
+
+    /// The chat the composer types into while this is on screen: the saved
+    /// conversation's, else a picked chat's. Nil with neither.
+    var composerSessionID: String? {
+        displayedTranscript?.sessionID ?? picked?.durableSessionID
+    }
+
+    /// Every id the chat on screen answers to, so a message sent while it
+    /// opens is matched to the chat that lands.
+    var chatSessionIDs: Set<String> {
+        var ids = picked?.sessionIDs ?? []
+        if let durable = picked?.durableSessionID { ids.insert(durable) }
+        if let sessionID = displayedTranscript?.sessionID {
+            ids.insert(sessionID)
+            if let row = snapshot.sessions.first(where: { $0.matches([sessionID]) }) {
+                ids.insert(row.id)
+                ids.formUnion(row.aliases)
+            }
+        }
+        return ids
+    }
 
     init(
         dashboardID: UUID,
@@ -547,6 +570,17 @@ final class OfflineChatCacheStore {
         }
     }
 
+    /// Deletes presentation copies across dashboards, preserving accepted
+    /// unsent messages even when their dashboard is not loaded in memory.
+    func removeSavedChats() {
+        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for file in files where !file.lastPathComponent.hasSuffix(Self.pendingSendSuffix) {
+            try? fileManager.removeItem(at: file)
+        }
+    }
+
     func removeAll() {
         try? fileManager.removeItem(at: directory)
     }
@@ -567,6 +601,63 @@ final class OfflineChatCacheStore {
     func recordChatList(_ list: SavedChatList, dashboardID: UUID, profile: String) {
         guard let data = try? JSONEncoder().encode(list) else { return }
         write(data, to: chatListFileURL(dashboardID: dashboardID, profile: profile))
+    }
+
+    /// Keeps a message waiting for its chat, so a launch after the app was
+    /// stopped can put it back in its chat's draft. Its file sits beside its
+    /// scope's, so the same wipes remove it. Intentionally synchronous, like
+    /// the saved-chat cache: recording finishes before the composer clears
+    /// its submitted draft.
+    @discardableResult
+    func recordPendingSend(_ pending: PendingComposerSend) -> Bool {
+        guard let data = try? JSONEncoder().encode(pending) else { return false }
+        guard write(data, to: pendingSendFileURL(dashboardID: pending.dashboardID, profile: pending.profile, id: pending.id)) else { return false }
+        // Migrate the earlier single-file format only after the new copy is safe.
+        let legacy = pendingSendFileURL(dashboardID: pending.dashboardID, profile: pending.profile)
+        if let data = try? Data(contentsOf: legacy),
+           let old = try? JSONDecoder().decode(PendingComposerSend.self, from: data),
+           old.id == pending.id {
+            try? fileManager.removeItem(at: legacy)
+        }
+        return true
+    }
+
+    /// The messages an earlier run left waiting on this dashboard.
+    func loadPendingSends(dashboardID: UUID) -> [PendingComposerSend] {
+        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        let prefix = dashboardID.uuidString.lowercased() + "--"
+        var seen: Set<UUID> = []
+        return files
+            .filter { $0.lastPathComponent.hasPrefix(prefix) && $0.lastPathComponent.hasSuffix(Self.pendingSendSuffix) }
+            // Per-message filenames sort before the legacy scope filename.
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .compactMap { file -> PendingComposerSend? in
+                guard let data = try? Data(contentsOf: file),
+                      let pending = try? JSONDecoder().decode(PendingComposerSend.self, from: data) else { return nil }
+                // Its own scope's file: one copied under another name is left.
+                let expected = pendingSendFileURL(dashboardID: dashboardID, profile: pending.profile, id: pending.id)
+                let legacy = pendingSendFileURL(dashboardID: dashboardID, profile: pending.profile)
+                guard pending.dashboardID == dashboardID,
+                      (file.lastPathComponent == expected.lastPathComponent || file.lastPathComponent == legacy.lastPathComponent),
+                      seen.insert(pending.id).inserted else { return nil }
+                return pending
+            }
+            .sorted { $0.queuedAt < $1.queuedAt }
+    }
+
+    /// Removes only this message, including an earlier single-file copy.
+    func removePendingSend(id: UUID, dashboardID: UUID, profile: String) {
+        for url in [
+            pendingSendFileURL(dashboardID: dashboardID, profile: profile, id: id),
+            pendingSendFileURL(dashboardID: dashboardID, profile: profile),
+        ] {
+            guard let data = try? Data(contentsOf: url),
+                  let pending = try? JSONDecoder().decode(PendingComposerSend.self, from: data),
+                  pending.id == id, pending.dashboardID == dashboardID, pending.profile == profile else { continue }
+            try? fileManager.removeItem(at: url)
+        }
     }
 
     @discardableResult
@@ -591,8 +682,8 @@ final class OfflineChatCacheStore {
             try data.write(to: url, options: Self.writeOptions)
             return true
         } catch {
-            // Best effort: the cache is a convenience copy, never a source of
-            // truth, so a failed write only means a colder next launch.
+            // Display caches are best effort. Pending sends check the result
+            // before accepting the user's words and clearing their draft.
             return false
         }
     }
@@ -611,6 +702,13 @@ final class OfflineChatCacheStore {
 
     func chatListFileURL(dashboardID: UUID, profile: String) -> URL {
         directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile)).list.json")
+    }
+
+    private static let pendingSendSuffix = ".pending-send.json"
+
+    func pendingSendFileURL(dashboardID: UUID, profile: String, id: UUID? = nil) -> URL {
+        let message = id.map { "." + $0.uuidString.lowercased() } ?? ""
+        return directory.appendingPathComponent("\(Self.scopeFileStem(dashboardID: dashboardID, profile: profile))\(message)\(Self.pendingSendSuffix)")
     }
 
     /// "<dashboard>--<profile>": the dashboard prefix is what

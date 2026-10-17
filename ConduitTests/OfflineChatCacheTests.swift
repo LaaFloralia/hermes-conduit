@@ -364,23 +364,33 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .unavailable)
     }
 
-    /// While Hermes is on its way the copy reads as the chat, and the
-    /// composer says Conduit is connecting. Only a real offline state calls
-    /// it a copy.
+    /// While Hermes is on its way the copy reads as the chat and takes a
+    /// message to send once the chat is ready. Only a real offline state
+    /// calls it a copy.
     func testTheCopyReadsAsTheChatWhileHermesIsOnItsWay() {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        let placeholder = AppLocalization.string("Message \(appState.profileDisplayName(appState.activeProfile))…")
 
         appState.isConnecting = true
-        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Connecting…"))
+        XCTAssertEqual(appState.composerPlaceholder, placeholder)
+        XCTAssertTrue(appState.composerWaitsForChat)
+        XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .send)
+        XCTAssertEqual(
+            appState.composerAction(hasText: true, hasAttachments: true), .unavailable,
+            "Attachments wait for the chat itself"
+        )
         appState.isConnecting = false
         appState.isConnected = true
-        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Checking agent activity…"))
-        XCTAssertFalse(appState.composerIsEnabled, "Still read-only until the chat itself lands")
+        XCTAssertEqual(appState.composerPlaceholder, placeholder)
+        XCTAssertTrue(appState.composerTakesText)
+        XCTAssertFalse(appState.composerIsEnabled, "Its controls wait until the chat itself lands")
 
         appState.isConnected = false
         XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Read-only saved copy"))
+        XCTAssertFalse(appState.composerWaitsForChat)
+        XCTAssertFalse(appState.composerTakesText)
     }
 
     /// A chat tapped in the saved list shows at once (its saved copy, or its
@@ -1337,6 +1347,533 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(store.loadChatList(dashboardID: dashboard, profile: "default"), "Sign-out wipes the saved list")
     }
 
+    // MARK: - Sending while connecting
+
+    /// A message sent over the copy waits in it and in its file; the next
+    /// one joins it, and a slash command isn't taken.
+    func testAMessageSentOverTheCopyWaitsInItsChat() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+
+        XCTAssertTrue(appState.sendWhenConnected("  Hello  ", replyReference: nil))
+        let pending = try XCTUnwrap(appState.pendingComposerSendOnScreen)
+        XCTAssertEqual(pending.draftText, "Hello")
+        XCTAssertEqual(pending.draftSessionID, "stored-a")
+        XCTAssertTrue(pending.sessionIDs.contains("stored-a"))
+        XCTAssertFalse(pending.isNewChat)
+        XCTAssertEqual(pending.title, "A")
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [pending.id])
+
+        XCTAssertTrue(appState.sendWhenConnected("Again", replyReference: nil))
+        XCTAssertEqual(appState.pendingComposerSendOnScreen?.draftText, "Hello\n\nAgain")
+        XCTAssertEqual(appState.pendingComposerSendOnScreen?.id, pending.id, "One waiting message per chat")
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.draftText), ["Hello\n\nAgain"])
+
+        XCTAssertFalse(appState.sendWhenConnected("/new", replyReference: nil))
+        XCTAssertTrue(appState.messages.isEmpty, "Nothing went into the live transcript")
+    }
+
+    /// Typing over the copy picks its chat, so the one being typed in is
+    /// the one that opens.
+    func testTypingOverTheCopyPicksItsChat() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        XCTAssertNil(appState.chatPickedFromSavedListIDForTesting)
+
+        appState.noteComposerUserEdit()
+
+        XCTAssertEqual(appState.chatPickedFromSavedListIDForTesting, "stored-a")
+        let presentation = try XCTUnwrap(appState.offlineChatPresentation)
+        XCTAssertTrue(presentation.isPickedChat)
+        XCTAssertEqual(presentation.displayedMessages.map(\.id), ["u1", "a1"], "The copy stays on screen")
+        XCTAssertEqual(appState.composerDraftKeyOnScreen.sessionID, "stored-a")
+    }
+
+    /// Edit puts the waiting message back in the composer; once it's there
+    /// its file goes.
+    func testEditingTheWaitingMessagePutsItBackInTheComposer() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Hello", replyReference: nil)
+
+        appState.editPendingComposerSend()
+
+        XCTAssertNil(appState.pendingComposerSend)
+        let request = try XCTUnwrap(appState.composerRestoreRequests.first)
+        XCTAssertEqual(appState.composerRestoreRequests.count, 1)
+        XCTAssertEqual(request.draft.text, "Hello")
+        XCTAssertTrue(request.focuses)
+        XCTAssertEqual(request.key, appState.composerDraftKeyOnScreen)
+        XCTAssertNil(appState.composerNotice)
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).count, 1, "Kept until the words are back")
+
+        appState.consumeComposerRestoreRequest(request.id)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        XCTAssertTrue(store.loadPendingSends(dashboardID: dashboard).isEmpty)
+    }
+
+    /// Another chat landing sends it nowhere: it goes back to its own
+    /// chat's draft, with a line saying so.
+    func testAMessageForAChatThatDidNotLandGoesBackToItsDraft() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Hello", replyReference: nil)
+
+        appState.dismissOfflineChatPresentation()
+        appState.sessions = [session("stored-b")]
+        appState.activeSessionId = "stored-b"
+        appState.settlePendingComposerSend()
+
+        XCTAssertNil(appState.pendingComposerSend)
+        let request = try XCTUnwrap(appState.composerRestoreRequests.first)
+        XCTAssertEqual(request.key, ComposerDraftKey(profile: "default", sessionID: "stored-a"))
+        XCTAssertEqual(request.draft.text, "Hello")
+        XCTAssertFalse(request.focuses)
+        XCTAssertEqual(
+            appState.composerNotice,
+            AppLocalization.string("Your message to “\("A")” wasn't sent. It's back in that chat's draft.")
+        )
+        XCTAssertTrue(appState.messages.isEmpty, "Nothing was sent")
+    }
+
+    /// Once its chat lands and is ready, it goes through the normal send,
+    /// and its file goes with it.
+    func testTheWaitingMessageSendsOnceItsChatIsReady() async throws {
+        let sent = SentPrompts()
+        let (appState, store, dashboard) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                sent.prompts.append((sessionID, text))
+                return .accepted
+            })
+        )
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Hello", replyReference: nil)
+        XCTAssertTrue(sent.prompts.isEmpty)
+
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.dismissOfflineChatPresentation()
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnecting = false
+        appState.isConnected = true
+
+        await waitUntil { !sent.prompts.isEmpty }
+        XCTAssertEqual(sent.prompts.map { $0.text }, ["Hello"])
+        XCTAssertEqual(sent.prompts.map { $0.sessionID }, ["stored-a"])
+        XCTAssertNil(appState.pendingComposerSend)
+        await waitUntil { store.loadPendingSends(dashboardID: dashboard).isEmpty }
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+    }
+
+    /// A message an earlier run left waiting comes back as a draft at
+    /// launch and is never sent on its own.
+    func testAMessageLeftWaitingComesBackAsADraftAtLaunch() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let left = PendingComposerSend(
+            draftText: "Left behind",
+            replyReference: nil,
+            dashboardID: dashboard,
+            profile: "default",
+            sessionIDs: ["stored-a"],
+            draftSessionID: "stored-a",
+            isNewChat: false,
+            title: "A"
+        )
+        store.recordPendingSend(left)
+        seedCopy(store, dashboard: dashboard)
+        let (appState, _, _) = makeAppState(sharing: store, dashboard: dashboard)
+
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        XCTAssertNil(appState.pendingComposerSend, "Not sent on its own")
+        let request = try XCTUnwrap(appState.composerRestoreRequests.first)
+        XCTAssertEqual(request.pending?.id, left.id)
+        XCTAssertEqual(request.draft.text, "Left behind")
+        XCTAssertEqual(request.key, left.draftKey)
+        XCTAssertNotNil(appState.composerNotice)
+    }
+
+    /// Away a long time, the chat may have moved on: the message comes back
+    /// as a draft. A short time away keeps it waiting.
+    func testALongAbsenceReturnsTheWaitingMessageToItsDraft() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Hello", replyReference: nil)
+        let queuedAt = try XCTUnwrap(appState.pendingComposerSend?.queuedAt)
+        let leftAt = queuedAt.addingTimeInterval(1)
+        appState.lastLeftForegroundAt = leftAt
+
+        appState.returnPendingComposerSendAfterLongAbsence(now: leftAt.addingTimeInterval(60))
+        XCTAssertNotNil(appState.pendingComposerSend)
+
+        appState.returnPendingComposerSendAfterLongAbsence(
+            now: leftAt.addingTimeInterval(AppState.pendingComposerSendAbsenceLimit + 1)
+        )
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertEqual(appState.composerRestoreRequests.first?.draft.text, "Hello")
+        XCTAssertEqual(
+            appState.composerNotice,
+            AppLocalization.string("Your message wasn't sent. It's back in the composer.")
+        )
+    }
+
+    /// The waiting file goes with its dashboard and with a full wipe, but a
+    /// dashboard switch keeps it for the next visit.
+    func testTheWaitingFileLeavesWithItsDashboard() {
+        let store = makeStore()
+        let one = UUID()
+        let two = UUID()
+        for dashboard in [one, two] {
+            store.recordPendingSend(PendingComposerSend(
+                draftText: "Hello",
+                replyReference: nil,
+                dashboardID: dashboard,
+                profile: "default",
+                sessionIDs: [],
+                draftSessionID: ComposerDraftKey.newConversationSessionID,
+                isNewChat: true,
+                title: "New conversation"
+            ))
+        }
+        XCTAssertEqual(store.loadPendingSends(dashboardID: one).count, 1)
+
+        store.removeDashboard(one)
+        XCTAssertTrue(store.loadPendingSends(dashboardID: one).isEmpty)
+        XCTAssertEqual(store.loadPendingSends(dashboardID: two).count, 1)
+
+        store.removeAll()
+        XCTAssertTrue(store.loadPendingSends(dashboardID: two).isEmpty)
+    }
+
+    /// A newer message in the same chat's file isn't removed by the older
+    /// one's words coming back.
+    func testRemovingAnOlderWaitingMessageKeepsANewerOne() {
+        let store = makeStore()
+        let dashboard = UUID()
+        func pending(_ text: String) -> PendingComposerSend {
+            PendingComposerSend(
+                draftText: text,
+                replyReference: nil,
+                dashboardID: dashboard,
+                profile: "default",
+                sessionIDs: ["stored-a"],
+                draftSessionID: "stored-a",
+                isNewChat: false,
+                title: "A"
+            )
+        }
+        let older = pending("Older")
+        let newer = pending("Newer")
+        store.recordPendingSend(older)
+        store.recordPendingSend(newer)
+
+        store.removePendingSend(id: older.id, dashboardID: dashboard, profile: "default")
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [newer.id])
+    }
+
+    func testAWaitingSendCannotFollowAReattributedRuntimeAlias() throws {
+        let (appState, _, dashboard) = makeAppState()
+        let pending = PendingComposerSend(
+            draftText: "Only for A", replyReference: nil, dashboardID: dashboard,
+            profile: "default", sessionIDs: ["stored-a", "runtime-x"],
+            draftSessionID: "stored-a", isNewChat: false, title: "A"
+        )
+        var original = session("stored-a")
+        original.storedSessionId = "stored-a"
+        original.alternateIds = ["runtime-x"]
+        appState.sessions = [original]
+        appState.activeSessionId = "runtime-x"
+        XCTAssertTrue(appState.isOnScreen(pending))
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-x"]
+        appState.sessions = [other]
+        appState.activeSessionId = "runtime-x"
+        appState.pendingComposerSend = pending
+        appState.isConnected = true
+
+        XCTAssertFalse(appState.isOnScreen(pending), "The old alias now belongs to B")
+        XCTAssertFalse(appState.composerDraftKeysAreSameChat(
+            pending.draftKey, ComposerDraftKey(profile: "default", sessionID: "runtime-x")
+        ), "Restoration must not follow the stale scroll alias either")
+        appState.settlePendingComposerSend()
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertEqual(appState.composerRestoreRequests.first?.key.sessionID, "stored-a")
+        XCTAssertTrue(appState.messages.isEmpty)
+    }
+
+    func testANewChatsWaitingMessageCannotFollowAReattributedCreatedRuntime() throws {
+        let (appState, store, dashboard) = makeAppState()
+        let pending = PendingComposerSend(
+            draftText: "Only for the new chat", replyReference: nil, dashboardID: dashboard,
+            profile: "default", sessionIDs: [],
+            draftSessionID: ComposerDraftKey.newConversationSessionID, isNewChat: true, title: "New conversation"
+        )
+        XCTAssertTrue(store.recordPendingSend(pending))
+        var created = session("stored-a")
+        created.storedSessionId = "stored-a"
+        created.alternateIds = ["runtime-x"]
+        appState.sessions = [created]
+        appState.activeSessionId = "runtime-x"
+        appState.newChatOpenedSessionID = "runtime-x"
+        appState.newChatOpenedDurableSessionID = "stored-a"
+        XCTAssertTrue(appState.isOnScreen(pending))
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-x"]
+        appState.sessions = [other]
+
+        XCTAssertFalse(appState.isOnScreen(pending))
+        appState.restoreFailedPendingComposerSend(
+            pending, submittedDraftKey: ComposerDraftKey(profile: "default", sessionID: "stored-a")
+        )
+        XCTAssertEqual(appState.composerRestoreRequests.first?.key.sessionID, "stored-a")
+    }
+
+    func testFailedPendingSubmissionDoesNotRestoreIntoAReattributedRuntimeDraft() throws {
+        let (appState, store, dashboard) = makeAppState()
+        let pending = PendingComposerSend(
+            draftText: "Only for A", replyReference: nil, dashboardID: dashboard,
+            profile: "default", sessionIDs: ["stored-a", "runtime-x"],
+            draftSessionID: "stored-a", isNewChat: false, title: "A"
+        )
+        XCTAssertTrue(store.recordPendingSend(pending))
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-x"]
+        appState.sessions = [other]
+        appState.activeSessionId = "runtime-x"
+
+        appState.restoreFailedPendingComposerSend(
+            pending, submittedDraftKey: ComposerDraftKey(profile: "default", sessionID: "runtime-x")
+        )
+
+        XCTAssertEqual(appState.composerRestoreRequests.first?.key, pending.draftKey)
+    }
+
+    func testAWaitingSendStillMatchesItsDurableChatAfterRuntimeRotation() {
+        let (appState, _, dashboard) = makeAppState()
+        let pending = PendingComposerSend(
+            draftText: "Only for A", replyReference: nil, dashboardID: dashboard,
+            profile: "default", sessionIDs: ["stored-a", "runtime-old"],
+            draftSessionID: "stored-a", isNewChat: false, title: "A"
+        )
+        var current = session("stored-a")
+        current.storedSessionId = "stored-a"
+        current.alternateIds = ["runtime-new"]
+        appState.sessions = [current]
+        appState.activeSessionId = "runtime-new"
+
+        XCTAssertTrue(appState.isOnScreen(pending))
+    }
+
+    func testTypingInAPendingNewChatDoesNotPickTheHiddenSavedCopy() {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.showLogin = false
+        appState.isConnecting = true
+        appState.startNewChat()
+        XCTAssertTrue(appState.showsPendingNewChat)
+
+        appState.noteComposerUserEdit()
+
+        XCTAssertNil(appState.chatPickedFromSavedListIDForTesting)
+        XCTAssertEqual(appState.composerChatOnScreen, .newChat)
+        XCTAssertFalse(appState.offlineChatPresentation?.isPickedChat == true)
+    }
+
+    func testFailedPendingSubmissionCannotRestoreWordsAfterSignOut() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Account A's words", replyReference: nil)
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        let key = appState.composerDraftKeyOnScreen
+        appState.pendingComposerSend = nil // Delivery has taken ownership.
+        appState.disconnect()
+        XCTAssertTrue(store.loadPendingSends(dashboardID: dashboard).isEmpty)
+
+        // The suspended submission's failure arrives after account cleanup.
+        appState.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)
+
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        XCTAssertNil(appState.composerNotice)
+    }
+
+    func testFailedPendingSubmissionRestoresWordsWhileTheirFileStillBelongsToTheAccount() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Restore these words", replyReference: nil)
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        let key = appState.composerDraftKeyOnScreen
+        appState.pendingComposerSend = nil
+
+        appState.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)
+
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.draft.text), [pending.draftText])
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [pending.id])
+    }
+
+    func testFailedPendingSubmissionDoesNotRestoreWordsTwice() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Only once", replyReference: nil)
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        let key = appState.composerDraftKeyOnScreen
+        appState.pendingComposerSend = nil
+        appState.deliveringPendingComposerSendIDs.insert(pending.id)
+
+        // A switch back to the dashboard while the send is out leaves it be.
+        appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+
+        appState.deliveringPendingComposerSendIDs.remove(pending.id)
+        appState.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)
+        appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
+        appState.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)
+
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.draft.text), [pending.draftText])
+    }
+
+    func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {
+        let (appState, store, dashboard) = makeAppState()
+        let otherDashboard = UUID()
+        seedCopy(store, dashboard: otherDashboard)
+        let leftBehind = PendingComposerSend(
+            draftText: "Waiting on the other dashboard", replyReference: nil,
+            dashboardID: otherDashboard, profile: "default", sessionIDs: ["stored-a"],
+            draftSessionID: "stored-a", isNewChat: false, title: "A"
+        )
+        XCTAssertTrue(store.recordPendingSend(leftBehind))
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        XCTAssertTrue(appState.sendWhenConnected("Waiting here", replyReference: nil))
+        let here = try XCTUnwrap(appState.pendingComposerSend)
+
+        appState.deleteSavedChats()
+
+        XCTAssertNil(store.load(dashboardID: otherDashboard, profile: "default"))
+        XCTAssertNil(store.load(dashboardID: dashboard, profile: "default"))
+        XCTAssertEqual(store.loadPendingSends(dashboardID: otherDashboard).map(\.id), [leftBehind.id])
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [here.id])
+    }
+
+    func testFailedPersistenceDoesNotAcceptOrReplaceAWaitingSend() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        let directory = store.pendingSendFileURL(dashboardID: dashboard, profile: "default").deletingLastPathComponent()
+        try FileManager.default.removeItem(at: directory)
+        try Data().write(to: directory) // A file cannot contain the cache's files.
+
+        XCTAssertFalse(appState.sendWhenConnected("Keep in composer", replyReference: nil))
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+
+        try FileManager.default.removeItem(at: directory)
+        XCTAssertTrue(appState.sendWhenConnected("Already waiting", replyReference: nil))
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        try FileManager.default.removeItem(at: directory)
+        try Data().write(to: directory)
+
+        XCTAssertFalse(appState.sendWhenConnected("Keep this addition in composer", replyReference: nil))
+        XCTAssertEqual(appState.pendingComposerSend, pending, "A failed append cannot change the accepted message")
+    }
+
+    func testStopRemainsAvailableWhileAMessageWaitsOnARunningLiveChat() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Waiting", replyReference: nil)
+        appState.dismissOfflineChatPresentation()
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+        appState.handleStreamEvent(.sessionBusy(sessionId: "stored-a", busy: true))
+
+        XCTAssertEqual(appState.turnState, .running)
+        XCTAssertNotNil(appState.pendingComposerSendOnScreen)
+        XCTAssertEqual(appState.composerAction(hasText: false, hasAttachments: false), .stop)
+        XCTAssertEqual(appState.composerAction(hasText: false, hasAttachments: true), .stop)
+        XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: false), .send,
+                       "Further text joins the waiting message in order")
+        XCTAssertEqual(appState.composerAction(hasText: true, hasAttachments: true), .unavailable)
+    }
+
+    func testRestoringOneMessageDoesNotOverwriteAnotherWaitingMessage() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        XCTAssertTrue(appState.sendWhenConnected("First", replyReference: nil))
+        appState.editPendingComposerSend()
+        let request = try XCTUnwrap(appState.composerRestoreRequests.first)
+
+        XCTAssertTrue(appState.sendWhenConnected("Second", replyReference: nil))
+        let waiting = try XCTUnwrap(appState.pendingComposerSend)
+        XCTAssertEqual(Set(store.loadPendingSends(dashboardID: dashboard).map(\.id)),
+                       [try XCTUnwrap(request.pending).id, waiting.id])
+
+        appState.consumeComposerRestoreRequest(request.id)
+        XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [waiting.id])
+    }
+
+    func testRestoreNoticeUsesTheActiveProfileEvenWhenAnotherProfileIsNewer() throws {
+        let (appState, store, dashboard) = makeAppState()
+        for (offset, profile) in ["default", "work"].enumerated() {
+            store.recordPendingSend(PendingComposerSend(
+                draftText: profile, replyReference: nil, dashboardID: dashboard,
+                profile: profile, sessionIDs: [profile], draftSessionID: profile,
+                isNewChat: false, title: profile,
+                queuedAt: Date(timeIntervalSince1970: Double(offset))
+            ))
+        }
+        appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
+        XCTAssertEqual(appState.composerRestoreRequests.count, 2)
+        let active = try XCTUnwrap(appState.composerRestoreRequests.first { $0.key.profile == "default" }?.pending)
+        XCTAssertEqual(appState.composerNotice, appState.pendingComposerSendNotice(for: active, onScreen: false))
+    }
+
+    func testProfileSwitchClearsNoticeAndDoesNotReplaceItWithTheOutgoingProfilesNotice() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Hello", replyReference: nil)
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        appState.returnPendingComposerSendToDraft(pending)
+        XCTAssertNotNil(appState.composerNotice)
+
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.composerNotice)
+        appState.returnPendingComposerSendToDraft(pending)
+        XCTAssertNil(appState.composerNotice)
+    }
+
     // MARK: - Helpers
 
     private func makeStore() -> OfflineChatCacheStore {
@@ -1498,4 +2035,10 @@ final class OfflineChatCacheTests: XCTestCase {
 @MainActor
 private final class OpenedChats {
     var ids: [String] = []
+}
+
+/// The prompts a test's send seam received, in order.
+@MainActor
+private final class SentPrompts {
+    var prompts: [(sessionID: String, text: String)] = []
 }

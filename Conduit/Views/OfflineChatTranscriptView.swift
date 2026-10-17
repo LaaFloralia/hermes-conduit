@@ -50,13 +50,18 @@ struct OfflineChatTranscriptView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.top, 60)
-                    } else if presentation.displayedRows.isEmpty {
+                    } else if presentation.displayedRows.isEmpty && appState.pendingComposerSendOnScreen == nil {
                         Text("No saved copy of this conversation")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.top, 60)
                     }
                     OfflineChatRows(rows: presentation.displayedRows)
+                    // A message sent while the chat is on its way waits
+                    // below the copy.
+                    if let pending = appState.pendingComposerSendOnScreen {
+                        PendingComposerSendBubble(pending: pending)
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
@@ -70,6 +75,10 @@ struct OfflineChatTranscriptView: View {
             // it is the conversation on screen.
             .onChange(of: appState.chatScrollToTopRequest) { _, _ in
                 withAnimation { proxy.scrollTo(Self.topAnchor, anchor: .top) }
+            }
+            .onChange(of: appState.pendingComposerSendOnScreen?.draftText) { _, text in
+                guard text != nil else { return }
+                withAnimation { proxy.scrollTo(PendingComposerSendBubble.scrollID, anchor: .bottom) }
             }
             }
         }

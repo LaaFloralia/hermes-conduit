@@ -63,6 +63,15 @@ final class ComposerDraftStore {
         evictIfNeeded()
     }
 
+    func hasDraft(for key: ComposerDraftKey) -> Bool {
+        drafts[key] != nil
+    }
+
+    /// The keys with a draft, most recently used first.
+    var keys: [ComposerDraftKey] {
+        order.reversed()
+    }
+
     func saveIfMissing(_ draft: ComposerDraft, for key: ComposerDraftKey) {
         guard drafts[key] == nil else { return }
         save(draft, for: key)

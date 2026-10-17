@@ -283618,6 +283618,416 @@
         }
       }
     },
+    "Sends when connected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gesendet, sobald verbunden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se enviará al conectarse"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoi dès la connexion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Akan dikirim saat terhubung"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verrà inviato alla connessione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続後に送信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결되면 전송돼요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zostanie wysłana po połączeniu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Será enviada ao conectar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправится после подключения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlanınca gönderilecek"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接后发送"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線後傳送"
+          }
+        }
+      }
+    },
+    "Your message for a new chat wasn't sent. It's saved for your next new chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Nachricht für einen neuen Chat wurde nicht gesendet. Sie ist für deinen nächsten neuen Chat gespeichert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu mensaje para un chat nuevo no se envió. Está guardado para tu próximo chat nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre message pour une nouvelle discussion n'a pas été envoyé. Il est enregistré pour votre prochaine nouvelle discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan Anda untuk obrolan baru tidak terkirim. Pesan disimpan untuk obrolan baru Anda berikutnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo messaggio per una nuova chat non è stato inviato. È salvato per la tua prossima nuova chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規チャット宛てのメッセージは送信されませんでした。次の新規チャット用に保存されています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 채팅에 보낼 메시지가 전송되지 않았어요. 다음 새 채팅을 위해 저장해 두었어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoja wiadomość do nowego czatu nie została wysłana. Jest zapisana na Twój następny nowy czat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua mensagem para um novo chat não foi enviada. Ela está salva para o seu próximo novo chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение для нового чата не отправлено. Оно сохранено для вашего следующего нового чата."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni sohbet için yazdığınız mesaj gönderilmedi. Bir sonraki yeni sohbetiniz için kaydedildi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发往新聊天的消息未发送。已保存，供你下次新建聊天时使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳給新聊天的訊息未傳送。已儲存，供你下次新增聊天時使用。"
+          }
+        }
+      }
+    },
+    "Your message wasn't sent. It's back in the composer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Nachricht wurde nicht gesendet. Sie ist wieder im Eingabefeld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu mensaje no se envió. Está de nuevo en el campo de texto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre message n'a pas été envoyé. Il est de retour dans le champ de saisie."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan Anda tidak terkirim. Pesan kembali ke kolom pesan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo messaggio non è stato inviato. È di nuovo nel campo di testo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージは送信されませんでした。入力欄に戻しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지가 전송되지 않았어요. 입력창으로 돌아갔어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoja wiadomość nie została wysłana. Wróciła do pola wiadomości."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua mensagem não foi enviada. Ela voltou para o campo de texto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение не отправлено. Оно снова в поле ввода."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesajınız gönderilmedi. Yazma alanına geri kondu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息未发送，已放回输入框。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息未傳送，已放回輸入框。"
+          }
+        }
+      }
+    },
+    "Your message to “%@” wasn't sent. It's back in that chat's draft." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Nachricht an „%@“ wurde nicht gesendet. Sie ist wieder im Entwurf dieses Chats."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu mensaje a «%@» no se envió. Está de nuevo en el borrador de ese chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre message à « %@ » n'a pas été envoyé. Il est de retour dans le brouillon de cette discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan Anda ke “%@” tidak terkirim. Pesan kembali ke draf obrolan tersebut."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo messaggio a «%@» non è stato inviato. È di nuovo nella bozza di quella chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」宛てのメッセージは送信されませんでした。そのチャットの下書きに戻しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”에 보낼 메시지가 전송되지 않았어요. 그 채팅의 임시 저장 글로 돌아갔어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoja wiadomość do „%@” nie została wysłana. Wróciła do szkicu tego czatu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua mensagem para “%@” não foi enviada. Ela voltou para o rascunho desse chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение в «%@» не отправлено. Оно снова в черновике этого чата."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” sohbetine yazdığınız mesaj gönderilmedi. O sohbetin taslağına geri kondu."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发往“%@”的消息未发送，已放回该聊天的草稿。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳給「%@」的訊息未傳送，已放回該聊天的草稿。"
+          }
+        }
+      }
+    },
+    "Puts the message back in the composer to change or delete" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legt die Nachricht zurück ins Eingabefeld, um sie zu ändern oder zu löschen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Devuelve el mensaje al campo de texto para cambiarlo o eliminarlo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remet le message dans le champ de saisie pour le modifier ou le supprimer"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengembalikan pesan ke kolom pesan untuk diubah atau dihapus"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rimette il messaggio nel campo di testo per modificarlo o eliminarlo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージを入力欄に戻して、変更または削除できるようにします"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지를 입력창으로 되돌려 수정하거나 삭제할 수 있게 해요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przywraca wiadomość do pola wiadomości, aby ją zmienić lub usunąć"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Devolve a mensagem ao campo de texto para alterar ou apagar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Возвращает сообщение в поле ввода, чтобы изменить или удалить его"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesajı değiştirmek veya silmek için yazma alanına geri koyar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将消息放回输入框，以便修改或删除"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將訊息放回輸入框，以便修改或刪除"
+          }
+        }
+      }
+    },
     "Your speech server answered without asking Hermes. Check that its model address and key match Settings > Voice > Local Live, then restart it." : {
       "localizations" : {
         "de" : {
@@ -284188,6 +284598,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示%@中的結果"
+          }
+        }
+      }
+    },
+    "Dismiss notice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinweis schließen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descartar aviso"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fermer l’avis"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutup pemberitahuan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiudi l’avviso"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知を閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알림 닫기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamknij powiadomienie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dispensar aviso"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Закрыть уведомление"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bildirimi kapat"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭提示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉提示"
           }
         }
       }
