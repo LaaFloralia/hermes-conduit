@@ -25,8 +25,19 @@ extension EnvironmentValues {
 }
 
 /// Whether a resting composer has expanded, so the voice button beside it
-/// can step aside and the minimised call bar hide.
+/// can step aside.
 struct V2ComposerExpandedKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
+/// Whether someone is typing in a resting composer (it has focus), so the
+/// minimised call bar steps aside for the keyboard. Only typing hides it:
+/// a running turn or a notice also expands the composer, and hiding the bar
+/// then left a call started from the chat with no way back (#695).
+struct V2ComposerTypingKey: PreferenceKey {
     static let defaultValue = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
         value = value || nextValue()

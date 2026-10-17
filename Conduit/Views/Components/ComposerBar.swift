@@ -323,6 +323,7 @@ struct ComposerBar: View {
         .padding(.bottom, 10)
         .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: rests)
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !rests)
+        .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(restsWhenIdle: restsWhenIdle, isFocused: isFocused))
         .onChange(of: composerInUse, initial: true) { _, inUse in
             guard restsWhenIdle else { return }
             composerUseChanged(inUse)
@@ -665,6 +666,13 @@ struct ComposerBar: View {
         let pickerUp = showAttachmentMenu || showDocumentPicker || showCamera
         let sheetUp = appState.showModelPicker || appState.showContextSheet || appState.showAgentsSheet
         return hasDraft || isDictating || turnControl || hasNotice || pickerUp || sheetUp
+    }
+
+    /// The minimised call bar above a V2 composer hides only while someone
+    /// types. A running turn, a notice or a draft left unfocused keeps it,
+    /// so a call minimised in a chat can always be brought back (#695).
+    static func hidesMinimisedCallBar(restsWhenIdle: Bool, isFocused: Bool) -> Bool {
+        restsWhenIdle && isFocused
     }
 
     /// V2's resting composer: attach and the placeholder in a slim bar.

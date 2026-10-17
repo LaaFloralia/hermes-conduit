@@ -25,8 +25,9 @@ private struct OptionalAccessibilityHint: ViewModifier {
 struct ChatView: View {
     @EnvironmentObject var appState: AppState
     @State private var viewportSnapshotProviderID = UUID()
-    /// V2: the composer is expanded, which hides the minimised call's bar.
-    @State private var composerExpanded = false
+    /// V2: someone is typing in the composer, which hides the minimised
+    /// call's bar.
+    @State private var composerTyping = false
     @Environment(\.accessibilityReduceMotion) private var composerReduceMotion
     /// V2: the composer floats over the transcript, which scrolls on under
     /// it and fades, instead of ending at a hard edge above it.
@@ -211,8 +212,8 @@ struct ChatView: View {
     private var bottomBar: some View {
         VStack(spacing: 0) {
             // A live call swiped down keeps running; its bar sits here
-            // (in V2, not while the composer is expanded).
-            if !composerExpanded {
+            // (in V2, not while someone types in the composer).
+            if !composerTyping {
                 MinimisedLiveVoiceBar()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -285,10 +286,9 @@ struct ChatView: View {
                     .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
-        .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in
-            // In step with the voice button retreating beside it.
+        .onPreferenceChange(V2ComposerTypingKey.self) { typing in
             withAnimation(ConduitMotion.ease(reduceMotion: composerReduceMotion)) {
-                composerExpanded = expanded
+                composerTyping = typing
             }
         }
         .environment(\.chatTextSize, chatTextSize)

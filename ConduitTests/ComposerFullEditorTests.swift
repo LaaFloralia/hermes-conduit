@@ -9,6 +9,14 @@ import XCTest
 @testable import Conduit
 
 final class ComposerFullEditorTests: XCTestCase {
+    /// #695: a running turn or notice expands the composer, but only typing
+    /// hides the minimised call bar, so a call minimised in a chat can come back.
+    func testOnlyTypingHidesTheMinimisedCallBar() {
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true))
+        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: false), "a busy, unfocused composer keeps the bar")
+        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: false, isFocused: true), "the classic layout always shows it")
+    }
+
     func testShortDraftsHaveNoExpandButton() {
         XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.minimumHeight))
         XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: 60), "two lines read fine in place")
