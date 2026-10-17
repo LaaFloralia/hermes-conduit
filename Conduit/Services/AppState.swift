@@ -363,6 +363,16 @@ struct SessionCatalogCache {
         return now.timeIntervalSince(loadedAt) >= Self.fullHistoryRefreshInterval
     }
 
+    static let maximumHistoryPages = 25
+
+    /// Pages the dashboard list reads before it returns. A chat sync needs
+    /// only the newest page to pick and resume a chat (a saved chat older
+    /// than that page resumes directly), so it leaves a due full read for
+    /// after the chat is ready instead of waiting on every page (#417).
+    static func pageBudget(fullHistoryDue: Bool, deferringOlderPages: Bool) -> Int {
+        fullHistoryDue && !deferringOlderPages ? maximumHistoryPages : 1
+    }
+
     /// Commits a live and cron snapshot only when no cache mutation occurred
     /// during the load that produced it.
     @discardableResult
@@ -3537,6 +3547,9 @@ final class AppState: ObservableObject {
     private var owedPostConnectBootstrap: OwedPostConnectBootstrap?
     private var connectedAt: Date?
     private var sessionCatalogCache = SessionCatalogCache()
+    /// Counts catalog reads as they start, so the slow read a chat sync left
+    /// for later can tell that a newer read began while it was paging.
+    private var catalogReadSequence: UInt64 = 0
     private var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
@@ -3568,6 +3581,16 @@ final class AppState: ObservableObject {
         /// catalog. Empty or unusable responses must remain mergeable with
         /// the previous snapshot instead of evicting it.
         let isAuthoritative: Bool
+    }
+
+    /// A deferred catalog read that a newer read overtook. It publishes
+    /// nothing and stays quiet: the newer read owns the list.
+    private struct CatalogReadSuperseded: Error {}
+
+    private struct ProfileCatalogLoad {
+        let sessions: [SessionSummary]
+        /// A full read was due but only the newest page was read.
+        let olderPagesDeferred: Bool
     }
 
     private struct TitleGenerationSettings {
@@ -10857,7 +10880,18 @@ final class AppState: ObservableObject {
             // sequence: discover the live gateway's current sessions first,
             // then resume the newest chat. A persisted runtime id can belong
             // to a process that no longer exists after a relaunch.
-            let loadedSessions = try await profileSessions(using: client)
+            let catalogLoad = try await profileCatalog(using: client, deferringOlderPages: true)
+            // The rest of a due full read runs once this sync is over, so
+            // the drawer still fills in without holding up the chat. Only a
+            // sync that published its list schedules it: an abandoned one
+            // leaves the read to the sync that replaced it.
+            var publishedCatalog = false
+            defer {
+                if catalogLoad.olderPagesDeferred, publishedCatalog {
+                    loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
+                }
+            }
+            let loadedSessions = catalogLoad.sessions
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
@@ -10906,6 +10940,7 @@ final class AppState: ObservableObject {
             // independent of its outcome, which is also `.completed` for a
             // failed catalog load and `.superseded` after a published one.
             onCatalogPublished()
+            publishedCatalog = true
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
             conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
@@ -15380,7 +15415,8 @@ final class AppState: ObservableObject {
     private func loadSessions(
         forceRefresh: Bool,
         requiredViewportTransitionGeneration: UInt64?,
-        reportsFailure: Bool = true
+        reportsFailure: Bool = true,
+        yieldsToNewerReads: Bool = false
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -15396,10 +15432,11 @@ final class AppState: ObservableObject {
             if let sessionCatalogLoaderOverride {
                 loadedSessions = try await sessionCatalogLoaderOverride(forceRefresh)
             } else if let activeClient {
-                loadedSessions = try await profileSessions(
+                loadedSessions = try await profileCatalog(
                     using: activeClient,
-                    forceRefresh: forceRefresh
-                )
+                    forceRefresh: forceRefresh,
+                    yieldsToNewerReads: yieldsToNewerReads
+                ).sessions
             } else {
                 return false
             }
@@ -21670,12 +21707,41 @@ final class AppState: ObservableObject {
 
     // MARK: - Profiles and preferences
 
+    /// Reads the older pages a chat sync left out, after it. Quiet on
+    /// failure: the drawer keeps the newest page, and the next list load
+    /// tries the full read again.
+    private func loadDeferredCatalogPages(after client: HermesClient, profile: String, dashboardID: UUID?) {
+        Task { @MainActor [weak self] in
+            // A sync abandoned for another profile or dashboard leaves the
+            // read to that workspace's own sync.
+            guard let self, self.client === client,
+                  self.activeProfile == profile,
+                  self.activeDashboardID == dashboardID else { return }
+            await self.loadSessions(
+                forceRefresh: false,
+                requiredViewportTransitionGeneration: nil,
+                reportsFailure: false,
+                yieldsToNewerReads: true
+            )
+        }
+    }
+
     /// The dashboard endpoint is authoritative. `session.list` is only a
     /// legacy fallback because it is backed by the gateway's current runtime
     /// database and can otherwise leak or omit profile history.
-    private func profileSessions(using client: HermesClient, forceRefresh: Bool = false) async throws -> [SessionSummary] {
+    private func profileCatalog(
+        using client: HermesClient,
+        forceRefresh: Bool = false,
+        deferringOlderPages: Bool = false,
+        yieldsToNewerReads: Bool = false
+    ) async throws -> ProfileCatalogLoad {
+        catalogReadSequence &+= 1
+        let readSequence = catalogReadSequence
         if let loadCatalog = chatResumeLifecycleOperations.loadCatalog {
-            return try await loadCatalog(client, forceRefresh)
+            return ProfileCatalogLoad(
+                sessions: try await loadCatalog(client, forceRefresh),
+                olderPagesDeferred: false
+            )
         }
         let profile = activeProfile
         if let dashboardTicketBridge {
@@ -21708,7 +21774,10 @@ final class AppState: ObservableObject {
                     do {
                         scopedResult = try await dashboardSessions(
                             profile: profile,
-                            loadFullHistory: shouldLoadHistory,
+                            maximumPages: SessionCatalogCache.pageBudget(
+                                fullHistoryDue: shouldLoadHistory,
+                                deferringOlderPages: deferringOlderPages
+                            ),
                             using: dashboardTicketBridge
                         )
                     } catch {
@@ -21718,7 +21787,15 @@ final class AppState: ObservableObject {
                     let scoped = scopedResult.sessions.filter {
                         sessionBelongsToProfile($0, profile: profile)
                     }
-                    noteConnectionStep("Chat list, \(scoped.count) rows", since: liveStartedAt)
+                    let olderPagesDeferred = shouldLoadHistory
+                        && deferringOlderPages
+                        && !scopedResult.isAuthoritative
+                    noteConnectionStep(
+                        olderPagesDeferred
+                            ? "Chat list, newest \(scoped.count) rows"
+                            : "Chat list, \(scoped.count) rows",
+                        since: liveStartedAt
+                    )
 
                     let cached = sessionCatalogCache.cachedSessionsToMerge(
                         remoteSessions: scoped,
@@ -21757,6 +21834,11 @@ final class AppState: ObservableObject {
                           self.client === client else {
                         throw DashboardTicketBridgeError.notReady
                     }
+                    // Up to 25 pages take a while: a read started meanwhile
+                    // saw newer rows, so this one must not land after it.
+                    if yieldsToNewerReads, readSequence != catalogReadSequence {
+                        throw CatalogReadSuperseded()
+                    }
 
                     let combined = uniqueSessions(
                         merged + (cronSessions ?? cachedCronSessions ?? publishedCronSnapshot)
@@ -21790,7 +21872,12 @@ final class AppState: ObservableObject {
                         // Only rows fetched just now carry the host's current
                         // pin flags; cached ones may predate a change.
                         applyHostPins(scoped + (fetchedCronSessions ?? []), profile: profile, using: dashboardTicketBridge)
-                        return combined
+                        return ProfileCatalogLoad(
+                            sessions: combined,
+                            // A newest page that turned out to be the whole
+                            // list is authoritative and already marked loaded.
+                            olderPagesDeferred: olderPagesDeferred
+                        )
                     }
                     break
                 }
@@ -21800,11 +21887,20 @@ final class AppState: ObservableObject {
                       self.client === client else {
                     throw DashboardTicketBridgeError.notReady
                 }
+                // The deferred read only tops up a list the dashboard already
+                // gave; the gateway's list must not replace it.
+                if yieldsToNewerReads { throw error }
                 sessionCatalogLog.error("Dashboard history failed; using gateway fallback: \(error.localizedDescription, privacy: .public)")
                 // Keep older dashboard installations usable; the gateway is
                 // still an authoritative fallback when the history endpoint is
                 // unavailable.
             }
+        }
+        // A retry budget or an empty page can also land here. The deferred
+        // read only tops up the dashboard's list, so it never takes the
+        // gateway's instead.
+        if yieldsToNewerReads {
+            throw CatalogReadSuperseded()
         }
         let fallbackStartedAt = Date()
         do {
@@ -21815,7 +21911,7 @@ final class AppState: ObservableObject {
                 "Chat list from the gateway, \(fallbackSessions.count) rows",
                 since: fallbackStartedAt
             )
-            return fallbackSessions
+            return ProfileCatalogLoad(sessions: fallbackSessions, olderPagesDeferred: false)
         } catch {
             noteConnectionStep("Chat list from the gateway", since: fallbackStartedAt, error: error)
             throw error
@@ -22514,10 +22610,9 @@ final class AppState: ObservableObject {
 
     private func dashboardSessions(
         profile: String,
-        loadFullHistory: Bool,
+        maximumPages: Int,
         using bridge: DashboardTicketBridge
     ) async throws -> DashboardSessionCatalog {
-        let maximumPages = loadFullHistory ? 25 : 1
         var sessions: [SessionSummary] = []
         var isAuthoritative = false
 
@@ -22564,7 +22659,7 @@ final class AppState: ObservableObject {
         using bridge: DashboardTicketBridge
     ) async throws -> [SessionSummary] {
         var sessions: [SessionSummary] = []
-        for page in 0..<25 {
+        for page in 0..<SessionCatalogCache.maximumHistoryPages {
             let offset = page * 200
             let response = try await bridge.requestJSON(path: archivedSessionsPath(profile, offset: offset))
             let batch = response["sessions"] as? [Any] ?? []
