@@ -516,6 +516,54 @@ final class ChatResumeRecoverySequence {
     }
 }
 
+/// The agent identity the open conversation presents: the owning bot inside
+/// a Bot Chat — its pinned label (captured at the open, else the roster's),
+/// picture, Desktop color — else the active workspace profile's name and
+/// photo. A value type the transcript's equatable rows can gate on; the
+/// bot's picture compares by INSTANCE (the avatar cache hands out the same
+/// object until a refresh replaces it).
+struct ConversationAgentIdentity: Equatable {
+    /// The face a Bot Chat's agent wears, rendered by `BotAvatarView` — the
+    /// one definition of the roster's look, so the transcript can never
+    /// drift from the Bots tab.
+    struct BotFace: Equatable {
+        /// The bot's PROFILE name — the color's fallback hue seeds from it.
+        let name: String
+        /// The Desktop appearance color string, trimmed (`hsl(...)`, hex, a
+        /// named color); nil, empty, or unparseable seeds the name's own hue.
+        let colorString: String?
+        /// The bot's cached picture. Compares by INSTANCE, like the avatar
+        /// cache that stores it.
+        let image: UIImage?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.name == rhs.name
+                && lhs.colorString == rhs.colorString
+                && lhs.image === rhs.image
+        }
+    }
+
+    /// The user-facing name: the bot's pinned label, or the workspace
+    /// profile's display name.
+    let name: String
+    /// The workspace profile's photo; always nil inside a Bot Chat.
+    let photoURL: URL?
+    /// The owning bot's face; nil for ordinary conversations, which render
+    /// ProfileAvatarView's photo-or-gold-monogram.
+    let botFace: BotFace?
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.name == rhs.name
+            && lhs.photoURL == rhs.photoURL
+            && lhs.botFace == rhs.botFace
+    }
+
+    /// The identity ordinary (workspace) conversations present.
+    static func workspace(name: String, photoURL: URL?) -> ConversationAgentIdentity {
+        ConversationAgentIdentity(name: name, photoURL: photoURL, botFace: nil)
+    }
+}
+
 @MainActor
 final class AppState: ObservableObject {
 
@@ -1682,13 +1730,13 @@ final class AppState: ObservableObject {
         }
         switch turnState {
         case .running:
-            return AppLocalization.string("\(busyInputMode.title) \(profileDisplayName(activeProfile))…")
+            return AppLocalization.string("\(busyInputMode.title) \(conversationAgentIdentity.name)…")
         case .synchronizing, .reconnecting:
             return AppLocalization.string("Checking agent activity…")
         case .unsupportedGateway:
             return AppLocalization.string("Update Hermes to use chat controls")
         case .idle:
-            return AppLocalization.string("Message \(profileDisplayName(activeProfile))…")
+            return AppLocalization.string("Message \(conversationAgentIdentity.name)…")
         }
     }
 
@@ -6181,9 +6229,14 @@ final class AppState: ObservableObject {
     /// old name two bots once had opens neither, as in `BotMentions`.
     static func linkedBot(named profile: String, in roster: [BotProfile]) -> BotProfile? {
         let name = profile.trimmingCharacters(in: .whitespacesAndNewlines)
-        let names = roster.map { $0.name.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if let index = names.firstIndex(of: name)
-            ?? names.firstIndex(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+        // Same result as the trimmed-names array this replaces, without
+        // building it first (each probe still trims the names it visits;
+        // this matcher runs per transcript row render).
+        if let index = roster.firstIndex(where: {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines) == name
+        }) ?? roster.firstIndex(where: {
+            $0.name.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(name) == .orderedSame
+        }) {
             return roster[index]
         }
         let renamed = roster.filter { bot in
@@ -8133,7 +8186,7 @@ final class AppState: ObservableObject {
         guard canQuoteIntoComposer() else { return }
         guard message.content.contains(where: { !$0.isWhitespace }) else { return }
         let reference = ComposerReplyReference(
-            authorName: profileDisplayName(activeProfile),
+            authorName: conversationAgentIdentity.name,
             text: message.content
         )
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
@@ -12572,9 +12625,23 @@ final class AppState: ObservableObject {
                     // later re-resume of this conversation (reconnects,
                     // refreshes) — in-memory only, never a durable pointer.
                     if let conversationScopeProfile {
-                        noteBotChatSession(result.sessionId, profile: conversationScopeProfile)
-                        noteBotChatSession(sessionId, profile: conversationScopeProfile)
-                        noteBotChatSession(result.storedSessionId, profile: conversationScopeProfile)
+                        // The captured label travels with the conversation:
+                        // a resume that rotates the runtime id must not
+                        // strand the label on the old id, or the reply
+                        // headers would fall to the roster's current label
+                        // while the title keeps the captured one. The
+                        // compaction-recovery path propagates it identically.
+                        // The candidates are the conversation's OWN ids —
+                        // addressed, returned and admitted-durable — never
+                        // `acceptedSessionIDs`, whose aliases can carry a
+                        // previous conversation's ids.
+                        let resumedLabel = [sessionId, result.sessionId, result.storedSessionId, admittedDurable]
+                            .compactMap { ChatScrollIdentityNormalization.sessionID($0) }
+                            .compactMap { botChatSessionLabels[$0] }
+                            .first
+                        noteBotChatSession(result.sessionId, profile: conversationScopeProfile, label: resumedLabel)
+                        noteBotChatSession(sessionId, profile: conversationScopeProfile, label: resumedLabel)
+                        noteBotChatSession(result.storedSessionId, profile: conversationScopeProfile, label: resumedLabel)
                     }
                     // Durable-owned presentation: the durable key is the
                     // only persistent presentation key for this
@@ -17825,6 +17892,76 @@ final class AppState: ObservableObject {
     var activeBotChatProfile: String? {
         activeSessionId.flatMap(botConversationProfile(for:))
     }
+
+    /// The profile the open conversation's agent identity draws from: the
+    /// owning bot's profile inside a Bot Chat, else the active workspace
+    /// profile. The working line's glow tint follows this, so a Bot Chat
+    /// breathes in the bot's color, not the workspace's.
+    var conversationIdentityProfile: String {
+        activeBotChatProfile ?? activeProfile
+    }
+
+    /// The agent identity the open conversation presents — the owning bot
+    /// inside a Bot Chat (its label, picture and Desktop color), else the
+    /// active workspace profile's name and photo. Everything drawn over
+    /// the open conversation's replies — the settled and streaming headers,
+    /// the working line, the composer's placeholder, the reaction chips —
+    /// renders THIS, so a Bot Chat never presents the workspace's (the
+    /// default profile's) name and picture instead of the bot the user is
+    /// talking to.
+    var conversationAgentIdentity: ConversationAgentIdentity {
+        guard let botProfile = activeBotChatProfile else {
+            return ConversationAgentIdentity.workspace(
+                name: profileDisplayName(activeProfile),
+                photoURL: profileAvatarURL(for: activeProfile)
+            )
+        }
+        // linkedBot, not a bare name match: a bot renamed on the desktop
+        // carries its old name in previousNames and must keep its picture
+        // and color in an already-open chat.
+        let bot = Self.linkedBot(named: botProfile, in: botRoster)
+        return ConversationAgentIdentity(
+            name: botChatDisplayLabel(profile: botProfile, rosterBot: bot),
+            photoURL: nil,
+            botFace: bot.map { bot in
+                // Trimmed and emptied-to-nil so the equality key is
+                // canonical: a gateway flipping between `""`, `" "` and
+                // absence must not re-open settled rows over nothing.
+                let raw = bot.appearanceColor?.trimmingCharacters(in: .whitespacesAndNewlines)
+                return ConversationAgentIdentity.BotFace(
+                    name: bot.name,
+                    colorString: raw?.isEmpty == true ? nil : raw,
+                    image: botAvatarImage(for: bot)
+                )
+            }
+        )
+    }
+
+    /// The name a Bot Chat presents for its owning bot: the label captured
+    /// when the conversation was opened — the same string the nav title
+    /// pinned, and the same captured-label-wins authority
+    /// `sessionReference(forPersistedID:)` documents, so a roster refresh
+    /// never renames the reply headers nor the title — else the roster's
+    /// CURRENT label, else the capitalized profile name, like the rest of
+    /// the chat surface.
+    private func botChatDisplayLabel(profile: String, rosterBot: BotProfile?) -> String {
+        let captured = activeSessionId
+            .flatMap(ChatScrollIdentityNormalization.sessionID)
+            .flatMap {
+                botChatSessionLabels[$0]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        return captured
+            ?? rosterBot?.displayLabel
+            ?? profileDisplayName(profile)
+    }
+
+    #if DEBUG
+    /// Test seam for the avatar cache the roster's pictures load into.
+    func setBotAvatarImageForTesting(_ image: UIImage?, for bot: BotProfile) {
+        botAvatarImages[bot.name] = image
+    }
+    #endif
 
     /// The bot profile an in-flight or active conversation belongs to, when
     /// that conversation is a canonical Bot Chat. Nil for ordinary sessions —

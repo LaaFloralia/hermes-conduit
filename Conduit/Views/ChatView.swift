@@ -887,7 +887,7 @@ struct MessageBubble: View {
                 UserBubble(
                     message: message,
                     gatewayResolver: gatewayResolver,
-                    agentName: message.reactions.isEmpty ? "" : appState.profileDisplayName(appState.activeProfile)
+                    agentName: message.reactions.isEmpty ? "" : appState.conversationAgentIdentity.name
                 )
             }
         case .assistant:
@@ -1608,8 +1608,10 @@ private struct UserDocumentAttachmentChip: View {
 /// still invalidate through the `\.sizeCategory` environment read.
 struct SettledAssistantMessageContent: View, Equatable {
     let message: ChatMessage
-    let displayName: String
-    let avatarURL: URL?
+    /// The agent this reply speaks as — the owning bot inside a Bot Chat,
+    /// else the active workspace profile. One value so the gate's equality
+    /// covers the whole face (name, photo, bot picture and color).
+    let identity: ConversationAgentIdentity
     let gatewayResolver: GatewayMediaDataURLResolver?
     /// Explicit Dynamic Type input (read by the shell): equality describes
     /// every visual input, so a category change re-opens the gate and
@@ -1631,8 +1633,7 @@ struct SettledAssistantMessageContent: View, Equatable {
         // tests exercise) and Release (what ships). The DEBUG-only recording
         // below observes the outcome and cannot change it.
         let equal = lhs.message == rhs.message
-            && lhs.displayName == rhs.displayName
-            && lhs.avatarURL == rhs.avatarURL
+            && lhs.identity == rhs.identity
             && lhs.gatewayResolver === rhs.gatewayResolver
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.chatTextSize == rhs.chatTextSize
@@ -1645,8 +1646,7 @@ struct SettledAssistantMessageContent: View, Equatable {
         if !equal {
             var fields: [String] = []
             if lhs.message != rhs.message { fields.append("message") }
-            if lhs.displayName != rhs.displayName { fields.append("displayName") }
-            if lhs.avatarURL != rhs.avatarURL { fields.append("avatarURL") }
+            if lhs.identity != rhs.identity { fields.append("identity") }
             if lhs.gatewayResolver !== rhs.gatewayResolver { fields.append("gatewayResolver") }
             if lhs.sizeCategory != rhs.sizeCategory { fields.append("sizeCategory") }
             if lhs.chatTextSize != rhs.chatTextSize { fields.append("chatTextSize") }
@@ -1661,12 +1661,9 @@ struct SettledAssistantMessageContent: View, Equatable {
             // Keep identity in a compact header so the actual response can use
             // the full reading column instead of inheriting the avatar indent.
             HStack(spacing: 8) {
-                ConduitAgentMark(
-                    avatarURL: avatarURL,
-                    displayName: displayName
-                )
+                ConduitAgentMark(identity: identity)
 
-                Text(displayName)
+                Text(identity.name)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -1834,11 +1831,11 @@ struct AssistantBubble: View {
         // instead of the update being pruned above the gate. Release
         // builds compile the note out.
         let _ = TranscriptPerf.note(.settledBubbleBody)
+        let identity = appState.conversationAgentIdentity
         VStack(alignment: .leading, spacing: 6) {
             SettledAssistantMessageContent(
                 message: message,
-                displayName: appState.profileDisplayName(appState.activeProfile),
-                avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
+                identity: identity,
                 gatewayResolver: gatewayResolver,
                 sizeCategory: sizeCategory,
                 chatTextSize: chatTextSize
@@ -1848,7 +1845,7 @@ struct AssistantBubble: View {
             if !message.reactions.isEmpty {
                 MessageReactionChips(
                     reactions: message.reactions,
-                    agentName: appState.profileDisplayName(appState.activeProfile),
+                    agentName: identity.name,
                     onTap: appState.canReact(to: message) ? { showsTapback = true } : nil
                 )
             }
@@ -3375,18 +3372,18 @@ struct StreamingBubble: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let identity = appState.conversationAgentIdentity
+        return VStack(alignment: .leading, spacing: 6) {
             // Streaming uses the same reading column and Markdown renderer as
             // a completed reply. Only the active mark/status changes, so the
             // final message settles in rather than swapping presentation.
             HStack(spacing: 8) {
                 ConduitAgentMark(
                     isActive: true,
-                    avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                    displayName: appState.profileDisplayName(appState.activeProfile)
+                    identity: identity
                 )
 
-                Text(appState.profileDisplayName(appState.activeProfile))
+                Text(identity.name)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
@@ -3459,8 +3456,10 @@ struct EmptyChatState: View {
 }
 struct ConduitAgentMark: View {
     var isActive = false
-    var avatarURL: URL?
-    var displayName = "Hermes"
+    /// Required on purpose: a call site that forgets it would render a
+    /// workspace face inside a Bot Chat — the very bug this type exists to
+    /// prevent — so the compiler catches the omission.
+    let identity: ConversationAgentIdentity
     /// The ring and breath color: the profile's glow, else the gold accent.
     var glow: Color?
 
@@ -3491,11 +3490,35 @@ struct ConduitAgentMark: View {
     }
 
     private var mark: some View {
-        ProfileAvatarView(profile: "", displayName: displayName, url: avatarURL)
+        face
             .overlay {
                 Circle()
                     .strokeBorder((glow ?? .conduitAccent).opacity(isActive ? 0.52 : 0.22), lineWidth: 1)
             }
+    }
+
+    /// Same size as ProfileAvatarView's default face (one shared constant);
+    /// the bot face sizes itself to it.
+    private static let faceSize: CGFloat = ProfileAvatarView.defaultSize
+
+    /// A Bot Chat's agent wears the roster's own face — `BotAvatarView`, the
+    /// one definition of the initial-on-color recipe, so the face's styling
+    /// can never drift from the Bots tab (the initial keeps the captured
+    /// label by design); ordinary conversations keep ProfileAvatarView's
+    /// photo-or-gold-monogram.
+    @ViewBuilder
+    private var face: some View {
+        if let botFace = identity.botFace {
+            BotAvatarView(
+                name: botFace.name,
+                label: identity.name,
+                colorString: botFace.colorString,
+                image: botFace.image,
+                size: Self.faceSize
+            )
+        } else {
+            ProfileAvatarView(profile: "", displayName: identity.name, url: identity.photoURL)
+        }
     }
 }
 

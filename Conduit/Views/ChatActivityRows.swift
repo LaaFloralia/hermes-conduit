@@ -176,9 +176,10 @@ extension View {
     }
 }
 
-/// The running turn's line, in place of "Working…": the profile's picture
-/// breathing in its glow, what Hermes is doing right now ("Home ·
-/// Searching the web") and how long the turn has run.
+/// The running turn's line, in place of "Working…": the agent's face (the
+/// bot's picture or initial inside a Bot Chat, else the profile's) breathing
+/// in its glow, what Hermes is doing right now ("Home · Searching the web")
+/// and how long the turn has run.
 struct ChatWorkingLine: View {
     /// The tool running now, if any.
     let currentToolName: String?
@@ -208,20 +209,20 @@ struct ChatWorkingLine: View {
     }
 
     var body: some View {
-        let name = appState.profileDisplayName(appState.activeProfile)
+        // The bot's identity inside a Bot Chat, else the workspace profile's.
+        let identity = appState.conversationAgentIdentity
         let largeText = dynamicTypeSize.isAccessibilitySize
         // Large text: the words wrap and stack instead of truncating.
         let lineLimit = largeText ? nil : 1 as Int?
         let line = HStack(spacing: 9) {
             ConduitAgentMark(
                 isActive: true,
-                avatarURL: appState.profileAvatarURL(for: appState.activeProfile),
-                displayName: name,
-                glow: appState.profileGlowTint(appState.activeProfile)
+                identity: identity,
+                glow: appState.profileGlowTint(appState.conversationIdentityProfile)
             )
 
             AdaptiveStack(spacing: 9) {
-                Text(name)
+                Text(identity.name)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(lineLimit)
@@ -236,7 +237,7 @@ struct ChatWorkingLine: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(AppLocalization.string("\(name) is working"))
+        .accessibilityLabel(AppLocalization.string("\(identity.name) is working"))
         .accessibilityValue(phrase)
 
         // The timer stays its own element, so VoiceOver reads it current.

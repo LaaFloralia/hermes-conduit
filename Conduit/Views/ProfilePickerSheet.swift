@@ -310,7 +310,10 @@ struct ProfileAvatarView: View {
     let profile: String
     let displayName: String
     let url: URL?
-    var size: CGFloat = 30
+    /// The one face size every identity mark in a transcript draws at; the
+    /// transcript's bot face sizes itself to it.
+    static let defaultSize: CGFloat = 30
+    var size: CGFloat = ProfileAvatarView.defaultSize
     private var initials: String {
         let letters = displayName.split(separator: " ").prefix(2).compactMap(\.first)
         return letters.isEmpty ? "H" : String(letters).uppercased()

@@ -343,6 +343,184 @@ final class BotModeTests: XCTestCase {
         XCTAssertNil(harness.appState.errorMessage)
     }
 
+    // MARK: - Conversation agent identity
+
+    /// The agent identity the open conversation presents (its header, the
+    /// working line, the composer placeholder): the OWNING bot's label,
+    /// picture and color inside its Bot Chat — each bot its own, never the
+    /// workspace's — and the active workspace profile's identity for
+    /// ordinary conversations.
+    func testConversationAgentIdentityTracksTheOwningBot() async {
+        let atlas = makeBot(
+            name: "atlas",
+            canonicalID: "stored-atlas",
+            botTitle: "Atlas Prime",
+            hasAvatar: true,
+            appearanceColor: "purple"
+        )
+        let bo = makeBot(name: "bo", canonicalID: "stored-bo")
+        // The roster the refresh answers with, swapped between refreshes to
+        // simulate desktop-side renames landing mid-chat.
+        var roster: [BotProfile] = []
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                SessionResumeResult(
+                    sessionId: id,
+                    storedSessionId: "stored-row-\(id)",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(bots: roster, supportsBotProtocol: true)
+            },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "stored-\(profile)", resolvedID: "runtime-\(profile)", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        // No conversation open: the workspace's identity, exactly as the
+        // transcript always presented it.
+        XCTAssertEqual(harness.appState.conversationIdentityProfile, harness.appState.activeProfile)
+        XCTAssertEqual(
+            harness.appState.conversationAgentIdentity.name,
+            harness.appState.profileDisplayName(harness.appState.activeProfile)
+        )
+
+        // Opened before any roster refresh: the registry's captured label
+        // (noted at the open) names the bot, with no picture or color yet.
+        let openedAtlas = await harness.appState.openBotChat(for: atlas)
+        XCTAssertTrue(openedAtlas)
+        XCTAssertEqual(harness.appState.conversationIdentityProfile, "atlas")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Atlas Prime")
+        XCTAssertNil(harness.appState.conversationAgentIdentity.botFace,
+                     "no roster row, no bot face yet")
+        XCTAssertNil(harness.appState.conversationAgentIdentity.photoURL,
+                     "a Bot Chat never presents the workspace profile's photo")
+
+        // Roster evidence lands: the SAME bot's picture and color join the
+        // label — still its own identity, not the workspace's.
+        roster = [atlas, bo]
+        await harness.appState.refreshBotRoster()
+        let atlasPicture = UIImage()
+        harness.appState.setBotAvatarImageForTesting(atlasPicture, for: atlas)
+        let atlasIdentity = harness.appState.conversationAgentIdentity
+        XCTAssertEqual(atlasIdentity.name, "Atlas Prime")
+        XCTAssertEqual(atlasIdentity.botFace?.name, "atlas")
+        XCTAssertTrue(atlasIdentity.botFace?.image === atlasPicture,
+                      "the bot's cached picture faces the chat")
+        XCTAssertEqual(atlasIdentity.botFace?.colorString, "purple")
+
+        // The bot's TITLE renamed on the desktop, then a roster refresh: the
+        // captured label still names the chat — the same string the nav
+        // title pinned, so a refresh never renames the reply headers and
+        // not the title — while the renamed row still supplies the face.
+        let retitledAtlas = makeBot(
+            name: "atlas",
+            canonicalID: "stored-atlas",
+            botTitle: "Atlas Renamed",
+            hasAvatar: true,
+            appearanceColor: "purple"
+        )
+        roster = [retitledAtlas, bo]
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Atlas Prime",
+                       "the captured label wins over the roster's current title")
+        XCTAssertTrue(harness.appState.conversationAgentIdentity.botFace?.image === atlasPicture)
+
+        // The bot's PROFILE renamed on the desktop (the old name survives in
+        // previousNames): the chat still resolves its row, picture and color.
+        // The color arrives PADDED to pin the equality key's canonical trim.
+        var renamedProfileAtlas = makeBot(
+            name: "atlas-2",
+            canonicalID: "stored-atlas",
+            botTitle: "Atlas Prime",
+            hasAvatar: true,
+            appearanceColor: "  green  "
+        )
+        renamedProfileAtlas.previousNames = ["atlas"]
+        roster = [renamedProfileAtlas, bo]
+        await harness.appState.refreshBotRoster()
+        let renamedPicture = UIImage()
+        harness.appState.setBotAvatarImageForTesting(renamedPicture, for: renamedProfileAtlas)
+        let renamedIdentity = harness.appState.conversationAgentIdentity
+        XCTAssertEqual(renamedIdentity.name, "Atlas Prime")
+        XCTAssertEqual(renamedIdentity.botFace?.name, "atlas-2")
+        XCTAssertTrue(renamedIdentity.botFace?.image === renamedPicture,
+                      "a renamed bot keeps its picture through the previousNames match")
+        XCTAssertEqual(renamedIdentity.botFace?.colorString, "green")
+        XCTAssertEqual(
+            harness.appState.profileGlowTint("atlas"),
+            BotAvatarView.color(for: "green", name: "atlas-2"),
+            "the glow resolves the renamed bot through the same matcher as the face"
+        )
+        XCTAssertNil(
+            harness.appState.profileGlowTint(harness.appState.activeProfile),
+            "a workspace profile no bot answers to keeps the gold accent"
+        )
+
+        // A second bot's chat presents the SECOND bot — the identity follows
+        // the owning bot, never one fixed profile.
+        let openedBo = await harness.appState.openBotChat(for: bo)
+        XCTAssertTrue(openedBo)
+        XCTAssertEqual(harness.appState.conversationIdentityProfile, "bo")
+        let boIdentity = harness.appState.conversationAgentIdentity
+        XCTAssertEqual(boIdentity.name, "bo")
+        XCTAssertEqual(boIdentity.botFace?.name, "bo")
+        XCTAssertNil(boIdentity.botFace?.image)
+        XCTAssertNil(boIdentity.botFace?.colorString)
+    }
+
+    /// A resume that rotates the Bot Chat's runtime id carries the captured
+    /// label onto the rotated id: the reply headers keep presenting the
+    /// label the nav title pinned instead of falling to the roster's
+    /// current one.
+    func testRotatedBotChatResumeCarriesCapturedLabel() async {
+        let bo = makeBot(name: "bo", canonicalID: "stored-bo")
+        // The roster already carries a RETITLED row: if the captured label
+        // were stranded on the pre-rotation id, this label would take over.
+        let retitledBo = makeBot(name: "bo", canonicalID: "stored-bo", botTitle: "Bo II")
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                SessionResumeResult(
+                    sessionId: id == "runtime-bo" ? "runtime-bo-rot" : id,
+                    storedSessionId: "stored-bo",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(bots: [retitledBo], supportsBotProtocol: true)
+            },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "stored-\(profile)", resolvedID: "runtime-\(profile)", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        await harness.appState.refreshBotRoster()
+        XCTAssertEqual(harness.appState.botRoster.map(\.name), ["bo"],
+                       "the retitled roster row this test's premise depends on committed")
+
+        let opened = await harness.appState.openBotChat(for: bo)
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-bo-rot",
+                       "the resume stub rotated the runtime id and the open adopted it")
+        XCTAssertEqual(
+            harness.appState.conversationAgentIdentity.name, "bo",
+            "the captured label travels to the rotated id; the roster's retitled label must not take over"
+        )
+        XCTAssertEqual(harness.appState.activeSessionTitle, "bo")
+    }
+
     func testMissingCanonicalCreatesHiddenTitledChatThenOpensRuntime() async {
         var order: [String] = []
         var resumedIDs: [String] = []
@@ -4482,7 +4660,9 @@ final class BotModeTests: XCTestCase {
         resolvedID: String? = nil,
         canonicalLastActive: Double? = nil,
         lastActive: Double? = nil,
-        botTitle: String? = nil
+        botTitle: String? = nil,
+        hasAvatar: Bool = false,
+        appearanceColor: String? = nil
     ) -> BotProfile {
         let resolvedCanonicalID = canonicalID
             ?? (canonicalLastActive != nil ? "stored-\(name)" : nil)
@@ -4493,10 +4673,10 @@ final class BotModeTests: XCTestCase {
             profileDescription: "",
             model: nil,
             provider: nil,
-            hasAvatar: false,
+            hasAvatar: hasAvatar,
             isPinned: pinned,
             isHiddenByMeta: false,
-            appearanceColor: nil,
+            appearanceColor: appearanceColor,
             canonicalSession: resolvedCanonicalID.map { id in
                 BotCanonicalSession(
                     id: id,

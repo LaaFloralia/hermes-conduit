@@ -12,10 +12,16 @@ import SwiftUI
 extension AppState {
     /// The color the backdrop's warm glow takes for a profile: the one
     /// picked for it or drawn from its photo (`profileGlowColors`), else the
-    /// color its bot was given in Hermes, or nil (the gold accent).
+    /// color its bot was given in Hermes, or nil (the gold accent). The bot
+    /// branch resolves the roster row like every other bot lookup
+    /// (`linkedBot`), so it also answers a RENAME — an old name surviving
+    /// only in previousNames — and it applies to any profile name that
+    /// resolves to a roster bot, a workspace profile's name included.
     func profileGlowTint(_ profile: String) -> Color? {
         if let glow = profileGlowColors()[profile] { return glow.color }
-        guard let bot = botRoster.first(where: { profilesMatch($0.name, profile) }),
+        // The common case has no roster at all: one check, no passes.
+        guard !botRoster.isEmpty else { return nil }
+        guard let bot = Self.linkedBot(named: profile, in: botRoster),
               let color = bot.appearanceColor?.trimmingCharacters(in: .whitespacesAndNewlines),
               !color.isEmpty else { return nil }
         return BotAvatarView.color(for: color, name: bot.name)

@@ -94,8 +94,8 @@ struct V2VoiceButton: View {
                 : AppLocalization.string("Talk in this project")
         case .conversation:
             if appState.openChatCallToResume != nil { return AppLocalization.string("Resume call") }
-            if let bot = appState.activeBotChatProfile {
-                return AppLocalization.string("Call \(appState.profileDisplayName(bot))")
+            if appState.activeBotChatProfile != nil {
+                return AppLocalization.string("Call \(appState.conversationAgentIdentity.name)")
             }
             return AppLocalization.string("Talk in this conversation")
         }
