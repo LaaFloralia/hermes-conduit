@@ -99,6 +99,11 @@ final class GPTLiveConversationController: ObservableObject {
         + "\nAsking first: when it is on for this call, a new delegation waits for the user's OK, and Conduit answers that it is waiting. Then tell the user in a few words what you'll send to Hermes and ask whether to send it. When they say yes in any words, delegate \"Send:\". When they change it, delegate the new request; Conduit holds it again, and Hermes gets the user's own words, changes included. When they say no, drop it. When they tell you to send it to Hermes, it goes at once. Until Conduit says a request went to Hermes, don't say it's sent, being sent or on its way: acknowledge with something like \"Okay\" instead. Corrections (\"Job 2: …\") and read-backs never wait; one Conduit puts into the only running job does, and Conduit says which job. When the user asks you to check with them before sending things to Hermes, delegate \"Mode: ask first\"; to stop checking, delegate \"Mode: send directly\"."
         + "\nMarkers like \"Send:\", \"Read back:\", \"Job 2:\", \"New job:\", \"Mode:\" and \"End call:\" are for Conduit only: never say them aloud."
 
+    /// Web lookups on the Hermes host's search backend: AppState adds this
+    /// to the instructions when the host has one. Without it, current
+    /// information is a Hermes job.
+    static let webLookUpRule = "\n\n[Web lookups: for current public facts (weather, news, sports, prices, opening hours, anything recent that anyone could look up), delegate \"Look up:\" with a short search query, like \"Look up: weather in Boston tomorrow\". Conduit searches the web itself and answers on that delegation within seconds; it isn't a Hermes job, so don't say you'll have Hermes look. This takes precedence over the rule that sends current information to Hermes. Just before it, say a few words so the user knows you're checking, different each time (\"One sec.\", \"Let me look that up.\"), then answer straight from the results without saying again that you're checking. Never guess before the results arrive; if the lookup fails, say so in a few words. Anything about the user's own accounts, files or systems still goes to Hermes. The marker is for Conduit only: never say it aloud.]"
+
     /// GPT-Live has no function tools: "End call:" stands in for Gemini
     /// and Grok's end_conversation, on the phone and the Watch.
     static let endCallRule = "When the user says goodbye to you, even at the end of a longer sentence (not a goodbye to someone or something else), or asks to end, hang up or close the call, say a short goodbye, then delegate \"End call:\": Conduit closes the call. Background jobs keep running on Hermes. Never say the marker aloud."
@@ -115,7 +120,7 @@ final class GPTLiveConversationController: ObservableObject {
         var text = """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions(readsBack: !onWatch)) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
-        Delegate real work (anything needing facts, the web, their files, code, systems or accounts) to the client; each delegation runs as a background job on Hermes. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
+        Answer yourself, without delegating: greetings and small talk, repeating or rephrasing something already said on this call, and questions you can fully answer from this conversation, from the context Conduit sends you, from what Hermes remembers, or from settled general knowledge. Delegate real work to the client: anything to do, check, find, send, change or remember; current information (news, weather, prices, anything that may have changed); anything about their files, code, systems, accounts or earlier work that isn't in your context; and complex reasoning or research. This takes precedence over any other delegation policy in these instructions. Each delegation runs as a background job on Hermes. Never say something was done, sent, saved or changed unless Conduit or Hermes told you it was. Before delegating, say a very short acknowledgement like "On it, I'll have Hermes look into that." Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
         Never delegate questions about the background jobs themselves: their status is in the context Conduit sends you, each job with its number. \(onWatch ? watchFollowUps : phoneFollowUps)
         \(onWatch ? watchApprovals : "Never approve, deny, or answer anything on a job's behalf. If a job needs input, tell the user to open it in Conduit.")
         \(endCallRule)]
@@ -279,6 +284,7 @@ final class GPTLiveConversationController: ObservableObject {
         briefing: @escaping @MainActor () -> String = { GPTLiveConversationController.briefing() },
         openingPrompt: @escaping @MainActor () -> String? = { nil },
         supervisor: GeminiLiveJobSupervising,
+        webSearch: GeminiLiveWebSearching? = nil,
         requestPermission: @escaping @MainActor () async -> Bool = { await AVAudioApplication.requestRecordPermission() },
         now: @escaping () -> Date = Date.init,
         endConversationPhrases: @escaping @MainActor () -> [String] = { [] },
@@ -289,7 +295,7 @@ final class GPTLiveConversationController: ObservableObject {
         self.briefing = briefing
         self.openingPrompt = openingPrompt
         self.supervisor = supervisor
-        self.bridge = GPTLiveDelegationBridge(supervisor: supervisor, now: now)
+        self.bridge = GPTLiveDelegationBridge(supervisor: supervisor, webSearch: webSearch, now: now)
         self.requestPermission = requestPermission
         self.now = now
         self.endConversationPhrases = endConversationPhrases
