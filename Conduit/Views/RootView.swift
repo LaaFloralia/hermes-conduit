@@ -175,6 +175,7 @@ struct MainView: View {
                 controller: appState.geminiLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
                 appState: appState,
+                waitsToStart: appState.waitingCall?.engine == .geminiLive,
                 onClose: appState.closeGeminiLiveConversation,
                 onRetry: { Task { await appState.geminiLiveController.start() } }
             )
@@ -189,6 +190,7 @@ struct MainView: View {
                 jobs: appState.voiceBackgroundJobSupervisor,
                 appState: appState,
                 engine: .grok,
+                waitsToStart: appState.waitingCall?.engine == .grokLive,
                 onClose: appState.closeGrokLiveConversation,
                 onRetry: { Task { await appState.grokLiveController.start() } }
             )
@@ -203,6 +205,7 @@ struct MainView: View {
                 jobs: appState.voiceBackgroundJobSupervisor,
                 appState: appState,
                 engine: .local,
+                waitsToStart: appState.waitingCall?.engine == .localLive,
                 onClose: appState.closeLocalLiveConversation,
                 onRetry: { Task { await appState.localLiveController.start() } }
             )
@@ -216,6 +219,7 @@ struct MainView: View {
                 controller: appState.gptLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
                 appState: appState,
+                waitsToStart: appState.waitingCall?.engine == .gptLive,
                 onClose: appState.closeGPTLiveConversation,
                 onRetry: { Task { await appState.gptLiveController.start() } }
             )
@@ -449,7 +453,8 @@ struct MainView: View {
                                 .frame(width: 40, height: 40)
                         }
                         .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
-                        .disabled(!appState.isConnected || appState.isChatRefreshing)
+                        // A New Chat on its way has nothing to refresh yet.
+                        .disabled(!appState.isConnected || appState.isChatRefreshing || appState.showsPendingNewChat)
                         .accessibilityLabel("Refresh conversation")
                     }
                 }

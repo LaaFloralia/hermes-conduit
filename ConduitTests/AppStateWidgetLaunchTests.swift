@@ -810,6 +810,205 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertNotEqual(appState.settingsDismissRequest, settingsDismissals, "Settings is asked to close too")
     }
 
+    /// New Chat tapped while Conduit connects shows its chat at once, as the
+    /// empty chat it will be, and Hermes creates it once connected.
+    func testNewChatWhileConnectingShowsItsChatAtOnce() async throws {
+        let suite = "AppStateWidgetLaunchTests.new-chat-connecting.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c2")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.widgetSessionCreatorOverride = { _, _ in ("in-app-new", "in-app-new", "default") }
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        XCTAssertFalse(appState.canTapNewChat, "with no connection on its way there is nothing to wait for")
+        appState.isConnecting = true
+        appState.showSidebar = true
+        XCTAssertTrue(appState.canTapNewChat, "New Chat works while Conduit connects")
+
+        appState.startNewChat()
+
+        XCTAssertEqual(appState.pendingNewChat, workspace)
+        XCTAssertFalse(appState.showSidebar, "the new chat shows straight away")
+        XCTAssertEqual(appState.displayedChatTitle, AppLocalization.string("New conversation"))
+        XCTAssertNil(appState.activeChatSessionSummary)
+        XCTAssertFalse(appState.composerIsEnabled, "nothing typed there could be sent yet")
+        XCTAssertEqual(appState.composerPlaceholder, AppLocalization.string("Connecting…"))
+        appState.startNewChat()
+        XCTAssertEqual(appState.pendingNewChat, workspace, "another tap shows the same new chat")
+
+        appState.widgetSettledCatalogOwner = workspace
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "in-app-new")
+        XCTAssertFalse(appState.showsPendingNewChat)
+    }
+
+    /// A New Chat from the app that can't start says so in the app's words;
+    /// a widget's keeps the widget's, and shows its chat as its link arrives.
+    func testNewChatThatCantStartSaysSo() async throws {
+        struct CreateRefused: Error {}
+        let suite = "AppStateWidgetLaunchTests.new-chat-failed.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c3")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.widgetSessionCreatorOverride = { _, _ in throw CreateRefused() }
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.widgetSettledCatalogOwner = workspace
+        let openChat = appState.activeSessionId
+        appState.isConnecting = true
+
+        appState.startNewChat()
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertFalse(appState.showsPendingNewChat)
+        XCTAssertEqual(appState.activeSessionId, openChat)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("Couldn't start a new chat. Check your connection and try again."))
+
+        appState.isConnected = false
+        appState.isConnecting = true
+        appState.showSidebar = true
+        let newChat = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+        XCTAssertTrue(appState.routeWidgetLaunchURL(newChat.url))
+        XCTAssertEqual(appState.pendingNewChat, workspace)
+        XCTAssertFalse(appState.showSidebar, "the widget's new chat shows as its link arrives")
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertFalse(appState.showsPendingNewChat)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+    }
+
+    /// Talk tapped while Conduit connects shows its call screen at once,
+    /// connecting, and the call starts on that screen once Hermes answers.
+    func testTalkWhileConnectingShowsItsCallScreenAtOnce() async throws {
+        let suite = "AppStateWidgetLaunchTests.talk-connecting.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c4")
+        let (appState, connection, session) = makeConnectingGPTLiveAppState(defaults: defaults, dashboard: current)
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        appState.showSidebar = true
+        let talk = try XCTUnwrap(WidgetLaunchLink(action: .talk, workspace: workspace, reference: nil))
+
+        XCTAssertTrue(appState.routeWidgetLaunchURL(talk.url))
+
+        XCTAssertTrue(appState.showGPTLiveSheet, "the call screen shows as the link arrives")
+        XCTAssertEqual(appState.waitingCall?.engine, .gptLive)
+        XCTAssertFalse(appState.showSidebar)
+        XCTAssertFalse(appState.isVoiceCallInProgress, "a screen waiting for its call is no call yet")
+        XCTAssertEqual(session.started, 0, "the call waits for Hermes")
+
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+        guard await waitUntil("the call never started", { session.started == 1 }) else { return }
+
+        XCTAssertTrue(appState.gptLiveController.isActive, "the call starts on the screen that waited for it")
+        XCTAssertNil(appState.waitingCall)
+        XCTAssertTrue(appState.showGPTLiveSheet)
+        appState.closeGPTLiveConversation()
+    }
+
+    /// End or Close on a Talk's waiting screen calls the Talk off. The app's
+    /// screen giving way under it doesn't, and a newer destination takes the
+    /// screen with the Talk.
+    func testHangingUpATalkStillConnectingCallsItOff() async throws {
+        let suite = "AppStateWidgetLaunchTests.talk-hang-up.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c5")
+        let (appState, connection, session) = makeConnectingGPTLiveAppState(defaults: defaults, dashboard: current)
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        let talk = try XCTUnwrap(WidgetLaunchLink(action: .talk, workspace: workspace, reference: nil))
+        XCTAssertTrue(appState.routeWidgetLaunchURL(talk.url))
+        XCTAssertTrue(appState.showGPTLiveSheet)
+
+        // What SwiftUI reports when the screen presenting the sheet goes.
+        appState.liveVoiceSheetDismissed(.gptLive)
+        XCTAssertTrue(appState.widgetLaunchCoordinator.hasPendingRequest, "the Talk still opens its call once it can")
+        XCTAssertEqual(appState.waitingCall?.engine, .gptLive)
+
+        appState.closeGPTLiveConversation()
+
+        XCTAssertFalse(appState.showGPTLiveSheet)
+        XCTAssertNil(appState.waitingCall)
+        XCTAssertFalse(appState.widgetLaunchCoordinator.hasPendingRequest, "hanging up calls the Talk off")
+
+        XCTAssertTrue(appState.routeWidgetLaunchURL(talk.url))
+        XCTAssertTrue(appState.showGPTLiveSheet)
+        appState.widgetLaunchCoordinator.supersede()
+        XCTAssertFalse(appState.showGPTLiveSheet, "a newer destination takes the waiting screen with it")
+        XCTAssertNil(appState.waitingCall)
+
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnecting = false
+        appState.isConnected = true
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertEqual(session.started, 0, "nothing starts once Hermes answers")
+    }
+
+    /// Conduit on its way to `dashboard`, connecting with no connection yet
+    /// (a cold launch signing in), and GPT-Live chosen there over a fake call.
+    private func makeConnectingGPTLiveAppState(
+        defaults: UserDefaults,
+        dashboard: SavedDashboard
+    ) -> (AppState, HermesConnection, FakeGPTLiveSessionControl) {
+        let appState = makeAppState(defaults: defaults, active: dashboard, dashboards: [dashboard])
+        appState.widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboard.id, profile: "default")
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: dashboard.normalizedURL, ticket: "test")
+        // The setting is kept for the dashboard's server.
+        appState.connection = connection
+        appState.setGPTLiveEnabled(true)
+        appState.connection = nil
+        appState.isConnecting = true
+        let session = FakeGPTLiveSessionControl()
+        let client = FakeGPTLiveClient()
+        _ = appState.gptLiveController
+        appState.gptLiveController = GPTLiveConversationController(
+            makeSession: { session },
+            availability: { try await client.availability() },
+            briefing: { "[rules]" },
+            supervisor: appState.voiceBackgroundJobSupervisor,
+            requestPermission: { true }
+        )
+        return (appState, connection, session)
+    }
+
+    /// Yields until `condition` holds, for up to 10 s: a fixed number of
+    /// yields can run out on a busy hosted runner.
+    private func waitUntil(_ failure: String, _ condition: () -> Bool) async -> Bool {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(10))
+        while !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail(failure)
+                return false
+            }
+            await Task.yield()
+        }
+        return true
+    }
+
     private func session(_ id: String, profile: String? = "default") -> SessionSummary {
         SessionSummary(
             id: id,
