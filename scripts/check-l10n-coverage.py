@@ -228,6 +228,12 @@ REGRESSION_KEYS = (
     "Noir",
     "Philosopher",
     "Hype",
+    "Off",
+    "Always",
+    "Start of each turn",
+    "First turn only",
+    "Keep them",
+    "Throw them away",
     "Session",
     "Skills & extensions",
     # Sessions drawer nest expander (#556): the hint is a runtime ternary

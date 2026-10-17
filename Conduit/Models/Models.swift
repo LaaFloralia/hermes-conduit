@@ -1048,6 +1048,8 @@ enum ProfileSettingValue: Equatable {
     case bool(Bool)
     case text(String)
     case number(Double)
+    /// A list of plain strings, such as `command_allowlist`.
+    case list([String])
 
     var boolValue: Bool? {
         if case .bool(let value) = self { return value }
@@ -1057,9 +1059,110 @@ enum ProfileSettingValue: Equatable {
     var textValue: String? {
         switch self {
         case .text(let value): return value
-        case .number(let value): return String(value)
+        case .number(let value): return Self.numberText(value)
         case .bool(let value): return value ? "true" : "false"
+        case .list(let value): return value.joined(separator: "\n")
         }
+    }
+
+    var listValue: [String]? {
+        if case .list(let value) = self { return value }
+        return nil
+    }
+
+    /// Whole numbers read "300", not "300.0": most Hermes number settings
+    /// are counts, seconds, or characters.
+    static func numberText(_ value: Double) -> String {
+        value.rounded() == value && abs(value) < 1e15 ? String(Int64(value)) : String(value)
+    }
+}
+
+/// The gateway's `GET /api/config/schema`: every config key it knows, by dot
+/// path, with its type and any fixed choices. Hermes Desktop builds its
+/// settings pages from it; Conduit uses it to hide settings an older Hermes
+/// doesn't have and to fill in choices Hermes discovers at runtime.
+struct ProfileConfigSchema: Equatable {
+    struct Field: Equatable {
+        /// "boolean", "number", "string", "list", "object" or "select".
+        var type: String
+        var options: [String] = []
+    }
+
+    var fields: [String: Field] = [:]
+
+    var isEmpty: Bool { fields.isEmpty }
+
+    init(fields: [String: Field] = [:]) {
+        self.fields = fields
+    }
+
+    init(json: [String: Any]) {
+        let raw = json["fields"] as? [String: Any] ?? [:]
+        var fields: [String: Field] = [:]
+        for (key, value) in raw {
+            guard let entry = value as? [String: Any] else { continue }
+            let options = (entry["options"] as? [Any] ?? []).compactMap { $0 as? String }
+            fields[key] = Field(type: entry["type"] as? String ?? "string", options: options)
+        }
+        self.fields = fields
+    }
+
+    subscript(key: String) -> Field? { fields[key] }
+}
+
+/// One `fallback_providers` entry: the model Hermes tries when the default
+/// fails. Entries can carry hand-written routing (`base_url`, `key_env`,
+/// `api_mode`…); `extras` keeps it so a save never drops it.
+struct ProfileFallbackModel: Equatable, Identifiable {
+    let id = UUID()
+    var provider: String
+    var model: String
+    var extras: [String: AnyCodable] = [:]
+
+    static func == (lhs: ProfileFallbackModel, rhs: ProfileFallbackModel) -> Bool {
+        lhs.provider == rhs.provider && lhs.model == rhs.model && lhs.extras == rhs.extras
+    }
+
+    /// Reads the raw config value: a list of `{provider, model, …}` objects,
+    /// or legacy "provider/model" strings.
+    static func list(from value: Any?) -> [ProfileFallbackModel] {
+        guard let items = value as? [Any] else { return [] }
+        return items.compactMap { item in
+            if let object = item as? [String: Any] {
+                var extras = object.mapValues(AnyCodable.init(jsonObject:))
+                extras["provider"] = nil
+                extras["model"] = nil
+                return ProfileFallbackModel(
+                    provider: object["provider"] as? String ?? "",
+                    model: object["model"] as? String ?? "",
+                    extras: extras
+                )
+            }
+            if let text = item as? String {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return nil }
+                guard let slash = trimmed.firstIndex(of: "/"), slash != trimmed.startIndex else {
+                    return ProfileFallbackModel(provider: "", model: trimmed)
+                }
+                return ProfileFallbackModel(
+                    provider: String(trimmed[..<slash]),
+                    model: String(trimmed[trimmed.index(after: slash)...])
+                )
+            }
+            return nil
+        }
+    }
+
+    var jsonObject: [String: Any] {
+        var object = extras.mapValues(\.anyValue)
+        object["provider"] = provider
+        object["model"] = model
+        return object
+    }
+
+    var isComplete: Bool {
+        !provider.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }
 

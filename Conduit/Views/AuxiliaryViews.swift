@@ -435,7 +435,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, location, phone, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, location, phone, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
@@ -456,6 +456,8 @@ enum ProfileSettingControl {
     case labeledOptions([(value: String, label: String)], defaultValue: String)
     case text(defaultValue: String)
     case number(defaultValue: Double)
+    /// One string per line, saved as a list.
+    case stringList
 }
 
 struct ProfileSettingField: Identifiable {
@@ -463,7 +465,31 @@ struct ProfileSettingField: Identifiable {
     let label: String
     let help: String
     let control: ProfileSettingControl
+    /// Shown only when the gateway's config schema has the key, so an older
+    /// Hermes doesn't offer a setting it would ignore. The schema failing to
+    /// load shows it anyway.
+    var requiresSchema = false
     var id: String { key }
+
+    /// The field as this gateway's schema describes it: nil when the schema
+    /// lacks a key it requires, and an empty choice list filled from the
+    /// schema's own choices.
+    func resolved(with schema: ProfileConfigSchema) -> ProfileSettingField? {
+        guard !schema.isEmpty else { return self }
+        guard let entry = schema[key] else { return requiresSchema ? nil : self }
+        if case .options(let options, let defaultValue) = control, options.isEmpty, !entry.options.isEmpty {
+            return ProfileSettingField(key: key, label: label, help: help, control: .options(entry.options, defaultValue: defaultValue), requiresSchema: requiresSchema)
+        }
+        return self
+    }
+}
+
+/// A titled card of settings on a ProfileConfigSettingsPage.
+struct ProfileSettingSection: Identifiable {
+    let title: String
+    let symbol: String
+    let fields: [ProfileSettingField]
+    var id: String { title }
 }
 
 struct SettingsView: View {
@@ -561,7 +587,21 @@ struct SettingsView: View {
                 saveDefaultProfileName: saveDefaultProfileName
             )
         case .model:
-            ProfileModelSettingsDetail(load: loadProfileModelDefaults, save: persistProfileMainModel)
+            ProfileConfigSettingsPage(
+                title: AppLocalization.string("Model"),
+                subtitle: "",
+                fields: Self.modelFields,
+                load: loadProfileSettings,
+                save: persistProfileSetting,
+                fieldsHeader: AppLocalization.string("Speed & limits"),
+                leadingSection: AnyView(ProfileModelSettingsDetail(load: loadProfileModelDefaults, save: persistProfileMainModel)),
+                trailingSection: AnyView(FallbackModelsSettings(
+                    loadModels: loadProfileModelDefaults,
+                    load: { await appState.loadProfileFallbackModels() },
+                    save: { await appState.setProfileFallbackModels($0) }
+                )),
+                loadSchema: { await appState.loadProfileConfigSchema() }
+            )
         case .chat:
             ChatSettingsDetail(
                 busyInputMode: snapshot.busyInputMode,
@@ -572,7 +612,8 @@ struct SettingsView: View {
                 persistChatReturnSurface: persistChatReturnSurface,
                 load: loadProfileSettings,
                 save: persistProfileSetting,
-                loadOptions: loadProfileConfigOptions
+                loadOptions: loadProfileConfigOptions,
+                loadSchema: { await appState.loadProfileConfigSchema() }
             )
         case .voice:
             if let bridge = appState.dashboardTicketBridge {
@@ -758,9 +799,11 @@ struct SettingsView: View {
             ProfileConfigSettingsPage(
                 title: AppLocalization.string("Workspace & safety"),
                 subtitle: AppLocalization.string("Working defaults and safeguards for this profile."),
-                fields: Self.workspaceFields,
+                fields: [],
                 load: loadProfileSettings,
-                save: persistProfileSetting
+                save: persistProfileSetting,
+                sections: Self.workspaceSections,
+                loadSchema: { await appState.loadProfileConfigSchema() }
             )
         case .memory:
             MemorySettingsDetail(
@@ -768,7 +811,18 @@ struct SettingsView: View {
                 save: persistProfileSetting,
                 loadOptions: loadProfileConfigOptions,
                 loadModels: loadProfileModelDefaults,
-                fields: Self.memoryFields
+                loadSchema: { await appState.loadProfileConfigSchema() },
+                sections: Self.memorySections
+            )
+        case .advanced:
+            ProfileConfigSettingsPage(
+                title: AppLocalization.string("Advanced"),
+                subtitle: AppLocalization.string("Limits and runtime defaults for this profile. Most profiles never need to change these."),
+                fields: [],
+                load: loadProfileSettings,
+                save: persistProfileSetting,
+                sections: Self.advancedSections,
+                loadSchema: { await appState.loadProfileConfigSchema() }
             )
         case .capabilities:
             CapabilitiesView()
@@ -825,25 +879,89 @@ struct SettingsView: View {
         }
     }
 
-    static var workspaceFields: [ProfileSettingField] { [
-        .init(key: "terminal.cwd", label: AppLocalization.string("Default working directory"), help: AppLocalization.string("Server-side path for new workspaces."), control: .text(defaultValue: "")),
-        .init(key: "code_execution.mode", label: AppLocalization.string("Code execution mode"), help: AppLocalization.string("Default execution boundary."), control: .options(["project", "strict"], defaultValue: "project")),
-        .init(key: "approvals.mode", label: AppLocalization.string("Approval mode"), help: AppLocalization.string("Profile-wide default: manual asks every time; smart asks when risk warrants it; off is YOLO mode. When set to off, Hermes auto-approves everything and per-session YOLO toggles have no effect — that's a Hermes limitation, not a Conduit bug. To use per-session YOLO, set this to manual or smart."), control: .options(["manual", "smart", "off"], defaultValue: "smart")),
-        .init(key: "security.redact_secrets", label: AppLocalization.string("Redact secrets"), help: AppLocalization.string("Hide detected credentials from tool output where possible."), control: .toggle(defaultValue: true)),
-        .init(key: "security.allow_private_urls", label: AppLocalization.string("Allow private URLs"), help: AppLocalization.string("Permit tool access to private-network URLs."), control: .toggle(defaultValue: false)),
+    static var workspaceFields: [ProfileSettingField] { workspaceSections.flatMap(\.fields) }
+
+    static var workspaceSections: [ProfileSettingSection] { [
+        ProfileSettingSection(title: AppLocalization.string("Workspace"), symbol: "folder", fields: [
+            .init(key: "terminal.cwd", label: AppLocalization.string("Default working directory"), help: AppLocalization.string("Server-side path for new workspaces."), control: .text(defaultValue: "")),
+            .init(key: "code_execution.mode", label: AppLocalization.string("Code execution mode"), help: AppLocalization.string("Default execution boundary."), control: .options(["project", "strict"], defaultValue: "project")),
+            .init(key: "terminal.persistent_shell", label: AppLocalization.string("Persistent shell"), help: AppLocalization.string("SSH backend: keep exported variables between commands. The working directory always carries over."), control: .toggle(defaultValue: true), requiresSchema: true),
+            .init(key: "terminal.env_passthrough", label: AppLocalization.string("Environment passthrough"), help: AppLocalization.string("Environment variables passed into tool commands, one per line."), control: .stringList, requiresSchema: true),
+            .init(key: "file_read_max_chars", label: AppLocalization.string("File read limit"), help: AppLocalization.string("Most characters Hermes reads from a file in one request."), control: .number(defaultValue: 100_000), requiresSchema: true),
+        ]),
+        ProfileSettingSection(title: AppLocalization.string("Safety"), symbol: "checkmark.shield", fields: [
+            .init(key: "approvals.mode", label: AppLocalization.string("Approval mode"), help: AppLocalization.string("Profile-wide default: manual asks every time; smart asks when risk warrants it; off is YOLO mode. When set to off, Hermes auto-approves everything and per-session YOLO toggles have no effect — that's a Hermes limitation, not a Conduit bug. To use per-session YOLO, set this to manual or smart."), control: .options(["manual", "smart", "off"], defaultValue: "smart")),
+            .init(key: "approvals.timeout", label: AppLocalization.string("Approval timeout"), help: AppLocalization.string("Seconds an approval request waits before it times out."), control: .number(defaultValue: 300), requiresSchema: true),
+            .init(key: "approvals.mcp_reload_confirm", label: AppLocalization.string("Confirm connector reloads"), help: AppLocalization.string("Ask before Hermes reloads its MCP connectors."), control: .toggle(defaultValue: true), requiresSchema: true),
+            .init(key: "command_allowlist", label: AppLocalization.string("Command allowlist"), help: AppLocalization.string("Command patterns you approved permanently, one per line. Remove a line to be asked again."), control: .stringList, requiresSchema: true),
+            .init(key: "security.redact_secrets", label: AppLocalization.string("Redact secrets"), help: AppLocalization.string("Hide detected credentials from tool output where possible."), control: .toggle(defaultValue: true)),
+            .init(key: "security.allow_private_urls", label: AppLocalization.string("Allow private URLs"), help: AppLocalization.string("Permit tool access to private-network URLs."), control: .toggle(defaultValue: false)),
+            .init(key: "checkpoints.enabled", label: AppLocalization.string("File checkpoints"), help: AppLocalization.string("Snapshot files before Hermes edits them, so changes can be rolled back."), control: .toggle(defaultValue: false), requiresSchema: true),
+        ]),
+        ProfileSettingSection(title: AppLocalization.string("Browser"), symbol: "globe", fields: [
+            .init(key: "browser.use_real_profile", label: AppLocalization.string("Use my real browser profile"), help: AppLocalization.string("Browse with a copy of the host's default Chromium browser profile, including its logins."), control: .toggle(defaultValue: false), requiresSchema: true),
+            .init(key: "browser.allow_private_urls", label: AppLocalization.string("Browser private URLs"), help: AppLocalization.string("Let the browser open private-network addresses."), control: .toggle(defaultValue: false), requiresSchema: true),
+            .init(key: "browser.auto_local_for_private_urls", label: AppLocalization.string("Local browser for private URLs"), help: AppLocalization.string("Open private-network addresses in a local browser even when a cloud browser is set up."), control: .toggle(defaultValue: true), requiresSchema: true),
+        ]),
     ]
     }
 
-    static var memoryFields: [ProfileSettingField] { [
-        .init(key: "memory.provider", label: AppLocalization.string("Memory provider"), help: AppLocalization.string("Provider used for long-term memory."), control: .options([], defaultValue: "")),
-        .init(key: "memory.memory_enabled", label: AppLocalization.string("Long-term memory"), help: AppLocalization.string("Allow Hermes to retain relevant working memory."), control: .toggle(defaultValue: true)),
-        .init(key: "memory.user_profile_enabled", label: AppLocalization.string("User profile memory"), help: AppLocalization.string("Allow Hermes to maintain user preferences."), control: .toggle(defaultValue: true)),
-        .init(key: "context.engine", label: AppLocalization.string("Context engine"), help: AppLocalization.string("Installed context-management engine."), control: .options([], defaultValue: "default")),
-        .init(key: "compression.enabled", label: AppLocalization.string("Context compression"), help: AppLocalization.string("Compress older context when the window becomes crowded."), control: .toggle(defaultValue: true)),
-        .init(key: "compression.threshold", label: AppLocalization.string("Compression threshold"), help: AppLocalization.string("Fraction of the context window that starts compression."), control: .number(defaultValue: 0.8)),
-        .init(key: "compression.target_ratio", label: AppLocalization.string("Compression target"), help: AppLocalization.string("Fraction retained after compression."), control: .number(defaultValue: 0.5)),
-        .init(key: "compression.protect_last_n", label: AppLocalization.string("Protected recent messages"), help: AppLocalization.string("Recent messages left intact by compression."), control: .number(defaultValue: 8)),
-        .init(key: "delegation.max_concurrent_children", label: AppLocalization.string("Concurrent delegate agents"), help: AppLocalization.string("Maximum child agents that can work at once."), control: .number(defaultValue: 2)),
+    static var memoryFields: [ProfileSettingField] { memorySections.flatMap(\.fields) }
+
+    static var memorySections: [ProfileSettingSection] { [
+        ProfileSettingSection(title: AppLocalization.string("Memory"), symbol: "brain.head.profile", fields: [
+            .init(key: "memory.provider", label: AppLocalization.string("Memory provider"), help: AppLocalization.string("Provider used for long-term memory."), control: .options([], defaultValue: "")),
+            .init(key: "memory.memory_enabled", label: AppLocalization.string("Long-term memory"), help: AppLocalization.string("Allow Hermes to retain relevant working memory."), control: .toggle(defaultValue: true)),
+            .init(key: "memory.user_profile_enabled", label: AppLocalization.string("User profile memory"), help: AppLocalization.string("Allow Hermes to maintain user preferences."), control: .toggle(defaultValue: true)),
+            .init(key: "memory.memory_char_limit", label: AppLocalization.string("Memory budget"), help: AppLocalization.string("Most characters of saved memory Hermes keeps."), control: .number(defaultValue: 2200), requiresSchema: true),
+            .init(key: "memory.user_char_limit", label: AppLocalization.string("Profile budget"), help: AppLocalization.string("Most characters of user profile Hermes keeps."), control: .number(defaultValue: 1375), requiresSchema: true),
+        ]),
+        ProfileSettingSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", fields: [
+            .init(key: "context.engine", label: AppLocalization.string("Context engine"), help: AppLocalization.string("Installed context-management engine."), control: .options([], defaultValue: "default")),
+            .init(key: "compression.enabled", label: AppLocalization.string("Context compression"), help: AppLocalization.string("Compress older context when the window becomes crowded."), control: .toggle(defaultValue: true)),
+            .init(key: "compression.threshold", label: AppLocalization.string("Compression threshold"), help: AppLocalization.string("Fraction of the context window that starts compression."), control: .number(defaultValue: 0.8)),
+            .init(key: "compression.target_ratio", label: AppLocalization.string("Compression target"), help: AppLocalization.string("Fraction retained after compression."), control: .number(defaultValue: 0.5)),
+            .init(key: "compression.protect_last_n", label: AppLocalization.string("Protected recent messages"), help: AppLocalization.string("Recent messages left intact by compression."), control: .number(defaultValue: 8)),
+            .init(key: "compression.codex_gpt55_autoraise", label: AppLocalization.string("Codex compression auto-raise"), help: AppLocalization.string("Start compression at 85% for supported ChatGPT Codex sign-in models."), control: .toggle(defaultValue: true), requiresSchema: true),
+            .init(key: "auxiliary.compression.timeout", label: AppLocalization.string("Compression timeout"), help: AppLocalization.string("Seconds to wait for the compression model on each call. Raise it for slow local models."), control: .number(defaultValue: 120), requiresSchema: true),
+        ]),
+        ProfileSettingSection(title: AppLocalization.string("Delegation"), symbol: "point.3.connected.trianglepath.dotted", fields: [
+            .init(key: "delegation.max_concurrent_children", label: AppLocalization.string("Concurrent delegate agents"), help: AppLocalization.string("Maximum child agents that can work at once."), control: .number(defaultValue: 2)),
+            .init(key: "delegation.max_iterations", label: AppLocalization.string("Delegate turn limit"), help: AppLocalization.string("Most turns one delegate agent can take."), control: .number(defaultValue: 250), requiresSchema: true),
+            .init(key: "delegation.child_timeout_seconds", label: AppLocalization.string("Delegate timeout"), help: AppLocalization.string("Seconds before a delegate agent is stopped. 0 means no limit."), control: .number(defaultValue: 0), requiresSchema: true),
+        ]),
+    ]
+    }
+
+    static var modelFields: [ProfileSettingField] { [
+        .init(key: "agent.service_tier", label: AppLocalization.string("Fast mode"), help: AppLocalization.string("When Hermes asks the provider for faster priority processing, on models that offer it."), control: .options([], defaultValue: ""), requiresSchema: true),
+        .init(key: "model_context_length", label: AppLocalization.string("Context window"), help: AppLocalization.string("Overrides the main model's context window, in tokens. 0 uses the model's own size."), control: .number(defaultValue: 0), requiresSchema: true),
+    ]
+    }
+
+    static var advancedFields: [ProfileSettingField] { advancedSections.flatMap(\.fields) }
+
+    static var advancedSections: [ProfileSettingSection] { [
+        ProfileSettingSection(title: AppLocalization.string("Runtime"), symbol: "cpu", fields: [
+            .init(key: "agent.max_turns", label: AppLocalization.string("Turn limit"), help: AppLocalization.string("Most tool-calling turns before Hermes stops a run. 0 means no limit."), control: .number(defaultValue: 0), requiresSchema: true),
+            .init(key: "agent.api_max_retries", label: AppLocalization.string("API retries"), help: AppLocalization.string("How many times Hermes retries a failed model request."), control: .number(defaultValue: 3), requiresSchema: true),
+        ]),
+        ProfileSettingSection(title: AppLocalization.string("Terminal"), symbol: "terminal", fields: [
+            .init(key: "terminal.timeout", label: AppLocalization.string("Command timeout"), help: AppLocalization.string("Seconds a terminal command can run."), control: .number(defaultValue: 180), requiresSchema: true),
+            .init(key: "terminal.docker_image", label: AppLocalization.string("Docker image"), help: AppLocalization.string("Image used when the terminal backend is Docker."), control: .text(defaultValue: ""), requiresSchema: true),
+            .init(key: "terminal.singularity_image", label: AppLocalization.string("Singularity image"), help: AppLocalization.string("Image used when the terminal backend is Singularity."), control: .text(defaultValue: ""), requiresSchema: true),
+            .init(key: "terminal.modal_image", label: AppLocalization.string("Modal image"), help: AppLocalization.string("Image used when the terminal backend is Modal."), control: .text(defaultValue: ""), requiresSchema: true),
+            .init(key: "terminal.daytona_image", label: AppLocalization.string("Daytona image"), help: AppLocalization.string("Image used when the terminal backend is Daytona."), control: .text(defaultValue: ""), requiresSchema: true),
+        ]),
+        ProfileSettingSection(title: AppLocalization.string("Files & output"), symbol: "doc.text", fields: [
+            .init(key: "tool_output.max_bytes", label: AppLocalization.string("Terminal output limit"), help: AppLocalization.string("Most bytes of command output Hermes reads."), control: .number(defaultValue: 50_000), requiresSchema: true),
+            .init(key: "tool_output.max_lines", label: AppLocalization.string("File page limit"), help: AppLocalization.string("Most lines Hermes reads from a file at once."), control: .number(defaultValue: 2000), requiresSchema: true),
+            .init(key: "tool_output.max_line_length", label: AppLocalization.string("Line length limit"), help: AppLocalization.string("Longer lines are cut to this many characters."), control: .number(defaultValue: 2000), requiresSchema: true),
+            .init(key: "checkpoints.max_snapshots", label: AppLocalization.string("Checkpoint limit"), help: AppLocalization.string("Most file snapshots kept for rolling back."), control: .number(defaultValue: 20), requiresSchema: true),
+        ]),
+        ProfileSettingSection(title: AppLocalization.string("Updates"), symbol: "arrow.down.circle", fields: [
+            .init(key: "updates.non_interactive_local_changes", label: AppLocalization.string("Local changes on update"), help: AppLocalization.string("When Hermes updates itself from an app, keep local source edits or throw them away. Terminal updates always ask."), control: .options(["stash", "discard"], defaultValue: "stash"), requiresSchema: true),
+        ]),
     ]
     }
 }
@@ -909,6 +1027,7 @@ private struct SettingsHome: View {
                         }
                         settingsLink(.workspace, icon: "folder", title: AppLocalization.string("Workspace & safety"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
                         settingsLink(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
+                        settingsLink(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
                         settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
                     }
                     homeSection(AppLocalization.string("Connection"), tint: .conduitAura) {
@@ -1049,6 +1168,7 @@ private struct SettingsHome: View {
             v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
             v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
             v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
+            v2Link(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
             v2Link(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
         }
         v2Group(AppLocalization.string("App"), symbol: "slider.horizontal.3") {
@@ -1332,6 +1452,7 @@ struct ChatSettingsDetail: View {
     let load: ([String]) async -> [String: ProfileSettingValue]
     let save: (String, ProfileSettingValue) async -> Bool
     let loadOptions: () async -> ProfileConfigOptions
+    var loadSchema: (() async -> ProfileConfigSchema)? = nil
     @State private var options = ProfileConfigOptions()
 
     var body: some View {
@@ -1363,7 +1484,8 @@ struct ChatSettingsDetail: View {
                     ChatTakeoverSettings()
                     DeviceHapticsSettings()
                 }
-            )
+            ),
+            loadSchema: loadSchema
         )
         .navigationTitle("Chat")
         .task { options = await loadOptions() }
@@ -1377,6 +1499,8 @@ struct ChatSettingsDetail: View {
         .init(key: "display.expand_tools", label: AppLocalization.string("Keep tool cards expanded"), help: AppLocalization.string("Keep completed tool details open by default."), control: .toggle(defaultValue: false)),
         .init(key: "display.memory_notifications", label: AppLocalization.string("Self-improvement updates"), help: AppLocalization.string("Choose whether Conduit follows Hermes, always shows, or never shows maintenance updates."), control: .labeledOptions([(value: "default", label: AppLocalization.string("Use Hermes default")), (value: "on", label: AppLocalization.string("Always show")), (value: "off", label: AppLocalization.string("Never show"))], defaultValue: "default")),
         .init(key: "agent.image_input_mode", label: AppLocalization.string("Image attachments"), help: AppLocalization.string("How Hermes supplies images to a model."), control: .options(["auto", "native", "text"], defaultValue: "auto")),
+        .init(key: "sessions.auto_archive", label: AppLocalization.string("Auto-archive stale chats"), help: AppLocalization.string("Archive chats nobody has touched for a while. Pinned chats stay, and nothing is deleted."), control: .toggle(defaultValue: false), requiresSchema: true),
+        .init(key: "sessions.auto_archive_days", label: AppLocalization.string("Archive after (days)"), help: AppLocalization.string("Days without activity before a chat is archived."), control: .number(defaultValue: 3), requiresSchema: true),
     ]
     }
 }
@@ -1820,8 +1944,9 @@ private struct ProfileModelSettingsDetail: View {
         return provider.isEmpty || providers.contains(where: { $0.name == provider }) ? listed : [(id: provider, title: provider)] + listed
     }
 
+    /// The top of the Model page; the page around it scrolls and titles it.
     var body: some View {
-        SettingsDetailContainer {
+        VStack(alignment: .leading, spacing: 24) {
             ConduitSettingsSection(title: AppLocalization.string("Default model"), symbol: "cpu", tint: .conduitAccent) {
                 Text("Select a provider first, then one of its available models. These defaults apply to new sessions in this profile.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -1858,7 +1983,6 @@ private struct ProfileModelSettingsDetail: View {
                 .disabled(saving || provider.isEmpty || model.isEmpty).conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.18))
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").font(.footnote).foregroundStyle(.red) }
         }
-        .navigationTitle("Model")
         .task { await reload() }
     }
 
@@ -1990,24 +2114,184 @@ private struct DelegationModelSettings: View {
     }
 }
 
+/// The Model page's `fallback_providers`: the models Hermes tries, in
+/// order, when the default model fails.
+private struct FallbackModelsSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let loadModels: () async -> ProfileModelDefaults?
+    let load: () async -> [ProfileFallbackModel]?
+    let save: ([ProfileFallbackModel]) async -> Bool
+    @State private var defaults: ProfileModelDefaults?
+    @State private var entries: [ProfileFallbackModel] = []
+    @State private var saved: [ProfileFallbackModel] = []
+    @State private var loaded = false
+    @State private var saving = false
+    @State private var error: String?
+
+    private var providers: [ProviderInfo] { defaults?.providers ?? [] }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Fallback models"), symbol: "arrow.triangle.branch", tint: .conduitAura) {
+            Text("If the default model fails, Hermes tries these in order.")
+                .font(.footnote).foregroundStyle(.secondary)
+            if !loaded {
+                // A list that didn't load is never edited: saving it would
+                // replace the real one.
+                if error == nil { ProgressView("Loading available models…") }
+            } else {
+                if entries.isEmpty {
+                    Text("No fallback models yet.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                    entryRow(index: index, entry: entry)
+                }
+                AdaptiveStack(spacing: 8) {
+                    Button { addEntry() } label: { Label(AppLocalization.string("Add fallback"), systemImage: "plus") }
+                        .buttonStyle(.settings)
+                        .disabled(saving || providers.isEmpty)
+                    Button(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save fallbacks")) { persist() }
+                        .buttonStyle(.settingsPrimary)
+                        .disabled(saving || entries == saved || entries.contains { !$0.isComplete })
+                }
+                if entries.contains(where: { !$0.isComplete }) {
+                    Text("Pick a provider and model for every fallback to save.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+        }
+        .task { await reload() }
+    }
+
+    private func entryRow(index: Int, entry: ProfileFallbackModel) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(AppLocalization.string("Fallback \(String(index + 1))"))
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Menu {
+                    if index > 0 {
+                        Button { move(entry.id, by: -1) } label: { Label(AppLocalization.string("Move up"), systemImage: "arrow.up") }
+                    }
+                    if index < entries.count - 1 {
+                        Button { move(entry.id, by: 1) } label: { Label(AppLocalization.string("Move down"), systemImage: "arrow.down") }
+                    }
+                    Button(role: .destructive) { entries.removeAll { $0.id == entry.id } } label: { Label(AppLocalization.string("Delete"), systemImage: "trash") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(Text(AppLocalization.string("More")))
+                .accessibilityValue(Text(verbatim: entry.model))
+            }
+            ConduitMenuPicker(value: entry.provider, choices: providerChoices(entry), onSelect: { chooseProvider($0, for: entry.id) }) {
+                Text("Provider").foregroundStyle(.secondary)
+            }
+            ConduitMenuPicker(value: entry.model, choices: modelChoices(entry), onSelect: { chooseModel($0, for: entry.id) }) {
+                Text("Model").foregroundStyle(.secondary)
+            }
+            .disabled(modelChoices(entry).isEmpty)
+        }
+    }
+
+    /// A provider or model the catalog doesn't list stays visible, so a
+    /// hand-written entry is never shown as a different one.
+    private func providerChoices(_ entry: ProfileFallbackModel) -> [(id: String, title: String)] {
+        let listed = providers.map { (id: $0.name, title: $0.title) }
+        return entry.provider.isEmpty || listed.contains(where: { $0.id == entry.provider }) ? listed : [(id: entry.provider, title: entry.provider)] + listed
+    }
+
+    private func modelChoices(_ entry: ProfileFallbackModel) -> [(id: String, title: String)] {
+        let models = providers.first(where: { $0.name == entry.provider })?.models ?? []
+        let listed = models.map { (id: $0.id, title: $0.label ?? $0.id) }
+        return entry.model.isEmpty || listed.contains(where: { $0.id == entry.model }) ? listed : [(id: entry.model, title: entry.model)] + listed
+    }
+
+    /// Menus act on the entry they were drawn for, found again by id: the
+    /// row may have moved or gone while the menu was open.
+    private func chooseModel(_ next: String, for id: UUID) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[index].model = next
+    }
+
+    private func chooseProvider(_ next: String, for id: UUID) {
+        guard let index = entries.firstIndex(where: { $0.id == id }), next != entries[index].provider else { return }
+        entries[index].provider = next
+        let models = providers.first(where: { $0.name == next })?.models ?? []
+        if !models.contains(where: { $0.id == entries[index].model }) {
+            entries[index].model = models.first?.id ?? ""
+        }
+        // Routing written for the old provider would send the new one to
+        // the wrong endpoint.
+        entries[index].extras = [:]
+    }
+
+    private func addEntry() {
+        guard let row = providers.first(where: { !$0.isCurrent }) ?? providers.first else { return }
+        entries.append(ProfileFallbackModel(provider: row.name, model: row.models.first?.id ?? ""))
+    }
+
+    private func move(_ id: UUID, by offset: Int) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        let target = index + offset
+        guard entries.indices.contains(target) else { return }
+        entries.swapAt(index, target)
+    }
+
+    private func reload() async {
+        async let modelRequest = loadModels()
+        async let entryRequest = load()
+        let (models, loadedEntries) = await (modelRequest, entryRequest)
+        defaults = models
+        guard let loadedEntries else {
+            error = AppLocalization.string("Could not load fallback models.")
+            return
+        }
+        entries = loadedEntries
+        saved = loadedEntries
+        loaded = true
+    }
+
+    private func persist() {
+        Task {
+            saving = true
+            error = nil
+            let next = entries
+            if await save(next) {
+                saved = next
+            } else {
+                error = AppLocalization.string("Could not save fallback models.")
+            }
+            saving = false
+        }
+    }
+}
+
 private struct MemorySettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let load: ([String]) async -> [String: ProfileSettingValue]
     let save: (String, ProfileSettingValue) async -> Bool
     let loadOptions: () async -> ProfileConfigOptions
     let loadModels: () async -> ProfileModelDefaults?
-    let fields: [ProfileSettingField]
+    let loadSchema: () async -> ProfileConfigSchema
+    let sections: [ProfileSettingSection]
     @State private var options = ProfileConfigOptions()
 
     var body: some View {
         ProfileConfigSettingsPage(
             title: AppLocalization.string("Memory & delegation"),
             subtitle: AppLocalization.string("Long-term context and delegate-agent defaults."),
-            fields: fields,
+            fields: [],
             load: load,
             save: save,
             optionOverrides: ["memory.provider": options.memoryProviders, "context.engine": options.contextEngines],
-            trailingSection: AnyView(DelegationModelSettings(loadModels: loadModels, loadSettings: load, save: save))
+            trailingSection: AnyView(DelegationModelSettings(loadModels: loadModels, loadSettings: load, save: save)),
+            sections: sections,
+            loadSchema: loadSchema
         )
         .task { options = await loadOptions() }
     }
@@ -2020,6 +2304,8 @@ enum ProfileConfigValueDisplay {
         "approvals.mode": ["manual": "Manual", "smart": "Smart", "off": "YOLO mode"],
         "code_execution.mode": ["project": "Project", "strict": "Strict"],
         "agent.image_input_mode": ["auto": "Automatic", "native": "Native images", "text": "Text only"],
+        "agent.service_tier": ["normal": "Off", "fast": "Always", "auto": "Start of each turn", "cold": "First turn only"],
+        "updates.non_interactive_local_changes": ["stash": "Keep them", "discard": "Throw them away"],
         "display.personality": [
             "": "Default", "helpful": "Helpful", "concise": "Concise", "technical": "Technical",
             "creative": "Creative", "teacher": "Teacher", "kawaii": "Kawaii", "catgirl": "Catgirl",
@@ -2049,9 +2335,15 @@ struct ProfileConfigSettingsPage: View {
     var fieldsHeader: String? = nil
     var leadingSection: AnyView? = nil
     var trailingSection: AnyView? = nil
+    /// More titled cards after the fields' card, loaded and saved with it.
+    var sections: [ProfileSettingSection] = []
+    /// The gateway's config schema, which hides settings this Hermes lacks
+    /// and fills in runtime choices.
+    var loadSchema: (() async -> ProfileConfigSchema)? = nil
 
     @State private var values: [String: ProfileSettingValue] = [:]
     @State private var drafts: [String: String] = [:]
+    @State private var schema = ProfileConfigSchema()
     @State private var loading = true
     @State private var savingKey: String?
     @State private var error: String?
@@ -2065,22 +2357,8 @@ struct ProfileConfigSettingsPage: View {
             if loading {
                 ProgressView("Loading profile settings…").frame(maxWidth: .infinity, minHeight: 180)
             } else {
-                // One card of rows, a hairline between them, each setting's
-                // name and what it does beside its control.
-                VStack(alignment: .leading, spacing: 8) {
-                    if let fieldsHeader {
-                        SettingsSectionHeader(title: fieldsHeader, symbol: "gearshape.2", tint: .conduitAura)
-                    }
-                    VStack(spacing: 0) {
-                        ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
-                            fieldRow(field)
-                                .padding(16)
-                                .overlay(alignment: .top) {
-                                    if index > 0 { V2RowDivider(leadingInset: 16) }
-                                }
-                        }
-                    }
-                    .settingsCard()
+                ForEach(cards) { card in
+                    fieldsCard(card)
                 }
             }
             if let trailingSection { trailingSection }
@@ -2088,6 +2366,47 @@ struct ProfileConfigSettingsPage: View {
         }
         .navigationTitle(showsNavigationTitle ? title : "")
         .task { await reload() }
+    }
+
+    private struct FieldsCard: Identifiable {
+        let id: Int
+        let title: String?
+        let symbol: String
+        let fields: [ProfileSettingField]
+    }
+
+    /// The fields' card, then each extra section, with the settings this
+    /// gateway's schema lacks taken out and empty cards dropped.
+    private var cards: [FieldsCard] {
+        let all: [(title: String?, symbol: String, fields: [ProfileSettingField])] =
+            [(title: fieldsHeader, symbol: "gearshape.2", fields: fields)]
+            + sections.map { (title: $0.title, symbol: $0.symbol, fields: $0.fields) }
+        return all.enumerated().compactMap { index, card -> FieldsCard? in
+            let shown = card.fields.compactMap { $0.resolved(with: schema) }
+            return shown.isEmpty ? nil : FieldsCard(id: index, title: card.title, symbol: card.symbol, fields: shown)
+        }
+    }
+
+    private var allFields: [ProfileSettingField] { fields + sections.flatMap(\.fields) }
+
+    /// One card of rows, a hairline between them, each setting's name and
+    /// what it does beside its control.
+    private func fieldsCard(_ card: FieldsCard) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let title = card.title {
+                SettingsSectionHeader(title: title, symbol: card.symbol, tint: .conduitAura)
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(card.fields.enumerated()), id: \.element.id) { index, field in
+                    fieldRow(field)
+                        .padding(16)
+                        .overlay(alignment: .top) {
+                            if index > 0 { V2RowDivider(leadingInset: 16) }
+                        }
+                }
+            }
+            .settingsCard()
+        }
     }
 
     @ViewBuilder
@@ -2109,7 +2428,8 @@ struct ProfileConfigSettingsPage: View {
                 .tint(.conduitAccent).disabled(savingKey != nil)
             case .options(let options, let defaultValue):
                 fieldLabel(field)
-                let choices = optionOverrides[field.key] ?? options
+                // A runtime list that came back empty falls back to the schema's.
+                let choices = optionOverrides[field.key].flatMap { $0.isEmpty ? nil : $0 } ?? options
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
                 let displayedValue = selectedValue
                 Menu {
@@ -2144,7 +2464,10 @@ struct ProfileConfigSettingsPage: View {
                 textEditor(field, defaultValue: defaultValue, keyboard: .default)
             case .number(let defaultValue):
                 fieldLabel(field)
-                textEditor(field, defaultValue: String(defaultValue), keyboard: .decimalPad)
+                textEditor(field, defaultValue: ProfileSettingValue.numberText(defaultValue), keyboard: .decimalPad)
+            case .stringList:
+                fieldLabel(field)
+                listEditor(field)
             }
             if savingKey == field.key { HStack { ProgressView().controlSize(.small); Text("Saving…").font(.caption).foregroundStyle(.secondary) } }
         }
@@ -2176,12 +2499,39 @@ struct ProfileConfigSettingsPage: View {
                 else { save(field, value: .text(raw)) }
             }
             .buttonStyle(.settingsPrimary).disabled(savingKey != nil)
+            .accessibilityLabel(Text(AppLocalization.string("Save \(field.label)")))
         }
+    }
+
+    /// One entry per line; blank lines are dropped on save.
+    private func listEditor(_ field: ProfileSettingField) -> some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            TextField(field.label, text: Binding(get: { drafts[field.key] ?? textValue(field.key, defaultValue: "") }, set: { drafts[field.key] = $0 }), axis: .vertical)
+                .lineLimit(3...8)
+                .font(.subheadline.monospaced())
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
+            Button("Save") {
+                let raw = drafts[field.key] ?? textValue(field.key, defaultValue: "")
+                save(field, value: .list(Self.listEntries(raw)))
+            }
+            .buttonStyle(.settingsPrimary).disabled(savingKey != nil)
+            .accessibilityLabel(Text(AppLocalization.string("Save \(field.label)")))
+        }
+    }
+
+    nonisolated static func listEntries(_ text: String) -> [String] {
+        text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     private func reload() async {
         loading = true
-        values = await load(fields.map(\.key))
+        let fields = allFields
+        async let valuesRequest = load(fields.map(\.key))
+        schema = await loadSchema?() ?? ProfileConfigSchema()
+        values = await valuesRequest
         for field in fields { drafts[field.key] = values[field.key]?.textValue }
         loading = false
     }
