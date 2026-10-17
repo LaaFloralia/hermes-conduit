@@ -19,9 +19,22 @@ struct MarkdownSelectionSpan: Equatable, Hashable {
 }
 
 enum MarkdownSelectionSegmentPlan {
-    static func descriptors(for blocks: [MarkdownBlock]) -> [MarkdownSelectionSegmentDescriptor] {
+    /// `joiningRuns` are prose runs drawn in one text view each, sorted and
+    /// apart, as `MarkdownProseRun.ranges(in:)` returns them: a run is one
+    /// segment, named for its first block.
+    static func descriptors(
+        for blocks: [MarkdownBlock],
+        joiningRuns runs: [Range<Int>] = []
+    ) -> [MarkdownSelectionSegmentDescriptor] {
+        assert(
+            zip(runs, runs.dropFirst()).allSatisfy { $0.upperBound <= $1.lowerBound },
+            "prose runs must be sorted and must not overlap"
+        )
         var descriptors: [MarkdownSelectionSegmentDescriptor] = []
         var order = 0
+        var runEnds: [Int: Int] = [:]
+        for run in runs { runEnds[run.lowerBound] = run.upperBound }
+        var skipsBefore = 0
 
         func append(_ id: String, separatorBefore: String) {
             descriptors.append(
@@ -35,7 +48,14 @@ enum MarkdownSelectionSegmentPlan {
         }
 
         for (blockIndex, block) in blocks.enumerated() {
+            guard blockIndex >= skipsBefore else { continue }
             let blockSeparator = blockIndex == 0 ? "" : "\n\n"
+
+            if let runEnd = runEnds[blockIndex] {
+                append("block-\(blockIndex)", separatorBefore: blockSeparator)
+                skipsBefore = runEnd
+                continue
+            }
 
             switch block {
             case .heading(_, let text), .paragraph(let text):
@@ -111,7 +131,8 @@ enum MarkdownSelectionSegmentPlan {
     }
 
     /// Number of plan descriptors a block contributes. Must mirror
-    /// `descriptors(for:)` exactly — the large-document preparation slices
+    /// `descriptors(for:)` without joined runs (the large-document path
+    /// never joins them) exactly — the large-document preparation slices
     /// the plan per block using these counts, so any drift would misassign
     /// a block's selection segments.
     static func segmentCount(of block: MarkdownBlock) -> Int {
@@ -434,7 +455,7 @@ final class MarkdownSelectionCoordinator: ObservableObject {
             let attributed = textView.attributedText ?? NSAttributedString(string: textView.text ?? "")
             let safeRange = clampedRange(span.range, to: attributed.length)
             let selectedText = safeRange.length > 0
-                ? attributed.attributedSubstring(from: safeRange)
+                ? MarkdownProseRun.copyableText(attributed.attributedSubstring(from: safeRange))
                 : NSAttributedString(string: "")
 
             pieces.append(

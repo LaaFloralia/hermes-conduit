@@ -43,6 +43,9 @@ struct MarkdownText: View {
     /// the same value, so the whole stream stays at one size. The
     /// `.default` environment default keeps non-chat subtrees untouched.
     @Environment(\.chatTextSize) private var chatTextSize
+    @Environment(\.markdownJoinsProseRuns) private var joinsProseRuns
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
+    @Environment(\.accessibilitySwitchControlEnabled) private var switchControlEnabled
 
     var body: some View {
         // Path fork is centralized here: ordinary messages keep the exact
@@ -75,8 +78,23 @@ struct MarkdownText: View {
             isStreaming: isStreaming,
             chatTextSize: chatTextSize
         )
+        // A settled answer in the chat draws its prose runs in one text
+        // view each. A streaming reply keeps a view per block, so a new
+        // delta never re-lays out the paragraphs above it, and so does
+        // every answer under VoiceOver or Switch Control, which step
+        // through each block's view. Voice Control can't be detected; it
+        // targets controls, and the links inside a run stay targets.
+        let proseRuns = joinsProseRuns
+            && !voiceOverEnabled
+            && !switchControlEnabled
+            && !isStreaming
+            && newestCharacterOpacities.isEmpty
+            && rendering.selectableText == nil
+            && !rendering.needsRichBounding
+            ? rendering.proseRuns
+            : []
         let selectionSegments = rendering.selectableText == nil
-            ? MarkdownSelectionSegmentPlan.descriptors(for: rendering.blocks)
+            ? MarkdownSelectionSegmentPlan.descriptors(for: rendering.blocks, joiningRuns: proseRuns)
             : []
 
         Group {
@@ -115,27 +133,49 @@ struct MarkdownText: View {
                     lastBlockMayBePartial: lastBlockMayBePartial
                 )
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(rendering.blocks.enumerated()), id: \.offset) { index, block in
-                        MarkdownBlockView(
-                            block: block,
-                            blockIndex: index,
-                            foregroundStyle: foregroundStyle,
-                            usesAccentSurface: usesAccentSurface,
-                            gatewayMediaDataURL: gatewayMediaDataURL,
-                            selectionCoordinator: selectionCoordinator,
-                            selectionSegments: selectionSegments,
-                            newestCharacterOpacities: index == rendering.blocks.count - 1
-                                ? newestCharacterOpacities
-                                : [],
-                            isStreamingTail: lastBlockMayBePartial && index == rendering.blocks.count - 1
-                        )
+                VStack(alignment: .leading, spacing: MarkdownProseRun.Spacing.betweenBlocks) {
+                    ForEach(MarkdownProseRun.pieces(blockCount: rendering.blocks.count, runs: proseRuns)) { piece in
+                        let index = piece.blocks.lowerBound
+                        if piece.isRun {
+                            MarkdownProseRunView(
+                                text: rendering.proseRunText(
+                                    for: piece.blocks,
+                                    foregroundStyle: foregroundStyle,
+                                    usesAccentSurface: usesAccentSurface,
+                                    chatTextSize: chatTextSize
+                                ),
+                                topPadding: MarkdownProseRun.topPadding(for: rendering.blocks[index]),
+                                foregroundStyle: foregroundStyle,
+                                usesAccentSurface: usesAccentSurface,
+                                selectionCoordinator: selectionCoordinator,
+                                selectionSegment: selectionSegments.first { $0.id == "block-\(index)" }
+                            )
+                        } else {
+                            MarkdownBlockView(
+                                block: rendering.blocks[index],
+                                blockIndex: index,
+                                foregroundStyle: foregroundStyle,
+                                usesAccentSurface: usesAccentSurface,
+                                gatewayMediaDataURL: gatewayMediaDataURL,
+                                selectionCoordinator: selectionCoordinator,
+                                selectionSegments: selectionSegments,
+                                newestCharacterOpacities: index == rendering.blocks.count - 1
+                                    ? newestCharacterOpacities
+                                    : [],
+                                isStreamingTail: lastBlockMayBePartial && index == rendering.blocks.count - 1
+                            )
+                        }
                     }
                 }
                 .onAppear {
                     selectionCoordinator.replaceSegments(selectionSegments, revision: source)
                 }
                 .onChange(of: source) { _, _ in
+                    selectionCoordinator.replaceSegments(selectionSegments, revision: source)
+                }
+                // A reply that settles joins its prose runs with the same
+                // source: the plan changes shape, the text doesn't.
+                .onChange(of: proseRuns) { _, _ in
                     selectionCoordinator.replaceSegments(selectionSegments, revision: source)
                 }
                 .modifier(MarkdownSelectionHost(coordinator: selectionCoordinator))
@@ -274,11 +314,48 @@ final class MarkdownRendering {
         MarkdownRichContentPolicy.needsBounding(unitsByBlock: richUnitsByBlock)
     }
 
+    /// Found and built on first use, by the main actor's view bodies only.
+    @MainActor private var foundProseRuns: [Range<Int>]?
+    /// Each run's text, built once per settled rendering so a row that
+    /// scrolls back in hands its text view the same string. The render
+    /// cache keys a rendering on its surface and text size, so the style a
+    /// run's text was built with never changes under it.
+    @MainActor private var proseRunTexts: [Range<Int>: NSAttributedString] = [:]
+
     init(blocks: [MarkdownBlock], references: MarkdownReferenceContext, selectableText: NSAttributedString?) {
         self.blocks = blocks
         self.references = references
         self.selectableText = selectableText
         self.richUnitsByBlock = MarkdownRichContentPolicy.richUnitsByBlock(blocks)
+    }
+
+    /// The prose runs a chat draws in one text view each.
+    @MainActor
+    var proseRuns: [Range<Int>] {
+        if let foundProseRuns { return foundProseRuns }
+        let runs = MarkdownProseRun.ranges(in: blocks)
+        foundProseRuns = runs
+        return runs
+    }
+
+    /// A run's text, built with these styles the first time it's asked for.
+    @MainActor
+    func proseRunText(
+        for run: Range<Int>,
+        foregroundStyle: Color,
+        usesAccentSurface: Bool,
+        chatTextSize: ChatTextSize
+    ) -> NSAttributedString {
+        if let text = proseRunTexts[run] { return text }
+        let text = MarkdownProseRun.attributedText(
+            for: blocks[run],
+            references: references,
+            foregroundStyle: foregroundStyle,
+            usesAccentSurface: usesAccentSurface,
+            chatTextSize: chatTextSize
+        )
+        proseRunTexts[run] = text
+        return text
     }
 }
 
@@ -359,7 +436,9 @@ enum MarkdownRenderCache {
             // Approximate byte cost: source bytes + attributed-string storage
             // (each char carries attribute runs), so a few large messages can't
             // crowd out many small ones within totalCostLimit.
-            let cost = source.utf8.count + (rendering.selectableText?.length ?? 0) * 4
+            // A rich answer's prose runs build their text later, about the
+            // size a flow message's text is.
+            let cost = source.utf8.count + (rendering.selectableText?.length ?? source.utf16.count) * 4
             cache.setObject(rendering, forKey: key, cost: cost)
         }
         return rendering
