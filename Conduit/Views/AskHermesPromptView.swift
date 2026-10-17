@@ -30,13 +30,21 @@ struct AskHermesPromptView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.conduitAccent)
 
+            // The prompt in a quiet well, so it reads as the text to copy.
             Text(prompt)
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
+                }
                 .accessibilityIdentifier("setup.prompt-text")
 
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Button {
                     UIPasteboard.general.string = prompt
                     copied = true
@@ -44,8 +52,8 @@ struct AskHermesPromptView: View {
                     copyCount += 1
                 } label: {
                     Label("Copy Prompt", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .font(.footnote.weight(.semibold))
                 }
+                .buttonStyle(.settings)
                 .accessibilityIdentifier("setup.copy-prompt")
                 .accessibilityValue(lastCopiedPrompt == prompt ? AppLocalization.string("Copied") : "")
 
@@ -56,11 +64,10 @@ struct AskHermesPromptView: View {
                         .accessibilityIdentifier("setup.copied-confirmation")
                 }
             }
-            .buttonStyle(.borderless)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.06))
+        .settingsCard()
         // Keyed to the copy count so each tap replaces the previous
         // confirmation task (SwiftUI cancels the old one on id change).
         .task(id: copyCount) {

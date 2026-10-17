@@ -105,27 +105,32 @@ struct ConnectionSetupView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                switch flow.step {
-                case .connectionDetails, .loginCredentials, .connectionTest, .review:
-                    ConnectionSetupForm(
-                        flow: $flow,
-                        onStartTest: { startTestRun() },
-                        onComplete: { result in
-                            onComplete(result)
-                            dismiss()
-                        },
-                        repairReview: repairReview
-                    )
-                default:
-                    ScrollView {
-                        content
-                            .padding(20)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            ZStack {
+                ConduitBackdrop()
+                Group {
+                    switch flow.step {
+                    case .connectionDetails, .loginCredentials, .connectionTest, .review:
+                        ConnectionSetupForm(
+                            flow: $flow,
+                            onStartTest: { startTestRun() },
+                            onComplete: { result in
+                                onComplete(result)
+                                dismiss()
+                            },
+                            repairReview: repairReview
+                        )
+                    default:
+                        ScrollView {
+                            content
+                                .padding(.horizontal, 16)
+                                .padding(.top, 12)
+                                .padding(.bottom, 28)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .accessibilityIdentifier("connection-setup.content")
                     }
                 }
             }
-            .accessibilityIdentifier("connection-setup.content")
             .onChange(of: flow.step) { _, newStep in
                 // Leaving the test screen for any editable step cancels the
                 // probe; a success advance to Review does not.
@@ -210,34 +215,34 @@ struct ConnectionSetupView: View {
                 )
             case .browser:
                 AuthWebView(
-                url: configuration.serverURL,
-                cloudflareAccess: flow.cloudflareAccessForDraft(),
-                dashboardIDProvider: { [appState, url = configuration.serverURL] in
-                    appState.resolveDashboardID(forURL: url, registerIfMissing: true)
-                },
-                // Repair targets are always registered dashboards: reuse
-                // their own identified WebKit store (read-only resolution —
-                // no render-time registration).
-                websiteDataStoreIdentifier: appState.resolveDashboardID(
-                    forURL: configuration.serverURL,
-                    registerIfMissing: false
-                ),
-                onTicket: { ticket, baseURL in
-                    Task { @MainActor in
+                    url: configuration.serverURL,
+                    cloudflareAccess: flow.cloudflareAccessForDraft(),
+                    dashboardIDProvider: { [appState, url = configuration.serverURL] in
+                        appState.resolveDashboardID(forURL: url, registerIfMissing: true)
+                    },
+                    // Repair targets are always registered dashboards: reuse
+                    // their own identified WebKit store (read-only resolution —
+                    // no render-time registration).
+                    websiteDataStoreIdentifier: appState.resolveDashboardID(
+                        forURL: configuration.serverURL,
+                        registerIfMissing: false
+                    ),
+                    onTicket: { ticket, baseURL in
+                        Task { @MainActor in
+                            showRepairSignIn = false
+                            await activate(.browserSignIn(
+                                ticket: ticket,
+                                baseURL: baseURL,
+                                configuration: configuration
+                            ))
+                        }
+                    },
+                    onError: { classifiedFailure, _ in
                         showRepairSignIn = false
-                        await activate(.browserSignIn(
-                            ticket: ticket,
-                            baseURL: baseURL,
-                            configuration: configuration
-                        ))
+                        // Sign-in failure consumed no transaction: the user may
+                        // retry sign-in directly, without re-testing.
+                        activationFailure = classifiedFailure
                     }
-                },
-                onError: { classifiedFailure, _ in
-                    showRepairSignIn = false
-                    // Sign-in failure consumed no transaction: the user may
-                    // retry sign-in directly, without re-testing.
-                    activationFailure = classifiedFailure
-                }
                 )
             }
         } else {
@@ -424,11 +429,21 @@ struct ConnectionSetupView: View {
         }
     }
 
+    /// The numbered question's position, for the header's progress bar.
+    private var progressStep: Int? {
+        switch flow.step {
+        case .dashboard: return 1
+        case .credentials: return 2
+        case .accessMethod: return 3
+        default: return nil
+        }
+    }
+
     // MARK: - Step 1: Dashboard readiness
 
     private var dashboardStep: some View {
         readinessQuestion(
-            progress: flow.progressLabel,
+            symbol: "server.rack",
             question: AppLocalization.string("Is your Hermes dashboard running?"),
             explanation: AppLocalization.string("Hermes Conduit connects to a Hermes dashboard you (or your assistant) run yourself. The dashboard has to be up before Conduit can reach it."),
             selectedAnswer: flow.dashboardAnswer,
@@ -457,7 +472,7 @@ struct ConnectionSetupView: View {
 
     private var credentialsStep: some View {
         readinessQuestion(
-            progress: flow.progressLabel,
+            symbol: "person.badge.key",
             question: AppLocalization.string("Do you have your Hermes dashboard login credentials?"),
             explanation: AppLocalization.string("This means the Hermes dashboard username and password you sign in with — not Tailscale, Cloudflare, or Apple credentials."),
             selectedAnswer: flow.credentialsAnswer,
@@ -485,45 +500,57 @@ struct ConnectionSetupView: View {
     // MARK: - Step 3: Access method
 
     private var accessMethodStep: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            if let progress = flow.progressLabel {
-                stepLabel(progress)
-            }
-            Text("How will this iPhone or iPad reach Hermes?")
-                .font(.title3.weight(.semibold))
-            Text("Pick how Conduit should reach your self-hosted Hermes dashboard. You can change this later.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 20) {
+            ConnectionSetupHeader(
+                symbol: "point.3.connected.trianglepath.dotted",
+                progress: flow.progressLabel,
+                progressStep: progressStep,
+                title: AppLocalization.string("How will this iPhone or iPad reach Hermes?"),
+                detail: AppLocalization.string("Pick how Conduit should reach your self-hosted Hermes dashboard. You can change this later.")
+            )
 
-            if !flow.draft.existingServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                continueButton(AppLocalization.string("Use or edit current dashboard address")) { flow.useExistingAddress() }
-                    .accessibilityIdentifier("setup.use-existing")
-            }
-
-            methodCard(
-                title: ConnectionAccessMethod.lan.displayTitle,
-                supporting: AppLocalization.string("Use this when Conduit and the Hermes machine are on the same home or local network."),
-                identifier: "setup.method-lan"
-            ) {
-                flow.selectAccessMethod(.lan)
-            }
-
-            methodCard(
-                title: ConnectionAccessMethod.tailscale.displayTitle,
-                supporting: AppLocalization.string("Use Tailscale when you want to reach Hermes securely while away from home."),
-                badge: AppLocalization.string("Recommended for remote access"),
-                identifier: "setup.method-tailscale"
-            ) {
-                flow.selectAccessMethod(.tailscale)
+            let existingAddress = flow.draft.existingServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !existingAddress.isEmpty {
+                ConnectionSetupCard {
+                    ConnectionSetupChoiceRow(
+                        icon: "server.rack",
+                        title: AppLocalization.string("Use or edit current dashboard address"),
+                        detail: existingAddress,
+                        identifier: "setup.use-existing"
+                    ) {
+                        flow.useExistingAddress()
+                    }
+                }
             }
 
-            methodCard(
-                title: ConnectionAccessMethod.reverseProxy.displayTitle,
-                supporting: AppLocalization.string("Use this if you already access Hermes through an HTTPS hostname you manage."),
-                identifier: "setup.method-reverseProxy"
-            ) {
-                flow.selectAccessMethod(.reverseProxy)
+            ConnectionSetupCard {
+                ConnectionSetupChoiceRow(
+                    icon: "wifi",
+                    title: ConnectionAccessMethod.lan.displayTitle,
+                    detail: AppLocalization.string("Use this when Conduit and the Hermes machine are on the same home or local network."),
+                    identifier: "setup.method-lan"
+                ) {
+                    flow.selectAccessMethod(.lan)
+                }
+                ConnectionSetupChoiceRow(
+                    icon: "lock.shield",
+                    title: ConnectionAccessMethod.tailscale.displayTitle,
+                    detail: AppLocalization.string("Use Tailscale when you want to reach Hermes securely while away from home."),
+                    badge: AppLocalization.string("Recommended for remote access"),
+                    showsDivider: true,
+                    identifier: "setup.method-tailscale"
+                ) {
+                    flow.selectAccessMethod(.tailscale)
+                }
+                ConnectionSetupChoiceRow(
+                    icon: "globe",
+                    title: ConnectionAccessMethod.reverseProxy.displayTitle,
+                    detail: AppLocalization.string("Use this if you already access Hermes through an HTTPS hostname you manage."),
+                    showsDivider: true,
+                    identifier: "setup.method-reverseProxy"
+                ) {
+                    flow.selectAccessMethod(.reverseProxy)
+                }
             }
 
             notSureGuidance
@@ -531,157 +558,128 @@ struct ConnectionSetupView: View {
     }
 
     private var notSureGuidance: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button {
-                showNotSureGuidance.toggle()
-            } label: {
-                HStack {
-                    Label("I’m not sure", systemImage: "questionmark.circle")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Image(systemName: showNotSureGuidance ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
+        ConnectionSetupCard {
+            // A disclosure row is a full-width target: the help toggle must
+            // not require hitting the label text.
+            ConnectionSetupChoiceRow(
+                icon: "questionmark.circle",
+                title: AppLocalization.string("I’m not sure"),
+                accessory: .disclosure(expanded: showNotSureGuidance),
+                identifier: "setup.method-notsure"
+            ) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showNotSureGuidance.toggle()
                 }
-                .foregroundStyle(.primary)
-                // A disclosure row is a full-width target too: the help
-                // toggle must not require hitting the label text.
-                .contentShape(Rectangle())
             }
-            .accessibilityIdentifier("setup.method-notsure")
 
             if showNotSureGuidance {
-                VStack(alignment: .leading, spacing: 10) {
-                    guidanceBullet(AppLocalization.string("Using Conduit at home, on the same network as the Hermes machine? Choose “I’m on the same network as Hermes”."))
-                    guidanceBullet(AppLocalization.string("Need access away from home without existing remote access? Choose Tailscale — the simplest secure option."))
-                    guidanceBullet(AppLocalization.string("Already operating an HTTPS domain or reverse proxy for Hermes? Choose “I already have a domain or reverse proxy”."))
+                VStack(alignment: .leading, spacing: 12) {
+                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Using Conduit at home, on the same network as the Hermes machine? Choose “I’m on the same network as Hermes”."))
+                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Need access away from home without existing remote access? Choose Tailscale — the simplest secure option."))
+                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Already operating an HTTPS domain or reverse proxy for Hermes? Choose “I already have a domain or reverse proxy”."))
                 }
-                .padding(.top, 2)
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
+                .overlay(alignment: .top) { V2RowDivider(leadingInset: 16) }
+                .transition(.opacity)
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.06))
     }
 
     // MARK: - LAN branch
 
     private var lanBranch: some View {
         branchShell(
+            symbol: "wifi",
             title: AppLocalization.string("Same network as Hermes"),
             intro: AppLocalization.string("Here is what you will need to connect Conduit over your local network:"),
-            needs: [
-                AppLocalization.string("The Hermes dashboard is running."),
-                AppLocalization.string("You have dashboard login credentials."),
-                AppLocalization.string("You know the Hermes machine’s local IP address."),
-                AppLocalization.string("You know the dashboard port."),
-                AppLocalization.string("This device is on the same reachable network.")
-            ],
             prompt: .lanDetails
-        )
+        ) {
+            ConnectionSetupPanel {
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("The Hermes dashboard is running."))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You have dashboard login credentials."))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the Hermes machine’s local IP address."))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the dashboard port."))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("This device is on the same reachable network."))
+            }
+        }
     }
 
     // MARK: - Tailscale branch
 
     private var tailscaleBranch: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Reach Hermes with Tailscale")
-                .font(.title3.weight(.semibold))
-            Text("Tailscale gives you secure access from anywhere, including the recommended Tailscale Serve path:")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 12) {
-                numberedStep(1, AppLocalization.string("Tailscale is installed on the Hermes machine."))
-                numberedStep(2, AppLocalization.string("Tailscale is installed on this iPhone or iPad."))
-                numberedStep(3, AppLocalization.string("Both are signed in to the same tailnet."))
-                numberedStep(4, AppLocalization.string("The Hermes dashboard is running."))
-                numberedStep(5, AppLocalization.string("Hermes configures Tailscale Serve for the dashboard."))
-                numberedStep(6, AppLocalization.string("Hermes tells you the address to enter into Conduit."))
+        branchShell(
+            symbol: "lock.shield",
+            title: AppLocalization.string("Reach Hermes with Tailscale"),
+            intro: AppLocalization.string("Tailscale gives you secure access from anywhere, including the recommended Tailscale Serve path:"),
+            prompt: .tailscaleServe
+        ) {
+            ConnectionSetupPanel {
+                ConnectionSetupListItem(marker: .number(1), text: AppLocalization.string("Tailscale is installed on the Hermes machine."))
+                ConnectionSetupListItem(marker: .number(2), text: AppLocalization.string("Tailscale is installed on this iPhone or iPad."))
+                ConnectionSetupListItem(marker: .number(3), text: AppLocalization.string("Both are signed in to the same tailnet."))
+                ConnectionSetupListItem(marker: .number(4), text: AppLocalization.string("The Hermes dashboard is running."))
+                ConnectionSetupListItem(marker: .number(5), text: AppLocalization.string("Hermes configures Tailscale Serve for the dashboard."))
+                ConnectionSetupListItem(marker: .number(6), text: AppLocalization.string("Hermes tells you the address to enter into Conduit."))
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.06))
-
-            Text("Conduit never installs or configures Tailscale, and it doesn’t assume an address or port — Hermes tells you what to use.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            AskHermesPromptView(title: ConnectionSetupPrompt.tailscaleServe.title, prompt: ConnectionSetupPrompt.tailscaleServe.text)
-            continueButton(AppLocalization.string("I have the connection details")) { flow.confirmDetailsReady() }
-                .accessibilityIdentifier("setup.details-ready")
+            ConnectionSetupNote(
+                symbol: "hand.raised",
+                text: AppLocalization.string("Conduit never installs or configures Tailscale, and it doesn’t assume an address or port — Hermes tells you what to use.")
+            )
         }
     }
 
     // MARK: - Reverse-proxy branch
 
     private var reverseProxyBranch: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Use your existing HTTPS domain")
-                .font(.title3.weight(.semibold))
-            Text("This branch is only for HTTPS infrastructure you already operate — Conduit does not guide you through creating one.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 12) {
+        branchShell(
+            symbol: "globe",
+            title: AppLocalization.string("Use your existing HTTPS domain"),
+            intro: AppLocalization.string("This branch is only for HTTPS infrastructure you already operate — Conduit does not guide you through creating one."),
+            prompt: .reverseProxyDetails
+        ) {
+            ConnectionSetupPanel {
                 Text("You will need:")
-                    .font(.subheadline.weight(.semibold))
-                guidanceBullet(AppLocalization.string("Your existing HTTPS Hermes dashboard URL — for example https://hermes.example.com, https://hermes.example.com:9443, or https://example.com/hermes."))
-                guidanceBullet(AppLocalization.string("Any custom port."))
-                guidanceBullet(AppLocalization.string("Any path prefix your proxy uses."))
-                guidanceBullet(AppLocalization.string("Your dashboard login credentials."))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityAddTraits(.isHeader)
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Your existing HTTPS Hermes dashboard URL — for example https://hermes.example.com, https://hermes.example.com:9443, or https://example.com/hermes."))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any custom port."))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any path prefix your proxy uses."))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Your dashboard login credentials."))
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.06))
-
-            Text("Conduit will not ask you to expose a raw public port, create firewall rules, or bypass certificate checks.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            AskHermesPromptView(title: ConnectionSetupPrompt.reverseProxyDetails.title, prompt: ConnectionSetupPrompt.reverseProxyDetails.text)
-            continueButton(AppLocalization.string("I have the connection details")) { flow.confirmDetailsReady() }
-                .accessibilityIdentifier("setup.details-ready")
+            ConnectionSetupNote(
+                symbol: "lock.shield",
+                text: AppLocalization.string("Conduit will not ask you to expose a raw public port, create firewall rules, or bypass certificate checks.")
+            )
         }
     }
 
     // MARK: - Troubleshooting surfaces (Round-1 content retained)
 
     private func troubleshootingStep(_ topic: ConnectionHelpDestination) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 20) {
             Picker("Topic", selection: topicBinding) {
                 Text(ConnectionHelpDestination.tls.displayName).tag(ConnectionHelpDestination.tls)
                 Text(ConnectionHelpDestination.cloudflare.displayName).tag(ConnectionHelpDestination.cloudflare)
             }
-            .font(.subheadline)
+            .pickerStyle(.segmented)
             .accessibilityIdentifier("setup.troubleshooting-picker")
 
-            Text(topic == .tls
-                ? AppLocalization.string("Checks for HTTPS and certificate problems when connecting to your dashboard.")
-                : AppLocalization.string("Checks for Cloudflare Access service-token problems when connecting to your dashboard."))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            ConnectionSetupHeader(
+                symbol: topic == .tls ? "lock.shield" : "cloud",
+                title: topic.displayName,
+                detail: topic == .tls
+                    ? AppLocalization.string("Checks for HTTPS and certificate problems when connecting to your dashboard.")
+                    : AppLocalization.string("Checks for Cloudflare Access service-token problems when connecting to your dashboard.")
+            )
 
-            VStack(alignment: .leading, spacing: 14) {
+            ConnectionSetupPanel(spacing: 14) {
                 ForEach(Array(topic.checks.enumerated()), id: \.offset) { _, check in
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "checkmark.circle")
-                            .font(.footnote)
-                            .foregroundStyle(.conduitAccent)
-                            .padding(.top, 2)
-                        Text(check)
-                            .font(.subheadline)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    ConnectionSetupListItem(marker: .check, text: check)
                 }
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.06))
         }
     }
 
@@ -695,179 +693,70 @@ struct ConnectionSetupView: View {
     // MARK: - Reusable pieces
 
     private func readinessQuestion(
-        progress: String?,
+        symbol: String,
         question: String,
         explanation: String,
         selectedAnswer: ConnectionSetupAnswer?,
         onAnswer: @escaping (ConnectionSetupAnswer) -> Void,
         @ViewBuilder guidance: () -> some View
     ) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            if let progress {
-                stepLabel(progress)
-            }
-            Text(question)
-                .font(.title3.weight(.semibold))
-            Text(explanation)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 20) {
+            ConnectionSetupHeader(
+                symbol: symbol,
+                progress: flow.progressLabel,
+                progressStep: progressStep,
+                title: question,
+                detail: explanation
+            )
 
-            answerRow(AppLocalization.string("Yes"), selected: selectedAnswer == .yes, identifier: "setup.answer-yes") {
-                onAnswer(.yes)
-            }
-            answerRow(AppLocalization.string("No"), selected: selectedAnswer == .no, identifier: "setup.answer-no") {
-                onAnswer(.no)
-            }
-            answerRow(AppLocalization.string("I don’t know"), selected: selectedAnswer == .unknown, identifier: "setup.answer-unknown") {
-                onAnswer(.unknown)
+            ConnectionSetupCard {
+                ConnectionSetupChoiceRow(
+                    title: AppLocalization.string("Yes"),
+                    accessory: .checkmark(selected: selectedAnswer == .yes),
+                    identifier: "setup.answer-yes"
+                ) {
+                    onAnswer(.yes)
+                }
+                ConnectionSetupChoiceRow(
+                    title: AppLocalization.string("No"),
+                    accessory: .checkmark(selected: selectedAnswer == .no),
+                    showsDivider: true,
+                    identifier: "setup.answer-no"
+                ) {
+                    onAnswer(.no)
+                }
+                ConnectionSetupChoiceRow(
+                    title: AppLocalization.string("I don’t know"),
+                    accessory: .checkmark(selected: selectedAnswer == .unknown),
+                    showsDivider: true,
+                    identifier: "setup.answer-unknown"
+                ) {
+                    onAnswer(.unknown)
+                }
             }
 
             guidance()
         }
     }
 
-    private func answerRow(
-        _ label: String,
-        selected: Bool,
-        identifier: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack {
-                Text(label)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.conduitAccent)
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .conduitGlassSurface(cornerRadius: 14, tint: .conduitAura.opacity(0.06))
-            // The whole card is the answer target: the declaration, not the
-            // incidental result of how the label's content shape is derived.
-            // Card padding, the checkmark column, and the gap beside a short
-            // label all select the answer.
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
-    }
-
-    private func methodCard(
-        title: String,
-        supporting: String,
-        badge: String? = nil,
-        identifier: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.leading)
-                    Spacer()
-                }
-                if let badge {
-                    Text(badge)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(.conduitAccent.opacity(0.15), in: Capsule())
-                        .foregroundStyle(.conduitAccent)
-                }
-                Text(supporting)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .conduitGlassSurface(cornerRadius: 16, tint: .conduitAura.opacity(0.06))
-            // Same card-wide target as the answer rows: the title's Spacer,
-            // the padding, and the empty space beside the supporting text all
-            // select the method.
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
-    }
-
-    private func branchShell(
+    private func branchShell<Needs: View>(
+        symbol: String,
         title: String,
         intro: String,
-        needs: [String],
-        prompt: ConnectionSetupPrompt
+        prompt: ConnectionSetupPrompt,
+        @ViewBuilder needs: () -> Needs
     ) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text(title)
-                .font(.title3.weight(.semibold))
-            Text(intro)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(Array(needs.enumerated()), id: \.offset) { _, need in
-                    guidanceBullet(need)
-                }
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .conduitGlassSurface(cornerRadius: 18, tint: .conduitAura.opacity(0.06))
-
+        VStack(alignment: .leading, spacing: 20) {
+            ConnectionSetupHeader(symbol: symbol, title: title, detail: intro)
+            needs()
             AskHermesPromptView(title: prompt.title, prompt: prompt.text)
             continueButton(AppLocalization.string("I have the connection details")) { flow.confirmDetailsReady() }
                 .accessibilityIdentifier("setup.details-ready")
         }
     }
 
-    private func numberedStep(_ number: Int, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text("\(number).")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.conduitAccent)
-            Text(text)
-                .font(.subheadline)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func stepLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.conduitAccent)
-            .accessibilityIdentifier("setup.step-label")
-    }
-
     private func continueButton(_ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label)
-                .font(.subheadline.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(.conduitAccent)
-    }
-
-    private func guidanceBullet(_ text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 5))
-                .foregroundStyle(.conduitAccent)
-                .padding(.top, 6)
-            Text(text)
-                .font(.subheadline)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        LoginPrimaryButton(title: label, action: action)
     }
 }
 
