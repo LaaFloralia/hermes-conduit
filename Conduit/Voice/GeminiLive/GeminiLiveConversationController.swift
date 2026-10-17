@@ -478,6 +478,7 @@ final class GeminiLiveConversationController: ObservableObject {
         lastModelTranscriptAt = nil
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
+        if let traceName { LiveCallTrace.shared.begin(traceName) }
         hostIssue = nil
         do {
             let status = try await availability()
@@ -962,6 +963,7 @@ final class GeminiLiveConversationController: ObservableObject {
             modelTurnActive = true
             lastModelTranscriptAt = now()
             appendTranscript(text, speaker: .assistant)
+            stopSpokenToolMarkup()
         case .inputTranscription(let text):
             lastUserSpeechAt = now()
             appendTranscript(text, speaker: .user)
@@ -1004,8 +1006,10 @@ final class GeminiLiveConversationController: ObservableObject {
                     // any speech since the user's request counts.
                     let calledAt = self.now()
                     let requestedAt = min(calledAt, self.lastUserSpeechAt ?? calledAt)
+                    self.trace("Running \(call.name)")
                     var outgoing = await self.tools.handle(call)
                     self.inFlightCallIDs.remove(call.id)
+                    self.trace("\(call.name): \(Self.traceStatus(of: outgoing, answering: call.id))")
                     // The model withdrew the call while it ran (the user
                     // spoke over a lookup): its answer must not go back.
                     if self.withdrawnCallIDs.remove(call.id) != nil {
@@ -1107,6 +1111,65 @@ final class GeminiLiveConversationController: ObservableObject {
     }
 
     /// Not UI copy (written for the model), so not localized.
+    // MARK: Tool markup spoken as text
+
+    /// Grok has spoken a tool call as text ("<tool_call>…") instead of
+    /// calling it: nothing runs, and the arguments are read out. Matched
+    /// case-insensitively in the model's line as it streams.
+    nonisolated static let spokenToolMarkers = ["<tool_call", "</tool_call", "<function_call", "<|tool", "<tool_code"]
+
+    /// Where the first tool markup starts in a line, if it has any.
+    nonisolated static func spokenToolMarkupStart(in text: String) -> String.Index? {
+        spokenToolMarkers.compactMap { text.range(of: $0, options: .caseInsensitive)?.lowerBound }.min()
+    }
+
+    /// Sent once the turn is over, so the model calls the tool it meant to
+    /// and never tells the user it ran when it didn't. Not UI copy, so not
+    /// localized.
+    static let spokenToolMarkupPrompt = "[Conduit: your last reply put a tool call in its spoken text, so no tool ran and nothing was started, sent or queued. Conduit cut it off. Never speak tool calls, their names or arguments. If you meant to use a tool, call it now as a function, without reading it out; until its result comes back, don't tell the user it's done or on its way. If you only meant to talk, just carry on.]"
+
+    /// The model's open line has tool markup in it: stop its speech now,
+    /// drop the rest of the turn, keep only the words before the markup,
+    /// and tell the model once the turn ends.
+    private func stopSpokenToolMarkup() {
+        guard let openAssistantEntry, let index = transcript.firstIndex(where: { $0.id == openAssistantEntry }),
+              let start = Self.spokenToolMarkupStart(in: transcript[index].text) else { return }
+        let spoken = String(transcript[index].text[..<start]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if spoken.isEmpty {
+            // The whole line was markup: leave no blank line on the call.
+            transcript.remove(at: index)
+            self.openAssistantEntry = nil
+        } else {
+            transcript[index].text = spoken
+        }
+        output.interrupt()
+        suppressingModelTurn = true
+        trace("Tool markup in the spoken reply: cut off, model asked to call the tool")
+        if !pendingTextTurns.contains(Self.spokenToolMarkupPrompt) { pendingTextTurns.append(Self.spokenToolMarkupPrompt) }
+        scheduleIdleFlush()
+    }
+
+    // MARK: Call trace
+
+    /// The call's name in Gateway Diagnostics' call trace ("Grok Live").
+    /// Nil keeps the call out of the trace.
+    var traceName: String?
+
+    private func trace(_ label: String) {
+        guard traceName != nil else { return }
+        LiveCallTrace.shared.note(label)
+    }
+
+    /// How a call was answered, for the trace: never its text.
+    static func traceStatus(of outgoing: [GeminiLiveToolBridge.Outgoing], answering id: String) -> String {
+        for item in outgoing {
+            guard case .toolResponse(let responseID, _, let result, _) = item, responseID == id else { continue }
+            if result["error"] != nil { return "error" }
+            return result["status"] ?? "answered"
+        }
+        return "no answer"
+    }
+
     static let acknowledgementPrompt = "[You just started a background job on Hermes for the user's last request. Acknowledge it out loud in a few words, like \"On it, Hermes is checking.\" Do not start another job.]"
 
     var lastModelAudioAtForTesting: Date? { lastModelAudioAt }

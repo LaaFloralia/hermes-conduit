@@ -209,6 +209,12 @@ enum GeminiLiveProtocol {
         let name: String
         /// String-valued arguments only: every Conduit tool takes strings.
         let arguments: [String: String]
+
+        /// Set (alone) when the call's arguments weren't valid JSON, so
+        /// the bridge answers that rather than a missing argument.
+        static let invalidArgumentsKey = "_conduit_invalid_arguments"
+
+        var hasInvalidArguments: Bool { arguments[Self.invalidArgumentsKey] != nil }
     }
 
     enum ServerEvent: Equatable {

@@ -111,6 +111,8 @@ Gemini Live, Grok Live and GPT-Live end hands-free. One of your goodbye phrases 
 
 Every voice mode lets you cut in by speaking when you wear headphones, AirPods or a wired headset: the microphone stays open while the agent talks, and the agent stops when you start. GPT-Live also allows it on the phone's speaker and in the car, because WebRTC cancels the speaker's echo.
 
+Grok Live sometimes speaks a tool call as text ("<tool_call>…") instead of calling it. Conduit stops the speech at the markup, keeps it out of the transcript, and tells Grok after its turn that nothing ran, so it can call the tool properly. Grok is told to say a job has started only once start_job answers. A call whose arguments aren't valid JSON runs nothing and gets an error saying so. Diagnostics & logs (Last connection) shows the last Grok Live call's tool steps: the setup, which functions xAI took, each call's name and how it was answered (started, error…), and any markup that was cut. It never shows what was said or a call's arguments.
+
 Classic Voice, Gemini Live and Grok Live close the microphone while the agent talks on the speaker, in the car or over AirPlay (plus a short echo tail), because their microphone would hear the agent and it would keep interrupting itself. Use the Interrupt button there instead.
 
 "Talk over it on the speaker" (in the Gemini Live and Grok Live sections, shared by both, off by default) is the experimental way out: the call runs its microphone and speaker on one iOS voice-processing engine, so the agent's own voice is cancelled out of the microphone, and the microphone stays open on every route. If the agent keeps cutting itself off, turn it off. It applies from the next call. Classic Voice is unchanged.

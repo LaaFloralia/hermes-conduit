@@ -2746,6 +2746,80 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// Grok spoke "<tool_call>…" aloud instead of calling the tool: the
+    /// speech stops, the markup never reaches the transcript, and the model
+    /// is told nothing ran once its turn is over.
+    func testLiveCallCutsOffToolMarkupSpokenAsText() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, output, _) = makeGeminiController(clock: { current })
+        await controller.start()
+        session.becomeReady()
+
+        session.onEvent?(.inputTranscription("Check the server."))
+        session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        session.onEvent?(.outputTranscription("Sure, I'll queue that. <tool"))
+        XCTAssertEqual(output.interrupts, 0, "not markup yet")
+        session.onEvent?(.outputTranscription(#"_call>{"name":"start_job","arguments":{"instructions":"dummy task"}}"#))
+        XCTAssertEqual(output.interrupts, 1, "the speech stops at the markup")
+        session.onEvent?(.outputTranscription("</tool_call> Done!"))
+        let reply = controller.transcript.last(where: { $0.speaker == .assistant })?.text
+        XCTAssertEqual(reply, "Sure, I'll queue that.")
+        XCTAssertFalse(controller.transcript.contains { $0.text.contains("dummy task") || $0.text.contains("Done!") })
+        XCTAssertTrue(session.textTurns.isEmpty, "nothing is sent mid-turn")
+
+        session.onEvent?(.turnComplete)
+        current += 5
+        controller.flushPendingTextIfIdle()
+        XCTAssertEqual(session.textTurns, [GeminiLiveConversationController.spokenToolMarkupPrompt])
+        controller.stop()
+    }
+
+    func testLiveCallLineThatIsOnlyToolMarkupLeavesNoBlankLine() async {
+        let (controller, session, _, output, _) = makeGeminiController(clock: { Date(timeIntervalSince1970: 1_000) })
+        await controller.start()
+        session.becomeReady()
+
+        session.onEvent?(.inputTranscription("Check the server."))
+        session.onEvent?(.outputTranscription(#"<tool_call>{"name":"list_jobs"}"#))
+        XCTAssertEqual(output.interrupts, 1)
+        XCTAssertFalse(controller.transcript.contains { $0.speaker == .assistant }, "no empty assistant line")
+        session.onEvent?(.turnComplete)
+        XCTAssertFalse(controller.transcript.contains { $0.speaker == .assistant })
+        controller.stop()
+    }
+
+    func testSpokenToolMarkupIsFoundAnywhereInALine() {
+        XCTAssertNotNil(GeminiLiveConversationController.spokenToolMarkupStart(in: "ok <TOOL_CALL>list_jobs"))
+        XCTAssertNotNil(GeminiLiveConversationController.spokenToolMarkupStart(in: "<function_call name=start_job>"))
+        XCTAssertNil(GeminiLiveConversationController.spokenToolMarkupStart(in: "I'll call the tool shop for you."))
+        XCTAssertNil(GeminiLiveConversationController.spokenToolMarkupStart(in: "Use a < b, then tool calls."))
+    }
+
+    func testToolCallWithUnreadableArgumentsStartsNothingAndSaysWhy() async {
+        let fake = FakeVoiceJobBackend()
+        let supervisor = VoiceBackgroundJobSupervisor(backend: fake.backend, pollInterval: .seconds(3_600))
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor, holdsJobCalls: false)
+        let call = GeminiLiveProtocol.FunctionCall(id: "c1", name: "start_job", arguments: [GeminiLiveProtocol.FunctionCall.invalidArgumentsKey: "true"])
+        let outgoing = await bridge.handle(call)
+        XCTAssertTrue(fake.submissions.isEmpty)
+        XCTAssertEqual(outgoing, [.toolResponse(id: "c1", name: "start_job", result: ["error": GeminiLiveToolBridge.invalidArgumentsError("start_job")], scheduling: .whenIdle)])
+        XCTAssertEqual(GeminiLiveConversationController.traceStatus(of: outgoing, answering: "c1"), "error")
+    }
+
+    func testLiveCallTraceKeepsStepsWithoutContent() {
+        let trace = LiveCallTrace()
+        XCTAssertNil(trace.report)
+        trace.note("before any call")
+        XCTAssertNil(trace.report, "nothing is kept before a call starts")
+        let start = Date(timeIntervalSince1970: 1_000)
+        trace.begin("Grok Live", at: start)
+        trace.note("Function call start_job", at: start + 2.5)
+        XCTAssertEqual(trace.report, "Last Grok Live call: tool steps\n+0.0s Starting call\n+2.5s Function call start_job")
+        for index in 0..<LiveCallTrace.maximumSteps { trace.note("step \(index)", at: start + 3) }
+        XCTAssertEqual(trace.steps.count, LiveCallTrace.maximumSteps)
+        XCTAssertTrue(trace.report?.hasSuffix("… 2 more steps not kept") == true)
+    }
+
     func testGeminiLiveAskingToHangUpEndsTheCall() async {
         let (controller, session, _, _, _) = makeGeminiController(endPhrases: ["goodbye"], clock: Date.init)
         await controller.start()

@@ -112,10 +112,10 @@ struct GatewayDiagnosticsSheet: View {
         }
     }
 
-    /// The connection timeline, then the last call from Hermes (#449), so
-    /// one Copy takes both.
+    /// The connection timeline, then the last call from Hermes (#449) and
+    /// the last Grok Live call's tool steps, so one Copy takes them all.
     private var lastConnectionReport: String? {
-        let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report].compactMap { $0 }
+        let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report, LiveCallTrace.shared.report].compactMap { $0 }
         return reports.isEmpty ? nil : reports.joined(separator: "\n\n")
     }
 

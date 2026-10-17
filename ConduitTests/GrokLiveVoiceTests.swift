@@ -182,6 +182,49 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(call, [.event(.toolCall([.init(id: "c7", name: "start_job", arguments: ["instructions": "check the server", "count": "3"])]))])
     }
 
+    /// A user's call: Grok spoke "<tool_call>…" instead of calling the
+    /// function. Text is only ever text; only a function event is a call.
+    func testGrokLiveToolMarkupInTheTranscriptIsNeverACall() {
+        func decode(_ object: [String: Any]) -> [GrokLiveProtocol.ServerFrame] {
+            GrokLiveProtocol.decode(try! JSONSerialization.data(withJSONObject: object))
+        }
+        let markup = #"<tool_call>{"name":"start_job","arguments":{"instructions":"dummy task"}}</tool_call>"#
+        XCTAssertEqual(decode(["type": "response.output_audio_transcript.delta", "delta": markup]), [.event(.outputTranscription(markup))])
+        XCTAssertEqual(decode(["type": "response.output_audio_transcript.done", "transcript": markup]), [.outputTranscriptDone(markup)])
+        XCTAssertEqual(decode(["type": "response.output_text.delta", "delta": markup]), [], "no text event becomes a call")
+
+        // Unreadable arguments are flagged, never an empty-argument call.
+        for raw in [#"{"instructions": "dummy task""#, "not json", #"["dummy task"]"#] {
+            let frames = decode(["type": "response.function_call_arguments.done", "call_id": "c1", "name": "start_job", "arguments": raw])
+            guard case .event(.toolCall(let calls))? = frames.first, let call = calls.first else { return XCTFail("\(raw): \(frames)") }
+            XCTAssertTrue(call.hasInvalidArguments, raw)
+            XCTAssertNil(call.arguments["instructions"], raw)
+        }
+        let empty = decode(["type": "response.function_call_arguments.done", "call_id": "c2", "name": "list_jobs", "arguments": ""])
+        XCTAssertEqual(empty, [.event(.toolCall([.init(id: "c2", name: "list_jobs", arguments: [:])]))], "no arguments is fine")
+
+        // The finished function_call item carries the call too.
+        let item = decode([
+            "type": "response.output_item.done",
+            "item": ["type": "function_call", "call_id": "c3", "name": "start_job", "arguments": #"{"instructions":"dummy task"}"#],
+        ])
+        XCTAssertEqual(item, [.event(.toolCall([.init(id: "c3", name: "start_job", arguments: ["instructions": "dummy task"])]))])
+        XCTAssertEqual(decode(["type": "response.output_item.done", "item": ["type": "message", "role": "assistant"]]), [])
+
+        // session.updated names the functions xAI took.
+        XCTAssertEqual(
+            decode(["type": "session.updated", "session": ["tools": [["type": "web_search"], ["type": "function", "name": "start_job"], ["type": "function", "name": "list_jobs"]]]]),
+            [.sessionUpdated, .acceptedFunctions(["start_job", "list_jobs"])]
+        )
+    }
+
+    func testGrokLiveInstructionsHoldJobClaimsForTheResult() {
+        let text = GrokLiveProtocol.grokInstructions(now: Date(timeIntervalSince1970: 0), timeZone: TimeZone(identifier: "UTC")!)
+        XCTAssertTrue(text.contains(GrokLiveProtocol.jobClaimInstructions))
+        XCTAssertTrue(GrokLiveProtocol.jobClaimInstructions.contains("only once it returns started"))
+        XCTAssertTrue(GrokLiveProtocol.jobClaimInstructions.contains("never speak a tool call"))
+    }
+
     /// xAI's input transcripts are cumulative snapshots, not deltas: only
     /// the words a snapshot adds reach the transcript.
     func testGrokLiveInputTranscriptSnapshotsAddOnlyTheirNewWords() {
@@ -292,6 +335,33 @@ extension VoiceConversationControllerTests {
         session.send(.audio(Data([1, 2])))
         await grokSettle()
         XCTAssertEqual(socket.sent.last?["type"] as? String, "input_audio_buffer.append")
+        session.stop()
+    }
+
+    func testGrokLiveSessionRunsEachFunctionCallOnceAndTracesItsSteps() async throws {
+        let (session, sockets) = makeGrokSession()
+        var calls: [String] = []
+        var trace: [String] = []
+        session.onEvent = { event in
+            if case .toolCall(let batch) = event { calls += batch.map(\.id) }
+        }
+        session.onTrace = { trace.append($0) }
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated", "session": ["tools": [["type": "function", "name": "start_job"]]]])
+        await grokSettle()
+
+        // The same call as its arguments event and as its finished item.
+        socket.deliver(["type": "response.function_call_arguments.done", "call_id": "c1", "name": "start_job", "arguments": #"{"instructions":"dummy task"}"#])
+        socket.deliver(["type": "response.output_item.done", "item": ["type": "function_call", "call_id": "c1", "name": "start_job", "arguments": #"{"instructions":"dummy task"}"#]])
+        socket.deliver(["type": "response.function_call_arguments.done", "call_id": "c2", "name": "start_job", "arguments": "{oops"])
+        await grokSettle(until: { calls.count >= 2 })
+        XCTAssertEqual(calls, ["c1", "c2"])
+        XCTAssertTrue(trace.contains { $0.hasPrefix("Sent session.update") })
+        XCTAssertTrue(trace.contains { $0.hasPrefix("Grok took 1 of ") && $0.hasSuffix(" functions: start_job") }, "\(trace)")
+        XCTAssertEqual(trace.filter { $0.hasPrefix("Function call") }, ["Function call start_job", "Function call start_job (arguments not valid JSON)"])
+        XCTAssertFalse(trace.joined().contains("dummy task"), "the trace never carries arguments")
         session.stop()
     }
 

@@ -29,10 +29,15 @@ enum GrokLiveProtocol {
     /// sent, like the rest of the instructions), so not localized.
     static let delegationInstructions = "\nYou can't see the user's email, messages, calendar and schedule, to-dos, health or patient portals, bank or other accounts, files or systems, and web lookups can't reach them either; their Hermes agent can. Whenever the user asks you to check, read, find, send or do anything there (\"what's on my plate today?\" included), call start_job with their request instead of saying you can't. If they only ask whether you can see it, say Hermes can check it for them. Never answer it from guesses or a web lookup, and if start_job fails, tell them plainly. Public facts anyone could look up (weather, news, sports, stock prices) aren't Hermes work: look them up with web_search or x_search on this call, never with start_job."
 
+    /// Grok answers start_job as soon as the job exists, so a claim can wait
+    /// for it. On a user's call Grok spoke a start_job call as text and said
+    /// the work was queued when nothing ran.
+    static let jobClaimInstructions = "\nOn this call start_job answers as soon as Hermes has the job. This replaces the acknowledgement rule above: call start_job without announcing it first, and only once it returns started tell the user in a few words that Hermes is on it. Never say anything was started, queued, sent or done unless a tool's result said so; if a tool returns an error or not_started, tell the user plainly. Tools are only ever function calls: never speak a tool call, its name or its arguments."
+
     /// What Grok's instructions add after the shared ones: the delegation
-    /// rules and the clock.
+    /// and job-claim rules, and the clock.
     static func grokInstructions(now: Date, timeZone: TimeZone) -> String {
-        delegationInstructions + clockInstructions(now: now, timeZone: timeZone)
+        delegationInstructions + jobClaimInstructions + clockInstructions(now: now, timeZone: timeZone)
     }
 
     /// The phone's clock at the start of the call, for Grok's instructions.
@@ -215,6 +220,9 @@ enum GrokLiveProtocol {
         /// A response's whole spoken transcript; only used when no deltas
         /// carried it.
         case outputTranscriptDone(String)
+        /// The function names xAI's session.updated echoes back: which of
+        /// the declared tools it took, for the call's trace.
+        case acceptedFunctions([String])
         /// The user's words so far in one input item. xAI sends these as
         /// cumulative snapshots, sometimes more than once per item, not as
         /// deltas: the session turns them into the new words only.
@@ -229,7 +237,9 @@ enum GrokLiveProtocol {
               let type = object["type"] as? String else { return [] }
         switch type {
         case "session.updated":
-            return [.sessionUpdated]
+            let tools = (object["session"] as? [String: Any])?["tools"] as? [[String: Any]]
+            let names = tools?.compactMap { $0["type"] as? String == "function" ? $0["name"] as? String : nil }
+            return [.sessionUpdated] + (names.map { [.acceptedFunctions($0)] } ?? [])
         case "error":
             let error = object["error"] as? [String: Any]
             let message = (error?["message"] as? String) ?? (object["message"] as? String) ?? (error?["code"] as? String) ?? ""
@@ -259,6 +269,13 @@ enum GrokLiveProtocol {
             // xAI runs its own search tools: their calls aren't Conduit's.
             guard let call = functionCall(object), !reservedToolNames.contains(call.name) else { return [] }
             return [.event(.toolCall([call]))]
+        case "response.output_item.done":
+            // The finished function_call item carries the same call: a
+            // fallback for a response whose arguments event never came.
+            // The session runs each call id once.
+            guard let item = object["item"] as? [String: Any], item["type"] as? String == "function_call",
+                  let call = functionCall(item), !reservedToolNames.contains(call.name) else { return [] }
+            return [.event(.toolCall([call]))]
         default:
             return []
         }
@@ -282,15 +299,26 @@ enum GrokLiveProtocol {
     static func functionCall(_ object: [String: Any]) -> GeminiLiveProtocol.FunctionCall? {
         guard let id = object["call_id"] as? String, !id.isEmpty,
               let name = object["name"] as? String, !name.isEmpty else { return nil }
+        let parsed: [String: Any]
+        if let given = object["arguments"] as? [String: Any] {
+            parsed = given
+        } else {
+            let raw = (object["arguments"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if raw.isEmpty {
+                parsed = [:]
+            } else if let decoded = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any] {
+                parsed = decoded
+            } else {
+                // Not a JSON object: never run as a call with no arguments.
+                return GeminiLiveProtocol.FunctionCall(id: id, name: name, arguments: [GeminiLiveProtocol.FunctionCall.invalidArgumentsKey: "true"])
+            }
+        }
         var arguments: [String: String] = [:]
-        if let raw = object["arguments"] as? String,
-           let parsed = try? JSONSerialization.jsonObject(with: Data(raw.utf8)) as? [String: Any] {
-            for (key, value) in parsed {
-                if let string = value as? String {
-                    arguments[key] = string
-                } else if let number = value as? NSNumber {
-                    arguments[key] = number.stringValue
-                }
+        for (key, value) in parsed {
+            if let string = value as? String {
+                arguments[key] = string
+            } else if let number = value as? NSNumber {
+                arguments[key] = number.stringValue
             }
         }
         return GeminiLiveProtocol.FunctionCall(id: id, name: name, arguments: arguments)

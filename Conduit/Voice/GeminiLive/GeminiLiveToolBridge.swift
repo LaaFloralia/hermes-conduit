@@ -636,6 +636,11 @@ final class GeminiLiveToolBridge {
     }
 
     func handle(_ call: GeminiLiveProtocol.FunctionCall) async -> [Outgoing] {
+        // Unreadable arguments (Grok's are a JSON string) say so, rather
+        // than reading as a missing argument; nothing runs.
+        if call.hasInvalidArguments, Tool(rawValue: call.name) != .endConversation {
+            return [.toolResponse(id: call.id, name: call.name, result: ["error": Self.invalidArgumentsError(call.name)], scheduling: .whenIdle)]
+        }
         // A Hermes tool the host offers for voice (the user's health data).
         if Tool(rawValue: call.name) == nil, let tool = supervisor.hostTools.first(where: { $0.name == call.name }) {
             guard !isEnding else { return [] }
@@ -1051,6 +1056,11 @@ final class GeminiLiveToolBridge {
         } catch {
             return ["error": error.localizedDescription]
         }
+    }
+
+    /// Not UI copy, so not localized.
+    static func invalidArgumentsError(_ name: String) -> String {
+        "The arguments for \(name) weren't valid JSON, so it didn't run and nothing was started. Call \(name) again with valid JSON arguments, and don't tell the user it ran until it answers."
     }
 
     /// Sent with every web_search answer, a failure included. It is spoken

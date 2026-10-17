@@ -2666,7 +2666,7 @@ final class AppState: ObservableObject {
                 instructions += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
                 instructions += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                 instructions += self?.liveVoiceStyle.instructions ?? ""
-                return GrokLiveSession(
+                let session = GrokLiveSession(
                     client: client,
                     instructions: instructions,
                     functions: GeminiLiveToolBridge.declarations(
@@ -2679,6 +2679,8 @@ final class AppState: ObservableObject {
                     ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     voice: self?.grokLiveVoice
                 )
+                session.onTrace = { LiveCallTrace.shared.note($0) }
+                return session
             },
             availability: { [weak self] in
                 guard let self else { throw GrokLiveClientError.socketUnavailable }
@@ -2714,6 +2716,7 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGrokLiveConversation() }
+        controller.traceName = "Grok Live"
         return controller
     }()
 
