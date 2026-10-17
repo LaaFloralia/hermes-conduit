@@ -264,6 +264,7 @@ struct V2ChatsView: View {
     @AppStorage("conduit.v2.sessionFilter") private var filterRaw = "all"
     /// Expanded parents, remembered per parent across launches.
     @AppStorage("conduit.v2.expandedNests") private var expandedNestsRaw = ""
+    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     /// Parsed once per change of the store, not once per parent row.
     @State private var expansionCache = V2NestExpansionCache()
     /// A conversation opened from elsewhere whose closed section still has
@@ -431,17 +432,23 @@ struct V2ChatsView: View {
 
             filterMenu
 
-            Button {
-                Haptics.medium()
-                appState.dismissSidebarDrawer()
-                Task { await appState.createNewSession() }
-            } label: {
-                V2CapsuleIcon(systemImage: "square.and.pencil")
+            // The gold button beside the tabs makes new chats instead
+            // (Settings > Appearance): voice takes New chat's place here.
+            if mainButtonNewChat {
+                V2VoiceButton(context: .home, style: .capsule)
+            } else {
+                Button {
+                    Haptics.medium()
+                    appState.dismissSidebarDrawer()
+                    Task { await appState.createNewSession() }
+                } label: {
+                    V2CapsuleIcon(systemImage: "square.and.pencil")
+                }
+                .buttonStyle(PressableButtonStyle())
+                // The saved copy has no live gateway to create a chat on.
+                .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
+                .accessibilityLabel(AppLocalization.string("New Chat"))
             }
-            .buttonStyle(PressableButtonStyle())
-            // The saved copy has no live gateway to create a chat on.
-            .disabled(appState.turnState == .synchronizing || appState.offlineChatPresentation != nil)
-            .accessibilityLabel(AppLocalization.string("New Chat"))
         }
     }
 
