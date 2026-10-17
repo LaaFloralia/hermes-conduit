@@ -68,7 +68,15 @@ extension AppState {
         lease.bindTargetOwnership { [weak self] in
             self?.activeDashboardID == workspace.dashboardID && self?.activeProfile == workspace.profile
         }
-        if link.action != .open, widgetSettledCatalogOwner != workspace { return .deferred }
+        if link.action != .open, widgetSettledCatalogOwner != workspace {
+            // The link itself cancels the launch or return-to-app sync that
+            // would have read this catalog (routeWidgetLaunchURL), and a
+            // cancelled sync drops the rows it fetched. Read it here rather
+            // than wait for a load nothing else starts.
+            await loadSessionsForWidgetLaunch()
+            guard lease.isCurrent else { return .deferred }
+            if widgetSettledCatalogOwner != workspace { return .deferred }
+        }
         if link.action == .resume, let reference = link.reference, reference.kind == .dashboard {
             guard widgetSettledCatalogOwner == workspace else { return .deferred }
             guard activeProfileSessions.contains(where: { $0.id == reference.sessionID

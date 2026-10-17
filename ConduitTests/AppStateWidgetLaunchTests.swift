@@ -145,6 +145,37 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertTrue(appState.isVoiceCallInProgress)
     }
 
+    func testUnsettledCatalogIsReadInsteadOfWaitedFor() async throws {
+        let suite = "AppStateWidgetLaunchTests.unsettled-catalog.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000a7")
+        var catalogLoads = 0
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: current.id, dashboards: [current]),
+            clearSessionPresentationCache: {},
+            sessionCatalogLoader: { _ in
+                catalogLoads += 1
+                return []
+            },
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        _ = appState.handleScenePhase(.active)
+        appState.isConnected = true
+        // The link cancelled the sync that would have settled the catalog.
+        XCTAssertNil(appState.widgetSettledCatalogOwner)
+        let workspace = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: workspace, reference: nil))
+
+        let outcome = await appState.prepareWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true }))
+
+        XCTAssertEqual(outcome, .handled, "New Chat must not wait for a catalog load nothing else starts")
+        XCTAssertEqual(catalogLoads, 1)
+        XCTAssertEqual(appState.widgetSettledCatalogOwner, workspace)
+    }
+
     func testMissingConversationStaysInRequestedWorkspace() async throws {
         let suite = "AppStateWidgetLaunchTests.missing.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

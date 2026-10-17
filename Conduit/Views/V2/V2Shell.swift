@@ -514,9 +514,10 @@ extension View {
 
 // MARK: - Notice
 
-/// A short notice over the top of the screen: a pin change that stayed on
-/// this iPhone, and what Hermes said. It goes away after a few seconds, or
-/// on a tap.
+/// A short notice over the top of the screen, with its own symbol: a pin
+/// change that stayed on this iPhone and what Hermes said, or a widget
+/// action that couldn't finish. It goes away after a few seconds, or on a
+/// tap.
 private struct V2NoticeBanner: View {
     let notice: PinSyncNotice
     let dismiss: () -> Void
@@ -524,7 +525,7 @@ private struct V2NoticeBanner: View {
     var body: some View {
         Button(action: dismiss) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "pin.fill")
+                Image(systemName: notice.systemImage)
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
@@ -606,6 +607,11 @@ private struct V2CapsuleTabBar: View {
 enum V2ShellPreference {
     static let key = "conduit.useV2Shell"
     static let defaultValue = true
+
+    /// The same value the views read through `@AppStorage`.
+    static var isOn: Bool {
+        UserDefaults.standard.object(forKey: key) as? Bool ?? defaultValue
+    }
 }
 
 private struct V2TabBarClearanceKey: EnvironmentKey {

@@ -1,14 +1,24 @@
 import Foundation
 
-/// A pin change Hermes didn't take, kept on the phone: what the brief notice
-/// says. Each failure is a new notice, so a repeat shows again.
+/// A brief notice over the V2 lists: a pin change Hermes didn't take, kept
+/// on the phone, or a widget action that couldn't finish. Each failure is a
+/// new notice, so a repeat shows again.
 struct PinSyncNotice: Identifiable, Equatable {
     let id = UUID()
     let message: String
+    let systemImage: String
+
+    /// Any other brief notice over the V2 lists (a widget action that
+    /// couldn't finish).
+    init(message: String, systemImage: String) {
+        self.message = message
+        self.systemImage = systemImage
+    }
 
     /// Where the change stayed, then what Hermes said.
     init(error: Error, pinned: Bool) {
         let reason = UserFacingError.message(for: error)
+        systemImage = "pin.fill"
         message = pinned
             ? AppLocalization.string("Pinned on this iPhone only. \(reason)")
             : AppLocalization.string("Unpinned on this iPhone only. \(reason)")

@@ -655,6 +655,10 @@ final class AppState: ObservableObject {
                 guard let self, case .failed(let message) = outcome else { return }
                 self.widgetAwaitingInteractiveAuthenticationDashboardID = nil
                 self.errorMessage = message
+                // The composer shows errorMessage; over the V2 lists (the
+                // chat covered) nothing would, and the tap looks ignored.
+                // Only V2 draws the notice.
+                if self.showSidebar, V2ShellPreference.isOn { self.showNotice(message, systemImage: "exclamationmark.circle") }
             }
         )
     }()
@@ -4395,7 +4399,16 @@ final class AppState: ObservableObject {
 
     /// Says for a moment that a pin change stayed on this phone, and why.
     private func showPinSyncNotice(for error: Error, pinned: Bool) {
-        let notice = PinSyncNotice(error: error, pinned: pinned)
+        publishNotice(PinSyncNotice(error: error, pinned: pinned))
+    }
+
+    /// Says something briefly over the V2 lists (`pinSyncNotice` carries
+    /// every such notice).
+    func showNotice(_ message: String, systemImage: String) {
+        publishNotice(PinSyncNotice(message: message, systemImage: systemImage))
+    }
+
+    private func publishNotice(_ notice: PinSyncNotice) {
         pinSyncNotice = notice
         UIAccessibility.post(notification: .announcement, argument: notice.message)
     }
@@ -15341,10 +15354,22 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// The chat list for a widget action waiting on it. A failed read says
+    /// nothing in the composer: the launch retries on its next readiness
+    /// change and reports its own failure if it runs out of time.
+    func loadSessionsForWidgetLaunch() async {
+        await loadSessions(
+            forceRefresh: false,
+            requiredViewportTransitionGeneration: nil,
+            reportsFailure: false
+        )
+    }
+
     @discardableResult
     private func loadSessions(
         forceRefresh: Bool,
-        requiredViewportTransitionGeneration: UInt64?
+        requiredViewportTransitionGeneration: UInt64?,
+        reportsFailure: Bool = true
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -15408,6 +15433,7 @@ final class AppState: ObservableObject {
                 guard let activeClient, self.client === activeClient else { return false }
             }
             guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
+            guard reportsFailure else { return false }
             errorMessage = AppLocalization.string("Failed to load sessions: \(UserFacingError.message(for: error))")
             return false
         }
