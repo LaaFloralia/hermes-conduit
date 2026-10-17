@@ -5690,12 +5690,8 @@ final class AppState: ObservableObject {
     static func voiceThreadTurnNote(_ job: VoiceBackgroundJob, thread: VoiceThreadTarget) -> String {
         // Queued, not necessarily delivered: a hang-up drops unsent requests.
         let line = AppLocalization.string("Asked the chat: \(job.title).")
-        // A Bot Chat opens through its bot, never by its id on this profile.
-        if let bot = thread.profile, !bot.isEmpty {
-            return line + " " + ConduitAppLink.bot(profile: bot).markdown(label: AppLocalization.string("Open chat"))
-        }
-        guard let id = [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }).first(where: { !$0.isEmpty }) else { return line }
-        return line + " " + ConduitAppLink.session(id: id).markdown(label: AppLocalization.string("Open chat"))
+        guard let link = thread.appLink else { return line }
+        return line + " " + link.markdown(label: AppLocalization.string("Open chat"))
     }
 
     /// Opens a link Conduit wrote into a chat (a voice call's job link), or
