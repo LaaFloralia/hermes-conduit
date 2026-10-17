@@ -5788,7 +5788,12 @@ final class AppState: ObservableObject {
                 self.errorMessage = Self.missingLinkedBotMessage(for: self.botModePhase)
                 return
             }
-            _ = await self.openBotChat(for: bot)
+            // Like a chat link, a bot's chat comes forward over V2's Chats
+            // list. True means this open finished and holds the viewport (a
+            // superseded one returns false), as for the roster's own taps.
+            if await self.openBotChat(for: bot) {
+                self.dismissSidebarDrawer()
+            }
         }
     }
 
@@ -5845,12 +5850,19 @@ final class AppState: ObservableObject {
             }
             // Only this open's own "not found" may be reworded.
             self.reconciliationSessionWasNotFound = false
-            self.requestOpenSession(target ?? id) { [weak self] in
+            let opened = await self.requestOpenSession(target ?? id) { [weak self] in
                 // A failed resume says "session not found"; the link's own
                 // words say what's missing. Other refusals keep their text.
                 guard let self, self.errorMessage == nil || self.reconciliationSessionWasNotFound else { return }
                 self.errorMessage = unavailable
-            }
+            }.value
+            // From outside a chat (a Live Activity, another app) the chat
+            // must come forward: V2 keeps the Chats list over it until the
+            // sidebar is let go, as a notification's open does (once the open
+            // succeeded, so a dead link leaves the list up with its error).
+            // Not while a newer open is still under way; one that already
+            // finished has brought its own chat forward anyway.
+            if opened, self.explicitSessionOpenRequestID == nil { self.dismissSidebarDrawer() }
         }
     }
 
@@ -19597,6 +19609,7 @@ final class AppState: ObservableObject {
                         profile: activeProfile,
                         profileName: profileDisplayName(activeProfile),
                         glowHex: profileGlowColors()[activeProfile]?.hex
+                            ?? profileGlowTint(activeProfile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex }
                     )
                 case .queued:
                     // Hermes normally drains queued input as a later full turn,
