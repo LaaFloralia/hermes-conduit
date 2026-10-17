@@ -130,6 +130,21 @@ struct CapabilityRowDivider: View {
     }
 }
 
+/// One row of a card with the hairline above it when it isn't the first:
+/// one view per ForEach element, so the card's lazy stack places each row
+/// as one piece.
+struct CapabilityCardRow<Content: View>: View {
+    let divided: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if divided { CapabilityRowDivider() }
+            content
+        }
+    }
+}
+
 /// A named group over its card, the trailing accessory (a menu, a count)
 /// on the name's line, and a footnote under it.
 struct CapabilitySection<Content: View, Accessory: View>: View {
@@ -164,7 +179,11 @@ struct CapabilitySection<Content: View, Accessory: View>: View {
                 accessory
                     .padding(.trailing, 8)
             }
-            VStack(alignment: .leading, spacing: 0) {
+            // Lazy, so a tab of hundreds of skills or plugins builds and
+            // re-renders only the rows on screen: an eager card of every row
+            // redid them all on each AppState or store publish, which made
+            // Skills and Plugins stutter while scrolling.
+            LazyVStack(alignment: .leading, spacing: 0) {
                 content
             }
             .padding(.horizontal, 14)
@@ -336,6 +355,20 @@ struct CapabilityFlowLayout: Layout {
             x += size.width + spacing
             lineHeight = max(lineHeight, size.height)
         }
+    }
+}
+
+/// A tab's filtered and sorted rows, kept while what they're made from stays
+/// the same. A tab re-renders on every AppState or store publish, and
+/// sorting hundreds of names with localized compares each time cost frames.
+final class CapabilityListMemo<Input: Equatable, Output> {
+    private var last: (input: Input, output: Output)?
+
+    func value(for input: Input, _ compute: (Input) -> Output) -> Output {
+        if let last, last.input == input { return last.output }
+        let output = compute(input)
+        last = (input, output)
+        return output
     }
 }
 

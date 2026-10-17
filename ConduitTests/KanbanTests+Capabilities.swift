@@ -247,6 +247,62 @@ extension KanbanTests {
         XCTAssertEqual(CapabilitiesStore.pluginPath("model-providers/open router"), "model-providers/open%20router")
     }
 
+    // MARK: Search
+
+    func testCapabilitySearchCountsEachTabAsItLists() {
+        var sources = CapabilitySearchCounts.Sources()
+        sources.skills = [
+            CapabilitySkill(name: "weather-brief", enabled: true),
+            CapabilitySkill(name: "notes", description: "Weather notes", enabled: false),
+            CapabilitySkill(name: "maps", enabled: true),
+        ]
+        sources.officialSkills = [
+            OfficialSkill(name: "weather-radar", identifier: "official/weather-radar"),
+            OfficialSkill(name: "weather-brief", identifier: "official/weather-brief"),
+        ]
+        sources.toolsets = [
+            CapabilityToolset(name: "weather", enabled: true),
+            CapabilityToolset(name: "discord", description: "weather bot", enabled: true),
+        ]
+        sources.servers = ConnectorServer.list(from: [
+            "servers": [["name": "weather-mcp", "transport": "http", "url": "https://w", "enabled": false]],
+        ])
+        sources.connectorCatalog = ConnectorCatalogEntry.list(from: [
+            "entries": [["name": "notion", "description": "Pages"]],
+        ])
+        sources.plugins = AgentPluginRow.list(from: [
+            "plugins": [["name": "Weather", "source": "git", "runtime_status": "enabled"]],
+        ])
+        sources.pluginCatalog = PluginCatalogEntry.list(from: [
+            "entries": [
+                ["name": "hermes-weather", "title": "Weather", "installed": true],
+                ["name": "weather-alerts", "installed": false],
+            ],
+        ])
+
+        XCTAssertEqual(CapabilitySearchCounts.counts(query: "", in: sources), [:])
+        // A catalog skill already installed counts once; hidden toolsets not at all.
+        XCTAssertEqual(
+            CapabilitySearchCounts.counts(query: "weather", in: sources),
+            [.skills: 3, .tools: 1, .connectors: 1, .plugins: 2]
+        )
+        XCTAssertEqual(
+            CapabilitySearchCounts.counts(query: "pages", in: sources),
+            [.skills: 0, .tools: 0, .connectors: 1, .plugins: 0]
+        )
+    }
+
+    func testCapabilityListMemoRecomputesOnlyWhenItsInputChanges() {
+        let memo = CapabilityListMemo<[String], [String]>()
+        var runs = 0
+        let sort: ([String]) -> [String] = { runs += 1; return $0.sorted() }
+        XCTAssertEqual(memo.value(for: ["b", "a"], sort), ["a", "b"])
+        XCTAssertEqual(memo.value(for: ["b", "a"], sort), ["a", "b"])
+        XCTAssertEqual(runs, 1)
+        XCTAssertEqual(memo.value(for: ["c", "a"], sort), ["a", "c"])
+        XCTAssertEqual(runs, 2)
+    }
+
     func testCapabilityActionStatusNamesTheLastLogLine() {
         let failed = HermesActionStatus(["running": false, "exit_code": 1, "lines": ["Fetching…", "Error: scan blocked it", "", "=== exit 1 ==="]])
         XCTAssertFalse(failed.succeeded)

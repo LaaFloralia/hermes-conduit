@@ -13,42 +13,48 @@ import SwiftUI
 
 struct CapabilityPluginsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
     @ObservedObject var store: CapabilitiesStore
     let query: String
     @State private var message: String?
     @State private var pendingInstall: PluginCatalogEntry?
+    @State private var rowsMemo = CapabilityListMemo<RowsInput, Rows>()
 
     /// Hermes applies plugin changes to the dashboard's own profile, so they
     /// are made from the default profile only.
     private var canManage: Bool { store.canManagePlugins }
 
-    private var installed: [AgentPluginRow] {
-        store.plugins.filter { plugin in
-            query.isEmpty
-                || plugin.name.localizedCaseInsensitiveContains(query)
-                || plugin.description.localizedCaseInsensitiveContains(query)
+    private struct RowsInput: Equatable {
+        let plugins: [AgentPluginRow]
+        let catalog: [PluginCatalogEntry]
+        let query: String
+    }
+
+    private struct Rows {
+        let installed: [AgentPluginRow]
+        let catalog: [PluginCatalogEntry]
+        /// Each installed plugin's catalog entry, by plugin id.
+        let entries: [AgentPluginRow.ID: PluginCatalogEntry]
+    }
+
+    private var currentRows: Rows {
+        rowsMemo.value(for: RowsInput(plugins: store.plugins, catalog: store.pluginCatalog, query: query)) { input in
+            let installed = CapabilityPluginFilter.installed(input.plugins, query: input.query)
+            var entries: [AgentPluginRow.ID: PluginCatalogEntry] = [:]
+            for plugin in installed {
+                entries[plugin.id] = PluginCatalogEntry.entry(for: plugin, in: input.catalog)
+            }
+            return Rows(
+                installed: installed,
+                catalog: CapabilityPluginFilter.catalog(input.catalog, query: input.query),
+                entries: entries
+            )
         }
     }
 
-    /// Official entries first, then A-Z.
-    private var catalog: [PluginCatalogEntry] {
-        store.pluginCatalog
-            .filter { !$0.installed }
-            .filter { entry in
-                query.isEmpty
-                    || entry.displayName.localizedCaseInsensitiveContains(query)
-                    || entry.description.localizedCaseInsensitiveContains(query)
-            }
-            .sorted { lhs, rhs in
-                if (lhs.tier == "official") != (rhs.tier == "official") { return lhs.tier == "official" }
-                return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
-            }
-    }
-
     var body: some View {
-        let installed = self.installed
-        let catalog = self.catalog
+        let rows = currentRows
+        let installed = rows.installed
+        let catalog = rows.catalog
         CapabilityTabScroll(refresh: { await store.loadPlugins() }) {
             if !store.pluginsLoaded {
                 ProgressView()
@@ -73,7 +79,11 @@ struct CapabilityPluginsTab: View {
                         .padding(.horizontal, 16)
                 }
                 if store.pluginsNeedRestart {
-                    PluginRestartCard()
+                    // The card watches the restart, so this tab doesn't
+                    // observe AppState.
+                    PluginRestartCard {
+                        store.pluginsNeedRestart = false
+                    }
                 }
                 if let message {
                     Text(verbatim: message)
@@ -93,14 +103,15 @@ struct CapabilityPluginsTab: View {
                             .padding(.vertical, 12)
                     } else {
                         ForEach(Array(installed.enumerated()), id: \.element.id) { index, plugin in
-                            if index > 0 { CapabilityRowDivider() }
-                            AgentPluginListRow(
-                                plugin: plugin,
-                                catalogEntry: PluginCatalogEntry.entry(for: plugin, in: store.pluginCatalog),
-                                canManage: canManage,
-                                store: store
-                            ) { error in
-                                message = error
+                            CapabilityCardRow(divided: index > 0) {
+                                AgentPluginListRow(
+                                    plugin: plugin,
+                                    catalogEntry: rows.entries[plugin.id],
+                                    canManage: canManage,
+                                    store: store
+                                ) { error in
+                                    message = error
+                                }
                             }
                         }
                     }
@@ -113,23 +124,24 @@ struct CapabilityPluginsTab: View {
                         footer: AppLocalization.string("Reviewed plugins from Hermes' catalog.")
                     ) {
                         ForEach(Array(catalog.enumerated()), id: \.element.id) { index, entry in
-                            if index > 0 { CapabilityRowDivider() }
-                            HStack(spacing: 10) {
-                                CapabilityRowLabel(
-                                    symbol: "shippingbox",
-                                    active: false,
-                                    title: entry.displayName,
-                                    pills: [PluginStyle.tierPill(entry.tier)],
-                                    detail: entry.description
-                                )
-                                if canManage {
-                                    CapabilityRowButton(
-                                        title: AppLocalization.string("Install"),
-                                        busy: store.pluginBusy.contains(entry.name)
-                                    ) {
-                                        pendingInstall = entry
+                            CapabilityCardRow(divided: index > 0) {
+                                HStack(spacing: 10) {
+                                    CapabilityRowLabel(
+                                        symbol: "shippingbox",
+                                        active: false,
+                                        title: entry.displayName,
+                                        pills: [PluginStyle.tierPill(entry.tier)],
+                                        detail: entry.description
+                                    )
+                                    if canManage {
+                                        CapabilityRowButton(
+                                            title: AppLocalization.string("Install"),
+                                            busy: store.pluginBusy.contains(entry.name)
+                                        ) {
+                                            pendingInstall = entry
+                                        }
+                                        .accessibilityLabel(Text("Install \(entry.displayName)"))
                                     }
-                                    .accessibilityLabel(Text("Install \(entry.displayName)"))
                                 }
                             }
                         }
@@ -139,9 +151,6 @@ struct CapabilityPluginsTab: View {
         }
         .task(id: store.profile) {
             if !store.pluginsLoaded { await store.loadPlugins() }
-        }
-        .onChange(of: appState.activeGatewayRestart) { _, state in
-            if case .restarted = state { store.pluginsNeedRestart = false }
         }
         .confirmationDialog(
             Text("Install \(pendingInstall?.displayName ?? "")?"),
@@ -267,6 +276,8 @@ struct PluginRestartCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @State private var confirmingRestart = false
+    /// Called once the gateway has restarted.
+    var onRestarted: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -288,6 +299,9 @@ struct PluginRestartCard: View {
         .padding(16)
         .settingsCard()
         .gatewayRestartConfirmation(isPresented: $confirmingRestart)
+        .onChange(of: appState.activeGatewayRestart) { _, state in
+            if case .restarted = state { onRestarted() }
+        }
     }
 }
 
@@ -363,7 +377,9 @@ struct AgentPluginDetailPage: View {
                 .padding(16)
                 .settingsCard()
                 if store.pluginsNeedRestart {
-                    PluginRestartCard()
+                    PluginRestartCard {
+                        store.pluginsNeedRestart = false
+                    }
                 }
                 if let message {
                     Text(verbatim: message)

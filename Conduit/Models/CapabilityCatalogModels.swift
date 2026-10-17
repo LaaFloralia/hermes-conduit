@@ -589,6 +589,71 @@ struct PluginCatalogEntry: Equatable, Identifiable {
     }
 }
 
+/// The Plugins tab's rows for a search, shared with the other tabs' match
+/// counts.
+enum CapabilityPluginFilter {
+    static func installed(_ plugins: [AgentPluginRow], query: String) -> [AgentPluginRow] {
+        plugins.filter { plugin in
+            query.isEmpty
+                || plugin.name.localizedCaseInsensitiveContains(query)
+                || plugin.description.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    /// Not installed yet, official entries first, then A-Z.
+    static func catalog(_ catalog: [PluginCatalogEntry], query: String) -> [PluginCatalogEntry] {
+        catalog
+            .filter { !$0.installed }
+            .filter { entry in
+                query.isEmpty
+                    || entry.displayName.localizedCaseInsensitiveContains(query)
+                    || entry.description.localizedCaseInsensitiveContains(query)
+            }
+            .sorted { lhs, rhs in
+                if (lhs.tier == "official") != (rhs.tier == "official") { return lhs.tier == "official" }
+                return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+            }
+    }
+}
+
+/// How many rows a search finds on each Capabilities tab, so the search
+/// covers all four: the other tabs' finds show under the tab picker.
+enum CapabilitySearchCounts {
+    struct Sources: Equatable {
+        var skills: [CapabilitySkill] = []
+        var officialSkills: [OfficialSkill] = []
+        var toolsets: [CapabilityToolset] = []
+        var servers: [ConnectorServer] = []
+        var connectorCatalog: [ConnectorCatalogEntry] = []
+        var plugins: [AgentPluginRow] = []
+        var pluginCatalog: [PluginCatalogEntry] = []
+    }
+
+    /// Each tab's matches, as that tab lists them. Empty for no query.
+    static func counts(query: String, in sources: Sources) -> [CapabilitiesTab: Int] {
+        guard !query.isEmpty else { return [:] }
+        let skills = sources.skills.filter { CapabilitySkillOrdering.matches($0, query: query) }.count
+            + CapabilitySkillOrdering.available(
+                sources.officialSkills,
+                installedNames: Set(sources.skills.map(\.name)),
+                query: query
+            ).count
+        let tools = sources.toolsets.filter {
+            CapabilityToolsetOrdering.isVisible($0) && CapabilityToolsetOrdering.matches($0, query: query)
+        }.count
+        let groups = ConnectorGrouping.groups(
+            servers: sources.servers,
+            catalog: sources.connectorCatalog,
+            states: [:],
+            query: query
+        )
+        let connectors = groups.connected.count + groups.available.count + groups.off.count
+        let plugins = CapabilityPluginFilter.installed(sources.plugins, query: query).count
+            + CapabilityPluginFilter.catalog(sources.pluginCatalog, query: query).count
+        return [.skills: skills, .tools: tools, .connectors: connectors, .plugins: plugins]
+    }
+}
+
 // MARK: - Background actions
 
 /// Hermes runs installs as background CLI actions; their status is polled

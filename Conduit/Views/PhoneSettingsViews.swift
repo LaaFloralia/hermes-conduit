@@ -23,6 +23,8 @@ struct PhoneSettingsPage: View {
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var calendars: [PhoneCalendarRow] = []
+    @State private var showsCalendars = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The voice mode whose switch is waiting on the user's yes.
     @State private var askingVoiceMode: LiveVoiceModeName?
     /// Loaded on appear (loading prunes and saves).
@@ -173,7 +175,27 @@ struct PhoneSettingsPage: View {
                     .foregroundStyle(.secondary)
             }
             if preferences.isOn, !calendars.isEmpty {
-                DisclosureGroup("Calendars and lists") {
+                // Not a DisclosureGroup: outside a List it indents its rows
+                // without narrowing them, so their switches ran off the card.
+                Button {
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { showsCalendars.toggle() }
+                } label: {
+                    HStack {
+                        Text(verbatim: AppLocalization.string("Calendars and lists"))
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showsCalendars ? 90 : 0))
+                            .accessibilityHidden(true)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(Text(showsCalendars ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
+                .accessibilityIdentifier("settings.phone.calendars")
+                if showsCalendars {
                     ForEach(calendars) { row in
                         Toggle(isOn: calendarBinding(row)) {
                             Text(row.title)

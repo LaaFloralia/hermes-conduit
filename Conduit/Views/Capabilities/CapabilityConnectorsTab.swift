@@ -80,9 +80,10 @@ struct CapabilityConnectorsTab: View {
                         footer: AppLocalization.string("From Hermes' MCP catalog.")
                     ) {
                         ForEach(Array(groups.available.enumerated()), id: \.element.id) { index, entry in
-                            if index > 0 { CapabilityRowDivider() }
-                            ConnectorCatalogRow(entry: entry, store: store) {
-                                install(entry)
+                            CapabilityCardRow(divided: index > 0) {
+                                ConnectorCatalogRow(entry: entry, store: store) {
+                                    install(entry)
+                                }
                             }
                         }
                     }
@@ -112,14 +113,15 @@ struct CapabilityConnectorsTab: View {
 
     private func serverRows(_ servers: [ConnectorServer], states: [String: ConnectorState]) -> some View {
         ForEach(Array(servers.enumerated()), id: \.element.id) { index, server in
-            if index > 0 { CapabilityRowDivider() }
-            ConnectorServerRow(
-                server: server,
-                state: states[server.name] ?? .unknown,
-                catalogEntry: store.connectorCatalog.first { $0.name == server.name },
-                store: store
-            ) { error in
-                actionError = error
+            CapabilityCardRow(divided: index > 0) {
+                ConnectorServerRow(
+                    server: server,
+                    state: states[server.name] ?? .unknown,
+                    catalogEntry: store.connectorCatalog.first { $0.name == server.name },
+                    store: store
+                ) { error in
+                    actionError = error
+                }
             }
         }
     }

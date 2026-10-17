@@ -17,25 +17,45 @@ struct CapabilitySkillsTab: View {
     let refresh: () async -> Void
     @AppStorage("capabilities.skills.mostUsedFirst") private var mostUsedFirst = true
     @State private var bulkRunning = false
+    @State private var rowsMemo = CapabilityListMemo<RowsInput, Rows>()
 
-    private var installed: [CapabilitySkill] {
-        CapabilitySkillOrdering.sorted(
-            appState.skills.filter { CapabilitySkillOrdering.matches($0, query: query) },
-            mostUsedFirst: mostUsedFirst
-        )
+    private struct RowsInput: Equatable {
+        let skills: [CapabilitySkill]
+        let catalog: [OfficialSkill]
+        let query: String
+        let mostUsedFirst: Bool
     }
 
-    private var available: [OfficialSkill] {
-        CapabilitySkillOrdering.available(
-            store.officialSkills,
-            installedNames: Set(appState.skills.map(\.name)),
-            query: query
-        )
+    private struct Rows {
+        let installed: [CapabilitySkill]
+        let available: [OfficialSkill]
+    }
+
+    private var currentRows: Rows {
+        rowsMemo.value(for: RowsInput(
+            skills: appState.skills,
+            catalog: store.officialSkills,
+            query: query,
+            mostUsedFirst: mostUsedFirst
+        )) { input in
+            Rows(
+                installed: CapabilitySkillOrdering.sorted(
+                    input.skills.filter { CapabilitySkillOrdering.matches($0, query: input.query) },
+                    mostUsedFirst: input.mostUsedFirst
+                ),
+                available: CapabilitySkillOrdering.available(
+                    input.catalog,
+                    installedNames: Set(input.skills.map(\.name)),
+                    query: input.query
+                )
+            )
+        }
     }
 
     var body: some View {
-        let installed = self.installed
-        let available = self.available
+        let rows = currentRows
+        let installed = rows.installed
+        let available = rows.available
         CapabilityTabScroll(refresh: {
             await refresh()
             await store.loadOfficialSkills()
@@ -56,8 +76,11 @@ struct CapabilitySkillsTab: View {
                     optionsMenu
                 } content: {
                     ForEach(Array(installed.enumerated()), id: \.element.name) { index, skill in
-                        if index > 0 { CapabilityRowDivider() }
-                        CapabilitySkillRow(skill: skill, store: store)
+                        CapabilityCardRow(divided: index > 0) {
+                            CapabilitySkillRow(skill: skill, store: store) { enabled in
+                                Task { await appState.toggleSkill(name: skill.name, enabled: enabled) }
+                            }
+                        }
                     }
                 }
             }
@@ -69,8 +92,9 @@ struct CapabilitySkillsTab: View {
                     footer: AppLocalization.string("From Hermes' official skills catalog. Hermes scans each skill before it installs.")
                 ) {
                     ForEach(Array(available.enumerated()), id: \.element.id) { index, skill in
-                        if index > 0 { CapabilityRowDivider() }
-                        OfficialSkillRow(skill: skill, store: store, reload: refresh)
+                        CapabilityCardRow(divided: index > 0) {
+                            OfficialSkillRow(skill: skill, store: store, reload: refresh)
+                        }
                     }
                 }
             }
@@ -154,10 +178,13 @@ enum CapabilitySkillStyle {
     }
 }
 
+/// Not an AppState observer: its tab already re-renders it when the skill
+/// changes, and hundreds of observing rows each redid their body on every
+/// AppState publish.
 private struct CapabilitySkillRow: View {
-    @EnvironmentObject private var appState: AppState
     let skill: CapabilitySkill
     let store: CapabilitiesStore
+    let setEnabled: (Bool) -> Void
 
     var body: some View {
         HStack(spacing: 10) {
@@ -178,7 +205,7 @@ private struct CapabilitySkillRow: View {
             .buttonStyle(.plain)
             Toggle(isOn: Binding(
                 get: { skill.enabled },
-                set: { enabled in Task { await appState.toggleSkill(name: skill.name, enabled: enabled) } }
+                set: { enabled in setEnabled(enabled) }
             )) {
                 Text(verbatim: skill.name)
             }

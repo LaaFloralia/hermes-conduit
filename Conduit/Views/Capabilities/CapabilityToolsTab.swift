@@ -51,8 +51,9 @@ struct CapabilityToolsTab: View {
                     optionsMenu
                 } content: {
                     ForEach(Array(toolsets.enumerated()), id: \.element.name) { index, toolset in
-                        if index > 0 { CapabilityRowDivider() }
-                        CapabilityToolsetRow(toolset: toolset, counts: store.toolCalls, store: store)
+                        CapabilityCardRow(divided: index > 0) {
+                            CapabilityToolsetRow(toolset: toolset, counts: store.toolCalls, store: store)
+                        }
                     }
                 }
             }
