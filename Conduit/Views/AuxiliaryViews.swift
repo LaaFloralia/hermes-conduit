@@ -951,11 +951,11 @@ private struct SettingsHome: View {
                 .padding(.top, v2Layout ? 8 : 16)
                 .padding(.bottom, v2Layout ? 24 : 16)
             }
-            // A profile switch from the bar above fades the list out and
+            // A profile switch from the bar above slides the list out and
             // back in with the new profile's settings, from the top, as the
             // other tabs do; the bar stays put.
             .id(snapshot.id)
-            .opacity(shell.contentFaded ? 0 : 1)
+            .v2ProfileSwitchContent()
         }
         .sheet(isPresented: $showProfileManager) {
             ProfilePickerSheet()

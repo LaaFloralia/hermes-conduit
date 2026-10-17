@@ -296,40 +296,58 @@ struct V2Backdrop: View {
 }
 
 /// A sliding two-way glass segmented control (Tasks: Board | Scheduled).
+///
+/// The highlight is one capsule that slides to the selected segment, keyed
+/// on the selection itself rather than on the tap's transaction, so it moves
+/// even when the selection is stored somewhere that drops the transaction
+/// (an `@AppStorage` write does).
 struct V2SegmentedControl<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var highlight
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    private let spacing: CGFloat = 2
+
+    private var selectedIndex: Int? {
+        options.firstIndex { $0.value == selection }
+    }
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: spacing) {
             ForEach(options.indices, id: \.self) { index in
                 let option = options[index]
-                let isSelected = option.value == selection
+                let isSelected = index == selectedIndex
                 Button {
-                    withAnimation(ConduitMotion.overshoot(reduceMotion: reduceMotion)) {
-                        selection = option.value
-                    }
+                    selection = option.value
                 } label: {
                     Text(option.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, minHeight: 36)
-                        .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.10))
-                                    .matchedGeometryEffect(id: "segment", in: highlight)
-                            }
-                        }
                         .contentShape(Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
             }
         }
+        .background(alignment: .leading) {
+            GeometryReader { proxy in
+                let count = CGFloat(max(options.count, 1))
+                let width = (proxy.size.width - spacing * (count - 1)) / count
+                // An offset doesn't mirror on its own: right to left, the
+                // first segment is the rightmost.
+                let step = layoutDirection == .rightToLeft ? -(width + spacing) : width + spacing
+                if let selectedIndex {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: width)
+                        .offset(x: CGFloat(selectedIndex) * step)
+                }
+            }
+        }
+        .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: selectedIndex)
         .padding(3)
         .conduitGlassControl(cornerRadius: 21, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
