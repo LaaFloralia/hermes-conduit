@@ -10,6 +10,7 @@
 
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct SpeechServerVoiceSettingsView: View {
     @ObservedObject var service: HermesVoiceConfigurationService
@@ -39,6 +40,9 @@ struct SpeechServerVoiceSettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let setup = status.agentSetupText {
+                        agentSetupButton(setup)
+                    }
                     copyRow(title: AppLocalization.string("Model address"), value: address, identifier: "voice.speechServerVoice.address")
                     copyRow(title: AppLocalization.string("Key"), value: key, identifier: "voice.speechServerVoice.key")
                     if let flags = status.serverFlags {
@@ -82,6 +86,32 @@ struct SpeechServerVoiceSettingsView: View {
         .task(id: service.profile) { await load() }
     }
 
+    /// Everything above as one block, for an agent or whoever sets up the
+    /// server, rather than commands a person runs one by one.
+    private func agentSetupButton(_ setup: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                Self.copy(setup)
+                UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
+            } label: {
+                Label(AppLocalization.string("Copy setup for your agent"), systemImage: "doc.on.doc")
+            }
+            .buttonStyle(.settingsPrimary)
+            .accessibilityIdentifier("voice.speechServerVoice.copySetup")
+            Text(AppLocalization.string("One block with the address, key and flags, written for whoever sets up the server, such as your Hermes agent."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The key is a credential: what this screen copies leaves the
+    /// clipboard after ten minutes, time enough to paste it on the server.
+    private static func copy(_ text: String) {
+        UIPasteboard.general.setItems([[UTType.plainText.identifier: text]],
+                                      options: [.expirationDate: Date().addingTimeInterval(600)])
+    }
+
     private func copyRow(title: String, value: String, identifier: String) -> some View {
         // At accessibility text sizes the button goes under the title.
         let layout = dynamicTypeSize.isAccessibilitySize
@@ -92,7 +122,7 @@ struct SpeechServerVoiceSettingsView: View {
                 Text(verbatim: title).font(.subheadline.weight(.semibold))
                 if !dynamicTypeSize.isAccessibilitySize { Spacer() }
                 Button(AppLocalization.string("Copy")) {
-                    UIPasteboard.general.string = value
+                    Self.copy(value)
                     UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
                 }
                 .buttonStyle(.borderless)
@@ -124,14 +154,17 @@ struct SpeechServerVoiceSettingsView: View {
     /// A profile switch starts from that profile's status.
     private func load() async {
         generation += 1
+        let started = generation
         status = nil
         rotateError = nil
         let loaded = await service.speechServerVoiceStatus()
-        guard !Task.isCancelled else { return }
+        // A rotate meanwhile shows the new key, not this older read.
+        guard !Task.isCancelled, generation == started else { return }
         status = loaded
     }
 
     private func rotate() async {
+        generation += 1
         let started = generation
         isRotating = true
         defer { isRotating = false }
