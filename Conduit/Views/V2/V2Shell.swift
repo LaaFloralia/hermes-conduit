@@ -299,14 +299,20 @@ struct V2Shell: View {
                             $0.isTabActive = isSelected
                             $0.isRootCovered = rootCovered
                         }
-                        .opacity(isSelected ? 1 : 0)
+                        // Nothing inside a tab animates with the switch.
+                        .animation(nil, value: selectedTab)
+                        // Only the tab being opened fades in, quickly; the one
+                        // left goes at once. Fading two full screens of glass
+                        // and backdrop into each other dropped frames, and a
+                        // plain swap read as a blink. Scoped to the opacity.
+                        .animation(isSelected ? ConduitMotion.tabFadeIn : nil) {
+                            $0.opacity(isSelected ? 1 : 0)
+                        }
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
-                        // A tab switch swaps screens at once, like a system
-                        // tab bar; only the bar's highlight slides. Fading
-                        // two full screens of glass and backdrop into each
-                        // other dropped frames.
-                        .animation(nil, value: selectedTab)
+                        // A tab's first visit inserts it already selected:
+                        // the same fade, not the bar's overshoot spring.
+                        .transition(.opacity.animation(ConduitMotion.tabFadeIn))
                 }
             }
         }
