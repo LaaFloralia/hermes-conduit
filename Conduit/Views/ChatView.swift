@@ -308,6 +308,9 @@ struct ChatView: View {
         .environment(\.chatTextSize, chatTextSize)
         .environment(\.markdownTablePlainCells, true)
         .environment(\.markdownJoinsProseRuns, true)
+        // Text draws until a touch, a selection or assistive technology
+        // needs its text view: rows scrolling in mount no UITextViews.
+        .environment(\.selectableTextDrawsUntilTouched, true)
         // Gateway videos, audio and documents open from a download (#569).
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
         .background(Color.clear)
