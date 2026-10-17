@@ -3827,6 +3827,9 @@ final class AppState: ObservableObject {
     @Published var cronRuns: [CronRun] = []
     @Published private(set) var cronJobsLoading = false
     @Published private(set) var cronJobActionID: String?
+    /// Bumped by a job delete so a list load that started before it can't
+    /// bring the deleted job back.
+    private var cronJobsGeneration = 0
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -25129,6 +25132,7 @@ final class AppState: ObservableObject {
     func loadCronJobs() async {
         guard !cronJobsLoading else { return }
         let profile = activeProfile
+        let generation = cronJobsGeneration
         cronJobsLoading = true
         defer { cronJobsLoading = false }
 
@@ -25137,11 +25141,11 @@ final class AppState: ObservableObject {
                 let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
                 let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile else { return }
+                guard profile == activeProfile, generation == cronJobsGeneration else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
-                guard profile == activeProfile, self.client === client else { return }
+                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
                 cronJobs = jobs
             }
         } catch {
@@ -25216,6 +25220,35 @@ final class AppState: ObservableObject {
             case .resume: errorMessage = AppLocalization.string("Could not resume scheduled job: \(reason)")
             case .trigger: errorMessage = AppLocalization.string("Could not run scheduled job: \(reason)")
             }
+            return false
+        }
+    }
+
+    /// Removes the job from Hermes. Chats from its past runs stay; Hermes
+    /// keeps those sessions.
+    func deleteCronJob(_ job: CronJob) async -> Bool {
+        guard cronJobActionID == nil else { return false }
+        let profile = activeProfile
+        cronJobActionID = job.id
+        defer { cronJobActionID = nil }
+
+        do {
+            guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            let encodedID = job.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? job.id
+            _ = try await dashboardTicketBridge.requestJSON(
+                path: cronDashboardPath("/api/cron/jobs/\(encodedID)", profile: profile),
+                method: "DELETE"
+            )
+            // Gone on Hermes either way; only the list on screen needs the
+            // same profile.
+            cronJobsGeneration += 1
+            if profile == activeProfile {
+                cronJobs.removeAll { $0.id == job.id }
+                cronMutedJobIDs.remove(job.id)
+            }
+            return true
+        } catch {
+            errorMessage = AppLocalization.string("Could not delete scheduled job: \(UserFacingError.message(for: error))")
             return false
         }
     }
