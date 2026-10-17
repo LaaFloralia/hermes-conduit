@@ -2,9 +2,10 @@
 //  V2ChatsView.swift
 //  Conduit
 //
-//  Chats: the dense session list (Pinned, Recent, child sessions under
-//  their parent) and, behind the folder toggle, Projects. The filters are
-//  a native pull-down menu and combine (Unread and Chat lists unread
+//  Chats: the dense session list (Pinned, then Today, Yesterday, Last 7
+//  days and Older, each collapsible; child sessions under their parent)
+//  and, behind the folder toggle, Projects. The filters are a native
+//  pull-down menu and combine (Unread and Chat lists unread
 //  chats); the active ones show as a gold chip in the search field. Rows
 //  keep the old drawer's swipes and context menu.
 //
@@ -265,6 +266,15 @@ struct V2ChatsView: View {
     @AppStorage("conduit.v2.expandedNests") private var expandedNestsRaw = ""
     /// Parsed once per change of the store, not once per parent row.
     @State private var expansionCache = V2NestExpansionCache()
+    /// A conversation opened from elsewhere whose closed section still has
+    /// to open once its row is listed.
+    @State private var pendingSectionReveal: String?
+    /// The closed list sections (#696), remembered across launches. Read
+    /// into state so a tap can animate the change, which an `@AppStorage`
+    /// write ignores.
+    @State private var collapsedSections = ChatListSection.collapsed(
+        from: UserDefaults.standard.string(forKey: V2ChatsView.collapsedSectionsKey) ?? ChatListSection.defaultCollapsedRaw
+    )
 
     private var showingProjects: Bool { sessionPresentationRaw == "projects" }
 
@@ -319,6 +329,12 @@ struct V2ChatsView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        // Here rather than on the chats list, so an activation that arrives
+        // while Projects is shown still opens its section on the way back.
+        .onChange(of: appState.activeSessionId) { _, active in
+            pendingSectionReveal = active
+            revealActiveSection()
+        }
         .sheet(isPresented: $showArchivedSessions) {
             ArchivedSessionsSheet()
                 .environmentObject(appState)
@@ -664,18 +680,12 @@ struct V2ChatsView: View {
             }
 
             if layout.liveSections && !sections.pinned.isEmpty {
-                Section {
-                    listRows(V2ChatsListItem.items(sections.pinned, expanded: expanded))
-                } header: {
-                    sectionHeader(AppLocalization.string("Pinned"))
-                }
+                collapsibleSection(.pinned, nodes: sections.pinned, expanded: expanded)
             }
 
-            if layout.liveSections && !sections.recent.isEmpty {
-                Section {
-                    listRows(V2ChatsListItem.items(sections.recent, expanded: expanded))
-                } header: {
-                    sectionHeader(AppLocalization.string("Recent"))
+            if layout.liveSections {
+                ForEach(ChatListSection.byDate(sections.recent)) { group in
+                    collapsibleSection(group.section, nodes: group.nodes, expanded: expanded)
                 }
             }
         }
@@ -687,15 +697,130 @@ struct V2ChatsView: View {
         .refreshable {
             await appState.refreshSessionCatalog()
         }
-        .onAppear { revealActiveNestAncestors() }
+        .onAppear {
+            revealActiveNestAncestors()
+            revealActiveSection()
+        }
         .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }
-        .onChange(of: displayed) { _, _ in revealActiveNestAncestors() }
+        .onChange(of: displayed) { _, _ in
+            revealActiveNestAncestors()
+            revealActiveSection()
+        }
         .onChange(of: appState.pinnedSessionIDs) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.voiceSessionTagsByKey) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.voiceCallChatLinksRevision) { _, _ in revealActiveNestAncestors() }
         .onChange(of: appState.activeProfile) { _, _ in
             revealLatch = NestRevealLatch()
             revealActiveNestAncestors()
+        }
+    }
+
+    static let collapsedSectionsKey = "conduit.v2.collapsedChatSections"
+
+    /// A search or a status filter is a lookup: every section shows its
+    /// matches, and the saved open/closed state waits for the browse. The
+    /// status filters don't narrow Projects' Pinned section.
+    private var sectionsCollapsible: Bool {
+        !isSearching && (showingProjects || !selection.flattens)
+    }
+
+    private func isCollapsed(_ section: ChatListSection) -> Bool {
+        sectionsCollapsible && collapsedSections.contains(section)
+    }
+
+    private func toggleSection(_ section: ChatListSection, haptic: Bool = true) {
+        if haptic { Haptics.selection() }
+        var collapsed = collapsedSections
+        if collapsed.contains(section) { collapsed.remove(section) } else { collapsed.insert(section) }
+        UserDefaults.standard.set(ChatListSection.storageValue(collapsed), forKey: Self.collapsedSectionsKey)
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            collapsedSections = collapsed
+        }
+    }
+
+    /// A list section whose header opens and closes it (#696).
+    private func collapsibleSection(
+        _ section: ChatListSection,
+        nodes: [SessionNesting.Node],
+        expanded: Set<String>
+    ) -> some View {
+        Section {
+            if !isCollapsed(section) {
+                listRows(V2ChatsListItem.items(nodes, expanded: expanded))
+            }
+        } header: {
+            collapsibleHeader(section, count: nodes.count)
+        }
+    }
+
+    /// The section's name and a chevron that turns with it; a closed
+    /// section counts the chats it hides. While a search or status filter
+    /// keeps every section open it is a plain header.
+    @ViewBuilder
+    private func collapsibleHeader(_ section: ChatListSection, count: Int) -> some View {
+        if sectionsCollapsible {
+            let collapsed = isCollapsed(section)
+            Button {
+                toggleSection(section)
+            } label: {
+                HStack(spacing: 6) {
+                    Text(section.title)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .conduitFixedGlyph()
+                        .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    Spacer(minLength: 6)
+                    if collapsed {
+                        Text(count, format: .number)
+                            .monospacedDigit()
+                    }
+                }
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(nil)
+                .padding(.leading, 16)
+                .padding(.trailing, 16)
+                .padding(.vertical, 2)
+                // The whole strip is the tap target, at the 44 pt minimum.
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .listRowInsets(EdgeInsets())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(section.title))
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(collapsed
+                ? Text(AppLocalization.string("Collapsed")) + Text(verbatim: ", ") + Text(count, format: .number)
+                : Text(AppLocalization.string("Expanded")))
+            .accessibilityHint(AppLocalization.string(collapsed
+                ? "Shows the chats in this section."
+                : "Hides the chats in this section."))
+        } else {
+            sectionHeader(section.title)
+        }
+    }
+
+    /// Opens the section holding a conversation opened from elsewhere (a
+    /// notification, a widget, a new chat), so returning to the list shows
+    /// its row; a section closed while it stays open stays closed, and a
+    /// launch opens the list the way it was left. An activation whose row
+    /// hasn't been listed yet waits for the list to bring it.
+    private func revealActiveSection() {
+        guard let active = pendingSectionReveal, active == appState.activeSessionId else {
+            pendingSectionReveal = nil
+            return
+        }
+        guard !showingProjects, sectionsCollapsible else { return }
+        let sections = nestedSections(displayedSessions)
+        guard let section = ChatListSection.section(
+            of: active,
+            pinned: sections.pinned,
+            recent: ChatListSection.byDate(sections.recent)
+        ) else { return }
+        pendingSectionReveal = nil
+        if collapsedSections.contains(section) {
+            toggleSection(section, haptic: false)
         }
     }
 
@@ -919,9 +1044,11 @@ struct V2ChatsView: View {
 
             if !pinned.isEmpty {
                 Section {
-                    listRows(pinned.map(V2ChatsListItem.leaf))
+                    if !isCollapsed(.pinned) {
+                        listRows(pinned.map(V2ChatsListItem.leaf))
+                    }
                 } header: {
-                    sectionHeader(AppLocalization.string("Pinned"))
+                    collapsibleHeader(.pinned, count: pinned.count)
                 }
             }
 
