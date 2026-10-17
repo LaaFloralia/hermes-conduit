@@ -803,7 +803,8 @@ struct PhoneChangeOverlay: View {
                 }
             }
         }
-        .padding(.top, 6)
+        // Nothing showing takes no room: a call screen stacks it in its top inset.
+        .padding(.top, engine.prompts.isEmpty && engine.autoAdded == nil ? 0 : 6)
         .animation(.spring(duration: 0.3), value: engine.prompts.first?.id)
         .animation(.spring(duration: 0.3), value: engine.autoAdded?.id)
         .onChange(of: engine.prompts.first?.id) { _, id in

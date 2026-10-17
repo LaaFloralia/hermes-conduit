@@ -750,8 +750,8 @@ final class PhoneSyncEngine: ObservableObject {
     // MARK: Live voice calls
 
     struct VoiceNotReady: Error {}
-    /// Voice adds only: updates and deletions stay with Hermes' cards.
-    struct NotAnAddition: Error {}
+    /// Voice adds and deletions only: updates stay with Hermes' cards.
+    struct NotForVoice: Error {}
 
     /// One sealed read for a live voice call (`op: "voice"`, at `path`): the
     /// host's result, for this iPhone's data only. Checks only that sharing
@@ -777,18 +777,33 @@ final class PhoneSyncEngine: ObservableObject {
         return json["result"] ?? NSNull()
     }
 
-    /// Adds an event or reminder the user asked for in a voice call, straight
-    /// away (no card: they said so out loud). The next upload sends it. Like
-    /// `voiceRead`, the caller checks the voice mode may use it.
-    func addFromVoice(_ change: PhoneChange) async throws -> String? {
-        guard change.kind.addsWithoutAsking else { throw NotAnAddition() }
+    /// Adds or deletes an event or reminder the user asked for in a voice
+    /// call, straight away (no card: they said so out loud). The next upload
+    /// sends it. Like `voiceRead`, the caller checks the voice mode may use it.
+    func applyFromVoice(_ change: PhoneChange) async throws -> String? {
+        guard change.kind.addsWithoutAsking || change.kind == .deleteEvent || change.kind == .deleteReminder else {
+            throw NotForVoice()
+        }
         guard preferences.isOn, readStateIfNeeded() else { throw VoiceNotReady() }
         if change.kind.isAlarm {
             guard preferences.alarms else { throw VoiceNotReady() }
             return try await alarmSource.apply(change, now: now())
         }
+        if change.kind == .deleteEvent || change.kind == .deleteReminder {
+            let isEvent = change.kind == .deleteEvent
+            // Still shared after the wait for the user's yes.
+            guard isEvent ? preferences.calendar == .full : preferences.reminders else { throw VoiceNotReady() }
+            // Only what's still shared: an id read before its calendar was
+            // left out isn't.
+            if let calendar = await calendarSource.itemCalendar(itemID: (isEvent ? change.eventID : change.reminderID) ?? "",
+                                                                isEvent: isEvent, window: window),
+               preferences.hiddenCalendars.contains(calendar) {
+                throw PhoneCalendarSourceError.notFound
+            }
+        }
         let itemID = try await calendarSource.apply(change, window: window)
-        if let itemID {
+        // A deletion needs nothing here: the next upload sees it gone.
+        if change.kind.isAddition, let itemID {
             if change.kind.isEvent {
                 if state.eventHashes[itemID] == nil { state.eventHashes[itemID] = "" }
             } else if state.reminderHashes[itemID] == nil {

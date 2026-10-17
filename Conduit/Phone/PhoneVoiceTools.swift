@@ -4,8 +4,8 @@
 //
 //  The phone's own tools for a live voice call, next to the host's calendar
 //  reads: answering the calendar changes Hermes asked for (the card, out
-//  loud), and adding an event or reminder the user asks for, applied here
-//  straight away with no host trip. Updates and deletions stay with Hermes.
+//  loud), and adding or deleting an event or reminder the user asks for,
+//  applied here straight away with no host trip. Updates stay with Hermes.
 //  Offered only when the user lets that voice mode use the calendar and
 //  phone (Settings > Calendar & phone). Descriptions and answers are for the
 //  model, not UI copy, so not localized.
@@ -18,13 +18,17 @@ import Foundation
 enum PhoneVoiceTools {
     static let changesTool = "phone_changes"
     static let addTool = "phone_add"
+    static let removeTool = "phone_remove"
     static let alarmTool = "phone_alarm"
     /// What seals them: nothing, they never leave the phone.
     static let key = "local"
+    /// The user turns that already agreed to a deletion: each yes answers one.
+    static var usedConfirmations: Set<UUID> = []
 
     /// The tools for what's shared: changes whenever sharing is on (Hermes
     /// can ask for one), adding when events or reminders can be written,
-    /// both by the user's choice and by what iOS still allows.
+    /// both by the user's choice and by what iOS still allows, and deleting
+    /// what the call can read (it needs the item's id from a read).
     static func tools(for preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                       remindersAuthorized: Bool, alarmsAuthorized: Bool = false) -> [VoiceHostTool] {
         guard preferences.isOn else { return [] }
@@ -33,6 +37,10 @@ enum PhoneVoiceTools {
         if allowed.events || allowed.reminders {
             tools.append(add(events: allowed.events, reminders: allowed.reminders,
                              calendarsVisible: access == .full))
+        }
+        let removable = removable(preferences, access: access, remindersAuthorized: remindersAuthorized)
+        if removable.events || removable.reminders {
+            tools.append(remove(events: removable.events, reminders: removable.reminders))
         }
         if preferences.alarms, alarmsAuthorized { tools.append(alarm) }
         return tools
@@ -62,6 +70,13 @@ enum PhoneVoiceTools {
     private static func addable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                 remindersAuthorized: Bool) -> (events: Bool, reminders: Bool) {
         (preferences.calendar != .off && access != .off, preferences.reminders && remindersAuthorized)
+    }
+
+    /// Deleting finds the item by the id a read gave, so add-only events
+    /// (never read) can't be.
+    private static func removable(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
+                                  remindersAuthorized: Bool) -> (events: Bool, reminders: Bool) {
+        (preferences.calendar == .full && access == .full, preferences.reminders && remindersAuthorized)
     }
 
     private static let changes = VoiceHostTool(
@@ -94,7 +109,7 @@ enum PhoneVoiceTools {
             name: addTool,
             description: "Adds \(kinds.map { $0 == "event" ? "an event" : "a reminder" }.joined(separator: " or ")) to the user's iPhone at once. "
                 + "Only when the user asked for it in this call: say back what you'll add (title, day and time, "
-                + "and the calendar or list if named) and add it once they agree, then confirm in a few words. To change or delete "
+                + "and the calendar or list if named) and add it once they agree, then confirm in a few words. To change "
                 + "something, send the request to Hermes instead." + addOnly,
             parameters: [
                 "type": "object",
@@ -111,6 +126,32 @@ enum PhoneVoiceTools {
                     "notes": ["type": "string"],
                 ],
                 "required": ["kind", "title"],
+            ],
+            key: key
+        )
+    }
+
+    private static func remove(events: Bool, reminders: Bool) -> VoiceHostTool {
+        let kinds = (events ? ["event"] : []) + (reminders ? ["reminder"] : [])
+        let things = kinds.map { $0 == "event" ? "an event" : "a reminder" }.joined(separator: " or ")
+        return VoiceHostTool(
+            name: removeTool,
+            description: "Deletes \(things) from the user's iPhone at once, by its id from the calendar read "
+                + "(or from \(addTool) for one added in this call). Use this, not Hermes, when the user asks to remove, "
+                + "delete or cancel one. Only when the user asked for it in this call: find it first, say back which one "
+                + "you'll delete (title, day and time) and delete it once they say yes, then confirm in a few words. "
+                + "Each deletion needs its own yes: for several, ask about each in turn. "
+                + "For one event of a repeating series, span this (the default) deletes only that one; future deletes "
+                + "it and all later ones, only when the user said so.",
+            parameters: [
+                "type": "object",
+                "properties": [
+                    "kind": ["type": "string", "enum": kinds],
+                    "id": ["type": "string", "description": "The event's or reminder's id from the calendar read."],
+                    "span": ["type": "string", "enum": ["this", "future"],
+                             "description": "event: for a repeating event, this one only (default) or this and all later ones."],
+                ],
+                "required": ["kind", "id"],
             ],
             key: key
         )
@@ -141,13 +182,18 @@ enum PhoneVoiceTools {
     // MARK: Running them
 
     /// One call of a local tool. What the model hears back.
+    /// `confirmed` says whether the user's own last words agree to a
+    /// deletion (a deletion can't be undone, so the model's word isn't enough).
     static func run(_ tool: VoiceHostTool, arguments: [String: Any], engine: PhoneSyncEngine,
+                    confirmed: () async -> Bool = { true },
                     answer: (PhoneChangePrompt, Bool) async -> Void) async -> [String: String] {
         switch tool.name {
         case changesTool:
             return await runChanges(arguments, engine: engine, answer: answer)
         case addTool:
             return await runAdd(arguments, engine: engine)
+        case removeTool:
+            return await runRemove(arguments, engine: engine, confirmed: confirmed)
         case alarmTool:
             return await runAlarm(arguments, engine: engine)
         default:
@@ -238,10 +284,53 @@ enum PhoneVoiceTools {
             return ["error": "That couldn't be added; check the title and time."]
         }
         do {
-            _ = try await engine.addFromVoice(change)
-            return ["result": "Added on the phone. Confirm it to the user in a few words."]
+            let itemID = try await engine.applyFromVoice(change)
+            // Its id, so "actually, take that off" needs no read.
+            return ["result": "Added on the phone. Confirm it to the user in a few words."
+                + (itemID.map { " Its id, for \(removeTool) should they want it deleted (never say it aloud): \($0)." } ?? "")]
         } catch {
             return ["error": "It couldn't be added: \(PhoneSyncEngine.describe(error))"]
+        }
+    }
+
+    private static func runRemove(_ arguments: [String: Any], engine: PhoneSyncEngine,
+                                  confirmed: () async -> Bool) async -> [String: String] {
+        let allowed = removable(engine.preferences, access: engine.calendarSource.eventAccess,
+                                remindersAuthorized: engine.calendarSource.remindersAuthorized)
+        guard let itemID = (arguments["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !itemID.isEmpty, itemID.count <= 200 else {
+            return ["error": "Give the id from the calendar read; read the calendar first to find it."]
+        }
+        let isEvent: Bool
+        switch arguments["kind"] as? String ?? "" {
+        case "event" where allowed.events: isEvent = true
+        case "reminder" where allowed.reminders: isEvent = false
+        case "event", "reminder": return ["error": "The user doesn't let Hermes delete those. They can turn it on in Conduit's Settings."]
+        default: return ["error": "kind is event or reminder."]
+        }
+        var fields: [String: Any] = [:]
+        if isEvent {
+            let span = (arguments["span"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "this"
+            guard span == "this" || span == "future" else { return ["error": "span is this or future."] }
+            fields["span"] = span
+        }
+        let id = "voice_" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        let target = isEvent ? "event_id" : "reminder_id"
+        guard let change = PhoneChange(json: ["id": id, "kind": isEvent ? "delete_event" : "delete_reminder",
+                                              "target": [target: itemID], "fields": fields]) else {
+            return ["error": "That couldn't be deleted; check the id."]
+        }
+        guard await confirmed() else {
+            return ["error": "Not deleted: the user's own last words weren't a yes. Say back which one you'll delete and "
+                + "delete it only once they say yes."]
+        }
+        do {
+            _ = try await engine.applyFromVoice(change)
+            return ["result": "Deleted on the phone. Confirm it to the user in a few words."]
+        } catch PhoneCalendarSourceError.notFound {
+            return ["error": "There's no \(isEvent ? "event" : "reminder") with that id on this phone. Read the calendar again for its id."]
+        } catch {
+            return ["error": "It couldn't be deleted: \(PhoneSyncEngine.describe(error))"]
         }
     }
 
@@ -302,11 +391,25 @@ enum PhoneVoiceTools {
             return ["error": "That couldn't be set; check the time."]
         }
         do {
-            _ = try await engine.addFromVoice(change)
+            _ = try await engine.applyFromVoice(change)
             return ["result": "Set on the phone: \(PhoneChangeWording.alarmSummary(change.fields, kind: change.kind)). Confirm it to the user in a few words."]
         } catch {
             return ["error": "It couldn't be set: \(PhoneSyncEngine.describe(error))"]
         }
+    }
+
+    /// Whether the user's words agree to a deletion: a yes (in any language
+    /// the call's own yes check knows), or a short "delete it" / "yes, remove
+    /// that one" naming the deletion. Never a question, never a longer request.
+    static func confirmsRemoval(_ words: String) -> Bool {
+        if VoiceCallDecisionOutcome.isYes(words) { return true }
+        guard !words.contains("?"), !words.contains("？") else { return false }
+        let said = words.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        let agreeing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please", "go", "ahead", "do", "it",
+                                     "delete", "remove", "cancel", "that", "this", "one", "them", "both", "the", "event",
+                                     "reminder", "all", "of"]
+        let verbs: Set<String> = ["delete", "remove", "cancel"]
+        return (1...8).contains(said.count) && said.allSatisfy(agreeing.contains) && said.contains(where: verbs.contains)
     }
 
     // MARK: Wording for the model

@@ -288,7 +288,7 @@ final class PresentedScreensSync: ObservableObject {
 @MainActor
 enum PresentVoiceTool {
     static let name = "present_confirm"
-    static let key = "present"
+    nonisolated static let key = "present"
 
     static let tool = VoiceHostTool(
         name: name,

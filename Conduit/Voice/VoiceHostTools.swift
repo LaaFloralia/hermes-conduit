@@ -158,6 +158,20 @@ struct VoiceHostTool {
         }
     }
 
+    /// Gemini's and Grok's counterpart to `gptLiveFirst`, after the
+    /// briefing: its start_job rule sends work on the user's "accounts" to
+    /// Hermes, and without this a calendar change went out as a Hermes job
+    /// although the call had the tool for it. Not UI copy, so not localized.
+    static func functionToolsFirst(_ tools: [VoiceHostTool]) -> String {
+        let names = tools.filter { $0.key != PresentVoiceTool.key }.map(\.name)
+        guard !names.isEmpty else { return "" }
+        return "\n\nConduit's own tools: \(names.joined(separator: ", ")). Conduit runs these itself, at once and much "
+            + "faster than a Hermes job. When the user asks about or for something one of them covers (reading, adding "
+            + "or deleting what they share, for example), call the tool yourself: this takes precedence over the "
+            + "start_job rule, and don't say you'll have Hermes do it. Start a job only for what they can't do, or "
+            + "when the user asks for Hermes."
+    }
+
     // MARK: GPT-Live
 
     /// "Health" for conduit_health: the word GPT-Live delegates with.

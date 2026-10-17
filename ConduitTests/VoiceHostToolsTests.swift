@@ -104,6 +104,14 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceHostTool.gptLiveRules([]), "", "No tools, no line")
         let location = VoiceHostTool(name: "conduit_location", description: "Where.", parameters: [:], key: "location")
         XCTAssertTrue(VoiceHostTool.gptLiveRules([tool, location]).hasPrefix("\n\n[Conduit's own tools: \"Health:\", \"Location:\"."))
+
+        // Gemini and Grok hear the same: these before a Hermes job.
+        let present = VoiceHostTool(name: PresentVoiceTool.name, description: "Answer.", parameters: [:], key: PresentVoiceTool.key)
+        let first = VoiceHostTool.functionToolsFirst([tool, location, present])
+        XCTAssertTrue(first.hasPrefix("\n\nConduit's own tools: conduit_health, conduit_location."), first)
+        XCTAssertTrue(first.contains("start_job"))
+        XCTAssertEqual(VoiceHostTool.functionToolsFirst([present]), "", "Only on-screen answers: no line")
+        XCTAssertEqual(VoiceHostTool.functionToolsFirst([]), "")
     }
 
     func testLiveCallsReachTheHostToolOnlyWhenOffered() async {

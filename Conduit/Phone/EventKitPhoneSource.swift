@@ -53,6 +53,9 @@ protocol PhoneCalendarSource: AnyObject {
     func apply(_ change: PhoneChange, window: (from: Date, to: Date)) async throws -> String?
     /// Undoes an addition this phone made (the banner's Undo).
     func removeAdded(itemID: String, isEvent: Bool, window: (from: Date, to: Date)) async throws
+    /// The EventKit id of the calendar or list an item is in; nil when it
+    /// isn't found.
+    func itemCalendar(itemID: String, isEvent: Bool, window: (from: Date, to: Date)) async -> String?
     /// The title of the calendar or list an item would go to.
     func calendarTitle(id: String?, forEvents: Bool) -> String?
     /// The EventKit id behind a shared calendar id, for leaving it out.
@@ -428,6 +431,11 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
             let reminder = try await findReminder(itemID)
             try store.remove(reminder, commit: true)
         }
+    }
+
+    func itemCalendar(itemID: String, isEvent: Bool, window: (from: Date, to: Date)) async -> String? {
+        if isEvent { return (try? findEvent(itemID, window: window))?.calendar?.calendarIdentifier }
+        return (try? await findReminder(itemID))?.calendar?.calendarIdentifier
     }
 
     func startObservingChanges(_ handler: @escaping @Sendable () -> Void) {

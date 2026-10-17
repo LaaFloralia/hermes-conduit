@@ -260,15 +260,18 @@ extension HermesVoiceGatewayTimeoutTests {
         var eventsOnly = phonePreferences()
         eventsOnly.reminders = false
         let tools = PhoneVoiceTools.tools(for: eventsOnly, access: .full, remindersAuthorized: true)
-        XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool])
-        let fullAccessAdd = try XCTUnwrap(tools.last)
+        XCTAssertEqual(tools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool, PhoneVoiceTools.removeTool])
+        let fullAccessAdd = try XCTUnwrap(tools.first { $0.name == PhoneVoiceTools.addTool })
         XCTAssertEqual(((fullAccessAdd.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
         XCTAssertTrue(PhoneVoiceTools.tools(for: PhoneSyncPreferences(), access: .full, remindersAuthorized: true).isEmpty)
         // Nor what iOS no longer allows.
         let noReminders = PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: false)
-        XCTAssertEqual(((noReminders.last?.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
+        XCTAssertEqual(((noReminders.first { $0.name == PhoneVoiceTools.addTool }?.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String], ["event"])
         XCTAssertEqual(PhoneVoiceTools.tools(for: eventsOnly, access: .off, remindersAuthorized: true).map(\.name), [PhoneVoiceTools.changesTool])
-        let addOnly = try XCTUnwrap(PhoneVoiceTools.tools(for: eventsOnly, access: .writeOnly, remindersAuthorized: true).last)
+        // Add-only events are never read, so there's no id to delete by.
+        let addOnlyTools = PhoneVoiceTools.tools(for: eventsOnly, access: .writeOnly, remindersAuthorized: true)
+        XCTAssertEqual(addOnlyTools.map(\.name), [PhoneVoiceTools.changesTool, PhoneVoiceTools.addTool])
+        let addOnly = try XCTUnwrap(addOnlyTools.last)
         XCTAssertTrue(addOnly.description.contains("leave the calendar out"))
         XCTAssertFalse(fullAccessAdd.description.contains("leave the calendar out"))
 
@@ -301,6 +304,57 @@ extension HermesVoiceGatewayTimeoutTests {
                                                                      "calendar": "Work"],
                                                 engine: engine, answer: answer)
         XCTAssertNotNil(unknown["error"], "No calendar called Work")
+        XCTAssertTrue(added["result"]?.contains("item_\(voiceID)") == true, "The add answers with the new item's id")
+
+        // An event the user asks to delete goes at once, by its id.
+        let removeTool = try XCTUnwrap(PhoneVoiceTools.tools(for: phonePreferences(), access: .full, remindersAuthorized: true)
+            .first { $0.name == PhoneVoiceTools.removeTool })
+        XCTAssertEqual(((removeTool.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])?["enum"] as? [String],
+                       ["event", "reminder"])
+        let removed = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_dentist", "span": "future"],
+                                                engine: engine, answer: answer)
+        XCTAssertNotNil(removed["result"], removed["error"] ?? "")
+        let deletion = try XCTUnwrap(source.appliedChanges.last)
+        XCTAssertEqual(deletion.kind, .deleteEvent)
+        XCTAssertEqual(deletion.eventID, "e_dentist")
+        XCTAssertEqual(deletion.span, "future")
+        XCTAssertNil(engine.state.eventHashes["item_\(deletion.id)"], "A deletion isn't counted as a new item")
+        let reminder = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "reminder", "id": "r_milk"],
+                                                 engine: engine, answer: answer)
+        XCTAssertNotNil(reminder["result"], reminder["error"] ?? "")
+        XCTAssertEqual(source.appliedChanges.last?.kind, .deleteReminder)
+        XCTAssertEqual(source.appliedChanges.last?.reminderID, "r_milk")
+        // Not in a calendar the user left out since the id was read.
+        source.itemCalendars["e_hidden"] = "ek_work"
+        var leftOut = phonePreferences()
+        leftOut.hiddenCalendars = ["ek_work"]
+        engine.savePreferences(leftOut)
+        let hidden = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_hidden"], engine: engine, answer: answer)
+        XCTAssertNotNil(hidden["error"])
+        XCTAssertNotEqual(source.appliedChanges.last?.eventID, "e_hidden")
+        engine.savePreferences(phonePreferences())
+        // Only on the user's own yes.
+        let unconfirmed = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_gym"], engine: engine,
+                                                    confirmed: { false }, answer: answer)
+        XCTAssertNotNil(unconfirmed["error"])
+        XCTAssertNotEqual(source.appliedChanges.last?.eventID, "e_gym")
+        XCTAssertTrue(PhoneVoiceTools.confirmsRemoval("Yes, delete it."))
+        XCTAssertTrue(PhoneVoiceTools.confirmsRemoval("remove that one"))
+        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval("delete it?"))
+        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval("what's on my calendar tomorrow"))
+        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval(""))
+        XCTAssertFalse(PhoneVoiceTools.confirmsRemoval("of the event"), "Agreeing words without a yes or a delete verb")
+        let noID = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event"], engine: engine, answer: answer)
+        XCTAssertNotNil(noID["error"])
+        let badSpan = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_1", "span": "all"],
+                                                engine: engine, answer: answer)
+        XCTAssertNotNil(badSpan["error"])
+        var noReminderSharing = phonePreferences()
+        noReminderSharing.reminders = false
+        engine.savePreferences(noReminderSharing)
+        let notShared = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "reminder", "id": "r_milk"],
+                                                  engine: engine, answer: answer)
+        XCTAssertNotNil(notShared["error"], "Reminders turned off mid-call: none deleted")
         XCTAssertNotNil(PhoneVoiceTools.localTime("2026-10-16T15:00"))
         XCTAssertEqual(PhoneVoiceTools.localTime("2026-10-16")?.isDate, true)
         XCTAssertNil(PhoneVoiceTools.localTime("Thursday"))
@@ -566,6 +620,7 @@ private final class FakePhoneCalendarSource: PhoneCalendarSource {
     var events: [[String: Any]] = []
     var reminderItems: [[String: Any]] = []
     private(set) var applied: [String] = []
+    private(set) var appliedChanges: [PhoneChange] = []
 
     var eventAccess: PhoneCalendarAccess { .full }
     var remindersAuthorized: Bool { true }
@@ -591,9 +646,13 @@ private final class FakePhoneCalendarSource: PhoneCalendarSource {
             await withCheckedContinuation { continuation in holdLock.withLock { held = continuation } }
         }
         applied.append(change.id)
+        appliedChanges.append(change)
         return "item_\(change.id)"
     }
     func removeAdded(itemID: String, isEvent: Bool, window: (from: Date, to: Date)) async throws {}
+    /// Item id to EventKit calendar id, for left-out calendars.
+    var itemCalendars: [String: String] = [:]
+    func itemCalendar(itemID: String, isEvent: Bool, window: (from: Date, to: Date)) async -> String? { itemCalendars[itemID] }
     func calendarTitle(id: String?, forEvents: Bool) -> String? { "Personal" }
     func eventKitCalendarID(forShared id: String) -> String? { id }
     func startObservingChanges(_ handler: @escaping @Sendable () -> Void) {}
