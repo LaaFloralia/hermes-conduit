@@ -11,30 +11,37 @@ import SwiftUI
 struct OfflineChatTranscriptView: View {
     let presentation: OfflineChatPresentation
     @EnvironmentObject var appState: AppState
+    @Environment(\.v2ComposerRests) private var composerFloats
 
     private static let topAnchor = "offline-chat-top"
 
+    /// Only a real offline state says this is a saved copy. While Hermes is
+    /// on its way, between retries too, the copy reads as the chat itself,
+    /// and the header and the composer say Conduit is connecting.
+    private var showsBanner: Bool {
+        !appState.isConnected && !appState.isRecoveringConnection
+    }
+
     /// A chat picked in the saved list with no copy of its own, on its way
-    /// in: it says so, without the saved-copy banner.
+    /// in: it says so for as long as the banner is down.
     private var isOpeningPickedChat: Bool {
-        presentation.isPickedChat
-            && presentation.displayedMessages.isEmpty
-            && (appState.isConnecting || appState.isConnected)
+        presentation.isPickedChat && presentation.displayedRows.isEmpty && !showsBanner
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if !isOpeningPickedChat {
+            if showsBanner {
                 OfflineChatBanner(
                     savedAt: presentation.displayedTranscript?.savedAt,
-                    showsCopy: !presentation.displayedMessages.isEmpty
+                    showsCopy: !presentation.displayedRows.isEmpty
                 )
                     .padding(.horizontal, 18)
                     .padding(.top, 10)
+                    .transition(.opacity)
             }
             ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 18) {
+                LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
                     Color.clear
                         .frame(height: 1)
                         .id(Self.topAnchor)
@@ -43,20 +50,19 @@ struct OfflineChatTranscriptView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.top, 60)
-                    } else if presentation.displayedMessages.isEmpty {
+                    } else if presentation.displayedRows.isEmpty {
                         Text("No saved copy of this conversation")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .padding(.top, 60)
                     }
-                    ForEach(presentation.displayedMessages) { message in
-                        MessageBubble(message: message, gatewayResolver: nil)
-                    }
+                    OfflineChatRows(rows: presentation.displayedRows)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
                 .padding(.bottom, 126)
             }
+            .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
             .defaultScrollAnchor(.bottom)
             // A different saved conversation starts at its own latest row.
             .id(presentation.displayedSessionID)
@@ -67,21 +73,44 @@ struct OfflineChatTranscriptView: View {
             }
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: showsBanner)
         .accessibilityIdentifier("offline-chat-transcript")
     }
 }
 
+/// The saved rows as the live transcript draws them: a turn's steps as one
+/// card with their times, pictures kept on the phone, reactions.
+private struct OfflineChatRows: View {
+    let rows: [ChatMessageScrollTarget]
+    @EnvironmentObject var appState: AppState
+    /// Which step cards are open, for this conversation only: the scroll
+    /// view's `.id` starts the next one with its own.
+    @State private var disclosure = ChatRowDisclosure()
+
+    var body: some View {
+        ForEach(rows) { row in
+            MessageBubble(
+                message: row.message,
+                gatewayResolver: appState.gatewayMediaResolver,
+                step: row.step
+            )
+        }
+        .environment(\.chatRowDisclosure, disclosure)
+    }
+}
+
+/// Up only while Hermes can't be reached: Retry and Sign In are what it
+/// offers.
 private struct OfflineChatBanner: View {
     let savedAt: Date?
     /// A saved conversation is on screen. Without one (a chat picked in the
-    /// saved list that has no copy) the banner says what it waits on.
+    /// saved list that has no copy) the banner says Hermes can't be reached.
     let showsCopy: Bool
     @EnvironmentObject var appState: AppState
 
     private var title: String {
-        if showsCopy { return AppLocalization.string("Showing a saved copy") }
-        return appState.isConnecting
-            ? AppLocalization.string("Connecting…")
+        showsCopy
+            ? AppLocalization.string("Showing a saved copy")
             : AppLocalization.string("Can't reach Hermes")
     }
 
@@ -90,6 +119,7 @@ private struct OfflineChatBanner: View {
             Image(systemName: "icloud.slash")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.footnote.weight(.semibold))
@@ -100,21 +130,15 @@ private struct OfflineChatBanner: View {
                 }
             }
             Spacer(minLength: 8)
-            if appState.isConnecting {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Reconnecting…")
-            } else {
-                Button("Retry") { appState.retryFromOfflineChat() }
+            Button("Retry") { appState.retryFromOfflineChat() }
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.conduitAccent)
+            if appState.connection == nil {
+                Button("Sign In") { appState.signInFromOfflineChat() }
                     .font(.footnote.weight(.semibold))
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.conduitAccent)
-                if appState.connection == nil {
-                    Button("Sign In") { appState.signInFromOfflineChat() }
-                        .font(.footnote.weight(.semibold))
-                        .buttonStyle(.plain)
-                        .foregroundStyle(Color.conduitAccent)
-                }
             }
         }
         .padding(.horizontal, 14)
