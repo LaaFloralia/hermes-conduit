@@ -3,20 +3,23 @@ import XCTest
 @testable import Conduit
 
 final class SecurityBoundaryTests: XCTestCase {
-    func testAppTransportSecurityAllowsLocalNetworkingAndTailscaleNames() throws {
+    func testAppTransportSecurityAllowsLocalNetworkingAndTailscale() throws {
         let appInfo = try XCTUnwrap(Bundle(identifier: "com.milim.relay")?.infoDictionary)
         let appTransportSecurity = try XCTUnwrap(
             appInfo["NSAppTransportSecurity"] as? [String: Any]
         )
-        // Exception-domain keys match host names only, so a CIDR key such as
-        // 100.64.0.0/10 is inert; plain HTTP to raw IPs depends on local
-        // networking, and MagicDNS names use the ts.net exception.
         XCTAssertEqual(appTransportSecurity["NSAllowsLocalNetworking"] as? Bool, true)
         XCTAssertNotEqual(appTransportSecurity["NSAllowsArbitraryLoads"] as? Bool, true)
         let exceptionDomains = try XCTUnwrap(
             appTransportSecurity["NSExceptionDomains"] as? [String: Any]
         )
-        XCTAssertEqual(Set(exceptionDomains.keys), ["ts.net"])
+        XCTAssertEqual(Set(exceptionDomains.keys), ["100.64.0.0/10", "ts.net"])
+        // Local networking doesn't cover Tailscale's 100.64.0.0/10 addresses,
+        // and ATS does honour this range key: build 213 shipped without it and
+        // plain http to http://100.x.x.x never left the phone, while build 212
+        // with it connected at once. Keep it.
+        let cgnat = try XCTUnwrap(exceptionDomains["100.64.0.0/10"] as? [String: Any])
+        XCTAssertEqual(cgnat["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true)
         let tailnet = try XCTUnwrap(exceptionDomains["ts.net"] as? [String: Any])
         XCTAssertEqual(tailnet["NSExceptionAllowsInsecureHTTPLoads"] as? Bool, true)
         XCTAssertEqual(tailnet["NSIncludesSubdomains"] as? Bool, true)
