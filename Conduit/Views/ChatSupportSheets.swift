@@ -33,6 +33,7 @@ struct GatewayDiagnosticsSheet: View {
                 VStack(spacing: 22) {
                     summary
                     lastConnection
+                    DeviceReportsSection()
                     connectors
                     logs
                 }
@@ -426,6 +427,45 @@ private struct DelegateAgentCard: View {
         case .completed: return .green
         case .failed: return .red
         case .interrupted: return .secondary
+        }
+    }
+}
+
+/// iOS's own MetricKit reports for Conduit (MetricKitReports): a short
+/// English summary of the latest day and a file to share, for battery and
+/// data questions. Nothing here is uploaded.
+private struct DeviceReportsSection: View {
+    @State private var summary: MetricKitReportSummary?
+    @State private var exportURL: URL?
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Device reports"), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                if let summary, !summary.isEmpty {
+                    // A summary, so it wraps rather than scrolling sideways.
+                    Text(verbatim: summary.text)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if let exportURL {
+                    ShareLink(item: exportURL) {
+                        Label("Share device reports", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.settings)
+                    .accessibilityIdentifier("diagnostics.shareDeviceReports")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .task {
+            let loaded = await MetricKitReports.shared.load()
+            summary = loaded.summary
+            exportURL = loaded.exportURL
         }
     }
 }
