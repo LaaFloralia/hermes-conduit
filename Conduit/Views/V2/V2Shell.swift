@@ -224,15 +224,6 @@ struct V2Shell: View {
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
     @State private var visitedTabs: Set<V2Tab> = [.chats]
-    /// The last tab a switch left. Set in the same update as the
-    /// selection, so the opened tab knows which side to come from.
-    @State private var leavingTab: V2Tab?
-    /// Tabs slid off screen by recent switches, kept shown and animating
-    /// until the last slide settles, so quick switches don't snap.
-    @State private var settlingTabs: Set<V2Tab> = []
-    @State private var tabSwitchToken = 0
-    /// The tabs' width as last laid out: how far a switch slides.
-    @State private var tabsWidth: CGFloat = 0
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -358,7 +349,6 @@ struct V2Shell: View {
             .onDisappear {
                 // Sign-in replaces the shell; nothing covers the chat there.
                 appState.showSidebar = false
-                settlingTabs = []
             }
     }
 
@@ -373,20 +363,6 @@ struct V2Shell: View {
         }
     }
 
-    /// Where `tab` sits while `shown` is on screen: a full width toward its
-    /// side of the bar (right of `shown` waits right), so a switch moves
-    /// both screens like a pager. Zero for the shown tab and under Reduce
-    /// Motion, which only fades.
-    private func tabOffset(_ tab: V2Tab, from shown: V2Tab) -> CGFloat {
-        guard !reduceMotion, tabsWidth > 0,
-              let index = V2Tab.destinations.firstIndex(of: tab),
-              let shownIndex = V2Tab.destinations.firstIndex(of: shown),
-              index != shownIndex else { return 0 }
-        // The bar mirrors right to left; the offset doesn't.
-        let later: CGFloat = layoutDirection == .rightToLeft ? -1 : 1
-        return (index > shownIndex ? later : -later) * tabsWidth
-    }
-
     /// The four tabs over a custom glass capsule, the gold voice button
     /// beside it, on every iOS version. iOS 26's own tab bar has no place
     /// for a separate circle: a search-role tab sat inside the bar as a
@@ -398,49 +374,24 @@ struct V2Shell: View {
                 // the visited ones right after.
                 if visitedTabs.contains(tab) || selectedTab == tab {
                     let isSelected = selectedTab == tab
-                    let isLeaving = settlingTabs.contains(tab) && !isSelected && !reduceMotion
-                    let moves = isSelected || isLeaving
                     let rootCovered = isRootCovered(tab)
                     tabRoot(tab)
                         .transformEnvironment(\.v2Shell) {
                             $0.isTabActive = isSelected
                             $0.isRootCovered = rootCovered
                         }
-                        // Nothing inside a tab animates with the switch.
+                        // The opened tab shows at once and the one left
+                        // hides at once. A fade read as slow, and a slide
+                        // only ever ran on the first switch after launch.
+                        .opacity(isSelected ? 1 : 0)
+                        // Nothing in or on a tab animates with the switch,
+                        // whatever transaction the bar's tap carries.
                         .animation(nil, value: selectedTab)
-                        // The opened tab pushes the one left off its side of
-                        // the bar, like a pager. Only offsets move: fading
-                        // two full screens of glass and backdrop into each
-                        // other dropped frames. A hidden tab waits a width
-                        // away on its own side, so the slide needs no start
-                        // state; the others jump while hidden. Keyed on the
-                        // selection, as the Tasks pager is: a body-scoped
-                        // `.animation(_:body:)` animated the opacity but left
-                        // the offset jumping after a first visit.
-                        .offset(x: tabOffset(tab, from: selectedTab))
-                        .animation(moves ? ConduitMotion.tabSlide : nil, value: selectedTab)
-                        // Reduce Motion: the opened tab fades in instead.
-                        .opacity(moves ? 1 : 0)
-                        .animation(isSelected && reduceMotion ? ConduitMotion.tabFadeIn : nil, value: selectedTab)
                         .allowsHitTesting(isSelected)
                         .accessibilityHidden(!isSelected)
-                        // A tab's first visit inserts it already selected:
-                        // the same slide in from the side of the tab it left.
-                        .transition(firstVisitTransition(tab))
+                        .transition(.identity)
                 }
             }
-        }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            if abs(width - tabsWidth) > 0.5 { tabsWidth = width }
-        }
-        // Each switch restarts the wait; it ends with the view.
-        .task(id: tabSwitchToken) {
-            guard !settlingTabs.isEmpty else { return }
-            // A little past the spring's duration, so it has settled off screen.
-            guard (try? await Task.sleep(for: .seconds(ConduitMotion.tabSlideDuration + 0.15))) != nil else { return }
-            settlingTabs = []
         }
         // The bar floats over the screens instead of insetting them: hiding
         // it for a pushed chat then moves only the bar, not the layout of the
@@ -450,10 +401,7 @@ struct V2Shell: View {
             ZStack(alignment: .bottom) {
                 if !conversationVisible {
                     HStack(spacing: 10) {
-                        V2CapsuleTabBar(selection: Binding(
-                            get: { selectedTab },
-                            set: { switchTab(to: $0) }
-                        ))
+                        V2CapsuleTabBar(selection: $selectedTab)
                         voiceButton
                     }
                     .padding(.horizontal, 16)
@@ -578,30 +526,7 @@ struct V2Shell: View {
     private func selectTab(_ tab: V2Tab) {
         guard selectedTab != tab else { return }
         programmaticTab = tab
-        switchTab(to: tab)
-    }
-
-    /// Every tab change goes through here: the tab left stays on screen,
-    /// sliding off, until the slide settles. Under Reduce Motion it hides
-    /// at once.
-    private func switchTab(to tab: V2Tab) {
-        guard selectedTab != tab else { return }
-        if !reduceMotion {
-            leavingTab = selectedTab
-            settlingTabs.insert(selectedTab)
-            tabSwitchToken &+= 1
-        }
         selectedTab = tab
-    }
-
-    /// A first visit slides in from the side of the tab it left (a width
-    /// away, as `tabOffset` places it); under Reduce Motion it fades in.
-    private func firstVisitTransition(_ tab: V2Tab) -> AnyTransition {
-        guard let leavingTab, !reduceMotion else {
-            return AnyTransition.opacity.animation(ConduitMotion.tabFadeIn)
-        }
-        return AnyTransition.offset(x: tabOffset(tab, from: leavingTab))
-            .animation(ConduitMotion.tabSlide)
     }
 
     private func closeConversation() {
