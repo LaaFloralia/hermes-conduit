@@ -17311,6 +17311,10 @@ final class AppState: ObservableObject {
     /// A fresh registry read: nothing of the open chat runs or starts.
     private func openChatIsIdleOnServer(_ sessionID: String) async -> Bool {
         guard let client else { return false }
+        // A send here during the read changes the local turn; the idle
+        // answer is then stale, and a resume would take the new turn's stream.
+        let turnStateBefore = turnState
+        let streamEventBefore = openChatSync.lastStreamEventAt
         let rows: [LiveSessionStatus]
         do {
             if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
@@ -17321,7 +17325,9 @@ final class AppState: ObservableObject {
         } catch {
             return false
         }
-        guard self.client === client, activeSessionId == sessionID else { return false }
+        guard self.client === client, activeSessionId == sessionID,
+              turnState == turnStateBefore,
+              openChatSync.lastStreamEventAt == streamEventBefore else { return false }
         return !openChatRegistryRows(rows, sessionID: sessionID).contains {
             $0.isRunning || $0.status == "starting"
         }
