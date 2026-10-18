@@ -594,14 +594,18 @@ final class AppState: ObservableObject {
     }
     @Published var isConnecting = false
     /// For status words and dots only: connecting now, or between the first
-    /// few retries after a dropped connection. A drop waits 1-5 s before
-    /// each retry with `isConnecting` false, which would otherwise read as
-    /// "Disconnected" on every short network blip. After three failed
-    /// retries the gateway is likely down, and the words say so.
+    /// few retries after a dropped connection. A drop waits a few seconds
+    /// before each early retry with `isConnecting` false, which would
+    /// otherwise read as "Disconnected" on every short network blip. After
+    /// three failed retries the gateway is likely down, and the words say
+    /// so; without a network at all they say so at once.
     var isRecoveringConnection: Bool {
         isConnecting
-            || (!isConnected && connection != nil && turnState == .reconnecting && reconnectAttempts < 3)
+            || (networkPathUsable && !isConnected && connection != nil
+                && turnState == .reconnecting && reconnectAttempts < 3)
     }
+    /// The device has a usable network path (the app's one path monitor).
+    @Published private(set) var networkPathUsable = true
     @Published var profiles: [String] = []
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
     static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
@@ -4220,6 +4224,19 @@ final class AppState: ObservableObject {
     var deviceConditions: @MainActor () -> DeviceConditions = { DeviceConditionsMonitor.shared.current }
     /// The jitter after a failed poll, in 0..<1; tests pin it.
     var pollJitter: @MainActor () -> Double = { Double.random(in: 0..<1) }
+    /// The reconnect's jitter, in 0..<1; tests pin it.
+    var reconnectJitter: @MainActor () -> Double = { Double.random(in: 0..<1) }
+    /// Whether the dashboard answers at all, asked before a backed-off
+    /// reconnect while Conduit is on screen. Nil skips it: tests that
+    /// supply a reconnect executor have no gateway to ask, unless they set
+    /// one.
+    var gatewayReadinessProbe: (@MainActor (String) async -> Bool)?
+    /// The app's one path monitor, followed for reconnects and the chat
+    /// socket's check (`networkPathChanged`).
+    private var deviceConditionsSubscription: AnyCancellable?
+    private var lastPathGeneration = 0
+    /// When a path change last restarted the reconnect from its first step.
+    private var lastPathReconnectAt: Date?
     /// The Chats list's poll pace, the sleep a return to the app or a tap
     /// cuts short, and a count of catalog reads that changed the list.
     private(set) var chatListPollPacer = ChatListPollPacer()
@@ -5330,7 +5347,8 @@ final class AppState: ObservableObject {
         sessionYoloStore: SessionYoloStore? = nil,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
         profileAppearanceStore: ProfileAppearanceStore? = nil,
-        presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil
+        presentationCacheDebounceSuspension: (@Sendable (Duration) async throws -> Void)? = nil,
+        deviceConditionsUpdates: AnyPublisher<DeviceConditions, Never>? = nil
     ) {
         self.presentationCacheDebounceSuspension =
             presentationCacheDebounceSuspension
@@ -5355,6 +5373,12 @@ final class AppState: ObservableObject {
         profileDiscoveryLoaderOverride = profileDiscoveryLoader
         self.reconnectScheduler = reconnectScheduler ?? scheduleChatResumeReconnectTask
         self.reconnectExecutor = reconnectExecutor
+        if reconnectExecutor == nil {
+            let probe: @MainActor (String) async -> Bool = { baseURL in
+                await GatewayReadinessProbe.answers(baseURL)
+            }
+            gatewayReadinessProbe = probe
+        }
         self.chatResumeLifecycleOperations = chatResumeLifecycleOperations
         self.groupChatOperations = groupChatOperations
         self.initialChatResumeServerIdentity = defaults
@@ -5423,6 +5447,48 @@ final class AppState: ObservableObject {
         if shouldLoadSavedConnection {
             loadSavedConnection()
         }
+        // The monitor publishes on the main actor (willSet: `current` still
+        // holds the old value, so the handler uses the one it is given).
+        let monitor = DeviceConditionsMonitor.shared
+        lastPathGeneration = monitor.current.pathGeneration
+        networkPathUsable = monitor.current.pathSatisfied
+        deviceConditionsSubscription = (deviceConditionsUpdates ?? monitor.$current.eraseToAnyPublisher())
+            .sink { [weak self] conditions in
+                MainActor.assumeIsolated { self?.deviceConditionsChanged(conditions) }
+            }
+    }
+
+    func deviceConditionsChanged(_ conditions: DeviceConditions) {
+        let wasUsable = networkPathUsable
+        if networkPathUsable != conditions.pathSatisfied { networkPathUsable = conditions.pathSatisfied }
+        guard conditions.pathGeneration != lastPathGeneration else { return }
+        lastPathGeneration = conditions.pathGeneration
+        networkPathChanged(satisfied: conditions.pathSatisfied, cameBack: !wasUsable)
+    }
+
+    /// Path reports on a churny network (handovers, a VPN reasserting) come
+    /// often; only one every this long restarts the backoff.
+    static let pathReconnectInterval: TimeInterval = 30
+
+    /// The network path changed. A usable one checks the open socket at
+    /// once. A reconnect waiting out its backoff (or the network) runs now,
+    /// from the first step, when the network came back or the last such
+    /// restart is 30 s old: the drop was most likely the old path.
+    func networkPathChanged(satisfied: Bool, cameBack: Bool = false, now: Date = Date()) {
+        guard satisfied else { return }
+        client?.networkPathChanged()
+        guard connection != nil, !isConnected, !isConnecting, reconnectTask != nil,
+              canRunTransportRecovery else { return }
+        if !cameBack, let lastPathReconnectAt,
+           now.timeIntervalSince(lastPathReconnectAt) < Self.pathReconnectInterval { return }
+        lastPathReconnectAt = now
+        let purpose = recoverySequence.takeQueuedReconnectPurpose() ?? .preserveCurrent
+        reconnectTask?()
+        reconnectTask = nil
+        reconnectAttempts = 0
+        noteConnectionStep("Network changed")
+        // Immediate: the delay doesn't depend on the path state read below.
+        scheduleReconnect(immediately: true, purpose: purpose)
     }
 
     func restoreActiveSessionState(for profile: String) {
@@ -14884,8 +14950,20 @@ final class AppState: ObservableObject {
         case .schedule:
             break
         }
-        let delay = immediately ? 0.1 : min(5.0, pow(2.0, Double(reconnectAttempts)))
-        noteConnectionStep("Reconnect scheduled in \(ConnectionTimeline.seconds(delay))")
+        // Exponential with jitter, capped at 8 s while Conduit is on screen
+        // and 60 s off it. Without a usable path no attempt can work: the
+        // timer only stands in for a path report that never comes, and the
+        // path coming back reconnects at once (networkPathChanged).
+        let pathSatisfied = deviceConditions().pathSatisfied
+        let onScreen = reconnectIsWatched
+        let delay = immediately
+            ? 0.1
+            : pathSatisfied
+                ? PollCadence.reconnectDelay(attempt: reconnectAttempts, random: reconnectJitter(), onScreen: onScreen)
+                : PollCadence.reconnectCap
+        noteConnectionStep(pathSatisfied || immediately
+            ? "Reconnect scheduled in \(ConnectionTimeline.seconds(delay))"
+            : "No network; reconnect waits for it (at most \(ConnectionTimeline.seconds(delay)))")
         // The backoff step is consumed only when the cycle actually runs.
         // A timer canceled by scene backgrounding — or a cycle dropped for
         // scene inactivity before execution — never counts as a gateway
@@ -14900,8 +14978,29 @@ final class AppState: ObservableObject {
                 ?? .preserveCurrent
             guard self.canRunTransportRecovery else { return }
             if incrementsBackoff { self.reconnectAttempts += 1 }
+            // On screen, a backed-off step asks the gateway cheaply first: a
+            // gateway still restarting costs one HEAD, not a ticket, an
+            // upgrade and its timeout.
+            if incrementsBackoff, self.reconnectIsWatched,
+               let probe = self.gatewayReadinessProbe,
+               let baseURL = self.connection?.baseUrl {
+                let answered = await probe(baseURL)
+                guard self.reconnectTask == nil, !self.isConnected, !self.isConnecting,
+                      self.connection?.baseUrl == baseURL, self.canRunTransportRecovery else { return }
+                if !answered {
+                    self.noteConnectionStep("Gateway not answering yet")
+                    self.scheduleReconnect(purpose: purpose)
+                    return
+                }
+            }
             await self.executeReconnect(purpose: purpose)
         }
+    }
+
+    /// Someone is looking at Conduit (the phone's screen or CarPlay's): a
+    /// returning gateway should show within seconds.
+    private var reconnectIsWatched: Bool {
+        isSceneActive || isCarPlayVoiceSurfaceActive
     }
 
     private func scheduleReconnectAfterFailedSync() {
