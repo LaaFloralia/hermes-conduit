@@ -71,6 +71,7 @@
     "NativeAuthClientTests": 0.087,
     "OfflineChatCacheTests": 3.6,
     "PreviewTextTests": 0.05,
+    "PrivacyManifestTests": 0.05,
     "ProfileModelDefaultsTests": 0.05,
     "ProfileTimeZoneTests": 3.0,
     "ReadAloudFollowAlongTests": 0.1,
@@ -98,6 +99,7 @@
     "WakeConfigurationStoreTests": 0.057,
     "WakeLifecycleTests": 0.015,
     "WakePhraseCompilerTests": 0.009,
+    "WebKitNavigationPolicyConformanceTests": 0.1,
     "YoloProfileSwitchBookkeepingTests": 0.093,
     "NotificationE2ETests": 0.5
   },
