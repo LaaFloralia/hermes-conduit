@@ -20317,6 +20317,26 @@ final class AppState: ObservableObject {
         onBusy: (() -> Void)? = nil
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
+        let sent = await performComposerSubmission(
+            text: text,
+            attachments: attachments,
+            submissionContext: submissionContext,
+            onBusy: onBusy
+        )
+        // Only something Hermes took moves the registry's count; a refused
+        // or busy-diverted submission leaves another device's turn due.
+        if sent, activeSessionId == submissionContext.sessionID {
+            noteOpenChatSentHere()
+        }
+        return sent
+    }
+
+    private func performComposerSubmission(
+        text: String,
+        attachments: [Attachment],
+        submissionContext: ComposerSubmissionContext,
+        onBusy: (() -> Void)?
+    ) async -> Bool {
         guard isCurrentComposerSubmission(submissionContext) else { return false }
 
         // The gateway is already idle while the final visual tail drains.
@@ -20324,7 +20344,6 @@ final class AppState: ObservableObject {
         // new outgoing message retains correct transcript order.
         finalizePendingStreamingCompletion()
         guard composerIsEnabled else { return false }
-        noteOpenChatSentHere()
 
         // Slash command intercept — handle before normal message/steer logic
         if attachments.isEmpty && Self.parseSlashCommand(text) != nil {

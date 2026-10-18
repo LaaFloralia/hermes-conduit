@@ -703,7 +703,7 @@ struct LiveSessionStatus: Equatable {
             storedSessionId: object["session_key"]?.stringValue ?? "",
             status: object["status"]?.stringValue ?? "idle",
             lastActive: object["last_active"]?.doubleValue,
-            messageCount: object["message_count"]?.intValue,
+            messageCount: HermesClient.exactIntValue(object["message_count"]),
             preview: object["preview"]?.stringValue
         )
     }
