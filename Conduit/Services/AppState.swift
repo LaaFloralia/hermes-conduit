@@ -4197,6 +4197,20 @@ final class AppState: ObservableObject {
     /// another return asked for one while it ran.
     private(set) var leaveCatalogRefreshTask: Task<Void, Never>?
     private var leaveCatalogRefreshPending = false
+    private var leaveCatalogRefreshReportsFailure = false
+    /// One chat on two devices (ChatSync.swift): when the list reads the
+    /// catalog on its own, the open chat's registry checks, and the newest
+    /// `session.active_list` snapshot they share, so the open chat reuses
+    /// the list's poll instead of asking again.
+    private var chatListCatalogFreshness = ChatListCatalogFreshness()
+    private var openChatSync = OpenChatSync()
+    private var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)?
+    private(set) var openChatSyncRead: Task<Void, Never>?
+    /// Another device is getting the reply of a turn in the open chat; its
+    /// working line says so.
+    @Published private(set) var activeChatRepliesElsewhere = false
+    /// The clock of those checks; tests move it.
+    var chatSyncNow: @MainActor () -> Date = { Date() }
     private var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
@@ -7644,6 +7658,7 @@ final class AppState: ObservableObject {
             if !liveSessionStatusAvailable { liveSessionStatusAvailable = true }
             activeListFailureLoggedClient = nil
             recordActiveListEvidence(rows, profile: profile)
+            latestActiveList = (rows, profile, ObjectIdentifier(client), chatSyncNow())
         } catch {
             // Stop asking a gateway that doesn't have the method; a new
             // connection probes again. Other failures retry on the next tick.
@@ -16592,13 +16607,25 @@ final class AppState: ObservableObject {
     /// - transient read failure → the authoritative liveness adoption with
     ///   the transcript-freshness marker SET: freshness is unresolved, never
     ///   claimed current, and the next authoritative source re-confirms.
+    /// `resumeFallbackAllowed`, when given, is asked before any fallback to
+    /// a resume; a no settles the boundary instead and returns false (the
+    /// open chat's read of another device's turn, ChatSync).
+    @discardableResult
     private func reconcileForegroundCrossSurfaceActivity(
         livenessIsRunning: Bool,
         requestedSessionID: String,
         probeRow: LiveSessionStatus,
         reconciliationToken token: UUID,
-        automaticWorkToken: ChatResumeAutomaticWorkToken?
-    ) async {
+        automaticWorkToken: ChatResumeAutomaticWorkToken?,
+        resumeFallbackAllowed: (@MainActor () async -> Bool)? = nil
+    ) async -> Bool {
+        /// Whether a fallback resume may run; settles the boundary when not.
+        func mayResume() async -> Bool {
+            guard let resumeFallbackAllowed else { return true }
+            if await resumeFallbackAllowed() { return true }
+            settleForegroundBoundary(token, automaticWorkToken: automaticWorkToken)
+            return false
+        }
         let recoveryPurpose = foregroundRecoveryPurpose
         let bridge = dashboardTicketBridge
         let localFrontier = durablePersistedRowIDs
@@ -16618,7 +16645,7 @@ final class AppState: ObservableObject {
         guard foregroundRefreshOwnsReconciliation(token),
               automaticChatResumeWorkIsCurrent(automaticWorkToken) else {
             settleReconciliation(token)
-            return
+            return true
         }
         // The composer stays enabled during the bounded read: a submit that
         // landed mid-read appends an optimistic row and would invert the
@@ -16629,12 +16656,13 @@ final class AppState: ObservableObject {
             lifecycleLog.notice(
                 "Foreground freshness: session=\(requestedSessionID, privacy: .public) transcript moved during read → bounded resume refresh"
             )
+            guard await mayResume() else { return false }
             await syncSession(
                 purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
-            return
+            return true
         }
         switch foregroundFreshnessVerdict(
             outcome,
@@ -16661,7 +16689,7 @@ final class AppState: ObservableObject {
                     using: token,
                     automaticWorkToken: automaticWorkToken
                 )
-                return
+                return true
             }
             lifecycleLog.notice(
                 "Foreground freshness: probe=idle session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
@@ -16725,6 +16753,7 @@ final class AppState: ObservableObject {
             lifecycleLog.notice(
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=source-unavailable → single authoritative resume"
             )
+            guard await mayResume() else { return false }
             await syncSession(
                 purpose: recoveryPurpose,
                 using: token,
@@ -16735,12 +16764,14 @@ final class AppState: ObservableObject {
             lifecycleLog.notice(
                 "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
             )
+            guard await mayResume() else { return false }
             await syncSession(
                 purpose: recoveryPurpose,
                 using: token,
                 automaticWorkToken: automaticWorkToken
             )
         }
+        return true
     }
 
     /// Ordering evidence for the locally-owned optimistic tail, captured by
@@ -16970,6 +17001,7 @@ final class AppState: ObservableObject {
             )
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
+            chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             refreshVoiceSessionTags()
@@ -17027,8 +17059,11 @@ final class AppState: ObservableObject {
     /// chat reads it again: a conversation started there is listed once its
     /// first turn is stored, and an older one shows its latest turn. One
     /// read at a time; a return during a read asks for one more after it.
-    func refreshCatalogAfterLeavingChat() {
+    /// The list's own reads (ChatSync) pass `reportingFailure: false`: one
+    /// nobody asked for puts up no banner.
+    func refreshCatalogAfterLeavingChat(reportingFailure: Bool = true) {
         guard isConnected, client != nil || sessionCatalogLoaderOverride != nil else { return }
+        if reportingFailure { leaveCatalogRefreshReportsFailure = true }
         guard leaveCatalogRefreshTask == nil else {
             leaveCatalogRefreshPending = true
             return
@@ -17038,7 +17073,13 @@ final class AppState: ObservableObject {
             repeat {
                 // A return asked for before this read starts is covered by it.
                 self.leaveCatalogRefreshPending = false
-                await self.loadSessions()
+                let reportsFailure = self.leaveCatalogRefreshReportsFailure
+                self.leaveCatalogRefreshReportsFailure = false
+                await self.loadSessions(
+                    forceRefresh: false,
+                    requiredViewportTransitionGeneration: nil,
+                    reportsFailure: reportsFailure
+                )
             } while self.leaveCatalogRefreshPending && !Task.isCancelled
             self.leaveCatalogRefreshTask = nil
         }
@@ -17056,6 +17097,243 @@ final class AppState: ObservableObject {
         sessionCatalogCache.removeValue(forKey: sessionKey)
         sessionCatalogCache.removeValue(forKey: cronKey)
         await loadSessions(forceRefresh: true)
+    }
+
+    // MARK: - One chat on two devices
+
+    /// The Chats list's poll (every 4 s while it shows): the live registry,
+    /// then what it says about the list and the open chat behind it. A chat
+    /// the registry has and the list doesn't, one started on another device,
+    /// reads the catalog again; so does a list left on screen for 30 s, for
+    /// renames and deletions made elsewhere. Reads go through the coalesced
+    /// read Back uses.
+    func chatListPollTick() async {
+        // Off screen (voice or CarPlay keep the app running) nothing reads.
+        guard isSceneActive, isConnected else { return }
+        await refreshLiveSessionStatuses()
+        if let snapshot = freshActiveListSnapshot(maxAge: 2) {
+            noteActiveListForChatList(snapshot.rows)
+            // The open chat shows beside the list in the persistent iPad
+            // sidebar, and is covered by it otherwise.
+            observeOpenChat(in: snapshot, chatVisible: !showSidebar)
+        }
+        if chatListCatalogFreshness.shouldRead(olderThan: ChatListCatalogFreshness.fallbackInterval, now: chatSyncNow()) {
+            refreshCatalogAfterLeavingChat(reportingFailure: false)
+        }
+    }
+
+    /// Back in the app with the list on screen: a read older than 10 s is
+    /// read again. (A return from the background also syncs the chat, which
+    /// reads the catalog too; an overlay dip doesn't.)
+    func chatListBecameActive() {
+        if chatListCatalogFreshness.shouldRead(olderThan: ChatListCatalogFreshness.sceneActiveInterval, now: chatSyncNow()) {
+            refreshCatalogAfterLeavingChat(reportingFailure: false)
+        }
+    }
+
+    private func noteActiveListForChatList(_ rows: [LiveSessionStatus]) {
+        var listed = Set<String>()
+        for session in sessions + cronSessions + archivedSessions {
+            listed.insert(session.id)
+            if let stored = session.storedSessionId { listed.insert(stored) }
+            if let root = session.lineageRootId { listed.insert(root) }
+            listed.formUnion(session.alternateIds)
+        }
+        let unlisted = rows.filter { !$0.storedSessionId.isEmpty && !listed.contains($0.storedSessionId) }
+        // Keyed by the row's state too: a chat created on another device is
+        // live before its first message makes it listable, and that message
+        // (working, then a new count) asks again.
+        let keys = Set(unlisted.map { "\($0.storedSessionId)|\($0.status)|\($0.messageCount ?? -1)" })
+        guard chatListCatalogFreshness.shouldRead(forUnlisted: keys, now: chatSyncNow()) else { return }
+        sessionCatalogLog.notice(
+            "Chat list: \(unlisted.count, privacy: .public) live chat(s) not listed yet; reading the catalog again"
+        )
+        refreshCatalogAfterLeavingChat(reportingFailure: false)
+    }
+
+    /// The open chat's check while it is on screen (ChatView, every few
+    /// seconds and on each turn edge). A turn running here that streamed
+    /// nothing for 20 s, or an idle chat, is checked against the registry;
+    /// a snapshot the list read in the last 5 s is reused.
+    func openChatSyncTick() async {
+        guard isSceneActive, isConnected, let client,
+              client !== activeListUnsupportedClient,
+              let local = openChatLocalTurn() else {
+            setActiveChatRepliesElsewhere(false)
+            return
+        }
+        let due = openChatSync.checkDue(local, now: chatSyncNow())
+        // Another chat starts over without the label.
+        setActiveChatRepliesElsewhere(openChatSync.repliesElsewhere)
+        guard due else { return }
+        if freshActiveListSnapshot(maxAge: 5) == nil {
+            await refreshLiveSessionStatuses()
+        }
+        guard let snapshot = freshActiveListSnapshot(maxAge: 5) else { return }
+        observeOpenChat(in: snapshot, chatVisible: true)
+    }
+
+    private func freshActiveListSnapshot(maxAge: TimeInterval) -> (rows: [LiveSessionStatus], at: Date)? {
+        guard let latestActiveList, latestActiveList.profile == activeProfile,
+              let client, latestActiveList.client == ObjectIdentifier(client),
+              chatSyncNow().timeIntervalSince(latestActiveList.at) < maxAge else { return nil }
+        return (latestActiveList.rows, latestActiveList.at)
+    }
+
+    /// The open chat as this device holds it, or nil when there is none the
+    /// registry can speak for: a Bot Chat lives in another profile's
+    /// registry, a room isn't one session, and a chat still syncing or
+    /// reconnecting has no settled local state to compare.
+    private func openChatLocalTurn() -> OpenChatLocalTurn? {
+        guard let sessionId = activeSessionId, !sessionId.isEmpty,
+              activeRoomSurface == nil,
+              botConversationProfile(for: sessionId) == nil,
+              turnState == .idle || turnState == .running else {
+            setActiveChatRepliesElsewhere(false)
+            return nil
+        }
+        var ownTexts: [String] = []
+        var hasRunningTool = false
+        // The running turn's own rows: back to its user message.
+        for message in messages.reversed() {
+            if message.role == .tool, message.tool?.status == .running { hasRunningTool = true }
+            if message.role == .assistant { ownTexts.append(message.content) }
+            if message.role == .user {
+                ownTexts.append(message.content)
+                if !message.isSteer { break }
+            }
+        }
+        ownTexts.append(streamingBuffer)
+        return OpenChatLocalTurn(
+            sessionID: sessionId,
+            isRunning: turnState.isRunning,
+            hasRunningTool: turnState.isRunning && hasRunningTool,
+            ownTexts: ownTexts
+        )
+    }
+
+    private func observeOpenChat(in snapshot: (rows: [LiveSessionStatus], at: Date), chatVisible: Bool) {
+        // A read or a reconciliation already under way owns the transcript.
+        guard openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing,
+              let local = openChatLocalTurn() else { return }
+        let rows = openChatRegistryRows(snapshot.rows, sessionID: local.sessionID)
+        let action = openChatSync.observe(
+            Self.openChatRegistryRow(rows),
+            snapshotAt: snapshot.at,
+            local: local,
+            now: chatSyncNow(),
+            chatVisible: chatVisible
+        )
+        setActiveChatRepliesElsewhere(openChatSync.repliesElsewhere)
+        switch action {
+        case .none:
+            break
+        case .settleTurn:
+            lifecycleLog.notice(
+                "Open chat: turn silent here and not running on the server → re-read session=\(local.sessionID, privacy: .public)"
+            )
+            startOpenChatSyncRead(sessionID: local.sessionID, expectsRunning: true) { appState in
+                // Nothing runs, so this resume takes no stream from another
+                // device; it brings the reply and settles the turn. Asked
+                // once more right before, since a new turn may have begun.
+                guard await appState.openChatIsIdleOnServer(local.sessionID) else { return }
+                await appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+            }
+        case .readNewRows:
+            guard let row = rows.first(where: { !$0.isRunning }) ?? rows.first else { return }
+            lifecycleLog.notice(
+                "Open chat: a turn ran elsewhere → read its rows session=\(local.sessionID, privacy: .public)"
+            )
+            startOpenChatSyncRead(sessionID: local.sessionID, expectsRunning: false) { appState in
+                // The bounded, read-only tail read a return from the
+                // background uses: new rows merge in, and only an
+                // inconclusive read falls back to resuming the idle chat.
+                let token = appState.beginReconciliation()
+                let resumed = await appState.reconcileForegroundCrossSurfaceActivity(
+                    livenessIsRunning: false,
+                    requestedSessionID: local.sessionID,
+                    probeRow: row,
+                    reconciliationToken: token,
+                    automaticWorkToken: nil,
+                    // A read that would end in a resume asks the registry
+                    // first: a turn begun since would lose its stream.
+                    resumeFallbackAllowed: { await appState.openChatIsIdleOnServer(local.sessionID) }
+                )
+                if !resumed { appState.openChatSync.readCalledOff() }
+            }
+        }
+    }
+
+    private func startOpenChatSyncRead(
+        sessionID: String,
+        expectsRunning: Bool,
+        _ read: @escaping @MainActor (AppState) async -> Void
+    ) {
+        openChatSyncRead = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.openChatSyncRead = nil }
+            // The chat or its turn changed since the snapshot: nothing to do.
+            guard self.activeSessionId == sessionID, self.reconciliation == nil,
+                  self.turnState == (expectsRunning ? .running : .idle) else { return }
+            await read(self)
+        }
+    }
+
+    /// Every registry row of the open chat: a voice runtime and the chat's
+    /// own can share its ids.
+    private func openChatRegistryRows(_ rows: [LiveSessionStatus], sessionID: String) -> [LiveSessionStatus] {
+        let acceptedIDs = acceptedIdentitySessionIDs(forRequested: sessionID)
+        return rows.filter {
+            acceptedIDs.contains($0.runtimeSessionId) || acceptedIDs.contains($0.storedSessionId)
+        }
+    }
+
+    /// One view of the chat's rows: running if any runs, starting if any
+    /// starts, the running row's preview, and the highest count.
+    nonisolated static func openChatRegistryRow(_ rows: [LiveSessionStatus]) -> OpenChatRegistryRow? {
+        guard !rows.isEmpty else { return nil }
+        let running = rows.first(where: \.isRunning)
+        return OpenChatRegistryRow(
+            isRunning: running != nil,
+            isStarting: running == nil && rows.contains { $0.status == "starting" },
+            messageCount: rows.compactMap(\.messageCount).max(),
+            preview: (running ?? rows[0]).preview
+        )
+    }
+
+    /// A fresh registry read: nothing of the open chat runs or starts.
+    private func openChatIsIdleOnServer(_ sessionID: String) async -> Bool {
+        guard let client else { return false }
+        let rows: [LiveSessionStatus]
+        do {
+            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
+                rows = try await probeActiveSessions(client)
+            } else {
+                rows = try await client.activeSessions()
+            }
+        } catch {
+            return false
+        }
+        guard self.client === client, activeSessionId == sessionID else { return false }
+        return !openChatRegistryRows(rows, sessionID: sessionID).contains {
+            $0.isRunning || $0.status == "starting"
+        }
+    }
+
+    /// This device sent something in the open chat (a turn, a steer, a
+    /// command): the registry's count moving next is its own doing.
+    private func noteOpenChatSentHere() {
+        openChatSync.noteSentHere()
+    }
+
+    private func noteOpenChatStreamEvent() {
+        openChatSync.noteStreamEvent(at: chatSyncNow())
+        setActiveChatRepliesElsewhere(false)
+    }
+
+    private func setActiveChatRepliesElsewhere(_ value: Bool) {
+        // Assigned only on a change: every publish redraws the chat.
+        if activeChatRepliesElsewhere != value { activeChatRepliesElsewhere = value }
     }
 
     /// Desktop treats archived conversations as a separate, server-backed
@@ -20039,6 +20317,7 @@ final class AppState: ObservableObject {
         // new outgoing message retains correct transcript order.
         finalizePendingStreamingCompletion()
         guard composerIsEnabled else { return false }
+        noteOpenChatSentHere()
 
         // Slash command intercept — handle before normal message/steer logic
         if attachments.isEmpty && Self.parseSlashCommand(text) != nil {
@@ -26762,6 +27041,7 @@ final class AppState: ObservableObject {
         let streamSessionId = sessionID(for: event)
         guard eventBelongsToActiveSession(streamSessionId) else { return }
         defer { schedulePresentationCacheFlush(for: streamSessionId) }
+        noteOpenChatStreamEvent()
         LiveTurnActivities.shared.observe(event, sessionID: streamSessionId)
         if let signal = ResponseHapticPolicy.signal(for: event) {
             applyResponseHapticSignal(signal)

@@ -253,6 +253,7 @@ struct V2ChatsView: View, Equatable {
     @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     /// Hermes' full-text search behind the field, for chats whose messages
@@ -428,9 +429,14 @@ struct V2ChatsView: View, Equatable {
         .task(id: "\(appState.activeProfile)|\(isShown)|\(appState.showSidebar)") {
             guard isShown, appState.showSidebar else { return }
             while !Task.isCancelled {
-                await appState.refreshLiveSessionStatuses()
+                await appState.chatListPollTick()
                 try? await Task.sleep(for: .seconds(4))
             }
+        }
+        // Back in the app over the list: it reads the catalog again if its
+        // last read is old (a chat started elsewhere meanwhile).
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, isShown, appState.showSidebar { appState.chatListBecameActive() }
         }
         .sheet(item: $projectPendingRename) { project in
             RenameSheet(

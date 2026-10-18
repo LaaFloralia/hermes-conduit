@@ -178,6 +178,7 @@ struct SidebarView: View {
 struct SessionList: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
     @State private var searchText = ""
     @State private var showFilterOrder = false
     @State private var showArchivedSessions = false
@@ -477,9 +478,13 @@ struct SessionList: View {
         // while the list is on screen.
         .task(id: appState.activeProfile) {
             while !Task.isCancelled {
-                await appState.refreshLiveSessionStatuses()
+                await appState.chatListPollTick()
                 try? await Task.sleep(for: .seconds(4))
             }
+        }
+        // Back in the app over the list: an old read is read again.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { appState.chatListBecameActive() }
         }
         .sheet(item: $projectPendingRename) { project in
             RenameSheet(
