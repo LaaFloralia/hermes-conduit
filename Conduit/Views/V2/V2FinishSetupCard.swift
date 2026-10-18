@@ -115,6 +115,10 @@ struct V2FinishSetupCard: View {
             FinishSetupRow(icon: icon, title: title, detail: AppLocalization.string("The new plugin is on the host. Hermes needs a restart to use it."), identifier: "finish-setup.plugin") {
                 actionButton(AppLocalization.string("Finish Update"), action: openPluginPage)
             }
+        case .notRunning:
+            FinishSetupRow(icon: icon, title: title, detail: AppLocalization.string("Installed but not running"), identifier: "finish-setup.plugin") {
+                actionButton(AppLocalization.string("Show Steps"), action: openPluginPage)
+            }
         case .done:
             FinishSetupRow(icon: icon, title: title, detail: AppLocalization.string("Up to date on this dashboard's host"), identifier: "finish-setup.plugin") {
                 doneMark

@@ -838,6 +838,17 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: .unknown), updating: false), .unknown)
         XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: .predatesCapabilities), updating: false), .install)
         XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: .predatesCapabilities), updating: true), .updating)
+        var listedOld = NotifierPluginStatus(state: .predatesCapabilities)
+        listedOld.hostCopy = .old
+        XCTAssertEqual(FinishSetupStatus.plugin(listedOld, updating: false), .update)
+        listedOld.hostCopy = .missing
+        XCTAssertEqual(FinishSetupStatus.plugin(listedOld, updating: false), .install)
+        listedOld.hostCopy = nil
+        XCTAssertEqual(FinishSetupStatus.plugin(listedOld, updating: false), .install)
+        // On the host but not running: no Install for a copy Hermes already has.
+        listedOld.hostCopy = .notServed
+        XCTAssertEqual(FinishSetupStatus.plugin(listedOld, updating: false), .notRunning)
+        XCTAssertEqual(FinishSetupStatus.plugin(listedOld, updating: true), .updating)
         XCTAssertEqual(FinishSetupStatus.plugin(NotifierPluginStatus(state: reported, runtime: running), updating: false), .done)
         XCTAssertEqual(
             FinishSetupStatus.plugin(NotifierPluginStatus(

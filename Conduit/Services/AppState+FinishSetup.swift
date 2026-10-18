@@ -17,11 +17,14 @@ struct FinishSetupStatus: Equatable {
         /// The host hasn't answered yet.
         case unknown
         case updating
-        /// Missing, or too old to say what it serves.
+        /// Missing, or too old to say what it serves (`offersInstall`).
         case install
         case update
         /// The new plugin is on the host and waits for Hermes to restart.
         case restart
+        /// On the host, but this dashboard doesn't run it: turned off, or
+        /// installed after it started (`NotifierPluginStatus.isNotServed`).
+        case notRunning
         case done
     }
 
@@ -42,7 +45,9 @@ struct FinishSetupStatus: Equatable {
         if updating { return .updating }
         switch status.state {
         case .unknown: return .unknown
-        case .predatesCapabilities: return .install
+        case .predatesCapabilities:
+            if status.isNotServed { return .notRunning }
+            return status.offersInstall ? .install : .update
         case .reported:
             if status.updateAvailable { return .update }
             if status.restartPending { return .restart }

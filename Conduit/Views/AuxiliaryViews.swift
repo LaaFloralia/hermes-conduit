@@ -1015,7 +1015,7 @@ private struct SettingsHome: View {
             }
             ScrollView {
                 VStack(spacing: v2Layout ? 24 : 14) {
-                    if appState.notifierPlugin.updateAvailable || appState.notifierPlugin.restartPending {
+                    if appState.notifierPlugin.needsAttention {
                         NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel) {
                             Haptics.selection()
                             path.append(.conduitPlugin)
@@ -1676,7 +1676,10 @@ private struct NotifierPluginUpdateNotice: View {
 
     var body: some View {
         ConduitSettingsSection(
-            title: AppLocalization.string("Update the Conduit plugin"),
+            // Missing, or on the host but not running: there's nothing to update.
+            title: status.offersInstall || status.isNotServed
+                ? AppLocalization.string("Conduit plugin")
+                : AppLocalization.string("Update the Conduit plugin"),
             symbol: "arrow.down.circle",
             tint: .orange
         ) {
@@ -1695,6 +1698,12 @@ private struct NotifierPluginUpdateNotice: View {
     }
 
     private var detail: String {
+        if status.isNotServed {
+            return AppLocalization.string("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
+        }
+        if status.offersInstall {
+            return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
+        }
         switch (dashboardLabel, status.restartPending && !status.updateAvailable) {
         case (let label?, true):
             return AppLocalization.string("The Conduit plugin on \(label) was updated, and Hermes needs a restart to use it.")
@@ -3112,8 +3121,11 @@ private struct NotificationsSettingsDetail: View {
                     }
                     // The plugin itself has its own page; here only a way there
                     // when it needs attention.
-                    if appState.notifierPlugin.updateAvailable || appState.notifierPlugin.restartPending {
-                        pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
+                    if appState.notifierPlugin.needsAttention {
+                        // Missing, or on the host but not running: nothing to update.
+                        pluginPageLink(appState.notifierPlugin.offersInstall || appState.notifierPlugin.isNotServed
+                            ? AppLocalization.string("Open Conduit plugin")
+                            : AppLocalization.string("Update the Conduit plugin"))
                     }
                     if notifications.isFetchingMeta {
                         Text("Checking compatibility…")
@@ -3153,7 +3165,7 @@ private struct NotificationsSettingsDetail: View {
                         // pairings are behind. The host row above already
                         // offers them when the plugin itself reports it is
                         // behind.
-                        if !(appState.notifierPlugin.updateAvailable || appState.notifierPlugin.restartPending),
+                        if !appState.notifierPlugin.needsAttention,
                            pairings.thisDashboard.contains(where: Self.isOutdated) {
                             pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
                         }
@@ -3197,10 +3209,18 @@ private struct NotificationsSettingsDetail: View {
                     if appState.notifierPlugin.reports("pairing") {
                         oneTapPairing
                     } else {
-                        Text("Install the Conduit plugin on each dashboard's host, then create a short-lived pairing code here for each Hermes dashboard you want to reach.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        pluginPageLink(AppLocalization.string("Install or update the Conduit plugin"))
+                        // Installed but not running: installing again can't help.
+                        if appState.notifierPlugin.isNotServed {
+                            Text("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            pluginPageLink(AppLocalization.string("Open Conduit plugin"))
+                        } else {
+                            Text("Install the Conduit plugin on each dashboard's host, then create a short-lived pairing code here for each Hermes dashboard you want to reach.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            pluginPageLink(AppLocalization.string("Install or update the Conduit plugin"))
+                        }
                         Button {
                             Task {
                                 // Pairings are bound to the active dashboard

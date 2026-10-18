@@ -105,16 +105,7 @@ extension AppState {
     /// the offered version is running, e.g. a comeback wait the phone slept
     /// through.
     func clearSettledNotifierPluginUpdateOutcome() {
-        switch activeNotifierPluginUpdate {
-        case .needsDashboardRestart:
-            guard !notifierPlugin.updateAvailable, !notifierPlugin.restartPending else { return }
-        case .failed:
-            guard !notifierPlugin.restartPending,
-                  let running = notifierPlugin.runtime?.loadedVersion,
-                  !NotifierPluginStatus.isOlder(running, than: notifierPlugin.offeredVersion) else { return }
-        default:
-            return
-        }
+        guard notifierPlugin.settles(activeNotifierPluginUpdate) else { return }
         dismissNotifierPluginUpdateOutcome()
     }
 
@@ -138,15 +129,23 @@ extension AppState {
 
     static let dismissedPluginUpdateKey = "conduit.notifierPlugin.dismissedUpdateVersion"
 
-    /// The notice over the main screen: an update is offered, or one is
-    /// running or just ended. "Not now" hides it on this dashboard until a
-    /// newer plugin is offered.
+    /// The notice over the main screen: an update (or the install) is
+    /// offered, or one is running or just ended. "Not now" hides it on this
+    /// dashboard until a newer plugin is offered.
     var showsNotifierPluginUpdateNotice: Bool {
         if activeNotifierPluginUpdate != .idle { return true }
         // A plugin already on the host that waits for a restart is offered
         // too: Update finishes it.
-        guard notifierPlugin.updateAvailable || notifierPlugin.restartPending else { return false }
+        guard notifierPluginNoticeOffer != .none else { return false }
         return !dismissedPluginUpdates.contains(pluginUpdateDismissalToken)
+    }
+
+    /// What the notice offers. While Finish setting up is pending for this
+    /// dashboard, its plugin row on Chats is the one place that offers the
+    /// install.
+    var notifierPluginNoticeOffer: NotifierPluginNoticeOffer {
+        let finishingSetup = activeDashboardID.map(dashboardsFinishingSetup.contains) ?? false
+        return notifierPlugin.noticeOffer(finishSetupOffersInstall: finishingSetup && V2ShellPreference.isOn)
     }
 
     /// "Not now" belongs to one dashboard and one offered version.
@@ -228,5 +227,24 @@ extension AppState {
         }
         // The new pairing gets its key right away, before its first push.
         await provisionNotificationEncryption(bridge: bridge)
+    }
+}
+
+extension NotifierPluginStatus {
+    /// Whether this report makes `outcome` stale
+    /// (AppState.clearSettledNotifierPluginUpdateOutcome).
+    func settles(_ outcome: NotifierPluginUpdateState) -> Bool {
+        switch outcome {
+        case .needsDashboardRestart:
+            // Routes that still don't answer are still waiting on that
+            // restart, whatever an update would offer.
+            guard case .reported = state else { return false }
+            return !updateAvailable && !restartPending
+        case .failed:
+            guard !restartPending, let running = runtime?.loadedVersion else { return false }
+            return !Self.isOlder(running, than: offeredVersion)
+        default:
+            return false
+        }
     }
 }

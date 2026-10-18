@@ -20,6 +20,7 @@ enum NotifierPluginSummary {
         case .unknown:
             return AppLocalization.string("Not checked yet")
         case .predatesCapabilities:
+            if status.isNotServed { return AppLocalization.string("Installed but not running") }
             return AppLocalization.string("Not installed or out of date")
         case .reported:
             let version = status.runningVersion ?? status.version ?? "?"
@@ -145,7 +146,9 @@ struct ConduitPluginSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Do it manually"), symbol: "terminal", tint: .conduitAura) {
                 DisclosureGroup(isExpanded: $showsCommands) {
                     VStack(alignment: .leading, spacing: 12) {
-                        if case .predatesCapabilities = status.state {
+                        if status.isNotServed {
+                            NotificationSetupCommand(step: 1, title: AppLocalization.string("Turn on the notifier"), command: "hermes plugins enable conduit_push")
+                        } else if status.offersInstall {
                             NotificationSetupCommand(step: 1, title: AppLocalization.string("Install the notifier"), command: "hermes plugins install \(NotifierPluginStatus.repository) --enable")
                         } else {
                             NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
@@ -165,8 +168,9 @@ struct ConduitPluginSettingsDetail: View {
         }
         .navigationTitle(Text(AppLocalization.string("Conduit plugin")))
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall(status))
-        // The one-time manual update: its steps open by themselves.
-        .onChange(of: status.needsManualUpdate(after: update), initial: true) { _, needed in
+        // The one-time manual update, and turning on an unserved copy: their
+        // steps open by themselves.
+        .onChange(of: status.needsManualUpdate(after: update) || status.isNotServed, initial: true) { _, needed in
             if needed { showsCommands = true }
         }
         // Asked again on every visit and dashboard switch.
@@ -178,8 +182,7 @@ struct ConduitPluginSettingsDetail: View {
     }
 
     private func isInstall(_ status: NotifierPluginStatus) -> Bool {
-        if case .predatesCapabilities = status.state { return true }
-        return false
+        status.offersInstall
     }
 
     private func showsAction(_ status: NotifierPluginStatus, update: NotifierPluginUpdateState) -> Bool {
@@ -202,6 +205,9 @@ struct ConduitPluginSettingsDetail: View {
                     ? AppLocalization.string("Couldn't reach this dashboard's notifier. Open this page again to retry.")
                     : AppLocalization.string("Connect to this dashboard to check its notifier.")
         case .predatesCapabilities:
+            if status.isNotServed {
+                return AppLocalization.string("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
+            }
             return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
         case .reported:
             if status.updateAvailable { return AppLocalization.string("Version \(status.offeredVersion) is available.") }
@@ -432,21 +438,24 @@ struct NotifierPluginUpdateBanner: View {
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall)
     }
 
-    private var isInstall: Bool {
-        if case .predatesCapabilities = appState.notifierPlugin.state { return true }
-        return false
-    }
+    private var isInstall: Bool { appState.notifierPlugin.offersInstall }
 
     private var banner: some View {
         let update = appState.activeNotifierPluginUpdate
         let status = appState.notifierPlugin
         let row = NotifierPluginUpdateStatusView.row(for: update, plugin: status)
+        let offer = appState.notifierPluginNoticeOffer
         // Updated on the host already: only the restart is left.
-        let restartOnly = status.restartPending && !status.updateAvailable
-        let offer = restartOnly
-            ? AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Restart to finish updating")
-            : AppLocalization.string("Conduit plugin \(status.offeredVersion) is available")
-        let text = row?.title ?? offer
+        let restartOnly = offer == .restart
+        let offerText = switch offer {
+        case .restart: AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Restart to finish updating")
+        // Out of date too, when the host couldn't list its plugins.
+        case .install: status.hostCopy == .missing
+            ? AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Not installed")
+            : AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Not installed or out of date")
+        case .update, .none: AppLocalization.string("Conduit plugin \(status.offeredVersion) is available")
+        }
+        let text = row?.title ?? offerText
         return HStack(spacing: 10) {
             if row != nil, row?.symbol == nil {
                 ProgressView().controlSize(.small)
@@ -475,7 +484,8 @@ struct NotifierPluginUpdateBanner: View {
             }
             if update == .idle {
                 Button { confirming = true } label: {
-                    Text(restartOnly ? AppLocalization.string("Finish Update") : AppLocalization.string("Update"))
+                    Text(restartOnly ? AppLocalization.string("Finish Update")
+                        : offer == .install ? AppLocalization.string("Install") : AppLocalization.string("Update"))
                         .frame(minWidth: 44, minHeight: 44)
                         .contentShape(Rectangle())
                 }

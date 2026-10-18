@@ -20988,11 +20988,22 @@ final class AppState: ObservableObject {
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
+        // No capabilities route: a plugin older than 0.4, one the dashboard
+        // doesn't serve, or none at all. Hermes' plugin list tells them apart.
+        var hostCopy: NotifierPluginStatus.HostCopy?
+        if state == .predatesCapabilities,
+           let hub = try? await bridge.requestJSON(path: NotifierPluginStatus.pluginsHubPath, timeoutMilliseconds: 5_000) {
+            hostCopy = NotifierPluginStatus.hostCopy(inPluginsHub: hub)
+        }
         // A bridge swapped mid-request belongs to another host, and a failed
         // request says nothing new: keep the last real answer.
         guard bridge === dashboardTicketBridge, generation > notifierPluginStatusAcceptedGeneration,
               state != .unknown else { return }
         notifierPluginStatusAcceptedGeneration = generation
+        // A failed list read keeps what this host's list said before.
+        notifierPlugin.hostCopy = state == .predatesCapabilities
+            ? hostCopy ?? (notifierPlugin.state == .predatesCapabilities ? notifierPlugin.hostCopy : nil)
+            : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
         Task { await refreshLatestNotifierPluginVersion() }

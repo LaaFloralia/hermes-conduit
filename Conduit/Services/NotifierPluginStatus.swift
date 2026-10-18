@@ -55,6 +55,27 @@ struct NotifierPluginStatus: Equatable {
     static let repository = "kaishi00/hermes-conduit-notifier"
 
     var state: State = .unknown
+    /// The plugin's copy in Hermes' plugin list, read only while the
+    /// capabilities route is missing. Nil when not read, or the host
+    /// couldn't say.
+    var hostCopy: HostCopy?
+
+    enum HostCopy: Equatable {
+        /// Hermes doesn't list the plugin.
+        case missing
+        /// Listed, older than 0.4 (or without a version): it predates the
+        /// capabilities route, so an update brings it.
+        case old
+        /// Listed at 0.4 or newer, yet its routes don't answer: turned off,
+        /// or installed after the dashboard started. Neither an install
+        /// (Hermes refuses one over an existing copy) nor an update fixes
+        /// it: turning it on and restarting the dashboard does
+        /// (`isNotServed`).
+        case notServed
+    }
+
+    /// The first plugin version that serves the capabilities route.
+    static let capabilitiesVersion = "0.4.0"
     /// Nil until a plugin 0.24+ reports it.
     var runtime: Runtime?
     /// The plugin on its repository's main branch, when Conduit has read it
@@ -98,6 +119,24 @@ struct NotifierPluginStatus: Equatable {
         }
     }
 
+    /// Installing it is the step: the capabilities route is missing and
+    /// the host's list has no copy of it, or couldn't be read.
+    var offersInstall: Bool {
+        state == .predatesCapabilities && (hostCopy == .missing || hostCopy == nil)
+    }
+
+    /// The host has a 0.4+ copy that this dashboard doesn't run: Conduit
+    /// offers no install or update, only the steps that turn it on.
+    var isNotServed: Bool {
+        state == .predatesCapabilities && hostCopy == .notServed
+    }
+
+    /// Settings points at the plugin's page: an update or the install is
+    /// offered, a restart is left, or the copy on the host isn't running.
+    var needsAttention: Bool {
+        updateAvailable || restartPending || isNotServed
+    }
+
     /// Worth offering an update: something Conduit uses is missing, or the
     /// plugin is older than the version an update brings. A plugin that
     /// is already new enough on disk only needs its restart.
@@ -106,7 +145,7 @@ struct NotifierPluginStatus: Equatable {
         case .unknown:
             return false
         case .predatesCapabilities:
-            return true
+            return !isNotServed
         case .reported(let version, _):
             let older = Self.isOlder(version, than: offeredVersion)
             return restartPending ? older : (needsUpdate || older)
@@ -191,10 +230,59 @@ struct NotifierPluginStatus: Equatable {
         )
     }
 
+    /// Hermes' list of installed plugins, which `hostCopy` is read from.
+    static let pluginsHubPath = "/api/dashboard/plugins/hub"
+
+    /// This plugin in Hermes' plugin list, under its manifest name or the
+    /// folder it was cloned into. Nil when the answer has no list.
+    static func hostCopy(inPluginsHub response: [String: Any]) -> HostCopy? {
+        guard response["plugins"] is [Any] else { return nil }
+        let names: Set<String> = ["conduit_push", "hermes-conduit-notifier"]
+        guard let row = AgentPluginRow.list(from: response).first(where: { names.contains($0.name) || names.contains($0.folderName) }) else {
+            return .missing
+        }
+        return isOlder(row.version, than: capabilitiesVersion) ? .old : .notServed
+    }
+
     static func state(from error: Error) -> State {
         if case DashboardTicketBridgeError.http(let status, _) = error, status == 404 || status == 405 {
             return .predatesCapabilities
         }
         return .unknown
+    }
+}
+
+/// What the update notice over the main screen offers while no update
+/// runs (AppState.showsNotifierPluginUpdateNotice).
+enum NotifierPluginNoticeOffer: Equatable {
+    case none
+    /// The plugin isn't on the host, as far as Conduit can tell.
+    case install
+    case update
+    /// The new plugin is on the host and waits for Hermes to restart.
+    case restart
+}
+
+extension NotifierPluginStatus {
+    /// `finishSetupOffersInstall`: the Finish setting up card is still
+    /// pending, and its Conduit plugin row offers Install itself. One call
+    /// to action is enough, and an Update for a plugin that isn't there
+    /// misleads.
+    func noticeOffer(finishSetupOffersInstall: Bool) -> NotifierPluginNoticeOffer {
+        switch state {
+        case .unknown:
+            return .none
+        case .predatesCapabilities:
+            switch hostCopy {
+            case .old: return .update
+            // Nothing one tap fixes; Settings > Conduit plugin has the steps.
+            case .notServed: return .none
+            case .missing, nil: return finishSetupOffersInstall ? .none : .install
+            }
+        case .reported:
+            if updateAvailable { return .update }
+            if restartPending { return .restart }
+            return .none
+        }
     }
 }

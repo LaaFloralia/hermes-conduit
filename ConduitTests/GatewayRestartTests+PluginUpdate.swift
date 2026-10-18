@@ -34,6 +34,130 @@ extension GatewayRestartTests {
         XCTAssertFalse(status.updateAvailable)
     }
 
+    // MARK: - Update notice
+
+    func testTheNoticeOffersTheInstallForAPluginTheHostDoesntList() {
+        var status = NotifierPluginStatus(state: .predatesCapabilities)
+        status.hostCopy = .missing
+        XCTAssertTrue(status.offersInstall)
+        XCTAssertTrue(status.updateAvailable)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
+        // Finish setting up offers Install itself: no second call to action.
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+
+        // The host couldn't say: as missing, which is what installing fixes.
+        status.hostCopy = nil
+        XCTAssertTrue(status.offersInstall)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+    }
+
+    func testTheNoticeOffersTheUpdateForAListedPluginOlderThanCapabilities() {
+        var status = NotifierPluginStatus(state: .predatesCapabilities)
+        status.hostCopy = .old
+        XCTAssertFalse(status.offersInstall)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .update)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .update)
+    }
+
+    func testANewPluginTheDashboardDoesntServeIsOfferedNoInstallOrUpdate() {
+        // Turned off, or installed after the dashboard started: Hermes
+        // refuses an install over the copy, and an update doesn't turn it on.
+        var status = NotifierPluginStatus(state: .predatesCapabilities)
+        status.hostCopy = .notServed
+        XCTAssertTrue(status.isNotServed)
+        XCTAssertFalse(status.offersInstall)
+        XCTAssertFalse(status.updateAvailable)
+        XCTAssertFalse(status.restartPending)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+        XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "Installed but not running")
+        // Settings and Notifications still point at the plugin's page.
+        XCTAssertTrue(status.needsAttention)
+
+        // Every other copy keeps its offer.
+        for copy in [NotifierPluginStatus.HostCopy.missing, .old, nil] {
+            status.hostCopy = copy
+            XCTAssertFalse(status.isNotServed)
+            XCTAssertTrue(status.updateAvailable, "\(String(describing: copy))")
+            XCTAssertTrue(status.needsAttention)
+            XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "Not installed or out of date")
+        }
+        XCTAssertFalse(NotifierPluginStatus(state: .unknown, hostCopy: .notServed).isNotServed)
+    }
+
+    func testARestartOutcomeStaysWhileTheRoutesDontAnswer() {
+        // Conduit's own install that couldn't restart the dashboard leaves
+        // the copy unserved until someone does.
+        let waiting = NotifierPluginUpdateState.needsDashboardRestart(detail: nil)
+        var status = NotifierPluginStatus(state: .predatesCapabilities)
+        status.hostCopy = .notServed
+        XCTAssertFalse(status.settles(waiting))
+
+        let current = NotifierPluginStatus.recommendedVersion
+        let served = NotifierPluginStatus(
+            state: .reported(version: current, capabilities: Set(NotifierPluginStatus.usedCapabilities)),
+            runtime: NotifierPluginStatus.Runtime(loadedVersion: current, restartNeeded: false, bootID: "b")
+        )
+        XCTAssertTrue(served.settles(waiting))
+        XCTAssertTrue(served.settles(.failed(detail: nil)))
+        XCTAssertFalse(served.settles(.idle))
+        var stillOld = served
+        stillOld.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: true, bootID: "b")
+        XCTAssertFalse(stillOld.settles(waiting))
+        XCTAssertFalse(stillOld.settles(.failed(detail: nil)))
+    }
+
+    func testTheNoticeOffersNothingBeforeTheHostAnswers() {
+        let status = NotifierPluginStatus(state: .unknown)
+        XCTAssertFalse(status.offersInstall)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+    }
+
+    func testTheNoticeOffersTheRestartOrTheUpdateForAReportingPlugin() {
+        let current = NotifierPluginStatus.recommendedVersion
+        let all = Set(NotifierPluginStatus.usedCapabilities)
+        // New files on disk, the old process still serving them.
+        let restart = NotifierPluginStatus(
+            state: .reported(version: current, capabilities: all),
+            runtime: NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: true, bootID: "a")
+        )
+        XCTAssertEqual(restart.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertEqual(restart.noticeOffer(finishSetupOffersInstall: true), .restart)
+
+        let old = NotifierPluginStatus(
+            state: .reported(version: "0.30.0", capabilities: all),
+            runtime: NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: false, bootID: "a")
+        )
+        XCTAssertFalse(old.offersInstall)
+        XCTAssertEqual(old.noticeOffer(finishSetupOffersInstall: true), .update)
+
+        let upToDate = NotifierPluginStatus(
+            state: .reported(version: current, capabilities: all),
+            runtime: NotifierPluginStatus.Runtime(loadedVersion: current, restartNeeded: false, bootID: "a")
+        )
+        XCTAssertEqual(upToDate.noticeOffer(finishSetupOffersInstall: false), .none)
+    }
+
+    func testThePluginsCopyIsReadFromHermesPluginList() {
+        let read = NotifierPluginStatus.hostCopy(inPluginsHub:)
+        let old: [String: Any] = ["plugins": [
+            ["name": "disk-cleanup", "source": "bundled"],
+            ["name": "conduit_push", "version": "0.3.2", "source": "git", "path": "/home/h/.hermes/plugins/conduit_push"],
+        ]]
+        XCTAssertEqual(read(old), .old)
+        // Cloned under the repository's name, without a version.
+        let byFolder: [String: Any] = ["plugins": [["name": "notifier", "source": "user", "path": "/p/hermes-conduit-notifier"]]]
+        XCTAssertEqual(read(byFolder), .old)
+        let current: [String: Any] = ["plugins": [["name": "conduit_push", "version": "0.46.1", "source": "user", "runtime_status": "disabled"]]]
+        XCTAssertEqual(read(current), .notServed)
+        let others: [String: Any] = ["plugins": [["name": "disk-cleanup", "source": "bundled"], ["name": "kanban-extra", "source": "git"]]]
+        XCTAssertEqual(read(others), .missing)
+        XCTAssertEqual(read(["plugins": []]), .missing)
+        XCTAssertNil(read(["detail": "Unauthorized"]))
+    }
+
     func testANewPluginOnDiskServedByOldCodeNeedsOnlyARestart() {
         // A pre-0.24 dashboard process reads the version from disk and has
         // no running-version report.
