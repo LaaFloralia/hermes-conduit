@@ -13,17 +13,17 @@ import OSLog
 import UIKit
 import WebKit
 
-private let sessionCatalogLog = Logger(subsystem: "com.milim.conduit", category: "SessionCatalog")
-private let titleGenerationLog = Logger(subsystem: "com.milim.conduit", category: "TitleGeneration")
-private let sessionYoloLog = Logger(subsystem: "com.milim.conduit", category: "SessionYolo")
+private let sessionCatalogLog = Logger(subsystem: "com.milim.relay", category: "SessionCatalog")
+private let titleGenerationLog = Logger(subsystem: "com.milim.relay", category: "TitleGeneration")
+private let sessionYoloLog = Logger(subsystem: "com.milim.relay", category: "SessionYolo")
 /// Foreground/turn-lifecycle decisions: why a refresh chose observation vs
 /// resume, and how prompt submissions were classified. Ids only — never
 /// prompt text, credentials, or message content.
-private let lifecycleLog = Logger(subsystem: "com.milim.conduit", category: "TurnLifecycle")
+private let lifecycleLog = Logger(subsystem: "com.milim.relay", category: "TurnLifecycle")
 /// Server-replacement speech retirement: which speech operations were live
 /// when the outgoing server's ownership was revoked. Ids and booleans only —
 /// never prompt text, credentials, or speech content.
-private let speechOwnershipLog = Logger(subsystem: "com.milim.conduit", category: "SpeechOwnership")
+private let speechOwnershipLog = Logger(subsystem: "com.milim.relay", category: "SpeechOwnership")
 
 typealias ChatResumeReconnectCancellation = @MainActor () -> Void
 typealias ChatResumeReconnectExecutor = @MainActor (ChatResumeSyncPurpose) async -> Void
@@ -1066,8 +1066,14 @@ final class AppState: ObservableObject {
             || serverCompactingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, activeSessionId) })
     }
     @Published private(set) var turnState: TurnState = .idle {
-        // A message waiting for this chat goes once it takes one.
-        didSet { if oldValue != turnState { schedulePendingComposerSendCheck() } }
+        didSet {
+            guard oldValue != turnState else { return }
+            // A message waiting for this chat goes once it takes one.
+            schedulePendingComposerSendCheck()
+            // A running turn keeps the backdrop drifting; only its edges
+            // are reported, not every streamed token.
+            InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
+        }
     }
     /// Whether `turnState` may have missed server-side turn edges. Set at
     /// lifecycle boundaries where the socket can die or the gateway can change
@@ -5604,7 +5610,7 @@ final class AppState: ObservableObject {
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.sessionPinSync.uploadSucceeded(pinID: upload.pinID, profile: profile)
                 } catch let error where SessionMutationIdentity.isRefusal(error) {
-                    sessionCatalogLog.notice("Pin upload kept on phone: \(String(describing: error), privacy: .public)")
+                    sessionCatalogLog.notice("Pin upload kept on phone: \(LogRedaction.describing(error), privacy: .public)")
                     guard self.sessionPinSync.host == bridge.baseURL else { return }
                     self.keepPinOnPhone(upload.pinID, profile: profile, generation: generation, pinned: true)
                 } catch DashboardTicketBridgeError.http(status: let status, detail: _) where status == 404 || status == 410 {
@@ -5619,7 +5625,7 @@ final class AppState: ObservableObject {
                     }
                 } catch {
                     // Its pending value holds off a resend until it lapses.
-                    sessionCatalogLog.notice("Pin upload failed: \(String(describing: error), privacy: .public)")
+                    sessionCatalogLog.notice("Pin upload failed: \(LogRedaction.describing(error), privacy: .public)")
                 }
             }
         }
@@ -6081,7 +6087,7 @@ final class AppState: ObservableObject {
                 }
             } catch {
                 // An older plugin has no tags: rows stay under their source.
-                Self.voiceHistoryLog.debug("Voice tags unavailable: \(String(describing: error), privacy: .public)")
+                Self.voiceHistoryLog.debug("Voice tags unavailable: \(LogRedaction.describing(error), privacy: .public)")
             }
             await self.drainVoiceTranscriptOutbox(profile: profile, key: key)
             self.voiceTagRefreshTask = nil
@@ -6114,7 +6120,7 @@ final class AppState: ObservableObject {
                 do {
                     try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
                 } catch {
-                    Self.voiceHistoryLog.debug("Tagging a voice session failed: \(String(describing: error), privacy: .public)")
+                    Self.voiceHistoryLog.debug("Tagging a voice session failed: \(LogRedaction.describing(error), privacy: .public)")
                 }
             }
         }
@@ -7670,7 +7676,7 @@ final class AppState: ObservableObject {
                 // pin stays as the person set it, on the phone only, rather
                 // than flip back; the notice says why. Pinning it again asks
                 // Hermes again.
-                sessionCatalogLog.notice("Pin kept on phone: \(String(describing: error), privacy: .public)")
+                sessionCatalogLog.notice("Pin kept on phone: \(LogRedaction.describing(error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL,
                       self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: pinned),
                       profile == self.activeProfile else { return }
@@ -7761,7 +7767,7 @@ final class AppState: ObservableObject {
             } else if client !== activeListFailureLoggedClient {
                 activeListFailureLoggedClient = client
                 sessionCatalogLog.notice(
-                    "Live status poll failed: \(String(describing: error), privacy: .public)"
+                    "Live status poll failed: \(LogRedaction.describing(error), privacy: .public)"
                 )
             }
             return false
@@ -7805,7 +7811,7 @@ final class AppState: ObservableObject {
             if !desktopViewsFailureLogged {
                 desktopViewsFailureLogged = true
                 sessionCatalogLog.notice(
-                    "Desktop views read failed: \(String(describing: error), privacy: .public)"
+                    "Desktop views read failed: \(LogRedaction.describing(error), privacy: .public)"
                 )
             }
             return
@@ -8036,11 +8042,11 @@ final class AppState: ObservableObject {
             do {
                 try await self.sendHostPin(session.id, pinned: false, profile: profile, using: bridge)
             } catch let error where SessionMutationIdentity.isRefusal(error) {
-                sessionCatalogLog.notice("Pin clear kept on phone: \(String(describing: error), privacy: .public)")
+                sessionCatalogLog.notice("Pin clear kept on phone: \(LogRedaction.describing(error), privacy: .public)")
                 guard self.sessionPinSync.host == bridge.baseURL else { return }
                 self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: false)
             } catch {
-                sessionCatalogLog.notice("Pin clear failed: \(String(describing: error), privacy: .public)")
+                sessionCatalogLog.notice("Pin clear failed: \(LogRedaction.describing(error), privacy: .public)")
             }
         }
     }
@@ -13273,7 +13279,7 @@ final class AppState: ObservableObject {
             ) {
             case .failure(let rejection):
                 sessionCatalogLog.fault(
-                    "Rejected contradictory resume: \(String(describing: rejection), privacy: .public); requested=\(sessionId, privacy: .public), returned=\(result.sessionId, privacy: .public)"
+                    "Rejected contradictory resume: \(rejection.logLabel, privacy: .public); requested=\(sessionId, privacy: .private(mask: .hash)), returned=\(result.sessionId, privacy: .private(mask: .hash))"
                 )
                 // Restore the ordering evidence the reconcile entry cleared:
                 // ordering evidence is conversation-owned state, so a
@@ -13580,7 +13586,7 @@ final class AppState: ObservableObject {
                     acceptedSessionIDs = boundary.acceptedSessionIDs
                     if !acceptedSessionIDs.contains(result.sessionId) {
                         sessionCatalogLog.debug(
-                            "Skipping buffered delta dedup because resumed session \(result.sessionId, privacy: .public) is not a boundary-confirmed alias (boundary=\(boundarySessionID, privacy: .public))"
+                            "Skipping buffered delta dedup because resumed session \(result.sessionId, privacy: .private(mask: .hash)) is not a boundary-confirmed alias (boundary=\(boundarySessionID, privacy: .private(mask: .hash)))"
                         )
                     }
                 } else {
@@ -16070,7 +16076,7 @@ final class AppState: ObservableObject {
                 // cannot stay disabled indefinitely — and a newer buffered
                 // busy edge still wins during the boundary replay.
                 lifecycleLog.notice(
-                    "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .public) → observation-only, transitional state normalized"
+                    "Foreground refresh: probe=starting session=\(requestedSessionID ?? "-", privacy: .private(mask: .hash)) → observation-only, transitional state normalized"
                 )
                 if turnState == .synchronizing || turnState == .reconnecting {
                     setRunning(false)
@@ -16100,7 +16106,7 @@ final class AppState: ObservableObject {
                     // observational adopt stands without a transcript read.
                     if !messages.isEmpty {
                         lifecycleLog.notice(
-                            "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → observation-only adopt (unarmed)"
+                            "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .private(mask: .hash)) → observation-only adopt (unarmed)"
                         )
                         adoptForegroundRunningState(
                             reconciliationToken: token,
@@ -16143,7 +16149,7 @@ final class AppState: ObservableObject {
                     // compact resume fast-path returns the live projection
                     // and the reconcile merges the persisted prefix.
                     lifecycleLog.notice(
-                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .public) → authoritative attach (remote running turn)"
+                        "Foreground refresh: probe=live status=\(row.status, privacy: .public) session=\(requestedSessionID ?? "-", privacy: .private(mask: .hash)) → authoritative attach (remote running turn)"
                     )
                     await syncSession(
                         purpose: recoveryPurpose,
@@ -16790,7 +16796,7 @@ final class AppState: ObservableObject {
         guard messages.last?.id == lastLocalMessageID,
               durablePersistedRowIDs == localFrontier else {
             lifecycleLog.notice(
-                "Foreground freshness: session=\(requestedSessionID, privacy: .public) transcript moved during read → bounded resume refresh"
+                "Foreground freshness: session=\(requestedSessionID, privacy: .private(mask: .hash)) transcript moved during read → bounded resume refresh"
             )
             guard await mayResume() else { return false }
             await syncSession(
@@ -16818,7 +16824,7 @@ final class AppState: ObservableObject {
                 // (compact resume + reconcile) owns both the advancement and
                 // the live projection.
                 lifecycleLog.notice(
-                    "Foreground freshness: probe=running session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → authoritative attach"
+                    "Foreground freshness: probe=running session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=advanced rows=\(newRows.count, privacy: .public) → authoritative attach"
                 )
                 await syncSession(
                     purpose: recoveryPurpose,
@@ -16828,7 +16834,7 @@ final class AppState: ObservableObject {
                 return true
             }
             lifecycleLog.notice(
-                "Foreground freshness: probe=idle session=\(requestedSessionID, privacy: .public) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
+                "Foreground freshness: probe=idle session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=advanced rows=\(newRows.count, privacy: .public) → merge persisted advancement"
             )
             applyPersistedForegroundAdvancement(
                 requestedSessionID: requestedSessionID,
@@ -16843,7 +16849,7 @@ final class AppState: ObservableObject {
             )
         case let .unchanged(observedOrderingFrontier, observedNewUserBoundaries):
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=unchanged → observational adopt"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=unchanged → observational adopt"
             )
             // The bounded read proved the durable conversation current (an
             // optimistic locally-owned tail is live-turn content, not
@@ -16869,7 +16875,7 @@ final class AppState: ObservableObject {
             )
         case .unresolvedTransient:
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=transient-failure → liveness adopt, freshness unresolved"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=transient-failure → liveness adopt, freshness unresolved"
             )
             adoptForegroundLiveness(
                 livenessIsRunning,
@@ -16887,7 +16893,7 @@ final class AppState: ObservableObject {
             // the conversation, hinted to skip the history request that just
             // proved absent and resume non-compact exactly once.
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=source-unavailable → single authoritative resume"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=source-unavailable → single authoritative resume"
             )
             guard await mayResume() else { return false }
             await syncSession(
@@ -16898,7 +16904,7 @@ final class AppState: ObservableObject {
             )
         case .inconclusive:
             lifecycleLog.notice(
-                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .public) verdict=inconclusive → bounded resume refresh"
+                "Foreground freshness: probe=\(livenessIsRunning ? "running" : "idle", privacy: .public) session=\(requestedSessionID, privacy: .private(mask: .hash)) verdict=inconclusive → bounded resume refresh"
             )
             guard await mayResume() else { return false }
             await syncSession(
@@ -17432,7 +17438,7 @@ final class AppState: ObservableObject {
             break
         case .settleTurn:
             lifecycleLog.notice(
-                "Open chat: turn silent here and not running on the server → re-read session=\(local.sessionID, privacy: .public)"
+                "Open chat: turn silent here and not running on the server → re-read session=\(local.sessionID, privacy: .private(mask: .hash))"
             )
             startOpenChatSyncRead(sessionID: local.sessionID, expectsRunning: true) { appState in
                 // Nothing runs, so this resume takes no stream from another
@@ -17444,7 +17450,7 @@ final class AppState: ObservableObject {
         case .readNewRows:
             guard let row = rows.first(where: { !$0.isRunning }) ?? rows.first else { return }
             lifecycleLog.notice(
-                "Open chat: a turn ran elsewhere → read its rows session=\(local.sessionID, privacy: .public)"
+                "Open chat: a turn ran elsewhere → read its rows session=\(local.sessionID, privacy: .private(mask: .hash))"
             )
             startOpenChatSyncRead(sessionID: local.sessionID, expectsRunning: false) { appState in
                 // The bounded, read-only tail read a return from the
@@ -19728,7 +19734,7 @@ final class AppState: ObservableObject {
                 source: .notification
             ) {
                 sessionCatalogLog.fault(
-                    "Notification identity conflict: runtime \(requestedID, privacy: .public) keeps confirmed durable \(conflict.confirmedDurableID, privacy: .public); payload claimed \(durable, privacy: .public)"
+                    "Notification identity conflict: runtime \(requestedID, privacy: .private(mask: .hash)) keeps confirmed durable \(conflict.confirmedDurableID, privacy: .private(mask: .hash)); payload claimed \(durable, privacy: .private(mask: .hash))"
                 )
             }
         }
@@ -20735,7 +20741,7 @@ final class AppState: ObservableObject {
             // The one-time stale clear is submission-owned so an unsupported
             // gateway does not turn every later submit into probe chatter.
             lifecycleLog.notice(
-                "submitComposer: stale-idle probe unavailable; proceeding with send session=\(sessionId, privacy: .public)"
+                "submitComposer: stale-idle probe unavailable; proceeding with send session=\(sessionId, privacy: .private(mask: .hash))"
             )
             if isCurrentComposerSubmission(submissionContext) {
                 turnStateIsStale = false
@@ -20749,7 +20755,7 @@ final class AppState: ObservableObject {
         guard isCurrentComposerSubmission(submissionContext),
               turnState == .idle, turnStateIsStale else {
             lifecycleLog.notice(
-                "submitComposer: stale-idle probe superseded by session handoff; no state mutation session=\(sessionId, privacy: .public)"
+                "submitComposer: stale-idle probe superseded by session handoff; no state mutation session=\(sessionId, privacy: .private(mask: .hash))"
             )
             return false
         }
@@ -20758,7 +20764,7 @@ final class AppState: ObservableObject {
         })
         if let row, row.isRunning {
             lifecycleLog.notice(
-                "submitComposer: authoritative probe=live status=\(row.status, privacy: .public) corrects stale idle session=\(sessionId, privacy: .public)"
+                "submitComposer: authoritative probe=live status=\(row.status, privacy: .public) corrects stale idle session=\(sessionId, privacy: .private(mask: .hash))"
             )
             // setRunning also clears the pending-decision restoration guard,
             // exactly like a live sessionBusy(true) edge would.
@@ -20815,7 +20821,7 @@ final class AppState: ObservableObject {
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
         lifecycleLog.notice(
-            "submitComposer: pre-send persisted evidence unresolved (freshness or local ordering debt); one bounded retry session=\(sessionId, privacy: .public)"
+            "submitComposer: pre-send persisted evidence unresolved (freshness or local ordering debt); one bounded retry session=\(sessionId, privacy: .private(mask: .hash))"
         )
         let outcome = await foregroundPersistedTailOutcome(
             sessionId: sessionId,
@@ -20836,7 +20842,7 @@ final class AppState: ObservableObject {
         }
         if turnState.isRunning {
             lifecycleLog.notice(
-                "submitComposer: conversation turned busy during pre-send freshness read → busy submission session=\(sessionId, privacy: .public)"
+                "submitComposer: conversation turned busy during pre-send freshness read → busy submission session=\(sessionId, privacy: .private(mask: .hash))"
             )
             return .routeToBusySubmission
         }
@@ -20845,7 +20851,7 @@ final class AppState: ObservableObject {
             // unsupported gateway is in flight: neither proves the
             // transcript ordering, and neither may blind-send.
             lifecycleLog.notice(
-                "submitComposer: pre-send freshness read superseded by \(self.turnStateLogValue, privacy: .public); blocking send session=\(sessionId, privacy: .public)"
+                "submitComposer: pre-send freshness read superseded by \(self.turnStateLogValue, privacy: .public); blocking send session=\(sessionId, privacy: .private(mask: .hash))"
             )
             return .blocked(AppLocalization.string("Unable to refresh this conversation. Try again."))
         }
@@ -20908,7 +20914,7 @@ final class AppState: ObservableObject {
                     ?? sessionId
             ) else {
                 lifecycleLog.notice(
-                    "submitComposer: pre-send read answered for a different conversation → authoritative reconcile session=\(sessionId, privacy: .public)"
+                    "submitComposer: pre-send read answered for a different conversation → authoritative reconcile session=\(sessionId, privacy: .private(mask: .hash))"
                 )
                 await syncSession(
                     purpose: .preserveCurrent,
@@ -20930,7 +20936,7 @@ final class AppState: ObservableObject {
                     persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
                 case .exceeded, .notCaughtUp, .unprovable:
                     lifecycleLog.notice(
-                        "submitComposer: pre-send ordering debt not reconcilable → authoritative reconcile session=\(sessionId, privacy: .public)"
+                        "submitComposer: pre-send ordering debt not reconcilable → authoritative reconcile session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     await syncSession(
                         purpose: .preserveCurrent,
@@ -21102,7 +21108,7 @@ final class AppState: ObservableObject {
             // not send into an unresolved ordering — freshness and local
             // ordering debt alike.
             lifecycleLog.notice(
-                "submitComposer: pre-send freshness recovery did not converge; blocking send session=\(sessionID, privacy: .public)"
+                "submitComposer: pre-send freshness recovery did not converge; blocking send session=\(sessionID, privacy: .private(mask: .hash))"
             )
             return .blocked(AppLocalization.string("Unable to refresh this conversation. Try again."))
         }
@@ -21338,7 +21344,7 @@ final class AppState: ObservableObject {
             Task { await refreshNotifierPluginStatus() }
         }
         lifecycleLog.notice(
-            "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .public)"
+            "prompt.submit refused: chat owned by \(details.surface ?? "another surface", privacy: .public) session=\(sessionID, privacy: .private(mask: .hash))"
         )
     }
 
@@ -21590,7 +21596,7 @@ final class AppState: ObservableObject {
                     // Staged, but the reply named no path to point the agent
                     // at: the send goes on without telling it.
                     lifecycleLog.notice(
-                        "file.attach gave no reference; the prompt can't name the file session=\(sessionId, privacy: .public)"
+                        "file.attach gave no reference; the prompt can't name the file session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                 }
             } catch {
@@ -21625,7 +21631,7 @@ final class AppState: ObservableObject {
             // for session A must never mutate turn state that now belongs to
             // session B.
             lifecycleLog.notice(
-                "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .public)"
+                "prompt.submit outcome=\(Self.promptOutcomeLogValue(outcome), privacy: .public) session=\(sessionId, privacy: .private(mask: .hash))"
             )
             if chatTakeoverMatches(sessionId) {
                 dismissChatTakeover()
@@ -21725,7 +21731,7 @@ final class AppState: ObservableObject {
             guard isCurrentComposerSubmission(submissionContext) else { return false }
             if Self.isAmbiguousPromptDelivery(error) {
                 lifecycleLog.notice(
-                    "prompt.submit ambiguous (\(error.localizedDescription, privacy: .private)); querying authoritative state session=\(sessionId, privacy: .public)"
+                    "prompt.submit ambiguous (\(error.localizedDescription, privacy: .private)); querying authoritative state session=\(sessionId, privacy: .private(mask: .hash))"
                 )
                 let (resolution, reconnected, recoveryEvidence) = await reconcileAmbiguousPromptSubmission(
                     requestedSessionID: sessionId,
@@ -21814,7 +21820,7 @@ final class AppState: ObservableObject {
                     // not cleared as though settlement were proven), and let
                     // the next authoritative registry/stream edge settle it.
                     lifecycleLog.notice(
-                        "prompt.submit accepted (durable transcript); registry starting — liveness unresolved session=\(sessionId, privacy: .public)"
+                        "prompt.submit accepted (durable transcript); registry starting — liveness unresolved session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     if isCurrentComposerSubmission(submissionContext) {
                         if recoveryMayStampLifecycle {
@@ -21843,7 +21849,7 @@ final class AppState: ObservableObject {
                     // persisted but did not re-anchor the ordering frontier,
                     // so an unobserved boundary leaves debt.
                     lifecycleLog.notice(
-                        "prompt.submit accepted (durable transcript); turn settled session=\(sessionId, privacy: .public)"
+                        "prompt.submit accepted (durable transcript); turn settled session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     if isCurrentComposerSubmission(submissionContext) {
                         if recoveryMayStampLifecycle {
@@ -21869,7 +21875,7 @@ final class AppState: ObservableObject {
                     // Authoritative evidence shows Hermes did not accept the
                     // prompt: restore the unsent state exactly once below.
                     lifecycleLog.notice(
-                        "prompt.submit not accepted (authoritative); restoring unsent state session=\(sessionId, privacy: .public)"
+                        "prompt.submit not accepted (authoritative); restoring unsent state session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                     if isCurrentComposerSubmission(submissionContext),
                        recoveryMayStampLifecycle {
@@ -21880,7 +21886,7 @@ final class AppState: ObservableObject {
                     // conservative about duplicate delivery: restore rather
                     // than re-send blindly.
                     lifecycleLog.notice(
-                        "prompt.submit state unresolved; restoring unsent state session=\(sessionId, privacy: .public)"
+                        "prompt.submit state unresolved; restoring unsent state session=\(sessionId, privacy: .private(mask: .hash))"
                     )
                 }
                 // Presentation writes below are submission-owned too: A's
@@ -22413,7 +22419,7 @@ final class AppState: ObservableObject {
             recordSessionYoloWrite(for: [sessionId, persistedSessionID])
         } catch {
             sessionYoloLog.error(
-                "Failed to re-assert session YOLO override \(override, privacy: .public) for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Failed to re-assert session YOLO override \(override, privacy: .public) for \(sessionId, privacy: .private(mask: .hash)): \(LogRedaction.message(error), privacy: .public)"
             )
         }
     }
@@ -23118,7 +23124,7 @@ final class AppState: ObservableObject {
                 catalog: sessions + cronSessions
             ) else {
                 sessionCatalogLog.notice(
-                    "Rejected contradictory recovery resume; requested=\(sessionID, privacy: .public), recovered=\(recoveredSessionID, privacy: .public)"
+                    "Rejected contradictory recovery resume; requested=\(sessionID, privacy: .private(mask: .hash)), recovered=\(recoveredSessionID, privacy: .private(mask: .hash))"
                 )
                 throw originalError
             }
@@ -23457,10 +23463,10 @@ final class AppState: ObservableObject {
         case .hydrated(let hydrated):
             transcript = hydrated
         case .unavailable:
-            sessionCatalogLog.debug("No persisted-history source after /compress; backfill stays disabled for \(requestedSessionID, privacy: .public)")
+            sessionCatalogLog.debug("No persisted-history source after /compress; backfill stays disabled for \(requestedSessionID, privacy: .private(mask: .hash))")
             return
         case .failed(let error):
-            sessionCatalogLog.notice("Persisted-history rehydration after /compress failed; backfill stays disabled until the next sync: \(error.localizedDescription, privacy: .public)")
+            sessionCatalogLog.notice("Persisted-history rehydration after /compress failed; backfill stays disabled until the next sync: \(LogRedaction.message(error), privacy: .public)")
             return
         }
         // Identity gate, same rule as the resume path: a response the
@@ -23471,7 +23477,7 @@ final class AppState: ObservableObject {
             requestedSessionId: requestedSessionID,
             resumedSessionId: requestedSessionID
         ) else {
-            sessionCatalogLog.debug("Persisted-history page after /compress addressed to another conversation; backfill stays disabled for \(requestedSessionID, privacy: .public)")
+            sessionCatalogLog.debug("Persisted-history page after /compress addressed to another conversation; backfill stays disabled for \(requestedSessionID, privacy: .private(mask: .hash))")
             return
         }
         persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
@@ -24233,7 +24239,7 @@ final class AppState: ObservableObject {
                 // The deferred read only tops up a list the dashboard already
                 // gave; the gateway's list must not replace it.
                 if yieldsToNewerReads { throw error }
-                sessionCatalogLog.error("Dashboard history failed; using gateway fallback: \(error.localizedDescription, privacy: .public)")
+                sessionCatalogLog.error("Dashboard history failed; using gateway fallback: \(LogRedaction.message(error), privacy: .public)")
                 // Keep older dashboard installations usable; the gateway is
                 // still an authoritative fallback when the history endpoint is
                 // unavailable.
@@ -24422,10 +24428,10 @@ final class AppState: ObservableObject {
             // silently become a full-transcript WebSocket transport (the
             // giant-payload path compact resume exists to eliminate).
             if Self.historySourceIsUnavailable(error) {
-                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .private)")
+                sessionCatalogLog.debug("Persisted transcript unavailable for \(sessionId, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
                 return .unavailable
             }
-            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .public): \(error.localizedDescription, privacy: .private)")
+            sessionCatalogLog.debug("Persisted transcript failed for \(sessionId, privacy: .private(mask: .hash)): \(error.localizedDescription, privacy: .private)")
             return .failed(error)
         case .payload(let response):
             guard let rawMessages = Self.persistedMessageRows(in: response) else {
@@ -24675,10 +24681,10 @@ final class AppState: ObservableObject {
             // render-to-tap race during a session switch).
             sessionCatalogLog.debug("""
                 Older-page backfill rejected ownership of an otherwise-actionable window: \
-                requested=\(window.requestedSessionID, privacy: .public) \
-                resolved=\(window.resolvedSessionID ?? "none", privacy: .public) \
-                runtime=\(window.runtimeSessionID ?? "none", privacy: .public) \
-                active=\(self.activeSessionId ?? "none", privacy: .public) \
+                requested=\(window.requestedSessionID, privacy: .private(mask: .hash)) \
+                resolved=\(window.resolvedSessionID ?? "none", privacy: .private(mask: .hash)) \
+                runtime=\(window.runtimeSessionID ?? "none", privacy: .private(mask: .hash)) \
+                active=\(self.activeSessionId ?? "none", privacy: .private(mask: .hash)) \
                 windowProfile=\(window.profile, privacy: .public) \
                 activeProfile=\(self.activeProfile, privacy: .public)
                 """)
@@ -24734,7 +24740,7 @@ final class AppState: ObservableObject {
                 // A malformed page is a backfill dead end, not a chat
                 // failure: stop offering older pages rather than erroring
                 // the already-hydrated conversation.
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned a malformed payload; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned a malformed payload; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24755,7 +24761,7 @@ final class AppState: ObservableObject {
                  windowAliasIds: catalogAliasIDs(for: current.trustedSessionIDs),
                  conversationAliasIds: knownSessionIDs(for: returnedId)
                ) {
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned foreign session \(returnedId, privacy: .public); discarding and retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned foreign session \(returnedId, privacy: .private(mask: .hash)); discarding and retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24767,7 +24773,7 @@ final class AppState: ObservableObject {
             // and prepending them would break chronology. That response
             // retires the affordance instead.
             guard let page, page.honorsTailContract else {
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) lost the tail contract; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) lost the tail contract; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24776,7 +24782,7 @@ final class AppState: ObservableObject {
             // IDs that cannot survive across pages — refuse it before it can
             // silently corrupt dedup.
             guard PersistedTranscriptWindow.rowsHaveDurableIdentity(rawRows) else {
-                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .public) returned rows without durable IDs; retiring the affordance")
+                sessionCatalogLog.debug("Older-page backfill for \(wireSessionId, privacy: .private(mask: .hash)) returned rows without durable IDs; retiring the affordance")
                 current.canLoadEarlier = false
                 return false
             }
@@ -24849,7 +24855,7 @@ final class AppState: ObservableObject {
             // reads, a temporarily cold bridge — stays retryable through
             // another explicit tap. A failed backfill never loops on its
             // own.
-            sessionCatalogLog.debug("Older-page backfill failed for \(wireSessionId, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            sessionCatalogLog.debug("Older-page backfill failed for \(wireSessionId, privacy: .private(mask: .hash)): \(LogRedaction.message(error), privacy: .public)")
             current.canLoadEarlier = !Self.historySourceIsUnavailable(error)
             return false
         }
@@ -26803,7 +26809,7 @@ final class AppState: ObservableObject {
             // Do not spend a title-generation request when we cannot confirm
             // the user's setting through the authenticated dashboard.
             titleGenerationLog.error(
-                "Could not read title settings for \(profile, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                "Could not read title settings for \(profile, privacy: .public): \(LogRedaction.message(error), privacy: .public)"
             )
             return nil
         }
@@ -26878,7 +26884,7 @@ final class AppState: ObservableObject {
                           self.client === client else { return }
                     self.applyRecoveredSessionTitle(existingTitle, sessionIDs: [sessionId])
                     titleGenerationLog.notice(
-                        "Used Hermes title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
+                        "Used Hermes title for \(sessionId, privacy: .private(mask: .hash)) in \(profile, privacy: .public)"
                     )
                     return
                 }
@@ -26906,13 +26912,13 @@ final class AppState: ObservableObject {
                       self.client === client else { return }
                 self.applyRecoveredSessionTitle(title, sessionIDs: [sessionId])
                 titleGenerationLog.notice(
-                    "Generated title for \(sessionId, privacy: .public) in \(profile, privacy: .public)"
+                    "Generated title for \(sessionId, privacy: .private(mask: .hash)) in \(profile, privacy: .public)"
                 )
             } catch {
                 // Automatic naming is cosmetic. A failed recovery must not
                 // interrupt the chat or surface an unrelated error.
                 titleGenerationLog.error(
-                    "Title recovery failed for \(sessionId, privacy: .public) in \(profile, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Title recovery failed for \(sessionId, privacy: .private(mask: .hash)) in \(profile, privacy: .public): \(LogRedaction.message(error), privacy: .public)"
                 )
             }
         }
@@ -29823,6 +29829,46 @@ final class AppState: ObservableObject {
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
             jobProfiles: watchJobProfileNames()
+        )
+    }
+
+    /// What a Watch call to Local Live starts with. The host relays the
+    /// Watch's session to the profile's speech server and runs its turns in
+    /// a Hermes chat, so only what the speech server says first, the
+    /// profile's end phrases and the saving choice come from here.
+    struct WatchLocalLivePlan {
+        let greeting: String?
+        let connection: WatchDirectConnection
+        let saveCalls: Bool
+        let endPhrases: [String]
+    }
+
+    /// Checks Local Live as the phone's call does, and resolves the
+    /// greeting setting as `localLiveController` does.
+    func prepareWatchLocalLiveCall() async throws -> WatchLocalLivePlan {
+        if isSceneActive, !PhoneScenePresence.isInForeground {
+            isSceneActive = false
+            publishVoiceRuntimeGates()
+        }
+        guard await connectForWatchDirectCall(timeout: .seconds(20)) else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.hermesUnreachable)
+        }
+        guard !isLiveVoiceCallActive else { throw WatchDirectPrepareError(WatchVoiceStartFailure.callRunning) }
+        let connection = watchDirectConnection
+        let status = try await localLiveClient.status()
+        noteWatchCallVoice(.localLive, ready: status.available)
+        if let reason = LocalLiveClient.unavailableReason(status) {
+            throw WatchDirectPrepareError(reason)
+        }
+        guard watchDirectConnection == connection else {
+            throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+        }
+        let greeting = liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
+        return WatchLocalLivePlan(
+            greeting: greeting,
+            connection: connection,
+            saveCalls: voiceCallSavingEnabled,
+            endPhrases: loadVoiceProfilePreferences(profile: activeProfile).resolvedSpokenEndConversationPhrases
         )
     }
 

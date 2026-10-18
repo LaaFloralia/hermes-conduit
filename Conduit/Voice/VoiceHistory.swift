@@ -65,6 +65,7 @@ extension VoiceCallEngine {
         switch engine {
         case WatchAudioBridgeWire.gptLive: return .gptLive
         case WatchAudioBridgeWire.grok: return .grokLive
+        case WatchAudioBridgeWire.localLive: return .localLive
         default: return nil
         }
     }
@@ -465,7 +466,7 @@ final class VoiceTranscriptRecorder {
             voiceHistoryLogger.notice("This Hermes host can't store voice transcripts; not saving the call")
             isDisabled = true
         } catch {
-            voiceHistoryLogger.error("Saving a voice transcript failed: \(String(describing: error), privacy: .public)")
+            voiceHistoryLogger.error("Saving a voice transcript failed: \(LogRedaction.describing(error), privacy: .public)")
         }
     }
 

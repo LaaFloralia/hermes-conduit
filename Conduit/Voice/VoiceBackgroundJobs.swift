@@ -779,7 +779,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 if let job { queueChatNote(ChatNote(text: refusal.modelNote(title: job.title))) }
             } catch {
                 // Tried again on the next renewal; the hold covers the gap.
-                hermesCallbackLogger.notice("Call watch step failed: \(error.localizedDescription, privacy: .public)")
+                hermesCallbackLogger.notice("Call watch step failed: \(LogRedaction.message(error), privacy: .public)")
             }
         }
     }
@@ -902,7 +902,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     break
                 }
             } catch {
-                hermesCallbackLogger.notice("Call watch not settled at hang-up: \(error.localizedDescription, privacy: .public)")
+                hermesCallbackLogger.notice("Call watch not settled at hang-up: \(LogRedaction.message(error), privacy: .public)")
                 // A call running now keeps watching and holding it on its
                 // renewals. With none, a watch on the host waits for the
                 // next call like a settled one: a release that failed may

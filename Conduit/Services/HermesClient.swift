@@ -870,7 +870,7 @@ final class URLSessionWebSocketTransport: HermesWebSocketTransport {
 @MainActor
 final class HermesClient: ObservableObject {
 
-    private let logger = Logger(subsystem: "com.milim.conduit", category: "HermesClient")
+    private let logger = Logger(subsystem: "com.milim.relay", category: "HermesClient")
 
     // Published state for SwiftUI views
     @Published private(set) var isConnected = false
@@ -1318,7 +1318,7 @@ final class HermesClient: ObservableObject {
                 handleMessage(frame)
             } catch {
                 // Socket closed or errored
-                logger.error("WebSocket receive failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("WebSocket receive failed: \(LogRedaction.message(error), privacy: .public)")
                 // Only tear down if this loop still owns the current socket.
                 // A reconnect replaces `self.socket` and spawns a new loop; an
                 // unguarded late catch from the superseded loop would mark the
@@ -1456,7 +1456,7 @@ final class HermesClient: ObservableObject {
                 self.backendCountsDeclines = result.objectValue?["declines_not_shown"]?.boolValue == true
                 self.logger.notice("Advertised server_requests capability")
             } catch {
-                self.logger.notice("client.capabilities not accepted: \(error.localizedDescription, privacy: .public)")
+                self.logger.notice("client.capabilities not accepted: \(LogRedaction.message(error), privacy: .public)")
                 // Let a later gateway.ready on this socket try again.
                 if self.advertisedSocket === socket { self.advertisedSocket = nil }
             }
@@ -1619,7 +1619,7 @@ final class HermesClient: ObservableObject {
               let text = serverRequestReplyText(id: id, result: nil, error: error) else { return }
         socket.send(.string(text)) { [weak self] sendError in
             if let sendError {
-                self?.logger.error("Server request reply failed: \(sendError.localizedDescription, privacy: .public)")
+                self?.logger.error("Server request reply failed: \(LogRedaction.message(sendError), privacy: .public)")
             }
         }
     }
@@ -1736,7 +1736,7 @@ final class HermesClient: ObservableObject {
                 let text = String(decoding: body, as: UTF8.self)
                 socket.send(.string(text)) { [weak self] error in
                     if let error {
-                        self?.logger.error("RPC send failed for \(method, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                        self?.logger.error("RPC send failed for \(method, privacy: .public): \(LogRedaction.message(error), privacy: .public)")
                         Task { @MainActor in
                             if let pending = self?.pending.removeValue(forKey: id) {
                                 pending.timer?.invalidate()

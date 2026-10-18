@@ -352,7 +352,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         do {
             try engine.start()
         } catch {
-            echoCancellingAudioLogger.error("Echo-cancelling live audio failed to start: \(String(describing: error), privacy: .public)")
+            echoCancellingAudioLogger.error("Echo-cancelling live audio failed to start: \(LogRedaction.describing(error), privacy: .public)")
             NotificationCenter.default.removeObserver(self, name: .AVAudioEngineConfigurationChange, object: engine)
             input.removeTap(onBus: 0)
             engine.stop()
@@ -433,7 +433,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             try coordinator.reassert()
             try ensureRunning()
         } catch {
-            echoCancellingAudioLogger.error("Echo-cancelling live audio restart failed: \(String(describing: error), privacy: .public)")
+            echoCancellingAudioLogger.error("Echo-cancelling live audio restart failed: \(LogRedaction.describing(error), privacy: .public)")
             stopAfterInterruption()
         }
     }
