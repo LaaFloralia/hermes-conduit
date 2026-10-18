@@ -157,18 +157,57 @@ final class V2ShownUpdates: ObservableObject {
     }
     private var missedUpdate = false
     private var subscription: AnyCancellable?
+    private var defaultsSubscription: AnyCancellable?
+    /// The list's saved settings, read through here rather than
+    /// `@AppStorage`: SwiftUI redraws every `@AppStorage` view on any write
+    /// to the defaults, whatever its key, and a chat saves its scroll
+    /// position there.
+    let defaults: UserDefaults
+    private let defaultsKeys: [String]
+    private var defaultsValues: [NSObject?]
 
     /// Read through here by the list's rows, which follow these updates.
     /// Held strongly: AppState never holds the gate, and the sink below
     /// holds the gate weakly.
     let appState: AppState
 
-    init(_ appState: AppState) {
+    init(_ appState: AppState, defaults: UserDefaults = .standard, defaultsKeys: [String] = []) {
         self.appState = appState
+        self.defaults = defaults
+        self.defaultsKeys = defaultsKeys
+        defaultsValues = Self.values(of: defaultsKeys, in: defaults)
         subscription = appState.objectWillChange.sink { [weak self] _ in
-            guard let self else { return }
-            if self.isShown { self.objectWillChange.send() } else { self.missedUpdate = true }
+            self?.passOn()
         }
+        guard !defaultsKeys.isEmpty else { return }
+        defaultsSubscription = NotificationCenter.default
+            .publisher(for: UserDefaults.didChangeNotification)
+            .sink { [weak self] _ in
+                // A write from elsewhere; the list's own go through `set`.
+                Task { @MainActor [weak self] in self?.defaultsChanged() }
+            }
+    }
+
+    /// Saves one of the list's settings and redraws it at once.
+    func set(_ value: Any?, forKey key: String) {
+        defaults.set(value, forKey: key)
+        defaultsChanged()
+    }
+
+    private func passOn() {
+        if isShown { objectWillChange.send() } else { missedUpdate = true }
+    }
+
+    private func defaultsChanged() {
+        let values = Self.values(of: defaultsKeys, in: defaults)
+        guard values != defaultsValues else { return }
+        defaultsValues = values
+        passOn()
+    }
+
+    /// Property-list values, compared by `isEqual:`.
+    private static func values(of keys: [String], in defaults: UserDefaults) -> [NSObject?] {
+        keys.map { defaults.object(forKey: $0) as? NSObject }
     }
 }
 
@@ -205,11 +244,6 @@ struct V2Shell: View {
     /// voice button, with their bottom padding).
     @State private var tabBarHeight: CGFloat = 62
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
-    /// The Chats filter (V2ChatsView), set from Tasks to list cron runs.
-    @AppStorage("conduit.v2.sessionFilter") private var chatsFilterRaw = "all"
-    /// Chats' Sessions/Projects switch (V2ChatsView): Projects would hide
-    /// the runs.
-    @AppStorage("conduit.sessionPresentation") private var chatsPresentationRaw = "sessions"
 
     /// Whether the visible tab shows the conversation.
     private var conversationVisible: Bool {
@@ -531,8 +565,10 @@ struct V2Shell: View {
     /// Cron runs stay out of the All list (SidebarSourceRows): Scheduled
     /// lists them, at the top of Chats rather than behind an open chat.
     private func showScheduledRuns() {
-        chatsFilterRaw = V2SessionFilter.scheduled.rawValue
-        chatsPresentationRaw = "sessions"
+        // The Chats filter and its Sessions/Projects switch (V2ChatsView):
+        // Projects would hide the runs.
+        UserDefaults.standard.set(V2SessionFilter.scheduled.rawValue, forKey: V2ChatsView.filterKey)
+        UserDefaults.standard.set("sessions", forKey: V2ChatsView.presentationKey)
         // The list itself: not a chat, a project or Artifacts over it.
         chatsPath.removeAll()
         visitedTabs.insert(.chats)

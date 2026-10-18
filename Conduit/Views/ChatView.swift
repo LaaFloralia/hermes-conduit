@@ -727,7 +727,10 @@ private final class ChatScrollEventRouter {
             identity: appState.activeChatScrollSessionIdentity
         ) else { return }
         guard let snapshot = engine.renderedViewportSnapshot()?.snapshot else { return }
-        appState.recordChatViewport(snapshot, for: sessionKey)
+        // Saved once the reader stops scrolling (recordViewport).
+        appState.recordChatViewport(snapshot, for: sessionKey) { [weak engine] in
+            engine?.isUserScrolling ?? false
+        }
     }
 
     private func scrollWithoutAnimation(_ body: (ScrollViewProxy) -> Void) {

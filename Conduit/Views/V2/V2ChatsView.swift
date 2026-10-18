@@ -268,11 +268,31 @@ struct V2ChatsView: View, Equatable {
     @State private var repairContext: ConnectionRepairContext?
     /// The last activation the reveal served (NestRevealLatch).
     @State private var revealLatch = NestRevealLatch()
-    @AppStorage("conduit.sessionPresentation") private var sessionPresentationRaw = "sessions"
-    @AppStorage("conduit.v2.sessionFilter") private var filterRaw = "all"
+    // Saved settings, read and written through `updates` so the list
+    // under a chat stays still when anything else writes to the defaults.
+    static let presentationKey = "conduit.sessionPresentation"
+    static let filterKey = "conduit.v2.sessionFilter"
     /// Expanded parents, remembered per parent across launches.
-    @AppStorage("conduit.v2.expandedNests") private var expandedNestsRaw = ""
-    @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    static let expandedNestsKey = "conduit.v2.expandedNests"
+
+    private var sessionPresentationRaw: String {
+        get { updates.defaults.string(forKey: Self.presentationKey) ?? "sessions" }
+        nonmutating set { updates.set(newValue, forKey: Self.presentationKey) }
+    }
+
+    private var filterRaw: String {
+        get { updates.defaults.string(forKey: Self.filterKey) ?? "all" }
+        nonmutating set { updates.set(newValue, forKey: Self.filterKey) }
+    }
+
+    private var expandedNestsRaw: String {
+        get { updates.defaults.string(forKey: Self.expandedNestsKey) ?? "" }
+        nonmutating set { updates.set(newValue, forKey: Self.expandedNestsKey) }
+    }
+
+    private var mainButtonNewChat: Bool {
+        updates.defaults.object(forKey: V2MainButtonPreference.key) as? Bool ?? V2MainButtonPreference.defaultValue
+    }
     /// Parsed once per change of the store, not once per parent row.
     @State private var expansionCache = V2NestExpansionCache()
     /// A conversation opened from elsewhere whose closed section still has
@@ -287,7 +307,9 @@ struct V2ChatsView: View, Equatable {
 
     init(appState: AppState) {
         self.appState = appState
-        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState, defaultsKeys: [
+            Self.presentationKey, Self.filterKey, Self.expandedNestsKey, V2MainButtonPreference.key,
+        ]))
     }
 
     /// Redrawn by its own changes only; the shell redraws on every publish.

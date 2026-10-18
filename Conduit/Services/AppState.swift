@@ -8244,8 +8244,12 @@ final class AppState: ObservableObject {
         return true
     }
 
-    func recordChatViewport(_ snapshot: ChatScrollSnapshot, for key: ChatScrollSessionKey) {
-        chatResumeCoordinator.recordViewport(snapshot, for: key)
+    func recordChatViewport(
+        _ snapshot: ChatScrollSnapshot,
+        for key: ChatScrollSessionKey,
+        holdWhile: (@MainActor @Sendable () -> Bool)? = nil
+    ) {
+        chatResumeCoordinator.recordViewport(snapshot, for: key, holdWhile: holdWhile)
     }
 
     func installChatViewportSnapshotProvider(
