@@ -58,27 +58,25 @@ struct WatchCallControls: View {
     @EnvironmentObject private var call: WatchVoiceCall
 
     var body: some View {
-        VStack(spacing: 6) {
-            WatchCallCaptions(previous: captionLines.previous, current: captionLines.current)
+        VStack(spacing: 4) {
+            WatchCallCaptions(current: currentLine)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
             levelButton
             statusLine
             buttons
         }
         .padding(.horizontal, 6)
+        // The page's bottom inset left a band of empty space under the
+        // buttons; without it they sit in the screen's rounded corners.
+        .padding(.bottom, 12)
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
-    /// The line being said (the call's caption, or else the newest turn)
-    /// and the one before it.
-    private var captionLines: (previous: String?, current: String?) {
-        let turns = call.transcript
-        guard let current = call.caption ?? turns.last?.text else { return (nil, nil) }
-        // A notice in the caption follows the newest turn; a live line is
-        // the newest turn's end.
-        if let caption = call.caption, let last = turns.last, !last.text.hasSuffix(caption) {
-            return (last.text, current)
-        }
-        return (turns.dropLast().last?.text, current)
+    /// The line being said: the call's caption, or else the newest turn.
+    /// The lines before it are on the transcript page: on the wrist a
+    /// faded previous line left the current one a single line.
+    private var currentLine: String? {
+        call.caption ?? call.transcript.last?.text
     }
 
     @ViewBuilder
@@ -87,7 +85,7 @@ struct WatchCallControls: View {
             call.tap()
         } label: {
             WatchLevelBars(mood: mood)
-                .frame(height: 34)
+                .frame(height: 26)
                 // A full-size tap target around the shorter bars.
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
@@ -157,7 +155,7 @@ struct WatchCallControls: View {
                     .font(.body.weight(.semibold))
                     .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(call.isMuted ? Color.black : Color.white)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 44, height: 44)
                     .background(Circle().fill(call.isMuted ? Color.white : Color.white.opacity(0.16)))
                     .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
             }
@@ -171,7 +169,7 @@ struct WatchCallControls: View {
                     .font(.body.weight(.semibold))
                     .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .foregroundStyle(.white)
-                    .frame(width: 46, height: 46)
+                    .frame(width: 44, height: 44)
                     .background(Circle().fill(Color.red))
             }
             .disabled(call.phase == .ending)
@@ -220,7 +218,7 @@ struct WatchCallControls: View {
     private var hint: String? {
         switch call.phase {
         case .preparing: return String(localized: "Asking your iPhone to set up the call")
-        case .speaking: return captionLines.current == nil ? String(localized: "Tap to interrupt") : nil
+        case .speaking: return currentLine == nil ? String(localized: "Tap to interrupt") : nil
         case .lost: return String(localized: "Raise your wrist to reconnect")
         case .needsTap: return String(localized: "Tap to continue")
         default: return nil
@@ -228,35 +226,43 @@ struct WatchCallControls: View {
     }
 }
 
-/// V2's captions on the Watch: the line before small and faded, the line
-/// being said large, both cut from the front so the newest words show.
+/// V2's captions on the Watch: the line being said large, cut from the
+/// front so the newest words show.
 struct WatchCallCaptions: View {
-    let previous: String?
     let current: String?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if let previous {
-                Text(verbatim: previous)
-                    .font(.caption2)
-                    .foregroundStyle(Color.primary.opacity(0.42))
-                    .lineLimit(1)
-                    .truncationMode(.head)
-            }
+        VStack(alignment: .leading, spacing: 0) {
             if let current {
-                Text(verbatim: current)
+                Text(verbatim: Self.newestWords(of: current))
+                    // VoiceOver reads the whole line, not the cut one.
+                    .accessibilityLabel(Text(verbatim: current))
                     .font(.system(.body, weight: .semibold))
                     // Three lines leave room for the bars and buttons on
                     // the smallest Watch.
                     .lineLimit(3)
+                    // Past the budget (the largest text), the oldest words go.
                     .truncationMode(.head)
+                    .layoutPriority(1)
+                    // Three lines of it still leave the controls on screen.
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                     .minimumScaleFactor(0.75)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: current)
+    }
+
+    /// About three lines' worth from the end, from a word's start. Head
+    /// truncation over several lines cuts the middle of the text instead.
+    static func newestWords(of text: String, limit: Int = 84) -> String {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.count > limit else { return text }
+        let tail = text.suffix(limit)
+        let start = tail.firstIndex(where: \.isWhitespace).map { tail.index(after: $0) } ?? tail.startIndex
+        return "…" + tail[start...]
     }
 }
 
@@ -379,6 +385,8 @@ struct WatchCallSummary: View {
             VStack(spacing: 8) {
                 Image(systemName: WatchCallEnd.isNormal(reason) ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .font(.system(size: 36))
+                    // The title under it says the same.
+                    .accessibilityHidden(true)
                     .foregroundStyle(WatchCallEnd.isNormal(reason) ? accent : Color.watchAttention)
                 Text(WatchCallEnd.isNormal(reason) ? String(localized: "Call ended") : String(localized: "Call didn't work"))
                     .font(.headline)
