@@ -2775,6 +2775,7 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage("conduit.ipadPersistentSidebar") private var iPadPersistentSidebar = false
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
     @AppStorage(ConduitAccentChoice.storageKey) private var accentChoice = ConduitAccentChoice.defaultChoice
     @State private var selected: ThemePreference
     @State private var isChangingIcon = false
@@ -2887,6 +2888,22 @@ private struct AppearanceSettingsDetail: View {
                     })) {
                         Text("Voice").tag(false)
                         Text("New Chat").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                // A project's chats otherwise show only on its page.
+                ConduitSettingsSection(title: AppLocalization.string("Project chats"), symbol: "folder", tint: .conduitAccent) {
+                    Text("Choose whether chats inside a project also appear in Chats, with the project’s name under the title. Recent shows the ones active today or yesterday.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Picker("Project chats", selection: Binding(get: { projectChats }, set: {
+                        Haptics.selection()
+                        projectChats = $0
+                    })) {
+                        Text("Off").tag(ProjectChatsInChats.hidden)
+                        Text("Recent").tag(ProjectChatsInChats.recent)
+                        Text("All").tag(ProjectChatsInChats.all)
                     }
                     .pickerStyle(.segmented)
                 }
