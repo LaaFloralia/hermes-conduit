@@ -1799,6 +1799,18 @@ final class AppState: ObservableObject {
     /// Kept as a computed compatibility surface for views that only need the
     /// currently-running flag. New code should use `turnState` for actions.
     var isBusy: Bool { turnState.isRunning }
+
+    /// Voice from the open chat while its reply runs. A live call works
+    /// beside the turn (it hands work to Hermes as jobs; Local Live says
+    /// it's busy), but classic voice talks in the chat's own turn, so it
+    /// waits for Stop or the end of the reply (#762).
+    var voiceWaitsForRunningTurn: Bool {
+        Self.voiceWaitsForRunningTurn(isBusy: isBusy, liveEngine: configuredLiveVoiceEngine(profile: activeProfile))
+    }
+
+    nonisolated static func voiceWaitsForRunningTurn(isBusy: Bool, liveEngine: VoiceCallEngine?) -> Bool {
+        isBusy && liveEngine == nil
+    }
     /// The read-only offline copy never accepts input: nothing typed there
     /// could be delivered, and it is not the live conversation. Nor does a
     /// New Chat Hermes hasn't created yet.
