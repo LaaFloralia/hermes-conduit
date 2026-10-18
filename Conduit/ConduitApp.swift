@@ -21,6 +21,8 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // Set up before launch returns: a call the Apple Watch starts can
         // launch Conduit in the background, and its message waits on this.
         MainActor.assumeIsolated {
+            // Low Power Mode and Low Data Mode stretch every poll.
+            DeviceConditionsMonitor.shared.start()
             WatchVoiceLink.shared.activate()
             // Calls from Hermes ring through PushKit (#449): a call that
             // launched Conduit is delivered once the registry is up.

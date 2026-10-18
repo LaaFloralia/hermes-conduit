@@ -2881,7 +2881,8 @@ extension HermesClientTests {
     /// `onSend` is installed before the handshake so a keepalive ping sent
     /// right after it is never missed.
     private func connectKeepaliveClient(
-        onSend: (() -> Void)? = nil
+        onSend: (() -> Void)? = nil,
+        backgroundInterval: TimeInterval? = nil
     ) async throws -> (client: HermesClient, socket: FakeSocket) {
         let transport = FakeTransport()
         let socket = FakeSocket()
@@ -2891,6 +2892,7 @@ extension HermesClientTests {
             connection: HermesConnection(baseUrl: "https://test.example", ticket: "ticket"),
             transportFactory: { transport },
             keepaliveInterval: 0.3,
+            backgroundKeepaliveInterval: backgroundInterval,
             keepalivePingTimeout: 0.3,
             monitorsPath: false
         )
@@ -2929,6 +2931,20 @@ extension HermesClientTests {
             socket.sentTexts.filter { $0.contains("\"ping\"") }.count, 2,
             "One retry before giving up"
         )
+        client.disconnect()
+    }
+
+    func testOffScreenTheKeepalivePingsLessOften() async throws {
+        let (client, socket) = try await connectKeepaliveClient(backgroundInterval: 1.5)
+        client.setKeepaliveBackgrounded(true)
+        func pings() -> Int { socket.sentTexts.filter { $0.contains("\"ping\"") }.count }
+        try await Task.sleep(for: .seconds(0.8))
+        XCTAssertEqual(pings(), 0, "Off screen the 0.3 s interval gives way to the longer one")
+        let deadline = Date().addingTimeInterval(5)
+        while pings() == 0, Date() < deadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(pings(), 1, "The quiet socket is still pinged off screen")
         client.disconnect()
     }
 
