@@ -20324,8 +20324,12 @@ final class AppState: ObservableObject {
             onBusy: onBusy
         )
         // Only something Hermes took moves the registry's count; a refused
-        // or busy-diverted submission leaves another device's turn due.
-        if sent, activeSessionId == submissionContext.sessionID {
+        // or busy-diverted submission leaves another device's turn due. A
+        // slash command reports true even when it ran only here, so it
+        // marks nothing: missing a mark costs one extra read, a wrong mark
+        // hides the other device's turn.
+        let isSlashCommand = attachments.isEmpty && Self.parseSlashCommand(text) != nil
+        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID {
             noteOpenChatSentHere()
         }
         return sent
