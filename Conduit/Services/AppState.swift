@@ -830,6 +830,24 @@ final class AppState: ObservableObject {
     /// The latest `session.active_list` snapshot and the profile it belongs
     /// to (#454).
     @Published private(set) var liveSessionStatusIndex = SessionLiveStatusIndex()
+    /// Where active_list snapshots and a required sign-in reach the Lock
+    /// Screen's turn activities (LiveTurnActivities); tests watch them. A
+    /// snapshot answers true when a turn's chat was just seen absent and
+    /// another read is needed to settle it.
+    var liveTurnActivitiesRegistrySnapshot: @MainActor (Set<String>, String, String?) -> Bool = { ids, profile, dashboardID in
+        LiveTurnActivities.shared.reconcile(liveSessionIDs: ids, profile: profile, dashboardID: dashboardID)
+    }
+    /// The one `session.active_list` read that settles a turn whose chat
+    /// was just seen absent, whether or not the chat list (and its poll) is
+    /// on screen.
+    private var liveTurnRegistryRecheck: Task<Void, Never>?
+    var liveTurnRegistryRecheckPending: Bool { liveTurnRegistryRecheck != nil }
+    /// Ends a dashboard's turn activities (Disconnect, Sign Out, a required
+    /// sign-in), or with `true` only those the relay can't end by push.
+    var liveTurnActivitiesEndDashboard: @MainActor (String?, Bool) -> Void = { dashboardID, keepingThoseOnRelay in
+        LiveTurnActivities.shared.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
+    }
+
     private var liveSessionStatusProfile: String?
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
@@ -11153,6 +11171,8 @@ final class AppState: ObservableObject {
     }
 
     func disconnect() {
+        // Its turns' Lock Screen progress has nothing left to follow.
+        liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, false)
         widgetLaunchCoordinator.supersede()
         cancelExplicitSessionOpen()
         dismissChatTakeover()
@@ -11587,6 +11607,7 @@ final class AppState: ObservableObject {
             return
         }
         removeWidgetSnapshot(dashboardID: id)
+        liveTurnActivitiesEndDashboard(id.uuidString, false)
         KeychainHelper.clearConnection(dashboardID: id)
         keepUsernameForNextSignIn(dashboardID: id)
         KeychainHelper.clearCredentials(dashboardID: id)
@@ -12036,6 +12057,42 @@ final class AppState: ObservableObject {
         performSignInRequired(pendingFailure: .notice(title: AppLocalization.string("Sign-in didn’t complete"), message: message))
     }
 
+    /// Which of the dashboard's Lock Screen turns a required sign-in ends.
+    enum SignInLockScreenTurnsEnd: Equatable {
+        /// None: off the phone screen the refusal is weak evidence, retried
+        /// once Conduit is on screen.
+        case keepAll
+        /// Those whose push token this iPhone's current relay installation
+        /// didn't take: the Conduit plugin still ends the others by push,
+        /// whatever Conduit's own sign-in.
+        case endNotOnRelay
+        /// All of them: without the plugin nothing else will.
+        case endAll
+
+        /// `liveTurnActivitiesEndDashboard`'s `keepingThoseOnRelay`, or nil
+        /// when none end.
+        var keepingThoseOnRelay: Bool? {
+            switch self {
+            case .keepAll: nil
+            case .endNotOnRelay: true
+            case .endAll: false
+            }
+        }
+    }
+
+    /// What a required sign-in does to the dashboard's Lock Screen turns.
+    /// What stays open: a plugin too old to push Live Activity updates,
+    /// which no capability reports yet; a turn the relay took a token for
+    /// then keeps counting until the system's own limit.
+    nonisolated static func signInEndsLockScreenTurns(
+        screenAway: Bool,
+        plugin: NotifierPluginStatus.State
+    ) -> SignInLockScreenTurnsEnd {
+        guard !screenAway else { return .keepAll }
+        if case .reported = plugin { return .endNotOnRelay }
+        return .endAll
+    }
+
     private func performSignInRequired(
         pendingFailure: ConnectionFailurePresentation,
         keepingNativeGrant: Bool = false
@@ -12053,6 +12110,7 @@ final class AppState: ObservableObject {
         connection = nil
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
+        let pluginStateBeforeSignIn = notifierPlugin.state
         notifierPlugin = freshNotifierPluginStatus
         // A forced sign-out kills the bridge mid-playback; stop the read
         // aloud and drop its gateway the same way Disconnect does.
@@ -12104,6 +12162,14 @@ final class AppState: ObservableObject {
         errorMessage = nil
         showLogin = true
         pendingLoginFailure = pendingFailure
+        // A turn of this dashboard nothing can end now stops counting up on
+        // the Lock Screen.
+        if let keepingThoseOnRelay = Self.signInEndsLockScreenTurns(
+            screenAway: phoneScreenIsAway(),
+            plugin: pluginStateBeforeSignIn
+        ).keepingThoseOnRelay {
+            liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, keepingThoseOnRelay)
+        }
     }
 
     // MARK: - Authoritative reconciliation
@@ -15984,6 +16050,32 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The ids of every `session.active_list` row still running or about to
+    /// (working, waiting, starting): what a turn's Live Activity is settled
+    /// against. Idle rows are sessions with no turn.
+    nonisolated static func liveTurnSessionIDs(_ rows: [LiveSessionStatus]) -> Set<String> {
+        var ids = Set<String>()
+        for row in rows where row.status != "idle" {
+            for id in [row.runtimeSessionId, row.storedSessionId] where !id.isEmpty { ids.insert(id) }
+        }
+        return ids
+    }
+
+    /// Reads the live registry once more after `registryAbsenceSpan`, so a
+    /// turn whose chat a one-off read found absent is settled even with the
+    /// chat list's poll off screen. One at a time: a read already waiting
+    /// settles every absence seen meanwhile.
+    private func scheduleLiveTurnRegistryRecheck() {
+        guard liveTurnRegistryRecheck == nil else { return }
+        liveTurnRegistryRecheck = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(LiveTurnActivities.registryAbsenceSpan + 1))
+            guard let self, !Task.isCancelled else { return }
+            // Cleared first, so this read can ask for the next one.
+            self.liveTurnRegistryRecheck = nil
+            await self.refreshLiveSessionStatuses()
+        }
+    }
+
     /// `session.active_list` rows are the gateway's live registry: every row
     /// naming both a runtime and a stored id is fresh authoritative routing
     /// evidence (the same authority class as a catalog snapshot), recorded
@@ -16001,6 +16093,10 @@ final class AppState: ObservableObject {
                 liveSessionStatusIndex = index
                 liveSessionStatusProfile = profile
             }
+        }
+        // Lock Screen progress of a turn that ended unseen (#605).
+        if liveTurnActivitiesRegistrySnapshot(Self.liveTurnSessionIDs(rows), profile, activeDashboardID?.uuidString) {
+            scheduleLiveTurnRegistryRecheck()
         }
         for row in rows {
             conversationIdentityIndex.recordAuthoritative(
@@ -21028,7 +21124,8 @@ final class AppState: ObservableObject {
                         profile: activeProfile,
                         profileName: profileDisplayName(activeProfile),
                         glowHex: profileGlowColors()[activeProfile]?.hex
-                            ?? profileGlowTint(activeProfile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex }
+                            ?? profileGlowTint(activeProfile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex },
+                        dashboardID: activeDashboardID?.uuidString
                     )
                 case .queued:
                     // Hermes normally drains queued input as a later full turn,
