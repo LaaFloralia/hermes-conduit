@@ -849,6 +849,55 @@ final class AppState: ObservableObject {
     private var desktopViewsCursor: [String: TimeInterval] = [:]
     @Published private(set) var sessionMutationID: String?
     @Published private(set) var isRefreshingSessionCatalog = false
+    /// Whether `sessions` is the catalog Hermes answered for the dashboard
+    /// profile on screen (see SessionCatalogLoad.swift).
+    @Published private(set) var sessionCatalogLoadState = SessionCatalogLoadState()
+
+    var sessionCatalogOwner: SessionCatalogOwner {
+        SessionCatalogOwner(dashboardID: activeDashboardID, profile: activeProfile)
+    }
+
+    /// The load phase of the catalog the Chats list shows now.
+    var sessionCatalogPhase: SessionCatalogLoadPhase {
+        sessionCatalogLoadState.phase(for: sessionCatalogOwner)
+    }
+
+    /// The Chats list's first read once a connection is up, for when the
+    /// connect's own catalog sync didn't publish one (it was superseded, or
+    /// a sign-in reached the list before it). One read: a failure stays
+    /// failed until the user tries again.
+    func loadSessionCatalogIfNeeded() async {
+        guard isConnected, turnState != .synchronizing, sessionCatalogPhase == .notLoaded else { return }
+        // One read at a time for one dashboard profile: two lists (or two
+        // passes of one) that start it together share it.
+        let owner = sessionCatalogOwner
+        if let running = sessionCatalogFirstRead, running.owner == owner {
+            await running.task.value
+            // A read a reconnect left behind settles nothing: read again,
+            // for this connection.
+            if sessionCatalogPhase == .notLoaded, sessionCatalogFirstRead == nil {
+                await loadSessionCatalogIfNeeded()
+            }
+            return
+        }
+        let id = UUID()
+        let task = Task<Void, Never> { @MainActor [weak self] in
+            guard let self else { return }
+            await self.loadSessions()
+            if self.sessionCatalogFirstRead?.id == id { self.sessionCatalogFirstRead = nil }
+        }
+        sessionCatalogFirstRead = SessionCatalogFirstRead(owner: owner, id: id, task: task)
+        await task.value
+    }
+
+    /// The list's own first catalog read while it runs.
+    private var sessionCatalogFirstRead: SessionCatalogFirstRead?
+
+    private struct SessionCatalogFirstRead {
+        let owner: SessionCatalogOwner
+        let id: UUID
+        let task: Task<Void, Never>
+    }
     @Published var activeSessionId: String? {
         didSet {
             refreshActiveChatScrollSessionIdentity()
@@ -1148,6 +1197,9 @@ final class AppState: ObservableObject {
     private var persistedOrderingFrontier = PersistedOrderingFrontier()
     @Published private(set) var busyInputMode: BusyInputMode = .steer
     @Published private(set) var displayPreferences = ProfileDisplayPreferences()
+    /// The profile's `timezone` config value ("" = the server's local time)
+    /// and the profile it was read for. Hermes runs cron schedules in it.
+    @Published private(set) var profileTimeZoneSetting: (profile: String, value: String)?
     /// The running turn's live reply text and thinking card. They publish on
     /// their own object, never on AppState: while a turn streams they change
     /// 20 to 30 times a second, and an AppState publish re-renders every view
@@ -8839,6 +8891,7 @@ final class AppState: ObservableObject {
         invalidateReconciliation()
         invalidateServerCompactionState()
         sessionCatalogCache.removeAll()
+        sessionCatalogLoadState.reset()
         sessions = []
         cronSessions = []
         archivedSessions = []
@@ -11189,6 +11242,8 @@ final class AppState: ObservableObject {
         // (and the full-history marker would suppress the reload that could
         // correct them).
         sessionCatalogCache.removeAll()
+        // Signed out: the next sign-in's list loads before it says anything.
+        sessionCatalogLoadState.reset()
         pinnedSessionIDs = []
         messages = []
         persistedTranscriptWindow = nil
@@ -12197,6 +12252,7 @@ final class AppState: ObservableObject {
                 newestPageOnly: catalogLoad.olderPagesDeferred,
                 dashboardID: dashboardID
             )
+            sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             if let dashboardID {
                 widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
                 widgetLaunchCoordinator.readinessChanged()
@@ -12591,6 +12647,10 @@ final class AppState: ObservableObject {
             }
             turnState = .reconnecting
             errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
+            sessionCatalogLoadState.markFailed(
+                UserFacingError.message(for: error),
+                owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+            )
             settleReconciliation(
                 token,
                 automaticSyncOperationID: automaticOperationID
@@ -16788,6 +16848,7 @@ final class AppState: ObservableObject {
             sessions = allSessions.filter { $0.source != .cron }
             cronSessions = allSessions.filter { $0.source == .cron }
             savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
+            sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
@@ -16826,8 +16887,15 @@ final class AppState: ObservableObject {
                 guard let activeClient, self.client === activeClient else { return false }
             }
             guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
+            // A read cancelled under it (a pull to refresh the list left)
+            // says nothing about the catalog: the next showing reads again.
+            if error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled { return false }
             guard reportsFailure else { return false }
             errorMessage = AppLocalization.string("Failed to load sessions: \(UserFacingError.message(for: error))")
+            sessionCatalogLoadState.markFailed(
+                UserFacingError.message(for: error),
+                owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+            )
             return false
         }
     }
@@ -25641,6 +25709,7 @@ final class AppState: ObservableObject {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
+            profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
             displayPreferences = ProfileDisplayPreferences(
                 showReasoning: display["show_reasoning"] as? Bool ?? true,
                 showToolProgress: display["tool_progress"] as? String != "off",
@@ -25649,7 +25718,14 @@ final class AppState: ObservableObject {
         } catch {
             guard profile == activeProfile else { return }
             displayPreferences = ProfileDisplayPreferences()
+            profileTimeZoneSetting = nil
         }
+    }
+
+    /// The active profile's `timezone` value, when Conduit has read it.
+    var activeProfileTimeZoneSetting: String? {
+        guard let setting = profileTimeZoneSetting, profilesMatch(setting.profile, activeProfile) else { return nil }
+        return setting.value
     }
 
     func loadProfileSettings(keys: [String]) async -> [String: ProfileSettingValue] {
@@ -25854,6 +25930,9 @@ final class AppState: ObservableObject {
             }
             try await updateProfileConfig(profile: profile) { [weak self] config in
                 self?.setProfileSettingValue(value, in: &config, key: key)
+            }
+            if key == ProfileTimeZone.configKey, let zone = value.textValue {
+                profileTimeZoneSetting = (profile, zone)
             }
             if key == "approvals.mode", let mode = value.textValue?.lowercased(), profile == activeProfile {
                 // Mirror the saved profile mode immediately and re-resolve the
