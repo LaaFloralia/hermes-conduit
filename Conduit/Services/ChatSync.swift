@@ -95,15 +95,6 @@ struct OpenChatRegistryRow: Equatable {
         self.messageCount = messageCount
         self.preview = preview
     }
-
-    init(_ row: LiveSessionStatus) {
-        self.init(
-            isRunning: row.isRunning,
-            isStarting: row.status == "starting",
-            messageCount: row.messageCount,
-            preview: row.preview
-        )
-    }
 }
 
 enum OpenChatSyncAction: Equatable {
