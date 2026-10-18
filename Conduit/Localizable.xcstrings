@@ -292557,6 +292557,88 @@
           }
         }
       }
+    },
+    "The push relay's check didn't reach this iPhone in time. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Prüfung des Push-Relays hat dieses iPhone nicht rechtzeitig erreicht. Prüfe deine Verbindung und versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La comprobación del relé push no llegó a este iPhone a tiempo. Revisa tu conexión e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La vérification du relais push n'a pas atteint cet iPhone à temps. Vérifiez votre connexion et réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemeriksaan dari relay push tidak sampai ke iPhone ini tepat waktu. Periksa koneksi Anda lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La verifica del relay push non ha raggiunto questo iPhone in tempo. Controlla la connessione e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プッシュリレーの確認がこのiPhoneに時間内に届きませんでした。接続を確認して、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "푸시 릴레이의 확인이 제시간에 이 iPhone에 도착하지 않았어요. 연결을 확인하고 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weryfikacja z przekaźnika push nie dotarła na czas do tego iPhone'a. Sprawdź połączenie i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A verificação do relay de push não chegou a este iPhone a tempo. Verifique sua conexão e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверка от push-ретранслятора не дошла до этого iPhone вовремя. Проверьте подключение и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlık bildirim aktarıcısının doğrulaması bu iPhone'a zamanında ulaşmadı. Bağlantınızı kontrol edip yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推送中继的验证未能及时送达此 iPhone。请检查网络连接后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "推播中繼的驗證未能及時送達此 iPhone。請檢查網路連線後再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -734,6 +734,31 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(try body(.keep).keys.contains("device_token"))
     }
 
+    func testTheRelaysRegistrationChallengeIsReadAndSentBack() throws {
+        let nonce = String(repeating: "Ab-_9", count: 8) + "xyz"
+        XCTAssertEqual(PushNotificationService.tokenChallenge(in: ["aps": ["content-available": 1], "conduit_token_challenge": nonce]), nonce)
+        XCTAssertNil(PushNotificationService.tokenChallenge(in: ["conduit_token_challenge": "short"]))
+        XCTAssertNil(PushNotificationService.tokenChallenge(in: ["conduit_token_challenge": String(nonce.dropLast()) + "!"]))
+        XCTAssertNil(PushNotificationService.tokenChallenge(in: ["conduit": ["type": "phone.changes"]]))
+
+        let url = try XCTUnwrap(URL(string: "https://push.example/v1/installations"))
+        func response(_ status: Int) throws -> URLResponse {
+            try XCTUnwrap(HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: nil))
+        }
+        let required = Data(#"{"error":"token_proof_required"}"#.utf8)
+        XCTAssertTrue(PushNotificationService.requiresTokenProof(response: try response(403), data: required))
+        XCTAssertFalse(PushNotificationService.requiresTokenProof(response: try response(403), data: Data(#"{"error":"token_proof_invalid"}"#.utf8)),
+                       "A wrong proof isn't retried")
+        XCTAssertFalse(PushNotificationService.requiresTokenProof(response: try response(400), data: required))
+
+        var update = UpdateRegistrationRequest(deviceToken: "ab", preferences: ConduitNotificationPreferences())
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(update)) as? [String: Any])
+        XCTAssertFalse(json.keys.contains("token_proof"))
+        update.tokenProof = nonce
+        json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(update)) as? [String: Any])
+        XCTAssertEqual(json["token_proof"] as? String, nonce)
+    }
+
     func testAMissedCallNotificationOpensLikeTheCall() throws {
         let target = ConduitNotificationTarget(
             profile: "fam",

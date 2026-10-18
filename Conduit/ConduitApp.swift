@@ -69,15 +69,23 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
     /// that applies without asking. Conduit fetches it from the host and
     /// applies it in the time iOS gives.
     ///
-    /// This is the only silent push the relay sends. Visible pushes are
-    /// handled by the notification center delegate (willPresent / didReceive),
-    /// so anything else here has nothing to do; it's logged so an unexpected
-    /// one shows up.
+    /// The relay's only other silent push is its registration challenge: a
+    /// nonce Conduit sends back to prove it holds this device token. Visible
+    /// pushes are handled by the notification center delegate (willPresent /
+    /// didReceive), so anything else here has nothing to do; it's logged so
+    /// an unexpected one shows up.
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
+        if let nonce = PushNotificationService.tokenChallenge(in: userInfo) {
+            Task { @MainActor in
+                PushNotificationService.shared.receiveTokenChallenge(nonce)
+                completionHandler(.noData)
+            }
+            return
+        }
         guard AppState.isPhoneChangesPush(userInfo) else {
             backgroundPushLogger.info("Background push that isn't a phone.changes push: nothing to do")
             completionHandler(.noData)
