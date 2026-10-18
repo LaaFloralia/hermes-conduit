@@ -517,6 +517,7 @@ struct ChatView: View {
             // once.
             .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar)") {
                 guard scenePhase == .active, !appState.showSidebar else { return }
+                appState.openChatSyncBecameVisible()
                 while !Task.isCancelled {
                     await appState.openChatSyncTick()
                     try? await Task.sleep(for: .seconds(5))

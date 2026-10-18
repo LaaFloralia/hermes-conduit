@@ -585,6 +585,9 @@ final class AppState: ObservableObject {
                     widgetAwaitingInteractiveAuthenticationDashboardID = nil
                 }
                 widgetLaunchCoordinator.readinessChanged()
+                // Back from a drop or a gateway restart: the list reads at
+                // once rather than waiting out a long backoff step.
+                if !oldValue { noteChatListInteraction() }
             }
             if oldValue != isConnected { schedulePendingComposerSendCheck() }
         }
@@ -4212,6 +4215,16 @@ final class AppState: ObservableObject {
     @Published private(set) var activeChatRepliesElsewhere = false
     /// The clock of those checks; tests move it.
     var chatSyncNow: @MainActor () -> Date = { Date() }
+    /// Low Power Mode and Low Data Mode, which stretch every poll
+    /// (PowerPolicy.swift); tests set them.
+    var deviceConditions: @MainActor () -> DeviceConditions = { DeviceConditionsMonitor.shared.current }
+    /// The jitter after a failed poll, in 0..<1; tests pin it.
+    var pollJitter: @MainActor () -> Double = { Double.random(in: 0..<1) }
+    /// The Chats list's poll pace, the sleep a return to the app or a tap
+    /// cuts short, and a count of catalog reads that changed the list.
+    private(set) var chatListPollPacer = ChatListPollPacer()
+    private let chatListPollSleep = WakeableSleep()
+    private var chatListCatalogGeneration = 0
     private var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
@@ -7648,11 +7661,15 @@ final class AppState: ObservableObject {
     /// through the identity index on purpose: each snapshot is the same
     /// authoritative evidence the foreground probe records, and re-recording
     /// an unchanged binding is a no-op.
-    func refreshLiveSessionStatuses() async {
+    ///
+    /// Returns false when the read failed (a gateway without the method
+    /// counts as read: there is nothing to ask).
+    @discardableResult
+    func refreshLiveSessionStatuses() async -> Bool {
         // Its own task: a slow plugin read must not hold up live status.
         Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
-        guard isSceneActive, let client, isConnected,
-              client !== activeListUnsupportedClient else { return }
+        guard isSceneActive, let client, isConnected else { return false }
+        guard client !== activeListUnsupportedClient else { return true }
         let profile = activeProfile
         do {
             let rows: [LiveSessionStatus]
@@ -7661,24 +7678,27 @@ final class AppState: ObservableObject {
             } else {
                 rows = try await client.activeSessions()
             }
-            guard profile == activeProfile, self.client === client else { return }
+            guard profile == activeProfile, self.client === client else { return true }
             // Assigned only on a change: every publish redraws the chat list.
             if !liveSessionStatusAvailable { liveSessionStatusAvailable = true }
             activeListFailureLoggedClient = nil
             recordActiveListEvidence(rows, profile: profile)
             latestActiveList = (rows, profile, ObjectIdentifier(client), chatSyncNow())
+            return true
         } catch {
             // Stop asking a gateway that doesn't have the method; a new
             // connection probes again. Other failures retry on the next tick.
             if isMethodUnavailable(error) {
                 activeListUnsupportedClient = client
                 if self.client === client, liveSessionStatusAvailable { liveSessionStatusAvailable = false }
+                return true
             } else if client !== activeListFailureLoggedClient {
                 activeListFailureLoggedClient = client
                 sessionCatalogLog.notice(
                     "Live status poll failed: \(LogRedaction.describing(error), privacy: .public)"
                 )
             }
+            return false
         }
     }
 
@@ -11693,6 +11713,9 @@ final class AppState: ObservableObject {
             requestAuthorizer: dashboardTicketBridge?.requestAuthorizer,
             transportFactory: transportFactory
         )
+        // A reconnect off screen (CarPlay, a locked listen) keeps the
+        // background keepalive.
+        client.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self] event in
@@ -15323,6 +15346,10 @@ final class AppState: ObservableObject {
             if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
+            // Polls left long while nothing moved catch up at once.
+            noteChatListInteraction()
+            openChatSync.resetIdlePace()
+            client?.setKeepaliveBackgrounded(false)
             // A message left waiting through a long time away isn't sent on
             // its own now, as after Conduit was stopped.
             returnPendingComposerSendAfterLongAbsence()
@@ -15509,6 +15536,8 @@ final class AppState: ObservableObject {
             isSceneActive = false
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
+            // Audio may keep the socket open off screen; it pings less.
+            client?.setKeepaliveBackgrounded(true)
             // The socket can die while suspended and turn edges can be missed,
             // so the local turn state must be re-confirmed against the
             // authoritative runtime registry before the next composer submit
@@ -17007,8 +17036,12 @@ final class AppState: ObservableObject {
             let allSessions = uniqueSessions(
                 [retainedActiveTurn].compactMap { $0 } + loadedSessions
             )
-            sessions = allSessions.filter { $0.source != .cron }
-            cronSessions = allSessions.filter { $0.source == .cron }
+            let listedSessions = allSessions.filter { $0.source != .cron }
+            let listedCron = allSessions.filter { $0.source == .cron }
+            // A read that changed the list keeps the list's poll quick.
+            if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
+            sessions = listedSessions
+            cronSessions = listedCron
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
@@ -17097,6 +17130,7 @@ final class AppState: ObservableObject {
     /// Use this after database recovery or deletion outside Conduit.
     func refreshSessionCatalog() async {
         guard !isRefreshingSessionCatalog else { return }
+        noteChatListInteraction()
         isRefreshingSessionCatalog = true
         defer { isRefreshingSessionCatalog = false }
 
@@ -17109,25 +17143,72 @@ final class AppState: ObservableObject {
 
     // MARK: - One chat on two devices
 
-    /// The Chats list's poll (every 4 s while it shows): the live registry,
-    /// then what it says about the list and the open chat behind it. A chat
-    /// the registry has and the list doesn't, one started on another device,
-    /// reads the catalog again; so does a list left on screen for 30 s, for
-    /// renames and deletions made elsewhere. Reads go through the coalesced
-    /// read Back uses.
-    func chatListPollTick() async {
+    /// The Chats list's poll loop, while the list shows. Each tick says how
+    /// long to wait before the next; a return to the app, a send or a
+    /// search cuts the wait short (`noteChatListInteraction`).
+    func runChatListPolling() async {
+        chatListPollPacer.reset()
+        chatListPollSleep.clearPendingWake()
+        while !Task.isCancelled {
+            let delay = await chatListPollTick()
+            guard !Task.isCancelled else { return }
+            await chatListPollSleep.sleep(seconds: delay)
+        }
+    }
+
+    /// Something happened that the list should catch up with soon: the
+    /// next poll comes at once, then at the shortest interval.
+    func noteChatListInteraction() {
+        chatListPollPacer.reset()
+        chatListPollSleep.wake()
+    }
+
+    /// The Chats list's poll: the live registry, then what it says about
+    /// the list and the open chat behind it. A chat the registry has and
+    /// the list doesn't, one started on another device, reads the catalog
+    /// again; so does a list left on screen for 30 s, for renames and
+    /// deletions made elsewhere. Reads go through the coalesced read Back
+    /// uses. Returns the wait before the next tick: 4 s while a turn runs
+    /// or something on the list changed, then 8, 15, 30 and 60 s while
+    /// nothing moves (PollCadence), stretched in Low Power and Low Data
+    /// Mode.
+    @discardableResult
+    func chatListPollTick() async -> TimeInterval {
         // Off screen (voice or CarPlay keep the app running) nothing reads.
-        guard isSceneActive, isConnected else { return }
-        await refreshLiveSessionStatuses()
+        guard isSceneActive, isConnected else {
+            return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+        }
+        let registryRead = await refreshLiveSessionStatuses()
+        var registry: Set<String>?
+        var turnRunning = turnState.isRunning
         if let snapshot = freshActiveListSnapshot(maxAge: 2) {
-            noteActiveListForChatList(snapshot.rows)
+            let listed = chatListListedIDs()
+            // A chat started elsewhere is about to be listed: the poll
+            // stays quick to follow it.
+            if noteActiveListForChatList(snapshot.rows, listed: listed) { chatListPollPacer.reset() }
             // The open chat shows beside the list in the persistent iPad
             // sidebar, and is covered by it otherwise.
             observeOpenChat(in: snapshot, chatVisible: !showSidebar)
+            // Only the list's own chats pace it: a bot's or a cron job's
+            // runtime working all day mustn't keep it at 4 s. A chat the
+            // list doesn't have yet is read above, and the read that lists
+            // it changes the list.
+            let listedRows = snapshot.rows.filter { listed.contains($0.storedSessionId) }
+            registry = ChatListPollPacer.registryKeys(listedRows)
+            turnRunning = turnRunning || listedRows.contains(where: ChatListPollPacer.isTurnRunning)
+        } else if registryRead {
+            // A gateway without the registry answers nothing to compare:
+            // an empty one, so the list backs off.
+            registry = []
         }
         if chatListCatalogFreshness.shouldRead(olderThan: ChatListCatalogFreshness.fallbackInterval, now: chatSyncNow()) {
             refreshCatalogAfterLeavingChat(reportingFailure: false)
         }
+        return chatListPollPacer.next(
+            after: .init(registry: registry, turnRunning: turnRunning, catalogGeneration: chatListCatalogGeneration),
+            conditions: deviceConditions(),
+            random: pollJitter()
+        )
     }
 
     /// Back in the app with the list on screen: a read older than 10 s is
@@ -17139,7 +17220,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    private func noteActiveListForChatList(_ rows: [LiveSessionStatus]) {
+    /// Every id the list's chats go by.
+    private func chatListListedIDs() -> Set<String> {
         var listed = Set<String>()
         for session in sessions + cronSessions + archivedSessions {
             listed.insert(session.id)
@@ -17147,16 +17229,29 @@ final class AppState: ObservableObject {
             if let root = session.lineageRootId { listed.insert(root) }
             listed.formUnion(session.alternateIds)
         }
+        return listed
+    }
+
+    /// Returns whether it asked for a catalog read.
+    @discardableResult
+    private func noteActiveListForChatList(_ rows: [LiveSessionStatus], listed: Set<String>) -> Bool {
         let unlisted = rows.filter { !$0.storedSessionId.isEmpty && !listed.contains($0.storedSessionId) }
         // Keyed by the row's state too: a chat created on another device is
         // live before its first message makes it listable, and that message
         // (working, then a new count) asks again.
         let keys = Set(unlisted.map { "\($0.storedSessionId)|\($0.status)|\($0.messageCount ?? -1)" })
-        guard chatListCatalogFreshness.shouldRead(forUnlisted: keys, now: chatSyncNow()) else { return }
+        guard chatListCatalogFreshness.shouldRead(forUnlisted: keys, now: chatSyncNow()) else { return false }
         sessionCatalogLog.notice(
             "Chat list: \(unlisted.count, privacy: .public) live chat(s) not listed yet; reading the catalog again"
         )
         refreshCatalogAfterLeavingChat(reportingFailure: false)
+        return true
+    }
+
+    /// The open chat shows (again), or the app came back: its idle check
+    /// starts over at the shortest interval.
+    func openChatSyncBecameVisible() {
+        openChatSync.resetIdlePace()
     }
 
     /// The open chat's check while it is on screen (ChatView, every few
@@ -17170,7 +17265,7 @@ final class AppState: ObservableObject {
             setActiveChatRepliesElsewhere(false)
             return
         }
-        let due = openChatSync.checkDue(local, now: chatSyncNow())
+        let due = openChatSync.checkDue(local, now: chatSyncNow(), conditions: deviceConditions())
         // Another chat starts over without the label.
         setActiveChatRepliesElsewhere(openChatSync.repliesElsewhere)
         guard due else { return }
@@ -17346,6 +17441,8 @@ final class AppState: ObservableObject {
     /// command): the registry's count moving next is its own doing.
     private func noteOpenChatSentHere() {
         openChatSync.noteSentHere()
+        // The persistent iPad sidebar shows the list beside the chat.
+        noteChatListInteraction()
     }
 
     private func noteOpenChatStreamEvent() {

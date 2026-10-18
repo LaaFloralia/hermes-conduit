@@ -925,6 +925,9 @@ final class HermesClient: ObservableObject {
     nonisolated(unsafe) private var pathMonitor: NWPathMonitor?
     private var pathMonitorSawInitialPath = false
     private let keepaliveInterval: TimeInterval?
+    private let backgroundKeepaliveInterval: TimeInterval?
+    /// Off screen (audio keeps Conduit running): the longer quiet interval.
+    private var keepaliveBackgrounded = false
     private let keepalivePingTimeout: TimeInterval
     private let monitorsPath: Bool
     /// Bumped by every connect(): a connect suspended while its upgrade is
@@ -961,9 +964,11 @@ final class HermesClient: ObservableObject {
     static let livenessProbeTimeout: TimeInterval = 8
     /// Budget for the foreground `ping` (`healthCheck`). See there.
     static let pingTimeout: TimeInterval = 5
-    /// Quiet time before a keepalive `ping`. Well under the 30-60 s idle
-    /// limits NATs and relays commonly use.
-    static let defaultKeepaliveInterval: TimeInterval = 15
+    /// Quiet time before a keepalive `ping` (PollCadence explains the 30 s
+    /// against Hermes' own 20 s socket ping and a proxy's 60 s idle limit).
+    static let defaultKeepaliveInterval: TimeInterval = PollCadence.keepaliveForeground
+    /// The same while Conduit is off screen and audio keeps it running.
+    static let defaultBackgroundKeepaliveInterval: TimeInterval = PollCadence.keepaliveBackground
     /// A keepalive ping waits longer than the foreground one: nobody is
     /// waiting on it, and a relayed path can be slow without being dead.
     static let keepalivePingTimeout: TimeInterval = 10
@@ -1006,11 +1011,14 @@ final class HermesClient: ObservableObject {
         requestAuthorizer: (any DashboardUpgradeAuthorizing)? = nil,
         transportFactory: @escaping @MainActor () -> any HermesWebSocketTransport = { URLSessionWebSocketTransport() },
         keepaliveInterval: TimeInterval? = HermesClient.defaultKeepaliveInterval,
+        backgroundKeepaliveInterval: TimeInterval? = HermesClient.defaultBackgroundKeepaliveInterval,
         keepalivePingTimeout: TimeInterval = HermesClient.keepalivePingTimeout,
         monitorsPath: Bool = true
     ) {
         self.monitorsPath = monitorsPath
         self.keepaliveInterval = keepaliveInterval
+        // Never shorter than the foreground interval (tests pass short ones).
+        self.backgroundKeepaliveInterval = keepaliveInterval.map { max($0, backgroundKeepaliveInterval ?? $0) }
         self.keepalivePingTimeout = keepalivePingTimeout
         self.connection = connection
         self.profile = profile
@@ -1125,22 +1133,24 @@ final class HermesClient: ObservableObject {
 
     // MARK: - Keepalive
 
+    /// Conduit went off screen (true) or came back (false). Off screen the
+    /// socket only stays open while audio keeps the app running, and
+    /// nothing on screen waits on it: the keepalive pings less often.
+    func setKeepaliveBackgrounded(_ backgrounded: Bool) {
+        guard backgrounded != keepaliveBackgrounded else { return }
+        keepaliveBackgrounded = backgrounded
+        if let socket, keepaliveTask != nil { startKeepaliveLoop(for: socket) }
+    }
+
+    private var currentKeepaliveInterval: TimeInterval? {
+        keepaliveBackgrounded ? backgroundKeepaliveInterval : keepaliveInterval
+    }
+
     private func startKeepalive(for socket: any HermesWebSocket) {
         stopKeepalive()
         guard let interval = keepaliveInterval, interval > 0 else { return }
         lastInboundAt = Date()
-        // Spelled out though Task inherits it here: the loop reads socket
-        // state, which lives on the main actor.
-        keepaliveTask = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(interval / 3))
-                guard !Task.isCancelled, let self else { return }
-                guard self.socket === socket else { return }
-                if Date().timeIntervalSince(self.lastInboundAt) >= interval {
-                    await self.probe(socket)
-                }
-            }
-        }
+        startKeepaliveLoop(for: socket)
         guard monitorsPath else { return }
         // A network change (Wi-Fi to cellular, the VPN tunnel coming back)
         // usually leaves the old TCP connection dead: check it at once
@@ -1164,6 +1174,50 @@ final class HermesClient: ObservableObject {
         }
         monitor.start(queue: DispatchQueue(label: "com.milim.conduit.hermes-path"))
         pathMonitor = monitor
+    }
+
+    /// Sleeps until the socket has been quiet for the interval, then pings.
+    /// Any frame from the gateway pushes the deadline back, so a busy socket
+    /// is never pinged and a quiet one wakes once per interval.
+    private func startKeepaliveLoop(for socket: any HermesWebSocket) {
+        keepaliveTask?.cancel()
+        guard let interval = currentKeepaliveInterval, interval > 0 else { return }
+        // Spelled out though Task inherits it here: the loop reads socket
+        // state, which lives on the main actor.
+        // `self` is weak across the sleeps: a released client ends the loop
+        // instead of living until the next deadline.
+        keepaliveTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let remaining = self?.keepaliveQuietTimeLeft(on: socket, interval: interval) else { return }
+                if remaining > 0 {
+                    // A little past the deadline, so a wake a hair early
+                    // doesn't sleep a second time.
+                    try? await Task.sleep(for: .seconds(remaining + 0.05))
+                    continue
+                }
+                guard !Task.isCancelled,
+                      let stillQuiet = await self?.keepaliveProbe(socket, interval: interval) else { return }
+                // A probe already under way returns without a ping: wait an
+                // interval rather than spin.
+                if stillQuiet { try? await Task.sleep(for: .seconds(interval)) }
+            }
+        }
+    }
+
+    /// How long until the socket has been quiet for `interval`, or nil once
+    /// it is no longer this client's socket.
+    private func keepaliveQuietTimeLeft(on socket: any HermesWebSocket, interval: TimeInterval) -> TimeInterval? {
+        guard self.socket === socket else { return nil }
+        return interval - Date().timeIntervalSince(lastInboundAt)
+    }
+
+    /// Pings a quiet socket. An answered ping stamps `lastInboundAt`; a lost
+    /// one closes the socket, which ends the loop. Returns whether the socket
+    /// is still quiet, or nil once it is no longer this client's.
+    private func keepaliveProbe(_ socket: any HermesWebSocket, interval: TimeInterval) async -> Bool? {
+        guard self.socket === socket else { return nil }
+        await probe(socket)
+        return Date().timeIntervalSince(lastInboundAt) >= interval
     }
 
     private func stopKeepalive() {
