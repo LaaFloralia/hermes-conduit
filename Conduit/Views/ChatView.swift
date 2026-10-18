@@ -419,7 +419,8 @@ struct ChatView: View {
                     isBusy: appState.isBusy,
                     author: appState.activeProfile,
                     currentToolName: runningToolName,
-                    turnStartedAt: turnStartedAt
+                    turnStartedAt: turnStartedAt,
+                    repliesElsewhere: appState.activeChatRepliesElsewhere
                 )
 
                 if let pending = livePendingComposerSend {
@@ -509,6 +510,17 @@ struct ChatView: View {
             .task(id: appState.chatResumeRestorationRequest?.generation) {
                 guard let request = appState.chatResumeRestorationRequest else { return }
                 await runViewportRestoration(request)
+            }
+            // The same chat open on another device: a turn that went quiet
+            // here, or one the other device ran, is checked against the
+            // live registry while this chat shows. Each turn edge checks at
+            // once.
+            .task(id: "\(appState.activeSessionId ?? "")|\(appState.isBusy)|\(scenePhase == .active)|\(appState.showSidebar)") {
+                guard scenePhase == .active, !appState.showSidebar else { return }
+                while !Task.isCancelled {
+                    await appState.openChatSyncTick()
+                    try? await Task.sleep(for: .seconds(5))
+                }
             }
             .onPreferenceChange(ChatRenderedScrollContentPreferenceKey.self) { value in
                 guard let value else { return }
@@ -3434,6 +3446,8 @@ struct ChatLiveTurnRows: View {
     var currentToolName: String?
     /// When the turn began, for the working line's timer.
     var turnStartedAt: Date?
+    /// Another device is getting this chat's reply.
+    var repliesElsewhere = false
 
     var body: some View {
         // Live reasoning renders from the projection, not the settled
@@ -3462,11 +3476,12 @@ struct ChatLiveTurnRows: View {
             .id("streaming")
         }
 
-        if isBusy && projection.streamingText.isEmpty {
+        if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
             ChatWorkingLine(
                 currentToolName: currentToolName,
                 isThinking: projection.reasoningSegment != nil,
-                startedAt: turnStartedAt
+                startedAt: turnStartedAt,
+                repliesElsewhere: repliesElsewhere
             )
             .id("typing")
         }

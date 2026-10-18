@@ -658,6 +658,12 @@ struct LiveSessionStatus: Equatable {
     /// Upstream `_session_live_status`: "working" | "waiting" | "starting" | "idle".
     let status: String
     let lastActive: TimeInterval?
+    /// How many rows the runtime's history holds. It moves when a turn ends,
+    /// whichever device ran it.
+    let messageCount: Int?
+    /// The running turn's reply so far, else its prompt (or the last row's
+    /// text when idle): whitespace-collapsed, at most 160 characters.
+    let preview: String?
 
     /// Authoritative committed-busy state. Upstream `_session_live_status`
     /// reports "working" while the turn thread runs and "waiting" while a
@@ -672,11 +678,20 @@ struct LiveSessionStatus: Equatable {
     /// `prompt.submit` outcome is the authority for busy-input semantics.
     var isRunning: Bool { status == "working" || status == "waiting" }
 
-    init(runtimeSessionId: String, storedSessionId: String, status: String, lastActive: TimeInterval? = nil) {
+    init(
+        runtimeSessionId: String,
+        storedSessionId: String,
+        status: String,
+        lastActive: TimeInterval? = nil,
+        messageCount: Int? = nil,
+        preview: String? = nil
+    ) {
         self.runtimeSessionId = runtimeSessionId
         self.storedSessionId = storedSessionId
         self.status = status
         self.lastActive = lastActive
+        self.messageCount = messageCount
+        self.preview = preview
     }
 
     init?(from object: [String: AnyCodable]) {
@@ -687,7 +702,9 @@ struct LiveSessionStatus: Equatable {
             runtimeSessionId: runtimeId,
             storedSessionId: object["session_key"]?.stringValue ?? "",
             status: object["status"]?.stringValue ?? "idle",
-            lastActive: object["last_active"]?.doubleValue
+            lastActive: object["last_active"]?.doubleValue,
+            messageCount: HermesClient.exactIntValue(object["message_count"]),
+            preview: object["preview"]?.stringValue
         )
     }
 }
