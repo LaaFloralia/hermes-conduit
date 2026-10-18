@@ -236,6 +236,7 @@ struct ConduitApp: App {
             .background(WindowAccentTint(choice: accentChoice))
 #if DEBUG
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
+            .modifier(ScreenshotCallFixtureModifier(appState: appState))
 #endif
             // Links Conduit writes into chats (a voice call's job link)
             // open inside the app; every other link goes to the system.
