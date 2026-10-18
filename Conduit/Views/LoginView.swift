@@ -253,21 +253,13 @@ struct AuthWebView: UIViewRepresentable {
         let normalized = try? ConnectionURLPolicy.normalizedBaseURL(url)
         let config = WKWebViewConfiguration()
         config.websiteDataStore = DashboardCookiePersistence.webKitStore(for: websiteDataStoreIdentifier)
-        config.userContentController.add(context.coordinator, name: "ticket")
-        if let normalized,
-           let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalized),
-           !script.isEmpty {
-            config.userContentController.addUserScript(
-                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
-            )
-        }
+        config.userContentController.add(context.coordinator, contentWorld: DashboardScriptWorld.world, name: "ticket")
         if let normalized {
-            let script = CustomHeaderStore.shared.fetchInjectionUserScript(expectedBaseURL: normalized)
-            if !script.isEmpty {
-                config.userContentController.addUserScript(
-                    WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
-                )
-            }
+            DashboardScriptWorld.installProxyHeaderScripts(
+                into: config.userContentController,
+                cloudflareAccess: cloudflareAccess,
+                normalizedBaseURL: normalized
+            )
         }
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
@@ -317,13 +309,17 @@ struct AuthWebView: UIViewRepresentable {
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "ticket")
+        uiView.configuration.userContentController.removeScriptMessageHandler(
+            forName: "ticket",
+            contentWorld: DashboardScriptWorld.world
+        )
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
 
+    @MainActor
     class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let parent: AuthWebView
         private var hasDeliveredTicket = false
@@ -370,7 +366,7 @@ struct AuthWebView: UIViewRepresentable {
             })();
             true;
             """
-            webView.evaluateJavaScript(js)
+            webView.evaluateJavaScript(js, in: nil, in: DashboardScriptWorld.world, completionHandler: nil)
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

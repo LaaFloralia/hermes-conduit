@@ -376,6 +376,39 @@ enum DashboardTicketBridgeError: LocalizedError {
     ]
 }
 
+/// The isolated JavaScript world that holds the dashboard's proxy headers
+/// (the Cloudflare Access service token and any custom headers) and every
+/// script Conduit itself runs in a dashboard WebView. The dashboard page's
+/// own scripts run in the page world, which shares the DOM but not
+/// JavaScript globals with this one: they can't read the header values,
+/// re-wrap the `fetch` that attaches them, or post to Conduit's message
+/// handlers. The page's own requests carry the session cookies the first
+/// native, header-bearing navigation earned, as its scripts and styles
+/// always did.
+@MainActor
+enum DashboardScriptWorld {
+    static let world = WKContentWorld.world(name: "ConduitDashboard")
+
+    /// Adds the header-attaching document-start scripts for this dashboard
+    /// to the isolated world. Cleartext dashboards get none.
+    static func installProxyHeaderScripts(
+        into controller: WKUserContentController,
+        cloudflareAccess: CloudflareAccessCredentials?,
+        normalizedBaseURL: String,
+        headerStore: CustomHeaderStore = .shared
+    ) {
+        let scripts = [
+            cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL) ?? "",
+            headerStore.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL),
+        ]
+        for script in scripts where !script.isEmpty {
+            controller.addUserScript(
+                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: world)
+            )
+        }
+    }
+}
+
 /// WKUserContentController retains its script message handlers strongly, so
 /// registering the bridge directly forms a cycle (bridge → webView →
 /// configuration → userContentController → bridge) that `deinit` can never
@@ -597,20 +630,18 @@ final class DashboardTicketBridge: NSObject {
         // in. Nil dashboards (legacy/test construction) keep the default
         // store.
         configuration.websiteDataStore = DashboardCookiePersistence.webKitStore(for: self.dashboardID)
-        if let script = cloudflareAccess?.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL), !script.isEmpty {
-            configuration.userContentController.addUserScript(
-                WKUserScript(source: script, injectionTime: .atDocumentStart, forMainFrameOnly: true)
-            )
-        }
-        let extraHeaderScript = CustomHeaderStore.shared.fetchInjectionUserScript(expectedBaseURL: normalizedBaseURL)
-        if !extraHeaderScript.isEmpty {
-            configuration.userContentController.addUserScript(
-                WKUserScript(source: extraHeaderScript, injectionTime: .atDocumentStart, forMainFrameOnly: true)
-            )
-        }
+        DashboardScriptWorld.installProxyHeaderScripts(
+            into: configuration.userContentController,
+            cloudflareAccess: cloudflareAccess,
+            normalizedBaseURL: normalizedBaseURL
+        )
         self.webView = WKWebView(frame: .zero, configuration: configuration)
         super.init()
-        configuration.userContentController.add(WeakScriptMessageHandler(self), name: "dashboard-response")
+        configuration.userContentController.add(
+            WeakScriptMessageHandler(self),
+            contentWorld: DashboardScriptWorld.world,
+            name: "dashboard-response"
+        )
         webView.navigationDelegate = self
         self.requestAuthorizer.cookieTicketMinter = { [weak self] in
             guard let self else { throw DashboardTicketBridgeError.notReady }
@@ -651,7 +682,9 @@ final class DashboardTicketBridge: NSObject {
         for deadline in requestDeadlines.values { deadline.cancel() }
         requestDeadlines.removeAll()
         pendingRequests.rejectAll(with: DashboardTicketBridgeError.notReady)
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "dashboard-response")
+        // The bridge registers exactly one handler; removing them all keeps
+        // this nonisolated deinit off the main-actor `DashboardScriptWorld`.
+        webView.configuration.userContentController.removeAllScriptMessageHandlers()
     }
 
     /// Saves the dashboard's current WebKit cookies as its Keychain mirror.
@@ -971,9 +1004,11 @@ final class DashboardTicketBridge: NSObject {
                 })();
                 true;
                 """
-                webView.evaluateJavaScript(script) { [weak self] _, error in
+                // Runs in the isolated world, where the header scripts
+                // attach the proxy headers to this fetch.
+                webView.evaluateJavaScript(script, in: nil, in: DashboardScriptWorld.world) { [weak self] result in
                     guard let self else { return }
-                    guard let error else { return }
+                    guard case .failure = result else { return }
                     // The injected IIFE funnels every JS-level failure into
                     // the message channel, so a completion error means the
                     // engine never ran the script — a dead or stalled view.
