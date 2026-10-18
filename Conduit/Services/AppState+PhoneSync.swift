@@ -202,7 +202,7 @@ extension AppState {
         } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
             pending.clear()
         } catch {
-            Self.phoneSyncLog.info("Phone data deletion still pending: \(PhoneSyncEngine.describe(error), privacy: .public)")
+            Self.phoneSyncLog.info("Phone data deletion still pending: \(LogRedaction.redactingURLs(PhoneSyncEngine.describe(error)), privacy: .public)")
             return error
         }
         return nil

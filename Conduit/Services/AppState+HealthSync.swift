@@ -197,7 +197,7 @@ extension AppState {
             // No health sync on this host any more: nothing left to delete.
             pending.clear()
         } catch {
-            Self.healthSyncLog.info("Health deletion still pending: \(HealthSyncEngine.describe(error), privacy: .public)")
+            Self.healthSyncLog.info("Health deletion still pending: \(LogRedaction.redactingURLs(HealthSyncEngine.describe(error)), privacy: .public)")
             return error
         }
         return nil

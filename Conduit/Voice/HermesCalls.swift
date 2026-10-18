@@ -965,7 +965,7 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
                     } catch {
                         // Offline or a busy host: this one and the rest wait.
                         guard refusesForGood(error) else { return }
-                        hermesCallsLogger.notice("Hermes call outcome dropped for \(entry.callID, privacy: .public): \(String(describing: error), privacy: .public)")
+                        hermesCallsLogger.notice("Hermes call outcome dropped for \(entry.callID, privacy: .public): \(LogRedaction.describing(error), privacy: .public)")
                     }
                 }
                 // Read again: others may have been recorded meanwhile.
@@ -1063,7 +1063,7 @@ enum HermesCallNotifications {
         do {
             try await center.add(request)
         } catch {
-            hermesCallsLogger.error("Hermes call notification not posted: \(error.localizedDescription, privacy: .public)")
+            hermesCallsLogger.error("Hermes call notification not posted: \(LogRedaction.message(error), privacy: .public)")
         }
     }
 

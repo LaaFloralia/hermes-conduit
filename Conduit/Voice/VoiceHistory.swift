@@ -465,7 +465,7 @@ final class VoiceTranscriptRecorder {
             voiceHistoryLogger.notice("This Hermes host can't store voice transcripts; not saving the call")
             isDisabled = true
         } catch {
-            voiceHistoryLogger.error("Saving a voice transcript failed: \(String(describing: error), privacy: .public)")
+            voiceHistoryLogger.error("Saving a voice transcript failed: \(LogRedaction.describing(error), privacy: .public)")
         }
     }
 
