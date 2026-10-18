@@ -4206,6 +4206,7 @@ final class AppState: ObservableObject {
     private var openChatSync = OpenChatSync()
     private var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)?
     private(set) var openChatSyncRead: Task<Void, Never>?
+    private var openChatSyncReadID: UUID?
     /// Another device is getting the reply of a turn in the open chat; its
     /// working line says so.
     @Published private(set) var activeChatRepliesElsewhere = false
@@ -17195,10 +17196,7 @@ final class AppState: ObservableObject {
         guard let sessionId = activeSessionId, !sessionId.isEmpty,
               activeRoomSurface == nil,
               botConversationProfile(for: sessionId) == nil,
-              turnState == .idle || turnState == .running else {
-            setActiveChatRepliesElsewhere(false)
-            return nil
-        }
+              turnState == .idle || turnState == .running else { return nil }
         var ownTexts: [String] = []
         var hasRunningTool = false
         // The running turn's own rows: back to its user message.
@@ -17221,8 +17219,11 @@ final class AppState: ObservableObject {
 
     private func observeOpenChat(in snapshot: (rows: [LiveSessionStatus], at: Date), chatVisible: Bool) {
         // A read or a reconciliation already under way owns the transcript.
-        guard openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing,
-              let local = openChatLocalTurn() else { return }
+        guard let local = openChatLocalTurn() else {
+            setActiveChatRepliesElsewhere(false)
+            return
+        }
+        guard openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing else { return }
         let rows = openChatRegistryRows(snapshot.rows, sessionID: local.sessionID)
         let action = openChatSync.observe(
             Self.openChatRegistryRow(rows),
@@ -17276,9 +17277,17 @@ final class AppState: ObservableObject {
         expectsRunning: Bool,
         _ read: @escaping @MainActor (AppState) async -> Void
     ) {
+        let readID = UUID()
+        openChatSyncReadID = readID
         openChatSyncRead = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.openChatSyncRead = nil }
+            // Clears its own fence only.
+            defer {
+                if self.openChatSyncReadID == readID {
+                    self.openChatSyncRead = nil
+                    self.openChatSyncReadID = nil
+                }
+            }
             // The chat or its turn changed since the snapshot: nothing to do.
             guard self.activeSessionId == sessionID, self.reconciliation == nil,
                   self.turnState == (expectsRunning ? .running : .idle) else { return }
