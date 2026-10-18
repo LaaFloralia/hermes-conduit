@@ -74,6 +74,7 @@
     "SelectionObserverUITests": 102.7,
     "SessionCatalogCacheTests": 0.009,
     "SessionCatalogLoadTests": 3.0,
+    "SessionContentSearchTests": 3.0,
     "SessionPresentationCacheTests": 0.618,
     "SessionRenameTests": 0.066,
     "SessionYoloPersistenceTests": 0.396,
