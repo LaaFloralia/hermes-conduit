@@ -357,7 +357,19 @@ struct LiveVoiceCallSheet: View {
 
     /// The captions under the orb: the last two lines said.
     static func captionLines(from transcript: [VoiceConversationTranscriptEntry]) -> [VoiceConversationTranscriptEntry] {
-        Array(transcript.suffix(2))
+        transcript.suffix(2).map(captionLine)
+    }
+
+    /// A reply as its caption shows it: Hermes' `@session:<id>` chat links
+    /// read as the chat's name, and Markdown marks drop ("**Québec**" reads
+    /// "Québec").
+    /// The links go first, so one written as inline code stays as written.
+    /// What the user said shows as heard.
+    static func captionLine(_ entry: VoiceConversationTranscriptEntry) -> VoiceConversationTranscriptEntry {
+        guard entry.speaker == .assistant else { return entry }
+        var line = entry
+        line.text = PreviewText.plain(HermesSessionReference.plain(entry.text))
+        return line
     }
 
     // MARK: Transcript
