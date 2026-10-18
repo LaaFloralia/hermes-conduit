@@ -396,7 +396,7 @@ final class CarPlayVoiceCoordinator {
                     return
                 }
                 guard success, error == nil else {
-                    carPlayLogger.error("root template install failed: \(String(describing: error), privacy: .public)")
+                    carPlayLogger.error("root template install failed: \(LogRedaction.describing(error), privacy: .public)")
                     // A replacement that failed leaves the previous
                     // template on the car, so it stays the one the car is
                     // driven through; the next change of controls tries

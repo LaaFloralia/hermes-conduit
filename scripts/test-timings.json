@@ -55,6 +55,7 @@
     "KanbanV3BTests": 0.186,
     "KanbanV3CTests": 0.096,
     "KanbanV3DTests": 2.451,
+    "LogRedactionTests": 0.05,
     "LoginFlowSignInDecisionTests": 1.0,
     "LoginKeyboardUITests": 129.6,
     "MarkdownFallbackTests": 0.012,

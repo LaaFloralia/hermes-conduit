@@ -2,7 +2,7 @@ import Foundation
 import OSLog
 
 private let conversationIdentityLog = Logger(
-    subsystem: "com.milim.conduit",
+    subsystem: "com.milim.relay",
     category: "ConversationIdentityIndex"
 )
 

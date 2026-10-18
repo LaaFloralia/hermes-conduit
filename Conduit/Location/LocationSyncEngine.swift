@@ -176,7 +176,7 @@ struct LocationSyncStateStore {
                 try (folder as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
             } catch {
                 Logger(subsystem: "com.milim.relay", category: "location")
-                    .error("Location state folder backup exclusion failed: \(error.localizedDescription, privacy: .public)")
+                    .error("Location state folder backup exclusion failed: \(LogRedaction.message(error), privacy: .public)")
             }
             try JSONEncoder().encode(state).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
@@ -281,7 +281,7 @@ final class LocationSyncEngine: ObservableObject {
             acknowledge(batch, answer: answer)
             return .sent
         } catch let error as DashboardTicketBridgeError {
-            Self.log.info("Location send failed: \(Self.describe(error), privacy: .public)")
+            Self.log.info("Location send failed: \(LogRedaction.redactingURLs(Self.describe(error)), privacy: .public)")
             switch error {
             case .signInRequired:
                 state.pause = .signInRequired
@@ -313,7 +313,7 @@ final class LocationSyncEngine: ObservableObject {
             return .failed
         } catch {
             lastError = Self.describe(error)
-            Self.log.info("Location send failed: \(Self.describe(error), privacy: .public)")
+            Self.log.info("Location send failed: \(LogRedaction.redactingURLs(Self.describe(error)), privacy: .public)")
             return .failed
         }
     }

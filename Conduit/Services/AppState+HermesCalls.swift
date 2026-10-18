@@ -62,7 +62,7 @@ extension AppState {
             hermesCallsStatus = status
             hermesCallsStatusKey = key
         } catch {
-            hermesCallsStateLogger.notice("Call settings not read: \(error.localizedDescription, privacy: .public)")
+            hermesCallsStateLogger.notice("Call settings not read: \(LogRedaction.message(error), privacy: .public)")
         }
     }
 
@@ -89,7 +89,7 @@ extension AppState {
             }
             return true
         } catch {
-            hermesCallsStateLogger.error("Call settings not saved: \(error.localizedDescription, privacy: .public)")
+            hermesCallsStateLogger.error("Call settings not saved: \(LogRedaction.message(error), privacy: .public)")
             errorMessage = AppLocalization.string("Couldn't save Hermes' call settings. Check your connection and try again.")
             return false
         }
@@ -429,7 +429,7 @@ extension AppState {
                 do {
                     try await client.setPresence(profile: profile, seconds: Self.hermesCallPresenceSeconds)
                 } catch {
-                    hermesCallsStateLogger.notice("Call presence not set: \(error.localizedDescription, privacy: .public)")
+                    hermesCallsStateLogger.notice("Call presence not set: \(LogRedaction.message(error), privacy: .public)")
                 }
                 do { try await Task.sleep(for: Self.hermesCallPresenceRenewal) } catch { return }
                 // A call that ended some other way lets go too.

@@ -278,7 +278,7 @@ final class LiveTurnActivities {
                 observe(event, sessionID: primary)
             }
         } catch {
-            liveActivityLog.notice("Live Activity not started: \(error.localizedDescription, privacy: .public)")
+            liveActivityLog.notice("Live Activity not started: \(LogRedaction.message(error), privacy: .public)")
         }
     }
 
