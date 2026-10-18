@@ -228,6 +228,7 @@ struct ConduitApp: App {
             // The accent colours resolve the choice from this trait, so a
             // new pick redraws in place: no view is rebuilt.
             .environment(\.conduitAccent, accentChoice)
+            .background(WindowAccentTint(choice: accentChoice))
 #if DEBUG
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
 #endif
