@@ -3271,6 +3271,10 @@ final class AppState: ObservableObject {
                 session.onTurnsDropped = { turns.dropTurn() }
                 turns.onDelta = { [weak session] turnID, text in session?.sendTurnDelta(turnID, text: text) }
                 turns.onDone = { [weak session] turnID in session?.sendTurnDone(turnID) }
+                turns.onVisual = { [weak self] markdown in
+                    self?.voiceBackgroundJobSupervisor.showOnScreen(
+                        title: AppLocalization.string("From Hermes"), markdown: markdown, evenIfHidden: true) != nil
+                }
                 return session
             },
             availability: {
@@ -9831,6 +9835,7 @@ final class AppState: ObservableObject {
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
         showVoiceSheet = false
+        clearClassicVoiceCards()
     }
 
     /// Internal so the saved-dashboard migration can normalize the legacy
@@ -11133,6 +11138,7 @@ final class AppState: ObservableObject {
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
         showVoiceSheet = false
+        clearClassicVoiceCards()
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
         voiceTranscriptionMode = .hermes
@@ -11939,6 +11945,7 @@ final class AppState: ObservableObject {
         stopGrokLiveConversation()
         stopLocalLiveConversation()
         showVoiceSheet = false
+        clearClassicVoiceCards()
         projects = []
         supportsProjects = false
         projectsLoading = false
@@ -20266,8 +20273,18 @@ final class AppState: ObservableObject {
     /// The settings Hermes may change, and the changes it asked for
     /// (AgentSettings.swift).
     lazy var agentSettings = AgentSettingsSync(defaults: defaults)
-    /// Confirmations Hermes asks this iPhone to present (PresentedScreens.swift).
-    lazy var presentedScreens = PresentedScreensSync(defaults: defaults)
+    /// Confirmations Hermes asks this iPhone to present (PresentedScreens.swift),
+    /// and the cards it shows on a voice conversation's screen.
+    lazy var presentedScreens: PresentedScreensSync = {
+        let sync = PresentedScreensSync(defaults: defaults)
+        sync.onCards = { [weak self] cards in self?.showPresentedCards(cards) }
+        return sync
+    }()
+    /// A card Hermes showed during a Classic voice conversation, open over it.
+    @Published var classicVoiceCard: PresentedCard?
+    /// The cards `classicVoiceCard` holds, so ones arriving while it's open
+    /// join it instead of replacing it.
+    var classicVoiceCardParts: [PresentedCard] = []
     /// The Go confirmation for Apple Maps that opens without a tap, and
     /// until when: Hermes was just seen asking for it in the chat on screen.
     var mapsNavigateExpected: (promptID: String, until: Date)?
@@ -24327,6 +24344,7 @@ final class AppState: ObservableObject {
             stopLocalLiveConversation()
             retireVoiceBackgroundJobs()
             showVoiceSheet = false
+            clearClassicVoiceCards()
             suspendedVoiceConversation = nil
             voiceSheetShouldAutoListen = false
             voiceControllerSessionProfile = nil
@@ -24593,6 +24611,7 @@ final class AppState: ObservableObject {
         stopLocalLiveConversation()
         retireVoiceBackgroundJobs()
         showVoiceSheet = false
+        clearClassicVoiceCards()
         suspendedVoiceConversation = nil
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
@@ -26053,6 +26072,7 @@ final class AppState: ObservableObject {
         voiceBackgroundJobSupervisor.observe(event)
         // A Local Live call's reply streams back to the speech server.
         if isLocalLiveActive { localLiveTurns.observe(event) }
+        notePresentedCardEvent(event)
         if case .sessionTitle(let runtimeSessionId, let storedSessionId, let title) = event {
             let taskKey = Self.secondaryTitleRecoveryTaskKey(
                 profile: activeProfile,
@@ -28188,6 +28208,7 @@ final class AppState: ObservableObject {
             voiceSheetShouldAutoListen = false
             voiceControllerSessionProfile = nil
             showVoiceSheet = false
+            clearClassicVoiceCards()
         }
         return true
     }
@@ -29004,11 +29025,19 @@ final class AppState: ObservableObject {
         suspendVoiceConversationForBackground()
     }
 
+    /// Drops the Classic voice card sheet and anything waiting to join it,
+    /// so nothing from the old call, account or profile shows afterwards.
+    func clearClassicVoiceCards() {
+        classicVoiceCard = nil
+        classicVoiceCardParts = []
+    }
+
     func closeVoiceConversation() {
         // Explicit Close (button, swipe, spoken End Conversation) beats any
         // lifecycle suspension: the conversation is not restorable.
         suspendedVoiceConversation = nil
         voiceSheetShouldAutoListen = false
+        clearClassicVoiceCards()
         // Live-mute persistence obeys the PR #159 authority rule: the
         // controller's mute wins only for the profile that owns the session.
         // A same-profile close that arrives after the controller was
