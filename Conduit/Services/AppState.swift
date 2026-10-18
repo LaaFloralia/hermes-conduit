@@ -5658,6 +5658,13 @@ final class AppState: ObservableObject {
     /// drawer's nests) can re-resolve parents the row list alone doesn't
     /// show changing.
     @Published private(set) var voiceCallChatLinksRevision = 0
+    #if DEBUG
+    /// Test seam: a publish that changes something every transcript row
+    /// reads (`ChatRowState`) without changing any row's content.
+    func bumpVoiceCallChatLinksRevisionForTesting() {
+        voiceCallChatLinksRevision &+= 1
+    }
+    #endif
     private var voiceTagsFetchedAt: [String: Date] = [:]
     private var voiceTagRefreshTask: Task<Void, Never>?
     static let voiceTagRefreshInterval: TimeInterval = 15
