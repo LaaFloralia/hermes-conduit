@@ -380,7 +380,10 @@ extension AppState {
     /// the old row showed there (a saved call's engine, the call a job came
     /// from), else the model.
     func v2RowPreview(for session: SessionSummary) -> String {
-        if let preview = session.preview, !preview.isEmpty { return preview }
+        if let preview = session.preview {
+            let plain = PreviewText.plain(preview)
+            if !plain.isEmpty { return plain }
+        }
         return voiceSessionDetail(for: session) ?? session.model
     }
 

@@ -69,6 +69,7 @@
     "ModelPickerTests": 0.036,
     "NativeAuthClientTests": 0.087,
     "OfflineChatCacheTests": 3.6,
+    "PreviewTextTests": 0.05,
     "ProfileModelDefaultsTests": 0.05,
     "ProfileTimeZoneTests": 3.0,
     "RedirectCompatibilityTests": 1.0,
