@@ -129,6 +129,9 @@ struct ChatResumeLifecycleOperations {
     /// harness never reaches the network for bot evidence; production runs the
     /// ordinary `refreshBotRoster()` (single-flight, epoch-fenced).
     var loadBotRoster: (@MainActor () async -> Void)?
+    /// Side-agent start (`prompt.background` / `prompt.btw`). Not an init
+    /// parameter: tests set it on the value.
+    var startSideAgent: (@MainActor (HermesClient, SideAgentKind, String, String) async throws -> String?)?
     var compressSession: (@MainActor (
         HermesClient,
         String,
@@ -22669,7 +22672,8 @@ final class AppState: ObservableObject {
         SlashCommand(name: "help", aliases: ["commands"], description: AppLocalization.string("Show available slash commands"), category: AppLocalization.string("Session")),
         SlashCommand(name: "approvals", description: AppLocalization.string("Show or set approval mode"), category: "Hermes"),
         SlashCommand(name: "agents", aliases: ["tasks"], description: AppLocalization.string("Show active sessions and tasks"), category: "Hermes"),
-        SlashCommand(name: "background", aliases: ["bg", "btw"], description: AppLocalization.string("Run a prompt in the background"), category: "Hermes"),
+        SlashCommand(name: "background", aliases: ["bg"], description: AppLocalization.string("Run a prompt in the background"), category: "Hermes"),
+        SlashCommand(name: "btw", description: AppLocalization.string("Ask a side question about this chat"), category: "Hermes"),
         SlashCommand(name: "compress", aliases: ["compact"], description: AppLocalization.string("Compress this conversation context"), category: "Hermes"),
         SlashCommand(name: "debug", description: AppLocalization.string("Create a debug report"), category: "Hermes"),
         SlashCommand(name: "goal", description: AppLocalization.string("Manage this session's standing goal"), category: "Hermes"),
@@ -22944,6 +22948,37 @@ final class AppState: ObservableObject {
             cancelChatResumeRestoration()
             appendSlashOutput(Self.formatSlashHelp(), context: submissionContext)
             return
+        case "background", "bg", "btw":
+            // Hermes' side-agent RPCs (Desktop and TUI parity). Through
+            // slash.exec the slash worker prints the answer after the call
+            // has returned, so it never reaches the chat. Without text, or
+            // on a gateway without the RPCs, the slash path below answers.
+            guard !command.argument.isEmpty else { break }
+            let kind: SideAgentKind = command.name == "btw" ? .btw : .background
+            cancelChatResumeRestoration()
+            do {
+                if let startSideAgent = chatResumeLifecycleOperations.startSideAgent {
+                    _ = try await startSideAgent(client, kind, sessionId, command.argument)
+                } else {
+                    _ = try await client.startSideAgent(kind, sessionId: sessionId, text: command.argument)
+                }
+                appendSlashOutput(
+                    kind == .btw
+                        ? AppLocalization.string("Answering from a snapshot of this chat. The answer will appear here.")
+                        : AppLocalization.string("Started in the background. The answer will appear here."),
+                    context: submissionContext
+                )
+                return
+            } catch where HermesClient.isMissingRPCMethod(error) {
+                break
+            } catch {
+                guard isCurrentComposerSubmission(submissionContext) else { return }
+                appendSlashOutput(
+                    AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))"),
+                    context: submissionContext
+                )
+                return
+            }
         case "compress", "compact":
             // Dedicated `session.compress` RPC (upstream Desktop parity). Must
             // not ride the generic slash path: compression legitimately
@@ -23136,6 +23171,17 @@ final class AppState: ObservableObject {
             author: nil
         ))
         cacheMessagePresentation()
+    }
+
+    /// `[btw "question"]` / `[bg task]` over the answer, as Desktop and the
+    /// TUI label it.
+    static func sideAgentNote(kind: SideAgentKind, taskId: String, text: String, question: String?) -> String {
+        let header: String
+        switch kind {
+        case .btw: header = question.map { "[btw \"\($0)\"]" } ?? "[btw]"
+        case .background: header = taskId.isEmpty ? "[bg]" : "[bg \(taskId)]"
+        }
+        return "\(header)\n\(text)"
     }
 
     private static func formatSlashHelp() -> String {
@@ -27517,7 +27563,8 @@ final class AppState: ObservableObject {
                 .inputPrompt(let sessionId, _), .inputPromptExpire(let sessionId, _, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
-                .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _):
+                .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _),
+                .sideAgentComplete(let sessionId, _, _, _, _):
             // Unreachable through bufferIfReconciling (status.update returns
             // early); kept for switch completeness.
             return sessionId
@@ -27903,6 +27950,11 @@ final class AppState: ObservableObject {
             // Lifecycle bookkeeping — handled in handleStreamEvent before
             // the active-session gate; never a transcript projection.
             break
+
+        case .sideAgentComplete(_, let kind, let taskId, let text, let question):
+            // Beside the main turn: a note in the chat, as Desktop and the
+            // TUI show it, leaving the stream and running state alone.
+            appendSlashOutput(Self.sideAgentNote(kind: kind, taskId: taskId, text: text, question: question))
 
         case .unparsed:
             break

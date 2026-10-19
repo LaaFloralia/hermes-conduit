@@ -422,7 +422,22 @@ enum StreamEvent {
     /// edges drive the compression spinner/state; unrelated kinds are typed
     /// as `.other` so they can never masquerade as compaction events.
     case statusUpdate(sessionId: String, kind: StatusUpdateKind, text: String?)
+    /// `background.complete` / `btw.complete`: a side agent's answer (or
+    /// `error: …`), on the session that started it.
+    case sideAgentComplete(sessionId: String, kind: SideAgentKind, taskId: String, text: String, question: String?)
     case unparsed(payload: [String: Any])
+}
+
+/// Hermes' side agents. Each starts with its own RPC, which answers with a
+/// task id at once; the answer comes later as its completion event.
+enum SideAgentKind: Equatable {
+    /// `/background`: a separate agent runs the prompt.
+    case background
+    /// `/btw`: a side question answered over a snapshot of the chat,
+    /// leaving the conversation itself untouched.
+    case btw
+
+    var method: String { self == .btw ? "prompt.btw" : "prompt.background" }
 }
 
 /// `status.update` `payload.kind` values Hermes emits on the compression
@@ -2674,6 +2689,16 @@ final class HermesClient: ObservableObject {
             "session_id": sessionId,
             "command": cleaned
         ])
+    }
+
+    /// Starts a side agent (`prompt.background` / `prompt.btw`) and
+    /// returns its task id.
+    func startSideAgent(_ kind: SideAgentKind, sessionId: String, text: String) async throws -> String? {
+        let result = try await rpc(kind.method, params: [
+            "session_id": sessionId,
+            "text": text
+        ])
+        return result.objectValue?["task_id"]?.stringValue
     }
 
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {

@@ -365,6 +365,31 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(max, 0)
     }
 
+    // MARK: - background.complete / btw.complete
+
+    func testSideAgentCompletions() {
+        guard case .sideAgentComplete(let sessionId, let kind, let taskId, let text, let question) = parse(#"""
+        {"type": "btw.complete", "session_id": "s1", "payload": {"task_id": "btw_1a2b3c", "question": "what did we decide?", "text": "Ship on Friday."}}
+        """#) else { return XCTFail("Expected sideAgentComplete") }
+        XCTAssertEqual(sessionId, "s1")
+        XCTAssertEqual(kind, .btw)
+        XCTAssertEqual(taskId, "btw_1a2b3c")
+        XCTAssertEqual(text, "Ship on Friday.")
+        XCTAssertEqual(question, "what did we decide?")
+
+        guard case .sideAgentComplete(_, let bgKind, let bgTask, let bgText, let bgQuestion) = parse(#"""
+        {"type": "background.complete", "session_id": "s1", "payload": {"task_id": "bg_4d5e6f", "text": "error: boom"}}
+        """#) else { return XCTFail("Expected sideAgentComplete") }
+        XCTAssertEqual(bgKind, .background)
+        XCTAssertEqual(bgTask, "bg_4d5e6f")
+        XCTAssertEqual(bgText, "error: boom")
+        XCTAssertNil(bgQuestion)
+
+        XCTAssertNil(parse(#"""
+        {"type": "btw.complete", "session_id": "s1", "payload": {"task_id": "btw_1", "text": "  "}}
+        """#))
+    }
+
     // MARK: - session.usage
 
     /// Hermes pushes live usage as `session.usage` once a second during a
