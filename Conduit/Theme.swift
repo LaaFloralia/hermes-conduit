@@ -174,12 +174,6 @@ extension UIColor {
         traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
     }
 
-    /// The accent of one fixed choice, light or dark with the trait. For
-    /// places outside the root's accent trait: the window itself.
-    static func conduitAccent(_ choice: ConduitAccentChoice) -> UIColor {
-        UIColor { traits in choice.color(dark: traits.userInterfaceStyle == .dark) }
-    }
-
     /// See ConduitAccentChoice.selectionColorOnBubble.
     static let conduitSelectionOnAccent = UIColor { traits in
         traits.conduitAccent.selectionColorOnBubble(dark: traits.userInterfaceStyle == .dark)
@@ -285,15 +279,20 @@ enum ConduitBackdropMotionPolicy {
     /// detail screens: they hold the static composition so only the main chat,
     /// the persistent sidebar column and sign-in run a timeline, rather than
     /// one per stacked layer while a sheet is open.
+    ///
+    /// `idle` is `InteractionIdleState.isIdle`: nothing touched, typed or
+    /// running for a couple of minutes. An iPad that never auto-locks would
+    /// otherwise draw the drift all night with nobody watching.
     static func shouldAnimate(
         drifts: Bool,
         sceneIsActive: Bool,
         reduceMotion: Bool,
         lowPowerMode: Bool,
+        idle: Bool,
         thermalState: ProcessInfo.ThermalState
     ) -> Bool {
         let thermalStateAllowsMotion = thermalState == .nominal || thermalState == .fair
-        return drifts && sceneIsActive && !reduceMotion && !lowPowerMode && thermalStateAllowsMotion
+        return drifts && sceneIsActive && !reduceMotion && !lowPowerMode && !idle && thermalStateAllowsMotion
     }
 
     /// One smooth out-and-back drift over 26 seconds, matching the previous
@@ -353,6 +352,8 @@ struct ConduitBackdrop: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var devicePower = DevicePowerState.shared
+    /// Publishes only when Conduit goes idle or wakes, never per touch.
+    @ObservedObject private var interactionIdle = InteractionIdleState.shared
     @State private var motionClock = ConduitBackdropMotionClock()
     private let drifts: Bool
     /// The warm glow's color. V2 tints it with the active profile's color;
@@ -373,6 +374,7 @@ struct ConduitBackdrop: View {
             sceneIsActive: scenePhase == .active,
             reduceMotion: reduceMotion,
             lowPowerMode: devicePower.isLowPowerModeEnabled,
+            idle: interactionIdle.isIdle,
             thermalState: devicePower.thermalState
         )
     }
@@ -635,10 +637,29 @@ extension View {
     }
 }
 
-/// Gives the window the chosen accent as its tint. System screens Conduit
-/// presents but doesn't draw (the photo picker runs in another process)
-/// take their tint from the window, not from SwiftUI's `.tint`, so without
-/// this they keep the built-in amber AccentColor (#748).
+extension View {
+    /// For the photo picker, which runs in another process and is handed the
+    /// tint of the view presenting it. The app-wide `.conduitAccent` resolves the choice from a
+    /// trait that process never sees, so it falls back to amber there (#748):
+    /// hand it the plain colour of the current pick instead.
+    func conduitOutOfProcessAccentTint() -> some View {
+        modifier(OutOfProcessAccentTint())
+    }
+}
+
+private struct OutOfProcessAccentTint: ViewModifier {
+    @Environment(\.conduitAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.tint(Color(uiColor: accent.color(dark: colorScheme == .dark)))
+    }
+}
+
+/// Gives the window the chosen accent as its tint, for system screens Conduit
+/// presents but doesn't draw. The colour is resolved, not dynamic: a dynamic
+/// one sent to another process loses the pick (#748). It is set again when
+/// the window turns light or dark.
 struct WindowAccentTint: UIViewRepresentable {
     let choice: ConduitAccentChoice
 
@@ -658,13 +679,23 @@ struct WindowAccentTint: UIViewRepresentable {
             didSet { if choice != oldValue { applyTint() } }
         }
 
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TintingView, _) in
+                view.applyTint()
+            }
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
             applyTint()
         }
 
         private func applyTint() {
-            window?.tintColor = .conduitAccent(choice)
+            guard let window else { return }
+            window.tintColor = choice.color(dark: window.traitCollection.userInterfaceStyle == .dark)
         }
     }
 }
