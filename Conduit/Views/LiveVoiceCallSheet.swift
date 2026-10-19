@@ -115,6 +115,8 @@ struct LiveVoiceCallSheet: View {
                 }
                 controls
             }
+            // A wide window keeps the call to a readable column.
+            .readableContentWidth(ReadableWidth.call)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showsTranscript)
         .interactiveDismissDisabled(waitsToStart)
