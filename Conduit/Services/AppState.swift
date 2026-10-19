@@ -4065,6 +4065,10 @@ final class AppState: ObservableObject {
         let messageId: String?
         let finalContent: String
         let reasoning: String?
+        /// The row this turn's `message.interim` sealed with the final text
+        /// already (`message.complete`'s `response_previewed` /
+        /// `response_reused`); the completion settles onto it.
+        let shownRowID: String?
     }
 
     /// One live reasoning segment as projected to the UI: the identity and
@@ -4100,6 +4104,8 @@ final class AppState: ObservableObject {
     private var reasoningPublishTask: Task<Void, Never>?
     private var hasScheduledReasoningPublish = false
     private var streamingBuffer = ""
+    /// The last row a `message.interim` sealed in the running turn.
+    private var interimRowID: String?
     /// Gateway deltas can arrive much faster than SwiftUI can lay out a chat
     /// transcript. Keep the authoritative buffer intact, but publish at a
     /// display-friendly cadence so an active response cannot monopolize the
@@ -27326,7 +27332,7 @@ final class AppState: ObservableObject {
             sessionId = id
         case .messageDelta(let id, _), .reasoningDelta(let id, _):
             sessionId = id
-        case .messageComplete(let id, _, _, _):
+        case .messageComplete(let id, _, _, _, _):
             sessionId = id
         case .toolStart(let id, _, _, _):
             sessionId = id
@@ -27500,7 +27506,8 @@ final class AppState: ObservableObject {
         switch event {
         case .messageStart(let sessionId), .messageDelta(let sessionId, _),
                 .reasoningDelta(let sessionId, _),
-                .messageComplete(let sessionId, _, _, _), .messageError(let sessionId, _),
+                .messageComplete(let sessionId, _, _, _, _), .messageInterim(let sessionId, _, _),
+                .messageError(let sessionId, _),
                 .messageReaction(let sessionId, _, _, _),
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
@@ -27577,18 +27584,27 @@ final class AppState: ObservableObject {
             setRunning(true)
             notifyVoiceAssistant(.delta(sessionID: streamSessionId, text: text))
 
+        case .messageInterim(_, let text, let alreadyStreamed):
+            finalizePendingStreamingCompletion()
+            // Commentary ends the reasoning segment, as a tool start does.
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningSegment()
+            sealInterimCommentary(text, alreadyStreamed: alreadyStreamed)
+            setRunning(true)
+
         case .reasoningDelta(_, let text):
             finalizePendingStreamingCompletion()
             receivedReasoningForCurrentTurn = true
             appendReasoning(text)
             setRunning(true)
 
-        case .messageComplete(_, let messageId, let content, let reasoning):
+        case .messageComplete(_, let messageId, let content, let reasoning, let alreadyShown):
             scheduleStreamingCompletion(
                 sessionId: streamSessionId,
                 messageId: messageId,
                 content: content,
-                reasoning: reasoning
+                reasoning: reasoning,
+                alreadyShown: alreadyShown
             )
             notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content))
 
@@ -30510,7 +30526,8 @@ final class AppState: ObservableObject {
         sessionId: String,
         messageId: String?,
         content: String?,
-        reasoning: String?
+        reasoning: String?,
+        alreadyShown: Bool = false
     ) {
         // messageComplete is a semantic boundary: the thinking card must show
         // its full buffered reasoning immediately, not one cadence later.
@@ -30522,7 +30539,11 @@ final class AppState: ObservableObject {
 
         let finalContent = content ?? streamingBuffer
         let hasPartials = messages.contains { $0.role == .partial }
-        let finalProjection = hasPartials ? streamingBuffer : finalContent
+        let shownRowID = alreadyShown
+            ? interimRowID.flatMap { id in messages.contains { $0.id == id } ? id : nil }
+            : nil
+        // Text already on screen as an interim row is not drawn again as the tail.
+        let finalProjection = hasPartials || shownRowID != nil ? streamingBuffer : finalContent
         let newlyPublishedCharacters = max(finalProjection.count - streamingText.count, 0)
         let recentPublishBurst: Int
         if let lastStreamingPublishDate,
@@ -30539,7 +30560,8 @@ final class AppState: ObservableObject {
             sessionId: sessionId,
             messageId: messageId,
             finalContent: finalContent,
-            reasoning: reasoning
+            reasoning: reasoning,
+            shownRowID: shownRowID
         )
         // The gateway turn is complete immediately; only its final visual tail
         // remains buffered. This keeps Send/Stop/Steer state truthful.
@@ -30580,7 +30602,8 @@ final class AppState: ObservableObject {
             sessionId: pendingStreamingCompletion.sessionId,
             messageId: pendingStreamingCompletion.messageId,
             finalContent: pendingStreamingCompletion.finalContent,
-            reasoning: pendingStreamingCompletion.reasoning
+            reasoning: pendingStreamingCompletion.reasoning,
+            shownRowID: pendingStreamingCompletion.shownRowID
         )
     }
 
@@ -30588,7 +30611,8 @@ final class AppState: ObservableObject {
         sessionId: String,
         messageId: String?,
         finalContent: String,
-        reasoning: String?
+        reasoning: String?,
+        shownRowID: String? = nil
     ) {
         // Reasoning that raced the drain window must not be discarded when
         // the pending completion finalizes.
@@ -30623,6 +30647,13 @@ final class AppState: ObservableObject {
             if !displayContent.isEmpty {
                 messages[existingIndex].content = displayContent
                 messages[existingIndex].rawContent = systemNotice == nil ? nil : finalContent
+            }
+        } else if let shownRowID,
+                  let shownIndex = messages.lastIndex(where: { $0.id == shownRowID }) {
+            // Hermes says this answer is the one its interim already showed.
+            let shownText = displayContent.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !shownText.isEmpty, systemNotice == nil {
+                messages[shownIndex].content = shownText
             }
         } else if !displayContent.isEmpty,
                   (messages.last?.role != displayRole || messages.last?.content != displayContent) {
@@ -30679,7 +30710,35 @@ final class AppState: ObservableObject {
         messages.removeAll { $0.role == .partial }
     }
 
+    /// Seals `message.interim` commentary as its own assistant row, so it
+    /// outlives the partials the completion removes. Streamed commentary is
+    /// already in the buffer (or the partial a boundary flushed it into):
+    /// that copy becomes the row instead of being repeated.
+    private func sealInterimCommentary(_ text: String, alreadyStreamed: Bool) {
+        let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if alreadyStreamed {
+            if !streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                streamingBuffer = ""
+                streamingText = ""
+            } else if messages.last?.role == .partial, messages.last?.content == content {
+                messages.removeLast()
+            }
+        } else {
+            flushStreamingPartial()
+        }
+        let id = "interim-\(Date().timeIntervalSince1970)"
+        messages.append(ChatMessage(
+            id: id,
+            role: .assistant,
+            content: content,
+            timestamp: Self.localTimestamp(),
+            author: activeProfile
+        ))
+        interimRowID = id
+    }
+
     private func clearStreamingText() {
+        interimRowID = nil
         streamingCompletionTask?.cancel()
         streamingCompletionTask = nil
         pendingStreamingCompletion = nil
