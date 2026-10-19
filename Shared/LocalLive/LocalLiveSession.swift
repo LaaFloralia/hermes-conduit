@@ -82,6 +82,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private var socket: GeminiLiveSocket?
     /// Identity of the current connection; frames from any other are ignored.
     private var connectionID = UUID()
+    /// The connection's capture, upsampled as one stream.
+    private var inputUpsampler = GrokInputUpsampler()
     private var receiveTask: Task<Void, Never>?
     private var connectTask: Task<Void, Never>?
     private var setupTimeoutTask: Task<Void, Never>?
@@ -178,7 +180,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             onFailure?()
             return
         }
-        let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message)
+        let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message, upsampler: &inputUpsampler)
         var texts = frames.compactMap { try? LocalLiveProtocol.encode($0) }
         guard texts.count == frames.count else {
             onFailure?()
@@ -282,6 +284,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         socket?.close()
         socket = nil
         connectionID = UUID()
+        inputUpsampler.reset()
         dropTurns()
     }
 
@@ -562,6 +565,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         keepaliveTask?.cancel()
         keepaliveTask = nil
         connectionID = UUID()
+        inputUpsampler.reset()
         dropTurns()
         if let serverClose, GrokLiveSession.isRefusal(serverClose) {
             fail(Self.refusalMessage(serverClose))
