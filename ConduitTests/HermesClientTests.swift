@@ -933,6 +933,73 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testQueueMarksQueuedAndNeverResendsWithoutIt() async throws {
+        // Queue (#842) carries `queued: true`: Hermes keeps the message as
+        // the next turn. A gateway that refuses the key fails the send
+        // rather than getting it without, which would steer or interrupt,
+        // and later Queue sends fail at once. Ordinary sends never carry it.
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete")
+
+        func nextRequest(_ phase: String, after send: () -> Void) async throws -> [String: Any] {
+            let sent = Gate()
+            socket.onSend = { sent.signal() }
+            send()
+            try await sent.wait(phase)
+            return try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+        }
+        func deliver(_ response: [String: Any]) throws {
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        }
+
+        var submitTask: Task<PromptSubmissionOutcome, Error>?
+        let plain = try await nextRequest("an ordinary prompt.submit") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Hi") }
+        }
+        XCTAssertNil(try XCTUnwrap(plain["params"] as? [String: Any])["queued"])
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(plain["id"] as? Int), "result": ["status": "streaming"]])
+        _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the ordinary prompt.submit response")
+
+        let first = try await nextRequest("a queued prompt.submit") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Next", queued: true) }
+        }
+        XCTAssertEqual(try XCTUnwrap(first["params"] as? [String: Any])["queued"] as? Bool, true)
+        try deliver(["jsonrpc": "2.0", "id": try XCTUnwrap(first["id"] as? Int), "result": ["status": "queued"]])
+        let outcome = try await awaitResult(of: try XCTUnwrap(submitTask), "the queued prompt.submit response")
+        XCTAssertEqual(outcome, .queued)
+
+        let refused = try await nextRequest("a queued prompt.submit to a gateway without the key") {
+            submitTask = Task { try await client.sendPrompt("sess-1", text: "Again", queued: true) }
+        }
+        let sentBefore = socket.sentTexts.count
+        try deliver([
+            "jsonrpc": "2.0", "id": try XCTUnwrap(refused["id"] as? Int),
+            "error": [
+                "code": 4000,
+                "message": "invalid params for prompt.submit: queued: Extra inputs are not permitted"
+            ]
+        ])
+        do {
+            _ = try await awaitResult(of: try XCTUnwrap(submitTask), "the refused prompt.submit")
+            XCTFail("A refused Queue must not be sent another way")
+        } catch is HermesClient.QueueUnsupportedError {}
+        XCTAssertEqual(socket.sentTexts.count, sentBefore, "Nothing is resent without the key")
+
+        do {
+            _ = try await client.sendPrompt("sess-1", text: "Once more", queued: true)
+            XCTFail("Later Queue sends fail at once")
+        } catch is HermesClient.QueueUnsupportedError {}
+        XCTAssertEqual(socket.sentTexts.count, sentBefore)
+        client.disconnect()
+    }
+
     func testUnknownParamRefusalMatchesOnlyTheNamedKey() {
         XCTAssertTrue(RpcError(code: 4000, message: "invalid params for prompt.submit: voice_turn: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))
         XCTAssertFalse(RpcError(code: 4000, message: "invalid params for prompt.submit: surface: Extra inputs are not permitted").refusesUnknownParam("voice_turn"))

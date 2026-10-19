@@ -1477,6 +1477,43 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
     }
 
+    /// Queue (#842): Hermes keeps the message as the next turn, so it goes
+    /// even if the app closes. It is sent at once, marked queued, and the
+    /// running reply goes on streaming meanwhile.
+    func testQueueHandsTheMessageToHermesAndKeepsTheReplyStreaming() async throws {
+        let plain = SentPrompts()
+        let queued = SentPrompts()
+        var operations = ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+            plain.prompts.append((sessionID, text))
+            return .accepted
+        })
+        operations.sendQueuedPrompt = { _, sessionID, text in
+            queued.prompts.append((sessionID, text))
+            return .queued
+        }
+        let (appState, _, _) = makeAppState(lifecycleOperations: operations)
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+        appState.handleStreamEvent(.sessionBusy(sessionId: "stored-a", busy: true))
+        appState.handleStreamEvent(.messageDelta(sessionId: "stored-a", text: "Partial answer"))
+        await waitUntil { appState.streamingText == "Partial answer" }
+
+        let sent = await appState.submitComposer(text: "Next one", busyMode: .queue)
+
+        XCTAssertTrue(sent)
+        XCTAssertEqual(queued.prompts.map { $0.text }, ["Next one"])
+        XCTAssertEqual(queued.prompts.map { $0.sessionID }, ["stored-a"])
+        XCTAssertTrue(plain.prompts.isEmpty, "Queue never goes as a plain send, which would steer or interrupt")
+        XCTAssertEqual(appState.messages.last?.content, "Next one")
+        XCTAssertEqual(appState.streamingText, "Partial answer")
+        XCTAssertEqual(appState.turnState, .running)
+        XCTAssertNil(appState.pendingComposerSend, "Nothing waits on the phone")
+    }
+
     /// A message an earlier run left waiting comes back as a draft at
     /// launch and is never sent on its own.
     func testAMessageLeftWaitingComesBackAsADraftAtLaunch() throws {

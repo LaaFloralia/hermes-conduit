@@ -295,6 +295,7 @@ struct ComposerBar: View, Equatable {
         case .stop: return "stop.fill"
         case .steer: return BusyInputMode.steer.symbol
         case .interrupt: return BusyInputMode.interrupt.symbol
+        case .queue: return BusyInputMode.queue.symbol
         case .send: return "arrow.up"
         case .unavailable: return "lock"
         }
@@ -307,7 +308,7 @@ struct ComposerBar: View, Equatable {
     private var actionTint: Color {
         switch action {
         case .stop: return .red
-        case .steer: return .conduitAura
+        case .steer, .queue: return .conduitAura
         case .interrupt: return .orange
         case .send: return .conduitAccent
         case .unavailable: return .secondary.opacity(0.48)
@@ -719,7 +720,7 @@ struct ComposerBar: View, Equatable {
     /// button beside it can start a call while Hermes replies (#762).
     static func turnControlExpandsComposer(action: ComposerAction, restsWhenIdle: Bool) -> Bool {
         switch action {
-        case .steer, .interrupt: return true
+        case .steer, .interrupt, .queue: return true
         case .stop: return !restsWhenIdle
         case .send, .unavailable: return false
         }
@@ -1164,7 +1165,34 @@ struct ComposerBar: View, Equatable {
                 Image(systemName: actionSymbol)
             }
         }
+        // Touch and hold: another way to send this message only.
+        .contextMenu {
+            ForEach(sendChoices) { choice in
+                Button {
+                    submit(choice)
+                } label: {
+                    Label(choice.title, systemImage: choice.symbol)
+                }
+            }
+        }
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityActions {
+            ForEach(sendChoices) { choice in
+                Button(choice.title) { submit(choice) }
+            }
+        }
+    }
+
+    /// What touch and hold on the action button offers: the busy modes the
+    /// tap doesn't use and the side agents (ComposerSendChoice).
+    private var sendChoices: [ComposerSendChoice] {
+        guard !appState.composerWaitsForChat, pendingScreenshot == nil else { return [] }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ComposerSendChoice.choices(
+            for: action,
+            hasAttachments: !attachments.isEmpty,
+            isSlashCommand: AppState.parseSlashCommand(trimmed) != nil
+        )
     }
 
     /// The model and effort, truncating first when the row is crowded.
@@ -1278,7 +1306,9 @@ struct ComposerBar: View, Equatable {
         return true
     }
 
-    private func submit() {
+    /// `choice` is a long-press pick for this message only; nil keeps the
+    /// action the button shows.
+    private func submit(_ choice: ComposerSendChoice? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty || pendingScreenshot != nil else { return }
         if appState.composerWaitsForChat {
@@ -1304,12 +1334,14 @@ struct ComposerBar: View, Equatable {
             trimmed,
             hasAttachments: !submittedAttachments.isEmpty
         ) ? replyReference : nil
-        let outboundText = ComposerReplyReference.outboundText(
+        let repliedText = ComposerReplyReference.outboundText(
             trimmed,
             hasAttachments: !submittedAttachments.isEmpty,
             replyingTo: submittedReply
         )
-        let submittedAction = action
+        // A side agent takes the message, quote and all, as its command.
+        let outboundText = choice?.slashCommand.map { "/\($0) \(repliedText)" } ?? repliedText
+        let submittedAction = choice.map { $0.busyInputMode?.composerAction ?? .send } ?? action
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
         let submissionContext = appState.composerSubmissionContext()
@@ -1318,7 +1350,7 @@ struct ComposerBar: View, Equatable {
 
         switch submittedAction {
         case .send: Haptics.medium()
-        case .steer: Haptics.light()
+        case .steer, .queue: Haptics.light()
         case .interrupt: Haptics.warning()
         case .stop, .unavailable: break
         }
@@ -1327,7 +1359,8 @@ struct ComposerBar: View, Equatable {
             let didSubmit = await appState.submitComposer(
                 text: outboundText,
                 attachments: submittedAttachments,
-                context: submissionContext
+                context: submissionContext,
+                busyMode: choice?.busyInputMode
             )
             guard didSubmit else {
                 restoreSubmittedDraftIfNeeded(
@@ -2204,6 +2237,7 @@ struct ComposerBar: View, Equatable {
         case .stop: return AppLocalization.string("Stop response")
         case .steer: return AppLocalization.string("Steer with message")
         case .interrupt: return AppLocalization.string("Interrupt and correct response")
+        case .queue: return AppLocalization.string("Queue message")
         case .send: return AppLocalization.string("Send message")
         case .unavailable: return AppLocalization.string("Composer unavailable")
         }

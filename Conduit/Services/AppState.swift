@@ -89,6 +89,9 @@ struct ChatResumeLifecycleOperations {
     /// decision RPC.
     var respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
+    /// Test seam for a Queue send (`queued: true`, #842). Not an init
+    /// parameter: tests set it on the value.
+    var sendQueuedPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
     /// Test seam for one attachment upload (session id, attachment) before
     /// the prompt; returns the `@file:` reference the prompt carries, nil
     /// for an image. Not an init parameter: tests set it on the value.
@@ -1925,6 +1928,9 @@ final class AppState: ObservableObject {
         }
         switch turnState {
         case .running:
+            if busyInputMode == .queue {
+                return AppLocalization.string("Queue a message for \(conversationAgentIdentity.name)…")
+            }
             return AppLocalization.string("\(busyInputMode.title) \(conversationAgentIdentity.name)…")
         case .synchronizing, .reconnecting:
             return AppLocalization.string("Checking agent activity…")
@@ -20985,12 +20991,14 @@ final class AppState: ObservableObject {
     /// `onBusy`, when given, replaces the composer's Steer/Interrupt routing:
     /// a submission that finds a turn running (directly or after a stale-idle
     /// probe) calls it and sends nothing. A live call's turn uses it to wait
-    /// for typed work instead of steering it.
+    /// for typed work instead of steering it. `busyMode`, when given, is the
+    /// long-press choice for this message only, over the profile's mode.
     func submitComposer(
         text: String,
         attachments: [Attachment] = [],
         context: ComposerSubmissionContext? = nil,
-        onBusy: (() -> Void)? = nil
+        onBusy: (() -> Void)? = nil,
+        busyMode: BusyInputMode? = nil
     ) async -> Bool {
         var submissionContext = context ?? composerSubmissionContext()
         // The canvas a closed chat leaves (archive, delete) has no chat
@@ -21004,7 +21012,8 @@ final class AppState: ObservableObject {
             text: text,
             attachments: attachments,
             submissionContext: submissionContext,
-            onBusy: onBusy
+            onBusy: onBusy,
+            busyMode: busyMode ?? busyInputMode
         )
         // Only something Hermes took moves the registry's count; a refused
         // or busy-diverted submission leaves another device's turn due. A
@@ -21061,7 +21070,8 @@ final class AppState: ObservableObject {
         text: String,
         attachments: [Attachment],
         submissionContext: ComposerSubmissionContext,
-        onBusy: (() -> Void)?
+        onBusy: (() -> Void)?,
+        busyMode: BusyInputMode
     ) async -> Bool {
         guard isCurrentComposerSubmission(submissionContext) else { return false }
 
@@ -21092,12 +21102,7 @@ final class AppState: ObservableObject {
             }
 
             if let onBusy { onBusy(); return false }
-            switch busyInputMode {
-            case .steer:
-                return await steer(text, context: submissionContext)
-            case .interrupt:
-                return await redirectOrInterruptAndSend(text, context: submissionContext)
-            }
+            return await submitWhileBusy(text, mode: busyMode, context: submissionContext)
         }
 
         // A lifecycle/recovery boundary (scene dip, reconnect, ambiguous
@@ -21114,14 +21119,8 @@ final class AppState: ObservableObject {
                 return false
             }
             if let onBusy { onBusy(); return false }
-            switch busyInputMode {
-            case .steer:
-                lifecycleLog.notice("submitComposer: stale-idle corrected to running → busy steer")
-                return await steer(text, context: submissionContext)
-            case .interrupt:
-                lifecycleLog.notice("submitComposer: stale-idle corrected to running → busy redirect/interrupt")
-                return await redirectOrInterruptAndSend(text, context: submissionContext)
-            }
+            lifecycleLog.notice("submitComposer: stale-idle corrected to running → busy \(busyMode.rawValue, privacy: .public)")
+            return await submitWhileBusy(text, mode: busyMode, context: submissionContext)
         }
 
         // The stale-idle probe above can lose a race with a live busy edge:
@@ -21135,14 +21134,8 @@ final class AppState: ObservableObject {
                 return false
             }
             if let onBusy { onBusy(); return false }
-            switch busyInputMode {
-            case .steer:
-                lifecycleLog.notice("submitComposer: busy edge raced the stale-idle probe → busy steer")
-                return await steer(text, context: submissionContext)
-            case .interrupt:
-                lifecycleLog.notice("submitComposer: busy edge raced the stale-idle probe → busy redirect/interrupt")
-                return await redirectOrInterruptAndSend(text, context: submissionContext)
-            }
+            lifecycleLog.notice("submitComposer: busy edge raced the stale-idle probe → busy \(busyMode.rawValue, privacy: .public)")
+            return await submitWhileBusy(text, mode: busyMode, context: submissionContext)
         }
 
         // Transcript freshness is a separate concern from turn-state
@@ -21168,18 +21161,10 @@ final class AppState: ObservableObject {
                     return false
                 }
                 if let onBusy { onBusy(); return false }
-                switch busyInputMode {
-                case .steer:
-                    lifecycleLog.notice(
-                        "submitComposer: freshness recovery found live turn → busy steer"
-                    )
-                    return await steer(text, context: submissionContext)
-                case .interrupt:
-                    lifecycleLog.notice(
-                        "submitComposer: freshness recovery found live turn → busy redirect/interrupt"
-                    )
-                    return await redirectOrInterruptAndSend(text, context: submissionContext)
-                }
+                lifecycleLog.notice(
+                    "submitComposer: freshness recovery found live turn → busy \(busyMode.rawValue, privacy: .public)"
+                )
+                return await submitWhileBusy(text, mode: busyMode, context: submissionContext)
             case .blocked(let message):
                 errorMessage = message
                 return false
@@ -21199,6 +21184,24 @@ final class AppState: ObservableObject {
             restorePendingScreenshot(screenshot.attachment, forSession: screenshot.sessionID)
         }
         return sent
+    }
+
+    /// A typed message while a turn runs, by `mode`: into the turn, as a
+    /// new turn after stopping it, or kept by Hermes as the next turn
+    /// (#842), so it goes even if the app closes.
+    private func submitWhileBusy(
+        _ text: String,
+        mode: BusyInputMode,
+        context: ComposerSubmissionContext
+    ) async -> Bool {
+        switch mode {
+        case .steer:
+            return await steer(text, context: context)
+        case .interrupt:
+            return await redirectOrInterruptAndSend(text, context: context)
+        case .queue:
+            return await sendMessage(text, context: context, queued: true)
+        }
     }
 
     /// Read-only authoritative correction of a possibly stale local idle
@@ -21985,16 +21988,20 @@ final class AppState: ObservableObject {
         error.code == 4016 || error.code == 4018
     }
 
+    /// `queued` is Queue (#842): Hermes keeps the message as the next turn
+    /// while one runs. That turn's reply goes on streaming meanwhile.
     func sendMessage(
         _ text: String,
         attachments: [Attachment] = [],
-        context: ComposerSubmissionContext? = nil
+        context: ComposerSubmissionContext? = nil,
+        queued: Bool = false
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
+        let joinsRunningTurn = queued && turnState.isRunning
         cancelChatResumeRestoration()
-        resetResponseHapticTurn()
+        if !joinsRunningTurn { resetResponseHapticTurn() }
         // Bot Mode composer middleware (upstream `mention-middleware`):
         // @mention identification. The canonical-forever-chat `/new` guard
         // runs in `executeSlashCommand`, which `submitComposer` reaches
@@ -22045,7 +22052,7 @@ final class AppState: ObservableObject {
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
-        clearStreamingText()
+        if !joinsRunningTurn { clearStreamingText() }
         turnState = .running
 
         // Every file that isn't an image (PDFs included) is staged as a file,
@@ -22118,15 +22125,20 @@ final class AppState: ObservableObject {
         await locationShare?.value
         // Events that arrive while prompt.submit is in flight are held for
         // the turn's Live Activity (#605), which starts once it's accepted.
-        LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
+        if !joinsRunningTurn {
+            LiveTurnActivities.shared.turnSubmitting(sessionIDs: submissionSessionIDs)
+        }
         do {
             let outcome: PromptSubmissionOutcome
-            if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
+            if queued, let sendQueuedPrompt = chatResumeLifecycleOperations.sendQueuedPrompt {
+                outcome = try await sendQueuedPrompt(client, sessionId, promptText)
+            } else if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
                 outcome = try await sendPrompt(client, sessionId, promptText)
             } else {
                 outcome = try await client.sendPrompt(
                     sessionId, text: promptText, surface: surface,
-                    voiceTurn: surface == Self.spokenPromptSurface
+                    voiceTurn: surface == Self.spokenPromptSurface,
+                    queued: queued
                 )
             }
             // The gateway accepted the prompt. A session handoff may have
