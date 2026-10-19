@@ -4172,6 +4172,11 @@ final class AppState: ObservableObject {
     /// probe the same dead rows again.
     private var deadResumeRowIDs: [String: Set<String>] = [:]
     private var reconciliation: Reconciliation?
+    /// Side-agent answers that came in while a reconciliation was open.
+    /// Hermes keeps no copy of them, so unlike the buffered stream they
+    /// can't come back with a later transcript: they show once the boundary
+    /// closes, whether its reconcile committed or was dropped.
+    private var heldSideAgentCompletions: [StreamEvent] = []
     private var activeClientEpoch = UUID()
     private var activeAssistantMessageId: String?
     private var activeReasoningMessageId: String?
@@ -13676,12 +13681,38 @@ final class AppState: ObservableObject {
 
     private func invalidateReconciliation() {
         let wasReconciling = activeChatScrollSessionIdentity.isReconciling
+        let closed = reconciliation
         reconciliationToken = UUID()
         reconciliation = nil
         refreshActiveChatScrollSessionIdentity(
             isReconciling: false,
             advanceSettledRevision: wasReconciling
         )
+        releaseHeldSideAgentCompletions(closing: closed)
+    }
+
+    /// Shows the side-agent answers held while the reconciliation was open,
+    /// after any transcript it committed. An answer addressed to an id the
+    /// closed reconciliation accepted for the active conversation (a resume
+    /// that rotated the runtime id before the catalog learned it) is shown
+    /// there, as it would have been while the boundary was open; one from
+    /// another conversation still isn't.
+    private func releaseHeldSideAgentCompletions(closing closed: Reconciliation?) {
+        guard reconciliation == nil, !heldSideAgentCompletions.isEmpty else { return }
+        let held = heldSideAgentCompletions
+        heldSideAgentCompletions = []
+        let aliases = closed?.acceptedSessionIDs ?? []
+        for event in held {
+            guard case .sideAgentComplete(let sessionId, let kind, let taskId, let text, let question) = event,
+                  let activeSessionId, sessionId != activeSessionId,
+                  !eventBelongsToActiveSession(sessionId),
+                  aliases.contains(activeSessionId), aliases.contains(sessionId) else {
+                applyStreamEvent(event)
+                continue
+            }
+            applyStreamEvent(.sideAgentComplete(sessionId: activeSessionId, kind: kind, taskId: taskId,
+                                                text: text, question: question))
+        }
     }
 
     @discardableResult
@@ -13712,6 +13743,7 @@ final class AppState: ObservableObject {
             isReconciling: false,
             advanceSettledRevision: wasReconciling
         )
+        releaseHeldSideAgentCompletions(closing: activeReconciliation)
         return true
     }
 
@@ -23796,7 +23828,8 @@ final class AppState: ObservableObject {
         // reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
         messages.append(ChatMessage(
-            id: "slash-\(Date().timeIntervalSince1970)",
+            // Unique: two notes can land in the same instant.
+            id: "slash-\(UUID().uuidString)",
             role: .system,
             content: text,
             rawContent: nil,
@@ -28311,6 +28344,10 @@ final class AppState: ObservableObject {
     private func bufferIfReconciling(_ event: StreamEvent) -> Bool {
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
+        if case .sideAgentComplete = event {
+            heldSideAgentCompletions.append(event)
+            return true
+        }
         reconciliation.bufferedEvents.append(event)
         self.reconciliation = reconciliation
         return true
@@ -28333,8 +28370,8 @@ final class AppState: ObservableObject {
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _),
                 .sideAgentComplete(let sessionId, _, _, _, _):
-            // Unreachable through bufferIfReconciling (status.update returns
-            // early); kept for switch completeness.
+            // `.sessionTitle` and `.statusUpdate` never reach
+            // bufferIfReconciling (handleStreamEvent returns early for them).
             return sessionId
         case .unparsed:
             return ""
