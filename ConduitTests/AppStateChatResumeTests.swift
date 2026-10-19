@@ -4413,6 +4413,105 @@ final class AppStateChatResumeTests: XCTestCase {
         await assertProfileSwitchCancelsStaleReconnectMint(outcome: .signInRequired)
     }
 
+    // MARK: - Delegate agents belong to their conversation
+
+    private func delegateAgent(_ id: String) -> DelegateAgentActivity {
+        DelegateAgentActivity(
+            id: id, goal: "Look into it", model: nil, status: .running,
+            taskCount: 1, taskIndex: 0, currentTool: nil, summary: nil, stream: []
+        )
+    }
+
+    func testDelegateAgentsAreOnlyTheOpenConversations() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(sessionId: sessionID, messages: [], snapshot: SessionRuntimeSnapshot(object: [:]))
+                },
+                branchSession: { _, _, _, _, _ in
+                    (sessionId: "branch-runtime", storedSessionId: "branch-stored", profile: "default")
+                },
+                setSessionTitle: { _, _, _ in },
+                refreshContext: { _, _ in }
+            )
+        )
+        let first = session("stored-a")
+        let second = session("stored-b")
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [first, second]
+        harness.appState.activeSessionId = first.id
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: first.id, activity: delegateAgent("agent-a")))
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-a"])
+        XCTAssertEqual(harness.appState.activeAgents, 1)
+
+        _ = await harness.appState.openSession(second.id)
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "the first conversation's agents don't show in the second")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: second.id, activity: delegateAgent("agent-b")))
+        _ = await harness.appState.openSession(second.id)
+        XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-b"], "opening the same conversation again keeps its agents")
+
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1"),
+            ChatMessage(id: "assistant", role: .assistant, content: "Answer", timestamp: "2")
+        ]
+        await harness.appState.branchFromAssistantMessage("assistant")
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "a branch is its own conversation: the parent's agents stay with the parent")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+
+        harness.appState.handleStreamEvent(.delegateAgent(sessionId: "branch-runtime", activity: delegateAgent("agent-c")))
+        harness.appState.setActiveProfileForTesting("work")
+        XCTAssertTrue(harness.appState.delegateAgents.isEmpty, "another profile never sees them")
+        XCTAssertEqual(harness.appState.activeAgents, 0)
+    }
+
+    func testADeletedConversationsAgentsGoWithItOnAutomaticReturn() async {
+        for fallbackOpens in [true, false] {
+            let scheduler = ControlledReconnectScheduler()
+            let harness = makeHarness(
+                reconnectScheduler: scheduler.schedule(after:operation:),
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    loadCatalog: { _, _ in [self.session("stored-other")] },
+                    openSession: { _, sessionID, _ in
+                        if sessionID == "stored-deleted" {
+                            throw RpcError(code: 4007, message: "Session not found")
+                        }
+                        guard fallbackOpens else { throw ControlledLifecycleError.failed }
+                        return SessionResumeResult(
+                            sessionId: sessionID,
+                            messages: [],
+                            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                        )
+                    },
+                    refreshContext: { _, _ in }
+                )
+            )
+            installComposerClient(in: harness)
+            harness.store.setLastSessionID("stored-deleted", for: "default")
+            harness.appState.activeSessionId = "stored-deleted"
+            harness.appState.handleStreamEvent(.delegateAgent(sessionId: "stored-deleted", activity: delegateAgent("agent-gone")))
+            XCTAssertEqual(harness.appState.delegateAgents.map(\.id), ["agent-gone"])
+
+            await harness.appState.syncSession(
+                purpose: .automaticReturn,
+                using: nil,
+                automaticWorkToken: nil
+            )
+
+            XCTAssertEqual(harness.appState.activeSessionId, fallbackOpens ? "stored-other" : nil)
+            XCTAssertTrue(
+                harness.appState.delegateAgents.isEmpty,
+                "the deleted conversation's agents don't stay (fallback opens: \(fallbackOpens))"
+            )
+            XCTAssertEqual(harness.appState.activeAgents, 0)
+        }
+    }
+
     func testUnchangedRefreshReleasesViewportTransitionForLaterWrites() async {
         let messages = [
             ChatMessage(id: "message-a", role: .assistant, content: "Stable", timestamp: "now")
