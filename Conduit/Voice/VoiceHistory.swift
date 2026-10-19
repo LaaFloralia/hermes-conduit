@@ -181,18 +181,67 @@ final class VoiceHistoryClient {
         self.request = request
     }
 
+    /// What one save may carry: the plugin refuses more turns or a larger
+    /// body (plugin_api VOICE_MAX_TURNS, and VOICE_MAX_BODY_BYTES at 1 MiB).
+    static let maxTurnsPerSave = 500
+    static let maxBytesPerSave = 900_000
+
+    /// Saves the turns in order, in parts the plugin takes: the first makes
+    /// the row (or the chat's call) and the rest append to it. A refused
+    /// part fails the save; retried, the plugin skips the turns it has.
     func save(_ save: VoiceTranscriptSaveRequest, profile: String) async throws -> VoiceTranscriptSaveResult {
+        var part = save
+        var result: VoiceTranscriptSaveResult?
+        // Every part goes where the first did: a row the first part makes
+        // with a chat's profile is in that profile, not the call's.
+        var target = profile
+        if save.sessionID == nil, let chatID = save.chatID, !chatID.isEmpty,
+           let chatProfile = save.chatProfile, !chatProfile.isEmpty {
+            target = chatProfile
+        }
+        for turns in Self.parts(save.turns, maxTurns: Self.maxTurnsPerSave, maxBytes: Self.maxBytesPerSave) {
+            part.turns = turns
+            let saved = try await saveOnce(part, target: target)
+            result = saved
+            if let sessionID = saved.sessionID {
+                part.sessionID = sessionID
+                part.title = nil
+            }
+        }
+        // `parts` is never empty.
+        return result ?? VoiceTranscriptSaveResult(sessionID: save.sessionID, written: 0)
+    }
+
+    /// `turns` in order, as runs of at most `maxTurns` and about `maxBytes`
+    /// of JSON (at least one turn each); one run when there are none.
+    static func parts(_ turns: [VoiceTranscriptTurn], maxTurns: Int, maxBytes: Int) -> [[VoiceTranscriptTurn]] {
+        var parts: [[VoiceTranscriptTurn]] = []
+        var current: [VoiceTranscriptTurn] = []
+        var bytes = 0
+        for turn in turns {
+            let size = ((try? JSONSerialization.data(withJSONObject: turn.payload))?.count ?? 0) + 1
+            if !current.isEmpty, current.count >= maxTurns || bytes + size > maxBytes {
+                parts.append(current)
+                current = []
+                bytes = 0
+            }
+            current.append(turn)
+            bytes += size
+        }
+        parts.append(current)
+        return parts
+    }
+
+    private func saveOnce(_ save: VoiceTranscriptSaveRequest, target: String) async throws -> VoiceTranscriptSaveResult {
         var body: [String: Any] = [
             "call_id": save.callID,
             "engine": save.engine.rawValue,
             "turns": save.turns.map(\.payload)
         ]
-        var target = profile
         if let sessionID = save.sessionID {
             body["session_id"] = sessionID
         } else if let chatID = save.chatID, !chatID.isEmpty {
             body["chat_id"] = chatID
-            if let chatProfile = save.chatProfile, !chatProfile.isEmpty { target = chatProfile }
         }
         if let title = save.title, !title.isEmpty { body["title"] = title }
         let response = try await send(Self.sessionsPath, profile: target, method: "POST", body: body)
@@ -419,10 +468,25 @@ final class VoiceTranscriptRecorder {
         append(.assistant, text, cards: card.cardsJSON)
     }
 
+    /// The longest turn the plugin keeps whole (plugin_api
+    /// VOICE_MAX_TURN_CHARS, counted in code points); it cuts a longer one.
+    static let maxTurnCharacters = 16_000
+
     private func append(_ role: VoiceTranscriptTurn.Role, _ text: String, cards: Data? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        turns.append(VoiceTranscriptTurn(index: turns.count, role: role, text: trimmed, at: now(), cards: cards))
+        turns.append(VoiceTranscriptTurn(index: turns.count, role: role, text: Self.clipped(trimmed), at: now(), cards: cards))
+    }
+
+    /// `text` within what the plugin keeps, cut here so a code block the
+    /// cut leaves open is closed (a screen turn can hold 20,000 characters).
+    /// Cut in code points, as the plugin counts, in one pass.
+    static func clipped(_ text: String) -> String {
+        guard text.unicodeScalars.count > maxTurnCharacters else { return text }
+        // Room for a closing fence, so the turn stays within the limit.
+        var cut = String.UnicodeScalarView()
+        cut.append(contentsOf: text.unicodeScalars.prefix(maxTurnCharacters - 16))
+        return VoiceBackgroundJobSupervisor.closingCutFence(String(cut))
     }
 
     /// Saves whatever the host doesn't have. Saves run one at a time, in
