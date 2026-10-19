@@ -5698,6 +5698,13 @@ final class AppState: ObservableObject {
     func bumpVoiceCallChatLinksRevisionForTesting() {
         voiceCallChatLinksRevision &+= 1
     }
+
+    /// Test seam: a live call's recording starts, as when the call
+    /// connects, with `turns` already said.
+    func beginVoiceCallRecordingForTesting(engine: VoiceCallEngine, turns: [VoiceConversationTranscriptEntry]) {
+        beginVoiceCallRecording(engine: engine)
+        voiceCallRecorder?.capture(turns, unsettled: [])
+    }
     #endif
     private var voiceTagsFetchedAt: [String: Date] = [:]
     private var voiceTagRefreshTask: Task<Void, Never>?
@@ -5708,6 +5715,10 @@ final class AppState: ObservableObject {
     /// the call runs stalled it, so the call is only checkpointed on the
     /// device meanwhile.
     private var voiceCallRecorder: VoiceTranscriptRecorder?
+    /// The dashboard the recorded call is on, and its bridge when it had
+    /// one. Switching selects the next dashboard before it closes the call,
+    /// so the call's saves never go by the selection.
+    private var voiceCallDashboard: (id: String, owner: DashboardRuntimeOwner?)?
     /// The chat the recorded call is attached to, linked to its row once saved.
     private var voiceCallAttachment: VoiceCallAttachment?
     private lazy var voiceCallChatLinks = VoiceCallChatLinks.load(from: defaults)
@@ -6040,6 +6051,7 @@ final class AppState: ObservableObject {
         guard !ids.isEmpty else { return }
         let profile = profile ?? activeProfile
         let key = voiceHistoryKey(profile: profile)
+        let owner = currentDashboardRuntimeOwner()
         for id in ids {
             voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(kind: kind, parentID: parentID, parentTitle: parentTitle)
         }
@@ -6051,6 +6063,8 @@ final class AppState: ObservableObject {
             await previous?.value
             defer { if self?.voiceTagGeneration == generation { self?.voiceTagChain = nil } }
             for id in ids {
+                // A switch meanwhile: the rest are the old dashboard's.
+                guard let owner, self?.ownsDashboardRuntime(owner) == true else { return }
                 do {
                     try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
                 } catch {
@@ -6095,6 +6109,8 @@ final class AppState: ObservableObject {
         voiceCallCheckpointedTurns = 0
         voiceCallCheckpointedAt = .distantPast
         let profile = activeProfile
+        let callDashboard = (id: activeDashboardID?.uuidString ?? "-", owner: currentDashboardRuntimeOwner())
+        let owner = callDashboard.owner
         let thread = voiceBackgroundJobSupervisor.liveThread
         // A call attached to a chat is kept with it, not as a row of its own
         // (#556); a Bot Chat's in the bot's profile, where the chat lives.
@@ -6117,10 +6133,15 @@ final class AppState: ObservableObject {
             save: { [weak self] request in
                 guard let self else { throw VoiceHistoryError.pluginMissing }
                 guard !self.isLiveVoiceCallActive else { throw VoiceHistoryError.busy }
+                // Another dashboard's showing now: the outbox keeps the
+                // call for the one it was on.
+                guard let owner, self.ownsDashboardRuntime(owner) else { throw DashboardTicketBridgeError.notReady }
                 return try await self.voiceHistoryClient.save(request, profile: profile)
             },
             title: { [weak self] turns in
-                guard let self, !self.isLiveVoiceCallActive else { return Self.fallbackVoiceCallTitle() }
+                // Never another dashboard's Hermes that names the call.
+                guard let self, !self.isLiveVoiceCallActive,
+                      let owner, self.ownsDashboardRuntime(owner) else { return Self.fallbackVoiceCallTitle() }
                 return await self.voiceCallTitle(turns: turns, profile: profile)
             }
         )
@@ -6139,6 +6160,7 @@ final class AppState: ObservableObject {
             liveVoiceResumeContext = VoiceResumeContext.continuing(previous.recorder.turns)
         }
         voiceCallRecorder = recorder
+        voiceCallDashboard = callDashboard
         voiceCallAttachment = thread.map {
             VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: previous?.startedAt ?? Date(), resumed: resume != nil)
         }
@@ -6183,7 +6205,8 @@ final class AppState: ObservableObject {
         // the call to this checkpoint rather than to the later retry.
         var attachment = voiceCallAttachment
         attachment?.endedAt = voiceCallCheckpointedAt
-        queueVoiceTranscript(request, dashboard: activeDashboardID?.uuidString ?? "-", profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
+        let dashboard = voiceCallDashboard?.id ?? activeDashboardID?.uuidString ?? "-"
+        queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
         voiceTranscriptsSaving.insert(request.callID)
     }
 
@@ -6240,10 +6263,12 @@ final class AppState: ObservableObject {
         }
         voiceCallTranscriptSubscription = nil
         voiceCallRecorder = nil
+        let callDashboard = voiceCallDashboard
+        voiceCallDashboard = nil
         closingVoiceCallRecorder = recorder
         closingVoiceCallUntil = Date().addingTimeInterval(30)
         let key = voiceHistoryKey(profile: recorder.profile)
-        let dashboard = activeDashboardID?.uuidString ?? "-"
+        let dashboard = callDashboard?.id ?? activeDashboardID?.uuidString ?? "-"
         // Queued before the final save starts, so the turns survive the app
         // being suspended or closed mid-save; the save then settles it.
         let queuedCallID = recorder.outboxRequest?.callID
@@ -6287,6 +6312,9 @@ final class AppState: ObservableObject {
                 // A later retry creates the row and links the jobs then.
                 self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             }
+            // Its jobs' tags, chat link and the list reload belong to the
+            // dashboard the call was on, not one switched to since.
+            if let owner = callDashboard?.owner, !self.ownsDashboardRuntime(owner) { return }
             let callRow = recorder.sessionID
             // A call kept with its chat files its jobs under the chat.
             let chatID = recorder.savedWithChat ? recorder.chatID : nil
@@ -6454,6 +6482,7 @@ final class AppState: ObservableObject {
         var snapshot = VoiceTranscriptOutbox.load(from: defaults)
         snapshot.prune(now: Date())
         let dashboard = activeDashboardID?.uuidString ?? "-"
+        let owner = currentDashboardRuntimeOwner()
         // Saves await, and a call can be queued meanwhile: record each entry
         // as read with what replaces it, then apply that to a fresh read.
         // An entry changed meanwhile no longer matches and stays as it is.
@@ -6465,6 +6494,8 @@ final class AppState: ObservableObject {
                 drain.waitedOnCall = true
                 break
             }
+            // A switch meanwhile: the rest stay queued for this dashboard.
+            if let owner, !ownsDashboardRuntime(owner) { break }
             var request = entry.request
             do {
                 let result = try await voiceHistoryClient.save(request, profile: profile)

@@ -1125,3 +1125,63 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.workspacePreview?.text, "d's text")
     }
 }
+
+// MARK: - Voice-call history stays with its dashboard
+
+extension AppStateMultiDashboardTests {
+
+    /// Switching selects the next dashboard before it closes the live
+    /// call, so the closing save must not take the selection's id.
+    func testACallLiveDuringASwitchIsKeptForTheDashboardItWasOn() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID).uuidString
+        defaults.set(mac, forKey: AppState.chatResumeServerIdentityKey)
+        appState.beginVoiceCallRecordingForTesting(engine: .geminiLive, turns: [
+            VoiceConversationTranscriptEntry(speaker: .user, text: "Add milk to the list"),
+            VoiceConversationTranscriptEntry(speaker: .assistant, text: "Added."),
+        ])
+
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.map(\.dashboard), [mac])
+
+        // The closing save can't reach the Mac now; what it puts back is
+        // still the Mac's, never sent to the VPS when it connects.
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.map(\.dashboard), [mac])
+    }
+
+    /// A call's jobs are tagged one request at a time; a switch while one
+    /// is in flight stops the rest instead of sending them to the next
+    /// dashboard's profile of the same name.
+    func testQueuedVoiceTagsAreNeverSentToTheDashboardSwitchedTo() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID).uuidString
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: mac, profile: appState.activeProfile,
+            request: VoiceTranscriptSaveRequest(
+                callID: "c1", engine: .gptLive, sessionID: nil, title: "Call",
+                turns: [VoiceTranscriptTurn(index: 0, role: .user, text: "Start two jobs", at: Date())]
+            ),
+            queuedAt: Date(),
+            jobSessionIDs: ["job-1", "job-2"]
+        ))
+        outbox.store(in: defaults)
+
+        let save = Task { await appState.saveQueuedVoiceCallsNow() }
+        try await held.answer(["ok": true, "session_id": "row-1", "written": 1])   // the call saves on the Mac
+        await save.value
+        try await held.waitForRequests(2)   // the first job's tag
+
+        await appState.switchDashboard(to: vps.id)
+        let vpsRequests = HeldDashboardRequests(baseURL: vps.normalizedURL, dashboardID: vps.id)
+        appState.installDashboardTicketBridgeForTesting(vpsRequests.bridge)   // the VPS connects
+        addTeardownBlock { @MainActor in vpsRequests.releaseAll() }
+        try await held.answer()   // the Mac's answer lands after the switch
+        for _ in 0..<100 where vpsRequests.sent.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertTrue(vpsRequests.sent.isEmpty, "the Mac's tags were sent to the VPS: \(vpsRequests.sent.map(\.path))")
+    }
+}
