@@ -142,6 +142,67 @@ extension HermesVoiceGatewayTimeoutTests {
         await localLiveSettle(until: { session.state == .ready })
     }
 
+    func testLocalLiveAgentFramesCarryTheCallsToolsAndAnswers() throws {
+        func data(_ object: [String: Any]) throws -> Data { try JSONSerialization.data(withJSONObject: object) }
+        let declaration = GeminiLiveProtocol.FunctionDeclaration(
+            name: "start_job", description: "Start a job.",
+            parameters: ["type": "OBJECT", "properties": ["instructions": ["type": "STRING"]]], behavior: .nonBlocking)
+        let configure = LocalLiveProtocol.agentConfigure(.init(instructions: "Be brief.", functions: [declaration]))
+        XCTAssertEqual(configure["type"] as? String, "conduit.agent")
+        XCTAssertEqual(configure["instructions"] as? String, "Be brief.")
+        let tool = try XCTUnwrap((configure["tools"] as? [[String: Any]])?.first)
+        XCTAssertEqual(tool["name"] as? String, "start_job")
+        XCTAssertEqual((tool["parameters"] as? [String: Any])?["type"] as? String, "object", "JSON Schema types are lowercase")
+
+        let call = LocalLiveProtocol.agentFrame(try data(["type": "conduit.tool.call", "call_id": "ll1", "name": "start_job",
+                                                           "arguments": "{\"instructions\":\"check mail\"}"]))
+        XCTAssertEqual(call, .toolCall(GeminiLiveProtocol.FunctionCall(id: "ll1", name: "start_job", arguments: ["instructions": "check mail"])))
+        XCTAssertEqual(LocalLiveProtocol.agentFrame(try data(["type": "conduit.tool.late", "call_id": "ll1"])), .late(callID: "ll1"))
+        XCTAssertNil(LocalLiveProtocol.agentFrame(try data(["type": "conduit.agent.ready", "tools": 1])))
+        XCTAssertNil(LocalLiveProtocol.agentFrame(try data(["type": "conduit.turn", "turn_id": "t1", "text": "Hi"])))
+
+        let result = LocalLiveProtocol.toolResult(callID: "ll1", result: ["status": "started"], speak: true)
+        XCTAssertEqual(result["output"] as? String, "{\"status\":\"started\"}")
+        XCTAssertEqual(result["speak"] as? Bool, true)
+    }
+
+    func testLocalLiveAgentModeRunsTheFastModelsToolCallsHere() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        var events: [GeminiLiveProtocol.ServerEvent] = []
+        session.onEvent = { events.append($0) }
+        session.agentSetup = { .init(instructions: "Be brief.", functions: GeminiLiveToolBridge.declarations(webSearch: false)) }
+        session.start()
+        await localLiveSettle(until: { (sockets().first?.sent.count ?? 0) >= 2 })
+        let socket = try XCTUnwrap(sockets().first)
+        XCTAssertEqual(socket.sent.prefix(2).map { $0["type"] as? String }, ["session.update", "conduit.agent"],
+                       "the plugin has the tools before the readiness check")
+        XCTAssertNil((socket.sent[0]["session"] as? [String: Any])?["tools"], "the speech server never sees a tool")
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+
+        socket.deliver(["type": "conduit.tool.call", "call_id": "ll1", "name": "list_jobs", "arguments": "{}"])
+        await localLiveSettle(until: { !events.isEmpty })
+        XCTAssertEqual(events, [.toolCall([GeminiLiveProtocol.FunctionCall(id: "ll1", name: "list_jobs", arguments: [:])])])
+
+        let before = socket.sent.count
+        session.send(.toolResponse(id: "ll1", name: "list_jobs", result: ["jobs": "none"], scheduling: nil))
+        session.send(.contextNote("typed in the chat"))
+        await localLiveSettle(until: { socket.sent.count >= before + 2 })
+        XCTAssertEqual(socket.sent[before]["type"] as? String, "conduit.tool.result")
+        XCTAssertEqual(socket.sent[before]["call_id"] as? String, "ll1")
+        XCTAssertEqual(socket.sent[before]["speak"] as? Bool, true)
+        XCTAssertEqual(socket.sent[before + 1]["type"] as? String, "conduit.agent.note")
+
+        // An answer the fast model stopped waiting for is said as an update.
+        socket.deliver(["type": "conduit.tool.late", "call_id": "ll1"])
+        await localLiveSettle(until: { socket.sent.count >= before + 4 })
+        XCTAssertEqual(socket.sent.suffix(2).map { $0["type"] as? String }, ["conversation.item.create", "response.create"])
+        let item = try XCTUnwrap(socket.sent[before + 2]["item"] as? [String: Any])
+        let text = try XCTUnwrap(((item["content"] as? [[String: Any]])?.first)?["text"] as? String)
+        XCTAssertTrue(text.contains("list_jobs") && text.contains("jobs: none"), text)
+        session.stop()
+    }
+
     func testLocalLiveSessionAnswersThePluginsTurnsOnTheSameSocket() async throws {
         let (session, sockets) = makeLocalLiveSession()
         var turns: [String] = []
@@ -730,9 +791,48 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(appState.showLocalLiveSheet, "another live mode closes Local Live")
     }
 
+    func testLocalLiveAgentModeGivesTheFastModelGrokLivesTools() {
+        let suite = "LocalLiveAgent.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.setLocalLiveEnabled(true)
+        XCTAssertFalse(appState.isLocalLiveAgent)
+        XCTAssertNil(appState.localLiveAgentSetup(), "Classic's hands-free option: Hermes answers each turn")
+
+        appState.setLocalLiveAgent(true)
+        let setup = appState.localLiveAgentSetup()
+        let names = setup?.functions.map(\.name) ?? []
+        XCTAssertTrue(names.contains("start_job") && names.contains("list_jobs") && names.contains("cancel_job"), "\(names)")
+        XCTAssertTrue(setup?.instructions.contains("call start_job") == true)
+        XCTAssertEqual(appState.configuredLiveVoiceEngine(profile: appState.activeProfile), .localLive)
+    }
+
+    func testHermesSettingLocalVoiceModeMeansAgentModeAndClassicKeepsHandsFree() throws {
+        let suite = "LocalLiveVoiceMode.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let mode = try XCTUnwrap(appState.agentSettingsCatalog.first { $0.key == "voice.mode" })
+
+        appState.setLocalLiveEnabled(true)
+        XCTAssertEqual(mode.read(), .string("classic"), "the hands-free option is part of Classic")
+        mode.write(.string("classic"))
+        XCTAssertTrue(appState.isLocalLiveEnabled, "choosing Classic keeps its hands-free option")
+
+        mode.write(.string("local"))
+        XCTAssertTrue(appState.isLocalLiveAgent)
+        XCTAssertEqual(mode.read(), .string("local"))
+
+        mode.write(.string("classic"))
+        XCTAssertFalse(appState.isLocalLiveEnabled)
+        XCTAssertEqual(mode.read(), .string("classic"))
+    }
+
     func testLocalLivePreferenceDecodesOffFromOlderBlobs() throws {
         let old = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data("{}".utf8))
         XCTAssertFalse(old.localLiveEnabled)
+        XCTAssertFalse(old.localLiveAgent, "an existing Local Live call stays one Hermes turn per utterance")
         var preferences = VoiceProfilePreferences()
         preferences.localLiveEnabled = true
         let roundTrip = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))

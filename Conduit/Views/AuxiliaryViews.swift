@@ -739,7 +739,9 @@ struct SettingsView: View {
                     ),
                     localLive: LocalLiveSettingsModel(
                         enabled: appState.isLocalLiveEnabled,
-                        setEnabled: { appState.setLocalLiveEnabled($0) }
+                        setEnabled: { appState.setLocalLiveEnabled($0) },
+                        agent: appState.isLocalLiveAgent,
+                        setAgent: { appState.setLocalLiveAgent($0) }
                     ),
                     liveStyle: appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
                         ? LiveVoiceStyleSettingsModel(

@@ -3286,6 +3286,50 @@ final class AppState: ObservableObject {
             && !preferences.gptLiveEnabled && !preferences.grokLiveEnabled
     }
 
+    /// Local Live in agent mode (Live > Local) rather than Classic's
+    /// hands-free option on the speech server.
+    var isLocalLiveAgent: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).localLiveAgent
+    }
+
+    func setLocalLiveAgent(_ agent: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        guard preferences.localLiveAgent != agent else { return }
+        objectWillChange.send()
+        preferences.localLiveAgent = agent
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        // A running call keeps its mode until it next connects: a new call,
+        // or a reconnect after the socket drops, picks this up.
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
+    }
+
+    /// Whether the host's web lookups were available when the agent-mode
+    /// call last checked.
+    private var localLiveWebLookUps = false
+
+    /// What an agent-mode call gives the host's fast model: the live
+    /// instructions and Grok Live's tools, run here. Nil outside agent mode.
+    func localLiveAgentSetup() -> LocalLiveProtocol.AgentSetup? {
+        guard isLocalLiveAgent else { return nil }
+        let supervisor = voiceBackgroundJobSupervisor
+        var instructions: String = GeminiLiveConversationController.instructions(
+            search: localLiveWebLookUps ? .hermes : .none,
+            answerLength: liveVoiceStyle.answerLength
+        )
+        instructions += LocalLiveProtocol.agentInstructions
+        instructions += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
+        instructions += liveVoiceResumeContext?.instructionBlock ?? ""
+        instructions += liveVoiceThreadInstructions(delegation: false)
+        instructions += LiveVoiceStyle.askFirstInstructions(on: supervisor.asksBeforeSending)
+        instructions += liveVoiceStyle.instructions
+        let functions = GeminiLiveToolBridge.declarations(
+            webSearch: localLiveWebLookUps,
+            thread: supervisor.liveThread != nil,
+            chats: true
+        )
+        return LocalLiveProtocol.AgentSetup(instructions: instructions, functions: functions)
+    }
+
     func setLocalLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         let othersOn = preferences.geminiLiveEnabled || preferences.gptLiveEnabled || preferences.grokLiveEnabled
@@ -3425,6 +3469,9 @@ final class AppState: ObservableObject {
                 turns.dropTurn()
                 session.onTurn = { turnID, text in turns.start(turnID: turnID, text: text) }
                 session.onTurnCancel = { turnID in turns.cancel(turnID: turnID) }
+                // Live > Local: the host's fast model answers, and its
+                // tool calls run here as Grok Live's do.
+                session.agentSetup = { [weak self] in self?.localLiveAgentSetup() }
                 session.onTurnsDropped = { turns.dropTurn() }
                 turns.onDelta = { [weak session] turnID, text in session?.sendTurnDelta(turnID, text: text) }
                 turns.onDone = { [weak session] turnID in session?.sendTurnDone(turnID) }
@@ -3434,14 +3481,25 @@ final class AppState: ObservableObject {
                 }
                 return session
             },
-            availability: {
+            availability: { [weak self] in
                 let status = try await client.status()
                 if let reason = LocalLiveClient.unavailableReason(status) {
                     throw LocalLiveClientError.unavailable(reason)
                 }
+                if let self, self.isLocalLiveAgent {
+                    // Off only when the user turned web lookups off.
+                    if self.geminiLiveSearchMode != .off {
+                        self.localLiveWebLookUps = await hostContext.webSearchAvailable()
+                    } else {
+                        self.localLiveWebLookUps = false
+                    }
+                }
                 return .available(model: status.modelName)
             },
-            // No tools are declared: Hermes does the work in the call's chat.
+            // Tools run only in agent mode, where the host's fast model calls
+            // them; otherwise Hermes does the work in the call's chat. Like
+            // Grok's, start_job answers once the job runs and its outcome
+            // follows as a text update.
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
             input: audio.input,
             output: audio.output,
