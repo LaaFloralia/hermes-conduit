@@ -860,7 +860,8 @@ final class PushNotificationService: ObservableObject {
             )
         } catch {
             relayMeta = nil
-            relayMetaFetchFailed = false
+            // Never asked, so not an older relay: Settings says it can't reach it.
+            relayMetaFetchFailed = true
             return
         }
         var status: Int?
