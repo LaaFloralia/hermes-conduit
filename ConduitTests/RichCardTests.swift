@@ -8,6 +8,7 @@
 //  extension of an existing class, so the test planner needs no new entry.
 //
 
+import MapKit
 import UserNotifications
 import XCTest
 @testable import Conduit
@@ -87,6 +88,15 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(driving.route?.mode, .driving)
     }
 
+    func testACyclingRouteIsDrawnAndOpenedAsCycling() {
+        // Not walking's time and line under the bicycle, and Maps opens on its bike directions.
+        XCTAssertEqual(RichPlaceLookup.transportType(.cycling), .cycling)
+        XCTAssertEqual(RichPlaceLookup.directionsMode(.cycling), MKLaunchOptionsDirectionsModeCycling)
+        XCTAssertEqual(MapsNavigator.directionsMode(.cycling), MKLaunchOptionsDirectionsModeCycling)
+        XCTAssertEqual(RichPlaceLookup.transportType(.walking), .walking)
+        XCTAssertEqual(MapsNavigator.directionsMode(.walking), MKLaunchOptionsDirectionsModeWalking)
+    }
+
     func testRichInformationCardsReadTheirOwnParts() throws {
         let stat: [String: Any] = ["label": "Steps", "value": "8,412", "change": "+12%", "trend": "up", "tone": "good", "spark": [1, 2, 3]]
         let series: [[String: Any]] = [["name": "Sales", "values": [5, 9.5]], ["values": [1]]]
@@ -154,6 +164,15 @@ extension AppStateVoiceCapabilityTests {
         let byName = PhonePerson(id: "2", name: "ada lovelace")
         XCTAssertEqual(cards[1].people[1].match(in: [byName]), nil)
         XCTAssertEqual(RichPerson(json: ["name": "Ada Lovelace"])?.match(in: [byName])?.id, "2")
+    }
+
+    func testADoneStatusShowsAndReadsAsComplete() throws {
+        // The bar and VoiceOver read the same value: a done card is full whatever progress it was last given.
+        let done = try XCTUnwrap(RichStatus(json: ["state": "Delivered", "phase": "done", "progress": 0.4]))
+        XCTAssertEqual(done.shownProgress, 1)
+        let active = try XCTUnwrap(RichStatus(json: ["state": "On its way", "phase": "active", "progress": 0.4]))
+        XCTAssertEqual(active.shownProgress, 0.4)
+        XCTAssertNil(RichStatus(json: ["state": "Delivered", "phase": "done"])?.shownProgress, "no bar without a progress")
     }
 
     func testAChatShowsALiveCardOnlyWhereItWasLastUpdated() {
@@ -320,5 +339,29 @@ extension AppStateVoiceCapabilityTests {
         let calls = try VoiceHistoryClient.chatCalls(from: response)
         XCTAssertEqual(calls.first?.turns.map(\.cards.count), [0, 1])
         XCTAssertEqual(calls.first?.turns.last?.cards.first?.places.first?.name, "Tartine")
+    }
+
+    /// A live card shown again later in a saved call replaces the earlier
+    /// one there, as it does in a typed chat; the cards shown beside it stay.
+    func testSavedChatCallShowsOnlyTheLatestOfALiveCard() throws {
+        func shown(_ state: String, sibling: Bool = false) -> [String: Any] {
+            var cards: [[String: Any]] = [["type": "status", "live": "order", "status": ["state": state]]]
+            if sibling { cards.append(["type": "place", "places": [["name": "Tartine"]]]) }
+            return ["role": "assistant", "text": "Order: \(state)", "cards": cards]
+        }
+        let response: [String: Any] = [
+            "ok": true, "chat_id": "c",
+            "calls": [["call_id": "call-1", "engine": "gpt-live", "turns": [
+                ["role": "user", "text": "Where's my order?"] as [String: Any],
+                shown("Packed", sibling: true), shown("Shipped"), shown("Delivered"),
+            ]] as [String: Any]],
+        ]
+        let call = try XCTUnwrap(try VoiceHistoryClient.chatCalls(from: response).first)
+
+        let drawn = call.turns.map { call.currentCards(for: $0) }
+        XCTAssertEqual(drawn.map(\.count), [0, 1, 0, 1])
+        XCTAssertEqual(drawn[1].first?.places.first?.name, "Tartine", "the sibling stays")
+        XCTAssertEqual(drawn[3].first?.live, "order")
+        XCTAssertEqual(call.turns.map(\.cards.count), [0, 2, 1, 1], "the saved record is unchanged")
     }
 }
