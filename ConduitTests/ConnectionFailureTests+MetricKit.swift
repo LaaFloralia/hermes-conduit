@@ -306,4 +306,55 @@ extension ConnectionFailureTests {
         XCTAssertNil(store.writeExport(now: metricKitDay(1), appVersion: "test", timeZone: metricKitUTC))
         XCTAssertFalse(FileManager.default.fileExists(atPath: store.exportURL.path))
     }
+
+    func testMetricKitAnExistingFolderIsKeptOutOfBackupsOnEveryWrite() throws {
+        let store = metricKitStore()
+        // A folder an older build or a restore left in backups.
+        try FileManager.default.createDirectory(at: store.directory, withIntermediateDirectories: true)
+        XCTAssertNotEqual(try store.directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+        XCTAssertTrue(store.save(metricKitMetricJSON(), kind: .metrics, begin: metricKitDay(0), end: metricKitDay(1)))
+        // A fresh URL: resource values are cached per URL.
+        let fresh = URL(fileURLWithPath: store.directory.path, isDirectory: true)
+        XCTAssertEqual(try fresh.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    }
+
+    func testMetricKitTheShareFileIsReusedUntilSomethingNewIsStored() async throws {
+        let store = metricKitStore()
+        let reports = MetricKitReports(store: store)
+        // Read from disk each time: URL.resourceValues caches.
+        func modified(_ url: URL) throws -> Date? {
+            try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
+        }
+        store.save(metricKitMetricJSON(), kind: .metrics, begin: metricKitDay(0), end: metricKitDay(1))
+        let first = await reports.load()
+        let url = try XCTUnwrap(first.exportURL)
+        XCTAssertFalse(first.exportFailed)
+        // An old stamp makes a rewrite visible however fast the test runs.
+        let stamp = Date(timeIntervalSince1970: 1_700_000_000)
+        try FileManager.default.setAttributes([.modificationDate: stamp], ofItemAtPath: url.path)
+
+        let again = await reports.load()
+        XCTAssertEqual(again.exportURL, url)
+        XCTAssertEqual(try modified(url), stamp, "Nothing new: the file isn't written again")
+
+        store.save(metricKitMetricJSON(cpu: "500 sec"), kind: .metrics, begin: metricKitDay(1), end: metricKitDay(2))
+        _ = await reports.load()
+        XCTAssertNotEqual(try modified(url), stamp, "A new report rewrites it")
+    }
+
+    func testMetricKitAShareFileThatCantBeWrittenSaysSo() async throws {
+        let store = metricKitStore()
+        // A file where the share folder should be: the export can't be written.
+        let blocked = store.exportDirectory
+        try FileManager.default.createDirectory(at: blocked.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: blocked)
+        store.save(metricKitMetricJSON(), kind: .metrics, begin: metricKitDay(0), end: metricKitDay(1))
+        let loaded = await MetricKitReports(store: store).load()
+        XCTAssertFalse(loaded.summary.isEmpty)
+        XCTAssertNil(loaded.exportURL)
+        XCTAssertTrue(loaded.exportFailed, "Reports are stored: the page says the file failed rather than look empty")
+
+        let empty = await MetricKitReports(store: metricKitStore()).load()
+        XCTAssertFalse(empty.exportFailed, "No reports is not a failure")
+    }
 }

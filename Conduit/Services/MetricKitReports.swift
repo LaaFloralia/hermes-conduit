@@ -19,6 +19,11 @@
 import CryptoKit
 import Foundation
 import MetricKit
+import os
+
+/// A store that stops writing would otherwise look just like a device with
+/// no reports yet.
+private let metricKitLog = Logger(subsystem: "com.milim.relay", category: "metrickit")
 
 enum MetricKitReportKind: String, CaseIterable {
     /// A day of usage numbers.
@@ -40,8 +45,9 @@ struct MetricKitReportStore {
     }
 
     let directory: URL
-    /// Where the share file goes: written fresh each time Diagnostics & logs
-    /// opens, so it is never a second long-lived copy of the reports.
+    /// Where the share file goes: the temporary folder, written when
+    /// Diagnostics & logs opens and something changed since, so it is never
+    /// a long-lived second copy of the reports.
     var exportDirectory = FileManager.default.temporaryDirectory
     /// About two weeks of days, enough to compare before and after a change.
     var maxMetrics = 14
@@ -68,7 +74,10 @@ struct MetricKitReportStore {
     /// payload older than everything kept is pruned straight away.
     @discardableResult
     func save(_ json: Data, kind: MetricKitReportKind, begin: Date, end: Date) -> Bool {
-        guard let normalized = Self.normalized(json) else { return false }
+        guard let normalized = Self.normalized(json) else {
+            metricKitLog.error("A \(kind.rawValue, privacy: .public) report wasn't a JSON object; not kept")
+            return false
+        }
         let hash = Self.hash(normalized)
         let beginSeconds = Int(begin.timeIntervalSince1970.rounded(.down))
         let endSeconds = Int(end.timeIntervalSince1970.rounded(.down))
@@ -83,6 +92,7 @@ struct MetricKitReportStore {
             try prepareDirectory()
             try normalized.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
+            metricKitLog.error("Couldn't keep a \(kind.rawValue, privacy: .public) report: \(Self.logged(error), privacy: .public)")
             return false
         }
         prune()
@@ -166,8 +176,16 @@ struct MetricKitReportStore {
             try data.write(to: exportURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return exportURL
         } catch {
+            metricKitLog.error("Couldn't write the device reports file: \(Self.logged(error), privacy: .public)")
             return nil
         }
+    }
+
+    /// An error's domain and code only: a file error's text names the
+    /// app's container and the report files.
+    static func logged(_ error: Error) -> String {
+        let error = error as NSError
+        return "\(error.domain) \(error.code)"
     }
 
     static var appVersion: String {
@@ -177,15 +195,21 @@ struct MetricKitReportStore {
         return "\(version) (\(build))"
     }
 
+    /// Creates the folder when it's missing, and on every write makes sure
+    /// it is protected until first unlock and left out of backups (a restore
+    /// or an older build may have left it otherwise). A folder that can't be
+    /// kept out of backups takes no report: diagnostics carry call stacks.
     private func prepareDirectory() throws {
-        guard !FileManager.default.fileExists(atPath: directory.path) else { return }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [
-            .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
-        ])
+        let protection: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+        if FileManager.default.fileExists(atPath: directory.path) {
+            try FileManager.default.setAttributes(protection, ofItemAtPath: directory.path)
+        } else {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: protection)
+        }
         var folder = directory
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
-        try? folder.setResourceValues(values)
+        try folder.setResourceValues(values)
     }
 
     /// Sorted keys, so the same payload hashes the same however it arrived.
@@ -228,7 +252,7 @@ struct MetricKitDayMetrics: Equatable {
     var wifiUploadBytes: Double?
     var diskWriteBytes: Double?
     /// Hangs in the day's hang-time histogram.
-    var hangs: Int?
+    var hangs: Int? = nil
 
     init(cpuSeconds: Double? = nil, foregroundSeconds: Double? = nil, backgroundSeconds: Double? = nil,
          cellularDownloadBytes: Double? = nil, cellularUploadBytes: Double? = nil,
@@ -446,14 +470,45 @@ final class MetricKitReports: NSObject, MXMetricManagerSubscriber, @unchecked Se
         }
     }
 
-    /// The summary, and the share file written fresh (so its version and
-    /// summary are current), off the main thread.
-    func load() async -> (summary: MetricKitReportSummary, exportURL: URL?) {
+    /// What Diagnostics & logs shows: the summary and the share file, or
+    /// that the file couldn't be written.
+    struct Loaded {
+        var summary: MetricKitReportSummary
+        var exportURL: URL?
+        /// Reports are stored, but the share file couldn't be written.
+        var exportFailed: Bool
+    }
+
+    /// The stored files and app version the share file was last written
+    /// from: opening the page again with nothing new reuses it rather than
+    /// serializing every payload again. Only touched on `queue`.
+    private var lastExport: (files: [String], appVersion: String, timeZone: String)?
+
+    /// The summary, and a current share file, off the main thread at the
+    /// page's priority (someone is waiting on it).
+    func load() async -> Loaded {
         await withCheckedContinuation { continuation in
-            queue.async { [store] in
+            queue.async(qos: .userInitiated, flags: .enforceQoS) { [self] in
                 let summary = store.summary()
-                let url = store.writeExport()
-                continuation.resume(returning: (summary, summary.isEmpty ? nil : url))
+                guard !summary.isEmpty else {
+                    // Nothing to offer: no share file either.
+                    try? FileManager.default.removeItem(at: store.exportURL)
+                    lastExport = nil
+                    continuation.resume(returning: Loaded(summary: summary, exportURL: nil, exportFailed: false))
+                    return
+                }
+                let files = (MetricKitReportKind.allCases.flatMap { store.entries($0) }).map(\.url.lastPathComponent)
+                let version = MetricKitReportStore.appVersion
+                let timeZone = TimeZone.current.identifier
+                if let lastExport, lastExport.files == files, lastExport.appVersion == version,
+                   lastExport.timeZone == timeZone,
+                   FileManager.default.fileExists(atPath: store.exportURL.path) {
+                    continuation.resume(returning: Loaded(summary: summary, exportURL: store.exportURL, exportFailed: false))
+                    return
+                }
+                let url = store.writeExport(appVersion: version)
+                lastExport = url == nil ? nil : (files, version, timeZone)
+                continuation.resume(returning: Loaded(summary: summary, exportURL: url, exportFailed: url == nil))
             }
         }
     }
