@@ -559,7 +559,7 @@ struct GroupUserBubble<Footer: View>: View {
                 .padding(.vertical, 10)
                 .background(
                     LinearGradient(
-                        colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
+                        colors: [.conduitUserBubble, .conduitUserBubbleShade],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),

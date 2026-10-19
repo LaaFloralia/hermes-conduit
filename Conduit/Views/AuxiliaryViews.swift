@@ -2976,7 +2976,7 @@ private struct AccentColorPicker: View {
                             if isSelected {
                                 Image(systemName: "checkmark")
                                     .font(.footnote.weight(.bold))
-                                    .foregroundStyle(Color(uiColor: choice.selectionColorOnBubble(dark: colorScheme == .dark)))
+                                    .foregroundStyle(Color(uiColor: ConduitAccentChoice.markColor(on: choice.color(dark: colorScheme == .dark))))
                             }
                         }
                         .padding(4)
