@@ -68,6 +68,10 @@ extension Color {
     static let conduitAdaptiveAccentSoft = Color(uiColor: UIColor { traits in
         traits.conduitAccent.softColor(dark: traits.userInterfaceStyle == .dark)
     })
+
+    /// A sent bubble's gradient stops, in the picked accent.
+    static let conduitUserBubble = Color(uiColor: .conduitUserBubble)
+    static let conduitUserBubbleShade = Color(uiColor: .conduitUserBubbleShade)
 }
 
 // MARK: - Accent choice
@@ -120,11 +124,27 @@ enum ConduitAccentChoice: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The fill of the user's own message bubbles, which carry white text:
+    /// the light-mode accent, in dark mode too. The dark-mode accent is light
+    /// enough to read on the dark backdrop, and so too light under white
+    /// text. AccentContrastTests holds both to WCAG AA.
+    var bubbleColor: UIColor { color(dark: false) }
+
+    /// The bubble's lower-trailing gradient stop: the same shade, darker and
+    /// opaque, so white text keeps its contrast whatever lies behind.
+    var bubbleShadeColor: UIColor {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        bubbleColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return UIColor(red: red * 0.8, green: green * 0.8, blue: blue * 0.8, alpha: 1)
+    }
+
     /// The tint a text selection takes on a sent bubble: the system draws
-    /// selections in the accent, which disappears on an accent bubble. Dark
-    /// on a light bubble, white on a dark one.
-    func selectionColorOnBubble(dark: Bool) -> UIColor {
-        color(dark: dark).conduitRelativeLuminance > 0.3 ? .black : .white
+    /// selections in the accent, which disappears on an accent bubble.
+    var selectionColorOnBubble: UIColor { Self.markColor(on: bubbleColor) }
+
+    /// Black or white, whichever stands out on `fill`.
+    static func markColor(on fill: UIColor) -> UIColor {
+        fill.conduitRelativeLuminance > 0.3 ? .black : .white
     }
 }
 
@@ -176,7 +196,16 @@ extension UIColor {
 
     /// See ConduitAccentChoice.selectionColorOnBubble.
     static let conduitSelectionOnAccent = UIColor { traits in
-        traits.conduitAccent.selectionColorOnBubble(dark: traits.userInterfaceStyle == .dark)
+        traits.conduitAccent.selectionColorOnBubble
+    }
+
+    /// A sent bubble's fill, top-leading and bottom-trailing stops. See
+    /// ConduitAccentChoice.bubbleColor.
+    static let conduitUserBubble = UIColor { traits in
+        traits.conduitAccent.bubbleColor
+    }
+    static let conduitUserBubbleShade = UIColor { traits in
+        traits.conduitAccent.bubbleShadeColor
     }
 
     /// WCAG relative luminance of an sRGB colour.

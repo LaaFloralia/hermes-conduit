@@ -1239,7 +1239,7 @@ struct UserMessageContent: View, Equatable {
             RoundedRectangle(cornerRadius: 21, style: .continuous)
                 .fill(
                     LinearGradient(
-                        colors: [.conduitAccent, .conduitAccent.opacity(0.76)],
+                        colors: [.conduitUserBubble, .conduitUserBubbleShade],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
