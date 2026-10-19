@@ -527,11 +527,16 @@ struct SettingsView: View {
                         ConduitSheetHeader(title: AppLocalization.string("Settings"), close: { dismiss() })
                     }
                 }
+                // On a wide window every page keeps to a readable column.
+                // Inside the stack: a margin outside it doesn't reach the
+                // pages it hosts.
+                .readableContentWidth(ReadableWidth.settings)
                 // V2's Settings tab: each screen stops above the floating
                 // tab bar and fades under it. Nothing in the sheet.
                 .v2TabBarClearance()
                 .navigationDestination(for: SettingsDestination.self) { destination in
                     destinationView(destination)
+                        .readableContentWidth(ReadableWidth.settings)
                         .v2TabBarClearance()
                 }
         }
@@ -3299,7 +3304,7 @@ private struct NotificationsSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
                 // Edits stay a draft until saved, so a half-typed URL never
                 // becomes the relay; saving moves an active registration.
-                TextField("https://push.milim.dev", text: $relayDraft)
+                TextField(PushNotificationService.defaultRelayURL.absoluteString, text: $relayDraft)
                     .textFieldStyle(.plain)
                     .font(.body.monospaced())
                     .padding(.vertical, 4)

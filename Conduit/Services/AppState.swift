@@ -783,6 +783,8 @@ final class AppState: ObservableObject {
     /// (older than the route): its writes skip the read until a write is
     /// refused for missing identity, which clears the mark.
     private var hostsWithoutMutationSnapshot: Set<String> = []
+    /// Tests and the UI fixture: stands in for Hermes creating a chat, for
+    /// a widget's New Chat and the app's own alike.
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
     @Published var cronSessions: [SessionSummary] = [] {
         didSet {
@@ -6332,7 +6334,7 @@ final class AppState: ObservableObject {
                 // Another dashboard's showing now: the outbox keeps the
                 // call for the one it was on.
                 guard let owner, self.ownsDashboardRuntime(owner) else { throw DashboardTicketBridgeError.notReady }
-                return try await self.voiceHistoryClient.save(request, profile: profile)
+                return try await self.voiceHistoryClient.save(request, profile: request.rowProfile ?? profile)
             },
             title: { [weak self] turns in
                 // Never another dashboard's Hermes that names the call.
@@ -6701,7 +6703,7 @@ final class AppState: ObservableObject {
             if let owner, !ownsDashboardRuntime(owner) { break }
             var request = entry.request
             do {
-                let result = try await voiceHistoryClient.save(request, profile: profile)
+                let result = try await voiceHistoryClient.save(request, profile: request.rowProfile ?? profile)
                 if !hostCantSave { voiceCallSaveBlockedKeys.remove(key) }
                 drain.saved += 1
                 settled.append((entry, nil))
@@ -6741,6 +6743,7 @@ final class AppState: ObservableObject {
             } catch VoiceHistoryError.rowUnavailable where request.sessionID != nil {
                 // The row is gone: keep the call's turns as a new row next time.
                 request.sessionID = nil
+                request.rowProfile = nil
                 request.callID = UUID().uuidString
                 request.title = Self.fallbackVoiceCallTitle(at: entry.queuedAt)
                 request.turns = request.turns.enumerated().map { offset, turn in
@@ -8253,6 +8256,46 @@ final class AppState: ObservableObject {
 
     private func clearPendingDecisionRestorationGuard() {
         restoredPendingDecisionCardsAwaitingConfirmation = nil
+    }
+
+    /// The chat's own notes (slash command output, /btw and /background
+    /// answers), which Hermes never stores, carried from `previous` into a
+    /// transcript of the same chat rebuilt from the gateway's rows. Each goes
+    /// back after the row it followed, or at the end when that row isn't
+    /// among the rebuilt ones; the notes keep their order either way, so a
+    /// note never lands above one that came before it. A note the rebuilt
+    /// rows already hold (same id, or a system row with the same text) isn't
+    /// added again; two notes with the same text are still two notes.
+    static func keepingLocalNotes(from previous: [ChatMessage], in rebuilt: [ChatMessage]) -> [ChatMessage] {
+        var rebuiltIndex: [String: Int] = [:]
+        for (index, message) in rebuilt.enumerated() where rebuiltIndex[message.id] == nil {
+            rebuiltIndex[message.id] = index
+        }
+        let rebuiltSystemTexts = Set(rebuilt.lazy.filter { $0.role == .system }.map(\.content))
+        // The notes by the rebuilt row they go after: -1 is the top,
+        // rebuilt.count - 1 the end.
+        var notesAfter: [Int: [ChatMessage]] = [:]
+        // The top until a row has gone by.
+        var anchor = -1
+        // Never above a note already placed.
+        var floor = -1
+        for message in previous {
+            guard message.role == .system, message.id.hasPrefix("slash-") else {
+                anchor = rebuiltIndex[message.id] ?? rebuilt.count - 1
+                continue
+            }
+            guard rebuiltIndex[message.id] == nil, !rebuiltSystemTexts.contains(message.content) else { continue }
+            floor = max(floor, anchor)
+            notesAfter[floor, default: []].append(message)
+        }
+        guard !notesAfter.isEmpty else { return rebuilt }
+        var kept = notesAfter[-1] ?? []
+        kept.reserveCapacity(rebuilt.count + notesAfter.values.reduce(0) { $0 + $1.count })
+        for (index, message) in rebuilt.enumerated() {
+            kept.append(message)
+            kept.append(contentsOf: notesAfter[index] ?? [])
+        }
+        return kept
     }
 
     /// Adopts a conversation as the active one and records it as the
@@ -14261,7 +14304,7 @@ final class AppState: ObservableObject {
               widgetLease?.isCurrent != false else { return }
         do {
             let created: (sessionId: String, storedSessionId: String?, profile: String?)
-            if widgetLease != nil, let widgetSessionCreatorOverride {
+            if let widgetSessionCreatorOverride {
                 created = try await widgetSessionCreatorOverride(client, cwd)
             } else {
                 created = try await client.createSession(
@@ -14435,6 +14478,8 @@ final class AppState: ObservableObject {
             syncOperationID: automaticSyncOperationID
         ) else { return false }
         let retainedRestoredMessages = pendingDecisionRestorationMessages(for: result.sessionId)
+        let previousSessionID = activeSessionId
+        let previousMessages = messages
         // The server answered with an authoritative conversation: it replaces
         // the read-only offline copy wholesale, even when it is empty.
         dismissOfflineChatPresentation()
@@ -14487,7 +14532,15 @@ final class AppState: ObservableObject {
             includePendingApprovals: restorePendingDecisionCards,
             includePendingTools: result.snapshot.running != false
         )
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: restored, sessionId: result.sessionId), sessionId: result.sessionId)
+        // Hermes' rows don't hold the chat's own notes: a refresh of the same
+        // chat keeps them, a resume of another chat leaves them behind.
+        let resumedIDs = chatOwnSessionIDs(for: result.sessionId)
+            .union(sessionIDs + [result.storedSessionId].compactMap { $0 })
+        let isSameChat = previousSessionID.map {
+            !chatOwnSessionIDs(for: $0).union([$0]).isDisjoint(with: resumedIDs)
+        } ?? false
+        let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: restored) : restored
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
         if result.snapshot.running == false {
             sessionPresentationCache.removePendingTools(
                 profile: presentationProfile(for: result.sessionId),
@@ -20357,10 +20410,7 @@ final class AppState: ObservableObject {
         guard !showsPendingNewChat, !isStartingNewChat else { return }
         if canStartNewChatNow {
             isStartingNewChat = true
-            Task {
-                await createNewSession()
-                isStartingNewChat = false
-            }
+            Task { await createNewSessionMarkingStart() }
             return
         }
         guard canQueueNewChat, let dashboardID = activeDashboardID,
@@ -20942,7 +20992,14 @@ final class AppState: ObservableObject {
         context: ComposerSubmissionContext? = nil,
         onBusy: (() -> Void)? = nil
     ) async -> Bool {
-        let submissionContext = context ?? composerSubmissionContext()
+        var submissionContext = context ?? composerSubmissionContext()
+        // The canvas a closed chat leaves (archive, delete) has no chat
+        // behind it: the first message starts one, as New Chat would, and
+        // goes into it rather than nowhere.
+        if composerSubmissionStartsChat(text: text, attachments: attachments, context: submissionContext) {
+            guard let started = await startChatForComposerSubmission() else { return false }
+            submissionContext = started
+        }
         let sent = await performComposerSubmission(
             text: text,
             attachments: attachments,
@@ -20959,6 +21016,45 @@ final class AppState: ObservableObject {
             noteOpenChatSentHere()
         }
         return sent
+    }
+
+    /// Nothing is on screen to send into: no chat, nor one on its way.
+    /// A slash command runs as before; it needs no chat.
+    private func composerSubmissionStartsChat(
+        text: String,
+        attachments: [Attachment],
+        context: ComposerSubmissionContext
+    ) -> Bool {
+        guard context.sessionID == nil, composerChatOnScreen == .none,
+              isCurrentComposerSubmission(context), composerIsEnabled else { return false }
+        return !(attachments.isEmpty && Self.parseSlashCommand(text) != nil)
+    }
+
+    /// Starts the chat a message sent from the empty canvas goes into, and
+    /// the submission context for it. Nil, with the reason shown, when no
+    /// chat could start: the composer then keeps the message.
+    private func startChatForComposerSubmission() async -> ComposerSubmissionContext? {
+        guard canStartNewChatNow, !isStartingNewChat else {
+            // Said only when the connection is what's missing, over any
+            // older message: this one is why the message didn't go. A
+            // chat starting, a sync or a profile switch passes on its own.
+            if !isConnected || client == nil {
+                errorMessage = AppLocalization.string("Connect to Hermes to start a conversation.")
+            }
+            return nil
+        }
+        await createNewSessionMarkingStart()
+        // A chat that didn't start has already said why (createNewSession).
+        guard activeSessionId != nil else { return nil }
+        return composerSubmissionContext()
+    }
+
+    /// Creates a chat as New Chat does, marked as starting until it is
+    /// done, so neither New Chat nor a send starts a second one meanwhile.
+    private func createNewSessionMarkingStart() async {
+        isStartingNewChat = true
+        defer { isStartingNewChat = false }
+        await createNewSession()
     }
 
     private func performComposerSubmission(
@@ -23868,7 +23964,9 @@ final class AppState: ObservableObject {
             includePendingClarifications: false,
             includePendingApprovals: false
         )
-        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: merged, sessionId: sessionID), sessionId: sessionID)
+        // The chat's own notes aren't among the compressed rows; keep them.
+        let kept = Self.keepingLocalNotes(from: messages, in: merged)
+        messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: kept, sessionId: sessionID), sessionId: sessionID)
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false
@@ -26049,10 +26147,109 @@ final class AppState: ObservableObject {
         return error.localizedDescription.lowercased().contains("no pending")
     }
 
-    func respondToApproval(messageId: String, choice: String) async {
+    /// Where an answer to a card without a request id goes.
+    enum LegacyApprovalTarget: Equatable {
+        /// The gateway names no request ids: it answers the session's queue.
+        case sessionQueue
+        /// The queued request that asks what the card shows.
+        case request(String)
+        /// Nothing queued asks what the card shows any more.
+        case noLongerPending
+        /// A card without its command matches queued requests that run
+        /// different commands: the queue's own cards are shown instead.
+        case ambiguous
+        /// The queue could not be read; nothing is sent.
+        case unknown
+    }
+
+    /// A card without a request id (one a push restored, or one from a
+    /// gateway before request ids) is answered by session, and Hermes then
+    /// settles the oldest queued approval, which need not be the command
+    /// the card shows. So read the queue first: a gateway that names its
+    /// requests is answered on the one whose command and explanation the
+    /// card shows (a push card carries no command, so only the
+    /// explanation is compared, as the notifier sends it: collapsed, cut,
+    /// or redacted), and nothing is sent when none does. Only
+    /// a gateway that names no requests, or has no `approval.pending`,
+    /// keeps the session-wide answer.
+    private func legacyApprovalTarget(
+        for card: ApprovalActivity,
+        using client: HermesClient,
+        profile: String?
+    ) async -> LegacyApprovalTarget {
+        let queued: [ApprovalActivity]
+        do {
+            if let pendingApprovalsWithProfile = chatResumeLifecycleOperations.pendingApprovalsWithProfile {
+                queued = try await pendingApprovalsWithProfile(client, card.sessionId, profile)
+            } else if let pendingApprovals = chatResumeLifecycleOperations.pendingApprovals {
+                queued = try await pendingApprovals(client, card.sessionId)
+            } else {
+                queued = try await client.pendingApprovals(sessionId: card.sessionId, profile: profile)
+            }
+        } catch {
+            return HermesClient.isMissingRPCMethod(error) ? .sessionQueue : .unknown
+        }
+        return Self.legacyApprovalTarget(for: card, in: queued)
+    }
+
+    /// The explanation a redacted push carries in place of the real one
+    /// (conduit-push-notifier `events.py`, `REDACTED_APPROVAL_TEXT`, used by
+    /// `redact_event` for profiles with `hermes conduit-push redact on`).
+    /// Keep it in step with the notifier.
+    static let redactedApprovalPushDescription = "Hermes needs your approval. Open Conduit for details."
+
+    /// How long a push's explanation can be: the notifier collapses its
+    /// whitespace and cuts it at 500 code points, with no ellipsis
+    /// (`sanitize_decision` / `_clean` in its `events.py`).
+    static let approvalPushDescriptionLimit = 500
+
+    static func legacyApprovalTarget(
+        for card: ApprovalActivity,
+        in queued: [ApprovalActivity]
+    ) -> LegacyApprovalTarget {
+        if queued.isEmpty { return .noLongerPending }
+        let identified = queued.filter { $0.requestId != nil }
+        if identified.isEmpty { return .sessionQueue }
+        let description = collapsedWhitespace(card.description)
+        if card.command.isEmpty, description == redactedApprovalPushDescription {
+            // A redacted push names nothing to match: answerable only when
+            // one request is queued; with more, the queue's own cards show.
+            guard identified.count == 1, let requestId = identified[0].requestId else { return .ambiguous }
+            return .request(requestId)
+        }
+        let command = card.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The parser trims the push text, so a cut that ended on a space
+        // arrives one shorter than the limit.
+        let clipped = card.command.isEmpty
+            && description.unicodeScalars.count >= approvalPushDescriptionLimit - 1
+        let matches = identified.filter { entry in
+            let queuedDescription = collapsedWhitespace(entry.description)
+            let sameDescription = queuedDescription == description
+                || (clipped && queuedDescription.unicodeScalars.starts(with: description.unicodeScalars))
+            return sameDescription
+                && (command.isEmpty
+                    || entry.command.trimmingCharacters(in: .whitespacesAndNewlines) == command)
+        }
+        guard let requestId = matches.first?.requestId else { return .noLongerPending }
+        if Set(matches.map(\.command)).count > 1 { return .ambiguous }
+        return .request(requestId)
+    }
+
+    /// Text as the notifier sends it: whitespace runs collapsed to one
+    /// space, ends trimmed.
+    private static func collapsedWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// `shown` is the approval as the card drew it when the person tapped.
+    /// When the card has since changed to ask something else (a legacy card
+    /// is updated in place by the next command), nothing is sent: the card
+    /// on screen already shows the new question to answer.
+    func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
               current.status == .pending || current.status == .error else { return }
+        if let shown, !current.asksSameAs(shown) { return }
         let decisionKey = SessionPresentationCache.decisionKey(for: messages[index])
 
         let submissionIdentity = current.requestId.map { ApprovalSubmissionIdentity.identified($0) }
@@ -26085,20 +26282,54 @@ final class AppState: ObservableObject {
         // pointer identity is needed.
         let profile = activeProfile
         let conversationProfile = presentationProfile(for: current.sessionId)
+        var answeredRequestId = current.requestId
+        if current.requestId == nil {
+            let target = await legacyApprovalTarget(for: current, using: client, profile: conversationProfile)
+            guard profile == activeProfile, self.client === client,
+                  let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            switch target {
+            case .sessionQueue:
+                break
+            case .request(let requestId):
+                answeredRequestId = requestId
+            case .noLongerPending:
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+                cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            case .ambiguous:
+                // Back to pending, so the queue's identified cards, each
+                // with its command, replace this one.
+                messages[updatedIndex].approval?.status = .pending
+                messages[updatedIndex].approval?.choice = nil
+                cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            case .unknown:
+                messages[updatedIndex].approval?.status = .error
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
+                cacheMessagePresentation()
+                return
+            }
+        }
         do {
             let accepted: Bool
             if let respondToApproval = chatResumeLifecycleOperations.respondToApproval {
                 accepted = try await respondToApproval(
                     client,
                     current.sessionId,
-                    current.requestId,
+                    answeredRequestId,
                     choice,
                     conversationProfile
                 )
             } else {
                 accepted = try await client.respondToApproval(
                     sessionId: current.sessionId,
-                    requestId: current.requestId,
+                    requestId: answeredRequestId,
                     choice: choice,
                     profile: conversationProfile
                 )
