@@ -26049,6 +26049,100 @@ final class AppState: ObservableObject {
         return error.localizedDescription.lowercased().contains("no pending")
     }
 
+    /// Where an answer to a card without a request id goes.
+    enum LegacyApprovalTarget: Equatable {
+        /// The gateway names no request ids: it answers the session's queue.
+        case sessionQueue
+        /// The queued request that asks what the card shows.
+        case request(String)
+        /// Nothing queued asks what the card shows any more.
+        case noLongerPending
+        /// A card without its command matches queued requests that run
+        /// different commands: the queue's own cards are shown instead.
+        case ambiguous
+        /// The queue could not be read; nothing is sent.
+        case unknown
+    }
+
+    /// A card without a request id (one a push restored, or one from a
+    /// gateway before request ids) is answered by session, and Hermes then
+    /// settles the oldest queued approval, which need not be the command
+    /// the card shows. So read the queue first: a gateway that names its
+    /// requests is answered on the one whose command and explanation the
+    /// card shows (a push card carries no command, so only the
+    /// explanation is compared, as the notifier sends it: collapsed, cut,
+    /// or redacted), and nothing is sent when none does. Only
+    /// a gateway that names no requests, or has no `approval.pending`,
+    /// keeps the session-wide answer.
+    private func legacyApprovalTarget(
+        for card: ApprovalActivity,
+        using client: HermesClient,
+        profile: String?
+    ) async -> LegacyApprovalTarget {
+        let queued: [ApprovalActivity]
+        do {
+            if let pendingApprovalsWithProfile = chatResumeLifecycleOperations.pendingApprovalsWithProfile {
+                queued = try await pendingApprovalsWithProfile(client, card.sessionId, profile)
+            } else if let pendingApprovals = chatResumeLifecycleOperations.pendingApprovals {
+                queued = try await pendingApprovals(client, card.sessionId)
+            } else {
+                queued = try await client.pendingApprovals(sessionId: card.sessionId, profile: profile)
+            }
+        } catch {
+            return HermesClient.isMissingRPCMethod(error) ? .sessionQueue : .unknown
+        }
+        return Self.legacyApprovalTarget(for: card, in: queued)
+    }
+
+    /// The explanation a redacted push carries in place of the real one
+    /// (conduit-push-notifier `events.py`, `REDACTED_APPROVAL_TEXT`, used by
+    /// `redact_event` for profiles with `hermes conduit-push redact on`).
+    /// Keep it in step with the notifier.
+    static let redactedApprovalPushDescription = "Hermes needs your approval. Open Conduit for details."
+
+    /// How long a push's explanation can be: the notifier collapses its
+    /// whitespace and cuts it at 500 code points, with no ellipsis
+    /// (`sanitize_decision` / `_clean` in its `events.py`).
+    static let approvalPushDescriptionLimit = 500
+
+    static func legacyApprovalTarget(
+        for card: ApprovalActivity,
+        in queued: [ApprovalActivity]
+    ) -> LegacyApprovalTarget {
+        if queued.isEmpty { return .noLongerPending }
+        let identified = queued.filter { $0.requestId != nil }
+        if identified.isEmpty { return .sessionQueue }
+        let description = collapsedWhitespace(card.description)
+        if card.command.isEmpty, description == redactedApprovalPushDescription {
+            // A redacted push names nothing to match: answerable only when
+            // one request is queued; with more, the queue's own cards show.
+            guard identified.count == 1, let requestId = identified[0].requestId else { return .ambiguous }
+            return .request(requestId)
+        }
+        let command = card.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The parser trims the push text, so a cut that ended on a space
+        // arrives one shorter than the limit.
+        let clipped = card.command.isEmpty
+            && description.unicodeScalars.count >= approvalPushDescriptionLimit - 1
+        let matches = identified.filter { entry in
+            let queuedDescription = collapsedWhitespace(entry.description)
+            let sameDescription = queuedDescription == description
+                || (clipped && queuedDescription.unicodeScalars.starts(with: description.unicodeScalars))
+            return sameDescription
+                && (command.isEmpty
+                    || entry.command.trimmingCharacters(in: .whitespacesAndNewlines) == command)
+        }
+        guard let requestId = matches.first?.requestId else { return .noLongerPending }
+        if Set(matches.map(\.command)).count > 1 { return .ambiguous }
+        return .request(requestId)
+    }
+
+    /// Text as the notifier sends it: whitespace runs collapsed to one
+    /// space, ends trimmed.
+    private static func collapsedWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
     func respondToApproval(messageId: String, choice: String) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
@@ -26085,20 +26179,54 @@ final class AppState: ObservableObject {
         // pointer identity is needed.
         let profile = activeProfile
         let conversationProfile = presentationProfile(for: current.sessionId)
+        var answeredRequestId = current.requestId
+        if current.requestId == nil {
+            let target = await legacyApprovalTarget(for: current, using: client, profile: conversationProfile)
+            guard profile == activeProfile, self.client === client,
+                  let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            switch target {
+            case .sessionQueue:
+                break
+            case .request(let requestId):
+                answeredRequestId = requestId
+            case .noLongerPending:
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+                cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            case .ambiguous:
+                // Back to pending, so the queue's identified cards, each
+                // with its command, replace this one.
+                messages[updatedIndex].approval?.status = .pending
+                messages[updatedIndex].approval?.choice = nil
+                cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            case .unknown:
+                messages[updatedIndex].approval?.status = .error
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
+                cacheMessagePresentation()
+                return
+            }
+        }
         do {
             let accepted: Bool
             if let respondToApproval = chatResumeLifecycleOperations.respondToApproval {
                 accepted = try await respondToApproval(
                     client,
                     current.sessionId,
-                    current.requestId,
+                    answeredRequestId,
                     choice,
                     conversationProfile
                 )
             } else {
                 accepted = try await client.respondToApproval(
                     sessionId: current.sessionId,
-                    requestId: current.requestId,
+                    requestId: answeredRequestId,
                     choice: choice,
                     profile: conversationProfile
                 )
