@@ -170,6 +170,11 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// speech server, with Hermes answering each turn in the call's chat
     /// (off by default; older blobs decode off). Never on with another live mode.
     var localLiveEnabled: Bool = false
+    /// Local Live in agent mode (Voice mode Live > Local): the host's fast
+    /// model answers and hands the work to Hermes as jobs. Off is Classic's
+    /// hands-free option on the speech server: one Hermes turn per
+    /// utterance (older blobs decode off, so a call works as it did).
+    var localLiveAgent: Bool = false
     /// Model for the Hermes sessions voice background jobs create. Nil keeps
     /// the profile's current model (the pre-existing behavior).
     var voiceJobModel: String? = nil
@@ -266,6 +271,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
         grokLiveMemory = (try? container.decodeIfPresent(Bool.self, forKey: .grokLiveMemory)) ?? nil
         grokLivePersonality = (try? container.decodeIfPresent(Bool.self, forKey: .grokLivePersonality)) ?? nil
         localLiveEnabled = (try? container.decodeIfPresent(Bool.self, forKey: .localLiveEnabled)) ?? false
+        localLiveAgent = (try? container.decodeIfPresent(Bool.self, forKey: .localLiveAgent)) ?? false
         voiceJobModel = try container.decodeIfPresent(String.self, forKey: .voiceJobModel)
         voiceJobProvider = try container.decodeIfPresent(String.self, forKey: .voiceJobProvider)
         voiceJobReasoningEffort = try container.decodeIfPresent(String.self, forKey: .voiceJobReasoningEffort)

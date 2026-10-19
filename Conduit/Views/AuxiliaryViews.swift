@@ -739,7 +739,9 @@ struct SettingsView: View {
                     ),
                     localLive: LocalLiveSettingsModel(
                         enabled: appState.isLocalLiveEnabled,
-                        setEnabled: { appState.setLocalLiveEnabled($0) }
+                        setEnabled: { appState.setLocalLiveEnabled($0) },
+                        agent: appState.isLocalLiveAgent,
+                        setAgent: { appState.setLocalLiveAgent($0) }
                     ),
                     liveStyle: appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
                         ? LiveVoiceStyleSettingsModel(
@@ -989,6 +991,10 @@ private struct SettingsHome: View {
     /// has dismissed (one presentation context at a time).
     @State private var pendingAppliedNotice = false
     @State private var appliedConnectionNotice = false
+    /// The saved dashboard an edited address already belongs to: the apply
+    /// was refused, and says so the same way once the wizard has gone.
+    @State private var pendingAddressOwner: String?
+    @State private var addressOwner: String?
 
     /// Per-presentation seed for the wizard, built once when the row is
     /// tapped so the Keychain reads stay off the render path.
@@ -1088,6 +1094,11 @@ private struct SettingsHome: View {
                 .environmentObject(appState)
         }
         .sheet(item: $connectionSetupSeed, onDismiss: {
+            if let owner = pendingAddressOwner {
+                pendingAddressOwner = nil
+                addressOwner = owner
+                return
+            }
             guard pendingAppliedNotice else { return }
             pendingAppliedNotice = false
             appliedConnectionNotice = true
@@ -1114,8 +1125,12 @@ private struct SettingsHome: View {
                         savedCredentials: appState.savedCredentialsForDashboard(at: seed.url),
                         savedCloudflareAccess: appState.dashboardScopedCloudflareAccess(for: seed.url)
                     )
-                    plan.perform(appState: appState)
-                    pendingAppliedNotice = !plan.isEmpty
+                    switch plan.perform(appState: appState) {
+                    case .applied:
+                        pendingAppliedNotice = !plan.isEmpty
+                    case .addressBelongsToDashboard(let label):
+                        pendingAddressOwner = label
+                    }
                 },
                 // Sign In Again (a test that found browser sign-in for this
                 // dashboard) signs in and reconnects through the same
@@ -1131,6 +1146,14 @@ private struct SettingsHome: View {
             Text(appState.isConnected
                  ? AppLocalization.string("Saved for your next reconnect. Your current session stays connected.")
                  : AppLocalization.string("Saved for your next reconnect."))
+        }
+        .alert("Settings not applied", isPresented: Binding(
+            get: { addressOwner != nil },
+            set: { if !$0 { addressOwner = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(AppLocalization.string("This address is your saved dashboard “\(addressOwner ?? "")”. Switch to it from your dashboards instead."))
         }
         // Asked again on every visit and dashboard switch: the connect-time
         // check can miss (the dashboard was still loading), and the plugin
@@ -2615,7 +2638,7 @@ struct ProfileConfigSettingsPage: View {
         let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
         switch field.control {
         case .number:
-            guard let number = Double(raw) else {
+            guard let number = ProfileSettingValue.parseNumber(raw) else {
                 fieldErrors[field.key] = AppLocalization.string("Enter a valid number for \(field.label).")
                 return
             }
@@ -3183,6 +3206,10 @@ private struct NotificationsSettingsDetail: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
+                    } else if notifications.relayMetaFetchFailed {
+                        Text("Couldn't reach the push relay to check compatibility.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     } else {
                         Text("Compatibility unknown. Your relay predates version reporting; decision cards may not be available until it updates.")
                             .font(.footnote)

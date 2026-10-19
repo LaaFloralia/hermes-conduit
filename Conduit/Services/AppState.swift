@@ -3286,6 +3286,50 @@ final class AppState: ObservableObject {
             && !preferences.gptLiveEnabled && !preferences.grokLiveEnabled
     }
 
+    /// Local Live in agent mode (Live > Local) rather than Classic's
+    /// hands-free option on the speech server.
+    var isLocalLiveAgent: Bool {
+        loadVoiceProfilePreferences(profile: activeProfile).localLiveAgent
+    }
+
+    func setLocalLiveAgent(_ agent: Bool) {
+        var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        guard preferences.localLiveAgent != agent else { return }
+        objectWillChange.send()
+        preferences.localLiveAgent = agent
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        // A running call keeps its mode until it next connects: a new call,
+        // or a reconnect after the socket drops, picks this up.
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
+    }
+
+    /// Whether the host's web lookups were available when the agent-mode
+    /// call last checked.
+    private var localLiveWebLookUps = false
+
+    /// What an agent-mode call gives the host's fast model: the live
+    /// instructions and Grok Live's tools, run here. Nil outside agent mode.
+    func localLiveAgentSetup() -> LocalLiveProtocol.AgentSetup? {
+        guard isLocalLiveAgent else { return nil }
+        let supervisor = voiceBackgroundJobSupervisor
+        var instructions: String = GeminiLiveConversationController.instructions(
+            search: localLiveWebLookUps ? .hermes : .none,
+            answerLength: liveVoiceStyle.answerLength
+        )
+        instructions += LocalLiveProtocol.agentInstructions
+        instructions += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
+        instructions += liveVoiceResumeContext?.instructionBlock ?? ""
+        instructions += liveVoiceThreadInstructions(delegation: false)
+        instructions += LiveVoiceStyle.askFirstInstructions(on: supervisor.asksBeforeSending)
+        instructions += liveVoiceStyle.instructions
+        let functions = GeminiLiveToolBridge.declarations(
+            webSearch: localLiveWebLookUps,
+            thread: supervisor.liveThread != nil,
+            chats: true
+        )
+        return LocalLiveProtocol.AgentSetup(instructions: instructions, functions: functions)
+    }
+
     func setLocalLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         let othersOn = preferences.geminiLiveEnabled || preferences.gptLiveEnabled || preferences.grokLiveEnabled
@@ -3425,6 +3469,9 @@ final class AppState: ObservableObject {
                 turns.dropTurn()
                 session.onTurn = { turnID, text in turns.start(turnID: turnID, text: text) }
                 session.onTurnCancel = { turnID in turns.cancel(turnID: turnID) }
+                // Live > Local: the host's fast model answers, and its
+                // tool calls run here as Grok Live's do.
+                session.agentSetup = { [weak self] in self?.localLiveAgentSetup() }
                 session.onTurnsDropped = { turns.dropTurn() }
                 turns.onDelta = { [weak session] turnID, text in session?.sendTurnDelta(turnID, text: text) }
                 turns.onDone = { [weak session] turnID in session?.sendTurnDone(turnID) }
@@ -3434,14 +3481,25 @@ final class AppState: ObservableObject {
                 }
                 return session
             },
-            availability: {
+            availability: { [weak self] in
                 let status = try await client.status()
                 if let reason = LocalLiveClient.unavailableReason(status) {
                     throw LocalLiveClientError.unavailable(reason)
                 }
+                if let self, self.isLocalLiveAgent {
+                    // Off only when the user turned web lookups off.
+                    if self.geminiLiveSearchMode != .off {
+                        self.localLiveWebLookUps = await hostContext.webSearchAvailable()
+                    } else {
+                        self.localLiveWebLookUps = false
+                    }
+                }
                 return .available(model: status.modelName)
             },
-            // No tools are declared: Hermes does the work in the call's chat.
+            // Tools run only in agent mode, where the host's fast model calls
+            // them; otherwise Hermes does the work in the call's chat. Like
+            // Grok's, start_job answers once the job runs and its outcome
+            // follows as a text update.
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),
             input: audio.input,
             output: audio.output,
@@ -5831,9 +5889,10 @@ final class AppState: ObservableObject {
 
     /// Test seam: a live call's recording starts, as when the call
     /// connects, with `turns` already said.
-    func beginVoiceCallRecordingForTesting(engine: VoiceCallEngine, turns: [VoiceConversationTranscriptEntry]) {
+    func beginVoiceCallRecordingForTesting(engine: VoiceCallEngine, turns: [VoiceConversationTranscriptEntry], jobs: [String] = []) {
         beginVoiceCallRecording(engine: engine)
         voiceCallRecorder?.capture(turns, unsettled: [])
+        voiceCallRecorder?.jobSessionIDs += jobs
     }
     #endif
     private var voiceTagsFetchedAt: [String: Date] = [:]
@@ -6186,7 +6245,7 @@ final class AppState: ObservableObject {
         guard !ids.isEmpty else { return }
         let profile = profile ?? activeProfile
         let key = voiceHistoryKey(profile: profile)
-        let owner = currentDashboardRuntimeOwner()
+        let dashboardID = activeDashboardID
         for id in ids {
             voiceSessionTagsByKey[key, default: [:]][id] = VoiceSessionTag(kind: kind, parentID: parentID, parentTitle: parentTitle)
         }
@@ -6198,10 +6257,12 @@ final class AppState: ObservableObject {
             await previous?.value
             defer { if self?.voiceTagGeneration == generation { self?.voiceTagChain = nil } }
             for id in ids {
-                // A switch meanwhile: the rest are the old dashboard's.
-                guard let owner, self?.ownsDashboardRuntime(owner) == true else { return }
+                // A switch meanwhile: the rest are the old dashboard's. A
+                // reconnect to the same one (a new bridge) still takes them:
+                // tags aren't retried.
+                guard let self, self.activeDashboardID == dashboardID else { return }
                 do {
-                    try await self?.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
+                    try await self.voiceHistoryClient.tag(sessionID: id, kind: kind, parentID: parentID, parentTitle: parentTitle, profile: profile)
                 } catch {
                     Self.voiceHistoryLog.debug("Tagging a voice session failed: \(LogRedaction.describing(error), privacy: .public)")
                 }
@@ -6448,8 +6509,15 @@ final class AppState: ObservableObject {
                 self.queueVoiceTranscript(requeued, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
             }
             // Its jobs' tags, chat link and the list reload belong to the
-            // dashboard the call was on, not one switched to since.
-            if let owner = callDashboard?.owner, !self.ownsDashboardRuntime(owner) { return }
+            // dashboard the call was on, not one switched to since. A save
+            // that landed is queued again for that dashboard (the host
+            // skips the turns it has), so its next save run files them.
+            if let owner = callDashboard?.owner, !self.ownsDashboardRuntime(owner) {
+                if requeued == nil, let replay = recorder.savedCallReplay {
+                    self.queueVoiceTranscript(replay, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
+                }
+                return
+            }
             let callRow = recorder.sessionID
             // A call kept with its chat files its jobs under the chat.
             let chatID = recorder.savedWithChat ? recorder.chatID : nil
@@ -10836,7 +10904,7 @@ final class AppState: ObservableObject {
         }
         #endif
         guard let activeID = savedDashboardRegistry.activeDashboardID,
-              let dashboard = savedDashboardRegistry.dashboard(with: activeID) else {
+              let dashboard = dashboardForSignIn(activeID) else {
             // No saved dashboards (clean install) or none selected: present
             // the sign-in / add-dashboard flow.
             showLogin = true
@@ -11400,7 +11468,9 @@ final class AppState: ObservableObject {
                 savedCredentials: savedCredentialsForDashboard(at: anchor),
                 savedCloudflareAccess: dashboardScopedCloudflareAccess(for: anchor)
             )
-            plan.perform(appState: self)
+            // Already connected at the tested address, as that address's
+            // dashboard: nothing is left to move.
+            plan.perform(appState: self, movingSavedDashboard: false)
         case .browserSignIn(_, let baseURL, _):
             // Existing browser-auth semantics: no reusable password exists,
             // stale native credentials are cleared, the activated dashboard
@@ -11603,6 +11673,17 @@ final class AppState: ObservableObject {
         if let existing = savedDashboardRegistry.dashboardID(atNormalizedURL: normalized) {
             return existing
         }
+        // The selected dashboard's own edited address is that dashboard,
+        // moved, for every pre-connection write as for adoption. While it's
+        // in use the move waits, and a dashboard added here is a new one.
+        if let activeID = activeDashboardID,
+           savedDashboardRegistry.dashboard(with: activeID)?.pendingURL == normalized,
+           dashboardForSignIn(activeID)?.normalizedURL == normalized {
+            return activeID
+        }
+        // A dashboard added here is its own, even at an address another
+        // saved dashboard was moving to: that dashboard stays where it is.
+        dropPendingDashboardMoves(toNormalizedURL: normalized)
         var registry = savedDashboardRegistry
         let id = UUID()
         let label = SavedDashboardLabel.derive(from: normalized, existingLabels: registry.dashboards.map(\.label))
@@ -11637,6 +11718,13 @@ final class AppState: ObservableObject {
     /// connection to this dashboard is recognized as same-server.
     @discardableResult
     func adoptDashboard(forNormalizedURL normalized: String) -> UUID {
+        // The selected dashboard connecting at the address edited for it
+        // in Settings is that dashboard, moved, not a second one.
+        if savedDashboardRegistry.dashboardID(atNormalizedURL: normalized) == nil,
+           let activeID = savedDashboardRegistry.activeDashboardID,
+           savedDashboardRegistry.dashboard(with: activeID)?.pendingURL == normalized {
+            settlePendingDashboardMove(activeID)
+        }
         let id = registerDashboard(forNormalizedURL: normalized)
         if savedDashboardRegistry.activeDashboardID != id {
             var registry = savedDashboardRegistry
@@ -11650,6 +11738,93 @@ final class AppState: ObservableObject {
             defaults.set(id.uuidString, forKey: Self.chatResumeServerIdentityKey)
         }
         return id
+    }
+
+    /// Saves an address edited in Settings for the dashboard's next sign-in
+    /// (`SavedDashboard.pendingURL`). Its current address cancels a move
+    /// saved before; a password saved for the address it no longer moves to
+    /// goes too, or its next sign-in would reach that address as a second
+    /// dashboard.
+    func stageDashboardMove(_ id: UUID, toNormalizedURL url: String) {
+        guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return }
+        if let previous = savedDashboardRegistry.dashboards[index].pendingURL, previous != url,
+           let credentials = KeychainHelper.loadCredentials(dashboardID: id),
+           Self.normalizedDashboardURL(credentials.baseURL) == previous {
+            KeychainHelper.clearCredentials(dashboardID: id)
+        }
+        var registry = savedDashboardRegistry
+        registry.dashboards[index].pendingURL = url == registry.dashboards[index].normalizedURL ? nil : url
+        guard registry != savedDashboardRegistry else { return }
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+    }
+
+    /// The saved dashboard as its next sign-in reaches it: an address edited
+    /// in Settings takes effect now, unless it's the dashboard in use.
+    func dashboardForSignIn(_ id: UUID) -> SavedDashboard? {
+        if id == activeDashboardID && (isConnected || isConnecting) {
+            return savedDashboardRegistry.dashboard(with: id)
+        }
+        return settlePendingDashboardMove(id)
+    }
+
+    /// Moves the dashboard to the address saved for it in Settings. What the
+    /// old address signed in with can't reconnect at the new one: its ticket
+    /// and cookie mirror go, so does a password saved for it, and a browser
+    /// grant from another origin. A same-origin Cloudflare token follows
+    /// (the plan's path-move rule). Keychain first, registry last: a move
+    /// cut short is retried. An address another dashboard took meanwhile
+    /// keeps it, and this one stays where it is.
+    @discardableResult
+    func settlePendingDashboardMove(_ id: UUID) -> SavedDashboard? {
+        guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return nil }
+        guard let newURL = dashboard.pendingURL else { return dashboard }
+        if savedDashboardRegistry.dashboard(atNormalizedURL: newURL) != nil {
+            dropPendingDashboardMoves(toNormalizedURL: newURL)
+            return savedDashboardRegistry.dashboard(with: id)
+        }
+        let oldURL = dashboard.normalizedURL
+        let sameOrigin = LoginCloudflareHandoff.sameOrigin(oldURL, newURL)
+        KeychainHelper.clearSavedSession(dashboardID: id)
+        if !sameOrigin {
+            KeychainHelper.clearNativeOAuthTokens(dashboardID: id)
+        }
+        if let credentials = KeychainHelper.loadCredentials(dashboardID: id),
+           Self.normalizedDashboardURL(credentials.baseURL) != newURL {
+            KeychainHelper.clearCredentials(dashboardID: id)
+        }
+        if sameOrigin,
+           let access = KeychainHelper.loadCloudflareAccess(dashboardID: id, for: oldURL), access.isConfigured {
+            KeychainHelper.saveCloudflareAccess(access, origin: newURL, dashboardID: id)
+        }
+        guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return nil }
+        var registry = savedDashboardRegistry
+        registry.dashboards[index].normalizedURL = newURL
+        registry.dashboards[index].pendingURL = nil
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+        return registry.dashboards[index]
+    }
+
+    /// Cancels the moves saved for this address. The password saved for a
+    /// move would send that dashboard's next sign-in here: it goes too.
+    private func dropPendingDashboardMoves(toNormalizedURL url: String) {
+        var registry = savedDashboardRegistry
+        for index in registry.dashboards.indices where registry.dashboards[index].pendingURL == url {
+            let id = registry.dashboards[index].id
+            if let credentials = KeychainHelper.loadCredentials(dashboardID: id),
+               Self.normalizedDashboardURL(credentials.baseURL) == url {
+                KeychainHelper.clearCredentials(dashboardID: id)
+            }
+            registry.dashboards[index].pendingURL = nil
+        }
+        guard registry != savedDashboardRegistry else { return }
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+    }
+
+    private static func normalizedDashboardURL(_ url: String) -> String {
+        (try? ConnectionURLPolicy.normalizedBaseURL(url)) ?? url.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The origin-matched Cloudflare token for the dashboard reached at this
@@ -11718,11 +11893,12 @@ final class AppState: ObservableObject {
         if widgetLease == nil { widgetLaunchCoordinator.supersede() }
         guard widgetLease?.isCurrent != false else { return }
         widgetAwaitingInteractiveAuthenticationDashboardID = nil
-        guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+        guard savedDashboardRegistry.dashboard(with: id) != nil else { return }
         if id == activeDashboardID && (isConnected || isConnecting) {
             // Already there: a same-dashboard reconnect is not a switch.
             return
         }
+        guard let dashboard = dashboardForSignIn(id) else { return }
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID
