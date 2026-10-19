@@ -159,6 +159,7 @@ struct GroupRoomComposer: View {
             selectionBehavior: .ordered,
             matching: .any(of: [.images, .videos])
         )
+        .conduitOutOfProcessAccentTint()
         .onChange(of: photoItems) { _, items in
             guard !items.isEmpty else { return }
             photoItems = []

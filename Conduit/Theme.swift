@@ -174,12 +174,6 @@ extension UIColor {
         traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
     }
 
-    /// The accent of one fixed choice, light or dark with the trait. For
-    /// places outside the root's accent trait: the window itself.
-    static func conduitAccent(_ choice: ConduitAccentChoice) -> UIColor {
-        UIColor { traits in choice.color(dark: traits.userInterfaceStyle == .dark) }
-    }
-
     /// See ConduitAccentChoice.selectionColorOnBubble.
     static let conduitSelectionOnAccent = UIColor { traits in
         traits.conduitAccent.selectionColorOnBubble(dark: traits.userInterfaceStyle == .dark)
@@ -643,10 +637,29 @@ extension View {
     }
 }
 
-/// Gives the window the chosen accent as its tint. System screens Conduit
-/// presents but doesn't draw (the photo picker runs in another process)
-/// take their tint from the window, not from SwiftUI's `.tint`, so without
-/// this they keep the built-in amber AccentColor (#748).
+extension View {
+    /// For the photo picker, which runs in another process and is handed the
+    /// tint of the view presenting it. The app-wide `.conduitAccent` resolves the choice from a
+    /// trait that process never sees, so it falls back to amber there (#748):
+    /// hand it the plain colour of the current pick instead.
+    func conduitOutOfProcessAccentTint() -> some View {
+        modifier(OutOfProcessAccentTint())
+    }
+}
+
+private struct OutOfProcessAccentTint: ViewModifier {
+    @Environment(\.conduitAccent) private var accent
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.tint(Color(uiColor: accent.color(dark: colorScheme == .dark)))
+    }
+}
+
+/// Gives the window the chosen accent as its tint, for system screens Conduit
+/// presents but doesn't draw. The colour is resolved, not dynamic: a dynamic
+/// one sent to another process loses the pick (#748). It is set again when
+/// the window turns light or dark.
 struct WindowAccentTint: UIViewRepresentable {
     let choice: ConduitAccentChoice
 
@@ -666,13 +679,23 @@ struct WindowAccentTint: UIViewRepresentable {
             didSet { if choice != oldValue { applyTint() } }
         }
 
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TintingView, _) in
+                view.applyTint()
+            }
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
         override func didMoveToWindow() {
             super.didMoveToWindow()
             applyTint()
         }
 
         private func applyTint() {
-            window?.tintColor = .conduitAccent(choice)
+            guard let window else { return }
+            window.tintColor = choice.color(dark: window.traitCollection.userInterfaceStyle == .dark)
         }
     }
 }
