@@ -109,7 +109,8 @@ extension ChatTextSelectionTests {
         XCTAssertTrue(Self.isClose(textView.tintColor.resolvedColor(with: textView.traitCollection), .white))
     }
 
-    /// #748: the photo picker runs out of process and tints from the window.
+    /// #748: the photo picker runs out of process and tints from the window,
+    /// where a colour that reads the accent trait would fall back to amber.
     @MainActor
     func testAPickRetintsTheWindow() {
         let model = AccentProbeModel()
@@ -126,9 +127,16 @@ extension ChatTextSelectionTests {
             "the window takes the new accent"
         )
         XCTAssertTrue(Self.isClose(
-            window.tintColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)),
-            ConduitAccentChoice.blue.color(dark: false)
-        ), "and still follows light and dark")
+            window.tintColor.resolvedColor(with: UITraitCollection()),
+            ConduitAccentChoice.blue.color(dark: true)
+        ), "the colour holds without the accent trait, as in the picker's process")
+
+        window.overrideUserInterfaceStyle = .light
+        Self.settle(host)
+        XCTAssertTrue(
+            Self.isClose(window.tintColor.resolvedColor(with: window.traitCollection), ConduitAccentChoice.blue.color(dark: false)),
+            "and still follows light and dark"
+        )
     }
 
     func testCopyingASentMessageLeavesOutTheQuotedReply() {

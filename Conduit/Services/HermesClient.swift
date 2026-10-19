@@ -28,7 +28,6 @@
 
 import Foundation
 import Combine
-import Network
 import os
 import UniformTypeIdentifiers
 
@@ -313,9 +312,16 @@ enum AnyCodable: Codable, Equatable, Sendable {
         }
     }
 
+    /// The number truncated toward zero, or nil when it isn't one or lies
+    /// outside `Int`'s range: `Int(Double)` traps on NaN, infinity and
+    /// out-of-range values, and gateway payloads can carry any JSON number.
     var intValue: Int? {
-        if case .number(let n) = self { return Int(n) }
-        return nil
+        guard case .number(let n) = self,
+              n.isFinite,
+              n >= -9_223_372_036_854_775_808.0, // Int.min == -2^63, exact as Double
+              n < 9_223_372_036_854_775_808.0    // 2^63 itself already overflows
+        else { return nil }
+        return Int(n)
     }
 
     var doubleValue: Double? {
@@ -369,7 +375,14 @@ enum StreamEvent {
     case messageStart(sessionId: String)
     case messageDelta(sessionId: String, text: String)
     case reasoningDelta(sessionId: String, text: String)
-    case messageComplete(sessionId: String, messageId: String?, content: String?, reasoning: String?)
+    /// `alreadyShown`: Hermes says the final text is one this turn already
+    /// delivered as `message.interim` (`response_previewed` /
+    /// `response_reused`), so it adds no new text.
+    case messageComplete(sessionId: String, messageId: String?, content: String?, reasoning: String?, alreadyShown: Bool = false)
+    /// `message.interim`: assistant commentary (text beside tool calls, or an
+    /// answer before a verification nudge) sealed as its own row.
+    /// `alreadyStreamed` means its text already arrived as deltas.
+    case messageInterim(sessionId: String, text: String, alreadyStreamed: Bool)
     /// The agent reacted to a message (its `react_to_message` tool). The
     /// reaction is already persisted; this only paints it now. `role` names
     /// the reacted row's role so a live row with no `rowId` yet can match.
@@ -409,7 +422,22 @@ enum StreamEvent {
     /// edges drive the compression spinner/state; unrelated kinds are typed
     /// as `.other` so they can never masquerade as compaction events.
     case statusUpdate(sessionId: String, kind: StatusUpdateKind, text: String?)
+    /// `background.complete` / `btw.complete`: a side agent's answer (or
+    /// `error: …`), on the session that started it.
+    case sideAgentComplete(sessionId: String, kind: SideAgentKind, taskId: String, text: String, question: String?)
     case unparsed(payload: [String: Any])
+}
+
+/// Hermes' side agents. Each starts with its own RPC, which answers with a
+/// task id at once; the answer comes later as its completion event.
+enum SideAgentKind: Equatable {
+    /// `/background`: a separate agent runs the prompt.
+    case background
+    /// `/btw`: a side question answered over a snapshot of the chat,
+    /// leaving the conversation itself untouched.
+    case btw
+
+    var method: String { self == .btw ? "prompt.btw" : "prompt.background" }
 }
 
 /// `status.update` `payload.kind` values Hermes emits on the compression
@@ -918,13 +946,14 @@ final class HermesClient: ObservableObject {
     /// connections without a close, so a quiet socket can be dead for
     /// minutes before the next send finds out. The ping keeps the path warm
     /// and finds a dead one while nobody is waiting on it.
-    // nonisolated(unsafe): deinit cancels both; cancel() is thread-safe.
+    // nonisolated(unsafe): deinit cancels it; cancel() is thread-safe.
     nonisolated(unsafe) private var keepaliveTask: Task<Void, Never>?
     private var lastInboundAt = Date()
     private var isProbing = false
-    nonisolated(unsafe) private var pathMonitor: NWPathMonitor?
-    private var pathMonitorSawInitialPath = false
     private let keepaliveInterval: TimeInterval?
+    private let backgroundKeepaliveInterval: TimeInterval?
+    /// Off screen (audio keeps Conduit running): the longer quiet interval.
+    private var keepaliveBackgrounded = false
     private let keepalivePingTimeout: TimeInterval
     private let monitorsPath: Bool
     /// Bumped by every connect(): a connect suspended while its upgrade is
@@ -961,9 +990,11 @@ final class HermesClient: ObservableObject {
     static let livenessProbeTimeout: TimeInterval = 8
     /// Budget for the foreground `ping` (`healthCheck`). See there.
     static let pingTimeout: TimeInterval = 5
-    /// Quiet time before a keepalive `ping`. Well under the 30-60 s idle
-    /// limits NATs and relays commonly use.
-    static let defaultKeepaliveInterval: TimeInterval = 15
+    /// Quiet time before a keepalive `ping` (PollCadence explains the 30 s
+    /// against Hermes' own 20 s socket ping and a proxy's 60 s idle limit).
+    static let defaultKeepaliveInterval: TimeInterval = PollCadence.keepaliveForeground
+    /// The same while Conduit is off screen and audio keeps it running.
+    static let defaultBackgroundKeepaliveInterval: TimeInterval = PollCadence.keepaliveBackground
     /// A keepalive ping waits longer than the foreground one: nobody is
     /// waiting on it, and a relayed path can be slow without being dead.
     static let keepalivePingTimeout: TimeInterval = 10
@@ -1006,11 +1037,14 @@ final class HermesClient: ObservableObject {
         requestAuthorizer: (any DashboardUpgradeAuthorizing)? = nil,
         transportFactory: @escaping @MainActor () -> any HermesWebSocketTransport = { URLSessionWebSocketTransport() },
         keepaliveInterval: TimeInterval? = HermesClient.defaultKeepaliveInterval,
+        backgroundKeepaliveInterval: TimeInterval? = HermesClient.defaultBackgroundKeepaliveInterval,
         keepalivePingTimeout: TimeInterval = HermesClient.keepalivePingTimeout,
         monitorsPath: Bool = true
     ) {
         self.monitorsPath = monitorsPath
         self.keepaliveInterval = keepaliveInterval
+        // Never shorter than the foreground interval (tests pass short ones).
+        self.backgroundKeepaliveInterval = keepaliveInterval.map { max($0, backgroundKeepaliveInterval ?? $0) }
         self.keepalivePingTimeout = keepalivePingTimeout
         self.connection = connection
         self.profile = profile
@@ -1021,7 +1055,6 @@ final class HermesClient: ObservableObject {
 
     deinit {
         keepaliveTask?.cancel()
-        pathMonitor?.cancel()
     }
 
     // MARK: - Connection
@@ -1125,52 +1158,82 @@ final class HermesClient: ObservableObject {
 
     // MARK: - Keepalive
 
+    /// Conduit went off screen (true) or came back (false). Off screen the
+    /// socket only stays open while audio keeps the app running, and
+    /// nothing on screen waits on it: the keepalive pings less often.
+    func setKeepaliveBackgrounded(_ backgrounded: Bool) {
+        guard backgrounded != keepaliveBackgrounded else { return }
+        keepaliveBackgrounded = backgrounded
+        if let socket, keepaliveTask != nil { startKeepaliveLoop(for: socket) }
+    }
+
+    private var currentKeepaliveInterval: TimeInterval? {
+        keepaliveBackgrounded ? backgroundKeepaliveInterval : keepaliveInterval
+    }
+
     private func startKeepalive(for socket: any HermesWebSocket) {
         stopKeepalive()
         guard let interval = keepaliveInterval, interval > 0 else { return }
         lastInboundAt = Date()
+        startKeepaliveLoop(for: socket)
+    }
+
+    /// The network path changed and is usable (AppState hears it from the
+    /// app's one path monitor). A change (Wi-Fi to cellular, the VPN tunnel
+    /// coming back) usually leaves the old TCP connection dead: check it at
+    /// once instead of at the next quiet interval.
+    func networkPathChanged() {
+        guard monitorsPath, keepaliveTask != nil, let socket else { return }
+        Task { @MainActor [weak self] in await self?.probe(socket) }
+    }
+
+    /// Sleeps until the socket has been quiet for the interval, then pings.
+    /// Any frame from the gateway pushes the deadline back, so a busy socket
+    /// is never pinged and a quiet one wakes once per interval.
+    private func startKeepaliveLoop(for socket: any HermesWebSocket) {
+        keepaliveTask?.cancel()
+        guard let interval = currentKeepaliveInterval, interval > 0 else { return }
         // Spelled out though Task inherits it here: the loop reads socket
         // state, which lives on the main actor.
+        // `self` is weak across the sleeps: a released client ends the loop
+        // instead of living until the next deadline.
         keepaliveTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(interval / 3))
-                guard !Task.isCancelled, let self else { return }
-                guard self.socket === socket else { return }
-                if Date().timeIntervalSince(self.lastInboundAt) >= interval {
-                    await self.probe(socket)
+                guard let remaining = self?.keepaliveQuietTimeLeft(on: socket, interval: interval) else { return }
+                if remaining > 0 {
+                    // A little past the deadline, so a wake a hair early
+                    // doesn't sleep a second time.
+                    try? await Task.sleep(for: .seconds(remaining + 0.05))
+                    continue
                 }
+                guard !Task.isCancelled,
+                      let stillQuiet = await self?.keepaliveProbe(socket, interval: interval) else { return }
+                // A probe already under way returns without a ping: wait an
+                // interval rather than spin.
+                if stillQuiet { try? await Task.sleep(for: .seconds(interval)) }
             }
         }
-        guard monitorsPath else { return }
-        // A network change (Wi-Fi to cellular, the VPN tunnel coming back)
-        // usually leaves the old TCP connection dead: check it at once
-        // instead of at the next quiet interval. The monitor reports the
-        // current path first; only later changes matter.
-        let monitor = NWPathMonitor()
-        pathMonitorSawInitialPath = false
-        let socketID = ObjectIdentifier(socket)
-        monitor.pathUpdateHandler = { [weak self] path in
-            let satisfied = path.status == .satisfied
-            Task { @MainActor [weak self] in
-                guard let self, let current = self.socket,
-                      ObjectIdentifier(current) == socketID else { return }
-                guard self.pathMonitorSawInitialPath else {
-                    self.pathMonitorSawInitialPath = true
-                    return
-                }
-                guard satisfied else { return }
-                await self.probe(current)
-            }
-        }
-        monitor.start(queue: DispatchQueue(label: "com.milim.conduit.hermes-path"))
-        pathMonitor = monitor
+    }
+
+    /// How long until the socket has been quiet for `interval`, or nil once
+    /// it is no longer this client's socket.
+    private func keepaliveQuietTimeLeft(on socket: any HermesWebSocket, interval: TimeInterval) -> TimeInterval? {
+        guard self.socket === socket else { return nil }
+        return interval - Date().timeIntervalSince(lastInboundAt)
+    }
+
+    /// Pings a quiet socket. An answered ping stamps `lastInboundAt`; a lost
+    /// one closes the socket, which ends the loop. Returns whether the socket
+    /// is still quiet, or nil once it is no longer this client's.
+    private func keepaliveProbe(_ socket: any HermesWebSocket, interval: TimeInterval) async -> Bool? {
+        guard self.socket === socket else { return nil }
+        await probe(socket)
+        return Date().timeIntervalSince(lastInboundAt) >= interval
     }
 
     private func stopKeepalive() {
         keepaliveTask?.cancel()
         keepaliveTask = nil
-        pathMonitor?.cancel()
-        pathMonitor = nil
     }
 
     /// Pings the gateway, once more if the first goes unanswered, and closes
@@ -2626,6 +2689,16 @@ final class HermesClient: ObservableObject {
             "session_id": sessionId,
             "command": cleaned
         ])
+    }
+
+    /// Starts a side agent (`prompt.background` / `prompt.btw`) and
+    /// returns its task id.
+    func startSideAgent(_ kind: SideAgentKind, sessionId: String, text: String) async throws -> String? {
+        let result = try await rpc(kind.method, params: [
+            "session_id": sessionId,
+            "text": text
+        ])
+        return result.objectValue?["task_id"]?.stringValue
     }
 
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {
