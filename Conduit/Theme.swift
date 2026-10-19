@@ -441,6 +441,11 @@ struct ConduitBackdrop: View {
             motionClock.setAnimating(isAnimating, at: ProcessInfo.processInfo.systemUptime)
         }
         .ignoresSafeArea()
+        // The glows reach well past the backdrop's frame, and clipping only
+        // hides them: still hit-testable, the chat column's took touches
+        // (and accessibility's hit tests) meant for the list beside it on an
+        // iPad. Nothing on a backdrop takes a tap.
+        .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 
