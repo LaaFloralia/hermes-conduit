@@ -26731,6 +26731,10 @@ final class AppState: ObservableObject {
                 )
             }
             return true
+        } catch is CancellationError {
+            // A save queued on a dashboard since switched away from: nothing
+            // was sent, and the dashboard on screen has nothing to report.
+            return false
         } catch {
             errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
             return false
