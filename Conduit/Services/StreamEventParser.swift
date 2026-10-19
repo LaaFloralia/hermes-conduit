@@ -184,6 +184,18 @@ enum StreamEventParser {
             let provider = payload?["provider"]?.stringValue ?? ""
             return .modelUpdate(sessionId: sessionId, model: model, provider: provider)
 
+        case "background.complete", "btw.complete":
+            let text = (payload?["text"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            let question = payload?["question"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .sideAgentComplete(
+                sessionId: sessionId,
+                kind: type == "btw.complete" ? .btw : .background,
+                taskId: payload?["task_id"]?.stringValue ?? "",
+                text: text,
+                question: question?.isEmpty == false ? question : nil
+            )
+
         case let eventType where eventType.hasPrefix("subagent."):
             guard let payload else { return nil }
             let activity = Self.delegateAgentActivity(from: payload, eventType: eventType, sessionId: sessionId)
