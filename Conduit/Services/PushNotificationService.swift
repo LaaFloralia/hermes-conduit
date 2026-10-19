@@ -871,6 +871,9 @@ final class PushNotificationService: ObservableObject {
         }
         relayMeta = Self.relayMetaAfterFetch(previous: relayMeta, status: status, fetched: fetched)
         relayMetaFetchFailed = status != 404 && (status != 200 || fetched == nil)
+        // The relay answers again: an update that failed while it couldn't
+        // (a cleared location token) goes now. Nothing changed, nothing sent.
+        if status == 200, fetched != nil { _ = queueRegistrationUpdate() }
     }
 
     /// The relay's metadata after a fetch: what it said; nil from a relay
