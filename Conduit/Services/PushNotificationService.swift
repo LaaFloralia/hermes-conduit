@@ -459,6 +459,9 @@ final class PushNotificationService: ObservableObject {
         }
     }
     @Published private(set) var isFetchingMeta = false
+    /// The last metadata fetch didn't get an answer (`relayMeta` keeps the
+    /// one before, if any).
+    @Published private(set) var relayMetaFetchFailed = false
     /// Set after this phone moves to a different relay: pairings live on
     /// the relay, so every Hermes profile has to pair again.
     @Published private(set) var relayNotice: String?
@@ -841,6 +844,7 @@ final class PushNotificationService: ObservableObject {
     func refreshMeta() async {
         guard let registration else {
             relayMeta = nil
+            relayMetaFetchFailed = false
             isFetchingMeta = false
             return
         }
@@ -856,18 +860,32 @@ final class PushNotificationService: ObservableObject {
             )
         } catch {
             relayMeta = nil
+            // Never asked, so not an older relay: Settings says it can't reach it.
+            relayMetaFetchFailed = true
             return
         }
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                relayMeta = nil
-                return
-            }
-            relayMeta = try JSONDecoder().decode(RelayMetaInfo.self, from: data)
-        } catch {
-            relayMeta = nil
+        var status: Int?
+        var fetched: RelayMetaInfo?
+        if let (data, response) = try? await URLSession.shared.data(for: request) {
+            status = (response as? HTTPURLResponse)?.statusCode
+            if status == 200 { fetched = try? JSONDecoder().decode(RelayMetaInfo.self, from: data) }
         }
+        relayMeta = Self.relayMetaAfterFetch(previous: relayMeta, status: status, fetched: fetched)
+        relayMetaFetchFailed = status != 404 && (status != 200 || fetched == nil)
+        // The relay answers again: an update that failed while it couldn't
+        // (a cleared location token) goes now. Nothing changed, nothing sent.
+        if status == 200, fetched != nil { _ = queueRegistrationUpdate() }
+    }
+
+    /// The relay's metadata after a fetch: what it said; nil from a relay
+    /// without the route (404, it predates version reporting); and after a
+    /// failure (offline, a relay error, an unreadable answer) the last one
+    /// it said. A passing outage mustn't read as an older relay: without
+    /// `location-push` the next registration update would clear the
+    /// location-push token, and locates and Maps wakes would stop.
+    nonisolated static func relayMetaAfterFetch(previous: RelayMetaInfo?, status: Int?, fetched: RelayMetaInfo?) -> RelayMetaInfo? {
+        if status == 200, let fetched { return fetched }
+        return status == 404 ? nil : previous
     }
 
     /// Outcome of answering ONE question of a batch relay decision
@@ -1198,6 +1216,7 @@ final class PushNotificationService: ObservableObject {
         await revokeInstallation(previous)
         removeEncryptionKeys(installationID: previous.installationID)
         relayMeta = nil
+        relayMetaFetchFailed = false
         pairingCode = nil
         pairingExpiry = nil
         // Gateway discriminators belong to the old relay; echoing one to
