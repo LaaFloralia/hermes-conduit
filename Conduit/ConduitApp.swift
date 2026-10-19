@@ -53,6 +53,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         Task.detached(priority: .background) {
             AttachmentStaging.sweepStaleFiles()
         }
+        // iOS's daily usage and hang reports, kept on this device for
+        // Diagnostics & logs. Subscribes on its own background queue.
+        MetricKitReports.shared.start()
         if let payload = launchOptions?[.remoteNotification] as? [AnyHashable: Any] {
             Task { @MainActor in
                 PushNotificationService.shared.receiveNotificationPayload(payload)
