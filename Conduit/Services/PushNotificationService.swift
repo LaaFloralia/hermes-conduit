@@ -1,6 +1,15 @@
 import Foundation
 import UIKit
 import UserNotifications
+import os
+
+private let pushTokenLogger = Logger(subsystem: "com.milim.relay", category: "PushToken")
+
+/// A block observer that's removed when its owner goes away.
+private final class NotificationObserverToken {
+    var token: NSObjectProtocol?
+    deinit { if let token { NotificationCenter.default.removeObserver(token) } }
+}
 
 struct ConduitNotificationTarget: Equatable, Identifiable {
     let profile: String?
@@ -1421,10 +1430,76 @@ final class PushNotificationService: ObservableObject {
         deviceToken = token
         tokenContinuation?.resume(returning: token)
         tokenContinuation = nil
-        queueRegistrationUpdate(force: true)
+        // Every launch and return to the front asks for the token; only a
+        // new one goes to the relay, which shares one budget for device
+        // changes across all phones. Registrations saved before the token
+        // was recorded send it once. One that fails shows in Settings >
+        // Notifications and goes again the next time Conduit comes to the
+        // front.
+        if registration?.deviceToken == token {
+            clearTokenUpdateError()
+            return
+        }
+        guard let update = queueRegistrationUpdate(deviceToken: token) else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            switch await update.result {
+            case .failure(let error):
+                lastError = UserFacingError.message(for: error)
+                tokenUpdateError = lastError
+            case .success:
+                clearTokenUpdateError()
+            }
+        }
+    }
+
+    private var tokenUpdateError: String?
+
+    /// A token the relay has clears the failure a refresh left, not another.
+    private func clearTokenUpdateError() {
+        if tokenUpdateError != nil, lastError == tokenUpdateError { lastError = nil }
+        tokenUpdateError = nil
+    }
+
+    /// Asks iOS for this launch's push token, and again each time Conduit
+    /// comes to the front. The token can change (a restore, a new phone),
+    /// and a relay still sending to the old one gets 200 from Apple while
+    /// nothing reaches this phone (notifier #119).
+    func refreshDeviceTokenAtLaunch() {
+        // Turning notifications on later asks for the token itself.
+        guard registration != nil else { return }
+        if becomeActiveObserver.token == nil {
+            becomeActiveObserver.token = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.requestCurrentDeviceToken() }
+            }
+        }
+        requestCurrentDeviceToken()
+    }
+
+    /// Removed with the service (only tests make more than one).
+    private let becomeActiveObserver = NotificationObserverToken()
+
+    private func requestCurrentDeviceToken() {
+        guard registration != nil else { return }
+        UIApplication.shared.registerForRemoteNotifications()
     }
 
     func didFailToRegister(_ error: Error) {
+        if tokenContinuation == nil {
+            // A launch or return-to-front refresh: shown in Settings >
+            // Notifications, and the next return asks again.
+            pushTokenLogger.error("Push token refresh failed: \(error.localizedDescription, privacy: .public)")
+            if registration != nil {
+                lastError = UserFacingError.message(for: error)
+                tokenUpdateError = lastError
+            }
+        }
+        failTokenRequest(error)
+    }
+
+    private func failTokenRequest(_ error: Error) {
         tokenContinuation?.resume(throwing: error)
         tokenContinuation = nil
     }
@@ -1651,16 +1726,20 @@ final class PushNotificationService: ObservableObject {
     /// Every registration update goes through here, one after another,
     /// each sending the tokens and preferences as they are by then. An
     /// update still on its way may carry other ones, so whether this one has
-    /// anything new is decided when its turn comes; `force` (a new device
-    /// token) sends regardless.
+    /// anything new is decided when its turn comes; a device token the
+    /// relay hasn't accepted yet always counts as new.
     @discardableResult
-    private func queueRegistrationUpdate(deviceToken: String? = nil, force: Bool = false) -> Task<Void, Error>? {
+    private func queueRegistrationUpdate(deviceToken: String? = nil) -> Task<Void, Error>? {
         guard registration != nil else { return nil }
         let previous = registrationUpdate
         let update = Task {
             _ = await previous?.result
             guard let registration else { return }
-            guard force || deviceToken != nil || registration.preferences != preferences
+            // A token the relay hasn't accepted yet rides any later update,
+            // so one that failed at launch goes again (a relay meta refresh
+            // queues one); the same token twice sends once.
+            let tokenChanged = (deviceToken ?? self.deviceToken).map { $0 != registration.deviceToken } ?? false
+            guard tokenChanged || registration.preferences != preferences
                     || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
                     || registration.locationToken != relayLocationToken else { return }
             try await updateRegistration(deviceToken: deviceToken)
@@ -1976,7 +2055,7 @@ final class PushNotificationService: ObservableObject {
             try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
             // No-op if the token already arrived (continuation is nil).
-            self?.didFailToRegister(PushNotificationError.tokenTimeout)
+            self?.failTokenRequest(PushNotificationError.tokenTimeout)
         }
         defer { timeoutTask.cancel() }
         return try await withCheckedThrowingContinuation { continuation in
@@ -2008,7 +2087,7 @@ final class PushNotificationService: ObservableObject {
         }
         try validate(response: response, data: data)
         let responseBody = try JSONDecoder().decode(RegistrationResponse.self, from: data)
-        registration = StoredRegistration(credential: responseBody.credential, installationID: responseBody.installation.id, preferences: responseBody.installation.preferences ?? preferences, relayURL: issuer.absoluteString)
+        registration = StoredRegistration(credential: responseBody.credential, installationID: responseBody.installation.id, preferences: responseBody.installation.preferences ?? preferences, relayURL: issuer.absoluteString, deviceToken: deviceToken)
         // Only a relay that rings (0.9+) keeps it; an older one is asked
         // again at the next update.
         registration?.voipToken = responseBody.installation.voip == true ? voipToken : nil
@@ -2047,6 +2126,7 @@ final class PushNotificationService: ObservableObject {
         }
         try validate(response: response, data: data)
         self.registration?.preferences = sentPreferences
+        if let token = body.deviceToken { self.registration?.deviceToken = token }
         let installation = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation
         // Another update sent a newer token meanwhile, and this one may
         // have landed after it: the newer token goes again, last.
@@ -2152,6 +2232,9 @@ private struct StoredRegistration: Codable {
     /// The relay that issued `credential`. Optional so registrations saved
     /// before it was recorded still decode.
     var relayURL: String?
+    /// The APNs token the relay last accepted. Nil for registrations saved
+    /// before it was recorded.
+    var deviceToken: String? = nil
     /// The PushKit token the relay rings (#449); nil when it has none.
     var voipToken: String? = nil
     /// The Apple Watch's PushKit token the relay rings too.
