@@ -83,6 +83,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let socket = try XCTUnwrap(sockets().first)
         socket.deliver(["type": "session.updated", "session": [String: Any]()])
         try await passLocalLiveReadiness(socket, session: session)
+        // The check's own response ends first: its events aren't the call's.
+        socket.deliver(["type": "response.done"])
         XCTAssertEqual(interruptions, 0)
 
         socket.deliver(["type": "output_audio_buffer.clear"])

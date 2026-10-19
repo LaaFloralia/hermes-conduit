@@ -693,7 +693,8 @@ private struct OutOfProcessAccentTint: ViewModifier {
 /// Gives the window the chosen accent as its tint, for system screens Conduit
 /// presents but doesn't draw. The colour is resolved, not dynamic: a dynamic
 /// one sent to another process loses the pick (#748). It is set again when
-/// the window turns light or dark.
+/// the window turns light or dark: the window's own trait change, since the
+/// tinting view is never laid out again and its changes can arrive late.
 struct WindowAccentTint: UIViewRepresentable {
     let choice: ConduitAccentChoice
 
@@ -713,17 +714,18 @@ struct WindowAccentTint: UIViewRepresentable {
             didSet { if choice != oldValue { applyTint() } }
         }
 
-        override init(frame: CGRect) {
-            super.init(frame: frame)
-            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: TintingView, _) in
-                view.applyTint()
-            }
-        }
-
-        required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+        private weak var observedWindow: UIWindow?
+        private var styleRegistration: (any UITraitChangeRegistration)?
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            if observedWindow !== window {
+                if let styleRegistration { observedWindow?.unregisterForTraitChanges(styleRegistration) }
+                styleRegistration = window?.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak self] (_: UIWindow, _: UITraitCollection) in
+                    self?.applyTint()
+                }
+                observedWindow = window
+            }
             applyTint()
         }
 

@@ -170,6 +170,9 @@ extension ChatTextSelectionTests {
     private static func settle(_ host: UIViewController) {
         let deadline = Date().addingTimeInterval(0.15)
         while Date() < deadline {
+            // As UIKit's own pass would: a window override reaches the
+            // window's traits before anything under it lays out.
+            host.view.window?.updateTraitsIfNeeded()
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))
