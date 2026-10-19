@@ -970,3 +970,158 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(FinishSetupStatus(plugin: .done, notifications: .done, voiceReady: false).isComplete)
     }
 }
+
+// MARK: - Answers from the dashboard switched away from
+
+extension AppStateMultiDashboardTests {
+
+    private final class Finished {
+        var value = false
+    }
+
+    /// Connected to Mac through a bridge whose requests the test answers;
+    /// VPS is the dashboard switched to (authless, so nothing connects).
+    private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]))
+        let held = HeldDashboardRequests(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        addTeardownBlock { @MainActor in held.releaseAll() }
+        return (appState, held, vps)
+    }
+
+    private func macSession(_ id: String) -> SessionSummary {
+        SessionSummary(
+            id: id,
+            storedSessionId: nil,
+            alternateIds: [],
+            title: "On the Mac",
+            model: "m",
+            updatedLabel: "",
+            profile: nil,
+            source: .chat,
+            isActive: false,
+            isArchived: false,
+            lineageRootId: nil
+        )
+    }
+
+    func testAnArchiveAnsweredAfterASwitchChangesNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let archive = Task { await appState.archiveSession(self.macSession("mac-1")) }
+        try await held.answer()             // the mutation snapshot read
+        try await held.waitForRequests(2)   // the archive itself
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer()             // the Mac archived it, after the switch
+        let archived = await archive.value
+
+        XCTAssertFalse(archived)
+        XCTAssertTrue(appState.archivedSessions.isEmpty, "the Mac's chat never lands in the VPS's Archived list")
+        XCTAssertNil(appState.pinSyncNotice, "nothing about the Mac's chat is said over the VPS")
+    }
+
+    func testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let delete = Task { await appState.deleteSession(self.macSession("mac-1")) }
+        try await held.answer()
+        try await held.waitForRequests(2)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer()
+        let deleted = await delete.value
+
+        XCTAssertFalse(deleted, "the delete's result belongs to the Mac, not the dashboard now showing")
+        XCTAssertNil(appState.pinSyncNotice)
+    }
+
+    func testArchivedConversationsAnsweredAfterASwitchAreNotShownOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let load = Task { await appState.loadArchivedSessions() }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["sessions": [
+            ["id": "mac-archived", "title": "On the Mac", "message_count": 3, "profile": "default"],
+        ]])
+        await load.value
+
+        XCTAssertTrue(appState.archivedSessions.isEmpty)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// A settings save queued behind one that outlives a switch is never
+    /// sent to the dashboard switched to, which has its own profile of the
+    /// same name.
+    func testAQueuedProfileSettingsSaveNeverReachesTheDashboardSwitchedTo() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let first = Task { await appState.setProfileSetting("display.skin", value: .text("ares")) }
+        try await held.waitForRequests(1)   // the first save's config read
+        let secondFinished = Finished()
+        let second = Task {
+            let saved = await appState.setProfileSetting("display.compact", value: .bool(true))
+            secondFinished.value = true
+            return saved
+        }
+        for _ in 0..<5 { await Task.yield() }
+
+        await appState.switchDashboard(to: vps.id)
+        let vpsRequests = HeldDashboardRequests(baseURL: vps.normalizedURL, dashboardID: vps.id)
+        appState.installDashboardTicketBridgeForTesting(vpsRequests.bridge)   // the VPS connects
+        try await held.answer(["display": [String: Any]()])   // the Mac's read lands late
+        _ = await first.value
+        for _ in 0..<500 where !secondFinished.value && vpsRequests.sent.isEmpty {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertTrue(
+            vpsRequests.sent.isEmpty,
+            "the Mac's queued save was sent to the VPS: \(vpsRequests.sent.map(\.path))"
+        )
+        vpsRequests.releaseAll()
+        let saved = await second.value
+        XCTAssertFalse(saved)
+    }
+
+    func testAVoiceCallTranscriptOpenOnTheOldDashboardIsClosedBySwitching() async {
+        let (appState, _, vps) = heldSwitchFixture()
+        appState.chatCallTranscript = VoiceChatCall(callID: "mac-call", turns: [])
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertNil(appState.chatCallTranscript, "the Mac's call transcript doesn't stay up over the VPS")
+    }
+
+    /// Picking another file while one loads: only the latest pick's answer
+    /// (or failure) shows, and it is the one that ends the loading state.
+    func testOnlyTheLatestWorkspaceFilePickShows() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let first = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "a.txt", path: "/w/a.txt", isDirectory: false)) }
+        try await held.waitForRequests(1)
+        let second = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "b.txt", path: "/w/b.txt", isDirectory: false)) }
+        try await held.waitForRequests(2)
+
+        try await held.answer(["text": "a's text"])
+        await first.value
+        XCTAssertNil(appState.workspacePreview, "a.txt's text never shows under b.txt")
+        XCTAssertTrue(appState.workspaceFileLoading, "b.txt is still loading")
+
+        try await held.answer(["text": "b's text"])
+        await second.value
+        XCTAssertEqual(appState.workspaceSelectedFile?.path, "/w/b.txt")
+        XCTAssertEqual(appState.workspacePreview?.text, "b's text")
+        XCTAssertFalse(appState.workspaceFileLoading)
+
+        let third = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "c.txt", path: "/w/c.txt", isDirectory: false)) }
+        try await held.waitForRequests(3)
+        let fourth = Task { await appState.previewWorkspaceFile(WorkspaceEntry(name: "d.txt", path: "/w/d.txt", isDirectory: false)) }
+        try await held.waitForRequests(4)
+        try await held.answer(["error": "gone"], status: 500)
+        await third.value
+        XCTAssertNil(appState.workspaceFileError, "c.txt's failure isn't shown for d.txt")
+        try await held.answer(["text": "d's text"])
+        await fourth.value
+        XCTAssertEqual(appState.workspacePreview?.text, "d's text")
+    }
+}
