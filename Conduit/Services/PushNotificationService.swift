@@ -1440,7 +1440,14 @@ final class PushNotificationService: ObservableObject {
             clearTokenUpdateError()
             return
         }
-        guard let update = queueRegistrationUpdate(deviceToken: token) else { return }
+        observeTokenUpdate(queueRegistrationUpdate(deviceToken: token))
+    }
+
+    private var tokenUpdateError: String?
+
+    /// A token update that fails shows in Settings until one goes.
+    private func observeTokenUpdate(_ update: Task<Void, Error>?) {
+        guard let update else { return }
         Task { [weak self] in
             guard let self else { return }
             switch await update.result {
@@ -1452,8 +1459,6 @@ final class PushNotificationService: ObservableObject {
             }
         }
     }
-
-    private var tokenUpdateError: String?
 
     /// A token the relay has clears the failure a refresh left, not another.
     private func clearTokenUpdateError() {
@@ -2099,9 +2104,11 @@ final class PushNotificationService: ObservableObject {
         preferences = registration!.preferences
         persistRegistration()
         // A PushKit token that came while this was on its way goes next
-        // (at first launch both arrive together).
-        if self.voipToken != voipToken || ringingWatchVoIPToken != watchToken || relayLocationToken != locationToken {
-            queueRegistrationUpdate()
+        // (at first launch both arrive together), and so does a newer push
+        // token.
+        if self.voipToken != voipToken || ringingWatchVoIPToken != watchToken || relayLocationToken != locationToken
+            || (self.deviceToken.map { $0 != deviceToken } ?? false) {
+            observeTokenUpdate(queueRegistrationUpdate())
         }
     }
 
@@ -2126,7 +2133,10 @@ final class PushNotificationService: ObservableObject {
         }
         try validate(response: response, data: data)
         self.registration?.preferences = sentPreferences
-        if let token = body.deviceToken { self.registration?.deviceToken = token }
+        if let token = body.deviceToken {
+            self.registration?.deviceToken = token
+            if token == self.deviceToken { clearTokenUpdateError() }
+        }
         let installation = (try? JSONDecoder().decode(UpdateRegistrationResponse.self, from: data))?.installation
         // Another update sent a newer token meanwhile, and this one may
         // have landed after it: the newer token goes again, last.

@@ -75,6 +75,32 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(attempts, 2)
     }
 
+    func testAnyUpdateThatDeliversTheCurrentTokenClearsItsError() async throws {
+        let stored: [String: Any] = [
+            "credential": "credential-1",
+            "installationID": "installation-1",
+            "relayURL": "https://relay.example.com",
+            "preferences": try JSONSerialization.jsonObject(with: JSONEncoder().encode(ConduitNotificationPreferences())),
+        ]
+        KeychainHelper.savePushRegistration(try JSONSerialization.data(withJSONObject: stored))
+        let service = PushNotificationService(retryDelay: .zero)
+
+        var status = 503
+        service.sendRegistrationUpdate = { request in
+            let response = try XCTUnwrap(HTTPURLResponse(url: try XCTUnwrap(request.url), statusCode: status, httpVersion: nil, headerFields: nil))
+            return (Data(#"{"installation":{}}"#.utf8), response)
+        }
+        defer { service.sendRegistrationUpdate = { _ in throw URLError(.cancelled) } }
+
+        service.didReceiveDeviceToken(Data([0xab, 0xcd]))
+        try await waitUntil { service.lastError != nil }
+
+        // A call token change carries the current push token too.
+        status = 200
+        service.updateVoIPToken("voip-1")
+        try await waitUntil { self.savedDeviceToken() == "abcd" && service.lastError == nil }
+    }
+
     private func savedDeviceToken() -> String? {
         guard let saved = KeychainHelper.loadPushRegistration(),
               let json = try? JSONSerialization.jsonObject(with: saved) as? [String: Any] else { return nil }
