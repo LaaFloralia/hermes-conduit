@@ -4243,6 +4243,9 @@ final class AppState: ObservableObject {
     private var lastPathGeneration = 0
     /// When a path change last restarted the reconnect from its first step.
     private var lastPathReconnectAt: Date?
+    /// Bumped when a scheduled reconnect is canceled (Connection Repair, a
+    /// sign-out), so a cycle waiting on its readiness probe doesn't go on.
+    private var reconnectCycleGeneration = 0
     /// The Chats list's poll pace, the sleep a return to the app or a tap
     /// cuts short, and a count of catalog reads that changed the list.
     private(set) var chatListPollPacer = ChatListPollPacer()
@@ -8288,6 +8291,9 @@ final class AppState: ObservableObject {
     private func cancelScheduledReconnect() {
         reconnectTask?()
         reconnectTask = nil
+        // A cycle already past its timer (awaiting the readiness probe)
+        // sees this and stops.
+        reconnectCycleGeneration &+= 1
         recoverySequence.clearQueuedReconnect()
     }
 
@@ -14983,6 +14989,7 @@ final class AppState: ObservableObject {
             let purpose = self.recoverySequence.takeQueuedReconnectPurpose()
                 ?? .preserveCurrent
             guard self.canRunTransportRecovery else { return }
+            let generation = self.reconnectCycleGeneration
             if incrementsBackoff { self.reconnectAttempts += 1 }
             // On screen, a backed-off step asks the gateway cheaply first: a
             // gateway still restarting costs one HEAD, not a ticket, an
@@ -14991,7 +14998,8 @@ final class AppState: ObservableObject {
                let probe = self.gatewayReadinessProbe,
                let baseURL = self.connection?.baseUrl {
                 let answered = await probe(baseURL)
-                guard self.reconnectTask == nil, !self.isConnected, !self.isConnecting,
+                guard self.reconnectCycleGeneration == generation,
+                      self.reconnectTask == nil, !self.isConnected, !self.isConnecting,
                       self.connection?.baseUrl == baseURL, self.canRunTransportRecovery else { return }
                 if !answered {
                     self.noteConnectionStep("Gateway not answering yet")

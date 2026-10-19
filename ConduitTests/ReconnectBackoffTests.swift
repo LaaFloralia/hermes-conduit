@@ -65,6 +65,9 @@ extension CarPlayTransportRecoveryTests {
         XCTAssertFalse(GatewayReadinessProbe.answered(status: 502))
         XCTAssertFalse(GatewayReadinessProbe.answered(status: 503))
         XCTAssertFalse(GatewayReadinessProbe.answered(status: 504))
+        for status in [520, 521, 522, 523, 524, 530] {
+            XCTAssertFalse(GatewayReadinessProbe.answered(status: status), "Cloudflare's origin-down \(status)")
+        }
     }
 
     func testOnScreenAGatewayThatDoesntAnswerCostsOnlyAProbe() async {

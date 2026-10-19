@@ -288,11 +288,14 @@ final class DeviceConditionsMonitor: ObservableObject {
             let constrained = path.isConstrained
             let expensive = path.isExpensive
             let satisfied = path.status != .unsatisfied
-            Task { @MainActor [weak self] in
+            // Delivered on the main queue, so reports apply in the order the
+            // monitor sent them: an older unsatisfied report can't land after
+            // a newer satisfied one.
+            MainActor.assumeIsolated {
                 self?.notePath(constrained: constrained, expensive: expensive, satisfied: satisfied)
             }
         }
-        monitor.start(queue: DispatchQueue(label: "com.milim.conduit.device-conditions"))
+        monitor.start(queue: .main)
         pathMonitor = monitor
     }
 

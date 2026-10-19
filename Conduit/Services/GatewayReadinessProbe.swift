@@ -48,6 +48,8 @@ enum GatewayReadinessProbe {
 
     static func answered(status: Int?) -> Bool {
         guard let status else { return true }
-        return ![502, 503, 504].contains(status)
+        // A proxy's own page for a backend that is down; 520-524 and 530 are
+        // Cloudflare's origin-unreachable statuses.
+        return ![502, 503, 504, 520, 521, 522, 523, 524, 530].contains(status)
     }
 }
