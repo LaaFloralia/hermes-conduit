@@ -2661,7 +2661,7 @@ struct ProfileConfigSettingsPage: View {
             case .labeledOptions(let options, let defaultValue):
                 fieldLabel(field)
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
-                let displayedValue = options.first(where: { $0.value == selectedValue })?.label ?? options.first?.label ?? ""
+                let displayedValue = options.first(where: { $0.value == selectedValue })?.label ?? selectedValue
                 Menu {
                     ForEach(options, id: \.value) { option in
                         Button(option.label) { save(field, value: .text(option.value)) }
