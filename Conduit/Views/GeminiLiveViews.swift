@@ -224,6 +224,14 @@ struct GeminiLiveVoiceSheet: View {
             case .local: return AppLocalization.string("Local Live")
             }
         }
+
+        var callEngine: VoiceCallEngine {
+            switch self {
+            case .gemini: return .geminiLive
+            case .grok: return .grokLive
+            case .local: return .localLive
+            }
+        }
     }
 
     @ObservedObject var controller: GeminiLiveConversationController
@@ -259,7 +267,9 @@ struct GeminiLiveVoiceSheet: View {
             onToggleSpeaker: { controller.setSpeakerMuted(!controller.isSpeakerMuted) },
             onInterrupt: { controller.interruptSpeaking() },
             onEnd: onClose,
-            onRetry: onRetry
+            onRetry: onRetry,
+            // A call still waiting on Hermes has no mode to move yet.
+            modeSwitch: isWaiting ? nil : appState.voiceModeSwitch(for: engine.callEngine)
         )
         // The status and new turns change without focus moving.
         .onChange(of: controller.phase) { _, _ in

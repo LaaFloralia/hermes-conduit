@@ -303511,6 +303511,170 @@
           }
         }
       }
+    },
+    "Switch voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimme wechseln"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Changer de voix"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganti suara"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambia voce"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声を切り替え"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 전환"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zmień głos"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trocar voz"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сменить голос"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesi değiştir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切换语音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "切換語音"
+          }
+        }
+      }
+    },
+    "Ends this call and starts again in the mode you pick, in the same chat. Voice settings keep the new mode." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beendet diesen Anruf und startet ihn im gewählten Modus im selben Chat neu. Die Spracheinstellungen übernehmen den neuen Modus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina esta llamada y vuelve a empezar en el modo que elijas, en el mismo chat. Los ajustes de voz conservan el nuevo modo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Met fin à cet appel et le relance dans le mode choisi, dans la même discussion. Les réglages vocaux gardent le nouveau mode."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengakhiri panggilan ini dan memulai lagi dalam mode yang Anda pilih, di chat yang sama. Pengaturan suara menyimpan mode baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Termina questa chiamata e la riavvia nella modalità scelta, nella stessa chat. Le impostazioni vocali mantengono la nuova modalità."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この通話を終了し、選んだモードで同じチャットにて再開します。新しいモードは音声設定に保存されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 통화를 끝내고 선택한 모드로 같은 채팅에서 다시 시작합니다. 새 모드는 음성 설정에 저장됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kończy to połączenie i zaczyna je od nowa w wybranym trybie, w tym samym czacie. Ustawienia głosu zachowują nowy tryb."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encerra esta chamada e recomeça no modo escolhido, no mesmo chat. Os ajustes de voz mantêm o novo modo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершает этот звонок и начинает заново в выбранном режиме в том же чате. Новый режим сохраняется в настройках голоса."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu aramayı bitirir ve seçtiğiniz modda aynı sohbette yeniden başlatır. Ses ayarları yeni modu korur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结束此通话，并在同一聊天中以所选模式重新开始。语音设置会保留新模式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "結束此通話，並在同一聊天中以所選模式重新開始。語音設定會保留新模式。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

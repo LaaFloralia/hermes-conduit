@@ -285,7 +285,8 @@ struct MainView: View {
                 chatTitle: appState.activeChatSessionSummary?.title,
                 appState: appState,
                 onClose: appState.closeVoiceConversation,
-                shouldAutoListen: { appState.consumeVoiceSheetAutoListenIfPresenting() }
+                shouldAutoListen: { appState.consumeVoiceSheetAutoListenIfPresenting() },
+                modeSwitch: appState.voiceModeSwitch(for: nil)
             )
                 .safeAreaInset(edge: .top, spacing: 0) { callTopBanners }
                 .overlay(alignment: .bottom) { presentedConfirmOverlay(inCall: true) }

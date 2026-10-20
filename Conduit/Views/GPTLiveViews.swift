@@ -348,7 +348,9 @@ struct GPTLiveVoiceSheet: View {
             onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
             onToggleSpeaker: { controller.setSpeakerMuted(!controller.isSpeakerMuted) },
             onEnd: onClose,
-            onRetry: onRetry
+            onRetry: onRetry,
+            // A call still waiting on Hermes has no mode to move yet.
+            modeSwitch: isWaiting ? nil : appState.voiceModeSwitch(for: .gptLive)
         )
         // The status and new turns change without focus moving.
         .onChange(of: controller.phase) { _, _ in
