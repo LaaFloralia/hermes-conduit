@@ -222,7 +222,7 @@ struct V2ScheduledList: View {
             }
         }
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
-        .task(id: "\(appState.activeProfile)|\(shell.isTabActive)") {
+        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
             guard shell.isTabActive else { return }
             await appState.refreshCronContent()
         }

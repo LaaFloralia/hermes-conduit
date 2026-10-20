@@ -310,6 +310,10 @@ struct ModelPickerView: View {
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
             visibility = appState.modelVisibility
+            // Seed fast here too: a failed catalog fetch must not leave the
+            // draft at its initial `false` for Apply to write over the
+            // session's real Fast mode.
+            fastEnabled = appState.runtime.fast
             refreshYoloToggle(force: false)
         }
         .onChange(of: appState.runtime.approvalsMode) { oldMode, newMode in
@@ -329,6 +333,13 @@ struct ModelPickerView: View {
             // switch), but not mid-tap, so the tapped pill doesn't flicker.
             guard !isApplyingReasoning else { return }
             reasoningEffort = effort.isEmpty ? "none" : effort
+        }
+        .onChange(of: appState.runtime.fast) { old, new in
+            // Follow Fast changed elsewhere while the sheet is open, so Apply
+            // doesn't write the stale draft back; a draft the user already
+            // changed here stays theirs.
+            guard !isApplying, fastEnabled == old else { return }
+            fastEnabled = new
         }
         .onChange(of: applyError) { _, message in
             // The error row appears silently; tell VoiceOver the apply failed.
@@ -783,7 +794,8 @@ struct ModelPickerView: View {
             providers = provs ?? []
             selectedModel = appState.runtime.model
             selectedProvider = appState.runtime.provider
-            fastEnabled = appState.runtime.fast
+            // Fast is seeded on appear: re-seeding here would undo a toggle
+            // made while the catalog loaded, and Apply would write that back.
             refreshYoloToggle(force: false)
         } catch {
             // Model options are supplementary to the current session state.

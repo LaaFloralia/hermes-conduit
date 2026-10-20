@@ -2226,7 +2226,14 @@ private struct DelegationModelSettings: View {
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
         provider = next
-        model = next.isEmpty ? "" : defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? ""
+        guard !next.isEmpty else {
+            model = ""
+            return
+        }
+        guard let models = defaults?.providers.first(where: { $0.name == next })?.models else { return }
+        if !models.contains(where: { $0.id == model }) {
+            model = models.first?.id ?? ""
+        }
     }
     private func persist() {
         Task {
@@ -2325,7 +2332,12 @@ private struct FallbackModelsSettings: View {
             if !loaded {
                 // A list that didn't load is never edited: saving it would
                 // replace the real one.
-                if error == nil { ProgressView("Loading available models…") }
+                if error == nil {
+                    ProgressView("Loading available models…")
+                } else {
+                    Button(AppLocalization.string("Try Again")) { Task { await reload() } }
+                        .buttonStyle(.settings)
+                }
             } else {
                 if entries.isEmpty {
                     Text("No fallback models yet.")
@@ -2431,14 +2443,19 @@ private struct FallbackModelsSettings: View {
     }
 
     private func reload() async {
+        error = nil
         async let modelRequest = loadModels()
         async let entryRequest = load()
         let (models, loadedEntries) = await (modelRequest, entryRequest)
-        defaults = models
-        guard let loadedEntries else {
+        // Without the model catalog no fallback can be added or changed, so
+        // a half-loaded list fails with Try Again instead of a silently
+        // disabled Add. A re-load (the editor re-appearing) that fails keeps
+        // the catalog and rows it already had: only the error is new.
+        guard let loadedEntries, let models else {
             error = AppLocalization.string("Could not load fallback models.")
             return
         }
+        defaults = models
         entries = loadedEntries
         saved = loadedEntries
         loaded = true
@@ -2649,7 +2666,7 @@ struct ProfileConfigSettingsPage: View {
             case .labeledOptions(let options, let defaultValue):
                 fieldLabel(field)
                 let selectedValue = textValue(field.key, defaultValue: defaultValue)
-                let displayedValue = options.first(where: { $0.value == selectedValue })?.label ?? options.first?.label ?? ""
+                let displayedValue = options.first(where: { $0.value == selectedValue })?.label ?? selectedValue
                 Menu {
                     ForEach(options, id: \.value) { option in
                         Button(option.label) { save(field, value: .text(option.value)) }
