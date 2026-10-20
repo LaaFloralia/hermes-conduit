@@ -6954,8 +6954,12 @@ final class AppState: ObservableObject {
                 return
             }
             // A bot's own chat opens through the bot that owns it, as it
-            // does from a link for another profile.
-            if let owner = botOwnership.botProfileName(owningAny: [id]) {
+            // does from a link for another profile. A Live Activity's card
+            // names the chat's own ids, which outrank a runtime id Hermes
+            // may since have given another chat; the link's id still counts
+            // when they name no bot (a Bot Chat's link can be its only one).
+            let cardIDs = LiveTurnActivities.sessionIDs(linkedTo: id, profile: activeProfile, dashboardID: activeDashboardID?.uuidString)
+            if let owner = botOwnership.botProfileName(owningAny: Set(cardIDs)) ?? botOwnership.botProfileName(owningAny: [id]) {
                 openLinkedBotChat(owner)
                 return
             }
@@ -7093,17 +7097,20 @@ final class AppState: ObservableObject {
     private func openLinkedSession(_ id: String, unavailable: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
-            var target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
+            var target = self.linkedSessionTarget(id)
             if target == nil {
                 let openBefore = self.activeSessionId
                 await self.loadSessions(forceRefresh: true)
                 // A chat opened meanwhile is the later choice; it stays.
                 guard self.activeSessionId == openBefore else { return }
-                target = Self.linkedSessionTarget(id, rows: self.sessions + self.cronSessions, aliases: self.voiceSessionAliases)
+                target = self.linkedSessionTarget(id)
             }
             // Only this open's own "not found" may be reworded.
             self.reconciliationSessionWasNotFound = false
-            let opened = await self.requestOpenSession(target ?? id) { [weak self] in
+            // Still no row: the stored id learned for a reaped runtime
+            // resumes where the runtime id can't.
+            let fallback = self.conversationIdentityIndex.durableID(forRuntime: id, profile: self.activeProfile)
+            let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
                 // A failed resume says "session not found"; the link's own
                 // words say what's missing. Other refusals keep their text.
                 guard let self, self.errorMessage == nil || self.reconciliationSessionWasNotFound else { return }
@@ -7117,6 +7124,67 @@ final class AppState: ObservableObject {
             // finished has brought its own chat forward anyway.
             if opened, self.explicitSessionOpenRequestID == nil { self.dismissSidebarDrawer() }
         }
+    }
+
+    /// The id a linked chat is resumed by. A Live Activity's card from an
+    /// older build names the chat's runtime id, which Hermes forgets once
+    /// that runtime is reaped (Conduit was away a while): the stored id
+    /// learned for it, or another id the card carries, still finds the
+    /// chat's row. A row's stored id is resumed over its runtime id, as a
+    /// notification's open and a refresh resume it: a list read before the
+    /// reaping still names the dead runtime. Nil when nothing here knows
+    /// any of the ids (a voice alias with no row still answers).
+    private func linkedSessionTarget(_ id: String) -> String? {
+        let rows = sessions + cronSessions
+        let durable = conversationIdentityIndex.durableID(forRuntime: id, profile: activeProfile)
+        // Positively known ids first: the raw id may be a runtime Hermes
+        // has since given another chat.
+        let candidates = Self.linkedSessionCandidates(
+            [durable].compactMap { $0 } + LiveTurnActivities.sessionIDs(linkedTo: id, profile: activeProfile, dashboardID: activeDashboardID?.uuidString) + [id],
+            rows: rows
+        )
+        for candidate in candidates {
+            if let target = Self.linkedSessionTarget(candidate, rows: rows, aliases: voiceSessionAliases) {
+                // A voice alias can be how the row was found.
+                let aliased = voiceSessionAliases.storedID(forRuntime: candidate) ?? candidate
+                return Self.linkedResumeID(target, matching: candidate, aliased, rows: rows)
+            }
+        }
+        return nil
+    }
+
+    /// `ids` de-duplicated, with any that is a row's durable id (its stored
+    /// id, else its own) first: that names one chat for good, while a
+    /// card's runtime ids can since belong to another chat.
+    static func linkedSessionCandidates(_ ids: [String], rows: [SessionSummary]) -> [String] {
+        var seen = Set<String>()
+        let unique = ids.filter { !$0.isEmpty && seen.insert($0).inserted }
+        let stored = Set(rows.map { ($0.storedSessionId ?? $0.id).trimmingCharacters(in: .whitespacesAndNewlines) })
+        return unique.filter { stored.contains($0) } + unique.filter { !stored.contains($0) }
+    }
+
+    /// The stored id of the row `target` names that carries one of
+    /// `candidates` (two rows can share a runtime id), when it has one;
+    /// else `target`.
+    static func linkedResumeID(_ target: String, matching candidates: String..., rows: [SessionSummary]) -> String {
+        let row = rows.first { row in
+            row.id == target && candidates.contains(where: row.nestingIDs.contains)
+        }
+        guard let stored = row?.storedSessionId?.trimmingCharacters(in: .whitespacesAndNewlines), !stored.isEmpty else { return target }
+        return stored
+    }
+
+    /// The id a Live Activity's card opens its chat by: the durable one,
+    /// which outlives the runtime id the turn was sent on. A Bot Chat's is
+    /// read in its bot's scope, as a refresh reads it: a dashboard row with
+    /// the same runtime id says nothing about the Bot Chat. The tap comes
+    /// back through `ConduitAppLink(externalURL:)`, so an id that isn't a
+    /// plain token keeps the runtime id.
+    func liveActivityLinkSessionID(for sessionID: String) -> String {
+        let botProfile = botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile)
+        guard let durable = captureConversationIdentity(for: sessionID, scopeProfile: botProfile)?.durableSessionID,
+              ConduitAppLink.isPlainToken(durable) else { return sessionID }
+        return durable
     }
 
     /// The row a linked id opens as: the row that carries it (or the stored
@@ -22956,6 +23024,7 @@ final class AppState: ObservableObject {
                     LiveTurnActivities.shared.turnStarted(
                         sessionIDs: submissionSessionIDs,
                         primaryID: sessionId,
+                        linkID: liveActivityLinkSessionID(for: sessionId),
                         title: activeSessionTitle,
                         profile: activeProfile,
                         profileName: profileDisplayName(activeProfile),

@@ -105,7 +105,7 @@ enum ConduitAppLink: Equatable {
         return value?.isEmpty == false ? value : nil
     }
 
-    private static func isPlainToken(_ value: String) -> Bool {
+    static func isPlainToken(_ value: String) -> Bool {
         let scalars = value.unicodeScalars
         return scalars.count <= maxExternalTokenLength && scalars.allSatisfy(externalTokenCharacters.contains)
     }
