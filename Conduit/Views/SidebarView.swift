@@ -2185,6 +2185,7 @@ struct CronJobDetailSheet: View {
     /// Resume flip the sheet as soon as Hermes answers.
     let selectedJob: CronJob
     @State private var confirmingDelete = false
+    @State private var editing = false
 
     init(job: CronJob) {
         selectedJob = job
@@ -2251,6 +2252,13 @@ struct CronJobDetailSheet: View {
                             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent, prominent: true)
                         }
                         .font(.subheadline.weight(.semibold))
+                        Button { editing = true } label: {
+                            Label(AppLocalization.string("Edit job"), systemImage: "pencil").frame(maxWidth: .infinity)
+                        }
+                        .disabled(appState.cronJobActionID != nil || appState.dashboardTicketBridge == nil)
+                        .frame(minHeight: 48)
+                        .conduitGlassControl(cornerRadius: 16)
+                        .font(.subheadline.weight(.semibold))
                         Button(role: .destructive) { confirmingDelete = true } label: {
                             Label(AppLocalization.string("Delete job"), systemImage: "trash").frame(maxWidth: .infinity)
                         }
@@ -2279,6 +2287,10 @@ struct CronJobDetailSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 ConduitSheetHeader(title: AppLocalization.string("Scheduled job"), close: { dismiss() })
             }
+        }
+        .sheet(isPresented: $editing) {
+            CronJobEditorSheet(target: .edit(job))
+                .environmentObject(appState)
         }
         .alert("Delete scheduled job?", isPresented: $confirmingDelete) {
             Button("Delete", role: .destructive) {

@@ -27507,6 +27507,85 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Creates a job on Hermes (#819) and adds it to the list. Throws
+    /// Hermes' reason (a schedule it can't read, a missing prompt) for the
+    /// editor to show.
+    func createCronJob(_ body: [String: Any]) async throws -> CronJob? {
+        guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let profile = activeProfile
+        let result = try await dashboardTicketBridge.requestJSON(
+            path: cronDashboardPath("/api/cron/jobs", profile: profile),
+            method: "POST",
+            body: body
+        )
+        return await addCreatedCronJob(result, profile: profile)
+    }
+
+    /// Changes only the fields in `updates`; the rest of the job stays.
+    func updateCronJob(_ job: CronJob, updates: [String: Any]) async throws {
+        guard !updates.isEmpty else { return }
+        guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let profile = activeProfile
+        let encodedID = job.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? job.id
+        let result = try await dashboardTicketBridge.requestJSON(
+            path: cronDashboardPath("/api/cron/jobs/\(encodedID)", profile: profile),
+            method: "PUT",
+            body: ["updates": updates]
+        )
+        guard profile == activeProfile else { return }
+        if let updated = decodeCronJob(result), let index = cronJobs.firstIndex(where: { $0.id == job.id }) {
+            // A list read already on its way predates the change.
+            cronJobsGeneration += 1
+            cronJobs[index] = updated
+        } else {
+            await loadCronJobs()
+        }
+    }
+
+    /// Where a job can deliver: `local` and each connected platform.
+    func loadCronDeliveryTargets() async throws -> [CronDeliveryTarget] {
+        guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let result = try await dashboardTicketBridge.requestJSON(
+            path: cronDashboardPath("/api/cron/delivery-targets", profile: activeProfile)
+        )
+        return (result["targets"] as? [Any] ?? []).compactMap(CronDeliveryTarget.init)
+    }
+
+    /// Hermes' blueprint catalog: built-ins and the profile's plugins'.
+    func loadCronBlueprints() async throws -> [CronBlueprint] {
+        guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let result = try await dashboardTicketBridge.requestJSON(
+            path: cronDashboardPath("/api/cron/blueprints", profile: activeProfile)
+        )
+        return (result["blueprints"] as? [Any] ?? []).compactMap(CronBlueprint.init)
+    }
+
+    /// Fills a blueprint's blanks and creates its job on Hermes.
+    func instantiateCronBlueprint(_ blueprint: CronBlueprint, values: [String: String]) async throws -> CronJob? {
+        guard let dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let profile = activeProfile
+        let result = try await dashboardTicketBridge.requestJSON(
+            path: cronDashboardPath("/api/cron/blueprints/instantiate", profile: profile),
+            method: "POST",
+            body: ["blueprint": blueprint.key, "values": CronBlueprint.instantiateValues(values, fields: blueprint.fields)]
+        )
+        return await addCreatedCronJob(result, profile: profile)
+    }
+
+    private func addCreatedCronJob(_ result: [String: Any], profile: String) async -> CronJob? {
+        let created = decodeCronJob(result["job"] ?? result)
+        guard profile == activeProfile else { return created }
+        if let created {
+            cronJobsGeneration += 1
+            cronJobs.removeAll { $0.id == created.id }
+            cronJobs.append(created)
+            cronJobs.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+        } else {
+            await loadCronJobs()
+        }
+        return created
+    }
+
     private func cronDashboardPath(_ path: String, profile: String) -> String {
         DashboardPath.withExplicitProfile(path, profile: profile)
     }
