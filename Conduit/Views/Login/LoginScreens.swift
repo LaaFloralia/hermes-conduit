@@ -264,7 +264,7 @@ struct LoginAddressStep: View {
                     }
                     Image(systemName: "chevron.right")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                 }
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
@@ -843,12 +843,12 @@ struct LoginRowLabel: View {
             case .chevron:
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             case .collapsed, .expanded:
                 Image(systemName: "chevron.down")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
                     .rotationEffect(.degrees(accessory == .expanded ? 180 : 0))
                     .accessibilityHidden(true)
             case .progress:

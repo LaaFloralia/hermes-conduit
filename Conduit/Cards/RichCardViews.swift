@@ -170,7 +170,7 @@ struct RichMapPicture: View {
                 } else if (looked && coordinates.isEmpty) || failed {
                     Image(systemName: "map")
                         .font(.title)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                 } else {
                     ProgressView()
                 }
@@ -656,7 +656,7 @@ private struct RichAppleMapsMark: View {
                 Image(systemName: "map.fill")
             }
             .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.conduitTertiary)
             .labelStyle(RichCompactLabelStyle())
         }
     }

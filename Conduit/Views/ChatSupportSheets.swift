@@ -232,7 +232,7 @@ struct WorkspaceBrowserSheet: View {
                                     Spacer()
                                     if row.entry.isDirectory {
                                         Image(systemName: appState.expandedWorkspacePaths.contains(row.entry.path) ? "chevron.down" : "chevron.right")
-                                            .font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                                            .font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
                                     }
                                 }
                                 .padding(.leading, CGFloat(row.depth) * 18)

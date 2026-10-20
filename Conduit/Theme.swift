@@ -25,10 +25,22 @@ extension ShapeStyle where Self == Color {
     // Text colors (adapt to light/dark via system colors)
     static var conduitText: Color { Color.primary }
     static var conduitTextSecondary: Color { Color.secondary }
-    static var conduitTextTertiary: Color { Color(red: 0.5, green: 0.5, blue: 0.55) }
     // Backgrounds
     static var conduitBackground: Color { Color(.systemBackground) }
     static var conduitSurface: Color { Color(.secondarySystemBackground) }
+}
+
+/// Quiet information (timestamps, hints, counts) at the tertiary level,
+/// raised to secondary under Increase Contrast: tertiary is far below
+/// 4.5:1 on the light background (#830).
+struct ConduitTertiaryStyle: ShapeStyle {
+    func resolve(in environment: EnvironmentValues) -> HierarchicalShapeStyle {
+        environment.colorSchemeContrast == .increased ? .secondary : .tertiary
+    }
+}
+
+extension ShapeStyle where Self == ConduitTertiaryStyle {
+    static var conduitTertiary: ConduitTertiaryStyle { ConduitTertiaryStyle() }
 }
 
 extension Color {

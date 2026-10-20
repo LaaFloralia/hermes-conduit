@@ -762,6 +762,11 @@ struct ComposerBar: View, Equatable {
     /// neighbours never overlap.
     static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
 
+    /// "42%", for the context ring's large content viewer.
+    private var contextPercentLabel: String {
+        "\(Int(appState.runtime.contextPercent.rounded()))%"
+    }
+
     private var controlsRow: some View {
         HStack(spacing: 8) {
             attachmentButton
@@ -781,6 +786,12 @@ struct ComposerBar: View, Equatable {
                     .contentShape(Self.controlHitShape)
             }
             .buttonStyle(.plain)
+            .accessibilityShowsLargeContentViewer {
+                Label(
+                    AppLocalization.string("Context \(contextPercentLabel)"),
+                    systemImage: "chart.pie"
+                )
+            }
             .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
 
             if appState.activeAgents > 0 {
@@ -795,6 +806,12 @@ struct ComposerBar: View, Equatable {
                         .contentShape(Self.controlHitShape)
                 }
                 .buttonStyle(.plain)
+                .accessibilityShowsLargeContentViewer {
+                    Label(
+                        AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"),
+                        systemImage: "person.2"
+                    )
+                }
                 .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
             }
 
@@ -1084,6 +1101,9 @@ struct ComposerBar: View, Equatable {
         .accessibilityLabel(Text("Attach"))
         .disabled(!appState.composerIsEnabled || appState.isBusy)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
+        .accessibilityShowsLargeContentViewer {
+            Label("Attach", systemImage: "plus")
+        }
     }
 
     /// What the single trailing slot of the input row holds.
@@ -1288,6 +1308,9 @@ struct ComposerBar: View, Equatable {
         .menuOrder(.fixed)
         // Picks land in order: the next waits for this write.
         .disabled(appState.isWritingReasoningEffort)
+        .accessibilityShowsLargeContentViewer {
+            Text(ReasoningEffortLevel.displayTitle(for: appState.runtime.reasoningEffort))
+        }
         .accessibilityLabel(Text("Reasoning"))
         .accessibilityValue(Text(ReasoningEffortLevel.displayTitle(for: appState.runtime.reasoningEffort)))
     }
@@ -1489,6 +1512,9 @@ struct ComposerBar: View, Equatable {
         .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.voiceWaitsForRunningTurn)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
+        .accessibilityShowsLargeContentViewer {
+            Label(AppLocalization.string("Resume call"), systemImage: "phone.arrow.up.right")
+        }
         .accessibilityLabel(AppLocalization.string("Resume call"))
         .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
     }
@@ -1513,6 +1539,9 @@ struct ComposerBar: View, Equatable {
             tint: appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
             interactive: canOpenVoice
         )
+        .accessibilityShowsLargeContentViewer {
+            Label("Start voice conversation", systemImage: "waveform")
+        }
         .accessibilityLabel(Text("Start voice conversation"))
         .accessibilityHint(appState.phoneVoiceUnavailableReason
             ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
@@ -1558,15 +1587,26 @@ struct ComposerBar: View, Equatable {
             tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isActive
         )
-        .accessibilityLabel(isCapturing
-            ? Text("Stop dictation")
-            : (dictation.isStarting ? Text("Cancel dictation")
-                : (dictation.isTranscribing ? Text("Transcribing") : Text("Dictate"))))
+        .accessibilityShowsLargeContentViewer {
+            Label {
+                dictateTitle(isCapturing: isCapturing)
+            } icon: {
+                Image(systemName: isCapturing ? "mic.fill" : "mic")
+            }
+        }
+        .accessibilityLabel(dictateTitle(isCapturing: isCapturing))
         .accessibilityHint(isCapturing
             ? AppLocalization.string("Stops dictating; the words stay in the message")
             : (dictation.isStarting || dictation.isTranscribing ? "" : (appState.isVoiceInUse
                 ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
                 : AppLocalization.string("Types what you say into the message"))))
+    }
+
+    private func dictateTitle(isCapturing: Bool) -> Text {
+        if isCapturing { return Text("Stop dictation") }
+        if dictation.isStarting { return Text("Cancel dictation") }
+        if dictation.isTranscribing { return Text("Transcribing") }
+        return Text("Dictate")
     }
 
     private func openVoiceFromComposer() {
@@ -2265,6 +2305,7 @@ struct ContextRingView: View {
                 .trim(from: 0, to: min(percent / 100, 1))
                 .stroke(Color.conduitAccent, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+            // Fixed size: it sits inside the fixed 32 pt ring.
             Text("\(String(Int(percent.rounded())))%")
                 .font(.system(size: 9, weight: .semibold).monospacedDigit())
         }
@@ -2276,6 +2317,7 @@ struct ContextRingView: View {
 private struct SlashSuggestionsOverlay: View {
     let commands: [SlashCommand]
     let onSelected: (SlashCommand) -> Void
+    @ScaledMetric(relativeTo: .caption2) private var categoryBadgeSize: CGFloat = 9
 
     var body: some View {
         ScrollView {
@@ -2309,7 +2351,7 @@ private struct SlashSuggestionsOverlay: View {
                             // Category badge
                             if let category = cmd.category, !category.isEmpty {
                                 Text(category)
-                                    .font(.system(size: 9, weight: .medium))
+                                    .font(.system(size: categoryBadgeSize, weight: .medium))
                                     .foregroundStyle(.conduitAccent)
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)

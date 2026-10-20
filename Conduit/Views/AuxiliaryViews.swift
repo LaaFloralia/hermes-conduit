@@ -1403,7 +1403,7 @@ private struct SettingsHome: View {
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.conduitTertiary)
                 .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1496,7 +1496,7 @@ private struct SettingsHome: View {
                 }
             }
             Spacer(minLength: 8)
-            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.conduitTertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 5)
@@ -1642,11 +1642,13 @@ private struct ChatTextSizeSettings: View {
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
+                    // Fixed size: the slider's small and large ends.
                     Text("A")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                     Spacer()
+                    // Fixed size: the slider's small and large ends.
                     Text("A")
                         .font(.system(size: 22, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -3720,7 +3722,7 @@ private struct AboutSettingsDetail: View {
                         Image(systemName: "lock.shield")
                         Text("Privacy policy")
                         Spacer()
-                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.conduitTertiary)
                     }
                 }
                 Link(destination: URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/support/")!) {
@@ -3728,7 +3730,7 @@ private struct AboutSettingsDetail: View {
                         Image(systemName: "lifepreserver")
                         Text("Support")
                         Spacer()
-                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.conduitTertiary)
                     }
                 }
                 Link(destination: URL(string: "https://github.com/kaishi00/hermes-conduit-notifier")!) {
@@ -3736,7 +3738,7 @@ private struct AboutSettingsDetail: View {
                         Image(systemName: "chevron.left.forwardslash.chevron.right")
                         Text("GitHub")
                         Spacer()
-                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.tertiary)
+                        Image(systemName: "arrow.up.right.square").font(.caption).foregroundStyle(.conduitTertiary)
                     }
                 }
             }

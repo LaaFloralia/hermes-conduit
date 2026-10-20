@@ -2069,14 +2069,14 @@ struct SystemBubble: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: isRuntimeNotice ? "info.circle" : "terminal")
-                .font(.system(size: 13, weight: .medium))
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(.conduitAccent)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(isRuntimeNotice ? AppLocalization.string("System") : AppLocalization.string("Command"))
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.conduitAccent)
                         .textCase(.uppercase)
                         .tracking(0.5)
@@ -2307,7 +2307,7 @@ private struct VoiceCallMarkerCard: View {
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
             }
             .padding(14)
@@ -2377,7 +2377,7 @@ struct SettledThinkingCardContent: View, Equatable {
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.conduitTertiary)
                         .rotationEffect(.degrees(isExpanded ? 180 : 0))
                         .accessibilityHidden(true)
                 }
@@ -2590,7 +2590,7 @@ private struct SettledToolCardContent: View, Equatable {
 
                         Image(systemName: "chevron.down")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                             .rotationEffect(.degrees(expanded ? 180 : 0))
                             .accessibilityHidden(true)
                     }
@@ -2605,12 +2605,12 @@ private struct SettledToolCardContent: View, Equatable {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(tool.name)
                             .font(.system(.caption2, design: .monospaced).weight(.semibold))
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                         if let input = tool.input, !input.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(AppLocalization.string("Input"))
                                     .font(.caption2.bold())
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.conduitTertiary)
                                 SelectableTextView(
                                     text: ToolCard.truncateForDisplay(input, maxLines: 500),
                                     font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
@@ -2624,7 +2624,7 @@ private struct SettledToolCardContent: View, Equatable {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(AppLocalization.string("Output"))
                                     .font(.caption2.bold())
-                                    .foregroundStyle(.tertiary)
+                                    .foregroundStyle(.conduitTertiary)
                                 SelectableTextView(
                                     text: ToolCard.truncateForDisplay(output, maxLines: 500),
                                     font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
