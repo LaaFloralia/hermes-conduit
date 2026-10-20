@@ -65,6 +65,10 @@ final class WatchDirectBroker {
     static let connectWait: Duration = .seconds(8)
     /// A call not heard from this long is over, whatever its end said.
     static let silenceLimit: TimeInterval = 30 * 60
+    /// How long past its last grant's end a quiet call is kept: its Watch
+    /// may still use the grant wrist down, through the relay, without a
+    /// word to the phone.
+    static let grantGrace: TimeInterval = 60
     /// Bytes of a bridge call's start reply as sent, under the Watch
     /// message limit of about 65 KB.
     static let bridgeReplyLimit = 60 * 1024
@@ -73,6 +77,11 @@ final class WatchDirectBroker {
     private var callID: UInt32?
     /// Ends a bridge call whose Watch went quiet once its grant is over.
     private var grantWatchdog: Task<Void, Never>?
+    /// Ends a call whose Watch went quiet (its app died, or the Watch did)
+    /// once `silenceDeadline` passes, so recovery and grants stop.
+    private var silenceWatchdog: Task<Void, Never>?
+    /// When the running call's last grant ends.
+    private var grantExpiresAt: Date?
     private var bridge: GeminiLiveToolBridge?
     private var preparing: (callID: UInt32, task: Task<WatchVoiceWire.Message, Never>)?
     /// The running call's connection.
@@ -290,7 +299,9 @@ final class WatchDirectBroker {
         hostTools = []
         hostToolsMode = nil
         appState.watchCallUserTurn = nil
+        grantExpiresAt = nil
         lastHeardAt = Date()
+        watchSilence(id)
         // Lets transport recovery run with the phone locked, as for a
         // CarPlay call.
         appState.setWatchVoiceCallActive(true)
@@ -411,7 +422,9 @@ final class WatchDirectBroker {
         hostTools = []
         hostToolsMode = nil
         appState.watchCallUserTurn = nil
+        grantExpiresAt = nil
         lastHeardAt = Date()
+        watchSilence(id)
         appState.setWatchVoiceCallActive(true)
         let startedAt = Date()
         link.log.note("watchBridgeStart", [
@@ -520,7 +533,9 @@ final class WatchDirectBroker {
         hostTools = []
         hostToolsMode = nil
         appState.watchCallUserTurn = nil
+        grantExpiresAt = nil
         lastHeardAt = Date()
+        watchSilence(id)
         appState.setWatchVoiceCallActive(true)
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
         let startedAt = Date()
@@ -643,7 +658,9 @@ final class WatchDirectBroker {
         hostTools = []
         hostToolsMode = nil
         appState.watchCallUserTurn = nil
+        grantExpiresAt = nil
         lastHeardAt = Date()
+        watchSilence(id)
         appState.setWatchVoiceCallActive(true)
         let startedAt = Date()
         link.log.note("watchLocalLiveStart", [
@@ -1111,6 +1128,7 @@ final class WatchDirectBroker {
                 return .failure(CancellationError())
             }
             grantIDs.append(grant.grantID)
+            if let ends = grant.expiresAt { grantExpiresAt = max(grantExpiresAt ?? ends, ends) }
             link.log.note("watchToolGrant", [
                 "callID": Int(id),
                 "ok": true,
@@ -1185,9 +1203,13 @@ final class WatchDirectBroker {
             grantVoiceApprovals = scope.voiceApprovals
             grantIDs = scope.grantIDs
             grantAudio = scope.audio ?? false
+            grantExpiresAt = scope.expiresAt
         }
         lateOutgoing = []
         lastHeardAt = Date()
+        watchSilence(id)
+        // A bridge call still can't outlive its grant after a restart.
+        if grantAudio { endWhenGrantDoes(id, expiresAt: grantExpiresAt) }
         appState.setWatchVoiceCallActive(true)
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
     }
@@ -1202,7 +1224,8 @@ final class WatchDirectBroker {
             jobProfiles: grantJobProfiles,
             voiceApprovals: grantVoiceApprovals,
             grantIDs: grantIDs,
-            audio: grantAudio
+            audio: grantAudio,
+            expiresAt: grantExpiresAt
         )
     }
 
@@ -1297,6 +1320,9 @@ final class WatchDirectBroker {
     private func endCall(keepRecovery: Bool = false) {
         grantWatchdog?.cancel()
         grantWatchdog = nil
+        silenceWatchdog?.cancel()
+        silenceWatchdog = nil
+        grantExpiresAt = nil
         if let callID { ledger.end(callID) }
         if let bridge {
             bridge.returnUnsent(lateOutgoing.compactMap { item in
@@ -1326,10 +1352,47 @@ final class WatchDirectBroker {
         // Another call's message: a straggler from one that ended, unless
         // the running call has been silent so long that it ended without
         // its end arriving.
-        if Date().timeIntervalSince(lastHeardAt) > Self.silenceLimit {
+        if Date() > Self.silenceDeadline(lastHeardAt: lastHeardAt, grantExpiresAt: grantExpiresAt) {
             link.log.note("watchDirectStale", ["callID": Int(callID)])
             endCall()
         }
+    }
+
+    /// When a call not heard from since `lastHeardAt` is over: after the
+    /// silence limit, and not while a grant its Watch may be using wrist
+    /// down is still open.
+    static func silenceDeadline(lastHeardAt: Date, grantExpiresAt: Date?) -> Date {
+        let quiet = lastHeardAt.addingTimeInterval(silenceLimit)
+        guard let grantExpiresAt else { return quiet }
+        return max(quiet, grantExpiresAt.addingTimeInterval(grantGrace))
+    }
+
+    /// A Watch that dies sends nothing, not even its end: without this the
+    /// call would stay running here until the next call's first message.
+    /// Every message the call sends moves the deadline on.
+    private func watchSilence(_ id: UInt32) {
+        silenceWatchdog?.cancel()
+        silenceWatchdog = Task { [weak self] in
+            while let wait = self?.silenceWait(id) {
+                guard wait > 0 else {
+                    guard let self else { return }
+                    self.link.log.note("watchDirectSilent", [
+                        "callID": Int(id),
+                        "quietS": Int(Date().timeIntervalSince(self.lastHeardAt)),
+                    ])
+                    self.endCall()
+                    return
+                }
+                do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+            }
+        }
+    }
+
+    /// Seconds until the running call `id` is over for silence; nil once
+    /// it isn't the running call.
+    private func silenceWait(_ id: UInt32) -> TimeInterval? {
+        guard callID == id else { return nil }
+        return Self.silenceDeadline(lastHeardAt: lastHeardAt, grantExpiresAt: grantExpiresAt).timeIntervalSinceNow
     }
 
     // MARK: Helpers
@@ -1423,6 +1486,9 @@ struct WatchDirectCallLedger {
         /// The grant carries the host's audio bridge. Missing in calls
         /// stored before the bridge.
         var audio: Bool? = nil
+        /// When the call's last grant ends. Missing in calls stored before
+        /// the phone kept it.
+        var expiresAt: Date? = nil
     }
 
     static let defaultsKey = "watchDirect.calls.v1"
