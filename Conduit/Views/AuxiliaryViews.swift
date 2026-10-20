@@ -2225,7 +2225,14 @@ private struct DelegationModelSettings: View {
     private func chooseProvider(_ next: String) {
         guard next != provider else { return }
         provider = next
-        model = next.isEmpty ? "" : defaults?.providers.first(where: { $0.name == next })?.models.first?.id ?? ""
+        guard !next.isEmpty else {
+            model = ""
+            return
+        }
+        guard let models = defaults?.providers.first(where: { $0.name == next })?.models else { return }
+        if !models.contains(where: { $0.id == model }) {
+            model = models.first?.id ?? ""
+        }
     }
     private func persist() {
         Task {
