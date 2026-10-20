@@ -895,7 +895,9 @@ struct SettingsView: View {
                 loadOptions: loadProfileConfigOptions,
                 loadModels: loadProfileModelDefaults,
                 loadSchema: { await appState.loadProfileConfigSchema() },
-                sections: Self.memorySections
+                sections: Self.memorySections,
+                loadDelegationPaused: { await appState.loadDelegationPaused() },
+                setDelegationPaused: { await appState.setDelegationPaused($0) }
             )
         case .advanced:
             ProfileConfigSettingsPage(
@@ -2238,6 +2240,67 @@ private struct DelegationModelSettings: View {
     }
 }
 
+/// Holds new delegate agents on the whole Hermes (`delegation.pause`,
+/// #820). Agents already working carry on.
+private struct DelegationPauseSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let load: () async -> Bool?
+    let save: (Bool) async -> Bool?
+    @State private var paused: Bool?
+    @State private var loaded = false
+    @State private var saving = false
+    @State private var error: String?
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Pause delegation"), symbol: "pause.circle", tint: .orange) {
+            if let paused {
+                Toggle(isOn: Binding(get: { paused }, set: { change(to: $0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Pause new delegate agents").font(.subheadline.weight(.medium))
+                        Text("Hermes starts no new delegate agents while this is on. Agents already working carry on. This applies to every profile on this Hermes.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .tint(.conduitAccent)
+                .disabled(saving)
+                .padding(.vertical, 2)
+                .accessibilityIdentifier("settings.delegationPause")
+            } else if loaded {
+                Text("This Hermes can't pause delegation, or Conduit isn't connected.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Button { Task { await reload() } } label: {
+                    Label("Try again", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.settings)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+            if let error { Text(error).font(.caption).foregroundStyle(.red) }
+        }
+        .task { await reload() }
+    }
+
+    private func reload() async {
+        loaded = false
+        paused = await load()
+        loaded = true
+    }
+
+    private func change(to next: Bool) {
+        guard !saving else { return }
+        saving = true
+        Task {
+            error = nil
+            if let state = await save(next) {
+                paused = state
+            } else {
+                error = AppLocalization.string("Could not change the delegation pause.")
+            }
+            saving = false
+        }
+    }
+}
+
 /// The Model page's `fallback_providers`: the models Hermes tries, in
 /// order, when the default model fails.
 private struct FallbackModelsSettings: View {
@@ -2403,6 +2466,8 @@ private struct MemorySettingsDetail: View {
     let loadModels: () async -> ProfileModelDefaults?
     let loadSchema: () async -> ProfileConfigSchema
     let sections: [ProfileSettingSection]
+    let loadDelegationPaused: () async -> Bool?
+    let setDelegationPaused: (Bool) async -> Bool?
     @State private var options = ProfileConfigOptions()
 
     var body: some View {
@@ -2413,7 +2478,12 @@ private struct MemorySettingsDetail: View {
             load: load,
             save: save,
             optionOverrides: ["memory.provider": options.memoryProviders, "context.engine": options.contextEngines],
-            trailingSection: AnyView(DelegationModelSettings(loadModels: loadModels, loadSettings: load, save: save)),
+            trailingSection: AnyView(
+                VStack(spacing: 24) {
+                    DelegationModelSettings(loadModels: loadModels, loadSettings: load, save: save)
+                    DelegationPauseSettings(load: loadDelegationPaused, save: setDelegationPaused)
+                }
+            ),
             sections: sections,
             loadSchema: loadSchema
         )

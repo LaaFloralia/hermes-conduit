@@ -642,6 +642,15 @@ struct SessionBranchMessage {
     let content: String
 }
 
+/// The end of a delegate agent's live transcript, from `subagent.tail`.
+/// `available` is false before the agent has written anything and after it
+/// ends.
+struct SubagentTail: Equatable {
+    var available: Bool
+    var text: String
+    var truncated: Bool
+}
+
 /// Typed result of `prompt.submit`, derived from the gateway's actual
 /// response `status` field (verified against upstream `tui_gateway`):
 /// `streaming` for a new turn, `steered`/`redirected`/`queued` when the
@@ -2643,6 +2652,66 @@ final class HermesClient: ObservableObject {
         // A row without an id could be any running agent: trust none of it.
         guard ids.count == rows.count else { throw HermesError.invalidResponse }
         return Set(ids)
+    }
+
+    /// Queues `text` into one running delegate agent (`subagent.steer`).
+    /// Hermes hands it over at the agent's next tool step; false when Hermes
+    /// rejected it because the agent isn't running for this session.
+    func steerSubagent(sessionId: String, subagentId: String, text: String) async throws -> Bool {
+        let result = try await rpc("subagent.steer", params: [
+            "session_id": sessionId,
+            "subagent_id": subagentId,
+            "text": text
+        ])
+        switch result.objectValue?["status"]?.stringValue {
+        case "queued": return true
+        case "rejected": return false
+        // Only an explicit rejection may end the card.
+        default: throw HermesError.invalidResponse
+        }
+    }
+
+    /// Stops one running delegate agent (`subagent.interrupt`). False when
+    /// Hermes no longer has that agent running for this session.
+    func interruptSubagent(sessionId: String, subagentId: String) async throws -> Bool {
+        let result = try await rpc("subagent.interrupt", params: [
+            "session_id": sessionId,
+            "subagent_id": subagentId
+        ])
+        // A reply without `found` must not end a card that may still run.
+        guard let found = result.objectValue?["found"]?.boolValue else { throw HermesError.invalidResponse }
+        return found
+    }
+
+    /// The end of one delegate agent's live transcript (`subagent.tail`,
+    /// at most 16 KB).
+    func tailSubagent(sessionId: String, subagentId: String) async throws -> SubagentTail {
+        let result = try await rpc("subagent.tail", params: [
+            "session_id": sessionId,
+            "subagent_id": subagentId
+        ])
+        guard let object = result.objectValue else { throw HermesError.invalidResponse }
+        return SubagentTail(
+            available: object["available"]?.boolValue ?? false,
+            text: object["text"]?.stringValue ?? "",
+            truncated: object["truncated"]?.boolValue ?? false
+        )
+    }
+
+    /// Whether Hermes is holding new delegate agents (`delegation.status`).
+    /// The pause covers the whole Hermes, not one profile.
+    func delegationPaused() async throws -> Bool {
+        let result = try await rpc("delegation.status")
+        guard let paused = result.objectValue?["paused"]?.boolValue else { throw HermesError.invalidResponse }
+        return paused
+    }
+
+    /// Holds or releases new delegate agents (`delegation.pause`); agents
+    /// already running keep going. Returns the state Hermes reports.
+    func setDelegationPaused(_ paused: Bool) async throws -> Bool {
+        let result = try await rpc("delegation.pause", params: ["paused": paused])
+        guard let state = result.objectValue?["paused"]?.boolValue else { throw HermesError.invalidResponse }
+        return state
     }
 
     func modelOptions(sessionId: String? = nil) async throws -> (model: String?, provider: String?, providers: [ProviderInfo]?) {

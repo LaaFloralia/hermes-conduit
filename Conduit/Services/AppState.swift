@@ -29072,6 +29072,82 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// What a Steer or Stop on a delegate agent's card came to.
+    enum DelegateAgentControlResult: Equatable {
+        case done
+        /// Hermes no longer has the agent running for this chat.
+        case notRunning
+        case failed
+    }
+
+    /// Sends `text` to one running delegate agent (#820). Hermes hands it
+    /// over at the agent's next tool step.
+    func steerDelegateAgent(_ agent: DelegateAgentActivity, text: String) async -> DelegateAgentControlResult {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let client, agent.hasGatewayID, !agent.sessionId.isEmpty, !text.isEmpty else { return .failed }
+        let queued: Bool
+        do {
+            queued = try await client.steerSubagent(sessionId: agent.sessionId, subagentId: agent.id, text: text)
+        } catch {
+            return .failed
+        }
+        // A client swapped during the call answered for another connection.
+        guard self.client === client else { return .failed }
+        if !queued { endDelegateAgent(agent) }
+        return queued ? .done : .notRunning
+    }
+
+    /// Stops one running delegate agent (#820). The card shows it stopped
+    /// at once; Hermes' own end event can't change that (`merged` keeps the
+    /// first end).
+    func interruptDelegateAgent(_ agent: DelegateAgentActivity) async -> DelegateAgentControlResult {
+        guard let client, agent.hasGatewayID, !agent.sessionId.isEmpty else { return .failed }
+        let found: Bool
+        do {
+            found = try await client.interruptSubagent(sessionId: agent.sessionId, subagentId: agent.id)
+        } catch {
+            return .failed
+        }
+        // A client swapped during the call answered for another connection.
+        guard self.client === client else { return .failed }
+        endDelegateAgent(agent, as: found ? .interrupted : .completed)
+        return found ? .done : .notRunning
+    }
+
+    /// Ends one card Hermes said it no longer runs (or that was just
+    /// stopped), whatever the roster grace: that answer is about this agent,
+    /// not a roster that may lag.
+    private func endDelegateAgent(_ agent: DelegateAgentActivity, as status: DelegateAgentActivity.Status = .completed) {
+        guard let index = delegateAgents.firstIndex(where: { $0.id == agent.id && $0.sessionId == agent.sessionId }),
+              delegateAgents[index].status.isActive else { return }
+        delegateAgents[index].status = status
+        delegateAgents[index].currentTool = nil
+        delegateAgents[index].updatedAt = Date()
+        activeAgents = delegateAgents.filter { $0.status.isActive }.count
+    }
+
+    /// The end of one running delegate agent's live transcript (#820), or
+    /// nil when it couldn't be read.
+    func tailDelegateAgent(_ agent: DelegateAgentActivity) async -> SubagentTail? {
+        guard let client, agent.hasGatewayID, !agent.sessionId.isEmpty else { return nil }
+        let tail = try? await client.tailSubagent(sessionId: agent.sessionId, subagentId: agent.id)
+        return self.client === client ? tail : nil
+    }
+
+    /// Whether Hermes is holding new delegate agents, or nil when this
+    /// Hermes can't say (#820).
+    func loadDelegationPaused() async -> Bool? {
+        guard let client else { return nil }
+        return try? await client.delegationPaused()
+    }
+
+    /// Holds or releases new delegate agents; returns the state Hermes
+    /// reports, or nil when it failed.
+    func setDelegationPaused(_ paused: Bool) async -> Bool? {
+        guard let client else { return nil }
+        return try? await client.setDelegationPaused(paused)
+    }
+
     /// Keeps only the delegate cards of the conversation now open (its
     /// `sessionIDs`; none for a new chat, another profile or server). The
     /// sheet is per conversation, and `refreshDelegateAgents` asks the
