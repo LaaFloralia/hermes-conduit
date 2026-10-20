@@ -567,32 +567,10 @@ enum PhoneVoiceTools {
 
     /// Whether the user's words agree to a change, deletion or cancellation:
     /// a yes (in any language the call's own yes check knows), or a short
-    /// "delete it" / "yes, move it" / "mark it done" naming it. Never a
-    /// question, never a longer request.
+    /// "delete it" / "yes, move it" / "mark it done" naming it, in each of
+    /// the app's languages. Never a question, never a longer request.
     static func confirmsChange(_ words: String, cancelsAlarm: Bool = false) -> Bool {
-        if VoiceCallDecisionOutcome.isYes(words) { return true }
-        guard !words.contains("?"), !words.contains("？") else { return false }
-        let said = words.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
-        // "Cancel" is how people decline, so it agrees only to cancelling an
-        // alarm: "cancel it" there means do it.
-        var agreeing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please", "go", "ahead", "do", "it", "and",
-                                     "then", "just",
-                                     "delete", "remove", "that", "this", "one", "them", "both", "the", "event",
-                                     "reminder", "all", "of", "change", "move", "update", "rename", "reschedule", "mark",
-                                     "complete", "done", "as", "alarm", "timer"]
-        var verbs: Set<String> = ["delete", "remove", "change", "move", "update", "rename", "reschedule", "mark",
-                                  "complete"]
-        if cancelsAlarm {
-            agreeing.insert("cancel")
-            verbs.insert("cancel")
-        }
-        // A yes, or a word pointing back at what was said back ("delete
-        // it", "remove that one"): "delete the event" alone is how the user
-        // asks, not how they agree.
-        let pointing: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "ahead", "it", "that", "this", "them",
-                                     "both", "one"]
-        return (1...8).contains(said.count) && said.allSatisfy(agreeing.contains) && said.contains(where: verbs.contains)
-            && said.contains(where: pointing.contains)
+        VoiceCallDecisionOutcome.isYes(words) || PhoneChangeConfirmation.confirms(words, cancelsAlarm: cancelsAlarm)
     }
 
     // MARK: Wording for the model

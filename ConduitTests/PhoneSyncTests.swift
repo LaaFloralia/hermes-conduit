@@ -558,6 +558,23 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(PhoneVoiceTools.confirmsChange("cancel it"))
         XCTAssertTrue(PhoneVoiceTools.confirmsChange("cancel it", cancelsAlarm: true), "But a yes to cancelling an alarm")
         XCTAssertFalse(PhoneVoiceTools.confirmsChange("No, cancel", cancelsAlarm: true))
+        // In each of the app's languages: a yes or a word pointing back,
+        // never the request or a no.
+        for yes in ["Ja, lösch es.", "Sí, bórralo", "Oui, supprime-le", "Sim, apaga isso", "Да, удали его",
+                    "Sì, eliminalo", "Tak, usuń to", "Evet, sil onu", "Ya, hapus itu", "네, 삭제해 주세요", "그거 지워줘",
+                    "はい、削除して", "それを消してください", "好的，删掉吧", "把它删了", "好，標記為完成"] {
+            XCTAssertTrue(PhoneVoiceTools.confirmsChange(yes), yes)
+        }
+        for notYes in ["Lösche den Termin", "Nein, lösch es nicht", "Borra la alarma", "No lo borres",
+                       "Supprime le rendez-vous", "Ne le supprime pas", "Não apague", "Не удаляй его", "Удали напоминание",
+                       "Non cancellarlo", "Nie usuwaj", "Silme", "Jangan hapus itu", "삭제하지 마세요", "削除しないで",
+                       "削除してください", "不要删除", "删除这个事件", "好的，取消", "¿Lo borro?"] {
+            XCTAssertFalse(PhoneVoiceTools.confirmsChange(notYes), notYes)
+        }
+        for yes in ["Ja, schalte ihn aus", "Oui, annule-le", "Да, отмени его", "好的，取消"] {
+            XCTAssertTrue(PhoneVoiceTools.confirmsChange(yes, cancelsAlarm: true), yes)
+        }
+        XCTAssertFalse(PhoneVoiceTools.confirmsChange("Отмени", cancelsAlarm: true), "A bare cancel isn't pointed at the alarm")
         let noID = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event"], engine: engine, confirmed: { _ in true }, answer: answer)
         XCTAssertNotNil(noID["error"])
         let badSpan = await PhoneVoiceTools.run(removeTool, arguments: ["kind": "event", "id": "e_1", "span": "all"],

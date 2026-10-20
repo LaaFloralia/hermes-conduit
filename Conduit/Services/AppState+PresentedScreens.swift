@@ -213,6 +213,8 @@ extension AppState {
             transcript = gptLiveController.transcript
         } else if isLocalLiveActive {
             transcript = localLiveController.transcript
+        } else if let turn = watchCallUserTurn {
+            return (turn.id, turn.text)
         } else {
             return (nil, "")
         }
