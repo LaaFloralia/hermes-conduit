@@ -995,7 +995,7 @@ struct LocationPlaceEditor: View {
                 if results.isEmpty { message = AppLocalization.string("No matches.") }
             } catch {
                 results = []
-                message = AppLocalization.string("No matches.")
+                message = AppLocalization.string("Couldn't search Apple Maps. Try again.")
             }
             isSearching = false
         }
