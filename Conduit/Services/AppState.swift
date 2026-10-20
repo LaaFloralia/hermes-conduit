@@ -629,7 +629,8 @@ final class AppState: ObservableObject {
     /// creates no retain cycle.
     var gatewayMediaResolver: GatewayMediaDataURLResolver {
         if let cached = cachedGatewayMediaResolver,
-           cached.profile == activeProfile {
+           cached.profile == activeProfile,
+           cached.resolver.dashboardID == activeDashboardID {
             return cached.resolver
         }
         let resolver = GatewayMediaDataURLResolver(appState: self, profile: activeProfile)
@@ -643,7 +644,8 @@ final class AppState: ObservableObject {
     /// ran there), cached so views read the same instance on every pass.
     func gatewayMediaResolver(for profile: String) -> GatewayMediaDataURLResolver {
         if profile == activeProfile { return gatewayMediaResolver }
-        if let cached = otherProfileGatewayMediaResolvers[profile] { return cached }
+        if let cached = otherProfileGatewayMediaResolvers[profile],
+           cached.dashboardID == activeDashboardID { return cached }
         let resolver = GatewayMediaDataURLResolver(appState: self, profile: profile)
         otherProfileGatewayMediaResolvers[profile] = resolver
         return resolver
@@ -27724,7 +27726,9 @@ final class AppState: ObservableObject {
     private func integerValue(_ value: Any?) -> Int? {
         if let integer = value as? Int { return integer }
         if let number = value as? NSNumber { return number.intValue }
-        if let string = value as? String { return Int(string) ?? Double(string).map(Int.init) }
+        if let string = value as? String {
+            return Int(string) ?? Double(string).flatMap { Int(exactly: $0.rounded(.towardZero)) }
+        }
         return nil
     }
 
@@ -28093,19 +28097,33 @@ final class AppState: ObservableObject {
         DashboardPath.withProfile(path, profile: profile)
     }
 
+    /// Hermes' value wins and is kept on the phone; a read that fails keeps
+    /// the last value this profile had, else Hermes' own default
+    /// (interrupt), so Settings never shows a mode Hermes doesn't use.
     private func loadBusyInputMode(using client: HermesClient) async {
+        let key = busyInputModeCacheKey
+        // Shown while Hermes answers, and kept if it can't.
+        busyInputMode = defaults.string(forKey: key).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
         do {
-            busyInputMode = try await client.busyInputMode()
-        } catch {
-            // `steer` is deliberately the safe public default when an older
-            // gateway cannot expose this optional preference.
-            busyInputMode = .steer
-        }
+            let mode = try await client.busyInputMode()
+            busyInputMode = mode
+            defaults.set(mode.rawValue, forKey: key)
+        } catch {}
     }
+
+    /// The busy mode last read from or saved to Hermes, per server and profile.
+    private var busyInputModeCacheKey: String {
+        let server = defaults.string(forKey: Self.chatResumeServerIdentityKey) ?? ""
+        return "\(Self.busyInputModeCachePrefix)\(server)|\(activeProfile)"
+    }
+
+    static let busyInputModeCachePrefix = "conduit.busyInputMode.v1."
 
     func setBusyInputMode(_ mode: BusyInputMode) async -> Bool {
         guard let client else { return false }
         let previous = busyInputMode
+        // The profile that takes the write, captured before it.
+        let key = busyInputModeCacheKey
         busyInputMode = mode
         do {
             if let setBusyInputMode = chatResumeLifecycleOperations.setBusyInputMode {
@@ -28113,6 +28131,7 @@ final class AppState: ObservableObject {
             } else {
                 try await client.setBusyInputMode(mode)
             }
+            defaults.set(mode.rawValue, forKey: key)
             return true
         } catch {
             busyInputMode = previous
@@ -31218,6 +31237,11 @@ final class AppState: ObservableObject {
         isWatchVoiceCallActive = active
     }
 
+    /// What the user last said in a Watch call, sent with the tool call
+    /// it led to: the iPhone doesn't hear the call, and a change to the
+    /// user's calendar, reminders or alarms takes their own yes.
+    var watchCallUserTurn: (id: UUID, text: String)?
+
     /// What a Watch call to Gemini Live starts with: the setup this
     /// profile's Gemini Live call gets on the phone, and the session's
     /// first single-use token (designs/apple-watch-voice-direct.md).
@@ -31241,6 +31265,10 @@ final class AppState: ObservableObject {
         let endPhrases: [String]
         /// The names the call's jobs may give the user's profiles.
         let jobProfiles: [WatchVoiceWire.JobProfileName]
+        /// The phone's own tools the call may use, and the lines that brief
+        /// the model on them; left out when the setup doesn't fit the Watch.
+        var hostTools: [VoiceHostTool] = []
+        var hostToolsBriefing = ""
     }
 
     /// Builds a Watch call's setup as `geminiLiveController` builds the
@@ -31268,6 +31296,7 @@ final class AppState: ObservableObject {
         async let memoryLookup = wantsMemory ? tokens.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? tokens.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
+        async let hostToolsLookup = watchCallHostTools(for: .geminiLive)
         let status = try await tokens.availability()
         noteWatchCallVoice(.geminiLive, ready: status.isAvailable)
         guard status.isAvailable else {
@@ -31277,6 +31306,7 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let hermesCall = await hermesCallLookup
+        let hostTools = await hostToolsLookup
         let token = try await tokens.freshToken()
         let style = liveVoiceStyle
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
@@ -31318,7 +31348,9 @@ final class AppState: ObservableObject {
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames()
+            jobProfiles: watchJobProfileNames(),
+            hostTools: hostTools.tools,
+            hostToolsBriefing: hostTools.briefing
         )
     }
 
@@ -31425,6 +31457,8 @@ final class AppState: ObservableObject {
         let jobOptions: [String: String]
         let endPhrases: [String]
         let jobProfiles: [WatchVoiceWire.JobProfileName]
+        var hostTools: [VoiceHostTool] = []
+        var hostToolsBriefing = ""
     }
 
     /// Builds a Watch Grok call's setup as `grokLiveController` builds the
@@ -31448,6 +31482,7 @@ final class AppState: ObservableObject {
         async let memoryLookup = wantsMemory ? hostContext.memoryContext() : nil
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
+        async let hostToolsLookup = watchCallHostTools(for: .grokLive)
         let status = try await grokLiveClient.availability()
         noteWatchCallVoice(.grokLive, ready: status.isAvailable)
         guard case .available(_, let voice, _) = status else {
@@ -31458,6 +31493,7 @@ final class AppState: ObservableObject {
         let memory = await memoryLookup
         let personality = await personalityLookup
         let hermesCall = await hermesCallLookup
+        let hostTools = await hostToolsLookup
         let style = liveVoiceStyle
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
         let jobSession = preferences.voiceJobSessionOptions(
@@ -31496,8 +31532,21 @@ final class AppState: ObservableObject {
             personalityIncluded: personality != nil,
             jobOptions: jobOptions,
             endPhrases: preferences.resolvedSpokenEndConversationPhrases,
-            jobProfiles: watchJobProfileNames()
+            jobProfiles: watchJobProfileNames(),
+            hostTools: hostTools.tools,
+            hostToolsBriefing: hostTools.briefing
         )
+    }
+
+    /// The phone's own tools a Watch call on `mode` may use, as its phone
+    /// call would get them (the calendar, reminders and alarms, health,
+    /// location and maps, each as the user lets `mode` use it), and their
+    /// briefing. Not the on-screen confirmations: nobody is looking at the
+    /// phone. Run here, wrist up; the wrist-down relay doesn't carry them.
+    func watchCallHostTools(for mode: LiveVoiceModeName) async -> (tools: [VoiceHostTool], briefing: String) {
+        let fetched = await voiceHostTools(for: mode)
+        let tools = ((fetched.host ?? []) + fetched.local).filter { $0.key != PresentVoiceTool.key }
+        return (tools, phoneVoiceSettingHint(for: mode) + VoiceHostTool.functionToolsFirst(tools))
     }
 
     /// What a Watch call to Local Live starts with. The host relays the

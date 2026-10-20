@@ -87,6 +87,11 @@ final class WatchDirectBroker {
     /// start_job, or a call queued while the Watch couldn't wait): sent
     /// with the next poll.
     private var lateOutgoing: [GeminiLiveToolBridge.Outgoing] = []
+    /// The phone's own tools the running call declared (the calendar,
+    /// reminders, alarms and the like), and the voice mode whose consent
+    /// each run checks.
+    private var hostTools: [VoiceHostTool] = []
+    private var hostToolsMode: LiveVoiceModeName?
     /// The phone's jobs each Watch call started, for its saved transcript.
     private var callJobs: [UInt32: [UUID]] = [:]
     /// The tools the running call's grants cover, and the grants it got:
@@ -281,6 +286,9 @@ final class WatchDirectBroker {
         callID = id
         bridge = nil
         lateOutgoing = []
+        hostTools = []
+        hostToolsMode = nil
+        appState.watchCallUserTurn = nil
         lastHeardAt = Date()
         // Lets transport recovery run with the phone locked, as for a
         // CarPlay call.
@@ -324,26 +332,42 @@ final class WatchDirectBroker {
             // the grant carries jobs.
             var functions = plan.functions
             if grant?.voiceApprovals == true { functions.append(WatchJobAnswer.answerApprovalDeclaration) }
-            let setup = WatchVoiceWire.DirectSetup(systemInstruction: plan.systemInstruction, functions: functions)
-            guard setup.functions.count == functions.count, let packed = setup.compressed() else {
+            // With the phone's own tools when the start still fits a Watch
+            // message; without them the call goes on as before.
+            var chosen: (session: WatchVoiceWire.DirectSession, packed: (data: Data, bytes: Int))?
+            for tools in Self.hostToolChoices(plan.hostTools) {
+                let declared = functions + VoiceHostTool.declarations(tools)
+                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstruction + plan.hostToolsBriefing
+                let setup = WatchVoiceWire.DirectSetup(systemInstruction: instruction, functions: declared)
+                guard setup.functions.count == declared.count, let attempt = setup.compressed() else { continue }
+                let built = WatchVoiceWire.DirectSession(
+                    token: .init(plan.token),
+                    setup: attempt.data,
+                    setupBytes: attempt.bytes,
+                    googleSearch: plan.googleSearch,
+                    voice: plan.voice,
+                    openingPrompt: plan.openingPrompt,
+                    toolGrant: grant,
+                    endPhrases: plan.endPhrases
+                )
+                if !tools.isEmpty, !Self.fitsWatchMessage(.directSession(callID: id, session: built)) { continue }
+                chosen = (built, attempt)
+                functions = declared
+                hostTools = tools
+                hostToolsMode = .geminiLive
+                break
+            }
+            guard let picked = chosen else {
                 throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
             }
-            let session = WatchVoiceWire.DirectSession(
-                token: .init(plan.token),
-                setup: packed.data,
-                setupBytes: packed.bytes,
-                googleSearch: plan.googleSearch,
-                voice: plan.voice,
-                openingPrompt: plan.openingPrompt,
-                toolGrant: grant,
-                endPhrases: plan.endPhrases
-            )
+            let (session, packed) = picked
             link.log.note("watchDirectPrepared", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
                 "setupBytes": packed.bytes,
                 "compressedBytes": packed.data.count,
                 "functions": functions.map(\.name),
+                "hostTools": hostTools.count,
                 "googleSearch": plan.googleSearch,
                 "memory": plan.memoryIncluded,
                 "personality": plan.personalityIncluded,
@@ -383,6 +407,9 @@ final class WatchDirectBroker {
         callID = id
         bridge = nil
         lateOutgoing = []
+        hostTools = []
+        hostToolsMode = nil
+        appState.watchCallUserTurn = nil
         lastHeardAt = Date()
         appState.setWatchVoiceCallActive(true)
         let startedAt = Date()
@@ -489,6 +516,9 @@ final class WatchDirectBroker {
         callID = id
         bridge = nil
         lateOutgoing = []
+        hostTools = []
+        hostToolsMode = nil
+        appState.watchCallUserTurn = nil
         lastHeardAt = Date()
         appState.setWatchVoiceCallActive(true)
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
@@ -530,24 +560,43 @@ final class WatchDirectBroker {
             }
             var functions = plan.functions
             if grant.voiceApprovals == true { functions.append(WatchJobAnswer.answerApprovalDeclaration) }
-            let setup = WatchVoiceWire.DirectSetup(systemInstruction: plan.systemInstruction, functions: functions)
-            guard setup.functions.count == functions.count, let packed = setup.compressed() else {
+            // With the phone's own tools when the reply still fits; without
+            // them the call goes on as before.
+            var chosen: (reply: WatchVoiceWire.Message, packed: (data: Data, bytes: Int), replyBytes: Int)?
+            for tools in Self.hostToolChoices(plan.hostTools) {
+                let declared = functions + VoiceHostTool.declarations(tools)
+                let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstruction + plan.hostToolsBriefing
+                let setup = WatchVoiceWire.DirectSetup(systemInstruction: instruction, functions: declared)
+                guard setup.functions.count == declared.count, let packed = setup.compressed() else {
+                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.")) }
+                    continue
+                }
+                let reply = WatchVoiceWire.Message.grokSession(callID: id, session: .init(
+                    setup: packed.data,
+                    setupBytes: packed.bytes,
+                    voice: plan.voice,
+                    openingPrompt: plan.openingPrompt,
+                    grant: grant,
+                    endPhrases: plan.endPhrases
+                ))
+                guard let replyBytes = Self.messageBytes(reply) else {
+                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.")) }
+                    continue
+                }
+                guard replyBytes <= Self.bridgeReplyLimit else {
+                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch.")) }
+                    continue
+                }
+                chosen = (reply, packed, replyBytes)
+                functions = declared
+                hostTools = tools
+                hostToolsMode = .grokLive
+                break
+            }
+            guard let picked = chosen else {
                 throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
             }
-            let reply = WatchVoiceWire.Message.grokSession(callID: id, session: .init(
-                setup: packed.data,
-                setupBytes: packed.bytes,
-                voice: plan.voice,
-                openingPrompt: plan.openingPrompt,
-                grant: grant,
-                endPhrases: plan.endPhrases
-            ))
-            guard let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count else {
-                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
-            }
-            guard replyBytes <= Self.bridgeReplyLimit else {
-                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch."))
-            }
+            let (reply, packed, replyBytes) = picked
             link.log.note("watchGrokPrepared", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -555,6 +604,7 @@ final class WatchDirectBroker {
                 "compressedBytes": packed.data.count,
                 "replyBytes": replyBytes,
                 "functions": functions.map(\.name),
+                "hostTools": hostTools.count,
                 "tools": grant.tools,
                 "engines": audio.engines,
                 "memory": plan.memoryIncluded,
@@ -589,6 +639,9 @@ final class WatchDirectBroker {
         callID = id
         bridge = nil
         lateOutgoing = []
+        hostTools = []
+        hostToolsMode = nil
+        appState.watchCallUserTurn = nil
         lastHeardAt = Date()
         appState.setWatchVoiceCallActive(true)
         let startedAt = Date()
@@ -713,6 +766,14 @@ final class WatchDirectBroker {
         let supervisor = WatchCallJobSupervisor(appState.voiceBackgroundJobSupervisor)
         // Noted in the saved call, as the phone's own calls note theirs.
         supervisor.onJobCreated = { [weak self] jobID in self?.callJobs[id, default: []].append(jobID) }
+        // Only the running call's: a straggler from an ended one gets none.
+        if callID == id, let mode = hostToolsMode {
+            supervisor.hostTools = hostTools
+            supervisor.runHostTool = { [weak appState] tool, arguments in
+                await appState?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
+                    ?? ["error": "That isn't available on this call."]
+            }
+        }
         // Answered once each job runs, its outcome later as a text update:
         // a Watch message's answer can't stay open for a job.
         return GeminiLiveToolBridge(
@@ -730,6 +791,11 @@ final class WatchDirectBroker {
         let startedAt = Date()
         let functionCall = GeminiLiveProtocol.FunctionCall(id: call.id, name: call.name, arguments: call.arguments)
         let isJob = call.name == GeminiLiveToolBridge.Tool.startJob.rawValue
+        // The user's own words for a change's yes; each turn has its own
+        // id, so one yes answers one change.
+        if callID == id {
+            appState.watchCallUserTurn = call.userWords.map { (id: Self.userTurnID(call: id, turn: call.userTurn ?? 0), text: $0) }
+        }
         let jobKey = WatchDirectCallLedger.jobKey(call.id, in: id)
         if isJob, let earlier = jobCalls[jobKey] {
             return await repeatedJobCall(call, earlier: earlier, waiting: waiting, startedAt: startedAt)
@@ -1239,6 +1305,9 @@ final class WatchDirectBroker {
         }
         bridge = nil
         lateOutgoing = []
+        hostTools = []
+        hostToolsMode = nil
+        appState.watchCallUserTurn = nil
         revokeGrants()
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = false
         callID = nil
@@ -1287,6 +1356,26 @@ final class WatchDirectBroker {
         }
         taskID = UIApplication.shared.beginBackgroundTask(withName: name, expirationHandler: end)
         return end
+    }
+
+    /// A Watch call's user turn as an id, the same for every tool call it
+    /// leads to. The turn comes off the wire: kept to the 12 hex digits
+    /// the last group holds, so the id always reads.
+    static func userTurnID(call: UInt32, turn: Int) -> UUID {
+        UUID(uuidString: String(format: "%08X-0000-4000-8000-%012llX", call, UInt64(max(0, turn)) & 0xFFFF_FFFF_FFFF))!
+    }
+
+    /// A start's tries: with the phone's own tools, then without.
+    private static func hostToolChoices(_ tools: [VoiceHostTool]) -> [[VoiceHostTool]] {
+        tools.isEmpty ? [[]] : [tools, []]
+    }
+
+    private static func messageBytes(_ message: WatchVoiceWire.Message) -> Int? {
+        (WatchVoiceWire.encode(message)[WatchVoiceWire.messageKey] as? Data)?.count
+    }
+
+    private static func fitsWatchMessage(_ message: WatchVoiceWire.Message) -> Bool {
+        messageBytes(message).map { $0 <= bridgeReplyLimit } ?? false
     }
 
     private static func milliseconds(since date: Date) -> Int {
@@ -1492,4 +1581,17 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     }
     func openFoundChat(_ reference: String) -> VoiceChatOpenOutcome { .unavailable }
     func readFoundChat(_ reference: String) async -> VoiceChatReadOutcome { await base.readFoundChat(reference) }
+
+    /// The phone's own tools the call declared, run on this iPhone.
+    var hostTools: [VoiceHostTool] = []
+    var runHostTool: (@MainActor (VoiceHostTool, [String: Any]) async -> [String: String])?
+
+    func callHostTool(_ tool: VoiceHostTool, arguments: [String: Any]) async -> [String: String] {
+        // Only a tool this call was given: its runner checks that tool's
+        // consent, so another one must not reach it.
+        guard hostTools.contains(where: { $0.name == tool.name && $0.key == tool.key }), let runHostTool else {
+            return ["error": "That isn't available on this call."]
+        }
+        return await runHostTool(tool, arguments)
+    }
 }

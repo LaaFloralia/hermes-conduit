@@ -124,6 +124,10 @@ extension AppState {
                 // Their words reach Conduit a moment after the model heard
                 // them. Each yes answers one change or deletion.
                 let deadline = ContinuousClock.now + .seconds(2)
+                // A Watch call's words come with its tool call: read once,
+                // so a later turn's yes can't answer this change.
+                let onWatch = !(self.isGeminiLiveActive || self.isGrokLiveActive || self.isGPTLiveActive || self.isLocalLiveActive)
+                    && self.watchCallUserTurn != nil
                 while true {
                     let turn = self.liveCallLastUserTurn()
                     if let id = turn.id, PhoneVoiceTools.usedConfirmation != id,
@@ -131,7 +135,7 @@ extension AppState {
                         PhoneVoiceTools.usedConfirmation = id
                         return true
                     }
-                    guard ContinuousClock.now < deadline else { return false }
+                    guard !onWatch, ContinuousClock.now < deadline else { return false }
                     do { try await Task.sleep(for: .milliseconds(250)) } catch { return false }
                 }
             }) { prompt, approve in
