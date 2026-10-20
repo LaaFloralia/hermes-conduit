@@ -120,7 +120,7 @@ extension AppState {
             return ["error": "The user hasn't let this voice call use their calendar, or it isn't reachable now."]
         }
         if tool.key == PhoneVoiceTools.key {
-            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: { cancelsAlarm in
+            let result = await PhoneVoiceTools.run(tool, arguments: arguments, engine: engine, confirmed: { cancelsAlarm, excluding in
                 // Their words reach Conduit a moment after the model heard
                 // them. Each yes answers one change or deletion.
                 let deadline = ContinuousClock.now + .seconds(2)
@@ -130,7 +130,9 @@ extension AppState {
                     && self.watchCallUserTurn != nil
                 while true {
                     let turn = self.liveCallLastUserTurn()
-                    if let id = turn.id, PhoneVoiceTools.usedConfirmation != id,
+                    // The turn current when the change arrived answers
+                    // something else: wait for a later one.
+                    if let id = turn.id, id != excluding, PhoneVoiceTools.usedConfirmation != id,
                        PhoneVoiceTools.confirmsChange(turn.text, cancelsAlarm: cancelsAlarm) {
                         PhoneVoiceTools.usedConfirmation = id
                         return true
@@ -138,7 +140,7 @@ extension AppState {
                     guard !onWatch, ContinuousClock.now < deadline else { return false }
                     do { try await Task.sleep(for: .milliseconds(250)) } catch { return false }
                 }
-            }) { prompt, approve in
+            }, lastUserTurn: { [weak self] in self?.liveCallLastUserTurn() ?? (nil, "") }) { prompt, approve in
                 await engine.answer(prompt, approve: approve)
                 // Reported in the background: the call hears the outcome now.
                 Task { await self.runPhoneSync(reason: .answered) }
@@ -331,11 +333,13 @@ extension AppState {
     }
 
     /// Tells the running call about each change Hermes asks for while it
-    /// runs, so the user can answer it out loud.
+    /// runs, so the user can answer it out loud, and notes the turn current
+    /// when each was first seen, which approving it has to come after.
     private func watchPhoneChanges(for mode: LiveVoiceModeName) -> AnyCancellable {
         // What was waiting at the last update: a change Hermes withdraws and
         // asks for again is told again.
         var known = Set(phoneSync.prompts.map(\.id))
+        PhoneVoiceTools.beginWatch(waiting: known, turn: liveCallLastUserTurn().id)
         return phoneSync.$prompts
             .receive(on: DispatchQueue.main)
             .sink { [weak self] prompts in
@@ -343,6 +347,8 @@ extension AppState {
                 let supervisor = self.voiceBackgroundJobSupervisor
                 let fresh = prompts.filter { !known.contains($0.id) }
                 known = Set(prompts.map(\.id))
+                let turn = self.liveCallLastUserTurn().id
+                for prompt in fresh { PhoneVoiceTools.noteArrival(prompt.id, userTurn: turn) }
                 guard !fresh.isEmpty, supervisor.hostToolsMode == mode,
                       self.isGeminiLiveActive || self.isGPTLiveActive || self.isGrokLiveActive || self.isLocalLiveActive,
                       self.phoneSync.preferences.letsVoiceUse(mode) else { return }
