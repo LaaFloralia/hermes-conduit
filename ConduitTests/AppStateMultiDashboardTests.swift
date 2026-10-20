@@ -1278,6 +1278,16 @@ extension AppStateMultiDashboardTests {
 
     func testADeleteAnsweredAfterASwitchSaysNothingOnTheNewDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let store = appState.offlineChatCacheForTesting
+        store.record(
+            dashboardID: mac,
+            profile: appState.activeProfile,
+            sessionID: "mac-1",
+            title: "On the Mac",
+            messages: [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")],
+            sessions: [macSession("mac-1")]
+        )
         let delete = Task { await appState.deleteSession(self.macSession("mac-1")) }
         try await held.answer()
         try await held.waitForRequests(2)
@@ -1288,6 +1298,8 @@ extension AppStateMultiDashboardTests {
 
         XCTAssertFalse(deleted, "the delete's result belongs to the Mac, not the dashboard now showing")
         XCTAssertNil(appState.pinSyncNotice)
+        XCTAssertNil(store.loadTranscript("mac-1", dashboardID: mac, profile: "default"), "the Mac's saved copy of the deleted chat still goes (#1040)")
+        XCTAssertNil(store.load(dashboardID: mac, profile: "default")?.lastSessionID)
     }
 
     func testArchivedConversationsAnsweredAfterASwitchAreNotShownOnTheNewDashboard() async throws {
