@@ -21737,7 +21737,7 @@ final class AppState: ObservableObject {
             context: submissionContext
         )
         if !sent, let screenshot {
-            restorePendingScreenshot(screenshot.attachment, forSession: screenshot.sessionID)
+            restorePendingScreenshot(screenshot)
         }
         return sent
     }
