@@ -334,6 +334,13 @@ struct ModelPickerView: View {
             guard !isApplyingReasoning else { return }
             reasoningEffort = effort.isEmpty ? "none" : effort
         }
+        .onChange(of: appState.runtime.fast) { old, new in
+            // Follow Fast changed elsewhere while the sheet is open, so Apply
+            // doesn't write the stale draft back; a draft the user already
+            // changed here stays theirs.
+            guard !isApplying, fastEnabled == old else { return }
+            fastEnabled = new
+        }
         .onChange(of: applyError) { _, message in
             // The error row appears silently; tell VoiceOver the apply failed.
             guard let message else { return }
