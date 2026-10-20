@@ -142,15 +142,11 @@ struct PresentedConfirm: Identifiable, Equatable {
         guard !words.contains("?"), !words.contains("？") else { return false }
         // What a refusal is, the handset decides, not Hermes: whatever
         // phrases it put in spoken_yes, the user's "no", "cancel" or
-        // "wait" in any shipped language never confirms. "No problem"
-        // still does: the handset's own check classifies it as a yes.
-        switch VoiceThreadRouting.heldRequestAnswer(words) {
-        case .no, .notYet: return false
-        default: break
-        }
-        // "Absolutely not", "I don't want it", "hell no": a no or a
-        // negation anywhere in them never confirms either.
-        if VoiceThreadRouting.containsNegation(words) { return false }
+        // "wait" in any shipped language, anywhere in their words ("send
+        // it, no wait", "absolutely not", "我不想发"), never confirms.
+        // "No problem" still does: the handset's own check above
+        // classifies it as a yes.
+        if VoiceThreadRouting.containsRefusal(words) { return false }
         let said = Self.words(in: words)
         guard !said.isEmpty else { return false }
         let leads: Set<String> = ["yes", "yeah", "yep", "ok", "okay", "sure", "please"]
