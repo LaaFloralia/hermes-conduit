@@ -310,6 +310,10 @@ struct ModelPickerView: View {
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
             visibility = appState.modelVisibility
+            // Seed fast here too: a failed catalog fetch must not leave the
+            // draft at its initial `false` for Apply to write over the
+            // session's real Fast mode.
+            fastEnabled = appState.runtime.fast
             refreshYoloToggle(force: false)
         }
         .onChange(of: appState.runtime.approvalsMode) { oldMode, newMode in
