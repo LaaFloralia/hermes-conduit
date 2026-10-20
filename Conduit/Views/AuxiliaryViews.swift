@@ -2331,7 +2331,12 @@ private struct FallbackModelsSettings: View {
             if !loaded {
                 // A list that didn't load is never edited: saving it would
                 // replace the real one.
-                if error == nil { ProgressView("Loading available models…") }
+                if error == nil {
+                    ProgressView("Loading available models…")
+                } else {
+                    Button(AppLocalization.string("Try Again")) { Task { await reload() } }
+                        .buttonStyle(.settings)
+                }
             } else {
                 if entries.isEmpty {
                     Text("No fallback models yet.")
@@ -2437,6 +2442,7 @@ private struct FallbackModelsSettings: View {
     }
 
     private func reload() async {
+        error = nil
         async let modelRequest = loadModels()
         async let entryRequest = load()
         let (models, loadedEntries) = await (modelRequest, entryRequest)
