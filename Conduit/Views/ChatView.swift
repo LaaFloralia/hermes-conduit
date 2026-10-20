@@ -454,10 +454,14 @@ struct ChatView: View {
                 }
 
                 // Fallback target for ScrollViewProxy before the engine has
-                // found the scroll view.
+                // found the scroll view. The composer is a bar the scroll
+                // view already insets for (V2's safe-area bar, or the
+                // stack below it), so the latest row ends one row spacing
+                // (plus this row's 1 pt) above it; extra padding here was
+                // empty space over the composer. OfflineChatTranscriptView
+                // ends with the same row.
                 Color.clear
                     .frame(height: 1)
-                    .padding(.bottom, 126)
                     .id(bottomAnchor)
             }
             .coordinateSpace(.named(ChatScrollEngine.coordinateSpaceName))
