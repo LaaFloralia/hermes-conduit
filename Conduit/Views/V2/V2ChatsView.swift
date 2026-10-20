@@ -286,6 +286,8 @@ struct V2ChatsView: View, Equatable {
     /// match ("In messages").
     @StateObject private var contentSearch = SessionContentSearchModel()
     @State private var showArchivedSessions = false
+    /// Every pinned reply of the profile (#918).
+    @State private var showPinnedReplies = false
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -433,6 +435,10 @@ struct V2ChatsView: View, Equatable {
         }
         .sheet(isPresented: $showArchivedSessions) {
             ArchivedSessionsSheet()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showPinnedReplies) {
+            PinnedRepliesSheet()
                 .environmentObject(appState)
         }
         .sheet(item: $repairContext) { context in
@@ -608,6 +614,12 @@ struct V2ChatsView: View, Equatable {
                         showArchivedSessions = true
                     } label: {
                         Label("Archived", systemImage: "archivebox")
+                    }
+                    Button {
+                        Haptics.selection()
+                        showPinnedReplies = true
+                    } label: {
+                        Label(AppLocalization.string("Pinned replies"), systemImage: "pin")
                     }
                     Button {
                         Haptics.light()

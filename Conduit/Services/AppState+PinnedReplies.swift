@@ -1,0 +1,147 @@
+//
+//  AppState+PinnedReplies.swift
+//  Conduit
+//
+//  Replies pinned to the top of their chat (#918): the Pin button under a
+//  reply, the bar over the open chat that cycles through its pins, and the
+//  Chats list's overview of every pinned reply, which opens a chat at the
+//  reply. Pins stay on this device, per profile; Hermes has no pinned
+//  message of its own to share them with.
+//
+
+import Foundation
+
+extension AppState {
+    /// The active profile's pinned replies, in the order they were pinned.
+    var activePinnedReplies: [PinnedReply] {
+        pinnedRepliesByProfile[activeProfile] ?? []
+    }
+
+    /// Whether replies in the open conversation can be pinned: a chat with
+    /// an id, not a group room or the read-only saved copy.
+    var canPinReplies: Bool {
+        activeRoomSurface == nil
+            && offlineChatPresentation == nil
+            && !(activeSessionId ?? "").isEmpty
+    }
+
+    /// The open chat's pins, in the bar's order (oldest first, as the
+    /// replies sit in the chat).
+    var openChatPinnedReplies: [PinnedReply] {
+        pinnedRepliesForOpenChat.pins
+    }
+
+    /// The transcript rows of the open chat that are pinned.
+    var openChatPinnedMessageIDs: Set<String> {
+        pinnedRepliesForOpenChat.messageIDs
+    }
+
+    /// Pins `message` to the top of the open chat, or unpins it.
+    func togglePinnedReply(_ message: ChatMessage) {
+        guard canPinReplies, message.role == .assistant,
+              message.content.contains(where: { !$0.isWhitespace }) else { return }
+        let pins = openChatPinnedReplies
+        if let existing = PinnedReplies.pin(for: message, in: pins, messages: messages) {
+            unpinReply(existing)
+            return
+        }
+        let session = activeChatSessionSummary
+        let pin = PinnedReply(
+            sessionID: openChatPinIDs().store,
+            message: message,
+            chatTitle: session?.title ?? activeSessionTitle
+        )
+        var stored = activePinnedReplies
+        stored.append(pin)
+        pinnedRepliesByProfile[activeProfile] = stored
+        persistPinnedReplies()
+    }
+
+    func unpinReply(_ pin: PinnedReply) {
+        let profile = activeProfile
+        let stored = pinnedRepliesByProfile[profile] ?? []
+        guard stored.contains(where: { $0.id == pin.id }) else { return }
+        let remaining = stored.filter { $0.id != pin.id }
+        pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
+        if pendingPinnedReplyReveal?.pin.id == pin.id { pendingPinnedReplyReveal = nil }
+        persistPinnedReplies()
+    }
+
+    /// The pins of the open chat take the ids their rows have now: a reply
+    /// pinned as it arrived gets its durable id from the reload, and a pin
+    /// made before the chat had a row in the list moves to the row's id, so
+    /// it still finds its chat once the runtime id is gone.
+    func refreshOpenChatPinnedReplies() {
+        let open = openChatPinnedReplies
+        guard !open.isEmpty else { return }
+        var refreshed = PinnedReplies.refreshed(open, in: messages) ?? open
+        if let rowID = activeChatSessionSummary?.id {
+            refreshed = refreshed.map { pin in
+                var moved = pin
+                moved.sessionID = rowID
+                return moved
+            }
+        }
+        guard refreshed != open else { return }
+        let byID = Dictionary(uniqueKeysWithValues: refreshed.map { ($0.id, $0) })
+        pinnedRepliesByProfile[activeProfile] = activePinnedReplies.map { byID[$0.id] ?? $0 }
+        persistPinnedReplies()
+    }
+
+    /// The title the overview shows for a pin's chat: the chat's current
+    /// one while it is listed, else the one saved with the pin.
+    func pinnedReplyChatTitle(_ pin: PinnedReply) -> String {
+        let listed = sessions.first { session in
+            session.id == pin.sessionID
+                || session.storedSessionId == pin.sessionID
+                || session.alternateIds.contains(pin.sessionID)
+        }
+        let title = listed?.title.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? pin.chatTitle : title
+    }
+
+    /// A deleted chat's pinned replies go with it.
+    func dropPinnedReplies(forDeleted session: SessionSummary) {
+        let ids = Set([session.id] + [session.storedSessionId].compactMap { $0 } + session.alternateIds)
+        let profile = activeProfile
+        let stored = pinnedRepliesByProfile[profile] ?? []
+        let remaining = stored.filter { !pinBelongs($0, toOwnIDs: ids) }
+        guard remaining.count != stored.count else { return }
+        pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
+        if let reveal = pendingPinnedReplyReveal, !remaining.contains(where: { $0.id == reveal.pin.id }) {
+            pendingPinnedReplyReveal = nil
+        }
+        persistPinnedReplies()
+    }
+
+    /// Whether the transcript on screen is the chat a reveal waits for.
+    func isShowingChat(for reveal: PinnedReplyReveal) -> Bool {
+        guard reveal.opening != nil else { return true }
+        guard canPinReplies else { return false }
+        return pinBelongs(reveal.pin, toOwnIDs: openChatPinIDs().own)
+    }
+
+    /// Opens the pin's chat (unless it's the open one) and scrolls to the
+    /// reply.
+    func showPinnedReply(_ pin: PinnedReply) {
+        let chatIsOpen = canPinReplies && pinBelongs(pin, toOwnIDs: openChatPinIDs().own)
+        pendingPinnedReplyReveal = PinnedReplyReveal(pin: pin, opening: chatIsOpen ? nil : pin.sessionID)
+        guard !chatIsOpen else { return }
+        dismissSidebarDrawer()
+        let listed = (sessions + cronSessions).contains { session in
+            session.id == pin.sessionID
+                || session.storedSessionId == pin.sessionID
+                || session.alternateIds.contains(pin.sessionID)
+        }
+        if listed {
+            requestOpenSession(pin.sessionID) { [weak self] in
+                guard self?.pendingPinnedReplyReveal?.pin.id == pin.id else { return }
+                self?.pendingPinnedReplyReveal = nil
+            }
+        } else {
+            // Older than any listed chat: the link route opens it and
+            // refreshes the list, as content search does.
+            openAppLink(.session(id: pin.sessionID))
+        }
+    }
+}

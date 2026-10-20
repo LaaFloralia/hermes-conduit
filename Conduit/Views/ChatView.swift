@@ -57,6 +57,11 @@ struct ChatView: View {
     /// concern — this is view-lifetime only.)
     @State private var backfillViewportTask: Task<Void, Never>?
     @State private var latestAnimationTask: Task<Void, Never>?
+    /// The overview of every pinned reply, from the pinned bar (#918).
+    @State private var showsPinnedReplies = false
+    /// Gives up on an overview reveal whose reply the opened chat hasn't
+    /// loaded (an older part of it).
+    @State private var pinnedRevealFallbackTask: Task<Void, Never>?
 
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
@@ -380,6 +385,10 @@ struct ChatView: View {
         )
         // The rows show AppState through this, not by observing it.
         .chatRows()
+        .sheet(isPresented: $showsPinnedReplies) {
+            PinnedRepliesSheet()
+                .environmentObject(appState)
+        }
     }
 
     // MARK: - Scroll construction (layered so the type-checker can cope)
@@ -483,6 +492,8 @@ struct ChatView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .id(transcriptScrollID)
+        // The open chat's pinned replies (#918), over the transcript's top.
+        .safeAreaInset(edge: .top, spacing: 0) { pinnedReplyBar }
         .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
         .onTapGesture {
             UIApplication.shared.sendAction(
@@ -592,9 +603,17 @@ struct ChatView: View {
             }
             // An Artifacts screen's "Show in chat": once the row is in and
             // any restore is done.
-            .onChange(of: appState.chatTranscriptRevision) { _, _ in revealPendingArtifact() }
+            .onChange(of: appState.chatTranscriptRevision) { _, _ in
+                revealPendingArtifact()
+                revealPendingPinnedReply()
+                appState.refreshOpenChatPinnedReplies()
+            }
             .onChange(of: appState.pendingArtifactReveal) { _, _ in revealPendingArtifact() }
-            .onAppear { revealPendingArtifact() }
+            .onChange(of: appState.pendingPinnedReplyReveal) { _, _ in revealPendingPinnedReply() }
+            .onAppear {
+                revealPendingArtifact()
+                revealPendingPinnedReply()
+            }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
@@ -614,6 +633,72 @@ struct ChatView: View {
         appState.pendingArtifactReveal = nil
         // After this update's layout, so the engine knows the row.
         DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
+    }
+
+    /// The overview's pinned reply (#918), once its chat shows and has the
+    /// row.
+    private func revealPendingPinnedReply() {
+        guard let reveal = appState.pendingPinnedReplyReveal else { return }
+        guard reveal.expires > Date() else {
+            appState.pendingPinnedReplyReveal = nil
+            return
+        }
+        guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
+              !appState.messages.isEmpty else { return }
+        guard let id = PinnedReplies.messageID(for: reveal.pin, in: appState.messages) else {
+            // The chat shows but not the reply: give its transcript a moment
+            // to finish loading, then go as close as the bar goes.
+            guard pinnedRevealFallbackTask == nil else { return }
+            pinnedRevealFallbackTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                pinnedRevealFallbackTask = nil
+                guard !Task.isCancelled, appState.pendingPinnedReplyReveal == reveal,
+                      appState.isShowingChat(for: reveal) else { return }
+                appState.pendingPinnedReplyReveal = nil
+                jumpToPinnedReply(reveal.pin)
+            }
+            return
+        }
+        pinnedRevealFallbackTask?.cancel()
+        pinnedRevealFallbackTask = nil
+        appState.pendingPinnedReplyReveal = nil
+        DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
+    }
+
+    /// The bar over the transcript while the open chat has pinned replies.
+    @ViewBuilder
+    private var pinnedReplyBar: some View {
+        let pins = appState.openChatPinnedReplies
+        if !pins.isEmpty, !showsOfflineCopy, !appState.showsPendingNewChat {
+            PinnedReplyBar(
+                pins: pins,
+                jump: { pin in jumpToPinnedReply(pin) },
+                unpin: { pin in appState.unpinReply(pin) },
+                showAll: { showsPinnedReplies = true }
+            )
+            .id(appState.activeSessionId)
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    /// A pinned reply not loaded yet sits in an older part of the chat: the
+    /// top of the transcript, where Load earlier messages is, is as close
+    /// as the chat can go.
+    private func jumpToPinnedReply(_ pin: PinnedReply) {
+        if let id = PinnedReplies.messageID(for: pin, in: appState.messages) {
+            ChatViewportTrace.shared.log("event explicitPinnedReply (bar)")
+            scrollEngine.explicitMessageRequested(id: id)
+        } else {
+            ChatViewportTrace.shared.log("event explicitTop (pinned reply not loaded)")
+            scrollEngine.explicitTopRequested()
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: AppLocalization.string("This reply is earlier in the chat. Load earlier messages to reach it.")
+            )
+        }
     }
 
     private func sessionObservers(proxy: ScrollViewProxy, content: some View) -> some View {
@@ -2043,6 +2128,11 @@ struct AssistantBubble: View {
                 }
 
                 AssistantMessageActions(message: message)
+
+                // Keeps this reply at the top of the chat (#918).
+                if message.role == .assistant, rowState.canPinReplies {
+                    PinReplyButton(message: message)
+                }
 
                 if message.role == .assistant {
                     ReadAloudButton(message: message, controller: readAloudController)
