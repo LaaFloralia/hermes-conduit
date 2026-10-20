@@ -787,7 +787,8 @@ struct ModelPickerView: View {
             providers = provs ?? []
             selectedModel = appState.runtime.model
             selectedProvider = appState.runtime.provider
-            fastEnabled = appState.runtime.fast
+            // Fast is seeded on appear: re-seeding here would undo a toggle
+            // made while the catalog loaded, and Apply would write that back.
             refreshYoloToggle(force: false)
         } catch {
             // Model options are supplementary to the current session state.

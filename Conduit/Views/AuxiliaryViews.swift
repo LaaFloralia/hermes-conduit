@@ -2447,7 +2447,10 @@ private struct FallbackModelsSettings: View {
         async let entryRequest = load()
         let (models, loadedEntries) = await (modelRequest, entryRequest)
         defaults = models
-        guard let loadedEntries else {
+        // Without the model catalog no fallback can be added or changed, so
+        // a half-loaded list fails with Try Again instead of a silently
+        // disabled Add.
+        guard let loadedEntries, models != nil else {
             error = AppLocalization.string("Could not load fallback models.")
             return
         }
