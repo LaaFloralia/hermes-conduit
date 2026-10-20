@@ -1799,7 +1799,7 @@ private struct NotifierPluginUpdateNotice: View {
         if status.offersInstall {
             return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
         }
-        switch (dashboardLabel, status.restartPending && !status.updateAvailable) {
+        switch (dashboardLabel, status.restartPending && !status.updateRecommended) {
         case (let label?, true):
             return AppLocalization.string("The Conduit plugin on \(label) was updated, and Hermes needs a restart to use it.")
         case (.none, true):

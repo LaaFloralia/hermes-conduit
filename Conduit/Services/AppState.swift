@@ -5521,6 +5521,8 @@ final class AppState: ObservableObject {
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
+        self.notifierPluginNoticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
+        self.appInstallSource = AppInstallSource.lastKnown(in: defaults)
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
         let initialRegistry = preloadedRegistry
@@ -22062,8 +22064,24 @@ final class AppState: ObservableObject {
     /// The plugin on its repository's main branch, once read. A reset for
     /// another host keeps it (`freshNotifierPluginStatus`).
     private var latestNotifierPluginVersion: String?
+    /// The stable plugin version, once read; kept like the latest.
+    private var stableNotifierPluginVersion: String?
+    /// Which plugin versions the update notice asks for (Settings >
+    /// Conduit plugin > Update notices).
+    @Published private(set) var notifierPluginNoticeChannel: NotifierPluginNoticeChannel
+    /// Where this copy of Conduit came from, read again each launch until
+    /// the App Store's signature verifies it.
+    @Published private(set) var appInstallSource: AppInstallSource
+    private var appInstallSourceRead = false
+    private var notifierPluginFollowsMain: Bool {
+        notifierPluginNoticeChannel.followsMain(installedFrom: appInstallSource)
+    }
     private var freshNotifierPluginStatus: NotifierPluginStatus {
-        NotifierPluginStatus(latestVersion: latestNotifierPluginVersion)
+        NotifierPluginStatus(
+            latestVersion: latestNotifierPluginVersion,
+            stableVersion: stableNotifierPluginVersion,
+            followsMain: notifierPluginFollowsMain
+        )
     }
     /// Apple Health sharing with one Hermes profile.
     /// Off until the user turns it on in Settings > Health.
@@ -22166,15 +22184,31 @@ final class AppState: ObservableObject {
         Task { await runPhoneSync(reason: .connected) }
     }
 
-    /// Reads the latest plugin version (saved, then from GitHub at most
-    /// hourly), so a plugin release is offered without a new Conduit build.
+    /// Reads the latest and stable plugin versions (saved, then from GitHub
+    /// at most hourly), so a plugin release is offered without a new
+    /// Conduit build, and where this copy of Conduit came from, which picks
+    /// between them.
     private func refreshLatestNotifierPluginVersion() async {
         guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
+        if !appInstallSourceRead {
+            if let verified = await AppInstallSource.detect(defaults: defaults) {
+                appInstallSourceRead = true
+                appInstallSource = verified
+            } else {
+                // Asked again on the next refresh.
+                appInstallSource = AppInstallSource.unverified()
+            }
+            applyNotifierPluginNoticeChannel()
+        }
         if latestNotifierPluginVersion == nil, let saved = NotifierPluginLatestVersion.cached(in: defaults) {
             applyLatestNotifierPluginVersion(saved)
         }
+        if stableNotifierPluginVersion == nil, let saved = NotifierPluginLatestVersion.cachedStable(in: defaults) {
+            applyStableNotifierPluginVersion(saved)
+        }
         guard let fetched = await NotifierPluginLatestVersion.refresh(defaults: defaults) else { return }
-        applyLatestNotifierPluginVersion(fetched)
+        if let latest = fetched.latest { applyLatestNotifierPluginVersion(latest) }
+        if let stable = fetched.stable { applyStableNotifierPluginVersion(stable) }
     }
 
     private func applyLatestNotifierPluginVersion(_ version: String) {
@@ -22182,6 +22216,25 @@ final class AppState: ObservableObject {
         guard notifierPlugin.latestVersion != version else { return }
         notifierPlugin.latestVersion = version
         clearSettledNotifierPluginUpdateOutcome()
+    }
+
+    private func applyStableNotifierPluginVersion(_ version: String) {
+        stableNotifierPluginVersion = version
+        guard notifierPlugin.stableVersion != version else { return }
+        notifierPlugin.stableVersion = version
+    }
+
+    /// Settings > Conduit plugin > Update notices.
+    func setNotifierPluginNoticeChannel(_ channel: NotifierPluginNoticeChannel) {
+        notifierPluginNoticeChannel = channel
+        defaults.set(channel.rawValue, forKey: NotifierPluginNoticeChannel.key)
+        applyNotifierPluginNoticeChannel()
+    }
+
+    private func applyNotifierPluginNoticeChannel() {
+        let followsMain = notifierPluginFollowsMain
+        guard notifierPlugin.followsMain != followsMain else { return }
+        notifierPlugin.followsMain = followsMain
     }
 
     /// Hands each of this dashboard's paired profiles an end-to-end
