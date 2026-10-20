@@ -4419,6 +4419,12 @@ final class AppState: ObservableObject {
     /// the list's poll instead of asking again.
     private var chatListCatalogFreshness = ChatListCatalogFreshness()
     private var openChatSync = OpenChatSync()
+    /// Hermes' `sessions.changed` waiting for its catalog read, and the
+    /// wait for one held back by the 5 s spacing.
+    private var catalogChangeSignal = CatalogChangeSignal()
+    private var catalogChangeReadTask: Task<Void, Never>?
+    /// The registry read before reading rows a catalog read found moved.
+    private(set) var openChatCatalogCheck: Task<Void, Never>?
     private var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)?
     private(set) var openChatSyncRead: Task<Void, Never>?
     private var openChatSyncReadID: UUID?
@@ -18130,6 +18136,7 @@ final class AppState: ObservableObject {
             sessions = listedSessions
             cronSessions = listedCron
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
+            observeOpenChatCatalog()
             savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboardID)
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             refreshVoiceSessionTags()
@@ -18308,6 +18315,7 @@ final class AppState: ObservableObject {
         if chatListCatalogFreshness.shouldRead(olderThan: ChatListCatalogFreshness.fallbackInterval, now: chatSyncNow()) {
             refreshCatalogAfterLeavingChat(reportingFailure: false)
         }
+        readPendingCatalogChange()
         return chatListPollPacer.next(
             after: .init(registry: registry, turnRunning: turnRunning, catalogGeneration: chatListCatalogGeneration),
             conditions: deviceConditions(),
@@ -18369,6 +18377,8 @@ final class AppState: ObservableObject {
             setActiveChatRepliesElsewhere(false)
             return
         }
+        // A `sessions.changed` held back by a turn here is read once it ends.
+        readPendingCatalogChange()
         let due = openChatSync.checkDue(local, now: chatSyncNow(), conditions: deviceConditions())
         // Another chat starts over without the label.
         setActiveChatRepliesElsewhere(openChatSync.repliesElsewhere)
@@ -18447,27 +18457,141 @@ final class AppState: ObservableObject {
                 await appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
             }
         case .readNewRows:
-            guard let row = rows.first(where: { !$0.isRunning }) ?? rows.first else { return }
+            guard !rows.isEmpty else { return }
+            readOpenChatRowsFromElsewhere(sessionID: local.sessionID, rows: rows)
+        }
+    }
+
+    /// Reads the rows of a turn another device (or the TUI) ran in the open
+    /// chat, which sits idle here. `rows` are the chat's registry rows.
+    private func readOpenChatRowsFromElsewhere(sessionID: String, rows: [LiveSessionStatus]) {
+        guard let row = rows.first(where: { !$0.isRunning }) ?? rows.first else {
+            // No live runtime of the chat on this gateway: the turn ran in
+            // another process (the TUI), and may still be running there,
+            // where this registry can't see it. Only the read-only tail read:
+            // a resume could take the chat from that process mid-turn.
             lifecycleLog.notice(
-                "Open chat: a turn ran elsewhere → read its rows session=\(local.sessionID, privacy: .private(mask: .hash))"
+                "Open chat: stored rows moved elsewhere, no live runtime here → read its rows session=\(sessionID, privacy: .private(mask: .hash))"
             )
-            startOpenChatSyncRead(sessionID: local.sessionID, expectsRunning: false) { appState in
-                // The bounded, read-only tail read a return from the
-                // background uses: new rows merge in, and only an
-                // inconclusive read falls back to resuming the idle chat.
+            let probe = LiveSessionStatus(runtimeSessionId: sessionID, storedSessionId: sessionID, status: "idle")
+            startOpenChatSyncRead(sessionID: sessionID, expectsRunning: false) { appState in
                 let token = appState.beginReconciliation()
-                let resumed = await appState.reconcileForegroundCrossSurfaceActivity(
+                let read = await appState.reconcileForegroundCrossSurfaceActivity(
                     livenessIsRunning: false,
-                    requestedSessionID: local.sessionID,
-                    probeRow: row,
+                    requestedSessionID: sessionID,
+                    probeRow: probe,
                     reconciliationToken: token,
                     automaticWorkToken: nil,
-                    // A read that would end in a resume asks the registry
-                    // first: a turn begun since would lose its stream.
-                    resumeFallbackAllowed: { await appState.openChatIsIdleOnServer(local.sessionID) }
+                    resumeFallbackAllowed: { false }
                 )
-                if !resumed { appState.openChatSync.readCalledOff() }
+                if !read { appState.openChatSync.readCalledOff() }
             }
+            return
+        }
+        lifecycleLog.notice(
+            "Open chat: a turn ran elsewhere → read its rows session=\(sessionID, privacy: .private(mask: .hash))"
+        )
+        startOpenChatSyncRead(sessionID: sessionID, expectsRunning: false) { appState in
+            // The bounded, read-only tail read a return from the
+            // background uses: new rows merge in, and only an
+            // inconclusive read falls back to resuming the idle chat.
+            let token = appState.beginReconciliation()
+            let resumed = await appState.reconcileForegroundCrossSurfaceActivity(
+                livenessIsRunning: false,
+                requestedSessionID: sessionID,
+                probeRow: row,
+                reconciliationToken: token,
+                automaticWorkToken: nil,
+                // A read that would end in a resume asks the registry
+                // first: a turn begun since would lose its stream.
+                resumeFallbackAllowed: { await appState.openChatIsIdleOnServer(sessionID) }
+            )
+            if !resumed { appState.openChatSync.readCalledOff() }
+        }
+    }
+
+    /// Hermes said a stored session row moved (`sessions.changed`): the
+    /// catalog is read again, which also tells the open chat whether its
+    /// own count moved (#1026).
+    private func noteCatalogChanged() {
+        catalogChangeSignal.noteChanged()
+        readPendingCatalogChange()
+    }
+
+    /// Reads the catalog for a pending `sessions.changed` when it may: not
+    /// while a turn runs here, at most every 5 s. One held back by the
+    /// spacing is read when the wait is over; one held back by a turn, at
+    /// the open chat's or the list's next check.
+    func readPendingCatalogChange() {
+        guard isSceneActive, isConnected else { return }
+        let now = chatSyncNow()
+        if catalogChangeSignal.takeRead(now: now, turnRunningHere: turnState.isRunning) {
+            refreshCatalogAfterLeavingChat(reportingFailure: false)
+            return
+        }
+        guard !turnState.isRunning, catalogChangeReadTask == nil,
+              let delay = catalogChangeSignal.delayUntilDue(now: now), delay > 0 else { return }
+        catalogChangeReadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self else { return }
+            self.catalogChangeReadTask = nil
+            guard !Task.isCancelled else { return }
+            self.readPendingCatalogChange()
+        }
+    }
+
+    /// Hermes announced a user message in a chat (`user.message`). Every
+    /// client of the chat hears it, this one's own sends included: one
+    /// arriving with a turn running here, already shown here by its row id,
+    /// or matching the latest user message here is this device's (so is
+    /// the same text resent elsewhere; its stored count still reads it).
+    private func noteUserMessageElsewhere(sessionId: String, rowId: Int?, text: String) {
+        if eventBelongsToActiveSession(sessionId), !turnState.isRunning,
+           openChatSync.sessionID == activeSessionId,
+           rowId.map({ id in !messages.contains(where: { $0.rowId == id }) }) ?? true {
+            let latestHere = messages.last(where: { $0.role == .user })?.content ?? ""
+            if OpenChatSync.squashed(latestHere) != OpenChatSync.squashed(text) {
+                openChatSync.noteUserMessageElsewhere()
+            }
+        }
+        noteCatalogChanged()
+    }
+
+    /// A catalog read landed: the open chat's stored count, against the
+    /// last one, says whether a turn the registry never saw ran in it.
+    private func observeOpenChatCatalog() {
+        guard let local = openChatLocalTurn(),
+              openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing else { return }
+        let accepted = acceptedIdentitySessionIDs(forRequested: local.sessionID)
+        let listed = (sessions + cronSessions).first { session in
+            accepted.contains(session.id)
+                || session.storedSessionId.map { accepted.contains($0) } == true
+                || !accepted.isDisjoint(with: session.alternateIds)
+        }
+        let action = openChatSync.observeCatalog(
+            messageCount: listed?.messageCount,
+            local: local,
+            now: chatSyncNow(),
+            chatVisible: isSceneActive && !showSidebar
+        )
+        guard action == .readNewRows else { return }
+        let sessionID = local.sessionID
+        // A newer check replaces this one: it would only read the rows again.
+        openChatCatalogCheck?.cancel()
+        openChatCatalogCheck = Task { @MainActor [weak self] in
+            guard let self else { return }
+            if self.freshActiveListSnapshot(maxAge: 5) == nil {
+                await self.refreshLiveSessionStatuses()
+            }
+            guard !Task.isCancelled else { return }
+            let rows = self.freshActiveListSnapshot(maxAge: 5)
+                .map { self.openChatRegistryRows($0.rows, sessionID: sessionID) } ?? []
+            guard self.activeSessionId == sessionID, self.openChatSyncRead == nil,
+                  self.reconciliation == nil, !self.isChatRefreshing else {
+                self.openChatSync.readCalledOff()
+                return
+            }
+            self.readOpenChatRowsFromElsewhere(sessionID: sessionID, rows: rows)
         }
     }
 
@@ -18489,7 +18613,11 @@ final class AppState: ObservableObject {
             }
             // The chat or its turn changed since the snapshot: nothing to do.
             guard self.activeSessionId == sessionID, self.reconciliation == nil,
-                  self.turnState == (expectsRunning ? .running : .idle) else { return }
+                  self.turnState == (expectsRunning ? .running : .idle) else {
+                // New rows still unread: the next check asks again.
+                if !expectsRunning, self.activeSessionId == sessionID { self.openChatSync.readCalledOff() }
+                return
+            }
             await read(self)
         }
     }
@@ -28541,6 +28669,18 @@ final class AppState: ObservableObject {
             applyStatusUpdate(sessionId: sessionId, kind: kind, text: text)
             return
         }
+        // Signals that another client or process changed a chat: they ask
+        // for reads (ChatSync.swift), and never touch the transcript.
+        switch event {
+        case .sessionsChanged:
+            noteCatalogChanged()
+            return
+        case .userMessage(let sessionId, let rowId, let text, _):
+            noteUserMessageElsewhere(sessionId: sessionId, rowId: rowId, text: text)
+            return
+        default:
+            break
+        }
         releaseServerCompactionClaimOnAgentOutput(event)
         if bufferIfReconciling(event) { return }
         applyStreamEvent(event)
@@ -28799,6 +28939,7 @@ final class AppState: ObservableObject {
                 .messageComplete(let sessionId, _, _, _, _), .messageInterim(let sessionId, _, _),
                 .messageError(let sessionId, _),
                 .messageReaction(let sessionId, _, _, _),
+                .userMessage(let sessionId, _, _, _),
                 .messageInterrupted(let sessionId), .sessionBusy(let sessionId, _),
                 .sessionInfo(let sessionId, _), .sessionTitle(let sessionId, _, _),
                 .toolStart(let sessionId, _, _, _),
@@ -28812,7 +28953,7 @@ final class AppState: ObservableObject {
             // `.sessionTitle` and `.statusUpdate` never reach
             // bufferIfReconciling (handleStreamEvent returns early for them).
             return sessionId
-        case .unparsed:
+        case .sessionsChanged, .unparsed:
             return ""
         }
     }
@@ -29199,6 +29340,10 @@ final class AppState: ObservableObject {
             // Beside the main turn: a note in the chat, as Desktop and the
             // TUI show it, leaving the stream and running state alone.
             appendSlashOutput(Self.sideAgentNote(kind: kind, taskId: taskId, text: text, question: question))
+
+        case .userMessage, .sessionsChanged:
+            // Read signals, handled in handleStreamEvent.
+            break
 
         case .unparsed:
             break

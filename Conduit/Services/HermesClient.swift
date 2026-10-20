@@ -388,6 +388,13 @@ enum StreamEvent {
     /// the reacted row's role so a live row with no `rowId` yet can match.
     case messageReaction(sessionId: String, rowId: Int, reactions: [MessageReaction], role: String)
     case messageError(sessionId: String, message: String)
+    /// `user.message`: a user message another client sent in the session,
+    /// already stored as `rowId`.
+    case userMessage(sessionId: String, rowId: Int?, text: String, origin: String?)
+    /// `sessions.changed`: the stored session list moved (state.db), from
+    /// any process: a turn run in the TUI or on another device, a rename,
+    /// a deletion. Carries nothing; the catalog says what moved.
+    case sessionsChanged
     case messageInterrupted(sessionId: String)
     case sessionBusy(sessionId: String, busy: Bool)
     case sessionInfo(sessionId: String, snapshot: SessionRuntimeSnapshot)
