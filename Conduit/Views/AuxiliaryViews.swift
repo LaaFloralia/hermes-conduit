@@ -2446,14 +2446,15 @@ private struct FallbackModelsSettings: View {
         async let modelRequest = loadModels()
         async let entryRequest = load()
         let (models, loadedEntries) = await (modelRequest, entryRequest)
-        defaults = models
         // Without the model catalog no fallback can be added or changed, so
         // a half-loaded list fails with Try Again instead of a silently
-        // disabled Add.
-        guard let loadedEntries, models != nil else {
+        // disabled Add. A re-load (the editor re-appearing) that fails keeps
+        // the catalog and rows it already had: only the error is new.
+        guard let loadedEntries, let models else {
             error = AppLocalization.string("Could not load fallback models.")
             return
         }
+        defaults = models
         entries = loadedEntries
         saved = loadedEntries
         loaded = true
