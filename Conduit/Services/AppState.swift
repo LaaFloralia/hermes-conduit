@@ -14717,11 +14717,10 @@ final class AppState: ObservableObject {
             } else if let createSession = chatResumeLifecycleOperations.createSession {
                 created = try await createSession(client, cwd)
             } else {
-                created = try await client.createSession(
-                    model: runtime.model.isEmpty ? nil : runtime.model,
-                    provider: runtime.provider.isEmpty ? nil : runtime.provider,
-                    cwd: cwd
-                )
+                // No model: a new chat runs on the profile's default model,
+                // not on whatever the chat open before it was switched to
+                // (#916). The model picker switches this chat afterwards.
+                created = try await client.createSession(cwd: cwd)
             }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -14761,6 +14760,10 @@ final class AppState: ObservableObject {
             // layer and leaves the composer stuck synchronizing.
             markChatViewportReplacement()
             setActiveSessionState(id: runtimeSessionID, title: AppLocalization.string("New conversation"))
+            // The model shown is the previous chat's until Hermes reports
+            // this one's (session.info), and this chat may run on another.
+            runtime.model = ""
+            runtime.provider = ""
             keepDelegateAgents(of: [])
             newChatOpenedSessionID = runtimeSessionID
             newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID

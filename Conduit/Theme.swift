@@ -691,7 +691,7 @@ private struct OutOfProcessAccentTint: ViewModifier {
 }
 
 /// Gives the window the chosen accent as its tint, for system screens Conduit
-/// presents but doesn't draw. The colour is resolved, not dynamic: a dynamic
+/// presents but doesn't draw, and as its accent trait, for the sheets it does. The colour is resolved, not dynamic: a dynamic
 /// one sent to another process loses the pick (#748). It is set again when
 /// the window turns light or dark: the window's own trait change, since the
 /// tinting view is never laid out again and its changes can arrive late.
@@ -731,6 +731,15 @@ struct WindowAccentTint: UIViewRepresentable {
 
         private func applyTint() {
             guard let window else { return }
+            // Screens presented over the root (sheets: the full message
+            // editor) inherit their traits from the window, not from the
+            // root's environment, so without this their accent colours
+            // resolve the default amber (#920).
+            // Reading an override that was never set throws, so ask first.
+            let overrides = window.traitOverrides
+            if !overrides.contains(ConduitAccentTrait.self) || overrides.conduitAccent != choice {
+                window.traitOverrides.conduitAccent = choice
+            }
             window.tintColor = choice.color(dark: window.traitCollection.userInterfaceStyle == .dark)
         }
     }

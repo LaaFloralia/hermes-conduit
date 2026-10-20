@@ -29,16 +29,9 @@ extension AppState {
             createChat: { [weak self] profile, title in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 let inUse = self.profilesMatch(profile, self.activeProfile)
-                let created: (sessionId: String, storedSessionId: String?, profile: String?)
-                if inUse {
-                    // The same model as a chat started from the composer.
-                    created = try await client.createSession(
-                        model: self.runtime.model.isEmpty ? nil : self.runtime.model,
-                        provider: self.runtime.provider.isEmpty ? nil : self.runtime.provider
-                    )
-                } else {
-                    created = try await client.createSession(inProfile: profile)
-                }
+                // As a chat started from the composer: the profile's default
+                // model, not the open chat's (#916).
+                let created = try await client.createSession(inProfile: inUse ? nil : profile)
                 if let returned = created.profile, !self.profilesMatch(returned, profile) {
                     throw HermesError.invalidResponse
                 }
