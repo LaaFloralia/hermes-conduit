@@ -25,53 +25,54 @@ struct ContextSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(spacing: 14) {
-                        ConduitSettingsSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", tint: .conduitAura) {
-                            SettingsMetricRow(label: AppLocalization.string("Used"), value: AppLocalization.string("\(Int(appState.runtime.contextUsed)) tokens"))
-                            SettingsMetricRow(label: AppLocalization.string("Capacity"), value: AppLocalization.string("\(Int(appState.runtime.contextMax)) tokens"))
-                            VStack(alignment: .leading, spacing: 7) {
-                                HStack {
-                                    Text("Window usage")
-                                        .font(.caption.weight(.medium))
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    Text("\(String(Int(appState.runtime.contextPercent.rounded())))%")
-                                        .font(.caption.monospacedDigit().weight(.semibold))
-                                }
-                                ProgressView(value: appState.runtime.contextPercent, total: 100)
-                                    .tint(.conduitAccent)
-                            }
-                            .padding(.top, 4)
+            // V2: laid out as a settings page, its cards on the profile's
+            // glow and fading under the bar; compact to fit the half sheet.
+            SettingsDetailContainer(compact: true) {
+                ConduitSettingsSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", tint: .conduitAura) {
+                    SettingsMetricRow(label: AppLocalization.string("Used"), value: AppLocalization.string("\(Int(appState.runtime.contextUsed)) tokens"))
+                    SettingsMetricRow(label: AppLocalization.string("Capacity"), value: AppLocalization.string("\(Int(appState.runtime.contextMax)) tokens"))
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack {
+                            Text("Window usage")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text("\(String(Int(appState.runtime.contextPercent.rounded())))%")
+                                .font(.caption.monospacedDigit().weight(.semibold))
                         }
+                        ContextWindowBar(
+                            segments: segments,
+                            capacity: Double(max(Int(appState.runtime.contextMax), breakdown?.contextMax ?? 0)),
+                            fallbackFraction: appState.runtime.contextPercent / 100
+                        )
+                        .accessibilityElement()
+                        .accessibilityLabel(Text("Window usage"))
+                        .accessibilityValue(Text("\(String(Int(appState.runtime.contextPercent.rounded())))%"))
+                    }
+                    .padding(.top, 4)
+                }
 
-                        if let breakdown {
-                            ConduitSettingsSection(title: AppLocalization.string("Breakdown"), symbol: "chart.pie", tint: .conduitAccent) {
-                                ForEach(breakdown.categories, id: \.id) { category in
-                                    HStack(spacing: 10) {
-                                        Circle()
-                                            .fill(colorFor(category.color))
-                                            .frame(width: 9, height: 9)
-                                        Text(category.label)
-                                        Spacer()
-                                        Text("\(category.tokens)")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    .padding(.vertical, 3)
-                                }
+                if breakdown != nil {
+                    ConduitSettingsSection(title: AppLocalization.string("Breakdown"), symbol: "chart.pie", tint: .conduitAccent) {
+                        ForEach(segments) { category in
+                            HStack(spacing: 10) {
+                                Circle()
+                                    .fill(category.color)
+                                    .frame(width: 9, height: 9)
+                                Text(category.label)
+                                Spacer()
+                                Text("\(category.tokens)")
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
                             }
+                            .padding(.vertical, 3)
                         }
                     }
-                    .padding(16)
                 }
             }
             .navigationTitle("Context")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
         }
+        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.activeProfile))
         .task { await loadBreakdown() }
     }
 
@@ -82,7 +83,28 @@ struct ContextSheet: View {
         breakdown = loaded
     }
 
-    private func colorFor(_ name: String) -> Color {
+    /// The breakdown's categories with the color each takes in the bar and
+    /// beside its row. Hermes's own colors only when each is one Conduit
+    /// knows and no two share one; otherwise (it often names one for all,
+    /// or names Conduit doesn't map) they take the palette in turn, so the
+    /// categories never all come out amber.
+    private var segments: [ContextWindowBar.Segment] {
+        guard let categories = breakdown?.categories else { return [] }
+        let named = categories.map { colorFor($0.color) }
+        let useNamed = named.allSatisfy { $0 != nil }
+            && Set(categories.map { $0.color.lowercased() }).count == categories.count
+        return categories.enumerated().map { index, category in
+            ContextWindowBar.Segment(
+                id: category.id,
+                label: category.label,
+                tokens: category.tokens,
+                color: (useNamed ? named[index] : nil)
+                    ?? ContextWindowBar.palette[index % ContextWindowBar.palette.count]
+            )
+        }
+    }
+
+    private func colorFor(_ name: String) -> Color? {
         switch name.lowercased() {
         case "blue": return .blue
         case "green": return .green
@@ -92,8 +114,53 @@ struct ContextSheet: View {
         case "pink": return .pink
         case "cyan": return .cyan
         case "amber", "yellow": return .yellow
-        default: return .conduitAccent
+        default: return nil
         }
+    }
+}
+
+/// The context window as one bar: a segment per category, sized by its
+/// share of the capacity, on a quiet track for what is still free. Before
+/// the breakdown loads, one gold segment for the used share.
+struct ContextWindowBar: View {
+    struct Segment: Identifiable {
+        let id: String
+        let label: String
+        let tokens: Int
+        let color: Color
+    }
+
+    static let palette: [Color] = [.conduitAccent, .conduitAura, .teal, .pink, .blue, .green, .orange, .purple]
+
+    let segments: [Segment]
+    let capacity: Double
+    let fallbackFraction: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let shown = segments.filter { $0.tokens > 0 }
+            let total = max(capacity, Double(shown.reduce(0) { $0 + $1.tokens }), 1)
+            HStack(spacing: 2) {
+                if shown.isEmpty {
+                    Rectangle()
+                        .fill(Color.conduitAccent)
+                        .frame(width: proxy.size.width * min(max(fallbackFraction, 0), 1))
+                } else {
+                    ForEach(shown) { segment in
+                        Rectangle()
+                            .fill(segment.color)
+                            // A sliver stays visible however small its share.
+                            .frame(width: max(3, (proxy.size.width - CGFloat(shown.count) * 2) * Double(segment.tokens) / total))
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .frame(height: 10)
+        .animation(.easeOut(duration: 0.25), value: segments.map(\.tokens))
     }
 }
 
