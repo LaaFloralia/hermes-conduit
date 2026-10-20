@@ -178,13 +178,23 @@ final class GPTLiveConversationController: ObservableObject {
         didSet {
             syncHeadsetMute()
             // A host issue labels only the failure it caused.
-            if case .failed = phase {} else { hostIssue = nil }
+            if case .failed = phase {} else {
+                hostIssue = nil
+                awaitingConsent = nil
+            }
         }
     }
     /// What the host's check found wrong on the last start, set before
     /// the phase fails with the host's reason; nil once a start gets past
     /// the check, or when the failure was something else.
     private(set) var hostIssue: LiveVoiceHostIssue?
+    /// The mode whose provider the user hasn't yet allowed to hear them
+    /// (#827), set before the phase fails on it: the call screen then asks
+    /// instead of showing the failure. Nil otherwise.
+    @Published private(set) var awaitingConsent: LiveVoiceModeName?
+    /// The mode still needing the user's OK before this call may reach its
+    /// provider, or nil (`LiveVoiceProviderConsent.missing`).
+    private let missingConsent: @MainActor () -> LiveVoiceModeName?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// The model's voice is silenced (#487). Its words still show in the
@@ -318,6 +328,7 @@ final class GPTLiveConversationController: ObservableObject {
     init(
         makeSession: @escaping @MainActor () -> GPTLiveSessionControlling,
         availability: @escaping @MainActor () async throws -> GPTLiveAvailability,
+        missingConsent: @escaping @MainActor () -> LiveVoiceModeName? = { nil },
         briefing: @escaping @MainActor () -> String = { GPTLiveConversationController.briefing() },
         openingPrompt: @escaping @MainActor () -> String? = { nil },
         supervisor: GeminiLiveJobSupervising,
@@ -329,6 +340,7 @@ final class GPTLiveConversationController: ObservableObject {
     ) {
         self.makeSession = makeSession
         self.availability = availability
+        self.missingConsent = missingConsent
         self.briefing = briefing
         self.openingPrompt = openingPrompt
         self.supervisor = supervisor
@@ -388,6 +400,13 @@ final class GPTLiveConversationController: ObservableObject {
         closeOpenEntries()
         activeEndPhrases = endConversationPhrases()
         hostIssue = nil
+        // Nothing reaches OpenAI, the call's credential included, until the
+        // user has allowed it to hear them (#827).
+        if let mode = missingConsent() {
+            awaitingConsent = mode
+            phase = .failed(VoiceSetupIssue.providerConsentNeeded(mode).message)
+            return
+        }
         do {
             let status = try await availability()
             guard phase == .connecting else { return }

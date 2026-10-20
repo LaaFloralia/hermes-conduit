@@ -58,6 +58,11 @@ struct LiveVoiceCallSheet: View {
     /// The voice mode menu under the title, and Switch voice on a failed
     /// call; nil shows neither.
     var modeSwitch: VoiceModeSwitch? = nil
+    /// The mode whose provider the user hasn't allowed yet (#827): the
+    /// screen asks in place of the call until they answer.
+    var consent: LiveVoiceModeName? = nil
+    /// Allow on that question; Not Now hangs up, as End does.
+    var onAllowConsent: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -99,7 +104,10 @@ struct LiveVoiceCallSheet: View {
             ConduitBackdrop()
             VStack(spacing: 0) {
                 header
-                if showsTranscript {
+                if let consent {
+                    LiveVoiceConsentPanel(mode: consent, onAllow: onAllowConsent, onNotNow: onEnd)
+                        .frame(maxHeight: .infinity)
+                } else if showsTranscript {
                     transcriptList
                 } else if usesV2 {
                     if dynamicTypeSize >= .xxLarge {
@@ -116,7 +124,9 @@ struct LiveVoiceCallSheet: View {
                 } else {
                     stage
                 }
-                controls
+                if consent == nil {
+                    controls
+                }
             }
             // A wide window keeps the call to a readable column.
             .readableContentWidth(ReadableWidth.call)

@@ -75,6 +75,8 @@ final class WatchDirectBroker {
 
     private unowned let link: WatchVoiceLink
     private var callID: UInt32?
+    /// The running call's voice mode; nil for one adopted after a restart.
+    private var callMode: LiveVoiceModeName?
     /// Ends a bridge call whose Watch went quiet once its grant is over.
     private var grantWatchdog: Task<Void, Never>?
     /// Ends a call whose Watch went quiet (its app died, or the Watch did)
@@ -152,6 +154,10 @@ final class WatchDirectBroker {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
+            if let refusal = consentRefusal(.geminiLive) {
+                answer(.callRefused(callID: id, reason: refusal))
+                return
+            }
             let end = Self.beginBackgroundTask("conduit.watchDirect.start")
             // Asked again while preparing (the Watch's request timed out):
             // the same answer.
@@ -177,6 +183,10 @@ final class WatchDirectBroker {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
+            if let refusal = consentRefusal(.gptLive) {
+                answer(.callRefused(callID: id, reason: refusal))
+                return
+            }
             let end = Self.beginBackgroundTask("conduit.watchBridge.start")
             let task: Task<WatchVoiceWire.Message, Never>
             if let preparing, preparing.callID == id {
@@ -194,6 +204,10 @@ final class WatchDirectBroker {
         case .grokStart(let id, let version, let ring):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
+                return
+            }
+            if let refusal = consentRefusal(.grokLive) {
+                answer(.callRefused(callID: id, reason: refusal))
                 return
             }
             let end = Self.beginBackgroundTask("conduit.watchGrok.start")
@@ -233,6 +247,12 @@ final class WatchDirectBroker {
             heard(id)
             guard onCallsConnection(id) else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
+                return
+            }
+            // The Watch's own Gemini session gets no credential without the
+            // user's OK either.
+            if let refusal = consentRefusal(.geminiLive) {
+                answer(.callRefused(callID: id, reason: refusal))
                 return
             }
             adoptIfKnown(id)
@@ -290,10 +310,17 @@ final class WatchDirectBroker {
 
     // MARK: Start
 
+    /// Why a call can't start until the user allows its provider to hear
+    /// them (#827), or nil. The phone asks on its own sheet meanwhile.
+    private func consentRefusal(_ mode: LiveVoiceModeName) -> String? {
+        appState.requestLiveVoiceConsentIfMissing(mode).map { VoiceSetupIssue.providerConsentNeeded($0).message }
+    }
+
     private func prepare(_ id: UInt32, ring: String? = nil) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
+        callMode = .geminiLive
         bridge = nil
         lateOutgoing = []
         hostTools = []
@@ -417,6 +444,7 @@ final class WatchDirectBroker {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
+        callMode = .gptLive
         bridge = nil
         lateOutgoing = []
         hostTools = []
@@ -528,6 +556,7 @@ final class WatchDirectBroker {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
+        callMode = .grokLive
         bridge = nil
         lateOutgoing = []
         hostTools = []
@@ -653,6 +682,7 @@ final class WatchDirectBroker {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
+        callMode = .localLive
         bridge = nil
         lateOutgoing = []
         hostTools = []
@@ -1316,6 +1346,18 @@ final class WatchDirectBroker {
         endCall()
     }
 
+    /// The user took back their OK for `mode`'s provider (#827): its running
+    /// call ends here, and revoking its grants closes the host's audio
+    /// bridge (GPT-Live, Grok Live) and the Watch's lookups. A Gemini call's
+    /// socket is the Watch's own: it loses its tools and gets no new token,
+    /// but its audio stops only when the Watch hangs up (no wire message
+    /// ends it from here). A call of unknown mode ends too.
+    func consentWithdrawn(for mode: LiveVoiceModeName) {
+        guard callID != nil, callMode == nil || callMode == mode else { return }
+        link.log.note("watchDirectConsentWithdrawn", ["callID": Int(callID ?? 0), "mode": mode.storageID])
+        endCall()
+    }
+
     /// Unspoken job news goes back to the jobs, which report it as usual.
     private func endCall(keepRecovery: Bool = false) {
         grantWatchdog?.cancel()
@@ -1335,6 +1377,7 @@ final class WatchDirectBroker {
         lateOutgoing = []
         hostTools = []
         hostToolsMode = nil
+        callMode = nil
         appState.watchCallUserTurn = nil
         revokeGrants()
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = false

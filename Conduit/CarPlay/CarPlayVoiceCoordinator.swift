@@ -778,16 +778,25 @@ final class CarPlayVoiceCoordinator {
         // sink, where the property still reads the phase being replaced.
         // The host is checked before the microphone is asked for, so a
         // host issue is what stopped this call even with the mic denied.
+        // Consent is asked before the host is checked (#827): only the
+        // phone can give it.
         case .geminiLive:
-            return liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
+            return consentIssue(appState.geminiLiveController.awaitingConsent)
+                ?? liveIssue(appState.geminiLiveController.hostIssue, .geminiLive)
                 ?? (isMicrophoneDenied ? .microphoneDenied : nil)
         case .gptLive:
-            return liveIssue(appState.gptLiveController.hostIssue, .gptLive)
+            return consentIssue(appState.gptLiveController.awaitingConsent)
+                ?? liveIssue(appState.gptLiveController.hostIssue, .gptLive)
                 ?? (isMicrophoneDenied ? .microphoneDenied : nil)
         case .grokLive:
-            return liveIssue(appState.grokLiveController.hostIssue, .grokLive)
+            return consentIssue(appState.grokLiveController.awaitingConsent)
+                ?? liveIssue(appState.grokLiveController.hostIssue, .grokLive)
                 ?? (isMicrophoneDenied ? .microphoneDenied : nil)
         }
+    }
+
+    private static func consentIssue(_ mode: LiveVoiceModeName?) -> VoiceSetupIssue? {
+        mode.map { .providerConsentNeeded($0) }
     }
 
     private static func liveIssue(_ hostIssue: LiveVoiceHostIssue?, _ mode: LiveVoiceModeName) -> VoiceSetupIssue? {

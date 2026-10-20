@@ -277,6 +277,16 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        // A CarPlay or Watch call stopped until the user allows its
+        // provider to hear them: the phone asks (#827).
+        .sheet(item: $appState.liveVoiceConsentRequest) { mode in
+            LiveVoiceConsentSheet(mode: mode) { allowed in
+                if allowed { appState.setLiveVoiceConsent(true, for: mode) }
+                appState.liveVoiceConsentRequest = nil
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $appState.showVoiceSheet, onDismiss: appState.closeVoiceConversation) {
             VoiceConversationSheet(
                 controller: appState.voiceConversationController,

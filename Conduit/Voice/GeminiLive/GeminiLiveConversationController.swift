@@ -250,13 +250,23 @@ final class GeminiLiveConversationController: ObservableObject {
         didSet {
             syncHeadsetMute()
             // A host issue labels only the failure it caused.
-            if case .failed = phase {} else { hostIssue = nil }
+            if case .failed = phase {} else {
+                hostIssue = nil
+                awaitingConsent = nil
+            }
         }
     }
     /// What the host's check found wrong on the last start, set before
     /// the phase fails with the host's reason; nil once a start gets past
     /// the check, or when the failure was something else.
     private(set) var hostIssue: LiveVoiceHostIssue?
+    /// The mode whose provider the user hasn't yet allowed to hear them
+    /// (#827), set before the phase fails on it: the call screen then asks
+    /// instead of showing the failure. Nil otherwise.
+    @Published private(set) var awaitingConsent: LiveVoiceModeName?
+    /// The mode still needing the user's OK before this call may reach its
+    /// provider, or nil (`LiveVoiceProviderConsent.missing`).
+    private let missingConsent: @MainActor () -> LiveVoiceModeName?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// The model's voice is silenced (#487). Its words still show in the
@@ -386,6 +396,7 @@ final class GeminiLiveConversationController: ObservableObject {
     init(
         makeSession: @escaping @MainActor () -> GeminiLiveSessionControlling,
         availability: @escaping @MainActor () async throws -> GeminiLiveAvailability,
+        missingConsent: @escaping @MainActor () -> LiveVoiceModeName? = { nil },
         tools: GeminiLiveToolBridge,
         input: GeminiLiveAudioInput,
         output: GeminiLiveAudioOutput,
@@ -399,6 +410,7 @@ final class GeminiLiveConversationController: ObservableObject {
         self.notificationCenter = notificationCenter
         self.makeSession = makeSession
         self.availability = availability
+        self.missingConsent = missingConsent
         self.openingPrompt = openingPrompt
         self.tools = tools
         self.input = input
@@ -480,6 +492,14 @@ final class GeminiLiveConversationController: ObservableObject {
         activeEndPhrases = endConversationPhrases()
         if let traceName { LiveCallTrace.shared.begin(traceName) }
         hostIssue = nil
+        // Nothing reaches the provider, its credential included, until the
+        // user has allowed it to hear them (#827).
+        if let mode = missingConsent() {
+            initialWidgetCaptureAuthorization = nil
+            awaitingConsent = mode
+            phase = .failed(VoiceSetupIssue.providerConsentNeeded(mode).message)
+            return
+        }
         do {
             let status = try await availability()
             guard phase == .connecting else { return }

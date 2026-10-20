@@ -2234,6 +2234,10 @@ final class AppState: ObservableObject {
     /// Presents the Gemini Live sheet. Separate from `showVoiceSheet`: the
     /// two voice modes never run at once.
     @Published var showGeminiLiveSheet = false
+    /// A live mode whose provider still needs the user's OK after a call
+    /// the phone wasn't showing (CarPlay, the Watch) stopped on it (#827):
+    /// the phone asks on its own sheet.
+    @Published var liveVoiceConsentRequest: LiveVoiceModeName?
 
     /// Gemini Live is an opt-in, per-profile Voice mode (off by default).
     var isGeminiLiveEnabled: Bool {
@@ -2477,6 +2481,8 @@ final class AppState: ObservableObject {
                 await hostTools
                 return status
             },
+            // Fails closed: without the app state, the stored answer decides.
+            missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.geminiLive) ?? LiveVoiceProviderConsent.missing(.geminiLive) },
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: tokens, memory: tokens),
             input: audio.input,
             output: audio.output,
@@ -2856,6 +2862,8 @@ final class AppState: ObservableObject {
                 }
                 return status
             },
+            // Fails closed: without the app state, the stored answer decides.
+            missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.gptLive) ?? LiveVoiceProviderConsent.missing(.gptLive) },
             briefing: { [weak self] in
                 GPTLiveConversationController.briefing(
                     memory: self?.gptLiveMemoryContext,
@@ -3173,6 +3181,8 @@ final class AppState: ObservableObject {
                 self.grokLiveVoice = voice
                 return .available(model: model)
             },
+            // Fails closed: without the app state, the stored answer decides.
+            missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.grokLive) ?? LiveVoiceProviderConsent.missing(.grokLive) },
             // xAI has no non-blocking calls: start_job is answered once the
             // job runs, and its outcome follows as a text update.
             tools: GeminiLiveToolBridge(supervisor: self.voiceBackgroundJobSupervisor, webSearch: hostContext, memory: hostContext, holdsJobCalls: false),

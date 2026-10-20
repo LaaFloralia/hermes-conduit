@@ -115,6 +115,9 @@ enum VoiceSetupIssue: Equatable {
     case liveModeNotSetUp(LiveVoiceModeName)
     /// The Hermes notifier plugin this live voice mode needs is missing.
     case notifierPluginMissing
+    /// The user hasn't yet allowed this live voice mode's provider to hear
+    /// them (#827). Only the phone asks.
+    case providerConsentNeeded(LiveVoiceModeName)
 
     /// The phone's full message: what is wrong and where to fix it.
     var message: String {
@@ -138,6 +141,8 @@ enum VoiceSetupIssue: Equatable {
             return AppLocalization.string("\(mode.displayName) isn't set up on your Hermes server. Settings > Voice shows what it needs.")
         case .notifierPluginMissing:
             return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+        case .providerConsentNeeded(let mode):
+            return AppLocalization.string("\(mode.displayName) sends your voice to \(mode.company). Allow it in Conduit on your iPhone to start the call.")
         }
     }
 
@@ -191,6 +196,11 @@ enum VoiceSetupIssue: Equatable {
             return [
                 AppLocalization.string("Update the Hermes notifier plugin"),
                 AppLocalization.string("Plugin update needed"),
+            ]
+        case .providerConsentNeeded(let mode):
+            return [
+                AppLocalization.string("Allow \(mode.displayName) on your iPhone"),
+                AppLocalization.string("Allow on your iPhone"),
             ]
         }
     }
