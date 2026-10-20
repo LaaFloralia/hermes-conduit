@@ -2268,19 +2268,22 @@ final class AppState: ObservableObject {
 
     func setVoiceReplyModel(_ setting: VoiceReplyModelSetting) async -> Bool {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let dashboardTicketBridge = owner.bridge
         do {
             let result = try await dashboardTicketBridge.requestJSON(
                 path: dashboardPath("/api/model/set", profile: profile),
                 method: "POST",
                 body: setting.assignmentBody(profile: profile)
             )
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             if result["confirm_required"] as? Bool == true {
                 errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
                 return false
             }
             return true
         } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save the voice reply model: \(UserFacingError.message(for: error))")
             return false
         }
@@ -26357,6 +26360,7 @@ final class AppState: ObservableObject {
         // Set once the target's client and identity are installed: from
         // then on a superseded switch still finishes or rolls back.
         var adoptedTarget = false
+        var previousClient: HermesClient?
 
         do {
             let ticket: String
@@ -26384,7 +26388,7 @@ final class AppState: ObservableObject {
                 return false
             }
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
-            let previousClient = client
+            previousClient = client
             let nextClient = makeClient(connection: freshConnection, profile: target)
 
             markChatViewportReplacement()
@@ -26438,7 +26442,10 @@ final class AppState: ObservableObject {
             // widget launch or a newer navigation still finishes the switch
             // (only the chat is theirs), or the old socket and a
             // half-switched profile would be left behind.
-            guard self.client === nextClient else { return false }
+            guard self.client === nextClient else {
+                previousClient?.disconnect()
+                return false
+            }
             // Keep the previous socket alive until the new profile has
             // actually connected, so a failed switch has a recovery path.
             previousClient?.disconnect()
@@ -26521,6 +26528,7 @@ final class AppState: ObservableObject {
             // attempt stale.
             setActiveProfile(previousProfile)
             connection = savedConnection
+            previousClient?.disconnect()
             client?.disconnect()
             client = nil
             isConnected = false
@@ -27405,22 +27413,23 @@ final class AppState: ObservableObject {
 
     func toggleSkill(name: String, enabled: Bool) async {
         let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return }
+        let dashboardTicketBridge = owner.bridge
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = enabled
         }
-        guard let dashboardTicketBridge else { return }
         // After every switch flipped before it; a failure puts back what
         // Hermes last confirmed, unless a newer flip is on its way.
-        let outcome = await capabilityToggleWrites.send("\(profile)|skill|\(name)", enabled: enabled, current: current) {
+        let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|skill|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/skills/toggle",
                 method: "PUT",
                 body: ["name": name, "enabled": enabled, "profile": profile]
             )
         }
-        guard let error = outcome.error, profile == activeProfile else { return }
+        guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = restore
         }
@@ -27429,22 +27438,23 @@ final class AppState: ObservableObject {
 
     func toggleToolset(name: String, enabled: Bool) async {
         let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return }
+        let dashboardTicketBridge = owner.bridge
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update
         if let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = enabled
         }
-        guard let dashboardTicketBridge else { return }
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
         // In the same order as skill switches: Hermes rewrites one config.
-        let outcome = await capabilityToggleWrites.send("\(profile)|toolset|\(name)", enabled: enabled, current: current) {
+        let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|toolset|\(name)", enabled: enabled, current: current) {
             _ = try await dashboardTicketBridge.requestJSON(
                 path: "/api/tools/toolsets/\(encodedName)",
                 method: "PUT",
                 body: ["enabled": enabled, "profile": profile]
             )
         }
-        guard let error = outcome.error, profile == activeProfile else { return }
+        guard ownsDashboardRuntime(owner), let error = outcome.error, profile == activeProfile else { return }
         if let restore = outcome.restore, let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = restore
         }
@@ -27747,10 +27757,11 @@ final class AppState: ObservableObject {
 
     private func loadProfileDisplayPreferences() async {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return }
+        guard let owner = currentDashboardRuntimeOwner() else { return }
+        let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            guard profile == activeProfile else { return }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
             profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
             displayPreferences = ProfileDisplayPreferences(
@@ -27759,7 +27770,10 @@ final class AppState: ObservableObject {
                 expandToolsByDefault: display["expand_tools"] as? Bool ?? false
             )
         } catch {
-            guard profile == activeProfile else { return }
+            // A read cut off by a dashboard switch fails here; it must not
+            // reset the next dashboard's preferences for a profile of the
+            // same name.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             displayPreferences = ProfileDisplayPreferences()
             profileTimeZoneSetting = nil
         }
@@ -27773,14 +27787,18 @@ final class AppState: ObservableObject {
 
     func loadProfileSettings(keys: [String]) async -> [String: ProfileSettingValue] {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return [:] }
+        guard let owner = currentDashboardRuntimeOwner() else { return [:] }
+        let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            guard profile == activeProfile else { return [:] }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             return Dictionary(uniqueKeysWithValues: keys.compactMap { key in
                 profileSettingValue(in: config, key: key).map { (key, $0) }
             })
         } catch {
+            // A read that fails after a dashboard or profile switch belongs to
+            // the settings page that was left; the one on screen has no error.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return [:]
         }
@@ -27814,13 +27832,14 @@ final class AppState: ObservableObject {
 
     func loadProfileModelDefaults() async -> ProfileModelDefaults? {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return nil }
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        let dashboardTicketBridge = owner.bridge
         do {
             async let optionsRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/options?explicit_only=true", profile: profile))
             async let infoRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/model/info", profile: profile))
             async let configRequest = dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             let (options, info, config) = try await (optionsRequest, infoRequest, configRequest)
-            guard profile == activeProfile else { return nil }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             let optionsObject = AnyCodable.from(options).objectValue ?? [:]
             let providers = (optionsObject["providers"]?.arrayValue ?? []).compactMap(ProviderInfo.init(from:))
             // Profile config is the persisted default. Hermes stores it under
@@ -27836,6 +27855,9 @@ final class AppState: ObservableObject {
             let reasoning = Self.profileReasoningEffort(in: config)
             return ProfileModelDefaults(providers: providers, model: model, provider: provider, reasoning: reasoning)
         } catch {
+            // Same fence as the success path: a failure from the dashboard or
+            // profile switched away from is not the on-screen page's error.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             errorMessage = AppLocalization.string("Could not load model defaults: \(UserFacingError.message(for: error))")
             return nil
         }
@@ -27843,15 +27865,23 @@ final class AppState: ObservableObject {
 
     func setProfileMainModel(provider: String, model: String, reasoning: String) async -> Bool {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let dashboardTicketBridge = owner.bridge
         do {
             let result = try await dashboardTicketBridge.requestJSON(
                 path: dashboardPath("/api/model/set", profile: profile),
                 method: "POST",
                 body: ["model": model, "provider": provider, "scope": "main", "profile": profile]
             )
+            // Another dashboard took over: stop. A profile switch on this
+            // dashboard doesn't stop the save: the model change already
+            // reached Hermes, and the captured profile's config must follow
+            // it; only what's shown on screen depends on the profile.
+            guard ownsDashboardRuntime(owner) else { return false }
             if result["confirm_required"] as? Bool == true {
-                errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                if profile == activeProfile {
+                    errorMessage = result["confirm_message"] as? String ?? AppLocalization.string("Hermes requires confirmation before using this model.")
+                }
                 return false
             }
             try await updateProfileConfig(profile: profile) { config in
@@ -27869,7 +27899,10 @@ final class AppState: ObservableObject {
                 config["reasoning"] = nil
             }
             return true
+        } catch is CancellationError {
+            return false
         } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save model defaults: \(UserFacingError.message(for: error))")
             return false
         }
@@ -27939,12 +27972,16 @@ final class AppState: ObservableObject {
     /// The profile's `fallback_providers`, or nil when the config couldn't load.
     func loadProfileFallbackModels() async -> [ProfileFallbackModel]? {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return nil }
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
-            guard profile == activeProfile else { return nil }
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             return ProfileFallbackModel.list(from: config["fallback_providers"])
         } catch {
+            // A failure from the dashboard or profile switched away from is
+            // not the on-screen page's error.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return nil
         }
@@ -27954,14 +27991,19 @@ final class AppState: ObservableObject {
     /// objects but replaces lists, so the whole list goes up each time.
     func setProfileFallbackModels(_ entries: [ProfileFallbackModel]) async -> Bool {
         let profile = activeProfile
-        guard dashboardTicketBridge != nil else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
         let list = entries.filter(\.isComplete).map(\.jsonObject)
         do {
             try await updateProfileConfig(profile: profile) { config in
                 config["fallback_providers"] = list
             }
             return true
+        } catch is CancellationError {
+            return false
         } catch {
+            // As for the sibling savers: a save that fails after a dashboard
+            // or profile switch has nothing to report to the page on screen.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save fallback models: \(UserFacingError.message(for: error))")
             return false
         }
@@ -27969,21 +28011,26 @@ final class AppState: ObservableObject {
 
     func setProfileSetting(_ key: String, value: ProfileSettingValue) async -> Bool {
         let profile = activeProfile
-        guard let dashboardTicketBridge else { return false }
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let dashboardTicketBridge = owner.bridge
         do {
             if profile == "default" && (key == "context.engine" || key == "memory.provider") {
                 let raw = value.textValue ?? ""
                 let body = key == "context.engine" ? ["context_engine": raw] : ["memory_provider": raw]
                 _ = try await dashboardTicketBridge.requestJSON(path: "/api/dashboard/plugin-providers", method: "PUT", body: body)
+                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
                 return true
             }
             try await updateProfileConfig(profile: profile) { [weak self] config in
                 self?.setProfileSettingValue(value, in: &config, key: key)
             }
+            // The write landed on its own profile; what's mirrored on screen
+            // must still be that dashboard's and profile's.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
             }
-            if key == "approvals.mode", let mode = value.textValue?.lowercased(), profile == activeProfile {
+            if key == "approvals.mode", let mode = value.textValue?.lowercased() {
                 // Mirror the saved profile mode immediately and re-resolve the
                 // effective indicator state through the same precedence
                 // applyRuntime uses, so the floor and the picker lock take
@@ -28007,6 +28054,7 @@ final class AppState: ObservableObject {
             // was sent, and the dashboard on screen has nothing to report.
             return false
         } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
             return false
         }
@@ -28058,10 +28106,11 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         let previous = displayPreferences
         applyDisplayPreference(key, enabled: enabled)
-        guard let dashboardTicketBridge else {
+        guard let owner = currentDashboardRuntimeOwner() else {
             displayPreferences = previous
             return false
         }
+        let dashboardTicketBridge = owner.bridge
 
         do {
             var config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
@@ -28079,7 +28128,11 @@ final class AppState: ObservableObject {
             )
             return true
         } catch {
-            if activeProfile == profile { displayPreferences = previous }
+            // After a dashboard switch the preferences on screen are the next
+            // dashboard's (even for a profile of the same name): nothing to
+            // restore over them and nothing to report.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+            displayPreferences = previous
             errorMessage = AppLocalization.string("Could not save display preference: \(UserFacingError.message(for: error))")
             return false
         }
@@ -30018,7 +30071,8 @@ final class AppState: ObservableObject {
     }
 
     func workspaceDownloadURL(for entry: WorkspaceEntry) async -> URL? {
-        guard let dashboardTicketBridge else { return nil }
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        let dashboardTicketBridge = owner.bridge
         let profile = activeProfile
         do {
             guard let path = DashboardPath.encodedQueryComponent(entry.path) else {
@@ -30028,7 +30082,7 @@ final class AppState: ObservableObject {
                 path: DashboardPath.withProfile("/api/fs/read-data-url?path=\(path)", profile: profile),
                 maxResponseBytes: DataURLLimits.maxJSONResponseBytes
             )
-            guard profile == activeProfile else { return nil }
+            guard profile == activeProfile, ownsDashboardRuntime(owner) else { return nil }
             guard let dataURL = result["dataUrl"] as? String,
                   let data = DataURLLimits.decodeBase64DataURL(dataURL) else {
                 throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The gateway returned an invalid file payload."))
@@ -30039,6 +30093,7 @@ final class AppState: ObservableObject {
             try data.write(to: url, options: .atomic)
             return url
         } catch {
+            guard profile == activeProfile, ownsDashboardRuntime(owner) else { return nil }
             workspaceFileError = UserFacingError.message(for: error)
             return nil
         }
@@ -30214,13 +30269,29 @@ final class AppState: ObservableObject {
 
     @discardableResult
     private func loadWorkspace(path: String) async -> Bool {
+        let owner = currentDashboardRuntimeOwner()
+        let profile = activeProfile
         workspaceLoadingPath = path
         workspaceError = nil
         defer { if workspaceLoadingPath == path { workspaceLoadingPath = nil } }
         do {
-            workspaceEntries[path] = try await workspaceDirectoryEntries(at: path)
+            let entries = try await workspaceDirectoryEntries(at: path)
+            // The bridge's invalidation makes a late answer throw; this
+            // re-check also covers a switch landing between that answer and
+            // this resumption, so no other dashboard's listing merges in.
+            if let owner {
+                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+            }
+            workspaceEntries[path] = entries
             return true
         } catch {
+            // A dashboard switch invalidates the bridge, so a listing still in
+            // flight fails rather than answering; that failure belongs to the
+            // dashboard switched away from and isn't reported over the next.
+            // (No bridge at all is still this dashboard's error.)
+            if let owner {
+                guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+            }
             workspaceError = UserFacingError.message(for: error)
             return false
         }

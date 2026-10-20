@@ -1240,6 +1240,27 @@ extension AppStateMultiDashboardTests {
         )
     }
 
+    /// A model save whose /api/model/set landed before a profile switch on
+    /// the same dashboard still writes that profile's config: Hermes already
+    /// uses the new model there, and the defaults must say so.
+    func testAModelSaveLandedBeforeAProfileSwitchStillWritesItsProfileConfig() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let save = Task { await appState.setProfileMainModel(provider: "p", model: "m", reasoning: "low") }
+        try await held.waitForRequests(1)       // /api/model/set
+        appState.setActiveProfileForTesting("work")
+        try await held.answer()                 // the model change landed
+        try await held.waitForRequests(2)       // the captured profile's config read
+        try await held.answer(["model": ["default": "old"]])
+        try await held.waitForRequests(3)       // ... and its write
+        try await held.answer()
+        let saved = await save.value
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(held.sent.last?.method, "PUT")
+        XCTAssertTrue(held.sent.allSatisfy { !$0.path.contains("work") }, "every request is the captured profile's")
+        XCTAssertNil(appState.errorMessage)
+    }
+
     func testAnArchiveAnsweredAfterASwitchChangesNothingOnTheNewDashboard() async throws {
         let (appState, held, vps) = heldSwitchFixture()
         let archive = Task { await appState.archiveSession(self.macSession("mac-1")) }
@@ -1315,6 +1336,92 @@ extension AppStateMultiDashboardTests {
         vpsRequests.releaseAll()
         let saved = await second.value
         XCTAssertFalse(saved)
+    }
+
+    /// The fallback saver is fenced like its sibling savers: a save that
+    /// fails on the Mac after a switch says nothing over the VPS.
+    func testAFallbackModelsSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let save = Task {
+            await appState.setProfileFallbackModels([ProfileFallbackModel(provider: "openrouter", model: "m")])
+        }
+        try await held.waitForRequests(1)   // the save's config read
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["error": "boom"], status: 500)   // the Mac fails it, after the switch
+        let saved = await save.value
+
+        XCTAssertFalse(saved)
+        XCTAssertNil(appState.errorMessage, "the Mac's failed save isn't reported over the VPS")
+    }
+
+    func testProfileSettingsFailingToLoadAfterASwitchSayNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let load = Task { await appState.loadProfileSettings(keys: ["display.skin"]) }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["error": "boom"], status: 500)
+        let settings = await load.value
+
+        XCTAssertTrue(settings.isEmpty)
+        XCTAssertNil(appState.errorMessage, "the Mac's failed read isn't reported over the VPS")
+    }
+
+    func testFallbackModelsFailingToLoadAfterASwitchSayNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let load = Task { await appState.loadProfileFallbackModels() }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["error": "boom"], status: 500)
+        let models = await load.value
+
+        XCTAssertNil(models)
+        XCTAssertNil(appState.errorMessage, "the Mac's failed read isn't reported over the VPS")
+    }
+
+    func testModelDefaultsFailingToLoadAfterASwitchSayNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let load = Task { await appState.loadProfileModelDefaults() }
+        try await held.waitForRequests(3)   // options, info and config, read together
+
+        await appState.switchDashboard(to: vps.id)
+        for _ in 0..<3 {
+            try await held.answer(["error": "boom"], status: 500)
+        }
+        let modelDefaults = await load.value
+
+        XCTAssertNil(modelDefaults)
+        XCTAssertNil(appState.errorMessage, "the Mac's failed read isn't reported over the VPS")
+    }
+
+    /// A switch invalidates the Mac's bridge, so its listing in flight
+    /// fails; that failure isn't reported over the VPS's workspace.
+    func testAWorkspaceListingFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let folder = WorkspaceEntry(name: "mac", path: "/w/mac", isDirectory: true)
+        let expand = Task { await appState.toggleWorkspaceFolder(folder) }
+        try await held.waitForRequests(1)
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["error": "boom"], status: 500)
+        await expand.value
+
+        XCTAssertNil(appState.workspaceError, "the Mac's failed listing isn't reported over the VPS")
+    }
+
+    func testADisplayPreferenceSaveFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
+        let (appState, held, vps) = heldSwitchFixture()
+        let save = Task { await appState.setDisplayPreference(.expandTools, enabled: true) }
+        try await held.waitForRequests(1)   // the save's config read
+
+        await appState.switchDashboard(to: vps.id)
+        try await held.answer(["error": "boom"], status: 500)
+        let saved = await save.value
+
+        XCTAssertFalse(saved)
+        XCTAssertNil(appState.errorMessage, "the Mac's failed save isn't reported over the VPS")
     }
 
     func testAVoiceCallTranscriptOpenOnTheOldDashboardIsClosedBySwitching() async {
