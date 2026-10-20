@@ -65,6 +65,17 @@ struct V2ProjectPage: View {
                     ForEach(detail.lanes) { lane in
                         laneRows(lane)
                     }
+                } else {
+                    ContentUnavailableView {
+                        Label("Conversations unavailable", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text("Couldn't load this project's conversations.")
+                    } actions: {
+                        Button("Try Again") { Task { await reload() } }
+                            .buttonStyle(.borderedProminent)
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             }
             .listStyle(.plain)
