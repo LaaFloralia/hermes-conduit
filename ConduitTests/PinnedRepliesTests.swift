@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Conduit
 
 /// Replies pinned to the top of their chat (#918).
@@ -152,6 +153,70 @@ final class PinnedRepliesTests: XCTestCase {
         appState.togglePinnedReply(answer)
         XCTAssertTrue(appState.activePinnedReplies.isEmpty)
         XCTAssertTrue(appState.openChatPinnedMessageIDs.isEmpty)
+    }
+
+    // MARK: - Long-press menu
+
+    @MainActor
+    private func editMenu(_ bridge: SelectableTextView.Coordinator) -> UIMenu? {
+        let textView = SelectableTextView.makeTextView()
+        textView.attributedText = NSAttributedString(string: "Twenty points")
+        let copy = UIAction(title: "Copy") { _ in }
+        let suggested: [UIMenuElement] = [
+            UIMenu(title: "", identifier: .standardEdit, options: .displayInline, children: [copy])
+        ]
+        let delegate: UITextViewDelegate = bridge
+        return delegate.textView?(textView, editMenuForTextIn: NSRange(location: 0, length: 6), suggestedActions: suggested) ?? nil
+    }
+
+    @MainActor
+    func testTheLongPressMenuPinsAndUnpinsTheReplyAfterQuote() throws {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "Twenty points", rowId: 7)
+        appState.messages = [answer]
+        let bridge = SelectableTextView(text: "Twenty points").makeCoordinator()
+        bridge.quoteAction = ChatQuoteAction(owner: appState) { _ in }
+        bridge.pinReplyAction = try XCTUnwrap(ChatPinReplyAction(message: answer, appState: appState))
+
+        let menu = try XCTUnwrap(editMenu(bridge))
+        XCTAssertEqual(menu.children.count, 3)
+        XCTAssertEqual((menu.children[0] as? UIMenu)?.identifier, .standardEdit)
+        XCTAssertEqual((menu.children[1] as? UIAction)?.title, AppLocalization.string("Quote"))
+        let pin = try XCTUnwrap(menu.children[2] as? UIAction)
+        XCTAssertEqual(pin.title, AppLocalization.string("Pin"))
+
+        bridge.pinReplyAction?()
+        XCTAssertEqual(appState.openChatPinnedMessageIDs, ["a"])
+        // The menu asks again when it next opens.
+        let unpin = try XCTUnwrap(editMenu(bridge)?.children.last as? UIAction)
+        XCTAssertEqual(unpin.title, AppLocalization.string("Unpin"))
+
+        bridge.pinReplyAction?()
+        XCTAssertTrue(appState.activePinnedReplies.isEmpty)
+    }
+
+    @MainActor
+    func testPinStaysInTheMenuWhileQuoteIsOff() throws {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "Twenty points", rowId: 7)
+        let bridge = SelectableTextView(text: "Twenty points").makeCoordinator()
+        bridge.quoteAction = ChatQuoteAction(owner: appState, isAvailable: { false }) { _ in }
+        bridge.pinReplyAction = try XCTUnwrap(ChatPinReplyAction(message: answer, appState: appState))
+
+        let menu = try XCTUnwrap(editMenu(bridge))
+        XCTAssertEqual(menu.children.map { ($0 as? UIAction)?.title }, [nil, AppLocalization.string("Pin")])
+    }
+
+    @MainActor
+    func testOnlyAReplyInAChatThatCanPinGetsTheMenuAction() {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "chat-1"
+        XCTAssertNil(ChatPinReplyAction(message: user("u", "Hello"), appState: appState))
+        XCTAssertNotNil(ChatPinReplyAction(message: reply("a", "Answer"), appState: appState))
+        appState.activeSessionId = nil
+        XCTAssertNil(ChatPinReplyAction(message: reply("a", "Answer"), appState: appState))
     }
 
     @MainActor

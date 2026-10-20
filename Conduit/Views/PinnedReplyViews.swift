@@ -2,38 +2,71 @@
 //  PinnedReplyViews.swift
 //  Conduit
 //
-//  Pinned replies (#918): the Pin button under a reply, the bar over the
+//  Pinned replies (#918): Pin in a reply's long-press menu, the bar over the
 //  open chat, and the overview of every pinned reply (AppState+PinnedReplies).
 //
 
 import SwiftUI
 
-/// Pin or unpin a reply, beside Quote and Read aloud.
-struct PinReplyButton: View {
-    @ObservedObject var appLanguage = AppLanguageStore.shared
-    let message: ChatMessage
-    @Environment(\.chatRowState) private var rowState
-    @Environment(\.chatRowActions) private var rowActions
-    /// Acted on, not observed: what a row shows comes from `rowState`.
-    private var appState: AppState { rowActions.required }
+/// Pins or unpins one reply from its long-press menu, beside Copy and
+/// Quote (#918); the reply's own action row stays as it was. Only a reply
+/// in a chat that can pin provides one. Equal by reply, so a re-created
+/// value does not re-run the text views' updates; whether the reply is
+/// pinned right now is asked when the menu opens, for the same reason.
+struct ChatPinReplyAction: Equatable {
+    let messageID: String
+    private let pinned: @MainActor () -> Bool
+    private let handler: @MainActor () -> Void
 
-    private var isPinned: Bool { rowState.pinnedMessageIDs.contains(message.id) }
+    init(
+        messageID: String,
+        isPinned: @escaping @MainActor () -> Bool,
+        toggle: @escaping @MainActor () -> Void
+    ) {
+        self.messageID = messageID
+        self.pinned = isPinned
+        self.handler = toggle
+    }
 
-    var body: some View {
-        Button {
-            Haptics.light()
-            appState.togglePinnedReply(message)
-        } label: {
-            Image(systemName: isPinned ? "pin.fill" : "pin")
-                .font(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(isPinned ? Color.conduitAccent : Color.secondary)
-        .accessibilityLabel(isPinned
-            ? AppLocalization.string("Unpin this response")
-            : AppLocalization.string("Pin this response to the top of the chat"))
-        .accessibilityIdentifier("chat.pinReply")
+    /// The open chat's action for `message`, or nil where replies can't be
+    /// pinned (a room, the saved copy, a chat with no id yet).
+    @MainActor
+    init?(message: ChatMessage, appState: AppState) {
+        guard message.role == .assistant, appState.canPinReplies else { return nil }
+        let id = message.id
+        self.init(
+            messageID: id,
+            isPinned: { [weak appState] in
+                appState?.openChatPinnedMessageIDs.contains(id) ?? false
+            },
+            toggle: { [weak appState] in
+                guard let appState else { return }
+                Haptics.light()
+                // The reply as it is now, not as it was when the row drew.
+                appState.togglePinnedReply(appState.messages.first { $0.id == id } ?? message)
+            }
+        )
+    }
+
+    @MainActor
+    var isPinned: Bool { pinned() }
+
+    @MainActor
+    func callAsFunction() { handler() }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.messageID == rhs.messageID
+    }
+}
+
+private struct ChatPinReplyActionKey: EnvironmentKey {
+    static let defaultValue: ChatPinReplyAction? = nil
+}
+
+extension EnvironmentValues {
+    var chatPinReplyAction: ChatPinReplyAction? {
+        get { self[ChatPinReplyActionKey.self] }
+        set { self[ChatPinReplyActionKey.self] = newValue }
     }
 }
 

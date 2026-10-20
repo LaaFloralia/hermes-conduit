@@ -2112,6 +2112,10 @@ struct AssistantBubble: View {
                 chatTextSize: chatTextSize
             )
             .equatable()
+            // Pin and Unpin sit in the reply's long-press menu (#918).
+            .environment(\.chatPinReplyAction, rowState.canPinReplies
+                ? ChatPinReplyAction(message: message, appState: appState)
+                : nil)
 
             if !message.reactions.isEmpty {
                 MessageReactionChips(
@@ -2128,11 +2132,6 @@ struct AssistantBubble: View {
                 }
 
                 AssistantMessageActions(message: message)
-
-                // Keeps this reply at the top of the chat (#918).
-                if message.role == .assistant, rowState.canPinReplies {
-                    PinReplyButton(message: message)
-                }
 
                 if message.role == .assistant {
                     ReadAloudButton(message: message, controller: readAloudController)
