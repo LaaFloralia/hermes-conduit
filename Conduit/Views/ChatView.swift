@@ -44,6 +44,9 @@ struct ChatView: View {
     @State private var rowDisclosure = ChatRowDisclosure()
     /// A run of steps opened or closed: its rows join or leave the stack.
     @State private var stepToggleRevision: UInt64 = 0
+    /// The transcript scroll view's identity; a new one builds it again
+    /// (ChatScrollEngineEvent.rebuildTranscript).
+    @State private var transcriptScrollID = 0
     /// Carries the engine's requests to AppState and ScrollViewProxy. Holds
     /// both weakly, so the engine never retains this view.
     @State private var scrollEventRouter = ChatScrollEventRouter()
@@ -475,6 +478,7 @@ struct ChatView: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .id(transcriptScrollID)
         .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
         .onTapGesture {
             UIApplication.shared.sendAction(
@@ -527,6 +531,7 @@ struct ChatView: View {
                 // Reinstalled on appear; late events go nowhere meanwhile.
                 scrollEngine.onEvent = nil
                 scrollEventRouter.proxy = nil
+                scrollEventRouter.rebuildTranscript = nil
                 backfillViewportTask?.cancel()
                 latestAnimationTask?.cancel()
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
@@ -704,6 +709,14 @@ struct ChatView: View {
             appState?.activeChatScrollSessionIdentity ?? .none
         }
         router.proxy = proxy
+        router.rebuildTranscript = { transcriptScrollID &+= 1 }
+        scrollEngine.liveTailShowing = { [weak appState = appState] in
+            guard let appState else { return false }
+            let live = appState.liveTurn
+            return appState.isBusy || appState.activeChatRepliesElsewhere
+                || !live.streamingText.isEmpty || live.reasoningSegment != nil
+                || appState.pendingComposerSendOnScreen != nil
+        }
         scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
             // Requests made while handling a UIKit callback can land in the
             // middle of a SwiftUI update; they run on the next turn.
@@ -725,6 +738,8 @@ private final class ChatScrollEventRouter {
     weak var appState: AppState?
     weak var engine: ChatScrollEngine?
     var proxy: ScrollViewProxy?
+    /// Builds the transcript's scroll view again (`transcriptScrollID`).
+    var rebuildTranscript: (@MainActor () -> Void)?
 
     func handle(_ event: ChatScrollEngineEvent) {
         guard let appState else { return }
@@ -751,6 +766,8 @@ private final class ChatScrollEventRouter {
                 for: ChatView.activeOrFallbackScrollSessionKey(in: appState)
             )
             scrollWithoutAnimation { $0.scrollTo(anchor, anchor: .top) }
+        case .rebuildTranscript:
+            rebuildTranscript?()
         }
     }
 
@@ -1278,6 +1295,29 @@ struct UserMessageContent: View, Equatable {
     }
 }
 
+/// A long press on a picture from older history shows what Hermes' vision
+/// saw in it (#887), which Hermes used to save in the message itself.
+private struct ImageDescriptionMenu: ViewModifier {
+    let description: String?
+
+    func body(content: Content) -> some View {
+        if let description {
+            content.contextMenu {
+                Section("Description") {
+                    Text(description)
+                }
+                Button {
+                    UIPasteboard.general.string = description
+                } label: {
+                    Label("Copy", systemImage: "doc.on.doc")
+                }
+            }
+        } else {
+            content
+        }
+    }
+}
+
 /// Offers its content no more width than the content would take
 /// unbounded: a view that fills whatever it's offered, as Markdown text
 /// does, takes only its natural width when that is narrower.
@@ -1402,9 +1442,13 @@ private struct UserImageAttachmentPreview: View {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
                 loadingPlaceholder
+                    .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                    .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else if localFileURL != nil && !localPreviewFailed {
                 // Local file decoding off-main on a cache miss.
                 loadingPlaceholder
+                    .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                    .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else {
                 Label(
                     (gatewayLoadFailed || localPreviewFailed) ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
@@ -1415,6 +1459,8 @@ private struct UserImageAttachmentPreview: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .background(Color.white.opacity(0.13), in: Capsule())
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             }
         }
         .task(id: "\(attachment.uri)|\(inlineImageIdentity)|\(gatewayResolver?.imageCacheKey(for: attachment) ?? "")") {
@@ -1554,7 +1600,9 @@ private struct UserImageAttachmentPreview: View {
                     openTask = nil
                     opening = false
                 }
-                .accessibilityLabel("Attached image: \(attachment.name)")
+                .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
+                .accessibilityLabel("Attached image: \(attachment.imageDescription ?? attachment.name)")
+                .accessibilityAddTraits(.isImage)
     }
 
     /// Opens the full-resolution original: the local file when the photo

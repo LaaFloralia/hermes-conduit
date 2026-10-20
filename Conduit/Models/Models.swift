@@ -92,6 +92,10 @@ struct Attachment: Codable, Identifiable, Equatable {
     /// without those copies (#652); this says where to fetch one when its
     /// file is gone from the server.
     var inlineImage: InlineImageRef? = nil
+    /// What Hermes' vision saw in a picture, from history saved before
+    /// Hermes kept the picture's reference instead (#887). Shown on a long
+    /// press and read by VoiceOver.
+    var imageDescription: String? = nil
 
     enum Kind: String, Codable {
         case image
