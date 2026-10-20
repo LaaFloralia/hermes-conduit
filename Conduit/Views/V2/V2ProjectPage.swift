@@ -73,6 +73,8 @@ struct V2ProjectPage: View {
                     } actions: {
                         Button("Try Again") { Task { await reload() } }
                             .buttonStyle(.borderedProminent)
+                            // Offline it couldn't run; reconnecting reloads.
+                            .disabled(!appState.isConnected)
                     }
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
