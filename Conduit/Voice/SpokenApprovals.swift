@@ -33,6 +33,11 @@ enum SpokenApprovals {
         /// The phone changes among them that cancel an alarm, where "cancel
         /// it" is a yes rather than a no.
         var cancellingAlarms: Set<String> = []
+        /// The phone changes already waiting when the user last sent words
+        /// (all of them, before they first do in this run). The reply now
+        /// answered wasn't where Hermes asked for one, so a yes may mean
+        /// something else, and these take a tap or a live call's question.
+        var staleChanges: Set<String> = []
         var presented: [PresentedConfirm] = []
         var chatApprovals: [String] = []
         var jobApprovals: [UUID] = []
@@ -45,8 +50,10 @@ enum SpokenApprovals {
     /// done"), and a confirmation the phrases Hermes gave for it; an
     /// approval of a command takes a plain yes, since "run it" or "delete
     /// it" could as well be a new request about the command. Nil when
-    /// they aren't a plain yes or no for it, or when nothing or more than one
-    /// thing waits: which one a bare yes meant would be a guess.
+    /// they aren't a plain yes or no for it, when nothing or more than one
+    /// thing waits (which one a bare yes meant would be a guess), or when
+    /// the one is a phone change Hermes asked for before the user's last
+    /// words.
     static func answer(_ words: String, waiting: Waiting) -> (target: SpokenApprovalTarget, approve: Bool)? {
         guard waiting.count == 1 else { return nil }
         // "No", "no thanks", "never mind": a no with nothing more. "No, make
@@ -60,6 +67,9 @@ enum SpokenApprovals {
         // Cancelling an alarm: "cancel it" is the yes there.
         let cancelsAlarm = waiting.phoneChanges.first.map(waiting.cancellingAlarms.contains) ?? false
         if let id = waiting.phoneChanges.first {
+            // Asked for before the reply now answered: which question the
+            // words answer would be a guess, and a yes can delete.
+            guard !waiting.staleChanges.contains(id) else { return nil }
             target = .phoneChange(id: id)
             // A yes, or a short "change it" / "delete it" naming the change.
             approves = PhoneVoiceTools.confirmsChange(words, cancelsAlarm: cancelsAlarm)

@@ -2363,6 +2363,10 @@ final class AppState: ObservableObject {
     private var geminiLiveMemoryContext: GeminiLiveMemoryContext?
     /// The transcript `submitVoiceTranscript` is submitting, while it is.
     private var spokenSubmissionText: String?
+    /// The phone's change cards waiting when the user last sent words; nil
+    /// until they first do in this run. Classic voice's yes answers only a
+    /// card asked for since (`noteUserWordsSent`).
+    var phoneChangesWaitingAtLastWords: Set<String>?
     /// Where a caller of `submitComposer` says `text` came from (a Shortcut,
     /// a live call's request), for the plugin's report (#888). Keyed by the
     /// text like `spokenSubmissionText`, so a typed send interleaving on
@@ -21556,6 +21560,7 @@ final class AppState: ObservableObject {
         onBusy: (() -> Void)? = nil,
         busyMode: BusyInputMode? = nil
     ) async -> Bool {
+        noteUserWordsSent()
         var submissionContext = context ?? composerSubmissionContext()
         // The canvas a closed chat leaves (archive, delete) has no chat
         // behind it: the first message starts one, as New Chat would, and

@@ -15,6 +15,7 @@ extension AppState {
         var waiting = SpokenApprovals.Waiting()
         waiting.phoneChanges = phoneSync.prompts.map(\.id)
         waiting.cancellingAlarms = Set(phoneSync.prompts.filter { $0.change.kind == .cancelAlarm }.map(\.id))
+        waiting.staleChanges = phoneChangesWaitingAtLastWords ?? Set(waiting.phoneChanges)
         waiting.presented = presentedScreens.prompts.filter { !$0.isExpired() }
         if let sessionId = activeSessionId, !sessionId.isEmpty {
             let open = chatOwnSessionIDs(for: sessionId)
@@ -40,7 +41,9 @@ extension AppState {
     /// Hermes hears how it went before the words reach it.
     @discardableResult
     func answerWaitingBySpeech(_ words: String) async -> Bool {
-        guard let answer = SpokenApprovals.answer(words, waiting: spokenApprovalsWaiting()) else { return false }
+        let waiting = spokenApprovalsWaiting()
+        noteUserWordsSent()
+        guard let answer = SpokenApprovals.answer(words, waiting: waiting) else { return false }
         let approve = answer.approve
         switch answer.target {
         case .phoneChange(let id):
@@ -68,6 +71,12 @@ extension AppState {
             }
         }
         return true
+    }
+
+    /// The user sent words (typed or spoken): a phone change waiting now
+    /// wasn't asked for in the reply their next words answer.
+    func noteUserWordsSent() {
+        phoneChangesWaitingAtLastWords = Set(phoneSync.prompts.map(\.id))
     }
 
     /// A job's approval answered out loud in a call: through the open

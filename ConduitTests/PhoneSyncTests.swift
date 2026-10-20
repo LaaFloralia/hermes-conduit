@@ -1102,6 +1102,20 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(SpokenApprovals.answer("no", waiting: presented)?.approve, false)
         XCTAssertEqual(SpokenApprovals.answer("don't send it", waiting: presented)?.approve, false, "A no-led phrase never confirms")
 
+        // A change already waiting when the user last spoke or typed wasn't
+        // asked for in the reply this yes answers: it answers nothing, so a
+        // yes to something else can't delete.
+        let stale = SpokenApprovals.Waiting(phoneChanges: ["ch_old"], staleChanges: ["ch_old"])
+        XCTAssertNil(SpokenApprovals.answer("Yes", waiting: stale))
+        XCTAssertNil(SpokenApprovals.answer("Yes, delete it.", waiting: stale))
+        XCTAssertNil(SpokenApprovals.answer("No", waiting: stale))
+        // One asked for since still counts: a yes with a stale one waiting
+        // too is ambiguous.
+        let both = SpokenApprovals.Waiting(phoneChanges: ["ch_new", "ch_old"], staleChanges: ["ch_old"])
+        XCTAssertNil(SpokenApprovals.answer("Yes", waiting: both))
+        let fresh = SpokenApprovals.Waiting(phoneChanges: ["ch_new"], staleChanges: ["ch_old"])
+        XCTAssertEqual(SpokenApprovals.answer("Yes", waiting: fresh)?.target, .phoneChange(id: "ch_new"))
+
         // Nothing waiting, or more than one: a yes answers nothing.
         XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting()))
         XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(phoneChanges: ["ch_1"], chatApprovals: ["m_1"])))
