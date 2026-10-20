@@ -1156,11 +1156,12 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Unset or unknown is interrupt, as Hermes reads it.
     static func fromGatewayValue(_ value: String?) -> BusyInputMode {
-        switch value?.lowercased() {
-        case BusyInputMode.interrupt.rawValue: return .interrupt
+        switch value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case BusyInputMode.steer.rawValue: return .steer
         case BusyInputMode.queue.rawValue: return .queue
-        default: return .steer
+        default: return .interrupt
         }
     }
 }

@@ -28097,19 +28097,33 @@ final class AppState: ObservableObject {
         DashboardPath.withProfile(path, profile: profile)
     }
 
+    /// Hermes' value wins and is kept on the phone; a read that fails keeps
+    /// the last value this profile had, else Hermes' own default
+    /// (interrupt), so Settings never shows a mode Hermes doesn't use.
     private func loadBusyInputMode(using client: HermesClient) async {
+        let key = busyInputModeCacheKey
+        // Shown while Hermes answers, and kept if it can't.
+        busyInputMode = defaults.string(forKey: key).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
         do {
-            busyInputMode = try await client.busyInputMode()
-        } catch {
-            // `steer` is deliberately the safe public default when an older
-            // gateway cannot expose this optional preference.
-            busyInputMode = .steer
-        }
+            let mode = try await client.busyInputMode()
+            busyInputMode = mode
+            defaults.set(mode.rawValue, forKey: key)
+        } catch {}
     }
+
+    /// The busy mode last read from or saved to Hermes, per server and profile.
+    private var busyInputModeCacheKey: String {
+        let server = defaults.string(forKey: Self.chatResumeServerIdentityKey) ?? ""
+        return "\(Self.busyInputModeCachePrefix)\(server)|\(activeProfile)"
+    }
+
+    static let busyInputModeCachePrefix = "conduit.busyInputMode.v1."
 
     func setBusyInputMode(_ mode: BusyInputMode) async -> Bool {
         guard let client else { return false }
         let previous = busyInputMode
+        // The profile that takes the write, captured before it.
+        let key = busyInputModeCacheKey
         busyInputMode = mode
         do {
             if let setBusyInputMode = chatResumeLifecycleOperations.setBusyInputMode {
@@ -28117,6 +28131,7 @@ final class AppState: ObservableObject {
             } else {
                 try await client.setBusyInputMode(mode)
             }
+            defaults.set(mode.rawValue, forKey: key)
             return true
         } catch {
             busyInputMode = previous
