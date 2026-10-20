@@ -875,6 +875,72 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(EventKitPhoneSource.allDayEnd(start: try day(2026, 3, 29), previousLength: 3600, calendar: calendar), try day(2026, 3, 30))
     }
 
+    /// A due-date update moves only the due alarm: the user's own alarms
+    /// on the reminder (a place, another time, an offset) stay (#1001).
+    func testPhoneReminderDueUpdateKeepsTheUsersOwnAlarms() throws {
+        let oldDue = Date(timeIntervalSince1970: 1_760_400_000)
+        let newDue = oldDue.addingTimeInterval(2 * 3600)
+        let dueAlarm = EKAlarm(absoluteDate: oldDue)
+        let earlier = EKAlarm(absoluteDate: oldDue.addingTimeInterval(-86_400))
+        let offset = EKAlarm(relativeOffset: -900)
+        let place = EKAlarm()
+        place.structuredLocation = EKStructuredLocation(title: "Home")
+        place.proximity = .enter
+
+        let moved = EventKitPhoneSource.dueAlarms([dueAlarm, earlier, offset, place], oldDue: oldDue, newDue: newDue)
+        XCTAssertFalse(moved.contains { $0 === dueAlarm })
+        XCTAssertTrue(moved.contains { $0 === earlier })
+        XCTAssertTrue(moved.contains { $0 === offset })
+        XCTAssertTrue(moved.contains { $0 === place })
+        XCTAssertEqual(moved.compactMap(\.absoluteDate).filter { $0 == newDue }.count, 1)
+        XCTAssertEqual(moved.count, 4)
+
+        // Made date-only: the due alarm goes, nothing else does.
+        let dateOnly = EventKitPhoneSource.dueAlarms([dueAlarm, earlier, place], oldDue: oldDue, newDue: nil)
+        XCTAssertEqual(dateOnly.count, 2)
+        XCTAssertTrue(dateOnly.contains { $0 === earlier } && dateOnly.contains { $0 === place })
+
+        // Sent again unchanged: still one due alarm.
+        let resent = EventKitPhoneSource.dueAlarms([dueAlarm, place], oldDue: oldDue, newDue: oldDue)
+        XCTAssertEqual(resent.compactMap(\.absoluteDate), [oldDue])
+        XCTAssertEqual(resent.count, 2)
+
+        // An offset counts from the start date, which may not be the due
+        // date: it stays, and the new due time still gets its alarm.
+        let atStart = EKAlarm(relativeOffset: 0)
+        let following = EventKitPhoneSource.dueAlarms([atStart], oldDue: oldDue, newDue: newDue)
+        XCTAssertEqual(following.count, 2)
+        XCTAssertIdentical(following.first, atStart)
+        XCTAssertEqual(following.last?.absoluteDate, newDue)
+
+        // Only one alarm is the due alarm: the user's second one half a
+        // minute later stays.
+        let halfMinute = EKAlarm(absoluteDate: oldDue.addingTimeInterval(30))
+        let pair = EventKitPhoneSource.dueAlarms([halfMinute, dueAlarm], oldDue: oldDue, newDue: newDue)
+        XCTAssertFalse(pair.contains { $0 === dueAlarm })
+        XCTAssertTrue(pair.contains { $0 === halfMinute })
+        XCTAssertEqual(pair.count, 2)
+
+        // A reminder with no due time before: the user's alarm at that
+        // moment is theirs, and the new due time gets its own alarm.
+        let mine = EKAlarm(absoluteDate: oldDue)
+        let fresh = EventKitPhoneSource.dueAlarms([mine], oldDue: nil, newDue: newDue)
+        XCTAssertTrue(fresh.contains { $0 === mine })
+        XCTAssertEqual(fresh.count, 2)
+    }
+
+    func testPhoneReminderTimedDueReadsOnlyATime() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/London"))
+        XCTAssertNil(EventKitPhoneSource.timedDue(nil, calendar: calendar))
+        XCTAssertNil(EventKitPhoneSource.timedDue(DateComponents(year: 2026, month: 10, day: 20), calendar: calendar))
+        let tokyo = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let parts = DateComponents(timeZone: tokyo, year: 2026, month: 10, day: 20, hour: 9, minute: 30)
+        var expected = Calendar(identifier: .gregorian)
+        expected.timeZone = tokyo
+        XCTAssertEqual(EventKitPhoneSource.timedDue(parts, calendar: calendar), expected.date(from: parts))
+    }
+
     func testPhoneVoiceCallsSetAlarmsAndTimers() async throws {
         let alarms = FakePhoneAlarmSource()
         let engine = makePhoneEngine(source: FakePhoneCalendarSource(), alarms: alarms)
