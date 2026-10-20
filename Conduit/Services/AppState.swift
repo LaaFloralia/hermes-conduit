@@ -869,6 +869,8 @@ final class AppState: ObservableObject {
     @Published private(set) var projectsLoadFailed = false
     @Published private(set) var archivedSessions: [SessionSummary] = []
     @Published private(set) var pinnedSessionIDs: [String] = []
+    /// Starred chats, per profile, on this phone only (#757).
+    @Published private(set) var sessionStars = SessionStars()
     /// A pin change that stayed on this phone because Hermes didn't take
     /// it, shown for a moment with Hermes' reason (#555).
     @Published private(set) var pinSyncNotice: PinSyncNotice?
@@ -5589,6 +5591,7 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
+        sessionStars = SessionStars(defaults: defaults)
         sessionPinSync = SessionPinSync(
             adopted: Set(defaults.stringArray(forKey: hostPinsAdoptedKey) ?? []),
             phoneOnly: Set(defaults.stringArray(forKey: phoneOnlyPinsKey) ?? [])
@@ -7951,6 +7954,26 @@ final class AppState: ObservableObject {
         publishWidgetSnapshot()
     }
 
+    // MARK: - Stars (#757)
+
+    func isSessionStarred(_ session: SessionSummary) -> Bool {
+        sessionStars.isStarred(session, profile: activeProfile)
+    }
+
+    func toggleSessionStarred(_ session: SessionSummary) {
+        let profile = activeProfile
+        guard sessionBelongsToProfile(session, profile: profile) else { return }
+        setSessionStarred(session, starred: !isSessionStarred(session), profile: profile)
+    }
+
+    private func setSessionStarred(_ session: SessionSummary, starred: Bool, profile: String) {
+        var stars = sessionStars
+        stars.set(session, starred: starred, profile: profile)
+        guard stars != sessionStars else { return }
+        sessionStars = stars
+        stars.save(to: defaults)
+    }
+
     // MARK: - Read state (#454)
 
     private let chatReadLedgerKey = "conduit.chatReadLedger.v1"
@@ -9357,6 +9380,8 @@ final class AppState: ObservableObject {
         pinnedSessionIDsByProfile = [:]
         pinnedSessionIDs = []
         resetHostPins()
+        sessionStars = SessionStars()
+        defaults.removeObject(forKey: SessionStars.storageKey)
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
@@ -11724,6 +11749,8 @@ final class AppState: ObservableObject {
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         resetHostPins()
+        sessionStars = SessionStars()
+        defaults.removeObject(forKey: SessionStars.storageKey)
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
         if let signingOutDashboardID { forgetActiveProfile(for: signingOutDashboardID) }
@@ -18668,6 +18695,7 @@ final class AppState: ObservableObject {
             removeSessionFromLiveCatalog(session)
             archivedSessions.removeAll { sessionMatches($0, session) }
             removePinnedState(for: session)
+            setSessionStarred(session, starred: false, profile: profile)
             updateChatReadState { $0.forget(session, profile: profile) }
             clearActiveSessionIfNeeded(session, replacement: .delete)
             publishWidgetSnapshot()
@@ -19397,6 +19425,8 @@ final class AppState: ObservableObject {
             return AppLocalization.string("Could not delete \(bot.displayLabel): \(UserFacingError.message(for: error))")
         }
         guard dashboardTicketBridge === bridge else { return nil }
+        sessionStars.forget(profile: bot.name)
+        sessionStars.save(to: defaults)
         if let sessionId = activeSessionId,
            let owner = botChatSessionProfiles[sessionId],
            owner.caseInsensitiveCompare(bot.name) == .orderedSame {
@@ -26646,6 +26676,8 @@ final class AppState: ObservableObject {
         pinnedSessionIDsByProfile.removeValue(forKey: activeProfile)
         sessionPinSync.forget(profile: activeProfile)
         persistHostPinSyncState()
+        sessionStars.forget(profile: activeProfile)
+        sessionStars.save(to: defaults)
         voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
         persistActiveSessionTitles()
         persistPinnedSessions()

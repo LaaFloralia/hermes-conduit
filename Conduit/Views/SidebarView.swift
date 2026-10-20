@@ -1336,6 +1336,16 @@ struct SessionActionMenuItems: View {
             Label(appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"), systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin")
         }
 
+        // Only V2's Chats list has the Starred filter that lists them (#757).
+        if V2ShellPreference.isOn {
+            Button {
+                Haptics.light()
+                appState.toggleSessionStarred(session)
+            } label: {
+                Label(appState.isSessionStarred(session) ? AppLocalization.string("Unstar") : AppLocalization.string("Star"), systemImage: appState.isSessionStarred(session) ? "star.slash" : "star")
+            }
+        }
+
         ReadStateToggleButton(session: session, nest: nest)
 
         // A cron run keeps the job's workspace (#485).

@@ -255,6 +255,7 @@ struct V2ProjectPage: View {
                     status: appState.v2RowStatus(for: session),
                     isUnread: appState.isSessionUnread(session),
                     isPinned: appState.isSessionPinned(session),
+                    isStarred: appState.isSessionStarred(session),
                     isSelected: session.id == appState.activeSessionId,
                     leadingGlyph: true
                 )
