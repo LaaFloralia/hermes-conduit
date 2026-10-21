@@ -53,6 +53,133 @@ final class MessageNormalizerTests: XCTestCase {
         )
     }
 
+    func testResumeKeepsOnlyTheStepStillBeingWrittenWhenEarlierStepsAreSaved() {
+        // Hermes' projection runs every step of the turn together; each
+        // finished step is already a saved row next to its tool card.
+        let history = [
+            ChatMessage(id: "u", role: .user, content: "Check the logs and the config.", timestamp: "t"),
+            ChatMessage(id: "a1", role: .assistant, content: "Reading the logs first.", timestamp: "t"),
+            ChatMessage(id: "t1", role: .tool, content: "", timestamp: "t"),
+            ChatMessage(id: "a2", role: .assistant, content: "The logs are clean. Now the config.", timestamp: "t"),
+            ChatMessage(id: "t2", role: .tool, content: "", timestamp: "t")
+        ]
+
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "Reading the logs first.The logs are clean. Now the config.The config sets",
+                after: history
+            ),
+            "The config sets"
+        )
+    }
+
+    func testResumeCountsStepsBeforeASteerAsTheRunningTurns() {
+        // A steer lands mid-turn; the projection still holds the steps
+        // written before it.
+        let history = [
+            ChatMessage(id: "u", role: .user, content: "Check the logs and the config.", timestamp: "t"),
+            ChatMessage(id: "a1", role: .assistant, content: "Reading the logs first.", timestamp: "t"),
+            ChatMessage(id: "s", role: .user, content: "Skip the config.", timestamp: "t", displayKind: ChatMessage.steerDisplayKind),
+            ChatMessage(id: "a2", role: .assistant, content: "Ok.", timestamp: "t")
+        ]
+
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "Reading the logs first.Ok.Summing up the logs",
+                after: history
+            ),
+            "Summing up the logs"
+        )
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "Reading the logs first.Then",
+                after: Array(history.prefix(3))
+            ),
+            "Then"
+        )
+    }
+
+    func testResumeMatchesSavedStepsWhateverTheirWhitespace() {
+        let history = [
+            ChatMessage(id: "u", role: .user, content: "Summarise it.", timestamp: "t"),
+            ChatMessage(id: "a1", role: .assistant, content: "Step one:\n- read\n- note", timestamp: "t"),
+            ChatMessage(id: "a2", role: .assistant, content: "Step two done.", timestamp: "t")
+        ]
+
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "Step one:\n\n- read\n- note\n\nStep two  done.\n\nAnd the summary",
+                after: history
+            ),
+            "And the summary"
+        )
+    }
+
+    func testResumePassesOverAStepTheProjectionDoesNotShow() {
+        let history = [
+            ChatMessage(id: "u", role: .user, content: "Go.", timestamp: "t"),
+            ChatMessage(id: "a1", role: .assistant, content: "Saved differently.", timestamp: "t"),
+            ChatMessage(id: "a2", role: .assistant, content: "The second step checked every config file.", timestamp: "t")
+        ]
+
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "First step as streamed. The second step checked every config file. Third",
+                after: history
+            ),
+            "Third"
+        )
+    }
+
+    func testResumeNeverCutsTheStepBeingWrittenAtAShortStepsWords() {
+        // A short saved step the projection doesn't show at its place is
+        // not looked for inside the step still being written.
+        let history = [
+            ChatMessage(id: "u", role: .user, content: "Go.", timestamp: "t"),
+            ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "t")
+        ]
+
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "Working on it. Done. Now the rest",
+                after: history
+            ),
+            "Working on it. Done. Now the rest"
+        )
+    }
+
+    func testResumeNeverCutsWithAnEarlierTurnsReplyAtTheStart() {
+        let history = [
+            ChatMessage(id: "u1", role: .user, content: "Look into it.", timestamp: "t"),
+            ChatMessage(id: "a1", role: .assistant, content: "Checking the logs.", timestamp: "t"),
+            ChatMessage(id: "u2", role: .user, content: "Again please.", timestamp: "t")
+        ]
+
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "Checking the logs. They look different now.",
+                after: history
+            ),
+            "Checking the logs. They look different now."
+        )
+    }
+
+    func testResumeNeverCutsTheRunningTurnWithAnEarlierTurnsReply() {
+        let history = [
+            ChatMessage(id: "u1", role: .user, content: "Look into it.", timestamp: "t"),
+            ChatMessage(id: "a1", role: .assistant, content: "Checking the logs.", timestamp: "t"),
+            ChatMessage(id: "u2", role: .user, content: "Again please.", timestamp: "t")
+        ]
+
+        XCTAssertEqual(
+            AppState.unpersistedInflightAssistantText(
+                "Once more from the top. Checking the logs.",
+                after: history
+            ),
+            "Once more from the top. Checking the logs."
+        )
+    }
+
     func testSessionNormalizationPreservesExplicitProfileOwnership() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([

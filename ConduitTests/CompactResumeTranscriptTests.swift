@@ -275,6 +275,86 @@ final class CompactResumeTranscriptTests: XCTestCase {
         )
     }
 
+    func testCompactResumeOfATurnSeveralStepsInKeepsOnlyTheStepBeingWritten() async throws {
+        let active = session("stored-a", alternateIDs: ["runtime-a"])
+        let firstStep = "Reading the logs first."
+        let secondStep = "The logs are clean. Now the config."
+        let harness = try makeHarness(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "runtime-a",
+                    messages: [],  // compact projection: transcript omitted
+                    snapshot: SessionRuntimeSnapshot(
+                        object: ["running": .bool(true)],
+                        // Every delta of the turn, steps run together.
+                        inflight: .object(["assistant": .string(firstStep + secondStep + "The config sets")])
+                    )
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                .payload([
+                    "session_id": "stored-a",
+                    "messages": [
+                        [
+                            "id": 1,
+                            "role": "user",
+                            "content": "Check the logs and the config.",
+                            "timestamp": "2026-09-01T10:00:00Z"
+                        ],
+                        [
+                            "id": 2,
+                            "role": "assistant",
+                            "content": firstStep,
+                            "timestamp": "2026-09-01T10:00:04Z",
+                            "tool_calls": [[
+                                "id": "call_1",
+                                "type": "function",
+                                "function": ["name": "read_file", "arguments": "{\"path\": \"/var/log/app.log\"}"]
+                            ]]
+                        ],
+                        [
+                            "id": 3,
+                            "role": "tool",
+                            "tool_call_id": "call_1",
+                            "content": "no errors",
+                            "timestamp": "2026-09-01T10:00:05Z"
+                        ],
+                        [
+                            "id": 4,
+                            "role": "assistant",
+                            "content": secondStep,
+                            "timestamp": "2026-09-01T10:00:08Z",
+                            "tool_calls": [[
+                                "id": "call_2",
+                                "type": "function",
+                                "function": ["name": "read_file", "arguments": "{\"path\": \"/etc/app.conf\"}"]
+                            ]]
+                        ],
+                        [
+                            "id": 5,
+                            "role": "tool",
+                            "tool_call_id": "call_2",
+                            "content": "mode = fast",
+                            "timestamp": "2026-09-01T10:00:09Z"
+                        ]
+                    ]
+                ])
+            }
+        )
+        harness.appState.sessions = [active]
+
+        let opened = await harness.appState.openSession("stored-a")
+
+        XCTAssertTrue(opened)
+        // The finished steps stay with their tool cards; the live bubble
+        // holds only the step still being written.
+        XCTAssertEqual(harness.appState.messages.filter { $0.role == .tool }.count, 2)
+        XCTAssertTrue(harness.appState.messages.contains { $0.content == secondStep })
+        harness.appState.showSidebar = true
+        harness.appState.showSidebar = false
+        XCTAssertEqual(harness.appState.streamingText, "The config sets")
+    }
+
     // MARK: - Large-session regression
 
     func testLargeSessionResumeShipsNoTranscriptOverWebSocket() async throws {

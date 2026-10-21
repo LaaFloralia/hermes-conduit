@@ -111,6 +111,15 @@ struct StreamingText: View {
         }
         .onAppear {
             updateTarget(text)
+            // Text that was already there when the bubble came on screen
+            // (a running chat opened again, the bubble scrolled back into
+            // view) has been written: it shows at once instead of being
+            // typed out again, and only its newest characters fade in.
+            if !isLargeStream, visibleCharacters.isEmpty, !reduceMotion {
+                visibleCharacters = Array(
+                    targetCharacters.prefix(Self.charactersShownOnAppear(of: targetCharacters.count))
+                )
+            }
         }
         .onChange(of: text) { _, newText in
             updateTarget(newText)
@@ -187,6 +196,14 @@ struct StreamingText: View {
             revealDates.append(baseDate.addingTimeInterval(Double(offset) * stagger))
         }
         isAnimating = true
+    }
+
+    /// Characters left to fade in when the bubble appears with `count`
+    /// already written; a reply that is only starting reveals all of them.
+    static let appearingTailCharacters = 48
+
+    static func charactersShownOnAppear(of count: Int) -> Int {
+        max(0, count - appearingTailCharacters)
     }
 
     private func revealBatchSize(for remaining: Int) -> Int {
