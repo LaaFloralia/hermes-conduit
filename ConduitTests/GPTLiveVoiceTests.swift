@@ -325,6 +325,13 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(GPTLiveVoice.all.first { $0.name == "cove" }?.label.hasPrefix("Cove · "), true)
     }
 
+    func testGPTLiveAPIVoicesIncludeTheOtherLanguageVoices() {
+        XCTAssertEqual(Set(GPTLiveVoice.apiNames).count, GPTLiveVoice.apiNames.count)
+        for name in ["marin", "cedar", "nuri", "juni", "flitz", "brise", "sillage", "nira", "harema", "shida", "noeul"] {
+            XCTAssertTrue(GPTLiveVoice.apiNames.contains(name), "\(name) is pickable on the API key")
+        }
+    }
+
     func testGPTLiveKeepsTheCallThroughABriefNetworkDropButNotALongOne() async throws {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient(), reconnectGrace: .milliseconds(80))
         session.start()

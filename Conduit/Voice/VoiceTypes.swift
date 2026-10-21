@@ -492,6 +492,7 @@ struct GPTLiveVoice: Equatable, Identifiable {
     static let apiNames = [
         "marin", "cedar", "quartz", "ripple", "vesper", "willow", "stone",
         "gleam", "meridian", "bossa", "tempo", "beacon", "delta", "cinder",
+        "nuri", "juni", "flitz", "brise", "sillage", "nira", "harema", "shida", "noeul",
     ]
 
     /// The name as shown in the picker ("Cove · Composed").
