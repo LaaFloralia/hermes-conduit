@@ -99,8 +99,11 @@ final class FakeVoiceJobBackend {
     /// Hermes' answers to the next ones (taken in turn; none left means
     /// it took them).
     private(set) var redirects: [(String, String)] = []
+    private(set) var steers: [(String, String)] = []
     var redirectResults: [VoiceRedirectResult] = []
     var redirectError: Error?
+    var steerResults: [VoiceRedirectResult] = []
+    var steerError: Error?
     /// Runs inside redirect, so a test can deliver events while it is sent.
     var onRedirect: (@MainActor () -> Void)?
     /// When true, the next redirect parks until `releaseRedirect()`.
@@ -174,6 +177,11 @@ final class FakeVoiceJobBackend {
                 }
                 if let error = self.redirectError { throw error }
                 return self.redirectResults.isEmpty ? .redirected : self.redirectResults.removeFirst()
+            },
+            steer: { [self] id, text in
+                self.steers.append((id, text))
+                if let error = self.steerError { throw error }
+                return self.steerResults.isEmpty ? .redirected : self.steerResults.removeFirst()
             },
             latestThreadReply: { [self] chat in
                 self.replyReads.append(chat)
@@ -1848,6 +1856,56 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
         XCTAssertEqual(supervisor.jobs.first?.result, "Booked for Alex.")
         XCTAssertNil(supervisor.jobs.first?.followUp)
+    }
+
+    func testAnAddFollowUpSteersWithoutRedirecting() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+
+        let outcome = await supervisor.followUp(jobID: job.id, words: "also ask for a quiet table", kind: "add")
+
+        XCTAssertEqual(outcome, .interrupted(title: job.title))
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.steers.map(\.1), ["also ask for a quiet table"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+    }
+
+    func testChangeMissingAndUnknownFollowUpKindsKeepRedirecting() async throws {
+        for kind in ["change", nil, "other"] {
+            let (supervisor, fake) = makeSupervisor()
+            _ = await supervisor.startJob(instructions: "book a table for Sam")
+            let job = try XCTUnwrap(supervisor.jobs.first)
+
+            _ = await supervisor.followUp(jobID: job.id, words: "make it Alex", kind: kind)
+
+            XCTAssertTrue(fake.steers.isEmpty, "\(String(describing: kind))")
+            XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"], "\(String(describing: kind))")
+            XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex"], "\(String(describing: kind))")
+        }
+    }
+
+    func testExplicitSteerRefusalFallsBackToRedirectButTransportFailureDoesNot() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "book a table for Sam")
+        let job = try XCTUnwrap(supervisor.jobs.first)
+        fake.steerError = HermesError.steerRejected
+
+        _ = await supervisor.followUp(jobID: job.id, words: "also make it quiet", kind: "add")
+        XCTAssertEqual(fake.steers.count, 1)
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["also make it quiet"])
+
+        let (timedOutSupervisor, timedOutFake) = makeSupervisor()
+        _ = await timedOutSupervisor.startJob(instructions: "book a table for Sam")
+        let timedOutJob = try XCTUnwrap(timedOutSupervisor.jobs.first)
+        timedOutFake.steerError = URLError(.timedOut)
+
+        guard case .failed = await timedOutSupervisor.followUp(jobID: timedOutJob.id, words: "also make it quiet", kind: "add") else {
+            return XCTFail("a transport failure must be reported")
+        }
+        XCTAssertEqual(timedOutFake.steers.count, 1)
+        XCTAssertTrue(timedOutFake.redirects.isEmpty, "an ambiguous steer must not dispatch again")
     }
 
     func testACompletionBeforeAQueuedFollowUpRunsIsNotTheJobsEnd() async throws {

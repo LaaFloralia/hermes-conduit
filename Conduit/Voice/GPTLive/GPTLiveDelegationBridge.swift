@@ -251,7 +251,7 @@ final class GPTLiveDelegationBridge {
         if let marker = Self.jobMarker(in: instructions) {
             if let job = supervisor.backgroundJob(numbered: marker.number) {
                 spokenWords?.settleWords(.delegation(id))
-                let outcome = await supervisor.followUp(jobID: job.id, words: Self.followUpWords(userWords: spoken, delegated: marker.rest))
+                let outcome = await supervisor.followUp(jobID: job.id, words: Self.followUpWords(userWords: spoken, delegated: marker.rest), kind: nil)
                 guard callGeneration == call, !isEnding else { return [] }
                 noteTaker(outcome, jobID: job.id, delegationID: id)
                 return [Self.followUpReply(delegationID: id, outcome)]
@@ -427,7 +427,7 @@ final class GPTLiveDelegationBridge {
             // Attached to a chat: the call's request still running there
             // takes this as a follow-up.
             if let target = supervisor.threadFollowUpTarget() {
-                let outcome = await supervisor.followUp(jobID: target, words: Self.followUpWords(userWords: spoken, delegated: ownWords))
+                let outcome = await supervisor.followUp(jobID: target, words: Self.followUpWords(userWords: spoken, delegated: ownWords), kind: nil)
                 guard callGeneration == call, !isEnding else { return [] }
                 noteTaker(outcome, jobID: target, delegationID: id)
                 // Finished meanwhile: it is the chat's next turn after all.
@@ -445,7 +445,7 @@ final class GPTLiveDelegationBridge {
             // guess, so asking first holds it like new work, naming the job.
             let words = Self.followUpWords(userWords: spoken, delegated: ownWords)
             if let held = heldForOK(id: id, request: words, userWords: spoken, intoJob: job.id) { return held }
-            let outcome = await supervisor.followUp(jobID: job.id, words: words)
+            let outcome = await supervisor.followUp(jobID: job.id, words: words, kind: nil)
             guard callGeneration == call, !isEnding else { return [] }
             noteTaker(outcome, jobID: job.id, delegationID: id)
             if !outcome.foundRequestFinished {
@@ -560,7 +560,7 @@ final class GPTLiveDelegationBridge {
         lastSentAt = now()
         // A change to a running job: its words, without the conversation.
         let own = request.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? request
-        let outcome = await supervisor.followUp(jobID: jobID, words: own.trimmingCharacters(in: .whitespacesAndNewlines))
+        let outcome = await supervisor.followUp(jobID: jobID, words: own.trimmingCharacters(in: .whitespacesAndNewlines), kind: nil)
         guard callGeneration == call, !isEnding else { return [] }
         noteTaker(outcome, jobID: jobID, delegationID: id)
         let number = supervisor.jobs.first(where: { $0.id == jobID })?.number

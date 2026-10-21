@@ -80,7 +80,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
     /// The background job with this number in spoken job lists.
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob?
     /// Puts the user's follow-up into a request Hermes is working on.
-    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome
+    func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome
     /// Whether the call holds new requests for the user's OK (#451).
     var asksBeforeSending: Bool { get }
     func setAsksBeforeSending(_ on: Bool, byModel: Bool)
@@ -113,7 +113,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
 extension GeminiLiveJobSupervising {
     func threadFollowUpTarget() -> UUID? { nil }
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { nil }
-    func followUp(jobID: UUID, words: String) async -> VoiceFollowUpOutcome { .finished(title: "") }
+    func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome { .finished(title: "") }
     var asksBeforeSending: Bool { false }
     func setAsksBeforeSending(_ on: Bool, byModel: Bool) {}
     func readBackText() async -> String? { await lastThreadReply() }
@@ -463,6 +463,11 @@ final class GeminiLiveToolBridge {
                         "type": "STRING",
                         "description": "The user's words about the job, as they said them.",
                     ],
+                    "kind": [
+                        "type": "STRING",
+                        "enum": ["add", "change"],
+                        "description": "add when the user adds to the work without changing it; change when they correct, pause, or cancel it. Omit only when uncertain.",
+                    ],
                 ],
                 "required": ["job_id", "message"],
             ],
@@ -579,7 +584,7 @@ final class GeminiLiveToolBridge {
     private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String, confirmed: Bool = false) async -> [Outgoing] {
         guard !isEnding else { return [] }
         if let target = supervisor.threadFollowUpTarget() {
-            let outcome = await supervisor.followUp(jobID: target, words: request)
+            let outcome = await supervisor.followUp(jobID: target, words: request, kind: call.arguments["kind"])
             guard !isEnding else { return [] }
             // Finished meanwhile: it is the chat's next turn after all.
             if !outcome.foundRequestFinished {
@@ -785,7 +790,7 @@ final class GeminiLiveToolBridge {
             guard !words.isEmpty else {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": "message is required"], scheduling: .whenIdle)]
             }
-            let outcome = await supervisor.followUp(jobID: id, words: words)
+            let outcome = await supervisor.followUp(jobID: id, words: words, kind: call.arguments["kind"])
             guard !isEnding else { return [] }
             return [.toolResponse(id: call.id, name: call.name, result: Self.followUpResult(outcome), scheduling: .whenIdle)]
         case .webSearch:

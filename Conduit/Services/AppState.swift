@@ -3784,6 +3784,10 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 return try await self.redirectLiveVoiceFollowUp(sessionID: sessionID, text: text)
             },
+            steer: { [weak self] sessionID, text in
+                guard let self else { throw HermesError.notConnected }
+                return try await self.steerLiveVoiceFollowUp(sessionID: sessionID, text: text)
+            },
             latestThreadReply: { [weak self] thread in
                 await self?.latestLiveVoiceThreadReply(thread)
             },
@@ -7937,6 +7941,26 @@ final class AppState: ObservableObject {
             if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
             return .redirected
         }
+    }
+
+    /// Adds a live-call follow-up to a running turn. Only an explicit gateway
+    /// refusal is eligible for the supervisor's redirect fallback: a timeout
+    /// leaves delivery unknown and must not send the words a second time.
+    private func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        let client = try await clientForVoiceRequest()
+        let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        let persistedTwinsBefore = persistedSteerIDs(matching: text)
+        do {
+            if let steer = chatResumeLifecycleOperations.steer {
+                try await steer(client, sessionID, text)
+            } else {
+                try await client.steer(sessionID, text: text)
+            }
+        } catch HermesError.steerRejected {
+            throw HermesError.steerRejected
+        }
+        if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+        return .redirected
     }
 
     /// The chat's latest assistant reply, without starting a turn: from the
