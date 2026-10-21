@@ -239,7 +239,8 @@ struct VoiceConversationSheet: View {
     }
 
     private var profileDisplayName: String {
-        profile == "default" ? AppLocalization.string("Default profile") : profile.replacingOccurrences(of: "_", with: " ").capitalized
+        if let appState { return appState.profileDisplayName(profile) }
+        return profile == "default" ? AppLocalization.string("Default profile") : profile.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     /// Automatic speaker-safe suspension while Hermes audibly speaks on an

@@ -172,6 +172,8 @@ struct SettingsSnapshot: Identifiable {
     let isConnected: Bool
     let profile: String
     let defaultProfileName: String
+    /// The active profile as people see it: Hermes' display name when set.
+    let profileDisplayName: String
     let theme: ThemePreference
     let busyInputMode: BusyInputMode
     let chatResumeBehavior: ChatResumeBehavior
@@ -329,7 +331,7 @@ private struct LegacySettingsView: View {
 
     private var aboutSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("About"), symbol: "info.circle", tint: .conduitAura) {
-            SettingsMetricRow(label: AppLocalization.string("Profile"), value: snapshot.profile.capitalized)
+            SettingsMetricRow(label: AppLocalization.string("Profile"), value: snapshot.profileDisplayName)
             SettingsMetricRow(label: AppLocalization.string("Version"), value: ConduitAppVersion.display)
         }
     }
@@ -659,7 +661,7 @@ struct SettingsView: View {
         case .profile:
             ProfileSettingsDetail(
                 profile: snapshot.profile,
-                displayName: snapshot.profile == "default" ? snapshot.defaultProfileName : snapshot.profile.capitalized,
+                displayName: snapshot.profileDisplayName,
                 saveDefaultProfileName: saveDefaultProfileName
             )
         case .model:
@@ -1454,7 +1456,7 @@ private struct SettingsHome: View {
     }
 
     private var profileDisplayName: String {
-        snapshot.profile == "default" ? appState.defaultProfileName : snapshot.profile.capitalized
+        appState.profileDisplayName(snapshot.profile)
     }
 
     private func homeSection<Content: View>(_ title: String, symbol: String = "gearshape.2", tint: Color, @ViewBuilder content: () -> Content) -> some View {
@@ -3795,7 +3797,7 @@ private struct AboutSettingsDetail: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                SettingsMetricRow(label: AppLocalization.string("Active profile"), value: profile.capitalized)
+                SettingsMetricRow(label: AppLocalization.string("Active profile"), value: appState.profileDisplayName(profile))
                 SettingsMetricRow(label: AppLocalization.string("Version"), value: ConduitAppVersion.display)
             }
             ConduitSettingsSection(title: AppLocalization.string("Data handling"), symbol: "hand.raised", tint: .conduitAura) {

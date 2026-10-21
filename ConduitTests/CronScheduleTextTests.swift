@@ -158,4 +158,25 @@ final class CronScheduleTextTests: XCTestCase {
         XCTAssertEqual(CronScheduleText.parseDate(String(expected.timeIntervalSince1970 * 1000)), expected)
         XCTAssertNil(CronScheduleText.parseDate("next tuesday"))
     }
+
+    /// #997: Python's naive isoformat reads in the given zone, and an epoch
+    /// that isn't a real run time is no date rather than a crash later.
+    func testRunTimesWithoutAnOffsetOrOutOfRange() throws {
+        let newYork = try XCTUnwrap(TimeZone(identifier: "America/New_York"))
+        let expected = date("2026-10-19T12:00:00Z")
+        XCTAssertEqual(CronScheduleText.parseDate("2026-10-19T08:00:00", timeZone: newYork), expected)
+        XCTAssertEqual(CronScheduleText.parseDate("2026-10-19T08:00:00.123456", timeZone: newYork)?.timeIntervalSince1970 ?? 0, expected.timeIntervalSince1970, accuracy: 1)
+        for bad in ["-1e30", "1e30", "-5", "nan", "inf", "-inf"] {
+            XCTAssertNil(CronScheduleText.parseDate(bad), bad)
+        }
+    }
+
+    func testARunTooFarOffForADayCountReadsAsADate() {
+        // Days past Int's range: the day count used to trap.
+        let ancient = Date(timeIntervalSince1970: -1e30)
+        XCTAssertEqual(
+            CronScheduleText.runTimeText(ancient, now: date("2026-10-17T08:52:00-04:00"), locale: english, timeZone: toronto),
+            CronScheduleText.absoluteDateText(ancient, locale: english, timeZone: toronto)
+        )
+    }
 }
