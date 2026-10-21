@@ -2521,6 +2521,8 @@ private struct SettledToolCardContent: View, Equatable {
     let sizeCategory: ContentSizeCategory
     /// Drawn inside a run's card; see SettledThinkingCardContent.
     var grouped = false
+    /// Resolves a picture or audio file a tool made on the Hermes host.
+    var gatewayResolver: GatewayMediaDataURLResolver?
     @Environment(\.chatRowDisclosure) private var disclosure
     /// Nil until tapped here; see SettledThinkingCardContent.
     @State private var tapped: Bool?
@@ -2537,6 +2539,13 @@ private struct SettledToolCardContent: View, Equatable {
             && lhs.expandToolsByDefault == rhs.expandToolsByDefault
             && lhs.sizeCategory == rhs.sizeCategory
             && lhs.grouped == rhs.grouped
+            && lhs.gatewayResolver === rhs.gatewayResolver
+    }
+
+    /// The readable part of a finished call's result, if Conduit has one.
+    private var presentation: ToolResultPresentation? {
+        guard let tool = message.tool, tool.status == .complete else { return nil }
+        return ToolResultPresentation.cached(toolName: tool.name, output: tool.output)
     }
 
     var body: some View {
@@ -2610,33 +2619,23 @@ private struct SettledToolCardContent: View, Equatable {
                         Text(tool.name)
                             .font(.system(.caption2, design: .monospaced).weight(.semibold))
                             .foregroundStyle(.conduitTertiary)
+                        let presentation = self.presentation
+                        if let presentation {
+                            ToolResultBodyView(presentation: presentation, gatewayResolver: gatewayResolver)
+                        }
                         if let input = tool.input, !input.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(AppLocalization.string("Input"))
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.conduitTertiary)
-                                SelectableTextView(
-                                    text: ToolCard.truncateForDisplay(input, maxLines: 500),
-                                    font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
-                                    textColor: .secondaryLabel,
-                                    maximumNumberOfLines: 0
-                                )
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                            ToolRawTextSection(
+                                title: AppLocalization.string("Input"),
+                                text: ToolResultPresentation.cachedPrettyJSON(input) ?? input
+                            )
                         }
                         if let output = tool.output, !output.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(AppLocalization.string("Output"))
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(.conduitTertiary)
-                                SelectableTextView(
-                                    text: ToolCard.truncateForDisplay(output, maxLines: 500),
-                                    font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
-                                    textColor: .secondaryLabel,
-                                    maximumNumberOfLines: 0
-                                )
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
+                            // What the tool returned, word for word, under
+                            // the readable part above.
+                            ToolRawTextSection(
+                                title: AppLocalization.string("Output"),
+                                text: ToolResultPresentation.cachedPrettyJSON(output) ?? output
+                            )
                         }
                     }
                     .padding(.horizontal, 11)
@@ -2670,7 +2669,8 @@ struct ToolCard: View {
                 message: message,
                 expandToolsByDefault: rowState.displayPreferences.expandToolsByDefault,
                 sizeCategory: sizeCategory,
-                grouped: grouped
+                grouped: grouped,
+                gatewayResolver: appState.gatewayMediaResolver
             )
             .equatable()
         }
@@ -2684,6 +2684,27 @@ struct ToolCard: View {
         let lines = text.components(separatedBy: "\n")
         guard lines.count > maxLines else { return text }
         return lines.prefix(maxLines).joined(separator: "\n") + AppLocalization.string("\n… (\(lines.count - maxLines) more lines)")
+    }
+}
+
+/// One labeled block of a tool's raw input or result, in monospace.
+private struct ToolRawTextSection: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.bold())
+                .foregroundStyle(.conduitTertiary)
+            SelectableTextView(
+                text: ToolCard.truncateForDisplay(text, maxLines: ToolResultPresentation.displayLineLimit),
+                font: .monospacedSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular),
+                textColor: .secondaryLabel,
+                maximumNumberOfLines: 0
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
