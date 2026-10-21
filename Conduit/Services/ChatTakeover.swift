@@ -89,6 +89,25 @@ struct ChatTakeoverState: Equatable {
         }
     }
 
+    /// The notice while Conduit on another device or the web chat holds it.
+    static var heldHereMessage: String {
+        AppLocalization.string(
+            "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
+        )
+    }
+
+    /// What a call says when its request couldn't go to the chat because
+    /// another app holds it and Conduit didn't take it over (#1061).
+    var callRefusalMessage: String {
+        switch phase {
+        case .offered: return openElsewhereMessage
+        case .ready: return AppLocalization.string("This chat is yours now. Send your message again.")
+        case .waiting: return takingOverMessage
+        case .failed(let message), .unavailable(let message): return message
+        case .heldHere: return Self.heldHereMessage
+        }
+    }
+
     /// The stored session id and surface from the refusal's `Details:` line:
     /// "Details: session <id> opened by <surface> 5m ago."
     static func details(fromRefusal message: String) -> (sessionID: String?, surface: String?) {
@@ -107,6 +126,9 @@ struct ChatTakeoverState: Equatable {
 enum ChatTakeoverPreference {
     /// Device-only: take a chat over as soon as a send is refused.
     static let automaticKey = "conduit.takeOverChatsAutomatically"
+    /// On until the user turns it off: a reply running in the other app
+    /// always finishes first, so taking over costs little (#1061).
+    static let automaticDefault = true
 }
 
 enum ChatTakeoverError: Error, Equatable {
