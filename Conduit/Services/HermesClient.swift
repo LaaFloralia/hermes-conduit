@@ -4005,6 +4005,12 @@ enum MessageNormalizer {
                 }
                 if let match {
                     var updated = match
+                    // A `tool_call` wrapper whose envelope didn't say which
+                    // tool it ran takes the name its result was saved under.
+                    if !callId.isEmpty, ToolSearchBridge.isWrapper(match.tool?.name),
+                       ToolSearchBridge.isConcrete(name), let name {
+                        updated.tool?.name = name
+                    }
                     updated.tool?.output = content.isEmpty ? (match.tool?.output ?? "") : content
                     updated.tool?.status = .complete
                     updated.tool?.duration = toolDuration(in: obj)
@@ -4019,12 +4025,17 @@ enum MessageNormalizer {
                     // Preserve that as input instead of mislabeling it as an
                     // output after a reload.
                     let preview = content.isEmpty ? extractToolContext(obj) : nil
+                    // Its compact row names Tool Search's wrapper, with the
+                    // wrapper's envelope as `args`.
+                    let shownName = ToolSearchBridge.isWrapper(name)
+                        ? ToolSearchBridge.underlyingCall((obj["args"] ?? obj["arguments"])?.anyValue)?.name ?? name
+                        : name
                     let m = ChatMessage(
                         id: id, role: .tool, content: "", timestamp: extractTimestamp(obj),
                         author: extractAuthor(obj), reasoning: nil,
                         tool: ToolActivity(
                             id: callId.isEmpty ? nil : callId,
-                            name: name,
+                            name: shownName,
                             input: preview,
                             output: content.isEmpty ? nil : content,
                             status: .complete
@@ -5042,16 +5053,21 @@ enum MessageNormalizer {
             let fn = cobj["function"]?.objectValue ?? cobj
             let input = cobj["input"]?.objectValue ?? [:]
             let output = extractToolOutput(cobj)
+            let name = firstNonEmptyString([
+                cobj["name"], cobj["tool_name"], fn["name"], input["name"]
+            ]) ?? AppLocalization.string("Tool")
+            let arguments: String? = {
+                let raw = fn["arguments"] ?? cobj["input"] ?? cobj["arguments"] ?? cobj["args"] ?? cobj["command"] ?? cobj["code"] ?? .null
+                let s = raw.descriptiveStringValue ?? extractContent(raw)
+                return s.isEmpty ? nil : s
+            }()
+            // A deferred tool's call is saved as Tool Search's `tool_call`
+            // wrapper: show the tool it ran, as the live events do.
+            let bridged = ToolSearchBridge.isWrapper(name) ? ToolSearchBridge.underlyingCall(arguments) : nil
             return ToolActivity(
                 id: firstNonEmptyString([cobj["id"], cobj["tool_call_id"], cobj["call_id"]]),
-                name: firstNonEmptyString([
-                    cobj["name"], cobj["tool_name"], fn["name"], input["name"]
-                ]) ?? AppLocalization.string("Tool"),
-                input: {
-                    let raw = fn["arguments"] ?? cobj["input"] ?? cobj["arguments"] ?? cobj["args"] ?? cobj["command"] ?? cobj["code"] ?? .null
-                    let s = raw.descriptiveStringValue ?? extractContent(raw)
-                    return s.isEmpty ? nil : s
-                }(),
+                name: bridged?.name ?? name,
+                input: bridged == nil ? arguments : bridged?.arguments,
                 output: output.isEmpty ? nil : output,
                 status: .complete
             )
