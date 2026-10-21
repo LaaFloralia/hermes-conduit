@@ -7673,6 +7673,75 @@ final class AppState: ObservableObject {
         return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: thread.profile).sessionId
     }
 
+    /// The chat resumed again by its stored id, for a runtime Hermes no
+    /// longer has (a Shortcuts run right after a cold launch, before the open
+    /// chat's own resume). When it is the chat on screen, the screen moves to
+    /// the new runtime too, as the compression recovery does: its replies
+    /// show there and the next typed message doesn't hit the dead id.
+    func reopenVoiceThreadRuntime(_ thread: VoiceThreadTarget) async throws -> String {
+        guard let client else { throw HermesError.notConnected }
+        // Resuming by the runtime id that just failed can't work.
+        guard let storedID = thread.storedSessionID, !storedID.isEmpty else {
+            throw RpcError(code: 4001, message: "session not found")
+        }
+        let deadRuntimeID = thread.runtimeSessionID
+        // The chat's own resume already moved it off the dead runtime: its
+        // runtime is the live one, and a second resume would only mint another.
+        if isOpenChat(thread), let current = activeSessionId, current != deadRuntimeID { return current }
+        let resumed = try await openChatResumeSession(storedID, using: client, compact: true, profile: thread.profile)
+        let recoveredID = resumed.sessionId
+        guard !recoveredID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw HermesError.invalidResponse
+        }
+        let profile = thread.profile ?? activeProfile
+        // The identity check the compression recovery runs: the resume must
+        // answer for this conversation, never move the chat to another one.
+        let selected = ConversationIdentity(
+            profile: profile,
+            durableSessionID: storedID,
+            runtimeSessionID: deadRuntimeID,
+            acceptedSessionIDs: knownSessionIDs(for: deadRuntimeID).union([storedID, deadRuntimeID])
+        )
+        let claim = ResumeIdentityClaim(runtimeSessionID: recoveredID, durableSessionID: resumed.storedSessionId)
+        guard case .success = ConversationIdentityGate.admit(claim: claim, selected: selected, catalog: sessions + cronSessions) else {
+            throw RpcError(code: 4001, message: "session not found")
+        }
+        conversationIdentityIndex.recordAuthoritative(runtimeID: recoveredID, durableID: storedID, profile: profile, source: .resume)
+        conversationIdentityIndex.recordAuthoritative(runtimeID: deadRuntimeID, durableID: storedID, profile: profile, source: .resume)
+        guard isOpenChat(thread), let current = activeSessionId else { return recoveredID }
+        // The chat's own resume landed meanwhile: its runtime is the live one.
+        if current != deadRuntimeID { return current }
+        setActiveSessionState(id: recoveredID)
+        return recoveredID
+    }
+
+    /// A shortcut's text sent straight to `runtimeID`, through the test seam
+    /// when one is set.
+    func sendShortcutPrompt(_ runtimeID: String, text: String) async throws -> PromptSubmissionOutcome {
+        guard let client else { throw HermesError.notConnected }
+        if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
+            return try await sendPrompt(client, runtimeID, text)
+        }
+        return try await client.sendPrompt(runtimeID, text: text)
+    }
+
+    /// Whether Hermes still has `runtimeID`. A failed read says yes: the send
+    /// then finds out, as it did before this check.
+    func voiceThreadRuntimeIsLive(_ runtimeID: String, profile: String?) async -> Bool {
+        guard let client else { return true }
+        let rows: [LiveSessionStatus]
+        do {
+            if let probe = chatResumeLifecycleOperations.probeActiveSessions {
+                rows = try await probe(client)
+            } else {
+                rows = try await client.activeSessions(inProfile: profile)
+            }
+        } catch {
+            return true
+        }
+        return rows.contains { $0.runtimeSessionId == runtimeID }
+    }
+
     /// Sends a live call's request as the chat's next turn. On screen it
     /// goes through the composer's own path, so the chat shows and streams
     /// it like a typed message. Off screen it goes to `runtimeID`, the live
