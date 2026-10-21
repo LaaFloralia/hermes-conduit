@@ -149,6 +149,7 @@ struct SelectableTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> SelectableTextViewHostView {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
+        context.coordinator.pinReplyAction = context.environment.chatPinReplyAction
         let hostView = makeUIViewForTests(
             coordinator: context.coordinator,
             drawsUntilTouched: drawsUntilTouched(in: context.environment)
@@ -160,6 +161,7 @@ struct SelectableTextView: UIViewRepresentable {
     func updateUIView(_ uiView: SelectableTextViewHostView, context: Context) {
         context.coordinator.openURL = context.environment.openURL
         context.coordinator.quoteAction = context.environment.chatQuoteAction
+        context.coordinator.pinReplyAction = context.environment.chatPinReplyAction
         // VoiceOver or Switch Control came on: they read the text view.
         if uiView.canvas != nil, !drawsUntilTouched(in: context.environment) {
             uiView.needsTextView = true
@@ -774,6 +776,9 @@ struct SelectableTextView: UIViewRepresentable {
         var openURL: OpenURLAction?
         /// Set inside a chat: the selection menu then offers Quote (#385).
         var quoteAction: ChatQuoteAction?
+        /// Set on a reply that can be pinned: the menu then offers Pin or
+        /// Unpin after Quote (#918).
+        var pinReplyAction: ChatPinReplyAction?
 
         init(
             linkColor: UIColor,
@@ -801,31 +806,54 @@ struct SelectableTextView: UIViewRepresentable {
 
         /// Inside a chat, the native selection menu gains Quote right after
         /// the standard edit group (Copy), which puts the selection in the
-        /// composer as a `>` quote (#385). Elsewhere the default menu shows.
+        /// composer as a `>` quote (#385), and on a reply that can be pinned,
+        /// Pin or Unpin after it (#918). Elsewhere the default menu shows.
         func textView(
             _ textView: UITextView,
             editMenuForTextIn range: NSRange,
             suggestedActions: [UIMenuElement]
         ) -> UIMenu? {
-            guard let quoteAction, quoteAction.isAvailable, range.length > 0 else { return nil }
-            let quote = UIAction(
-                title: AppLocalization.string("Quote"),
-                image: UIImage(systemName: "text.quote")
-            ) { [weak textView] _ in
-                guard let textView else { return }
-                // The selection as it is now, should the text have changed
-                // under the open menu.
-                let current = textView.selectedRange
-                Self.quoteSelection(in: textView, range: current.length > 0 ? current : range, with: quoteAction)
+            guard range.length > 0 else { return nil }
+            var added: [UIMenuElement] = []
+            if let quoteAction, quoteAction.isAvailable {
+                added.append(UIAction(
+                    title: AppLocalization.string("Quote"),
+                    image: UIImage(systemName: "text.quote")
+                ) { [weak textView] _ in
+                    guard let textView else { return }
+                    // The selection as it is now, should the text have changed
+                    // under the open menu.
+                    let current = textView.selectedRange
+                    Self.quoteSelection(in: textView, range: current.length > 0 ? current : range, with: quoteAction)
+                })
             }
-            return UIMenu(children: Self.editMenuElements(suggestedActions, adding: quote))
+            if let pinReplyAction {
+                let isPinned = pinReplyAction.isPinned
+                added.append(UIAction(
+                    title: AppLocalization.string(isPinned ? "Unpin" : "Pin"),
+                    image: UIImage(systemName: isPinned ? "pin.slash" : "pin")
+                ) { [weak textView] _ in
+                    if let textView { Self.dismissSelection(in: textView) }
+                    pinReplyAction()
+                })
+            }
+            guard !added.isEmpty else { return nil }
+            return UIMenu(children: Self.editMenuElements(suggestedActions, adding: added))
         }
 
-        static func editMenuElements(_ suggestedActions: [UIMenuElement], adding quote: UIMenuElement) -> [UIMenuElement] {
+        static func editMenuElements(_ suggestedActions: [UIMenuElement], adding added: [UIMenuElement]) -> [UIMenuElement] {
             var elements = suggestedActions
             let standardEdit = elements.firstIndex { ($0 as? UIMenu)?.identifier == .standardEdit }
-            elements.insert(quote, at: standardEdit.map { $0 + 1 } ?? 0)
+            elements.insert(contentsOf: added, at: standardEdit.map { $0 + 1 } ?? 0)
             return elements
+        }
+
+        /// Clears the selection, which dismisses the menu.
+        @MainActor
+        static func dismissSelection(in textView: UITextView) {
+            (textView as? MarkdownSelectionTextView)?.selectionCoordinator?.clearSelection()
+            textView.selectedRange = NSRange(location: textView.selectedRange.location, length: 0)
+            textView.resignFirstResponder()
         }
 
         /// Hands the selected text to the composer and clears the selection,
@@ -948,6 +976,24 @@ private final class MarkdownSelectionTextView: UITextView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         selectionCoordinator?.cancelPendingSelection()
         super.touchesCancelled(touches, with: event)
+    }
+
+    /// VoiceOver reaches the long-press menu's Pin as an action on the
+    /// reply's text (#918), named for the reply as it is now.
+    override var accessibilityCustomActions: [UIAccessibilityCustomAction]? {
+        get {
+            var actions = super.accessibilityCustomActions ?? []
+            if let pin = (delegate as? SelectableTextView.Coordinator)?.pinReplyAction {
+                actions.append(UIAccessibilityCustomAction(
+                    name: AppLocalization.string(pin.isPinned ? "Unpin" : "Pin")
+                ) { _ in
+                    pin()
+                    return true
+                })
+            }
+            return actions.isEmpty ? nil : actions
+        }
+        set { super.accessibilityCustomActions = newValue }
     }
 
     override func copy(_ sender: Any?) {
