@@ -504,7 +504,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, health, location, phone, screenQuestion, about
+    case profile, model, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
@@ -935,6 +935,8 @@ struct SettingsView: View {
             AppearanceSettingsDetail(theme: appState.themePreference, saveTheme: saveTheme)
         case .notifications:
             NotificationsSettingsDetail()
+        case .syncedPreferences:
+            SyncedPreferencesSettingsDetail(controller: appState.syncedPreferences)
         case .hermesCalls:
             HermesCallsSettingsPage(
                 model: HermesCallSettingsModel(
@@ -1137,6 +1139,7 @@ private struct SettingsHome: View {
                         settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
                         settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
                         settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
+                        settingsLink(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
                         settingsActionRow(
                             icon: "checkmark.circle",
                             title: AppLocalization.string("Connection Setup"),
@@ -1162,7 +1165,7 @@ private struct SettingsHome: View {
                         settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
                     }
                     }
-                    Text("Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device.")
+                    Text("Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device unless you turn on Sync across devices.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1267,6 +1270,12 @@ private struct SettingsHome: View {
         )
     }
 
+    private var syncedPreferencesDetail: String {
+        appState.syncedPreferences.isEnabled
+            ? AppLocalization.string("On: shared with your other devices")
+            : AppLocalization.string("Share preferences with your other devices")
+    }
+
     /// V2's grouping: the selected profile (its connection, approvals and
     /// profile page), then Voice, Hermes, and App, each one card of rows
     /// with hairlines between them, as in the Scheduled list. Every page the
@@ -1311,6 +1320,7 @@ private struct SettingsHome: View {
             }
             v2Link(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
             v2Link(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+            v2Link(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
             v2Link(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
         }
         if appState.showsHealthSettings || appState.showsLocationSettings || appState.showsPhoneSettings {

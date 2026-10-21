@@ -670,6 +670,7 @@ final class AppState: ObservableObject {
                 agentSettings.leave(scope: agentSettingsScope)
                 presentedScreens.leave()
                 schedulePendingComposerSendCheck()
+                Task { await syncPreferences() }
             }
         }
     }
@@ -23037,6 +23038,9 @@ final class AppState: ObservableObject {
     /// The settings Hermes may change, and the changes it asked for
     /// (AgentSettings.swift).
     lazy var agentSettings = AgentSettingsSync(defaults: defaults)
+    /// Preferences shared with this profile's other devices through the
+    /// plugin (SyncedPreferences.swift, #1089).
+    lazy var syncedPreferences = SyncedPreferencesController(defaults: defaults)
     /// Confirmations Hermes asks this iPhone to present (PresentedScreens.swift),
     /// and the cards it shows on a voice conversation's screen.
     lazy var presentedScreens: PresentedScreensSync = {
@@ -23093,6 +23097,8 @@ final class AppState: ObservableObject {
         Task { await refreshWatchCallVoices() }
         // Settings Hermes may change: share them, take its requests.
         Task { await syncAgentSettings() }
+        // Preferences shared with this profile's other devices.
+        Task { await syncPreferences() }
         // Confirmations Hermes is waiting on.
         Task { await syncPresentedScreens() }
         await provisionNotificationEncryption(bridge: bridge)
@@ -33463,6 +33469,29 @@ final class AppState: ObservableObject {
     private func saveVoiceProfilePreferences(_ preferences: VoiceProfilePreferences, profile: String) {
         guard let data = try? JSONEncoder().encode(preferences) else { return }
         defaults.set(data, forKey: voicePreferencesKey(profile: profile))
+    }
+
+    /// The active profile's Voice preferences as stored, for the
+    /// preferences shared with other devices (#1089); nil when never set.
+    var storedActiveVoicePreferencesData: Data? {
+        defaults.data(forKey: voicePreferencesKey(profile: activeProfile))
+    }
+
+    /// Takes Voice preferences another device saved for this profile. Never
+    /// during a call (the sync holds them back until it ends). The rest of
+    /// Voice catches up as on a profile switch.
+    func adoptSyncedVoicePreferences(_ preferences: VoiceProfilePreferences) {
+        objectWillChange.send()
+        saveVoiceProfilePreferences(preferences, profile: activeProfile)
+        voiceConversationController.setProfilePreferences(preferences)
+        CarPlayVoiceCoordinator.shared.voiceModeChanged(in: self)
+        Task { await refreshVoiceCapabilities() }
+    }
+
+    /// A call or Voice conversation is open: synced preferences wait.
+    var holdsSyncedVoicePreferences: Bool {
+        showVoiceSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
+            || hasActiveVoiceSurface || voiceConversationController.hasLiveVoiceSession
     }
 
     private func installVoiceAssistantObserverIfNeeded() {

@@ -101049,88 +101049,6 @@
         }
       }
     },
-    "Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes-Einstellungen folgen dem aktiven Profil. Erscheinungsbild, Mitteilungen und Datenschutzeinstellungen bleiben auf diesem Gerät."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los ajustes de Hermes siguen al perfil activo. La apariencia, las notificaciones y los controles de privacidad se quedan en este dispositivo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les réglages Hermes suivent le profil actif. L'apparence, les notifications et les contrôles de confidentialité restent sur cet appareil."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pengaturan Hermes mengikuti profil aktif. Kontrol tampilan, pemberitahuan, dan privasi tetap di perangkat ini."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le impostazioni di Hermes seguono il profilo attivo. Aspetto, notifiche e controlli della privacy restano su questo dispositivo."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesの設定は使用中のプロファイルに従います。外観、通知、プライバシーの設定はこのデバイスに保存されます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 설정은 사용 중인 프로필을 따라요. 모양, 알림, 개인정보 보호 설정은 이 기기에 남아 있어요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ustawienia Hermesa zależą od aktywnego profilu. Wygląd, powiadomienia i ustawienia prywatności pozostają na tym urządzeniu."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os ajustes do Hermes seguem o perfil ativo. Aparência, notificações e controles de privacidade ficam neste aparelho."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Настройки Hermes относятся к активному профилю. Оформление, уведомления и настройки конфиденциальности остаются на этом устройстве."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes ayarları etkin profili izler. Görünüm, bildirimler ve gizlilik denetimleri bu cihazda kalır."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 设置跟随当前档案。外观、通知与隐私控制保留在此设备上。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 設定會跟隨目前的設定檔。外觀、通知和隱私權控制項則保留在此裝置上。"
-          }
-        }
-      }
-    },
     "Hermes speech stream failed." : {
       "localizations" : {
         "de" : {
@@ -310824,6 +310742,1728 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已撤回該訊息，但聊天無法重新載入。請重新開啟以查看變更。"
+          }
+        }
+      }
+    },
+    "Another host" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anderer Host"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otro host"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autre hôte"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host lain"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altro host"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "別のホスト"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 호스트"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inny host"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outro host"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другой хост"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başka bir ana makine"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他主機"
+          }
+        }
+      }
+    },
+    "Copy settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar ajustes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier les réglages"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salin pengaturan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copia impostazioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定をコピー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "설정 복사"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiuj ustawienia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar ajustes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скопировать настройки"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayarları kopyala"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "复制设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷貝設定"
+          }
+        }
+      }
+    },
+    "Copy this device's settings here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen dieses Geräts hierher kopieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar aquí los ajustes de este dispositivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copier ici les réglages de cet appareil"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salin pengaturan perangkat ini ke sini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copia qui le impostazioni di questo dispositivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスの設定をここにコピー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기의 설정을 여기로 복사"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skopiuj tutaj ustawienia tego urządzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar aqui os ajustes deste dispositivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скопировать сюда настройки этого устройства"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu cihazın ayarlarını buraya kopyala"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将此设备的设置复制到这里"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將此裝置的設定拷貝到這裡"
+          }
+        }
+      }
+    },
+    "Each Hermes profile keeps its own copy. To bring yours to a new host or profile, connect to it and copy this device's settings there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jedes Hermes-Profil hat seine eigene Kopie. Um deine auf einen neuen Host oder ein neues Profil zu bringen, verbinde dich damit und kopiere die Einstellungen dieses Geräts dorthin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada perfil de Hermes guarda su propia copia. Para llevar la tuya a un host o perfil nuevo, conéctate a él y copia allí los ajustes de este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque profil Hermes garde sa propre copie. Pour transférer la vôtre vers un nouvel hôte ou profil, connectez-vous-y et copiez-y les réglages de cet appareil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap profil Hermes menyimpan salinannya sendiri. Untuk membawa milikmu ke host atau profil baru, hubungkan ke sana lalu salin pengaturan perangkat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni profilo Hermes ha la sua copia. Per portare la tua su un nuovo host o profilo, collegati e copia lì le impostazioni di questo dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes の各プロファイルはそれぞれ独自のコピーを持ちます。新しいホストやプロファイルに移すには、そこに接続してこのデバイスの設定をコピーしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "각 Hermes 프로필은 자체 사본을 보관합니다. 새 호스트나 프로필로 옮기려면 그곳에 연결한 뒤 이 기기의 설정을 복사하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każdy profil Hermes ma własną kopię. Aby przenieść swoją na nowy host lub profil, połącz się z nim i skopiuj tam ustawienia tego urządzenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada perfil do Hermes guarda sua própria cópia. Para levar a sua a um novo host ou perfil, conecte-se a ele e copie lá os ajustes deste dispositivo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У каждого профиля Hermes своя копия. Чтобы перенести свою на новый хост или профиль, подключитесь к нему и скопируйте туда настройки этого устройства."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her Hermes profili kendi kopyasını tutar. Seninkini yeni bir ana makineye ya da profile taşımak için ona bağlan ve bu cihazın ayarlarını oraya kopyala."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个 Hermes 配置文件都有自己的副本。要把你的设置带到新的主机或配置文件，请连接到它，然后把此设备的设置复制过去。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個 Hermes 設定檔都有自己的副本。要把你的設定帶到新的主機或設定檔，請連線到它，再把此裝置的設定拷貝過去。"
+          }
+        }
+      }
+    },
+    "Needs Conduit plugin 0.54 or later on this host." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benötigt Conduit-Plugin 0.54 oder neuer auf diesem Host."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Requiere el plugin de Conduit 0.54 o posterior en este host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nécessite le plugin Conduit 0.54 ou ultérieur sur cet hôte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memerlukan plugin Conduit 0.54 atau lebih baru di host ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richiede il plugin Conduit 0.54 o successivo su questo host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストに Conduit プラグイン 0.54 以降が必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트에 Conduit 플러그인 0.54 이상이 필요합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wymaga wtyczki Conduit 0.54 lub nowszej na tym hoście."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Requer o plugin do Conduit 0.54 ou posterior neste host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нужен плагин Conduit 0.54 или новее на этом хосте."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu ana makinede Conduit eklentisi 0.54 veya üstü gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机需要 Conduit 插件 0.54 或更高版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機需要 Conduit 外掛 0.54 或以上版本。"
+          }
+        }
+      }
+    },
+    "Not synced yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht synchronisiert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún sin sincronizar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas encore synchronisé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum disinkronkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ancora sincronizzato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ同期されていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 동기화되지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeszcze nie zsynchronizowano"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda não sincronizado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ещё не синхронизировано"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Henüz eşitlenmedi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未同步"
+          }
+        }
+      }
+    },
+    "On the host, `hermes conduit-push prefs export` and `prefs import` move the same set between hosts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf dem Host übertragen `hermes conduit-push prefs export` und `prefs import` dieselben Einstellungen zwischen Hosts."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En el host, `hermes conduit-push prefs export` y `prefs import` mueven el mismo conjunto entre hosts."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sur l’hôte, `hermes conduit-push prefs export` et `prefs import` transfèrent le même ensemble d’un hôte à l’autre."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di host, `hermes conduit-push prefs export` dan `prefs import` memindahkan set yang sama antar host."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sull’host, `hermes conduit-push prefs export` e `prefs import` spostano lo stesso insieme tra host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト上では `hermes conduit-push prefs export` と `prefs import` で同じ設定をホスト間で移せます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트에서 `hermes conduit-push prefs export`와 `prefs import`로 같은 설정을 호스트 간에 옮길 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na hoście `hermes conduit-push prefs export` i `prefs import` przenoszą ten sam zestaw między hostami."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No host, `hermes conduit-push prefs export` e `prefs import` movem o mesmo conjunto entre hosts."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На хосте `hermes conduit-push prefs export` и `prefs import` переносят тот же набор между хостами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ana makinede `hermes conduit-push prefs export` ve `prefs import` aynı seti ana makineler arasında taşır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在主机上，`hermes conduit-push prefs export` 和 `prefs import` 可以在主机之间迁移同一套设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在主機上，`hermes conduit-push prefs export` 和 `prefs import` 可在主機之間搬移同一組設定。"
+          }
+        }
+      }
+    },
+    "On: shared with your other devices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein: mit deinen anderen Geräten geteilt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activado: compartido con tus otros dispositivos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activé : partagé avec vos autres appareils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktif: dibagikan dengan perangkat lainmu"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attivo: condiviso con gli altri tuoi dispositivi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オン：他のデバイスと共有中"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켬: 다른 기기와 공유 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Włączone: udostępniane innym urządzeniom"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ativado: compartilhado com seus outros dispositivos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вкл.: общие с другими устройствами"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Açık: diğer cihazlarınla paylaşılıyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已开启：与你的其他设备共享"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已開啟：與你的其他裝置共享"
+          }
+        }
+      }
+    },
+    "Passwords, sign-ins, Cloudflare tokens and custom headers stay on each device, and so does your OK for live voice providers and how GPT-Live is paid for. When two devices change the same setting, the later change wins." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passwörter, Anmeldungen, Cloudflare-Tokens und eigene Header bleiben auf jedem Gerät, ebenso deine Zustimmung zu Live-Sprachanbietern und wie GPT-Live bezahlt wird. Ändern zwei Geräte dieselbe Einstellung, gilt die spätere Änderung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las contraseñas, los inicios de sesión, los tokens de Cloudflare y los encabezados personalizados se quedan en cada dispositivo, igual que tu permiso para los proveedores de voz en vivo y cómo se paga GPT-Live. Si dos dispositivos cambian el mismo ajuste, gana el cambio más reciente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les mots de passe, connexions, jetons Cloudflare et en-têtes personnalisés restent sur chaque appareil, tout comme votre accord pour les fournisseurs de voix en direct et le mode de paiement de GPT-Live. Si deux appareils modifient le même réglage, la modification la plus récente l’emporte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kata sandi, sesi masuk, token Cloudflare, dan header kustom tetap di setiap perangkat, begitu juga persetujuanmu untuk penyedia suara langsung dan cara GPT-Live dibayar. Jika dua perangkat mengubah pengaturan yang sama, perubahan terakhir yang berlaku."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Password, accessi, token Cloudflare e intestazioni personalizzate restano su ogni dispositivo, così come il tuo consenso ai fornitori di voce dal vivo e il modo in cui si paga GPT-Live. Se due dispositivi cambiano la stessa impostazione, vince la modifica più recente."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "パスワード、サインイン、Cloudflare トークン、カスタムヘッダーは各デバイスに残ります。ライブ音声プロバイダへの同意と GPT-Live の支払い方法も同様です。2 台のデバイスが同じ設定を変更した場合は、後の変更が優先されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비밀번호, 로그인, Cloudflare 토큰, 사용자 지정 헤더는 각 기기에 남습니다. 라이브 음성 제공자에 대한 동의와 GPT-Live 결제 방식도 마찬가지입니다. 두 기기가 같은 설정을 바꾸면 나중의 변경이 적용됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hasła, logowania, tokeny Cloudflare i własne nagłówki zostają na każdym urządzeniu, podobnie jak Twoja zgoda na dostawców głosu na żywo i sposób płatności za GPT-Live. Gdy dwa urządzenia zmienią to samo ustawienie, wygrywa późniejsza zmiana."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Senhas, logins, tokens do Cloudflare e cabeçalhos personalizados ficam em cada dispositivo, assim como sua permissão para os provedores de voz ao vivo e a forma de pagamento do GPT-Live. Quando dois dispositivos mudam o mesmo ajuste, vale a alteração mais recente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пароли, входы, токены Cloudflare и свои заголовки остаются на каждом устройстве, как и ваше согласие на провайдеров живого голоса и способ оплаты GPT-Live. Если два устройства меняют одну настройку, побеждает более позднее изменение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parolalar, oturumlar, Cloudflare belirteçleri ve özel başlıklar her cihazda kalır; canlı ses sağlayıcılarına verdiğin onay ve GPT-Live’ın nasıl ödendiği de öyle. İki cihaz aynı ayarı değiştirirse sonraki değişiklik geçerli olur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密码、登录状态、Cloudflare 令牌和自定义请求头都只保留在各自设备上，你对实时语音提供商的同意以及 GPT-Live 的付费方式也一样。两台设备修改同一设置时，以较晚的修改为准。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密碼、登入狀態、Cloudflare 權杖和自訂標頭都只留在各自裝置上，你對即時語音供應商的同意以及 GPT-Live 的付費方式也一樣。兩台裝置修改同一設定時，以較晚的修改為準。"
+          }
+        }
+      }
+    },
+    "Replace this Hermes' copy with this device's settings?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kopie auf diesem Hermes durch die Einstellungen dieses Geräts ersetzen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Reemplazar la copia de este Hermes con los ajustes de este dispositivo?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remplacer la copie de ce Hermes par les réglages de cet appareil ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganti salinan di Hermes ini dengan pengaturan perangkat ini?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sostituire la copia di questo Hermes con le impostazioni di questo dispositivo?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Hermes のコピーをこのデバイスの設定で置き換えますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes의 사본을 이 기기의 설정으로 바꿀까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zastąpić kopię na tym Hermesie ustawieniami tego urządzenia?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Substituir a cópia deste Hermes pelos ajustes deste dispositivo?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заменить копию на этом Hermes настройками этого устройства?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Hermes’teki kopya bu cihazın ayarlarıyla değiştirilsin mi?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要用此设备的设置替换这台 Hermes 上的副本吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要用此裝置的設定取代這台 Hermes 上的副本嗎？"
+          }
+        }
+      }
+    },
+    "Share preferences with your other devices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen mit deinen anderen Geräten teilen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comparte preferencias con tus otros dispositivos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partagez vos préférences avec vos autres appareils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bagikan preferensi dengan perangkat lainmu"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Condividi le preferenze con gli altri tuoi dispositivi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他のデバイスと設定を共有"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 기기와 환경설정 공유"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Udostępniaj preferencje innym urządzeniom"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartilhe preferências com seus outros dispositivos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Делитесь настройками с другими устройствами"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tercihleri diğer cihazlarınla paylaş"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与你的其他设备共享偏好设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與你的其他裝置共享偏好設定"
+          }
+        }
+      }
+    },
+    "Sync across devices" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geräteübergreifend synchronisieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizar entre dispositivos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchroniser entre appareils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sinkronkan antarperangkat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizza tra dispositivi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "デバイス間で同期"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "기기 간 동기화"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronizuj między urządzeniami"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizar entre dispositivos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Синхронизация между устройствами"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cihazlar arasında eşitle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跨设备同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跨裝置同步"
+          }
+        }
+      }
+    },
+    "Sync with this Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit diesem Hermes synchronisieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizar con este Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchroniser avec ce Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sinkronkan dengan Hermes ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizza con questo Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Hermes と同期"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes와 동기화"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronizuj z tym Hermesem"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizar com este Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Синхронизировать с этим Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Hermes ile eşitle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与此 Hermes 同步"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與此 Hermes 同步"
+          }
+        }
+      }
+    },
+    "Synced %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisiert %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizado %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisé %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disinkronkan %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizzato %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "同期済み %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "동기화됨 %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zsynchronizowano %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sincronizado %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Синхронизировано %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eşitlendi %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已同步 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已同步 %@"
+          }
+        }
+      }
+    },
+    "This Hermes already has settings from another device" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Hermes hat bereits Einstellungen von einem anderen Gerät"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Hermes ya tiene ajustes de otro dispositivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce Hermes a déjà des réglages d’un autre appareil"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ini sudah punya pengaturan dari perangkat lain"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo Hermes ha già impostazioni di un altro dispositivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Hermes には別のデバイスの設定がすでにあります"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes에는 이미 다른 기기의 설정이 있습니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten Hermes ma już ustawienia z innego urządzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Hermes já tem ajustes de outro dispositivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом Hermes уже есть настройки с другого устройства"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Hermes’te başka bir cihazdan ayarlar zaten var"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 Hermes 已有来自其他设备的设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台 Hermes 已有來自其他裝置的設定"
+          }
+        }
+      }
+    },
+    "Use the ones on Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die von Hermes verwenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar los de Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utiliser ceux de Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gunakan yang ada di Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa quelle di Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes の設定を使う"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes의 설정 사용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Użyj tych z Hermesa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar os do Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Взять с Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes’tekileri kullan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes 上的"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 Hermes 上的"
+          }
+        }
+      }
+    },
+    "Use this device's" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die dieses Geräts verwenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar los de este dispositivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utiliser ceux de cet appareil"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gunakan milik perangkat ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa quelle di questo dispositivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスの設定を使う"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기의 설정 사용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Użyj tych z tego urządzenia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar os deste dispositivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Взять с этого устройства"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu cihazınkileri kullan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此设备的"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用此裝置的"
+          }
+        }
+      }
+    },
+    "Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, CarPlay, and your other saved dashboards (their addresses only)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein iPhone und iPad teilen die Einstellungen von Conduit über das Conduit-Plugin auf deinem Hermes-Host: Darstellung, Chat- und Spracheinstellungen, CarPlay und deine anderen gespeicherten Dashboards (nur ihre Adressen)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu iPhone y tu iPad comparten las preferencias de Conduit a través del plugin de Conduit en tu host de Hermes: apariencia, ajustes de chat y voz, CarPlay y tus otros paneles guardados (solo sus direcciones)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre iPhone et votre iPad partagent les préférences de Conduit via le plugin Conduit sur votre hôte Hermes : apparence, réglages de chat et de voix, CarPlay et vos autres tableaux de bord enregistrés (leurs adresses uniquement)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone dan iPad-mu berbagi preferensi Conduit melalui plugin Conduit di host Hermes-mu: tampilan, pengaturan chat dan suara, CarPlay, dan dasbor tersimpan lainnya (hanya alamatnya)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone e iPad condividono le preferenze di Conduit tramite il plugin Conduit sul tuo host Hermes: aspetto, impostazioni di chat e voce, CarPlay e le altre dashboard salvate (solo gli indirizzi)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone と iPad は、Hermes ホストの Conduit プラグインを通じて Conduit の設定を共有します：外観、チャットと音声の設定、CarPlay、保存済みの他のダッシュボード（アドレスのみ）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone과 iPad는 Hermes 호스트의 Conduit 플러그인을 통해 Conduit 환경설정을 공유합니다: 화면 모양, 채팅 및 음성 설정, CarPlay, 저장된 다른 대시보드(주소만)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój iPhone i iPad dzielą preferencje Conduit przez wtyczkę Conduit na hoście Hermes: wygląd, ustawienia czatu i głosu, CarPlay oraz inne zapisane panele (tylko ich adresy)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu iPhone e iPad compartilham as preferências do Conduit pelo plugin do Conduit no seu host Hermes: aparência, ajustes de chat e voz, CarPlay e seus outros painéis salvos (só os endereços)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваши iPhone и iPad делят настройки Conduit через плагин Conduit на хосте Hermes: оформление, настройки чата и голоса, CarPlay и другие сохранённые панели (только их адреса)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPhone ve iPad’in, Hermes ana makinendeki Conduit eklentisi üzerinden Conduit tercihlerini paylaşır: görünüm, sohbet ve ses ayarları, CarPlay ve kayıtlı diğer panoların (yalnızca adresleri)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 iPhone 和 iPad 通过 Hermes 主机上的 Conduit 插件共享 Conduit 偏好设置：外观、聊天和语音设置、CarPlay，以及你保存的其他仪表板（仅地址）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 iPhone 和 iPad 透過 Hermes 主機上的 Conduit 外掛共享 Conduit 偏好設定：外觀、聊天和語音設定、CarPlay，以及你儲存的其他儀表板（僅位址）。"
+          }
+        }
+      }
+    },
+    "Your other devices on this host take these settings when they next connect." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine anderen Geräte auf diesem Host übernehmen diese Einstellungen bei der nächsten Verbindung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus otros dispositivos en este host tomarán estos ajustes la próxima vez que se conecten."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos autres appareils sur cet hôte prendront ces réglages à leur prochaine connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perangkat lainmu di host ini akan mengambil pengaturan ini saat terhubung berikutnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gli altri tuoi dispositivi su questo host riceveranno queste impostazioni alla prossima connessione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの他のデバイスは、次回接続時にこれらの設定を取り込みます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트의 다른 기기는 다음에 연결할 때 이 설정을 가져옵니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoje inne urządzenia na tym hoście przejmą te ustawienia przy następnym połączeniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seus outros dispositivos neste host recebem estes ajustes na próxima conexão."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другие ваши устройства на этом хосте получат эти настройки при следующем подключении."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu ana makinedeki diğer cihazların bir sonraki bağlantıda bu ayarları alır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机上的其他设备会在下次连接时采用这些设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機上的其他裝置會在下次連線時採用這些設定。"
+          }
+        }
+      }
+    },
+    "Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device unless you turn on Sync across devices." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes-Einstellungen folgen dem aktiven Profil. Darstellung, Mitteilungen und Datenschutz bleiben auf diesem Gerät, außer du schaltest „Geräteübergreifend synchronisieren“ ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los ajustes de Hermes siguen al perfil activo. La apariencia, las notificaciones y los controles de privacidad se quedan en este dispositivo, salvo que actives Sincronizar entre dispositivos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les réglages Hermes suivent le profil actif. L’apparence, les notifications et les contrôles de confidentialité restent sur cet appareil, sauf si vous activez Synchroniser entre appareils."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengaturan Hermes mengikuti profil aktif. Tampilan, notifikasi, dan kontrol privasi tetap di perangkat ini kecuali kamu menyalakan Sinkronkan antarperangkat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le impostazioni di Hermes seguono il profilo attivo. Aspetto, notifiche e controlli della privacy restano su questo dispositivo, a meno che tu non attivi Sincronizza tra dispositivi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes の設定はアクティブなプロファイルに従います。外観、通知、プライバシーの設定は、「デバイス間で同期」をオンにしない限りこのデバイスに残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 설정은 활성 프로필을 따릅니다. 화면 모양, 알림, 개인정보 보호 설정은 기기 간 동기화를 켜지 않는 한 이 기기에 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ustawienia Hermes podążają za aktywnym profilem. Wygląd, powiadomienia i ustawienia prywatności zostają na tym urządzeniu, chyba że włączysz Synchronizuj między urządzeniami."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os ajustes do Hermes seguem o perfil ativo. Aparência, notificações e controles de privacidade ficam neste dispositivo, a menos que você ative Sincronizar entre dispositivos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Настройки Hermes следуют за активным профилем. Оформление, уведомления и конфиденциальность остаются на этом устройстве, если не включить синхронизацию между устройствами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ayarları etkin profili izler. Görünüm, bildirimler ve gizlilik denetimleri, Cihazlar arasında eşitle’yi açmadığın sürece bu cihazda kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 设置跟随当前配置文件。除非你开启“跨设备同步”，外观、通知和隐私控制都只保留在此设备上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 設定會跟隨目前的設定檔。除非你開啟「跨裝置同步」，外觀、通知和隱私權控制都只保留在此裝置上。"
+          }
+        }
+      }
+    },
+    "The host's answer wasn't readable." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Antwort des Hosts war nicht lesbar."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer la respuesta del host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La réponse de l’hôte était illisible."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jawaban host tidak dapat dibaca."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La risposta dell’host non era leggibile."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの応答を読み取れませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트의 응답을 읽을 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się odczytać odpowiedzi hosta."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível ler a resposta do host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось прочитать ответ хоста."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ana makinenin yanıtı okunamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取主机的响应。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取主機的回應。"
           }
         }
       }
