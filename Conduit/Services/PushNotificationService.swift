@@ -109,10 +109,24 @@ enum NotificationDashboardOwnership {
         targetDashboardID: UUID?,
         hasMalformedDashboardID: Bool,
         activeDashboardID: UUID?,
-        savedDashboardIDs: [UUID]
+        savedDashboardIDs: [UUID],
+        targetGatewayID: String? = nil,
+        activeDashboardGatewayIDs: Set<String> = []
     ) -> Outcome {
         if hasMalformedDashboardID {
             return .failClosed(.unrecognizedDashboard)
+        }
+        // The push came from the host the active dashboard is signed in to:
+        // that host told this dashboard its relay gateway id, over its
+        // signed-in connection and only for a pairing with this iPhone. A
+        // pairing bound to another saved entry for the same host (or to one
+        // since removed) still belongs here, and switching away would tear
+        // down the connection that can open it. The id comes from the relay
+        // stamp, as `dashboard_id` does: the relay is already trusted to
+        // route.
+        if activeDashboardID != nil, let targetGatewayID,
+           activeDashboardGatewayIDs.contains(targetGatewayID) {
+            return .route
         }
         if let id = targetDashboardID {
             if id == activeDashboardID { return .route }
@@ -243,7 +257,12 @@ struct NotificationDashboardPairings: Equatable {
     /// legacy pairing as the selected dashboard's, and "your other
     /// dashboards" would be relative to nothing. Nothing is listed or counted.
     @MainActor
-    init(gateways: [RelayMetaInfo.Gateway], activeDashboardID: UUID?, savedDashboardIDs: [UUID]) {
+    init(
+        gateways: [RelayMetaInfo.Gateway],
+        activeDashboardID: UUID?,
+        savedDashboardIDs: [UUID],
+        activeDashboardGatewayIDs: Set<String> = []
+    ) {
         guard activeDashboardID != nil else { return }
         for gateway in gateways {
             // Parsed like a push payload's `dashboard_id`: blank is unscoped,
@@ -254,7 +273,9 @@ struct NotificationDashboardPairings: Equatable {
                 targetDashboardID: dashboardID,
                 hasMalformedDashboardID: !raw.isEmpty && dashboardID == nil,
                 activeDashboardID: activeDashboardID,
-                savedDashboardIDs: savedDashboardIDs
+                savedDashboardIDs: savedDashboardIDs,
+                targetGatewayID: gateway.id,
+                activeDashboardGatewayIDs: activeDashboardGatewayIDs
             )
             switch outcome {
             case .route:
@@ -1416,12 +1437,14 @@ final class PushNotificationService: ObservableObject {
     /// (plugin 0.24+): a new code from the relay goes to the plugin over
     /// the signed-in dashboard connection, and the plugin claims it, the
     /// same claim `hermes conduit-push pair` makes. `request` reaches that
-    /// dashboard.
+    /// dashboard. Returns the relay gateway id the plugin claimed, when it
+    /// says.
+    @discardableResult
     func pairProfile(
         _ profile: String,
         dashboardID: UUID,
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
-    ) async throws {
+    ) async throws -> String? {
         // Not mid-move: a code from the old relay is useless once the move lands.
         guard !isWorking, !isPairing, let registration else { throw DashboardTicketBridgeError.notReady }
         // One pairing at a time: the button and the automatic one can't
@@ -1447,6 +1470,7 @@ final class PushNotificationService: ObservableObject {
             throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing."))
         }
         await refreshMeta()
+        return response["gateway_id"] as? String
     }
 
     func didReceiveDeviceToken(_ tokenData: Data) {

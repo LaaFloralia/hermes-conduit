@@ -11317,6 +11317,58 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: Relay gateways each dashboard's host reported
+
+    /// Per dashboard, each profile's gateway: `[dashboard id: [profile: gateway id]]`.
+    private static let relayGatewayIDsByDashboardKey = "conduit.relayGatewayIDsByDashboardProfile"
+
+    /// The relay gateway ids the active dashboard's host said its profiles
+    /// pair this iPhone through. A push stamped with one of them came from
+    /// that host, whatever dashboard its pairing was bound to.
+    var activeDashboardRelayGatewayIDs: Set<String> {
+        guard let activeDashboardID else { return [] }
+        return relayGatewayIDs(of: activeDashboardID)
+    }
+
+    func relayGatewayIDs(of dashboardID: UUID) -> Set<String> {
+        Set(storedRelayGatewayIDs()[dashboardID.uuidString]?.values.map { $0 } ?? [])
+    }
+
+    /// Remembers that `dashboardID`'s host pairs `profile` with this iPhone
+    /// through `gatewayID`, as that host said over its signed-in connection.
+    /// The profile's last report replaces its earlier one, so a re-pairing
+    /// (or another host now at that address) leaves no stale id behind.
+    func recordRelayGatewayID(_ gatewayID: String, for dashboardID: UUID, profile: String) {
+        let gatewayID = gatewayID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !gatewayID.isEmpty, gatewayID.count <= 80 else { return }
+        var stored = storedRelayGatewayIDs()
+        guard stored[dashboardID.uuidString]?[profile] != gatewayID else { return }
+        stored[dashboardID.uuidString, default: [:]][profile] = gatewayID
+        saveRelayGatewayIDs(stored)
+    }
+
+    func forgetRelayGatewayID(for dashboardID: UUID, profile: String) {
+        var stored = storedRelayGatewayIDs()
+        guard stored[dashboardID.uuidString]?.removeValue(forKey: profile) != nil else { return }
+        saveRelayGatewayIDs(stored)
+    }
+
+    func forgetRelayGatewayIDs(of dashboardID: UUID) {
+        var stored = storedRelayGatewayIDs()
+        guard stored.removeValue(forKey: dashboardID.uuidString) != nil else { return }
+        saveRelayGatewayIDs(stored)
+    }
+
+    /// Settings > Notifications sorts pairings by these, so it redraws.
+    private func saveRelayGatewayIDs(_ stored: [String: [String: String]]) {
+        objectWillChange.send()
+        defaults.set(stored, forKey: Self.relayGatewayIDsByDashboardKey)
+    }
+
+    private func storedRelayGatewayIDs() -> [String: [String: String]] {
+        defaults.dictionary(forKey: Self.relayGatewayIDsByDashboardKey) as? [String: [String: String]] ?? [:]
+    }
+
     /// The All pill stays fixed; the remaining session categories are local UI preference.
     func moveSessionFilters(fromOffsets: IndexSet, toOffset: Int) {
         sessionFilterOrder.move(fromOffsets: fromOffsets, toOffset: toOffset)
@@ -12332,6 +12384,8 @@ final class AppState: ObservableObject {
         registry.dashboards[index].pendingURL = nil
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        // The old address's host reported them; the new one reports its own.
+        forgetRelayGatewayIDs(of: id)
         return registry.dashboards[index]
     }
 
@@ -12599,6 +12653,8 @@ final class AppState: ObservableObject {
     /// active dashboard this is the full Disconnect teardown, scoped.
     func signOutDashboard(_ id: UUID) {
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+        // The host signed in next reports its own gateways.
+        forgetRelayGatewayIDs(of: id)
         // Drafts shared for this dashboard belong to the signed-out user.
         discardSharedDrafts(forDashboard: id)
         if id == activeDashboardID {
@@ -12651,6 +12707,7 @@ final class AppState: ObservableObject {
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
+        forgetRelayGatewayIDs(of: id)
         if wasActive {
             showLogin = true
         }
@@ -21158,11 +21215,17 @@ final class AppState: ObservableObject {
             targetDashboardID: target.dashboardID,
             hasMalformedDashboardID: target.hasMalformedDashboardID,
             activeDashboardID: activeDashboardID,
-            savedDashboardIDs: savedDashboardRegistry.dashboards.map(\.id)
+            savedDashboardIDs: savedDashboardRegistry.dashboards.map(\.id),
+            targetGatewayID: target.relayGatewayID,
+            activeDashboardGatewayIDs: activeDashboardRelayGatewayIDs
         ) {
         case .route:
-            guard connection != nil else { return .retry }
+            guard connection != nil else {
+                traceStage = "dashboard check (not connected)"
+                return .retry
+            }
         case .switchFirst(let dashboardID):
+            traceStage = "dashboard check (switching to another saved dashboard)"
             // A chat link routed before a call started can reach here after
             // it did: switching dashboards would tear that call down.
             if target.isChatLink, isVoiceCallInProgress {
@@ -21189,8 +21252,10 @@ final class AppState: ObservableObject {
         case .failClosed(let failure):
             switch failure {
             case .unrecognizedDashboard:
+                traceStage = "dashboard check (unrecognized dashboard)"
                 errorMessage = AppLocalization.string("This notification belongs to a dashboard this device doesn't recognize. Add that dashboard again to continue.")
             case .unscopedPush:
+                traceStage = "dashboard check (unscoped push)"
                 errorMessage = AppLocalization.string("This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue.")
             }
             return .failed

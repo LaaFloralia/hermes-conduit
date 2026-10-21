@@ -3361,7 +3361,8 @@ private struct NotificationsSettingsDetail: View {
                         let pairings = NotificationDashboardPairings(
                             gateways: meta.gateways,
                             activeDashboardID: appState.activeDashboardID,
-                            savedDashboardIDs: appState.savedDashboardRegistry.dashboards.map(\.id)
+                            savedDashboardIDs: appState.savedDashboardRegistry.dashboards.map(\.id),
+                            activeDashboardGatewayIDs: appState.activeDashboardRelayGatewayIDs
                         )
                         // Without a selected dashboard there is nothing to
                         // pair yet (and `pairings` is empty); the pairing
