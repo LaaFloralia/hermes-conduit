@@ -309105,6 +309105,990 @@
           }
         }
       }
+    },
+    "/retry can only send a text message again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry kann nur eine Textnachricht erneut senden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry solo puede volver a enviar un mensaje de texto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry ne peut renvoyer qu'un message texte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry hanya dapat mengirim ulang pesan teks."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry può reinviare solo un messaggio di testo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry で再送信できるのはテキストメッセージだけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry는 텍스트 메시지만 다시 보낼 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry może ponownie wysłać tylko wiadomość tekstową."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry só pode reenviar uma mensagem de texto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry может повторно отправить только текстовое сообщение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry yalnızca bir metin mesajını yeniden gönderebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry 只能重新发送文本消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "/retry 只能重新傳送文字訊息。"
+          }
+        }
+      }
+    },
+    "That message was summarized when the chat was compressed, so it can't be taken back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Nachricht wurde beim Komprimieren des Chats zusammengefasst und kann nicht zurückgenommen werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ese mensaje se resumió al comprimir el chat, así que no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce message a été résumé lors de la compression du chat et ne peut donc pas être annulé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan itu sudah diringkas saat chat dikompresi, jadi tidak bisa ditarik kembali."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quel messaggio è stato riassunto quando la chat è stata compressa, quindi non può essere ritirato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このメッセージはチャットの圧縮時に要約されたため、取り消せません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 메시지는 채팅을 압축할 때 요약되어 되돌릴 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ta wiadomość została streszczona podczas kompresji czatu, więc nie można jej cofnąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Essa mensagem foi resumida quando o chat foi comprimido, então não pode ser desfeita."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это сообщение было сокращено при сжатии чата, поэтому его нельзя отменить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu mesaj sohbet sıkıştırılırken özetlendi, bu yüzden geri alınamaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这条消息在压缩聊天时已被总结，无法撤回。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這則訊息在壓縮聊天時已被摘要，無法撤回。"
+          }
+        }
+      }
+    },
+    "The oldest is in the composer to edit. Messages taken back: %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die älteste steht zum Bearbeiten im Eingabefeld. Zurückgenommene Nachrichten: %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El más antiguo está en el editor para modificarlo. Mensajes deshechos: %lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plus ancien est dans le champ de saisie pour être modifié. Messages annulés : %lld"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan terlama ada di kolom tulis untuk diedit. Pesan ditarik kembali: %lld"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il più vecchio è nel campo di scrittura da modificare. Messaggi ritirati: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最も古いメッセージは入力欄で編集できます。取り消したメッセージ: %lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "가장 오래된 메시지는 입력창에서 편집할 수 있습니다. 되돌린 메시지: %lld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Najstarsza jest w polu tekstowym do edycji. Cofnięte wiadomości: %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A mais antiga está no campo de texto para editar. Mensagens desfeitas: %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Самое раннее — в поле ввода для правки. Отменено сообщений: %lld"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En eskisi düzenlemek için yazma alanında. Geri alınan mesajlar: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最早的一条已放回输入框，可编辑。撤回的消息：%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最早的一則已放回輸入框，可編輯。撤回的訊息：%lld"
+          }
+        }
+      }
+    },
+    "There's no message to retry." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gibt keine Nachricht, die erneut gesendet werden kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay ningún mensaje para reintentar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il n'y a aucun message à renvoyer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada pesan untuk dicoba ulang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non c'è nessun messaggio da riprovare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再試行するメッセージがありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 시도할 메시지가 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie ma wiadomości do ponowienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não há mensagem para tentar de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет сообщения для повтора."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeniden denenecek mesaj yok."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可重试的消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可重試的訊息。"
+          }
+        }
+      }
+    },
+    "There's no message to undo." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gibt keine Nachricht zum Zurücknehmen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay ningún mensaje para deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il n'y a aucun message à annuler."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada pesan untuk ditarik kembali."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non c'è nessun messaggio da ritirare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り消すメッセージがありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "되돌릴 메시지가 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie ma wiadomości do cofnięcia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não há mensagem para desfazer."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет сообщения для отмены."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geri alınacak mesaj yok."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有可撤回的消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "沒有可撤回的訊息。"
+          }
+        }
+      }
+    },
+    "Took back your last message. It's in the composer to edit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine letzte Nachricht wurde zurückgenommen. Sie steht zum Bearbeiten im Eingabefeld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se deshizo tu último mensaje. Está en el editor para modificarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre dernier message a été annulé. Il est dans le champ de saisie pour être modifié."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan terakhir Anda ditarik kembali. Pesan itu ada di kolom tulis untuk diedit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo ultimo messaggio è stato ritirato. È nel campo di scrittura da modificare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後のメッセージを取り消しました。入力欄で編集できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마지막 메시지를 되돌렸습니다. 입력창에서 편집할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cofnięto ostatnią wiadomość. Jest w polu tekstowym do edycji."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua última mensagem foi desfeita. Ela está no campo de texto para editar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Последнее сообщение отменено. Оно в поле ввода для правки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son mesajınız geri alındı. Düzenlemek için yazma alanında."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已撤回你的上一条消息，它已放回输入框，可编辑。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已撤回你的上一則訊息，它已放回輸入框，可編輯。"
+          }
+        }
+      }
+    },
+    "Usage: /undo [N]. Takes back your last N messages and Hermes' replies, and puts the oldest back in the composer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendung: /undo [N]. Nimmt deine letzten N Nachrichten und die Antworten von Hermes zurück und legt die älteste wieder ins Eingabefeld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uso: /undo [N]. Deshace tus últimos N mensajes y las respuestas de Hermes, y devuelve el más antiguo al editor."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utilisation : /undo [N]. Annule vos N derniers messages et les réponses de Hermes, et remet le plus ancien dans le champ de saisie."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Penggunaan: /undo [N]. Menarik kembali N pesan terakhir Anda beserta balasan Hermes, lalu menaruh yang terlama di kolom tulis."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uso: /undo [N]. Ritira i tuoi ultimi N messaggi e le risposte di Hermes, e rimette il più vecchio nel campo di scrittura."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使い方: /undo [N]。最後の N 件のメッセージと Hermes の返信を取り消し、最も古いメッセージを入力欄に戻します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용법: /undo [N]. 마지막 N개의 메시지와 Hermes의 답장을 되돌리고, 가장 오래된 메시지를 입력창에 다시 넣습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Użycie: /undo [N]. Cofa ostatnie N wiadomości i odpowiedzi Hermesa, a najstarszą wstawia z powrotem do pola tekstowego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uso: /undo [N]. Desfaz suas últimas N mensagens e as respostas do Hermes, e devolve a mais antiga ao campo de texto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Использование: /undo [N]. Отменяет ваши последние N сообщений и ответы Hermes, а самое раннее возвращает в поле ввода."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kullanım: /undo [N]. Son N mesajınızı ve Hermes'in yanıtlarını geri alır, en eskisini yazma alanına geri koyar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用法：/undo [N]。撤回你最近的 N 条消息和 Hermes 的回复，并把最早的一条放回输入框。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用法：/undo [N]。撤回你最近的 N 則訊息和 Hermes 的回覆，並把最早的一則放回輸入框。"
+          }
+        }
+      }
+    },
+    "Wait for the reply to finish, or /stop it, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warte, bis die Antwort fertig ist, oder beende sie mit /stop, und versuche es dann erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espera a que termine la respuesta, o detenla con /stop, y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendez la fin de la réponse, ou arrêtez-la avec /stop, puis réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tunggu balasan selesai, atau hentikan dengan /stop, lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendi che la risposta finisca, o fermala con /stop, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返信が終わるのを待つか /stop で止めてから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답장이 끝날 때까지 기다리거나 /stop으로 멈춘 다음 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Poczekaj, aż odpowiedź się skończy, albo zatrzymaj ją przez /stop, i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espere a resposta terminar, ou pare-a com /stop, e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дождитесь окончания ответа или остановите его через /stop, затем попробуйте снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtın bitmesini bekleyin ya da /stop ile durdurun, sonra yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待回复完成，或用 /stop 停止它，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請等待回覆完成，或用 /stop 停止它，然後重試。"
+          }
+        }
+      }
+    },
+    "Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Nachricht wurde zurückgenommen, aber der Chat konnte nicht neu geladen werden. Öffne ihn erneut, um die Änderung zu sehen. Die Nachricht steht im Eingabefeld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se deshizo el mensaje, pero el chat no se pudo recargar. Ábrelo de nuevo para ver el cambio. El mensaje está en el editor."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le message a été annulé, mais le chat n'a pas pu se recharger. Rouvrez-le pour voir le changement. Le message est dans le champ de saisie."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan sudah ditarik kembali, tetapi chat tidak bisa dimuat ulang. Buka lagi untuk melihat perubahannya. Pesannya ada di kolom tulis."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il messaggio è stato ritirato, ma la chat non si è potuta ricaricare. Riaprila per vedere la modifica. Il messaggio è nel campo di scrittura."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージは取り消しましたが、チャットを再読み込みできませんでした。変更を見るにはチャットを開き直してください。メッセージは入力欄にあります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지를 되돌렸지만 채팅을 다시 불러오지 못했습니다. 변경 사항을 보려면 채팅을 다시 여세요. 메시지는 입력창에 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiadomość została cofnięta, ale nie udało się ponownie wczytać czatu. Otwórz go jeszcze raz, aby zobaczyć zmianę. Wiadomość jest w polu tekstowym."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A mensagem foi desfeita, mas o chat não pôde ser recarregado. Abra-o de novo para ver a mudança. A mensagem está no campo de texto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение отменено, но чат не удалось перезагрузить. Откройте его снова, чтобы увидеть изменение. Сообщение — в поле ввода."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesaj geri alındı ama sohbet yeniden yüklenemedi. Değişikliği görmek için sohbeti yeniden açın. Mesaj yazma alanında."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "消息已撤回，但聊天无法重新加载。请重新打开聊天查看更改。消息已放回输入框。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "訊息已撤回，但聊天無法重新載入。請重新開啟聊天查看變更。訊息已放回輸入框。"
+          }
+        }
+      }
+    },
+    "Took back your last message." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine letzte Nachricht wurde zurückgenommen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se deshizo tu último mensaje."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre dernier message a été annulé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan terakhir Anda ditarik kembali."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo ultimo messaggio è stato ritirato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最後のメッセージを取り消しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마지막 메시지를 되돌렸습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cofnięto ostatnią wiadomość."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua última mensagem foi desfeita."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Последнее сообщение отменено."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son mesajınız geri alındı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已撤回你的上一条消息。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已撤回你的上一則訊息。"
+          }
+        }
+      }
+    },
+    "Messages taken back: %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurückgenommene Nachrichten: %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensajes deshechos: %lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messages annulés : %lld"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan ditarik kembali: %lld"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messaggi ritirati: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取り消したメッセージ: %lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "되돌린 메시지: %lld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cofnięte wiadomości: %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensagens desfeitas: %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отменено сообщений: %lld"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geri alınan mesajlar: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回的消息：%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回的訊息：%lld"
+          }
+        }
+      }
+    },
+    "Took the message back, but the chat couldn't reload. Open it again to see the change." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Nachricht wurde zurückgenommen, aber der Chat konnte nicht neu geladen werden. Öffne ihn erneut, um die Änderung zu sehen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se deshizo el mensaje, pero el chat no se pudo recargar. Ábrelo de nuevo para ver el cambio."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le message a été annulé, mais la discussion n'a pas pu être rechargée. Rouvrez-la pour voir la modification."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan sudah ditarik kembali, tetapi chat tidak dapat dimuat ulang. Buka lagi untuk melihat perubahannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il messaggio è stato ritirato, ma non è stato possibile ricaricare la chat. Riaprila per vedere la modifica."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージを取り消しましたが、チャットを再読み込みできませんでした。もう一度開くと変更が表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지를 되돌렸지만 채팅을 다시 불러오지 못했습니다. 다시 열면 변경 내용이 보입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cofnięto wiadomość, ale nie udało się ponownie wczytać czatu. Otwórz go ponownie, aby zobaczyć zmianę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A mensagem foi desfeita, mas não foi possível recarregar o chat. Abra-o novamente para ver a alteração."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение отменено, но чат не удалось перезагрузить. Откройте его снова, чтобы увидеть изменение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesaj geri alındı ancak sohbet yeniden yüklenemedi. Değişikliği görmek için sohbeti yeniden açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已撤回该消息，但聊天无法重新加载。请重新打开以查看更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已撤回該訊息，但聊天無法重新載入。請重新開啟以查看變更。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

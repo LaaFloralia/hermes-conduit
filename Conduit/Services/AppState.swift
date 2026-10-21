@@ -139,6 +139,10 @@ struct ChatResumeLifecycleOperations {
     /// `/stop`'s `process.stop`: how many background processes stopped.
     /// Not an init parameter: tests set it on the value.
     var stopProcesses: (@MainActor (HermesClient, String) async throws -> Int)?
+    /// `/undo` and `/retry`: the rewind snapshot, then the rewind itself.
+    /// Not init parameters: tests set them on the value.
+    var rewindSnapshot: (@MainActor (HermesClient, String) async throws -> SessionRewindSnapshot)?
+    var rewindSession: (@MainActor (HermesClient, String, Int, SessionRewindSnapshot) async throws -> SessionRewindReceipt)?
     var compressSession: (@MainActor (
         HermesClient,
         String,
@@ -24277,9 +24281,11 @@ final class AppState: ObservableObject {
         SlashCommand(name: "goal", description: AppLocalization.string("Manage this session's standing goal"), category: "Hermes"),
         SlashCommand(name: "personality", description: AppLocalization.string("Switch the session personality"), category: "Hermes"),
         SlashCommand(name: "queue", aliases: ["q"], description: AppLocalization.string("Queue a prompt for the next turn"), category: "Hermes"),
+        SlashCommand(name: "retry", description: AppLocalization.string("Retry the last user message"), category: "Hermes"),
         SlashCommand(name: "status", description: AppLocalization.string("Show current session status"), category: "Hermes"),
-        SlashCommand(name: "steer", description: AppLocalization.string("Steer the current run"), category: "Hermes"),
+        SlashCommand(name: "steer", aliases: ["s"], description: AppLocalization.string("Steer the current run"), category: "Hermes"),
         SlashCommand(name: "stop", description: AppLocalization.string("Stop the reply and background processes"), category: "Hermes"),
+        SlashCommand(name: "undo", description: AppLocalization.string("Remove the last user and assistant exchange"), category: "Hermes"),
         SlashCommand(name: "usage", description: AppLocalization.string("Show this session's token usage"), category: "Hermes"),
         SlashCommand(name: "version", description: AppLocalization.string("Show the Hermes Agent version"), category: "Hermes")
     ]
@@ -24301,9 +24307,9 @@ final class AppState: ObservableObject {
         "palette", "paste", "pause", "pet", "platform", "plugins", "prompt",
         "compose", "quit", "exit", "redraw", "reload", "reload-mcp",
         "reload_mcp", "reload-skills", "reload_skills", "restart", "resume",
-        "retry", "rollback", "save", "sessions", "sethome", "set-home", "skin",
+        "rollback", "save", "sessions", "sethome", "set-home", "skin",
         "snapshot", "snap", "start", "statusbar", "sb", "subscription",
-        "upgrade", "timestamps", "ts", "tools", "topic", "undo", "update",
+        "upgrade", "timestamps", "ts", "tools", "topic", "update",
         "wake", "worktree"
     ]
 
@@ -24571,6 +24577,19 @@ final class AppState: ObservableObject {
         case "steer", "s", "queue", "q":
             _ = await submitSteerOrQueueSlash(name: command.name, argument: command.argument, context: submissionContext)
             return
+        case "undo", "retry":
+            // Hermes' own clients run these as a revision-fenced rewind
+            // (`session.mutate`); slash.exec refuses them. A Hermes without
+            // the rewind gets the command through slash.exec, as before.
+            cancelChatResumeRestoration()
+            guard await rewindLastTurns(
+                retry: command.name == "retry",
+                argument: command.argument,
+                client: client,
+                sessionID: sessionId,
+                context: submissionContext
+            ) else { break }
+            return
         case "stop":
             // Desktop's /stop: the running reply, then this chat's
             // background processes (`process.stop`, what Hermes' own /stop
@@ -24638,6 +24657,159 @@ final class AppState: ObservableObject {
             return "\(refusal)\n\(detail)"
         }
         return AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))")
+    }
+
+    /// `/undo [N]` takes back the last N user turns and everything after
+    /// them, and puts the oldest one back in the composer; `/retry` takes
+    /// back the last one and sends it again. Hermes' `_rewind`
+    /// (hermes_cli/gateway_chat_commands.py): the target comes from the
+    /// same `session.resume` snapshot whose fences the rewind presents.
+    /// False when this Hermes has no `session.mutate`.
+    private func rewindLastTurns(
+        retry: Bool,
+        argument: String,
+        client: HermesClient,
+        sessionID: String,
+        context: ComposerSubmissionContext
+    ) async -> Bool {
+        let trimmed = argument.trimmingCharacters(in: .whitespacesAndNewlines)
+        let turnCount: Int
+        if retry || trimmed.isEmpty {
+            turnCount = 1
+        } else if let count = Int(trimmed), count > 0 {
+            turnCount = count
+        } else {
+            appendSlashOutput(
+                AppLocalization.string("Usage: /undo [N]. Takes back your last N messages and Hermes' replies, and puts the oldest back in the composer."),
+                context: context
+            )
+            return true
+        }
+        guard !isBusy else {
+            appendSlashOutput(AppLocalization.string("Wait for the reply to finish, or /stop it, then try again."), context: context)
+            return true
+        }
+        let nothingToRewind = retry
+            ? AppLocalization.string("There's no message to retry.")
+            : AppLocalization.string("There's no message to undo.")
+        let receipt: SessionRewindReceipt
+        let target: SessionRewindSnapshot.Turn
+        // A bot chat's transcript lives in the bot profile's store; any
+        // other chat's in the workspace's, which needs no profile.
+        let profile = botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile)
+        do {
+            let snapshot: SessionRewindSnapshot
+            if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
+                snapshot = try await rewindSnapshot(client, sessionID)
+            } else {
+                snapshot = try await client.rewindSnapshot(sessionId: sessionID, profile: profile)
+            }
+            guard isCurrentComposerSubmission(context) else { return true }
+            guard snapshot.turns.count >= turnCount else {
+                appendSlashOutput(nothingToRewind, context: context)
+                return true
+            }
+            target = snapshot.turns[snapshot.turns.count - turnCount]
+            // Refused before anything is taken back, as Hermes does.
+            if retry, target.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+                appendSlashOutput(AppLocalization.string("/retry can only send a text message again."), context: context)
+                return true
+            }
+            if let rewindSession = chatResumeLifecycleOperations.rewindSession {
+                receipt = try await rewindSession(client, sessionID, target.rowID, snapshot)
+            } else {
+                receipt = try await client.rewindSession(
+                    sessionId: sessionID,
+                    targetMessageID: target.rowID,
+                    snapshot: snapshot,
+                    profile: profile
+                )
+            }
+        } catch where HermesClient.isMissingRPCMethod(error) {
+            return false
+        } catch {
+            appendSlashOutput(Self.rewindFailureNote(command: retry ? "retry" : "undo", error: error), context: context)
+            return true
+        }
+        guard receipt.rewoundCount > 0 else {
+            appendSlashOutput(nothingToRewind, context: context)
+            return true
+        }
+        // Open the chat again so it shows the shortened transcript.
+        guard isCurrentOrAliasedComposerSubmission(context) else { return true }
+        let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
+        guard reopened != .superseded else { return true }
+        let text = receipt.text ?? target.text ?? ""
+        let current = composerSubmissionContext()
+        // Our own open moved the viewport on, so `context` is stale by
+        // construction; the rewound chat must still be the one on screen.
+        guard composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
+            || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) else { return true }
+        if reopened == .failed {
+            // Taken back, but the chat on screen still shows it: say so,
+            // and keep the words (a /retry's too) in the composer.
+            appendSlashOutput(
+                text.isEmpty
+                    ? AppLocalization.string("Took the message back, but the chat couldn't reload. Open it again to see the change.")
+                    : AppLocalization.string("Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer."),
+                context: current
+            )
+            if !text.isEmpty { prefillComposer(text) }
+            return true
+        }
+        if retry, !composerIsEnabled {
+            // Taken back, but nothing can be sent right now: keep the words.
+            appendSlashOutput(
+                AppLocalization.string("Took back your last message. It's in the composer to edit."),
+                context: current
+            )
+            prefillComposer(text)
+            return true
+        }
+        if retry {
+            _ = await performComposerSubmission(
+                text: text,
+                attachments: [],
+                submissionContext: current,
+                onBusy: nil,
+                busyMode: busyInputMode,
+                runsSlashCommands: false
+            )
+            return true
+        }
+        guard !text.isEmpty else {
+            // A turn that held more than text has nothing to put back.
+            appendSlashOutput(
+                turnCount == 1
+                    ? AppLocalization.string("Took back your last message.")
+                    : AppLocalization.string("Messages taken back: \(turnCount)"),
+                context: current
+            )
+            return true
+        }
+        appendSlashOutput(
+            turnCount == 1
+                ? AppLocalization.string("Took back your last message. It's in the composer to edit.")
+                : AppLocalization.string("The oldest is in the composer to edit. Messages taken back: \(turnCount)"),
+            context: current
+        )
+        prefillComposer(text)
+        return true
+    }
+
+    /// Hermes' rewind refusals in words: a running reply, or a message
+    /// compression summarized.
+    static func rewindFailureNote(command: String, error: Error) -> String {
+        if let refusal = error as? RpcError {
+            let reason = refusal.reason ?? refusal.message
+            if reason == "session_busy" {
+                return AppLocalization.string("Wait for the reply to finish, or /stop it, then try again.")
+            }
+            if reason == "invalid_params", refusal.detail?.hasPrefix("compacted:") == true {
+                return AppLocalization.string("That message was summarized when the chat was compressed, so it can't be taken back.")
+            }
+        }
+        return slashFailureNote(command: command, error: error)
     }
 
     private static let composerRoutedSlashNames: Set<String> = ["steer", "s", "queue", "q"]

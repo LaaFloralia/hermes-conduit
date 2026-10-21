@@ -600,6 +600,90 @@ struct SessionResumeResult {
 ///   gateway's bounded wait expired while the host is still compressing;
 /// - a concurrent compression already holding the lock:
 ///   `lock_held: true` with a human-readable `message` and no `status`.
+/// The user turns `/undo` and `/retry` can rewind to, oldest first, and the
+/// session fences the rewind presents.
+struct SessionRewindSnapshot: Equatable {
+    struct Turn: Equatable {
+        /// The durable `messages.id` a rewind names.
+        let rowID: Int
+        /// The turn's text; nil when it held more than text (a picture or
+        /// a file), which `/retry` can't send again as typed.
+        let text: String?
+    }
+
+    let turns: [Turn]
+    let revision: Int?
+    let generation: Int?
+
+    init(turns: [Turn], revision: Int?, generation: Int?) {
+        self.turns = turns
+        self.revision = revision
+        self.generation = generation
+    }
+
+    init(resume object: [String: AnyCodable]) {
+        turns = (object["messages"]?.arrayValue ?? []).compactMap { Self.userTurn($0.objectValue ?? [:]) }
+        revision = HermesClient.exactIntValue(object["revision"])
+        generation = HermesClient.exactIntValue(object["execution_generation"])
+    }
+
+    /// Hermes' `_user_turns`: a live user row with a durable id, typed by a
+    /// person (a /steer counts), never a compaction carrier or a row a
+    /// compression archived.
+    private static func userTurn(_ row: [String: AnyCodable]) -> Turn? {
+        guard row["role"]?.stringValue == "user",
+              let rowID = HermesClient.exactIntValue(row["row_id"]),
+              row["archived"]?.boolValue != true,
+              row["_compressed_summary"]?.boolValue != true else { return nil }
+        switch row["display_kind"] {
+        case nil, .null?, .string("")?, .string("steer")?: break
+        default: return nil
+        }
+        return Turn(rowID: rowID, text: text(of: row["content"]))
+    }
+
+    /// A text turn's words; nil when a part isn't text.
+    static func text(of content: AnyCodable?) -> String? {
+        switch content {
+        case .string(let text)?:
+            return text
+        case .array(let parts)? where !parts.isEmpty:
+            var words: [String] = []
+            for part in parts {
+                guard let object = part.objectValue,
+                      object["type"]?.stringValue == "text",
+                      let text = object["text"]?.stringValue else { return nil }
+                words.append(text)
+            }
+            return words.joined(separator: "\n")
+        default:
+            return nil
+        }
+    }
+}
+
+/// Hermes' answer to a rewind: how many rows it took back, and the user
+/// turn it rewound to.
+struct SessionRewindReceipt: Equatable {
+    let rewoundCount: Int
+    /// The rewound turn's text; nil when it held more than text.
+    let text: String?
+
+    init(rewoundCount: Int, text: String?) {
+        self.rewoundCount = rewoundCount
+        self.text = text
+    }
+
+    init(result: AnyCodable) {
+        let object = result.objectValue ?? [:]
+        // Only `nothing` means nothing was taken back; an applied rewind
+        // without its count still took back the target.
+        let nothing = object["status"]?.stringValue == "nothing"
+        rewoundCount = nothing ? 0 : (HermesClient.exactIntValue(object["rewound_count"]) ?? 1)
+        text = SessionRewindSnapshot.text(of: object["target_message"]?.objectValue?["content"])
+    }
+}
+
 struct SessionCompressResult {
     enum Status: Equatable {
         case compressed
@@ -2081,6 +2165,16 @@ final class HermesClient: ObservableObject {
         omitMessages: Bool,
         profile: String? = nil
     ) async throws -> SessionResumeResult {
+        let object = try await resumeSessionObject(sessionId, omitMessages: omitMessages, profile: profile)
+        return resumeResult(from: object, sessionId: sessionId)
+    }
+
+    /// The `session.resume` response, with its open requests taken in.
+    private func resumeSessionObject(
+        _ sessionId: String,
+        omitMessages: Bool,
+        profile: String? = nil
+    ) async throws -> [String: AnyCodable] {
         var params: [String: Any] = [
             "session_id": sessionId,
             "cols": 96,
@@ -2106,6 +2200,40 @@ final class HermesClient: ObservableObject {
             timeout: Self.resumeTimeout(omitMessages: omitMessages)
         )
         let object = result.objectValue ?? [:]
+        for id in Self.openRequestIDs(in: object["open_requests"]) {
+            openServerRequestIDs.insert(id)
+        }
+        // Anything replayed that this client cannot present is declined
+        // exactly like the live frame, or it would stall the agent until its
+        // deadline after every reconnect.
+        for entry in object["open_requests"]?.arrayValue ?? [] {
+            guard let request = entry.objectValue,
+                  let method = request["method"]?.stringValue,
+                  !Self.handlesServerRequest(method),
+                  let id = request["id"]?.stringValue, !id.isEmpty else { continue }
+            declineServerRequest(id: .string(id), method: method)
+        }
+        for entry in object["open_requests"]?.arrayValue ?? [] {
+            guard let request = entry.objectValue,
+                  request["method"]?.stringValue == "approval",
+                  let id = request["id"]?.stringValue,
+                  let params = request["params"]?.objectValue,
+                  let queueID = params["request_id"]?.stringValue,
+                  !queueID.isEmpty else { continue }
+            approvalQueueIDs[id] = (queueID, params["session_id"]?.stringValue ?? "")
+        }
+        for entry in object["open_requests"]?.arrayValue ?? [] {
+            guard let request = entry.objectValue,
+                  let method = request["method"]?.stringValue,
+                  method == "clarify" || InputPromptActivity.Kind(rawValue: method) != nil,
+                  let id = request["id"]?.stringValue,
+                  let session = request["params"]?.objectValue?["session_id"]?.stringValue else { continue }
+            clarifySessions[id] = session
+        }
+        return object
+    }
+
+    private func resumeResult(from object: [String: AnyCodable], sessionId: String) -> SessionResumeResult {
         let resolvedId = object["session_id"]?.stringValue ?? sessionId
         // The durable stored key is parsed separately from the runtime id and
         // stays nil when the gateway omits it (legacy gateways). Callers must
@@ -2145,36 +2273,6 @@ final class HermesClient: ObservableObject {
             }
         } else if !openClarifies.isEmpty {
             snapshotObject["open_clarifies"] = .array(openClarifies.map { .object($0) })
-        }
-        for id in Self.openRequestIDs(in: object["open_requests"]) {
-            openServerRequestIDs.insert(id)
-        }
-        // Anything replayed that this client cannot present is declined
-        // exactly like the live frame, or it would stall the agent until its
-        // deadline after every reconnect.
-        for entry in object["open_requests"]?.arrayValue ?? [] {
-            guard let request = entry.objectValue,
-                  let method = request["method"]?.stringValue,
-                  !Self.handlesServerRequest(method),
-                  let id = request["id"]?.stringValue, !id.isEmpty else { continue }
-            declineServerRequest(id: .string(id), method: method)
-        }
-        for entry in object["open_requests"]?.arrayValue ?? [] {
-            guard let request = entry.objectValue,
-                  request["method"]?.stringValue == "approval",
-                  let id = request["id"]?.stringValue,
-                  let params = request["params"]?.objectValue,
-                  let queueID = params["request_id"]?.stringValue,
-                  !queueID.isEmpty else { continue }
-            approvalQueueIDs[id] = (queueID, params["session_id"]?.stringValue ?? "")
-        }
-        for entry in object["open_requests"]?.arrayValue ?? [] {
-            guard let request = entry.objectValue,
-                  let method = request["method"]?.stringValue,
-                  method == "clarify" || InputPromptActivity.Kind(rawValue: method) != nil,
-                  let id = request["id"]?.stringValue,
-                  let session = request["params"]?.objectValue?["session_id"]?.stringValue else { continue }
-            clarifySessions[id] = session
         }
         if let openRequests = object["open_requests"] {
             snapshotObject["open_requests"] = openRequests
@@ -2827,6 +2925,40 @@ final class HermesClient: ObservableObject {
     func stopProcesses(sessionId: String) async throws -> Int {
         let result = try await rpc("process.stop", params: ["session_id": sessionId])
         return result.objectValue?["killed"]?.intValue ?? 0
+    }
+
+    /// What `/undo` and `/retry` rewind from: the session's user turns and
+    /// the fences a rewind must present, read from one `session.resume`
+    /// like Hermes' own clients do. `profile` opens a bot chat's store, as
+    /// for any resume.
+    func rewindSnapshot(sessionId: String, profile: String? = nil) async throws -> SessionRewindSnapshot {
+        let object = try await resumeSessionObject(sessionId, omitMessages: false, profile: profile)
+        return SessionRewindSnapshot(resume: object)
+    }
+
+    /// Hermes' `session.mutate` rewind: archives the user turn
+    /// `targetMessageID` and everything after it. The gateway refuses a
+    /// running session (`session_busy`) and a moved one
+    /// (`revision_conflict`, `stale_generation`).
+    func rewindSession(
+        sessionId: String,
+        targetMessageID: Int,
+        snapshot: SessionRewindSnapshot,
+        profile: String? = nil
+    ) async throws -> SessionRewindReceipt {
+        var params: [String: Any] = [
+            "session_id": sessionId,
+            "request_id": UUID().uuidString.lowercased(),
+            "operation": "rewind",
+            "payload": ["target_message_id": targetMessageID]
+        ]
+        if let revision = snapshot.revision { params["expected_revision"] = revision }
+        if let generation = snapshot.generation { params["expected_generation"] = generation }
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            params["profile"] = profile
+        }
+        let result = try await rpc("session.mutate", params: params)
+        return SessionRewindReceipt(result: result)
     }
 
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {
