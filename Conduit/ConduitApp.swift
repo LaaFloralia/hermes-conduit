@@ -212,7 +212,7 @@ struct ConduitApp: App {
     @ObservedObject private var pendingVoiceIntents = PendingVoiceIntentStore.shared
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     /// The accent picked in Settings > Appearance (#697).
-    @AppStorage(ConduitAccentChoice.storageKey) private var accentChoice = ConduitAccentChoice.defaultChoice
+    @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
     /// A chat another app asked to open (`conduit://session/<id>`), held
     /// until Hermes is connected: a cold launch opens it once connecting
     /// finishes instead of failing against an empty session list.
@@ -269,8 +269,12 @@ struct ConduitApp: App {
             .background(WindowAccentTint(choice: accentChoice))
             // Notes touches app-wide so the backdrop can rest when idle.
             .background(InteractionIdleTouchProbe())
-            // The Watch app draws in the same accent.
-            .onChange(of: accentChoice) { _, _ in appState.shareWatchCallVoices() }
+            // The Watch app draws in the same accent. Shared once a pick
+            // settles: dragging in the colour picker changes it many times.
+            .task(id: accentChoice) {
+                guard (try? await Task.sleep(for: .milliseconds(600))) != nil else { return }
+                appState.shareWatchCallVoices()
+            }
 #if DEBUG
             .modifier(WidgetLaunchUITestFixture.modifier(appState: appState))
             .modifier(ScreenshotCallFixtureModifier(appState: appState))

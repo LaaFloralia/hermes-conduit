@@ -1617,6 +1617,7 @@ struct ChatSettingsDetail: View {
             trailingSection: AnyView(
                 VStack(spacing: 24) {
                     ChatTextSizeSettings()
+                    ChatFontStyleSettings()
                     ComposerReturnKeySettings()
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
@@ -1643,10 +1644,10 @@ struct ChatSettingsDetail: View {
     }
 }
 
-/// Local, device-only chat text-size preference (issue #85). Stored in
-/// UserDefaults via @AppStorage with the same lifetime as
-/// ComposerReturnKey — never part of the Hermes profile configuration and
-/// never synchronized anywhere. A five-position stepped slider: the change
+/// Chat text-size preference (issue #85). Stored in UserDefaults via
+/// @AppStorage with the same lifetime as ComposerReturnKey — never part of
+/// the Hermes profile configuration, and shared only by Sync across
+/// devices. A five-position stepped slider: the change
 /// is live (the visible transcript re-renders as the slider moves), there
 /// is no Save button, and `Default` keeps today's appearance.
 private struct ChatTextSizeSettings: View {
@@ -1697,6 +1698,45 @@ private struct ChatTextSizeSettings: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
+        }
+    }
+}
+
+/// The typeface of conversation text: Apple's system designs, so Dynamic
+/// Type and every language keep working. Code stays monospaced and the
+/// interface stays in the system font.
+private struct ChatFontStyleSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatTypography.fontStylePreferenceKey) private var styleRaw = ChatFontStyle.standard.rawValue
+
+    private var selected: ChatFontStyle {
+        ChatTypography.resolveStyle(rawValue: styleRaw)
+    }
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Chat text style"),
+            symbol: "textformat",
+            tint: .conduitAura
+        ) {
+            Text("The typeface of messages in a chat. Code stays monospaced, and the rest of the interface keeps the system font.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Picker("Chat text style", selection: Binding(get: { selected }, set: {
+                Haptics.selection()
+                styleRaw = $0.rawValue
+            })) {
+                ForEach(ChatFontStyle.allCases, id: \.self) { style in
+                    Text(verbatim: style.displayName).tag(style)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text("Hermes replies like this.")
+                .font(.body)
+                .fontDesign(selected.fontDesign)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .conduitGlassSurface(cornerRadius: 14, tint: .clear)
         }
     }
 }
@@ -3013,7 +3053,7 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
-    @AppStorage(ConduitAccentChoice.storageKey) private var accentChoice = ConduitAccentChoice.defaultChoice
+    @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
     @State private var selected: ThemePreference
     @State private var isChangingIcon = false
     init(theme: ThemePreference, saveTheme: @escaping (ThemePreference) -> Void) { self.theme = theme; self.saveTheme = saveTheme; _selected = State(initialValue: theme) }
@@ -3159,44 +3199,151 @@ private struct AppearanceSettingsDetail: View {
     }
 }
 
-/// One swatch per preset accent (#697); the pick redraws the app in place.
+/// One swatch per preset accent (#697), then a colour of the user's own;
+/// the pick redraws the app in place.
 private struct AccentColorPicker: View {
-    @Binding var selection: ConduitAccentChoice
+    @Binding var selection: ConduitAccent
     @Environment(\.colorScheme) private var colorScheme
+    /// The last colour of the user's own, kept while a preset is picked so
+    /// the custom swatch reopens on it.
+    @AppStorage(CustomAccentColor.lastPickKey) private var lastCustomHex = CustomAccentColor.firstPick.hex
+
+    private var isCustom: Bool {
+        if case .custom = selection { return true }
+        return false
+    }
 
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(ConduitAccentChoice.allCases) { choice in
-                let isSelected = choice == selection
-                Button {
-                    guard !isSelected else { return }
-                    Haptics.selection()
-                    selection = choice
-                } label: {
-                    Circle()
-                        .fill(Color(uiColor: choice.color(dark: colorScheme == .dark)))
-                        .frame(width: 32, height: 32)
-                        .overlay {
-                            if isSelected {
-                                Image(systemName: "checkmark")
-                                    .font(.footnote.weight(.bold))
-                                    .foregroundStyle(Color(uiColor: ConduitAccentChoice.markColor(on: choice.color(dark: colorScheme == .dark))))
-                            }
-                        }
-                        .padding(4)
-                        .overlay {
-                            Circle()
-                                .strokeBorder(isSelected ? Color.primary.opacity(0.55) : .clear, lineWidth: 2)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 0) {
+                ForEach(ConduitAccentChoice.allCases) { choice in
+                    presetSwatch(choice)
                 }
-                .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(choice.title)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                customSwatch
+            }
+            .conduitFixedGlyph()
+            if isCustom {
+                Text("Your color is adjusted where needed so text stays readable in light and dark mode.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                AccentPreview()
             }
         }
-        .conduitFixedGlyph()
+        // A custom colour that arrives from another device is the one the
+        // custom swatch reopens on too.
+        .onChange(of: selection) { _, newSelection in
+            if case .custom(let custom) = newSelection { lastCustomHex = custom.hex }
+        }
+    }
+
+    private func presetSwatch(_ choice: ConduitAccentChoice) -> some View {
+        let isSelected = selection == .preset(choice)
+        let fill = choice.color(dark: colorScheme == .dark)
+        return Button {
+            guard !isSelected else { return }
+            Haptics.selection()
+            selection = .preset(choice)
+        } label: {
+            Circle()
+                .fill(Color(uiColor: fill))
+                .frame(width: 32, height: 32)
+                .overlay {
+                    if isSelected {
+                        Image(systemName: "checkmark")
+                            .font(.footnote.weight(.bold))
+                            .foregroundStyle(Color(uiColor: ConduitAccentChoice.markColor(on: fill)))
+                    }
+                }
+                .modifier(AccentSwatchFrame(isSelected: isSelected))
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(choice.title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// The system colour picker, its well in the swatch row. Picking in it
+    /// selects the custom accent; tapping the well again reopens the pick.
+    private var customSwatch: some View {
+        ColorPicker(selection: customColor, supportsOpacity: false) {
+            Text("Custom color")
+        }
+        .labelsHidden()
+        .frame(width: 32, height: 32)
+        .modifier(AccentSwatchFrame(isSelected: isCustom))
+        .accessibilityAddTraits(isCustom ? .isSelected : [])
+    }
+
+    private var customColor: Binding<Color> {
+        Binding(
+            get: {
+                let pick: CustomAccentColor
+                if case .custom(let custom) = selection {
+                    pick = custom
+                } else {
+                    pick = CustomAccentColor(hex: lastCustomHex) ?? CustomAccentColor.firstPick
+                }
+                return Color(uiColor: UIColor(pick.picked))
+            },
+            set: { color in
+                var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+                guard UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return }
+                // The picker can hand back Display P3; stored components are sRGB.
+                let srgb = CGColorSpace(name: CGColorSpace.sRGB).flatMap {
+                    UIColor(color).cgColor.converted(to: $0, intent: .defaultIntent, options: nil)
+                }
+                if let components = srgb?.components, components.count >= 3 {
+                    (red, green, blue) = (components[0], components[1], components[2])
+                }
+                let pick = CustomAccentColor(red: red, green: green, blue: blue)
+                guard selection != .custom(pick) else { return }
+                if !isCustom { Haptics.selection() }
+                lastCustomHex = pick.hex
+                selection = .custom(pick)
+            }
+        )
+    }
+}
+
+/// A swatch's ring when picked, and its full-width 44 pt hit region.
+private struct AccentSwatchFrame: ViewModifier {
+    let isSelected: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .padding(4)
+            .overlay {
+                Circle()
+                    .strokeBorder(isSelected ? Color.primary.opacity(0.55) : .clear, lineWidth: 2)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+    }
+}
+
+/// A sent message and accent text, drawn as the app will draw them, so a
+/// colour of the user's own shows its adjusted shades.
+private struct AccentPreview: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Label("Highlights", systemImage: "sparkles")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.conduitAccent)
+            Spacer(minLength: 8)
+            Text("Your messages")
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    LinearGradient(
+                        colors: [.conduitUserBubble, .conduitUserBubbleShade],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

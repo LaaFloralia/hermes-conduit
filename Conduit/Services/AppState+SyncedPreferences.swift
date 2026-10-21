@@ -124,8 +124,9 @@ extension AppState {
     var syncedPreferenceSlots: [SyncedPreferenceSlot] {
         let defaults = syncedPreferences.defaults
         var slots: [SyncedPreferenceSlot] = [
-            .defaults("app.accent", ConduitAccentChoice.storageKey, .string, in: defaults),
+            .defaults("app.accent", ConduitAccent.storageKey, .string, in: defaults),
             .defaults("app.chat_text_size", ChatTypography.preferenceKey, .int, in: defaults),
+            .defaults("app.chat_font_style", ChatTypography.fontStylePreferenceKey, .string, in: defaults),
             .defaults("app.haptics", Haptics.preferenceKey, .bool, in: defaults),
             .defaults("app.return_key_sends", ComposerReturnKey.preferenceKey, .bool, in: defaults),
             .defaults("app.main_button_new_chat", V2MainButtonPreference.key, .bool, in: defaults),
