@@ -2057,6 +2057,17 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.redirects.count, 1)
     }
 
+    func testGeminiStartJobAndAskThreadExposeOptionalFollowUpKinds() throws {
+        let start = try XCTUnwrap(GeminiLiveToolBridge.functionDeclarations.first { $0.name == "start_job" })
+        let ask = try XCTUnwrap(GeminiLiveToolBridge.threadDeclarations.first { $0.name == "ask_thread" })
+        for declaration in [start, ask] {
+            let kind = try XCTUnwrap((declaration.parameters["properties"] as? [String: Any])?["kind"] as? [String: Any])
+            XCTAssertEqual(kind["type"] as? String, "STRING")
+            XCTAssertEqual(kind["enum"] as? [String], ["add", "change"])
+            XCTAssertFalse((declaration.parameters["required"] as? [String] ?? []).contains("kind"))
+        }
+    }
+
     func testGeminiInterruptJobPassesTheUsersWordsIntoThatJob() async throws {
         let (supervisor, fake) = makeSupervisor()
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)

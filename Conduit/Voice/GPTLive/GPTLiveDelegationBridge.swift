@@ -13,8 +13,9 @@
 //  "Approve:", "Deny:" or "Answer: …", only once the user has spoken.
 //
 //  A correction to work Hermes is still doing goes into it (#451): a
-//  delegation starting "Job 2:" into background job 2, one with no job
-//  number into the only background job running ("New job:" starts another),
+//  delegation starting "Job 2:" into background job 2, or "Add to job 2:"
+//  when it only adds work and can steer it, one with no job number into the
+//  only background job running ("New job:" starts another),
 //  and in a call attached to a chat, any delegation while the call's
 //  request runs there.
 //
@@ -248,7 +249,17 @@ final class GPTLiveDelegationBridge {
         var startsNewJob = false
         // "Job 2: make it Alex" puts the user's words into background job 2
         // while it runs (#451). A number with no job is just new work.
-        if let marker = Self.jobMarker(in: instructions) {
+        if let marker = Self.addToJobMarker(in: instructions) {
+            if let job = supervisor.backgroundJob(numbered: marker.number) {
+                spokenWords?.settleWords(.delegation(id))
+                let outcome = await supervisor.followUp(jobID: job.id, words: Self.followUpWords(userWords: spoken, delegated: marker.rest), kind: "add")
+                guard callGeneration == call, !isEnding else { return [] }
+                noteTaker(outcome, jobID: job.id, delegationID: id)
+                return [Self.followUpReply(delegationID: id, outcome)]
+            }
+            instructions = marker.rest
+            startsNewJob = true
+        } else if let marker = Self.jobMarker(in: instructions) {
             if let job = supervisor.backgroundJob(numbered: marker.number) {
                 spokenWords?.settleWords(.delegation(id))
                 let outcome = await supervisor.followUp(jobID: job.id, words: Self.followUpWords(userWords: spoken, delegated: marker.rest), kind: nil)
@@ -1466,6 +1477,16 @@ final class GPTLiveDelegationBridge {
     /// a time or a decimal ("Job 2:30 reminder" is new work).
     static func jobMarker(in request: String) -> (number: Int, rest: String)? {
         guard let range = request.range(of: #"^\s*job\s*#?\s*[0-9]{1,4}\s*[:,.\-–—](?![0-9])"#, options: [.regularExpression, .caseInsensitive]),
+              let number = Int(String(request[range].filter { $0.isASCII && $0.isNumber })) else { return nil }
+        let rest = request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (number, rest)
+    }
+
+    /// "Add to job 2: also ask for a quiet table" targets a running job
+    /// without changing its request. Plain "Job 2:" remains the compatible
+    /// correction marker and therefore redirects.
+    static func addToJobMarker(in request: String) -> (number: Int, rest: String)? {
+        guard let range = request.range(of: #"^\s*add\s+to\s+job\s*#?\s*[0-9]{1,4}\s*[:,.\-–—](?![0-9])"#, options: [.regularExpression, .caseInsensitive]),
               let number = Int(String(request[range].filter { $0.isASCII && $0.isNumber })) else { return nil }
         let rest = request[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
         return (number, rest)

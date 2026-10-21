@@ -1738,6 +1738,9 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2 make it Alex"), "the number needs its separator")
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "Job 2:30 appointment reminder"), "a time is new work")
         XCTAssertNil(GPTLiveDelegationBridge.jobMarker(in: "job 2.5 things to check"))
+        XCTAssertEqual(GPTLiveDelegationBridge.addToJobMarker(in: "Add to job 2: also ask for a quiet table")?.number, 2)
+        XCTAssertEqual(GPTLiveDelegationBridge.addToJobMarker(in: "add to job #3, include Sam")?.rest, "include Sam")
+        XCTAssertNil(GPTLiveDelegationBridge.addToJobMarker(in: "Job 2: also ask for a quiet table"), "the established marker remains a change")
     }
 
     func testGPTLiveJobMarkerPutsTheUsersOwnWordsIntoThatRunningJob() async {
@@ -1774,6 +1777,21 @@ extension VoiceConversationControllerTests {
             return XCTFail("\(late)")
         }
         XCTAssertEqual(fake.redirects.count, 1)
+    }
+
+    func testGPTLiveAddToJobMarkerSteersAndTheEstablishedMarkerStillRedirects() async throws {
+        let (supervisor, fake, bridge) = makeGPTJobs()
+        _ = await bridge.handleDelegation(id: "del_1", request: "book a table for Sam")
+
+        _ = await bridge.handleDelegation(id: "del_2", request: "Add to job 1: also ask for a quiet table", userWords: "also ask for a quiet table")
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.steers.map(\.1), ["also ask for a quiet table"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+
+        _ = await bridge.handleDelegation(id: "del_3", request: "Job 1: make it Alex", userWords: "make it Alex")
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-1"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["make it Alex"])
+        XCTAssertEqual(supervisor.jobs.count, 1)
     }
 
     func testGPTLiveDelegationNamingNoKnownJobIsNewWork() async {

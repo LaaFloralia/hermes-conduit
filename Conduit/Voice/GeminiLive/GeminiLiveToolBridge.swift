@@ -312,6 +312,11 @@ final class GeminiLiveToolBridge {
                         "type": "STRING",
                         "description": "The request for Hermes, in the user's words plus any context it needs.",
                     ],
+                    "kind": [
+                        "type": "STRING",
+                        "enum": ["add", "change"],
+                        "description": "For a follow-up to running chat work: add when the user only adds to it; change when they correct, pause, or cancel it. Omit when uncertain.",
+                    ],
                 ],
                 "required": ["request"],
             ],
@@ -423,6 +428,11 @@ final class GeminiLiveToolBridge {
                     "profile": [
                         "type": "STRING",
                         "description": "Only when the user asks for the job to run on another of their Hermes profiles or bots: that profile or bot name, as the user said it. Omit it otherwise.",
+                    ],
+                    "kind": [
+                        "type": "STRING",
+                        "enum": ["add", "change"],
+                        "description": "For a follow-up routed to running work in this call's attached chat: add when the user only adds to it; change when they correct, pause, or cancel it. Omit when uncertain.",
                     ],
                 ],
                 "required": ["instructions"],
