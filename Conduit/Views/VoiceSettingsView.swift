@@ -42,10 +42,14 @@ struct VoiceSettingsRoute: View {
     /// Set when the host lets Hermes change settings: shows the choice and
     /// shares a new one.
     let agentSettingsChanged: (() -> Void)?
+    /// The profile's name as the rest of the app shows it. This sheet has
+    /// no AppState, so the host resolves it.
+    let profileName: String?
 
     init(
         bridge: DashboardTicketBridge,
         profile: String,
+        profileName: String? = nil,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions,
         voiceEnabled: Bool,
@@ -75,6 +79,7 @@ struct VoiceSettingsRoute: View {
         callSaves: VoiceCallSaveStatusModel? = nil,
         agentSettingsChanged: (() -> Void)? = nil
     ) {
+        self.profileName = profileName
         self.agentSettingsChanged = agentSettingsChanged
         self.geminiLive = geminiLive
         self.gptLive = gptLive
@@ -109,6 +114,7 @@ struct VoiceSettingsRoute: View {
     var body: some View {
         VoiceSettingsView(
             service: service,
+            profileName: profileName,
             conversationController: conversationController,
             actions: actions,
             voiceEnabled: voiceEnabled,
@@ -221,6 +227,8 @@ struct VoiceSettingsView: View {
     var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     var callSaves: VoiceCallSaveStatusModel?
     var agentSettingsChanged: (() -> Void)?
+    /// The host's resolved profile name; nil falls back to the id.
+    var profileName: String?
     @State private var keepListeningWhenLocked: Bool
     @State private var speakerTalkOverEnabled: Bool
     /// The phrase lists as last saved from this page. AppState doesn't
@@ -237,6 +245,7 @@ struct VoiceSettingsView: View {
 
     init(
         service: HermesVoiceConfigurationService,
+        profileName: String? = nil,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions = VoiceSettingsActions(),
         voiceEnabled: Bool = false,
@@ -278,6 +287,7 @@ struct VoiceSettingsView: View {
         self.lockedListening = lockedListening
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
+        self.profileName = profileName
         _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
         _speakerTalkOverEnabled = State(initialValue: speakerTalkOver?.enabled ?? false)
         self.service = service
@@ -1532,7 +1542,8 @@ struct VoiceSettingsView: View {
     }
 
     private var profileDisplayName: String {
-        service.profile == "default" ? AppLocalization.string("Default profile") : service.profile.replacingOccurrences(of: "_", with: " ").capitalized
+        if let profileName, !profileName.isEmpty { return profileName }
+        return service.profile == "default" ? AppLocalization.string("Default profile") : service.profile.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     private func selectedProvider(_ kind: VoiceProviderDescriptor.Kind) -> String {
