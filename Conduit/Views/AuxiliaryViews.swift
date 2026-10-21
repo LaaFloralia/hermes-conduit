@@ -1695,7 +1695,7 @@ private struct ChatTextSizeSettings: View {
 /// @AppStorage; never part of the Hermes profile configuration.
 private struct ComposerReturnKeySettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
+    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
 
     var body: some View {
         ConduitSettingsSection(

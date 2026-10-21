@@ -17,6 +17,12 @@ enum ComposerReturnKey {
     /// never synchronized to the Hermes profile or gateway.
     static let preferenceKey = "conduit.composerReturnKeySends"
 
+    /// The preference before it is first set. On a Mac, Return sends, as in
+    /// Hermes Desktop, Messages and Slack, with Shift-Return for a new line.
+    /// On iPhone and iPad it stays off, so a hardware keyboard keeps the
+    /// newline it always had.
+    static var sendsByDefault: Bool { ProcessInfo.processInfo.isiOSAppOnMac }
+
     /// What the text view should do with one hardware Return press.
     enum Decision: Equatable {
         case submit

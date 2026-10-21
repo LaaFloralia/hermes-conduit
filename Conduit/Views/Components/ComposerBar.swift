@@ -65,7 +65,7 @@ struct ComposerBar: View, Equatable {
     @State private var repairContext: ConnectionRepairContext?
     /// Local, device-only input preference. Defaults to off so existing
     /// users keep Return inserting a newline after updating.
-    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = false
+    @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
     @Namespace private var glassNamespace
     /// The dictate button types into the draft (#290, #335).
