@@ -64,6 +64,32 @@ final class PinnedRepliesTests: XCTestCase {
         XCTAssertNil(PinnedReplies.refreshed([pinned], in: [first, second]), "the right row is kept")
     }
 
+    func testTwoPinsOnRepliesReadingTheSameKeepTheirOwnReplies() {
+        // Both pinned as they arrived (no durable ids), then a reload gave
+        // the rows new ids: the text is all that is left to go on.
+        let first = pin(reply("live-1", "Done."), at: 0)
+        let second = pin(reply("live-2", "Done."), at: 10)
+        let reloaded = [reply("r-1", "Done.", rowId: 1), user("u", "And?"), reply("r-2", "Done.", rowId: 2)]
+        let pins = [first, second]
+
+        XCTAssertEqual(PinnedReplies.messageID(for: second, in: reloaded, among: pins), "r-2", "the newest pin keeps the latest reply")
+        XCTAssertEqual(PinnedReplies.messageID(for: first, in: reloaded, among: pins), "r-1")
+        XCTAssertEqual(PinnedReplies.pinnedMessageIDs(pins, in: reloaded), ["r-1", "r-2"])
+        XCTAssertEqual(PinnedReplies.barOrder(pins, in: reloaded).map(\.id), [first.id, second.id])
+        XCTAssertEqual(PinnedReplies.pin(for: reloaded[0], in: pins, messages: reloaded)?.id, first.id)
+        let refreshed = PinnedReplies.refreshed(pins, in: reloaded)
+        XCTAssertEqual(refreshed?.map(\.rowId), [1, 2], "each pin saves its own reply's durable id")
+    }
+
+    func testATextMatchNeverTakesAReplyAnotherPinHasById() {
+        let byID = pin(reply("r-2", "Done.", rowId: 2), at: 0)
+        let byText = pin(reply("live-9", "Done."), at: 10)
+        let messages = [reply("r-1", "Done.", rowId: 1), reply("r-2", "Done.", rowId: 2)]
+        let resolved = PinnedReplies.resolved([byText, byID], in: messages)
+        XCTAssertEqual(resolved[byID.id], "r-2")
+        XCTAssertEqual(resolved[byText.id], "r-1")
+    }
+
     func testAUserMessageWithTheSameTextIsNeverThePin() {
         let pinned = pin(reply("live-1", "Yes"))
         XCTAssertNil(PinnedReplies.messageID(for: pinned, in: [user("live-1", "Yes")]))
@@ -118,8 +144,11 @@ final class PinnedRepliesTests: XCTestCase {
 
     private func freshDefaults() -> UserDefaults {
         let name = "PinnedRepliesTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
-        defaults.removePersistentDomain(forName: name)
+        guard let defaults = UserDefaults(suiteName: name) else {
+            XCTFail("Couldn't create the test settings store")
+            return .standard
+        }
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
         return defaults
     }
 
@@ -334,6 +363,96 @@ final class PinnedRepliesTests: XCTestCase {
 
         appState.dropPinnedReplies(forDeleted: row("row-1"))
         XCTAssertEqual(appState.activePinnedReplies.map(\.sessionID), ["row-2"])
+    }
+
+    @MainActor
+    private func pinnedAppState(dashboards: [SavedDashboard]) -> AppState {
+        let appState = AppState(
+            defaults: freshDefaults(),
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboards[0].id, dashboards: dashboards)
+        )
+        appState.setActiveProfileForTesting("default")
+        appState.phoneScreenIsAway = { false }
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "Account A's plan", rowId: 7)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+        XCTAssertEqual(appState.activePinnedReplies.count, 1)
+        return appState
+    }
+
+    @MainActor
+    func testSignInRequiredOnScreenClearsPinnedReplies() {
+        let one = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
+        let appState = pinnedAppState(dashboards: [one])
+        appState.requireSignIn(failure: .signInExpired)
+        XCTAssertTrue(appState.pinnedRepliesByProfile.isEmpty, "another account may sign in next")
+    }
+
+    @MainActor
+    func testSignInRequiredOffScreenKeepsPinnedRepliesForTheRetry() {
+        let one = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
+        let appState = pinnedAppState(dashboards: [one])
+        appState.phoneScreenIsAway = { true }
+        appState.requireSignIn(failure: .signInExpired)
+        XCTAssertEqual(appState.activePinnedReplies.count, 1)
+    }
+
+    @MainActor
+    func testAnInteractiveSignInClearsOnlyTheOpenDashboardsPins() {
+        let one = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
+        let two = SavedDashboard(id: UUID(), label: "Two", normalizedURL: "https://two.example")
+        let appState = pinnedAppState(dashboards: [one, two])
+        appState.prepareInteractiveSignIn(baseURL: "https://two.example")
+        XCTAssertEqual(appState.activePinnedReplies.count, 1, "another dashboard's sign-in leaves them")
+        appState.prepareInteractiveSignIn(baseURL: "https://one.example")
+        XCTAssertTrue(appState.pinnedRepliesByProfile.isEmpty)
+    }
+
+    @MainActor
+    func testADeletedProfileTakesItsPinnedRepliesWithIt() {
+        let defaults = freshDefaults()
+        let appState = makeAppState(defaults)
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "The plan", rowId: 7)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+
+        appState.adoptAuthoritativeFallbackProfile("fallback")
+        XCTAssertNil(appState.pinnedRepliesByProfile["default"])
+        XCTAssertNil(makeAppState(defaults).pinnedRepliesByProfile["default"],
+                     "a profile made later with the same name starts with no pins")
+    }
+
+    @MainActor
+    func testAChatDeletedAfterAProfileSwitchDropsItsPinsInItsOwnProfile() {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "row-1"
+        let answer = reply("a", "The plan", rowId: 7)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+        appState.setActiveProfileForTesting("work")
+
+        appState.dropPinnedReplies(forDeleted: row("row-1"), profile: "default")
+        XCTAssertNil(appState.pinnedRepliesByProfile["default"])
+    }
+
+    @MainActor
+    func testForgettingAnInactiveProfileDropsOnlyItsPins() {
+        let defaults = freshDefaults()
+        let appState = makeAppState(defaults)
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "The plan", rowId: 7)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+        appState.setActiveProfileForTesting("work")
+        appState.togglePinnedReply(answer)
+
+        appState.forgetPinnedReplies(profile: "default")
+        XCTAssertNil(appState.pinnedRepliesByProfile["default"])
+        XCTAssertEqual(appState.activePinnedReplies.count, 1)
+        XCTAssertNil(makeAppState(defaults).pinnedRepliesByProfile["default"], "and it stays gone")
     }
 
     @MainActor

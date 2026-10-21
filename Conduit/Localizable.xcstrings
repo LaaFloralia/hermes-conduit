@@ -309516,84 +309516,84 @@
         }
       }
     },
-    "Pin a reply with the pin button under it to keep it at the top of its chat and find it here." : {
+    "Long-press a reply and choose Pin to keep it at the top of its chat and find it here." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hefte eine Antwort mit der Stecknadel darunter an, damit sie oben in ihrem Chat bleibt und du sie hier wiederfindest."
+            "value" : "Halte eine Antwort gedrückt und wähle „Anheften“, damit sie oben in ihrem Chat bleibt und du sie hier wiederfindest."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fija una respuesta con el botón de chincheta que tiene debajo para mantenerla arriba de su chat y encontrarla aquí."
+            "value" : "Mantén pulsada una respuesta y elige Fijar para mantenerla arriba de su chat y encontrarla aquí."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Épinglez une réponse avec le bouton d’épingle sous celle-ci pour la garder en haut de sa conversation et la retrouver ici."
+            "value" : "Touchez longuement une réponse et choisissez Épingler pour la garder en haut de sa conversation et la retrouver ici."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sematkan balasan dengan tombol pin di bawahnya agar tetap di atas obrolannya dan bisa ditemukan di sini."
+            "value" : "Tekan lama sebuah balasan lalu pilih Sematkan agar tetap di atas obrolannya dan bisa ditemukan di sini."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fissa una risposta con il pulsante a puntina sotto di essa per tenerla in cima alla sua chat e ritrovarla qui."
+            "value" : "Tieni premuta una risposta e scegli Fissa per tenerla in cima alla sua chat e ritrovarla qui."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "返信の下にあるピンボタンでピン留めすると、チャットの上部に表示され、ここからも見つけられます。"
+            "value" : "返信を長押しして「ピンで固定」を選ぶと、チャットの上部に表示され、ここからも見つけられます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "답장 아래의 고정 버튼으로 고정하면 채팅 상단에 유지되고 여기에서 찾을 수 있습니다."
+            "value" : "답장을 길게 누르고 고정을 선택하면 채팅 상단에 유지되고 여기에서 찾을 수 있습니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Przypnij odpowiedź przyciskiem pinezki pod nią, aby została na górze czatu i była dostępna tutaj."
+            "value" : "Przytrzymaj odpowiedź i wybierz Przypnij, aby została na górze czatu i była dostępna tutaj."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fixe uma resposta com o botão de alfinete abaixo dela para mantê-la no topo do chat e encontrá-la aqui."
+            "value" : "Toque e segure uma resposta e escolha Fixar para mantê-la no topo do chat e encontrá-la aqui."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Закрепите ответ кнопкой закрепления под ним, чтобы он оставался вверху чата и был доступен здесь."
+            "value" : "Нажмите и удерживайте ответ и выберите «Закрепить», чтобы он оставался вверху чата и был доступен здесь."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir yanıtı altındaki raptiye düğmesiyle sabitleyerek sohbetinin üstünde tutun ve burada bulun."
+            "value" : "Bir yanıta uzun basıp Sabitle’yi seçerek sohbetinin üstünde tutun ve burada bulun."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "点按回复下方的图钉按钮即可将其置顶在聊天顶部，并可在此处找到。"
+            "value" : "长按回复并选择“置顶”，即可将其固定在聊天顶部，并可在此处找到。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "點一下回覆下方的圖釘按鈕即可將其釘選在聊天頂端，並可在這裡找到。"
+            "value" : "長按回覆並選擇「釘選」，即可將其固定在聊天頂端，並可在這裡找到。"
           }
         }
       }

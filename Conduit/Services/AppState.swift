@@ -5110,6 +5110,9 @@ final class AppState: ObservableObject {
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
         TranscriptImageCache.purge()
+        // So do the open dashboard's pinned replies (#918): they keep reply
+        // text, and the next sign-in may be another account.
+        if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -19298,6 +19301,8 @@ final class AppState: ObservableObject {
             if let dashboardID {
                 offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
+            // Its pinned replies go too, under the profile it was deleted in.
+            dropPinnedReplies(forDeleted: session, profile: profile)
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
             sessionYoloStore.clearOverride(
                 for: profile,
@@ -19311,7 +19316,6 @@ final class AppState: ObservableObject {
             archivedSessions.removeAll { sessionMatches($0, session) }
             removePinnedState(for: session)
             setSessionStarred(session, starred: false, profile: profile)
-            dropPinnedReplies(forDeleted: session)
             updateChatReadState { $0.forget(session, profile: profile) }
             clearActiveSessionIfNeeded(session, replacement: .delete)
             publishWidgetSnapshot()
@@ -20050,6 +20054,7 @@ final class AppState: ObservableObject {
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
+        forgetPinnedReplies(profile: bot.name)
         if let sessionId = activeSessionId,
            let owner = botChatSessionProfiles[sessionId],
            owner.caseInsensitiveCompare(bot.name) == .orderedSame {
@@ -27557,6 +27562,10 @@ final class AppState: ObservableObject {
                 for profile in stale {
                     setProfileGlowColor(nil, for: profile)
                 }
+                // So do its pinned replies, which keep reply text.
+                for profile in pinnedRepliesByProfile.keys where !nextProfiles.contains(profile) {
+                    forgetPinnedReplies(profile: profile)
+                }
             }
             // A non-empty response is authoritative: if the server no longer
             // knows the active profile (deleted externally), re-home onto a
@@ -27696,6 +27705,7 @@ final class AppState: ObservableObject {
         sessionStars.forget(profile: activeProfile)
         sessionStars.save(to: defaults)
         voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
+        forgetPinnedReplies(profile: activeProfile)
         persistActiveSessionTitles()
         persistPinnedSessions()
         persistVoiceJobSessions()

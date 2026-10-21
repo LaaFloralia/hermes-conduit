@@ -207,7 +207,7 @@ struct PinnedRepliesSheet: View {
                         ContentUnavailableView(
                             AppLocalization.string("No pinned replies"),
                             systemImage: "pin",
-                            description: Text(AppLocalization.string("Pin a reply with the pin button under it to keep it at the top of its chat and find it here."))
+                            description: Text(AppLocalization.string("Long-press a reply and choose Pin to keep it at the top of its chat and find it here."))
                         )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)

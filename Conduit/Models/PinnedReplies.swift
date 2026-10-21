@@ -88,41 +88,85 @@ struct PinnedReply: Codable, Equatable, Identifiable, Hashable {
 }
 
 enum PinnedReplies {
-    /// The transcript row a pin shows, or nil when the reply isn't loaded
-    /// (an older part of a long chat).
-    static func messageID(for pin: PinnedReply, in messages: [ChatMessage]) -> String? {
-        // A durable id is exact: look for it first, so a reply with the
-        // same opening words further down never wins.
-        if let rowId = pin.rowId {
-            return messages.first(where: { $0.role == .assistant && $0.rowId == rowId })?.id
+    /// The transcript row each pin shows, by pin id; a pin whose reply
+    /// isn't loaded (an older part of a long chat) has none. Resolved in one
+    /// pass so no two pins land on the same reply: ids claim their rows
+    /// first, then a pin matched by its text takes the latest reply reading
+    /// that way that no other pin has, the newest pin first.
+    static func resolved(_ pins: [PinnedReply], in messages: [ChatMessage]) -> [String: String] {
+        guard !pins.isEmpty else { return [:] }
+        var result: [String: String] = [:]
+        var claimed = Set<String>()
+        for pin in pins where result[pin.id] == nil {
+            // A durable id is exact: a reply with the same opening words
+            // never wins over it.
+            let exact: ChatMessage?
+            if let rowId = pin.rowId {
+                exact = messages.first { $0.role == .assistant && $0.rowId == rowId }
+            } else {
+                exact = messages.first { pin.isExactly($0) }
+            }
+            if let exact, !claimed.contains(exact.id) {
+                result[pin.id] = exact.id
+                claimed.insert(exact.id)
+            }
         }
-        if let exact = messages.first(where: { pin.isExactly($0) }) { return exact.id }
         // Replies that open the same way: a pin without a durable id was
-        // made recently, so the latest one is the likelier.
-        return messages.last(where: { pin.matchesText(of: $0) })?.id
+        // made recently, so the latest reply is the likelier, and the
+        // newest pin gets it.
+        let byText = pins.enumerated()
+            .filter { result[$0.element.id] == nil && $0.element.rowId == nil }
+            .sorted { lhs, rhs in
+                lhs.element.pinnedAt == rhs.element.pinnedAt
+                    ? lhs.offset > rhs.offset
+                    : lhs.element.pinnedAt > rhs.element.pinnedAt
+            }
+            .map(\.element)
+        for pin in byText {
+            guard let match = messages.last(where: { !claimed.contains($0.id) && pin.matchesText(of: $0) })
+            else { continue }
+            result[pin.id] = match.id
+            claimed.insert(match.id)
+        }
+        return result
     }
 
-    /// The rows of `messages` that are pinned, for the rows' Pin buttons.
+    /// The transcript row `pin` shows among `pins` (the chat's other pins,
+    /// which may already have claimed a reply reading the same), or nil
+    /// when the reply isn't loaded.
+    static func messageID(
+        for pin: PinnedReply,
+        in messages: [ChatMessage],
+        among pins: [PinnedReply] = []
+    ) -> String? {
+        let all = pins.contains(where: { $0.id == pin.id }) ? pins : pins + [pin]
+        return resolved(all, in: messages)[pin.id]
+    }
+
+    /// The rows of `messages` that are pinned.
     static func pinnedMessageIDs(_ pins: [PinnedReply], in messages: [ChatMessage]) -> Set<String> {
-        guard !pins.isEmpty else { return [] }
-        return Set(pins.compactMap { messageID(for: $0, in: messages) })
+        Set(resolved(pins, in: messages).values)
     }
 
     /// The pin that is `message` in this transcript, if any: the pin whose
     /// reply resolves to it, so a second reply reading like a pinned one is
     /// not taken for it.
     static func pin(for message: ChatMessage, in pins: [PinnedReply], messages: [ChatMessage]) -> PinnedReply? {
-        pins.first { messageID(for: $0, in: messages) == message.id }
+        let ids = resolved(pins, in: messages)
+        return pins.first { ids[$0.id] == message.id }
     }
 
     /// The pins with the ids their rows have now: a reply pinned as it
     /// arrived takes its durable id once the transcript has it, so a later
     /// reload finds it exactly. Nil when nothing changed.
     static func refreshed(_ pins: [PinnedReply], in messages: [ChatMessage]) -> [PinnedReply]? {
+        let ids = resolved(pins, in: messages)
+        guard !ids.isEmpty else { return nil }
+        var byID: [String: ChatMessage] = [:]
+        for message in messages { byID[message.id] = message }
         var changed = false
         let refreshed = pins.map { pin -> PinnedReply in
-            guard let id = messageID(for: pin, in: messages),
-                  let message = messages.first(where: { $0.id == id }) else { return pin }
+            guard let id = ids[pin.id], let message = byID[id] else { return pin }
             var updated = pin
             if updated.rowId == nil, let rowId = message.rowId { updated.rowId = rowId }
             if updated.messageID != message.id { updated.messageID = message.id }
@@ -139,8 +183,9 @@ enum PinnedReplies {
         guard pins.count > 1 else { return pins }
         var position: [String: Int] = [:]
         for (index, message) in messages.enumerated() { position[message.id] = index }
+        let ids = resolved(pins, in: messages)
         let placed = pins.enumerated().map { offset, pin -> (pin: PinnedReply, index: Int?, offset: Int) in
-            (pin, messageID(for: pin, in: messages).flatMap { position[$0] }, offset)
+            (pin, ids[pin.id].flatMap { position[$0] }, offset)
         }
         return placed.sorted { lhs, rhs in
             switch (lhs.index, rhs.index) {

@@ -2,8 +2,8 @@
 //  AppState+PinnedReplies.swift
 //  Conduit
 //
-//  Replies pinned to the top of their chat (#918): the Pin button under a
-//  reply, the bar over the open chat that cycles through its pins, and the
+//  Replies pinned to the top of their chat (#918): Pin in a reply's
+//  long-press menu, the bar over the open chat that cycles through its pins, and the
 //  Chats list's overview of every pinned reply, which opens a chat at the
 //  reply. Pins stay on this device, per profile; Hermes has no pinned
 //  message of its own to share them with.
@@ -100,17 +100,28 @@ extension AppState {
         return title.isEmpty ? pin.chatTitle : title
     }
 
-    /// A deleted chat's pinned replies go with it.
-    func dropPinnedReplies(forDeleted session: SessionSummary) {
+    /// A deleted chat's pinned replies go with it, under the profile it was
+    /// deleted in (the screen may have moved to another one since).
+    func dropPinnedReplies(forDeleted session: SessionSummary, profile: String? = nil) {
         let ids = Set([session.id] + [session.storedSessionId].compactMap { $0 } + session.alternateIds)
-        let profile = activeProfile
+        let profile = profile ?? activeProfile
         let stored = pinnedRepliesByProfile[profile] ?? []
         let remaining = stored.filter { !pinBelongs($0, toOwnIDs: ids) }
         guard remaining.count != stored.count else { return }
         pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
-        if let reveal = pendingPinnedReplyReveal, !remaining.contains(where: { $0.id == reveal.pin.id }) {
+        if profile == activeProfile, let reveal = pendingPinnedReplyReveal,
+           !remaining.contains(where: { $0.id == reveal.pin.id }) {
             pendingPinnedReplyReveal = nil
         }
+        persistPinnedReplies()
+    }
+
+    /// A deleted profile's pinned replies go with it, so a profile given the
+    /// same name later starts with none.
+    func forgetPinnedReplies(profile: String) {
+        guard pinnedRepliesByProfile[profile] != nil else { return }
+        pinnedRepliesByProfile.removeValue(forKey: profile)
+        if profile == activeProfile { pendingPinnedReplyReveal = nil }
         persistPinnedReplies()
     }
 

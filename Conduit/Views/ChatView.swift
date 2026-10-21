@@ -549,6 +549,8 @@ struct ChatView: View {
                 scrollEventRouter.rebuildTranscript = nil
                 backfillViewportTask?.cancel()
                 latestAnimationTask?.cancel()
+                pinnedRevealFallbackTask?.cancel()
+                pinnedRevealFallbackTask = nil
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
             }
             .task(id: appState.chatResumeRestorationRequest?.generation) {
@@ -645,14 +647,19 @@ struct ChatView: View {
         }
         guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
               !appState.messages.isEmpty else { return }
-        guard let id = PinnedReplies.messageID(for: reveal.pin, in: appState.messages) else {
+        guard let id = PinnedReplies.messageID(
+            for: reveal.pin, in: appState.messages, among: appState.openChatPinnedReplies
+        ) else {
             // The chat shows but not the reply: give its transcript a moment
             // to finish loading, then go as close as the bar goes.
             guard pinnedRevealFallbackTask == nil else { return }
             pinnedRevealFallbackTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
+                // A cancelled task leaves the slot alone: whoever cancelled
+                // it cleared it, and a newer task may hold it now.
+                guard !Task.isCancelled else { return }
                 pinnedRevealFallbackTask = nil
-                guard !Task.isCancelled, appState.pendingPinnedReplyReveal == reveal,
+                guard appState.pendingPinnedReplyReveal == reveal,
                       appState.isShowingChat(for: reveal) else { return }
                 appState.pendingPinnedReplyReveal = nil
                 jumpToPinnedReply(reveal.pin)
@@ -688,7 +695,7 @@ struct ChatView: View {
     /// top of the transcript, where Load earlier messages is, is as close
     /// as the chat can go.
     private func jumpToPinnedReply(_ pin: PinnedReply) {
-        if let id = PinnedReplies.messageID(for: pin, in: appState.messages) {
+        if let id = PinnedReplies.messageID(for: pin, in: appState.messages, among: appState.openChatPinnedReplies) {
             ChatViewportTrace.shared.log("event explicitPinnedReply (bar)")
             scrollEngine.explicitMessageRequested(id: id)
         } else {
