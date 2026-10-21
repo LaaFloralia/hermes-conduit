@@ -631,6 +631,41 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(controller.conversationTranscript.last?.text, jobs.reply)
     }
 
+    func testSteerEndsWhenTheUserStopsInANoisyRoom() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+        gateway.transcript = "Use the staging server instead"
+
+        // The room while Hermes thinks: steady noise, under barge-in.
+        let room: Float = 0.012
+        let thinking = Date()
+        for step in 0..<10 {
+            controller.ingestAudioLevel(room, at: thinking.addingTimeInterval(Double(step) * 0.05))
+        }
+        let speech = thinking.addingTimeInterval(0.5)
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        let opened = await controller.waitForState(.listening)
+        XCTAssertTrue(opened, "speech while Hermes thinks opens a steer window")
+
+        // The user speaks, then stops: only the room is left. Its noise
+        // must read as silence, so trailing silence ends the steer.
+        let words = Date()
+        controller.ingestAudioLevel(0.1, at: words)
+        controller.ingestAudioLevel(room, at: words.addingTimeInterval(0.6))
+        controller.ingestAudioLevel(room, at: words.addingTimeInterval(1.3))
+        await steers.waitUntilSubmitted(1)
+
+        XCTAssertEqual(steers.texts, ["Use the staging server instead"])
+        XCTAssertEqual(submitted.texts, ["Question"])
+    }
+
     func testFailedSteerIsDroppedAndTheTurnCarriesOn() async {
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let submitted = SubmitSpy()

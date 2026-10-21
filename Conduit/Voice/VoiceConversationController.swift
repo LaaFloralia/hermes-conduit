@@ -187,6 +187,10 @@ final class VoiceConversationController: ObservableObject {
     /// barge-in does not use it; that path keeps the conservative fixed
     /// threshold in `configuration.bargeInActivityThreshold`.
     private var speechDetector: VoiceSpeechDetector
+    /// The room's level while Hermes thinks, learned from the barge-in
+    /// monitor. A steer window opens mid-speech, so its detector starts
+    /// from this floor rather than learning one from the user's voice.
+    private var thinkingNoiseFloor: Float?
 
     init(
         capture: AudioCaptureService? = nil,
@@ -625,6 +629,7 @@ final class VoiceConversationController: ObservableObject {
         isPlaybackCaptureSuspended = false
         endSteerBookkeeping()
         speechDetector.reset()
+        thinkingNoiseFloor = nil
         resetMicrophoneMeter()
     }
 
@@ -836,6 +841,9 @@ final class VoiceConversationController: ObservableObject {
             // else (silent gaps mid-reply, muted output) is ignored, so it
             // can't cut the turn short.
             let talkOver = isTalkOverAvailable
+            if state == .thinking, level.isFinite, level >= 0, level < configuration.bargeInActivityThreshold {
+                learnThinkingNoiseFloor(level)
+            }
             guard talkOver || isSteerAvailable else {
                 bargeInStartedAt = nil
                 break
@@ -1477,6 +1485,7 @@ final class VoiceConversationController: ObservableObject {
         isPlaybackCaptureSuspended = false
         endSteerBookkeeping()
         speechDetector.reset()
+        thinkingNoiseFloor = nil
         resetMicrophoneMeter()
         isVoiceSessionActive = false
         isAwaitingVoiceAssistant = false
@@ -1552,7 +1561,27 @@ final class VoiceConversationController: ObservableObject {
         }
         guard isSteeringTurn else { return }
         // The window never opened (backgrounded, permission): carry on.
-        if state != .listening { resumeTurnAfterSteer() }
+        guard state == .listening else {
+            resumeTurnAfterSteer()
+            return
+        }
+        if let thinkingNoiseFloor {
+            speechDetector.reset(learnedNoiseFloor: thinkingNoiseFloor)
+        }
+    }
+
+    /// Follows the room's level while Hermes thinks: quiet input pulls the
+    /// floor down fast, louder input raises it slowly, as the listening
+    /// detector's own floor does.
+    private func learnThinkingNoiseFloor(_ level: Float) {
+        guard let floor = thinkingNoiseFloor else {
+            thinkingNoiseFloor = level
+            return
+        }
+        let alpha = level < floor
+            ? configuration.speechDetector.noiseFloorFallAlpha
+            : configuration.speechDetector.noiseFloorRiseAlpha
+        thinkingNoiseFloor = floor + (level - floor) * alpha
     }
 
     /// Ends a steer window: back to waiting on the same turn, and its held

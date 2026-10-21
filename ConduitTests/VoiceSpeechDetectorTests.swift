@@ -55,6 +55,22 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertEqual(detections, [.none, .started, .continued], "the relative rise must be recognized")
     }
 
+    func testWindowOpenedMidSpeechEndsOverRoomNoiseWithALearnedFloor() {
+        // A steer window opens while the user is already speaking: a cold
+        // start hears only speech and keeps the minimum floor, so room
+        // noise counts as more speech.
+        var cold = VoiceSpeechDetector()
+        XCTAssertEqual(cold.observe(0.2), .started)
+        XCTAssertEqual(cold.observe(0.012), .continued, "room noise holds a cold window's utterance open")
+
+        // Started from the floor learned before the window, the same room
+        // noise is silence and the utterance can end.
+        var seeded = VoiceSpeechDetector()
+        seeded.reset(learnedNoiseFloor: 0.012)
+        XCTAssertEqual(seeded.observe(0.2), .started)
+        XCTAssertEqual(seeded.observe(0.012), .none)
+    }
+
     func testSingleIsolatedSpikeDoesNotStartSpeech() {
         var detector = VoiceSpeechDetector()
         for _ in 0..<6 { _ = detector.observe(0.003) }

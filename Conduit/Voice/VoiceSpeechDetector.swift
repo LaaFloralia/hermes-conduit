@@ -216,6 +216,17 @@ struct VoiceSpeechDetector {
         isSpeechActive = false
     }
 
+    /// Clears speech state like `reset()`, but starts from a floor learned
+    /// before the window opened instead of a cold start. A steer window
+    /// opens while the user is already speaking: its cold start would hear
+    /// only speech, keep the floor at the minimum, and the room's own noise
+    /// would then hold the utterance open after the user stopped.
+    mutating func reset(learnedNoiseFloor: Float) {
+        reset()
+        adaptNoiseFloor(learnedNoiseFloor, alpha: 1, ceiling: constants.maximumNoiseFloor)
+        coldStartRemaining = 0
+    }
+
     /// Moves the noise floor toward `level` by `alpha` (EMA), clamped to
     /// `ceiling`. Asymmetry lives at the call sites: quiet input pulls the
     /// floor down fast, louder input raises it slowly, and suspected speech
