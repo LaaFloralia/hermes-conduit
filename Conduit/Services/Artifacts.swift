@@ -68,7 +68,8 @@ struct ArtifactItem: Identifiable, Equatable, Hashable {
         self.path = path
         self.url = url
         self.host = raw["host"] as? String
-        self.exists = raw["exists"] as? Bool ?? true
+        // A link has no file to miss.
+        self.exists = source == .link || raw["exists"] as? Bool ?? true
         self.size = (raw["size"] as? NSNumber)?.int64Value
         self.sessionID = sessionID
         self.sessionTitle = (raw["session_title"] as? String) ?? ""
@@ -126,6 +127,8 @@ final class ArtifactsClient {
     static let capability = "artifacts"
     static let path = "/api/plugins/conduit_push/artifacts"
     static let pageSize = 60
+    /// Whether the lists show files no longer on the host (off by default).
+    static let showMissingKey = "artifacts.showMissing"
 
     typealias Request = @MainActor (_ path: String) async throws -> [String: Any]
 
@@ -141,16 +144,17 @@ final class ArtifactsClient {
 
     @MainActor
     func page(profile: String, sessionIDs: [String] = [], filter: ArtifactFilter = .all, query: String = "",
-              before: Int? = nil) async throws -> ArtifactPage {
+              showMissing: Bool = true, before: Int? = nil) async throws -> ArtifactPage {
         try Self.parse(await request(Self.requestPath(
-            profile: profile, sessionIDs: sessionIDs, filter: filter, query: query, before: before
-        )))
+            profile: profile, sessionIDs: sessionIDs, filter: filter, query: query, showMissing: showMissing,
+            before: before
+        )), showMissing: showMissing)
     }
 
     /// `sessionIDs` names one chat by every id it's known by; empty reads
     /// every chat in the profile.
     static func requestPath(profile: String, sessionIDs: [String], filter: ArtifactFilter, query: String,
-                            before: Int?) -> String {
+                            showMissing: Bool = true, before: Int?) -> String {
         var parameters = ["limit=\(pageSize)"]
         for id in sessionIDs.sorted() {
             if let encoded = DashboardPath.encodedQueryComponent(id) { parameters.append("session_id=\(encoded)") }
@@ -160,17 +164,21 @@ final class ArtifactsClient {
         if !words.isEmpty, let encoded = DashboardPath.encodedQueryComponent(words) {
             parameters.append("q=\(encoded)")
         }
+        // The host leaves them out (plugin 0.51.8+), so a history of
+        // deleted files doesn't leave pages mostly empty.
+        if !showMissing { parameters.append("missing=hide") }
         if let before { parameters.append("before=\(before)") }
         return DashboardPath.withProfile("\(path)?\(parameters.joined(separator: "&"))", profile: profile)
     }
 
-    static func parse(_ response: [String: Any]) throws -> ArtifactPage {
+    static func parse(_ response: [String: Any], showMissing: Bool = true) throws -> ArtifactPage {
         guard response["ok"] as? Bool == true, let rows = response["items"] as? [[String: Any]] else {
             throw Failure.malformed
         }
+        // An older plugin lists missing files whatever it was asked.
+        let items = rows.compactMap(ArtifactItem.init).filter { showMissing || $0.exists }
         // Each artifact once, so list identity holds whatever the host sends.
-        return ArtifactPage(items: merged([], with: rows.compactMap(ArtifactItem.init)),
-                            nextBefore: response["next_before"] as? Int)
+        return ArtifactPage(items: merged([], with: items), nextBefore: response["next_before"] as? Int)
     }
 
     /// `older` appended to `items`, each artifact once (its newest mention

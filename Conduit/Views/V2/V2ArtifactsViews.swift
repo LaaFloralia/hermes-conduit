@@ -92,12 +92,20 @@ private struct ArtifactsList: View {
     let chatIsOpen: Bool
     let showInChat: (ArtifactItem) -> Void
 
+    @AppStorage(ArtifactsClient.showMissingKey) private var showMissing = false
     @State private var filter: ArtifactFilter = .all
     @State private var query = ""
     @State private var items: [ArtifactItem] = []
     @State private var nextBefore: Int?
     @State private var loadedKey: ArtifactsListKey?
     @State private var isLoading = false
+    /// The cursor the next page is being read from. Apart from
+    /// `isLoading`, which swaps an empty list for the centred spinner: that
+    /// swap unmounted the pager and cancelled its read, so a page with
+    /// nothing to list never paged on. A cursor rather than a flag, so a
+    /// pager restarted on a new cursor isn't turned away by the old read
+    /// still unwinding.
+    @State private var loadingBefore: Int?
     @State private var failure: String?
     @State private var generation = 0
     @State private var openingID: String?
@@ -117,7 +125,7 @@ private struct ArtifactsList: View {
 
     private var currentKey: ArtifactsListKey {
         ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile, filter: filter,
-                         query: query.trimmingCharacters(in: .whitespacesAndNewlines))
+                         query: query.trimmingCharacters(in: .whitespacesAndNewlines), showMissing: showMissing)
     }
 
     var body: some View {
@@ -133,6 +141,17 @@ private struct ArtifactsList: View {
         .scrollDismissesKeyboard(.interactively)
         .searchable(text: $query, prompt: Text("Search names and chats"))
         .refreshable { await reload() }
+        .toolbar {
+            if appState.supportsArtifacts {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Toggle("Show Missing Files", isOn: $showMissing)
+                    } label: {
+                        Label("More", systemImage: "ellipsis.circle")
+                    }
+                }
+            }
+        }
         .task(id: currentKey) {
             // Typing settles before the host is asked.
             if loadedKey != nil, currentKey.query != loadedKey?.query {
@@ -206,15 +225,21 @@ private struct ArtifactsList: View {
             unavailable(title: Text("Artifacts couldn't load"), detail: Text(verbatim: failure),
                         symbol: "exclamationmark.triangle", retry: true)
         } else if items.isEmpty, nextBefore == nil {
+            // Hidden missing files may be all there is, so the way back
+            // is offered under either message.
+            let hiddenNote = showMissing ? Text(verbatim: "")
+                : Text(verbatim: " ") + Text("Files no longer on your Hermes host are hidden.")
             if currentKey.query.isEmpty && filter == .all {
                 unavailable(
                     title: Text("No Artifacts Yet"),
-                    detail: Text("Files Hermes sends or writes, pages it draws, files you attach and links show up here."),
-                    symbol: "square.grid.2x2"
+                    detail: Text("Files Hermes sends or writes, pages it draws, files you attach and links show up here.")
+                        + hiddenNote,
+                    symbol: "square.grid.2x2",
+                    showMissingAction: !showMissing
                 )
             } else {
-                unavailable(title: Text("No Results"), detail: Text("Nothing here matches."),
-                            symbol: "magnifyingglass")
+                unavailable(title: Text("No Results"), detail: Text("Nothing here matches.") + hiddenNote,
+                            symbol: "magnifyingglass", showMissingAction: !showMissing)
             }
         } else {
             ForEach(ArtifactsClient.days(items)) { day in
@@ -231,6 +256,19 @@ private struct ArtifactsList: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 60)
                 } else {
+                    if items.isEmpty, !showMissing {
+                        // A history of deleted files can take a few pages
+                        // to get past.
+                        VStack(spacing: 8) {
+                            Text("Files no longer on your Hermes host are hidden.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Show Missing Files") { showMissing = true }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                    }
                     // Reaching the end reads the next page.
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 60)
@@ -240,7 +278,8 @@ private struct ArtifactsList: View {
         }
     }
 
-    private func unavailable(title: Text, detail: Text, symbol: String, retry: Bool = false) -> some View {
+    private func unavailable(title: Text, detail: Text, symbol: String, retry: Bool = false,
+                             showMissingAction: Bool = false) -> some View {
         ContentUnavailableView {
             Label { title } icon: { Image(systemName: symbol) }
         } description: {
@@ -248,6 +287,9 @@ private struct ArtifactsList: View {
         } actions: {
             if retry {
                 Button("Try Again") { Task { await reload() } }
+            }
+            if showMissingAction {
+                Button("Show Missing Files") { showMissing = true }
             }
         }
         .frame(maxWidth: .infinity, minHeight: 280)
@@ -307,6 +349,22 @@ private struct ArtifactsList: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color.primary.opacity(0.08))
                 }
                 .opacity(item.exists ? 1 : 0.45)
+                .overlay(alignment: .topLeading) {
+                    // Over the dimming, which alone reads as a dark picture,
+                    // and clear of the name along the bottom.
+                    if !item.exists {
+                        Label("Missing", systemImage: "exclamationmark.circle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(.black.opacity(0.6), in: Capsule())
+                            .padding(5)
+                            .dynamicTypeSize(...DynamicTypeSize.xLarge)
+                            // The tile's label says it already.
+                            .accessibilityHidden(true)
+                    }
+                }
                 .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(PressableButtonStyle())
@@ -401,7 +459,8 @@ private struct ArtifactsList: View {
     }
 
     private func accessibilityName(_ item: ArtifactItem) -> String {
-        [item.name, Self.kindLabel(item.kind), chatIsOpen ? "" : item.sessionTitle]
+        [item.name, Self.kindLabel(item.kind), item.exists ? "" : AppLocalization.string("No longer on the host"),
+         chatIsOpen ? "" : item.sessionTitle]
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
     }
@@ -494,7 +553,8 @@ private struct ArtifactsList: View {
         defer { if ticket == generation { isLoading = false } }
         do {
             let result = try await appState.artifactsClient.page(
-                profile: key.profile, sessionIDs: scope.sessionIDs, filter: key.filter, query: key.query
+                profile: key.profile, sessionIDs: scope.sessionIDs, filter: key.filter, query: key.query,
+                showMissing: key.showMissing
             )
             guard ticket == generation else { return }
             items = result.items
@@ -515,14 +575,15 @@ private struct ArtifactsList: View {
     }
 
     private func loadMore() async {
-        guard let before = nextBefore, let key = loadedKey, key == currentKey, !isLoading else { return }
+        guard let before = nextBefore, let key = loadedKey, key == currentKey, !isLoading,
+              loadingBefore != before else { return }
         let ticket = generation
-        isLoading = true
-        defer { if ticket == generation { isLoading = false } }
+        loadingBefore = before
+        defer { if loadingBefore == before { loadingBefore = nil } }
         do {
             let result = try await appState.artifactsClient.page(
                 profile: key.profile, sessionIDs: scope.sessionIDs, filter: key.filter, query: key.query,
-                before: before
+                showMissing: key.showMissing, before: before
             )
             guard ticket == generation else { return }
             items = ArtifactsClient.merged(items, with: result.items)
@@ -545,6 +606,7 @@ struct ArtifactsListKey: Equatable {
     let profile: String
     let filter: ArtifactFilter
     let query: String
+    var showMissing = true
 
     /// Whether rows read for `loaded` may stay up, dimmed, while this key's
     /// rows load: another filter or search, not another server.
