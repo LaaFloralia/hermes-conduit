@@ -83,6 +83,14 @@ final class InteractionIdleState: ObservableObject {
         scheduleWakeIfNeeded()
     }
 
+    /// Whether someone touched, typed in or returned to Conduit within the
+    /// last `seconds`. Unlike `isIdle`, a running turn doesn't count: the
+    /// on-screen report (ChatOnScreen.swift) asks whether anyone is still
+    /// looking while it runs.
+    func usedWithin(_ seconds: TimeInterval) -> Bool {
+        now() - lastActivity <= seconds
+    }
+
     /// AppState reports turn edges here, so nothing has to observe AppState
     /// (and redraw on every streamed token) to know a turn is running. A
     /// running turn holds Conduit awake; its end starts the countdown afresh.

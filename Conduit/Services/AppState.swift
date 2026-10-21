@@ -1021,6 +1021,7 @@ final class AppState: ObservableObject {
                     showModelPicker = false
                     showContextSheet = false
                 }
+                updateChatOnScreen()
             }
         }
     }
@@ -1159,6 +1160,8 @@ final class AppState: ObservableObject {
             // A running turn keeps the backdrop drifting; only its edges
             // are reported, not every streamed token.
             InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
+            // Its reply sends no push while the chat is on screen.
+            updateChatOnScreen()
         }
     }
     /// Whether `turnState` may have missed server-side turn edges. Set at
@@ -2038,6 +2041,7 @@ final class AppState: ObservableObject {
             // reads the catalog again (refreshCatalogAfterLeavingChat, from
             // RootView, whenever the chat is covered).
             if !oldValue, showSidebar { noteChatLeft(activeSessionId) }
+            if oldValue != showSidebar { updateChatOnScreen() }
             // The drawer covers the chat, so its live rows need not redraw at
             // streaming cadence while it is up or animating: the live text and
             // reasoning publishes (to `liveTurn`, which only those rows
@@ -2415,6 +2419,16 @@ final class AppState: ObservableObject {
     var submissionTurnSurface: (text: String, surface: TurnSurface)?
     /// Seam for tests: takes the plugin's turn-surface reports.
     var turnSurfaceSender: (([String: Any]) async throws -> Void)?
+    /// What the host holds as on screen for this device (ChatOnScreen.swift).
+    var chatOnScreenTracker = ChatOnScreen.Tracker()
+    /// Renews the hold while the open chat's turn runs.
+    var chatOnScreenRenewal: Task<Void, Never>?
+    /// The last on-screen report, which the next one goes after.
+    var chatOnScreenLastSend: Task<Void, Never>?
+    /// When the last hold sent runs out on the host; nil once let go.
+    var chatOnScreenHoldEnds: Date?
+    /// Seam for tests: takes the on-screen reports (path, body).
+    var chatOnScreenSender: ((String, [String: Any]) async throws -> Void)?
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
@@ -16974,6 +16988,7 @@ final class AppState: ObservableObject {
             if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
+            updateChatOnScreen()
             // Polls left long while nothing moved catch up at once.
             noteChatListInteraction()
             openChatSync.resetIdlePace()
@@ -17173,6 +17188,8 @@ final class AppState: ObservableObject {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
+            // Off screen: a reply that lands now pushes.
+            updateChatOnScreen()
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
             // Audio may keep the socket open off screen; it pings less.
@@ -17257,6 +17274,8 @@ final class AppState: ObservableObject {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
+            // Off screen: a reply that lands now pushes.
+            updateChatOnScreen()
             disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
             // system overlay can miss turn edges. This never causes a resume —
@@ -22983,7 +23002,11 @@ final class AppState: ObservableObject {
     // (SESSION_NOT_OWNED) offers "Take over"; see ChatTakeover.swift.
 
     /// What the host's notifier plugin serves; Settings nudges an update.
-    @Published private(set) var notifierPlugin = NotifierPluginStatus()
+    @Published private(set) var notifierPlugin = NotifierPluginStatus() {
+        // A plugin that just said it takes on-screen reports gets the turn
+        // already running.
+        didSet { if oldValue.state != notifierPlugin.state { updateChatOnScreen() } }
+    }
     /// The plugin on its repository's main branch, once read. A reset for
     /// another host keeps it (`freshNotifierPluginStatus`).
     private var latestNotifierPluginVersion: String?
