@@ -32,6 +32,9 @@ struct ChatRowState: Equatable {
     /// Each live card's last row: earlier rows with that live name show
     /// that it was updated below.
     var latestLiveRows: [String: String] = [:]
+    /// Replies can be pinned here (#918), and the rows that are.
+    var canPinReplies = false
+    var pinnedMessageIDs: Set<String> = []
 
     init() {}
 
@@ -51,6 +54,8 @@ struct ChatRowState: Equatable {
         displayPreferences = appState.displayPreferences
         voiceCallLinksRevision = appState.voiceCallChatLinksRevision
         latestLiveRows = RichCard.latestLiveRows(appState.messages)
+        canPinReplies = appState.canPinReplies
+        pinnedMessageIDs = appState.openChatPinnedMessageIDs
     }
 
     /// `AppState.canReact(to:)`, from these values alone.

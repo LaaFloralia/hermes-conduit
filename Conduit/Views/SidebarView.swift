@@ -182,6 +182,8 @@ struct SessionList: View {
     @State private var searchText = ""
     @State private var showFilterOrder = false
     @State private var showArchivedSessions = false
+    /// Every pinned reply of the profile (#918).
+    @State private var showPinnedReplies = false
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
@@ -293,6 +295,12 @@ struct SessionList: View {
                         showArchivedSessions = true
                     } label: {
                         Label(AppLocalization.string("Archived conversations"), systemImage: "archivebox")
+                    }
+                    Button {
+                        Haptics.selection()
+                        showPinnedReplies = true
+                    } label: {
+                        Label(AppLocalization.string("Pinned replies"), systemImage: "pin")
                     }
 
                     Button {
@@ -454,6 +462,10 @@ struct SessionList: View {
         }
         .sheet(isPresented: $showArchivedSessions) {
             ArchivedSessionsSheet()
+                .environmentObject(appState)
+        }
+        .sheet(isPresented: $showPinnedReplies) {
+            PinnedRepliesSheet()
                 .environmentObject(appState)
         }
         .sheet(item: $selectedProject) { project in

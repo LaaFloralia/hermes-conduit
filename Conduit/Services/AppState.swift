@@ -887,6 +887,25 @@ final class AppState: ObservableObject {
     @Published private(set) var pinnedSessionIDs: [String] = []
     /// Starred chats, per profile, on this phone only (#757).
     @Published private(set) var sessionStars = SessionStars()
+    /// Replies pinned to the top of their chat, per profile (#918). Kept on
+    /// this device only (AppState+PinnedReplies).
+    @Published var pinnedRepliesByProfile: [String: [PinnedReply]] = [:]
+    /// A pinned reply the overview asked to show; the chat scrolls to it
+    /// once its transcript has the row (AppState+PinnedReplies).
+    @Published var pendingPinnedReplyReveal: PinnedReplyReveal?
+    private var openChatPinnedRepliesCache: (
+        key: OpenChatPinnedRepliesKey,
+        value: (pins: [PinnedReply], messageIDs: Set<String>)
+    )?
+
+    private struct OpenChatPinnedRepliesKey: Equatable {
+        let profile: String
+        let active: String
+        let stored: [PinnedReply]
+        let transcriptRevision: UInt64
+        let sessionsRevision: Int
+        let cronSessionsRevision: Int
+    }
     /// A pin change that stayed on this phone because Hermes didn't take
     /// it, shown for a moment with Hermes' reason (#555).
     @Published private(set) var pinSyncNotice: PinSyncNotice?
@@ -5095,6 +5114,9 @@ final class AppState: ObservableObject {
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
         TranscriptImageCache.purge()
+        // So do the open dashboard's pinned replies (#918): they keep reply
+        // text, and the next sign-in may be another account.
+        if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -5203,6 +5225,7 @@ final class AppState: ObservableObject {
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
     private let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     private let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
+    private let pinnedRepliesByProfileKey = "conduit.pinnedRepliesByProfile.v1"
     private let hostPinsAdoptedKey = "conduit.hostPinsAdopted.v1"
     private let phoneOnlyPinsKey = "conduit.phoneOnlyPins.v1"
     private let voiceJobSessionIDsByProfileKey = "conduit.voiceJobSessionIdsByProfile.v1"
@@ -5269,6 +5292,11 @@ final class AppState: ObservableObject {
 
     /// The durable id Hermes confirmed for a chat's runtime id: a Bot Chat's
     /// mapping is under the bot's profile, and the dashboard's is tried too.
+    /// The durable id Hermes confirmed for a runtime id in `profile`.
+    func confirmedDurableSessionID(forRuntime sessionId: String, profile: String) -> String? {
+        conversationIdentityIndex.durableID(forRuntime: sessionId, profile: profile)
+    }
+
     private func confirmedDurableSessionID(forRuntime sessionId: String) -> String? {
         botConversationProfile(for: sessionId)
             .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
@@ -5665,6 +5693,10 @@ final class AppState: ObservableObject {
             pinnedSessionIDsByProfile = stored
         }
         sessionStars = SessionStars(defaults: defaults)
+        if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
+           let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
+            pinnedRepliesByProfile = stored
+        }
         sessionPinSync = SessionPinSync(
             adopted: Set(defaults.stringArray(forKey: hostPinsAdoptedKey) ?? []),
             phoneOnly: Set(defaults.stringArray(forKey: phoneOnlyPinsKey) ?? [])
@@ -5764,6 +5796,67 @@ final class AppState: ObservableObject {
     private func persistPinnedSessions() {
         guard let data = try? JSONEncoder().encode(pinnedSessionIDsByProfile) else { return }
         defaults.set(data, forKey: pinnedSessionIDsByProfileKey)
+    }
+
+    func persistPinnedReplies() {
+        guard let data = try? JSONEncoder().encode(pinnedRepliesByProfile) else { return }
+        defaults.set(data, forKey: pinnedRepliesByProfileKey)
+    }
+
+    /// The open chat's pinned replies and the rows they show, worked out
+    /// once per transcript, pin or catalog change: the rows read them on
+    /// every publish, streaming included.
+    var pinnedRepliesForOpenChat: (pins: [PinnedReply], messageIDs: Set<String>) {
+        guard canPinReplies, let active = activeSessionId else { return ([], []) }
+        let stored = pinnedRepliesByProfile[activeProfile] ?? []
+        guard !stored.isEmpty else { return ([], []) }
+        let key = OpenChatPinnedRepliesKey(
+            profile: activeProfile,
+            active: active,
+            stored: stored,
+            transcriptRevision: chatTranscriptRevision,
+            sessionsRevision: sessionsRevision,
+            cronSessionsRevision: cronSessionsRevision
+        )
+        if let cached = openChatPinnedRepliesCache, cached.key == key { return cached.value }
+        let own = openChatPinIDs().own
+        let pins = PinnedReplies.barOrder(stored.filter { pinBelongs($0, toOwnIDs: own) }, in: messages)
+        let value = (pins: pins, messageIDs: PinnedReplies.pinnedMessageIDs(pins, in: messages))
+        openChatPinnedRepliesCache = (key, value)
+        return value
+    }
+
+    /// The id a pin made now is kept under (the chat's row id, else its
+    /// durable id, else the open id), and every id the open chat is known
+    /// by. Never its row's alternate ids, which another row can share, so
+    /// another chat's pins never show in this one's bar.
+    func openChatPinIDs() -> (store: String, own: Set<String>) {
+        guard let active = activeSessionId, !active.isEmpty else { return ("", []) }
+        let durable = confirmedDurableSessionID(forRuntime: active)
+        let summary = activeChatSessionSummary
+        var own = chatOwnSessionIDs(for: active)
+        own.insert(active)
+        if let durable { own.insert(durable) }
+        if let summary {
+            own.insert(summary.id)
+            if let stored = summary.storedSessionId { own.insert(stored) }
+        }
+        return (summary?.id ?? durable ?? active, own)
+    }
+
+    /// Whether a pin belongs to the chat known by `ownIDs`: its id is one
+    /// of them, or a runtime id Hermes has since confirmed as one.
+    func pinBelongs(_ pin: PinnedReply, toOwnIDs ownIDs: Set<String>) -> Bool {
+        if ownIDs.contains(pin.sessionID) { return true }
+        guard let durable = confirmedDurableSessionID(forRuntime: pin.sessionID) else { return false }
+        return ownIDs.contains(durable)
+    }
+
+    /// Signed out or reset: pinned replies belong to the chats that went.
+    private func clearPinnedReplies() {
+        pinnedRepliesByProfile = [:]
+        pendingPinnedReplyReveal = nil
+        defaults.removeObject(forKey: pinnedRepliesByProfileKey)
     }
 
     private func pinID(for session: SessionSummary) -> String {
@@ -9661,6 +9754,7 @@ final class AppState: ObservableObject {
         resetHostPins()
         sessionStars = SessionStars()
         defaults.removeObject(forKey: SessionStars.storageKey)
+        clearPinnedReplies()
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
         defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
@@ -12054,6 +12148,7 @@ final class AppState: ObservableObject {
         resetHostPins()
         sessionStars = SessionStars()
         defaults.removeObject(forKey: SessionStars.storageKey)
+        clearPinnedReplies()
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
         if let signingOutDashboardID { forgetActiveProfile(for: signingOutDashboardID) }
@@ -19284,6 +19379,8 @@ final class AppState: ObservableObject {
             if let dashboardID {
                 offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
+            // Its pinned replies go too, under the profile it was deleted in.
+            dropPinnedReplies(forDeleted: session, profile: profile)
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
             sessionYoloStore.clearOverride(
                 for: profile,
@@ -20028,6 +20125,7 @@ final class AppState: ObservableObject {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-_.~")
         let encodedName = bot.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? bot.name
+        let dashboardID = activeDashboardID
         do {
             // The gateway waits up to 10 s for a running profile gateway to
             // stop before removing the directory.
@@ -20039,6 +20137,9 @@ final class AppState: ObservableObject {
         } catch {
             return AppLocalization.string("Could not delete \(bot.displayLabel): \(UserFacingError.message(for: error))")
         }
+        // Its pinned replies keep reply text: they go while the dashboard
+        // is still the open one, even if its bridge was rebuilt meanwhile.
+        if activeDashboardID == dashboardID { forgetPinnedReplies(profile: bot.name) }
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
@@ -27717,6 +27818,10 @@ final class AppState: ObservableObject {
                 for profile in stale {
                     setProfileGlowColor(nil, for: profile)
                 }
+                // So do its pinned replies, which keep reply text.
+                for profile in pinnedRepliesByProfile.keys where !nextProfiles.contains(profile) {
+                    forgetPinnedReplies(profile: profile)
+                }
             }
             // A non-empty response is authoritative: if the server no longer
             // knows the active profile (deleted externally), re-home onto a
@@ -27856,6 +27961,7 @@ final class AppState: ObservableObject {
         sessionStars.forget(profile: activeProfile)
         sessionStars.save(to: defaults)
         voiceJobSessionIDsByProfile.removeValue(forKey: activeProfile)
+        forgetPinnedReplies(profile: activeProfile)
         persistActiveSessionTitles()
         persistPinnedSessions()
         persistVoiceJobSessions()
