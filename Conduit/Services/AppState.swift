@@ -19228,6 +19228,13 @@ final class AppState: ObservableObject {
             clearActiveSessionIfNeeded(session, replacement: .delete)
             publishWidgetSnapshot()
             return true
+        } catch DashboardTicketBridgeError.answeredAfterSwitch {
+            // Hermes deleted it after the screen moved to another dashboard:
+            // only the old dashboard's saved copy follows (#1040).
+            if let dashboardID {
+                offlineChatCache.removeTranscripts(sessionIDs: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
+            }
+            return false
         } catch {
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
             showSessionMutationNotice(AppLocalization.string("Could not delete this conversation: \(UserFacingError.message(for: error))"))
@@ -23104,7 +23111,7 @@ final class AppState: ObservableObject {
 
     static func isTransientChatTakeoverFailure(_ error: Error) -> Bool {
         switch error {
-        case DashboardTicketBridgeError.notReady:
+        case DashboardTicketBridgeError.notReady, DashboardTicketBridgeError.answeredAfterSwitch:
             return true
         case DashboardTicketBridgeError.http(let status, _):
             // The client already maps 501 to `.unsupported`; excluded here too
