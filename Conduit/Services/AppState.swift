@@ -136,6 +136,9 @@ struct ChatResumeLifecycleOperations {
     /// Side-agent start (`prompt.background` / `prompt.btw`). Not an init
     /// parameter: tests set it on the value.
     var startSideAgent: (@MainActor (HermesClient, SideAgentKind, String, String) async throws -> String?)?
+    /// `/stop`'s `process.stop`: how many background processes stopped.
+    /// Not an init parameter: tests set it on the value.
+    var stopProcesses: (@MainActor (HermesClient, String) async throws -> Int)?
     var compressSession: (@MainActor (
         HermesClient,
         String,
@@ -2212,6 +2215,9 @@ final class AppState: ObservableObject {
     // MARK: - Capabilities
 
     @Published var slashCommands: [SlashCommand] = AppState.builtInSlashCommands
+    /// Hermes' argument words for each command (`commands.catalog` `sub`),
+    /// by command name: `fast` → normal, fast, ultrafast, …
+    @Published var slashSubcommands: [String: [String]] = [:]
     @Published var skills: [CapabilitySkill] = []
     @Published var toolsets: [CapabilityToolset] = []
     /// Profile that owns the currently displayed skills/toolsets. Rows are
@@ -9648,7 +9654,7 @@ final class AppState: ObservableObject {
     /// sessions keep full `/new` freedom.
     private func canonicalForeverChatRerouteText(for text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed == "/new" || trimmed == "/reset" else { return nil }
+        guard ["/new", "/reset", "/clear"].contains(trimmed) else { return nil }
         guard let sessionId = activeSessionId else { return nil }
         guard let bot = botOwnership.bot(owningAny: [sessionId]) else { return nil }
         let canonicalIDs = [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
@@ -11417,6 +11423,7 @@ final class AppState: ObservableObject {
             cronSessions = []
             archivedSessions = []
             slashCommands = Self.builtInSlashCommands
+            slashSubcommands = [:]
         }
         // Fence deferred presentation-cache writes created under the
         // previous profile before transcripts change over.
@@ -22140,7 +22147,8 @@ final class AppState: ObservableObject {
         attachments: [Attachment],
         submissionContext: ComposerSubmissionContext,
         onBusy: (() -> Void)?,
-        busyMode: BusyInputMode
+        busyMode: BusyInputMode,
+        runsSlashCommands: Bool = true
     ) async -> Bool {
         guard isCurrentComposerSubmission(submissionContext) else { return false }
 
@@ -22151,7 +22159,12 @@ final class AppState: ObservableObject {
         guard composerIsEnabled else { return false }
 
         // Slash command intercept — handle before normal message/steer logic
-        if attachments.isEmpty && Self.parseSlashCommand(text) != nil {
+        if runsSlashCommands, attachments.isEmpty, let command = Self.parseSlashCommand(text) {
+            // /steer and /queue are sends: a failed one keeps the draft.
+            if Self.composerRoutedSlashNames.contains(command.name) {
+                guard isCurrentComposerSubmission(submissionContext) else { return false }
+                return await submitSteerOrQueueSlash(name: command.name, argument: command.argument, context: submissionContext)
+            }
             await executeSlashCommand(text, context: submissionContext)
             return true
         }
@@ -24219,13 +24232,12 @@ final class AppState: ObservableObject {
     /// Internal so localization tests can pin the protocol-value invariants
     /// (raw name/aliases, localized display copy) across every App Language.
     static var builtInSlashCommands: [SlashCommand] { [
-        SlashCommand(name: "new", aliases: ["reset"], description: AppLocalization.string("Start a new conversation"), category: AppLocalization.string("Session")),
+        SlashCommand(name: "new", aliases: ["reset", "clear"], description: AppLocalization.string("Start a new conversation"), category: AppLocalization.string("Session")),
         SlashCommand(name: "branch", aliases: ["fork"], description: AppLocalization.string("Branch this conversation into a new chat"), category: AppLocalization.string("Session")),
         SlashCommand(name: "model", description: AppLocalization.string("Open the model and run settings"), category: AppLocalization.string("Session")),
         SlashCommand(name: "yolo", description: AppLocalization.string("Toggle automatic tool approval"), category: AppLocalization.string("Session")),
         SlashCommand(name: "help", aliases: ["commands"], description: AppLocalization.string("Show available slash commands"), category: AppLocalization.string("Session")),
         SlashCommand(name: "approvals", description: AppLocalization.string("Show or set approval mode"), category: "Hermes"),
-        SlashCommand(name: "agents", aliases: ["tasks"], description: AppLocalization.string("Show active sessions and tasks"), category: "Hermes"),
         SlashCommand(name: "background", aliases: ["bg"], description: AppLocalization.string("Run a prompt in the background"), category: "Hermes"),
         SlashCommand(name: "btw", description: AppLocalization.string("Ask a side question about this chat"), category: "Hermes"),
         SlashCommand(name: "compress", aliases: ["compact"], description: AppLocalization.string("Compress this conversation context"), category: "Hermes"),
@@ -24233,25 +24245,48 @@ final class AppState: ObservableObject {
         SlashCommand(name: "goal", description: AppLocalization.string("Manage this session's standing goal"), category: "Hermes"),
         SlashCommand(name: "personality", description: AppLocalization.string("Switch the session personality"), category: "Hermes"),
         SlashCommand(name: "queue", aliases: ["q"], description: AppLocalization.string("Queue a prompt for the next turn"), category: "Hermes"),
-        SlashCommand(name: "retry", description: AppLocalization.string("Retry the last user message"), category: "Hermes"),
-        SlashCommand(name: "rollback", description: AppLocalization.string("List or restore filesystem checkpoints"), category: "Hermes"),
-        SlashCommand(name: "save", description: AppLocalization.string("Save the current transcript"), category: "Hermes"),
         SlashCommand(name: "status", description: AppLocalization.string("Show current session status"), category: "Hermes"),
         SlashCommand(name: "steer", description: AppLocalization.string("Steer the current run"), category: "Hermes"),
-        SlashCommand(name: "stop", description: AppLocalization.string("Stop running background processes"), category: "Hermes"),
-        SlashCommand(name: "tools", description: AppLocalization.string("List or toggle agent tools"), category: "Hermes"),
-        SlashCommand(name: "undo", description: AppLocalization.string("Remove the last user and assistant exchange"), category: "Hermes"),
+        SlashCommand(name: "stop", description: AppLocalization.string("Stop the reply and background processes"), category: "Hermes"),
         SlashCommand(name: "usage", description: AppLocalization.string("Show this session's token usage"), category: "Hermes"),
         SlashCommand(name: "version", description: AppLocalization.string("Show the Hermes Agent version"), category: "Hermes")
     ]
     }
 
-    private static func normalizedSlashCatalog(_ payload: AnyCodable) -> [SlashCommand] {
+    /// Hermes commands its `slash.exec` refuses for a chat like Conduit's
+    /// (`unsupported_command`) that Conduit has no route of its own for:
+    /// the `refused` rows of Hermes' gateway command parity table
+    /// (website/docs/developer-guide/gateway-command-parity.md), minus the
+    /// ones `executeSlashCommand` handles. Names and aliases. They stay out
+    /// of the suggestions; typed anyway, they go to Hermes, whose refusal
+    /// says what to use instead. The weekly parity check
+    /// (scripts/check-hermes-slash-parity.py) flags when Hermes' table and
+    /// this list drift apart.
+    static let slashCommandsWithoutConduitRoute: Set<String> = [
+        "agents", "tasks", "battery", "browser", "config", "copy", "discard",
+        "export", "focus", "handoff", "hatch", "generate-pet", "history",
+        "image", "import", "indicator", "journey", "learning", "memory-graph",
+        "palette", "paste", "pause", "pet", "platform", "plugins", "prompt",
+        "compose", "quit", "exit", "redraw", "reload", "reload-mcp",
+        "reload_mcp", "reload-skills", "reload_skills", "restart", "resume",
+        "retry", "rollback", "save", "sessions", "sethome", "set-home", "skin",
+        "snapshot", "snap", "start", "statusbar", "sb", "subscription",
+        "upgrade", "timestamps", "ts", "tools", "topic", "undo", "update",
+        "wake", "worktree"
+    ]
+
+    /// Commands Conduit runs itself without Hermes' subcommands: Conduit's
+    /// `/queue` only adds a message (Queue, #842); listing or editing
+    /// Hermes' queue (`/queue list`, …) runs in Hermes' own clients only.
+    private static let slashCommandsWithoutHermesSubcommands: Set<String> = ["queue"]
+
+    static func normalizedSlashCatalog(_ payload: AnyCodable) -> [SlashCommand] {
         let object = payload.objectValue ?? [:]
         var commands: [String: SlashCommand] = [:]
 
         func add(_ command: SlashCommand) {
-            guard !command.name.isEmpty, commands[command.name] == nil else { return }
+            guard !command.name.isEmpty, commands[command.name] == nil,
+                  !slashCommandsWithoutConduitRoute.contains(command.name) else { return }
             commands[command.name] = command
         }
 
@@ -24293,6 +24328,28 @@ final class AppState: ObservableObject {
         }
 
         return commands.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    /// `commands.catalog`'s `sub` ("/fast" → ["normal", "fast", …]) by bare
+    /// command name. Where a command's `commands` entry narrows its words
+    /// for a client (`desktop_subcommands`, e.g. `/skills` without the
+    /// interactive hub), the narrower list wins.
+    static func slashSubcommandMap(_ payload: AnyCodable) -> [String: [String]] {
+        let object = payload.objectValue ?? [:]
+        let meta = object["commands"]?.objectValue ?? [:]
+        var map: [String: [String]] = [:]
+        for (rawName, value) in object["sub"]?.objectValue ?? [:] {
+            let name = normalizedSlashName(rawName)
+            guard !name.isEmpty,
+                  !slashCommandsWithoutConduitRoute.contains(name),
+                  !slashCommandsWithoutHermesSubcommands.contains(name) else { continue }
+            let narrowed = meta["/" + name]?.objectValue?["desktop_subcommands"]?.arrayValue
+            let words = (narrowed ?? value.arrayValue ?? [])
+                .compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && !$0.contains(" ") }
+            if !words.isEmpty { map[name] = words }
+        }
+        return map
     }
 
     private static func slashCommand(from value: AnyCodable, category: String?) -> SlashCommand? {
@@ -24343,6 +24400,7 @@ final class AppState: ObservableObject {
             guard profile == activeProfile, self.client === client else { return }
             lastSlashCatalogPayload = result
             slashCommands = Self.normalizedSlashCatalog(result)
+            slashSubcommands = Self.slashSubcommandMap(result)
         } catch {
             // Non-fatal — keep whatever we have
         }
@@ -24359,63 +24417,8 @@ final class AppState: ObservableObject {
             slashCommands = Self.normalizedSlashCatalog(payload)
         } else {
             slashCommands = Self.builtInSlashCommands
+            slashSubcommands = [:]
         }
-    }
-
-    private static func normalizeSlashCatalog(_ payload: AnyCodable) -> [SlashCommand] {
-        let obj = payload.objectValue ?? [:]
-        var commands: [SlashCommand] = []
-
-        // Categories path: [{ name, pairs: [[name, desc], ...] }]
-        if let categories = obj["categories"]?.arrayValue, !categories.isEmpty {
-            for cat in categories {
-                guard let catObj = cat.objectValue else { continue }
-                let catName = catObj["name"]?.stringValue
-                if let pairs = catObj["pairs"]?.arrayValue {
-                    for pair in pairs {
-                        if let cmd = pairFromTuple(pair, category: catName) {
-                            commands.append(cmd)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Top-level pairs fallback
-        if commands.isEmpty, let pairs = obj["pairs"]?.arrayValue {
-            for pair in pairs {
-                if let cmd = pairFromTuple(pair, category: nil) {
-                    commands.append(cmd)
-                }
-            }
-        }
-
-        // Deduplicate by name, keeping first occurrence
-        var seen = Set<String>()
-        return commands.filter { cmd in
-            if seen.contains(cmd.name) { return false }
-            seen.insert(cmd.name)
-            return true
-        }
-    }
-
-    /// Parses a [name, description] tuple from the catalog.
-    private static func pairFromTuple(_ pair: AnyCodable, category: String?) -> SlashCommand? {
-        if let arr = pair.arrayValue, arr.count >= 1 {
-            let name = arr[0].stringValue ?? ""
-            let desc = arr.count > 1 ? (arr[1].stringValue ?? "") : ""
-            guard !name.isEmpty else { return nil }
-            return SlashCommand(name: name, description: desc, category: category)
-        }
-        // Some gateways return objects instead of tuples
-        if let pairObj = pair.objectValue {
-            let name = pairObj["name"]?.stringValue ?? pairObj["command"]?.stringValue ?? ""
-            let desc = pairObj["description"]?.stringValue ?? pairObj["desc"]?.stringValue ?? ""
-            let aliases = pairObj["aliases"]?.arrayValue?.compactMap { $0.stringValue } ?? []
-            guard !name.isEmpty else { return nil }
-            return SlashCommand(name: name, aliases: aliases, description: desc, category: category)
-        }
-        return nil
     }
 
     func executeSlashCommand(
@@ -24430,7 +24433,7 @@ final class AppState: ObservableObject {
 
         // Client-side special cases
         switch command.name {
-        case "new", "reset":
+        case "new", "reset", "clear":
             guard !isProfileSwitching, isConnected, !isConnecting else {
                 if isProfileSwitching || isConnecting {
                     errorMessage = AppLocalization.string("Wait for the workspace switch to finish before starting a conversation.")
@@ -24533,6 +24536,16 @@ final class AppState: ObservableObject {
                 )
                 return
             }
+        case "steer", "s", "queue", "q":
+            _ = await submitSteerOrQueueSlash(name: command.name, argument: command.argument, context: submissionContext)
+            return
+        case "stop":
+            // Desktop's /stop: the running reply, then this chat's
+            // background processes (`process.stop`, what Hermes' own /stop
+            // means).
+            cancelChatResumeRestoration()
+            await stopReplyAndBackgroundProcesses(client: client, sessionID: sessionId, context: submissionContext)
+            return
         case "compress", "compact":
             // Dedicated `session.compress` RPC (upstream Desktop parity). Must
             // not ride the generic slash path: compression legitimately
@@ -24573,11 +24586,121 @@ final class AppState: ObservableObject {
             )
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return }
+            appendSlashOutput(Self.slashFailureNote(command: command.name, error: error), context: submissionContext)
+        }
+    }
+
+    /// Hermes' `/queue` management words. Conduit can only add to the
+    /// queue (`/queue add <message>` queues the message), so these say so.
+    private static let hermesQueueManagementWords: Set<String> = ["list", "edit", "rm", "move", "clear"]
+
+    /// What a failed slash command shows. Hermes' `unsupported_command` is
+    /// a refusal by design, not a failure: it says so in words, with the
+    /// alternative Hermes names (`data.detail`) when it has one.
+    static func slashFailureNote(command: String, error: Error) -> String {
+        if let rejection = error as? RpcError, rejection.reason == "unsupported_command" || rejection.message == "unsupported_command" {
+            let refusal = AppLocalization.string("Hermes doesn't run /\(command) for Conduit chats.")
+            guard let detail = rejection.detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty else {
+                return refusal
+            }
+            return "\(refusal)\n\(detail)"
+        }
+        return AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))")
+    }
+
+    private static let composerRoutedSlashNames: Set<String> = ["steer", "s", "queue", "q"]
+
+    /// Hermes' slash.exec refuses /steer and /queue for a chat like this one;
+    /// they are the composer's own Steer and Queue, for this message. Returns
+    /// whether the composer may clear its draft: a failed send keeps it.
+    private func submitSteerOrQueueSlash(
+        name: String,
+        argument rawArgument: String,
+        context submissionContext: ComposerSubmissionContext
+    ) async -> Bool {
+        cancelChatResumeRestoration()
+        let isSteer = name == "steer" || name == "s"
+        let argument = rawArgument.trimmingCharacters(in: .whitespacesAndNewlines)
+        let queueUsage = AppLocalization.string("Usage: /queue <message>. Sends the message as the next turn once the running reply finishes.")
+        guard !argument.isEmpty else {
             appendSlashOutput(
-                AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))"),
+                isSteer
+                    ? AppLocalization.string("Usage: /steer <message>. Sends the message into the running reply without stopping it.")
+                    : queueUsage,
                 context: submissionContext
             )
+            return true
         }
+        var message = argument
+        if !isSteer, let word = argument.split(separator: " ").first.map({ $0.lowercased() }) {
+            if word == "add" {
+                message = argument.dropFirst(word.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if word == argument.lowercased(), Self.hermesQueueManagementWords.contains(word) {
+                // `/queue list` alone is Hermes' queue management;
+                // `/queue list the files` is a message to queue.
+                appendSlashOutput(
+                    AppLocalization.string("Conduit can only add to the queue. Use /queue <message> to queue one."),
+                    context: submissionContext
+                )
+                return true
+            }
+        }
+        guard !message.isEmpty else {
+            appendSlashOutput(queueUsage, context: submissionContext)
+            return true
+        }
+        // The message goes as typed: `/steer /compact` steers with that text
+        // rather than running it as a command.
+        return await performComposerSubmission(
+            text: message,
+            attachments: [],
+            submissionContext: submissionContext,
+            onBusy: nil,
+            busyMode: isSteer ? .steer : .queue,
+            runsSlashCommands: false
+        )
+    }
+
+    private func stopReplyAndBackgroundProcesses(
+        client: HermesClient,
+        sessionID: String,
+        context: ComposerSubmissionContext
+    ) async {
+        var lines: [String] = []
+        // A failed interrupt has already said so; it isn't "nothing running".
+        var replyMayStillRun = false
+        var sessionID = sessionID
+        var context = context
+        if isBusy {
+            if await cancelCurrent() {
+                lines.append(AppLocalization.string("Stopped the reply."))
+            } else {
+                replyMayStillRun = true
+            }
+            // Cancelling can re-key a reaped runtime; stop the current one.
+            guard let currentContext = currentComposerSubmissionContextIfOwnedAndAliased(context) else { return }
+            context = currentContext
+            sessionID = currentContext.sessionID ?? sessionID
+        }
+        do {
+            let stoppedCount: Int
+            if let stopProcesses = chatResumeLifecycleOperations.stopProcesses {
+                stoppedCount = try await stopProcesses(client, sessionID)
+            } else {
+                stoppedCount = try await client.stopProcesses(sessionId: sessionID)
+            }
+            if stoppedCount > 0 {
+                lines.append(AppLocalization.string("Background processes stopped: \(stoppedCount)"))
+            } else if lines.isEmpty, !replyMayStillRun {
+                lines.append(AppLocalization.string("Nothing was running."))
+            }
+        } catch where HermesClient.isMissingRPCMethod(error) {
+            if lines.isEmpty, !replyMayStillRun { lines.append(AppLocalization.string("Nothing was running.")) }
+        } catch {
+            lines.append(AppLocalization.string("⚠️ Command failed: \(UserFacingError.message(for: error))"))
+        }
+        guard !lines.isEmpty else { return }
+        appendSlashOutput(lines.joined(separator: "\n"), context: context)
     }
 
     private func executeGatewaySlash(
@@ -24607,6 +24730,9 @@ final class AppState: ObservableObject {
             // falling back — skill commands answer slash.exec with "skill
             // command: use command.dispatch for /<name>" (#244).
             guard let parsed = Self.parseSlashCommand("/" + command) else { throw error }
+            // A command Hermes refuses for Conduit chats is no skill or
+            // plugin either: its refusal is the answer.
+            if Self.slashCommandsWithoutConduitRoute.contains(parsed.name) { throw error }
             do {
                 if let dispatchCommand = chatResumeLifecycleOperations.dispatchCommand {
                     return try await dispatchCommand(
@@ -27148,6 +27274,7 @@ final class AppState: ObservableObject {
             projectsLoading = false
             projectsLoadFailed = false
             slashCommands = Self.builtInSlashCommands
+            slashSubcommands = [:]
             restoreActiveSessionState(for: target)
             restorePinnedSessions(for: target)
             // The target's list as it showed last time, until its own lands.
@@ -27432,6 +27559,7 @@ final class AppState: ObservableObject {
         projectsLoading = false
         projectsLoadFailed = false
         slashCommands = Self.builtInSlashCommands
+        slashSubcommands = [:]
         messages = []
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
