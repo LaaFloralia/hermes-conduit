@@ -157,8 +157,9 @@ final class SessionPresentationCache {
     /// instance on the same defaults, a test fixture) is still picked up.
     private var memoryStoreData: Data?
     private var memoryPendingToolsData: Data?
-    /// Guards the memory copies above. Today every caller is on the main
-    /// actor, but the type itself doesn't enforce that.
+    /// Guards the memory copies above. Callers are on the main actor,
+    /// except `prewarm()`, which decodes on a background queue outside the
+    /// lock and installs its result under it.
     private let memoryLock = NSLock()
     /// Removals the stores on disk may not reflect yet (asynchronous mode),
     /// each with the write ticket both stores must reach before it can be
@@ -1252,6 +1253,31 @@ final class SessionPresentationCache {
         }
         if mutated {
             session.updatedAt = now()
+        }
+    }
+
+    /// Decodes the stored chats into memory off the main thread, so the
+    /// first read at launch (the sync after unlock) finds them decoded
+    /// instead of decoding the whole store while the Chats list draws.
+    /// The decode runs outside `memoryLock`, so a main-thread read never
+    /// waits on it; the result goes in only if nothing filled memory first.
+    func prewarm() {
+        guard writeQueue != nil else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [self] in
+            let data = defaults.data(forKey: storageKey)
+            let sessions = data.flatMap { try? JSONDecoder().decode([String: CachedSession].self, from: $0) } ?? [:]
+            let toolsData = defaults.data(forKey: pendingToolsStorageKey)
+            let tools = toolsData.flatMap { try? JSONDecoder().decode([String: [CachedMessage]].self, from: $0) } ?? [:]
+            memoryLock.withLock {
+                if memoryStore == nil {
+                    memoryStore = withoutTombstonedKeys(sessions)
+                    memoryStoreData = data
+                }
+                if memoryPendingTools == nil {
+                    memoryPendingTools = withoutTombstonedKeys(tools)
+                    memoryPendingToolsData = toolsData
+                }
+            }
         }
     }
 
