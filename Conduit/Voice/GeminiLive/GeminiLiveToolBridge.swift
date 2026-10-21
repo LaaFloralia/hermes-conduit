@@ -543,6 +543,9 @@ final class GeminiLiveToolBridge {
         let request: String
         let profile: String
         let toChat: Bool
+        /// The original follow-up intent must survive send_request so an
+        /// approved add steers rather than redirects running chat work.
+        let kind: String?
         /// The user's last words when it was held: the request's own.
         let heardUntil: Date?
     }
@@ -713,10 +716,15 @@ final class GeminiLiveToolBridge {
                 return [.toolResponse(id: call.id, name: call.name, result: ["status": "waiting_for_ok", "message": "Not sent: the user hasn't answered yet. Wait for their OK, then call send_request."], scheduling: .silent)]
             }
             draft = nil
+            let approved = GeminiLiveProtocol.FunctionCall(
+                id: call.id,
+                name: call.name,
+                arguments: call.arguments.merging(waiting.kind.map { ["kind": $0] } ?? [:]) { _, kind in kind }
+            )
             if waiting.toChat {
-                return await sendToThread(call, request: waiting.request, confirmed: true)
+                return await sendToThread(approved, request: waiting.request, confirmed: true)
             }
-            return await startBackgroundJob(call, instructions: waiting.request, profile: waiting.profile)
+            return await startBackgroundJob(approved, instructions: waiting.request, profile: waiting.profile)
         case .setAskFirst:
             let mode = call.arguments["mode"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
             guard mode == "on" || mode == "off" else {
@@ -952,7 +960,7 @@ final class GeminiLiveToolBridge {
             draft = nil
             return nil
         }
-        draft = Draft(request: request, profile: profile, toChat: toChat, heardUntil: lastUserSpeechAt())
+        draft = Draft(request: request, profile: profile, toChat: toChat, kind: call.arguments["kind"], heardUntil: lastUserSpeechAt())
         // Not UI copy, so not localized.
         return [.toolResponse(id: call.id, name: call.name, result: [
             "status": "waiting_for_ok",

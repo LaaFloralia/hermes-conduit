@@ -2393,6 +2393,73 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(reply["result"], "Three flights to Rome.")
     }
 
+    func testGeminiApprovedHeldAskThreadAddSteersTheRunningChatWork() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: [
+            "request": "also check the test results", "kind": "add",
+        ]))
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertNotNil(supervisor.threadFollowUpTarget())
+
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-chat"])
+        XCTAssertEqual(fake.steers.map(\.1), ["(voice) also check the test results"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+    }
+
+    func testGeminiApprovedHeldAttachedStartJobAddSteersTheRunningChatWork() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: [
+            "instructions": "also check the test results", "kind": "add",
+        ]))
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertNotNil(supervisor.threadFollowUpTarget())
+
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+
+        XCTAssertEqual(fake.steers.map(\.0), ["rt-chat"])
+        XCTAssertEqual(fake.steers.map(\.1), ["(voice) also check the test results"])
+        XCTAssertTrue(fake.redirects.isEmpty)
+    }
+
+    func testGeminiApprovedHeldChatFollowUpWithoutKindStillRedirects() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        bridge.lastUserSpeechAt = { spokeAt }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "make it green"]))
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        XCTAssertNotNil(supervisor.threadFollowUpTarget())
+
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_2", name: "send_request", arguments: [:]))
+
+        XCTAssertTrue(fake.steers.isEmpty)
+        XCTAssertEqual(fake.redirects.map(\.0), ["rt-chat"])
+        XCTAssertEqual(fake.redirects.map(\.1), ["(voice) make it green"])
+    }
+
     func testGeminiSendItToHermesSkipsTheQuestionOnce() async {
         let (supervisor, fake) = makeSupervisor()
         supervisor.beginLiveCall(asksBeforeSending: true)
