@@ -606,7 +606,7 @@ final class LoginFlowModel: ObservableObject {
                         requiresFaceID: useBiometrics
                     ), dashboardID: dashboardID)
                 } else {
-                    KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                    appState.clearSavedPassword(dashboardID: dashboardID)
                 }
                 if let cloudflare = target.cloudflare {
                     KeychainHelper.saveCloudflareAccess(cloudflare, origin: target.baseURL, dashboardID: dashboardID)
@@ -820,7 +820,7 @@ final class LoginFlowModel: ObservableObject {
         // Browser and single sign-on logins leave no password Conduit can
         // reuse.
         if let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) {
-            KeychainHelper.clearCredentials(dashboardID: dashboardID)
+            appState.clearSavedPassword(dashboardID: dashboardID)
             KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
         }
         appState.rememberDashboardURL(baseURL)

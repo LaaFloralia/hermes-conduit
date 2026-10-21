@@ -9,6 +9,7 @@
 
 import SwiftUI
 import Combine
+import CryptoKit
 import OSLog
 import UIKit
 import WebKit
@@ -11286,7 +11287,7 @@ final class AppState: ObservableObject {
             guard widgetLease?.isCurrent != false else { return }
             await connect(with: HermesConnection(baseUrl: baseURL, ticket: ticket), profile: activeProfile)
             if isConnected {
-                KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                clearSavedPassword(dashboardID: dashboardID)
                 KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         } catch is CancellationError {
@@ -11691,7 +11692,7 @@ final class AppState: ObservableObject {
             restoreNativeOAuthTokens(previousTokens, dashboardID: dashboardID, baseURL: baseURL)
             return false
         }
-        KeychainHelper.clearCredentials(dashboardID: dashboardID)
+        clearSavedPassword(dashboardID: dashboardID)
         KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
         return true
     }
@@ -11779,19 +11780,21 @@ final class AppState: ObservableObject {
             // is remembered, and same-origin Cloudflare rules are untouched.
             rememberDashboardURL(baseURL)
             if let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: false) {
-                KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                clearSavedPassword(dashboardID: dashboardID)
                 KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
             }
         case .nativeOAuth(_, let baseURL, _):
             rememberDashboardURL(baseURL)
             if let dashboardID = resolveDashboardID(forURL: baseURL, registerIfMissing: false) {
-                KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                clearSavedPassword(dashboardID: dashboardID)
                 KeychainHelper.clearDashboardCookies(dashboardID: dashboardID)
             }
         }
     }
 
     func disconnect() {
+        // The next sign-in to it asks for Face ID again.
+        if let activeDashboardID { faceIDUnlockedDashboards[activeDashboardID] = nil }
         // Its turns' Lock Screen progress has nothing left to follow.
         liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, false)
         // Drafts shared for this dashboard belong to the signed-out user,
@@ -11849,7 +11852,7 @@ final class AppState: ObservableObject {
         if let dashboardID = signingOutDashboardID {
             KeychainHelper.clearConnection(dashboardID: dashboardID)
             keepUsernameForNextSignIn(dashboardID: dashboardID)
-            KeychainHelper.clearCredentials(dashboardID: dashboardID)
+            clearSavedPassword(dashboardID: dashboardID)
             // The Cloudflare Access token stays, like the address and the
             // extra headers: it reaches the server, it doesn't sign in.
             // Remove Dashboard deletes it.
@@ -12051,7 +12054,7 @@ final class AppState: ObservableObject {
         if let previous = savedDashboardRegistry.dashboards[index].pendingURL, previous != url,
            let credentials = KeychainHelper.loadCredentials(dashboardID: id),
            Self.normalizedDashboardURL(credentials.baseURL) == previous {
-            KeychainHelper.clearCredentials(dashboardID: id)
+            clearSavedPassword(dashboardID: id)
         }
         var registry = savedDashboardRegistry
         registry.dashboards[index].pendingURL = url == registry.dashboards[index].normalizedURL ? nil : url
@@ -12092,7 +12095,7 @@ final class AppState: ObservableObject {
         }
         if let credentials = KeychainHelper.loadCredentials(dashboardID: id),
            Self.normalizedDashboardURL(credentials.baseURL) != newURL {
-            KeychainHelper.clearCredentials(dashboardID: id)
+            clearSavedPassword(dashboardID: id)
         }
         if sameOrigin,
            let access = KeychainHelper.loadCloudflareAccess(dashboardID: id, for: oldURL), access.isConfigured {
@@ -12115,7 +12118,7 @@ final class AppState: ObservableObject {
             let id = registry.dashboards[index].id
             if let credentials = KeychainHelper.loadCredentials(dashboardID: id),
                Self.normalizedDashboardURL(credentials.baseURL) == url {
-                KeychainHelper.clearCredentials(dashboardID: id)
+                clearSavedPassword(dashboardID: id)
             }
             registry.dashboards[index].pendingURL = nil
         }
@@ -12381,7 +12384,7 @@ final class AppState: ObservableObject {
         liveTurnActivitiesEndDashboard(id.uuidString, false)
         KeychainHelper.clearConnection(dashboardID: id)
         keepUsernameForNextSignIn(dashboardID: id)
-        KeychainHelper.clearCredentials(dashboardID: id)
+        clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
@@ -12510,7 +12513,25 @@ final class AppState: ObservableObject {
         let scopedDashboardID = dashboardID ?? activeDashboardID
         rememberDashboardURL(credentials.baseURL)
 
-        if credentials.requiresFaceID {
+        // One Face ID unlock holds for the dashboard while Conduit runs: the
+        // offline retries (each return from the Face ID sheet makes the scene
+        // active again) must not ask again, or the sheet loops until the
+        // server answers.
+        let faceIDUnlockHeld = scopedDashboardID.map {
+            faceIDUnlockedDashboards[$0] == Self.faceIDUnlockFingerprint(credentials)
+        } ?? false
+        if credentials.requiresFaceID, faceIDUnlockHeld {
+            if let scopedDashboardID {
+                // A retry keeps the copy already on screen.
+                if offlineChatPresentation == nil {
+                    presentOfflineChatIfAvailable(dashboardID: scopedDashboardID)
+                }
+                if offlineChatPresentation != nil {
+                    showLogin = false
+                    isConnecting = true
+                }
+            }
+        } else if credentials.requiresFaceID {
             guard await unlockWithFaceID() else {
                 // A superseded switch owns the flow: present nothing.
                 guard restoreOwnsFlow(switchGeneration) else { return }
@@ -12536,6 +12557,9 @@ final class AppState: ObservableObject {
             // the flow now.
             if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
                 return
+            }
+            if let scopedDashboardID {
+                faceIDUnlockedDashboards[scopedDashboardID] = Self.faceIDUnlockFingerprint(credentials)
             }
             // The user just unlocked the saved password for the selected
             // dashboard: the sign-in finishes even if the widget launch
@@ -12589,6 +12613,26 @@ final class AppState: ObservableObject {
                 switchGeneration: switchGeneration
             )
         }
+    }
+
+    /// Dashboards whose saved password Face ID or Touch ID unlocked since
+    /// launch, with a fingerprint of the password it unlocked: a different
+    /// password saved later for the same dashboard asks again. Clearing the
+    /// saved password (sign-out, removal, a switch to browser sign-in) drops
+    /// it. The unlock holds while Conduit runs, also after a long time away,
+    /// as a connected Conduit never asks again on return; a cold launch
+    /// asks.
+    private var faceIDUnlockedDashboards: [UUID: SHA256.Digest] = [:]
+
+    /// Clears the dashboard's saved password and the Face ID unlock that
+    /// held for it: a password saved for it again asks again.
+    func clearSavedPassword(dashboardID: UUID) {
+        KeychainHelper.clearCredentials(dashboardID: dashboardID)
+        faceIDUnlockedDashboards[dashboardID] = nil
+    }
+
+    private static func faceIDUnlockFingerprint(_ credentials: DashboardCredentials) -> SHA256.Digest {
+        SHA256.hash(data: Data([credentials.baseURL, credentials.username, credentials.password].joined(separator: "\u{1f}").utf8))
     }
 
     /// Face ID or Touch ID for a saved password. Test seam.

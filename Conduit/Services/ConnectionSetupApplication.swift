@@ -170,7 +170,7 @@ extension ConnectionSetupApplication {
                 KeychainHelper.saveCredentials(credentials, dashboardID: dashboardID)
             }
             if clearsSavedCredentials {
-                KeychainHelper.clearCredentials(dashboardID: dashboardID)
+                appState.clearSavedPassword(dashboardID: dashboardID)
             }
             if let rewrite = cloudflareTokenRewrite {
                 KeychainHelper.saveCloudflareAccess(rewrite.access, origin: rewrite.origin, dashboardID: dashboardID)

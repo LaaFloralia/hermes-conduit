@@ -1007,6 +1007,75 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(store.load(dashboardID: dashboard, profile: "default"))
     }
 
+    /// Offline with a Face ID dashboard: closing the Face ID sheet makes
+    /// Conduit active again, which retries the restore. One unlock holds,
+    /// so the retries don't bring the sheet back in a loop; a newly saved
+    /// password or signing out of the dashboard asks again.
+    func testOneFaceIDUnlockHoldsWhileTheServerCantBeReached() async {
+        useInMemoryKeychain()
+        // Loopback port 1: nothing listens, so the restore fails as
+        // unreachable and the saved copy stays up.
+        let loopback = SavedDashboard(id: UUID(), label: "Local", normalizedURL: "http://127.0.0.1:1")
+        let (appState, store, dashboard) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: loopback.id, dashboards: [loopback])
+        )
+        seedCopy(store, dashboard: dashboard)
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: loopback.normalizedURL, username: "hermes", password: "unused", requiresFaceID: true),
+            dashboardID: dashboard
+        )
+        var unlocks = 0
+        appState.unlockWithFaceID = {
+            unlocks += 1
+            return true
+        }
+        let passwordTries: @MainActor () -> Int = {
+            appState.connectionTimeline?.events.filter { $0.label.hasPrefix("Password sign-in") }.count ?? 0
+        }
+
+        appState.loadSavedConnection()
+        await waitUntil { passwordTries() == 1 && !appState.isConnecting }
+        XCTAssertEqual(unlocks, 1)
+        XCTAssertNotNil(appState.offlineChatPresentation)
+        XCTAssertNil(appState.connection)
+        XCTAssertFalse(appState.showLogin)
+
+        for round in 1...3 {
+            // Each retry starts its own timeline.
+            let previous = appState.connectionTimeline?.startedAt
+            _ = appState.handleScenePhase(.inactive)
+            _ = appState.handleScenePhase(.active)
+            await waitUntil {
+                appState.connectionTimeline?.startedAt != previous
+                    && appState.connectionTimeline?.trigger.hasPrefix("retry from offline copy") == true
+                    && passwordTries() == 1 && !appState.isConnecting
+            }
+            XCTAssertEqual(unlocks, 1, "Retry \(round) asked for Face ID again")
+            XCTAssertNotNil(appState.offlineChatPresentation)
+            XCTAssertFalse(appState.showLogin)
+        }
+
+        // A password saved later for the dashboard wasn't unlocked yet.
+        let previous = appState.connectionTimeline?.startedAt
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: loopback.normalizedURL, username: "hermes", password: "changed", requiresFaceID: true),
+            dashboardID: dashboard
+        )
+        appState.loadSavedConnection()
+        await waitUntil {
+            appState.connectionTimeline?.startedAt != previous && passwordTries() == 1 && !appState.isConnecting
+        }
+        XCTAssertEqual(unlocks, 2)
+
+        appState.signOutDashboard(dashboard)
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: loopback.normalizedURL, username: "hermes", password: "changed", requiresFaceID: true),
+            dashboardID: dashboard
+        )
+        appState.loadSavedConnection()
+        await waitUntil { unlocks == 3 }
+    }
+
     /// A dashboard switch starts the phone's pins over until Hermes' arrive
     /// with its list. The saved rows keep the pins they showed until then,
     /// and only until then.
