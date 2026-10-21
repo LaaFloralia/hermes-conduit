@@ -164,16 +164,65 @@ extension EnvironmentValues {
 /// every update. Hidden, the list waits; shown again, it draws once with
 /// everything it missed. Beside a chat (a wide iPad), the list shows but
 /// draws at most a few times a second, so a streaming reply's publishes
-/// don't each redraw it.
+/// don't each redraw it. While the list scrolls it waits too, and draws
+/// once when the scroll comes to rest: right after launch the connection,
+/// catalog, projects and live statuses publish many times a second, and a
+/// redraw of the whole list on each cost the scroll its frames.
 @MainActor
 final class V2ShownUpdates: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
     /// Set by the list from the shell's context.
     var isShown = true {
-        didSet { if isShown, !oldValue, missedUpdate { missedUpdate = false; objectWillChange.send() } }
+        didSet {
+            // Covered, it isn't scrolling: what the scroll held waits for
+            // the list to show again.
+            if !isShown { endScrolling() }
+            if isShown, !oldValue, missedUpdate { missedUpdate = false; draw() }
+        }
     }
     /// Set by the list: a chat is open beside it.
     var coalesces = false
+    /// Whether a list it draws is scrolling (a drag, a fling, or a scroll
+    /// the app runs). Each list reports its own scroll, so one list's
+    /// teardown during the Sessions/Projects slide doesn't end another's.
+    var isScrolling: Bool { !scrollingLists.isEmpty }
+    private var scrollingLists: Set<AnyHashable> = []
+
+    /// A list's scroll moved on a phase or came to rest. Each new phase
+    /// (a drag, then the fling after it) restarts the hold.
+    func setScrolling(_ scrolling: Bool, by list: AnyHashable) {
+        if scrolling {
+            scrollingLists.insert(list)
+            scrollStartedAt = now()
+        } else if scrollingLists.remove(list) != nil, scrollingLists.isEmpty {
+            scrollEnded()
+        }
+    }
+
+    /// Every scroll ends: the list is covered, or the app left the screen,
+    /// where a scroll view may never report coming to rest.
+    func endScrolling() {
+        guard isScrolling else { return }
+        scrollingLists.removeAll()
+        scrollEnded()
+    }
+
+    private func scrollEnded() {
+        // The next scroll's hold gets a timer of its own.
+        holdLimitTask?.cancel()
+        holdLimitTask = nil
+        guard missedScrollUpdate else { return }
+        missedScrollUpdate = false
+        passOn()
+    }
+    /// A scroll that never rests (a slow drag held on screen) draws what it
+    /// held back after this long, so the list doesn't stay stale.
+    var scrollHoldLimit: TimeInterval = 2
+    private var scrollStartedAt = Date.distantPast
+    private var missedScrollUpdate = false
+    private var holdLimitTask: Task<Void, Never>?
+    /// The clock the hold reads; tests set their own.
+    var now: () -> Date = Date.init
     /// How long the list beside a chat waits to draw the publishes since.
     var coalescingDelay: TimeInterval = 0.5
     private var missedUpdate = false
@@ -218,17 +267,53 @@ final class V2ShownUpdates: ObservableObject {
 
     private func passOn() {
         guard isShown else { missedUpdate = true; return }
-        guard coalesces else { objectWillChange.send(); return }
+        guard !holdsForScroll() else { holdForScroll(); return }
+        guard coalesces else { draw(); return }
         guard !drawScheduled else { return }
         drawScheduled = true
         let delay = coalescingDelay
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            do { try await Task.sleep(for: .seconds(delay)) } catch { self?.drawScheduled = false; return }
             guard let self else { return }
             drawScheduled = false
-            // Covered meanwhile, it waits for the list to show again.
-            if isShown { objectWillChange.send() } else { missedUpdate = true }
+            // Covered meanwhile, it waits for the list to show again;
+            // scrolling, for the scroll to rest.
+            if !isShown {
+                missedUpdate = true
+            } else if holdsForScroll() {
+                holdForScroll()
+            } else {
+                draw()
+            }
         }
+    }
+
+    /// Scrolling, and the hold since the scroll started (or since the last
+    /// draw during it) hasn't run out.
+    private func holdsForScroll() -> Bool {
+        isScrolling && now().timeIntervalSince(scrollStartedAt) < scrollHoldLimit
+    }
+
+    /// Holds a publish until the scroll rests, or until the hold runs out
+    /// even if nothing else publishes meanwhile.
+    private func holdForScroll() {
+        missedScrollUpdate = true
+        guard holdLimitTask == nil else { return }
+        let wait = max(scrollHoldLimit - now().timeIntervalSince(scrollStartedAt), 0.05)
+        holdLimitTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(wait)) } catch { return }
+            guard let self else { return }
+            holdLimitTask = nil
+            // A draw meanwhile restarted the hold; passing on holds again.
+            if missedScrollUpdate { passOn() }
+        }
+    }
+
+    /// A draw during a scroll restarts its hold.
+    private func draw() {
+        if isScrolling { scrollStartedAt = now() }
+        missedScrollUpdate = false
+        objectWillChange.send()
     }
 
     /// At once for the list's own write: a tap beside a chat doesn't wait.
@@ -236,12 +321,40 @@ final class V2ShownUpdates: ObservableObject {
         let values = Self.values(of: defaultsKeys, in: defaults)
         guard values != defaultsValues else { return }
         defaultsValues = values
-        if atOnce, isShown { objectWillChange.send() } else { passOn() }
+        if atOnce, isShown { draw() } else { passOn() }
     }
 
     /// Property-list values, compared by `isEqual:`.
     private static func values(of keys: [String], in defaults: UserDefaults) -> [NSObject?] {
         keys.map { defaults.object(forKey: $0) as? NSObject }
+    }
+}
+
+extension View {
+    /// Tells `updates` while this scroll view moves, so a burst of publishes
+    /// waits for it to rest (iOS 18; earlier systems draw each one).
+    func v2HoldsUpdatesWhileScrolling(_ updates: V2ShownUpdates) -> some View {
+        modifier(V2ScrollHold(updates: updates))
+    }
+}
+
+private struct V2ScrollHold: ViewModifier {
+    let updates: V2ShownUpdates
+    /// This list, among the ones `updates` draws.
+    @State private var id = UUID()
+    /// VoiceOver reads the rows as they scroll by, so they stay current.
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .onScrollPhaseChange { _, phase in
+                    updates.setScrolling(phase != .idle && !voiceOver, by: id)
+                }
+                .onDisappear { updates.setScrolling(false, by: id) }
+        } else {
+            content
+        }
     }
 }
 

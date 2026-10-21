@@ -214,6 +214,156 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 1)
     }
 
+    /// Right after launch the connection and the catalog publish many
+    /// times a second: while the list scrolls they wait, and draw once when
+    /// it rests. A scroll that never rests still draws after the hold limit.
+    @MainActor
+    func testScrollingChatsListDrawsHeldPublishesOnceItRests() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var clock = Date(timeIntervalSinceReferenceDate: 0)
+        updates.now = { clock }
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.setScrolling(true, by: "list")
+        for index in 0..<20 { state.sessions = [pinnedTestSession("s\(index)")] }
+        XCTAssertEqual(sent, 0, "a publish redrew the list mid-scroll")
+        updates.setScrolling(false, by: "list")
+        XCTAssertEqual(sent, 1)
+
+        // Nothing held, nothing to draw.
+        sent = 0
+        updates.setScrolling(true, by: "list")
+        updates.setScrolling(false, by: "list")
+        XCTAssertEqual(sent, 0)
+
+        // A drag held past the limit draws, then holds again.
+        updates.setScrolling(true, by: "list")
+        state.sessions = [pinnedTestSession("early")]
+        XCTAssertEqual(sent, 0)
+        clock += updates.scrollHoldLimit
+        state.sessions = [pinnedTestSession("late")]
+        XCTAssertEqual(sent, 1)
+        state.sessions = [pinnedTestSession("later")]
+        XCTAssertEqual(sent, 1)
+        updates.setScrolling(false, by: "list")
+        XCTAssertEqual(sent, 2)
+
+        // Covered when the scroll rests, it waits to be shown.
+        sent = 0
+        updates.setScrolling(true, by: "list")
+        state.sessions = [pinnedTestSession("covered")]
+        updates.isShown = false
+        updates.setScrolling(false, by: "list")
+        XCTAssertEqual(sent, 0)
+        updates.isShown = true
+        XCTAssertEqual(sent, 1)
+    }
+
+    /// Beside a chat the scroll holds too, and when the hold runs out the
+    /// coalesced draw still comes, with no other publish to prompt it.
+    @MainActor
+    func testScrollingChatsListBesideAChatDrawsWhenTheHoldRunsOut() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        updates.coalesces = true
+        updates.coalescingDelay = 0.05
+        updates.scrollHoldLimit = 0.2
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.setScrolling(true, by: "list")
+        state.sessions = [pinnedTestSession("held")]
+        XCTAssertEqual(sent, 0, "a publish redrew the list mid-scroll")
+        waitUntil { sent > 0 }
+        XCTAssertEqual(sent, 1, "the hold ran out beside a chat without drawing")
+
+        updates.setScrolling(false, by: "list")
+        settle()
+        XCTAssertEqual(sent, 1, "a rest with nothing held drew again")
+    }
+
+    /// A held publish draws once the hold runs out even when nothing else
+    /// publishes, and covering the list ends its scroll.
+    @MainActor
+    func testScrollHoldRunsOutWithoutAnotherPublish() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        updates.scrollHoldLimit = 0.1
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.setScrolling(true, by: "list")
+        state.sessions = [pinnedTestSession("held")]
+        XCTAssertEqual(sent, 0)
+        waitUntil { sent > 0 }
+        XCTAssertEqual(sent, 1, "the hold never ran out on its own")
+
+        updates.isShown = false
+        XCTAssertFalse(updates.isScrolling, "a covered list stayed scrolling")
+    }
+
+    /// Sessions and Projects both show during their slide: one list coming
+    /// to rest doesn't end the other's scroll, and leaving the app ends all.
+    @MainActor
+    func testScrollHoldFollowsEachListsOwnScroll() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        updates.setScrolling(true, by: "sessions")
+        updates.setScrolling(true, by: "projects")
+        state.sessions = [pinnedTestSession("held")]
+        updates.setScrolling(false, by: "sessions")
+        XCTAssertEqual(sent, 0, "one list's rest ended the other's scroll")
+        updates.setScrolling(false, by: "projects")
+        XCTAssertEqual(sent, 1)
+
+        sent = 0
+        updates.setScrolling(true, by: "sessions")
+        state.sessions = [pinnedTestSession("left")]
+        updates.endScrolling()
+        XCTAssertEqual(sent, 1)
+        XCTAssertFalse(updates.isScrolling)
+    }
+
+    /// One render of the Chats list walks the catalog once per question,
+    /// however many filters ask it; the next render asks again.
+    @MainActor
+    func testChatsRenderMemoSharesWalksWithinARender() {
+        let memo = V2ChatsRenderMemo()
+        var walks = 0
+        let rows = [pinnedTestSession("a")]
+        let walk: () -> [SessionSummary] = { walks += 1; return rows }
+
+        _ = memo.sourceRows(nil, walk)
+        _ = memo.sourceRows(nil, walk)
+        _ = memo.sourceRows(.cron, walk)
+        XCTAssertEqual(walks, 2)
+
+        _ = memo.filterRows("all", searching: false, walk)
+        _ = memo.filterRows("all", searching: false, walk)
+        _ = memo.filterRows("all", searching: true, walk)
+        XCTAssertEqual(walks, 4)
+
+        var lookups = 0
+        _ = memo.category("a") { lookups += 1; return .voice }
+        XCTAssertEqual(memo.category("a") { lookups += 1; return .cron }, .voice)
+        XCTAssertEqual(lookups, 1)
+
+        memo.reset()
+        _ = memo.sourceRows(nil, walk)
+        _ = memo.category("a") { lookups += 1; return .cron }
+        XCTAssertEqual(walks, 5)
+        XCTAssertEqual(lookups, 2)
+    }
+
     private func waitUntil(_ condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(5)
         while !condition(), Date() < deadline {

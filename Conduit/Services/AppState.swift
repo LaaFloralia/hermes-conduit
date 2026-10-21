@@ -25716,6 +25716,10 @@ final class AppState: ObservableObject {
     }
 
     func profilesMatch(_ lhs: String, _ rhs: String) -> Bool {
+        Self.profilesMatch(lhs, rhs)
+    }
+
+    nonisolated static func profilesMatch(_ lhs: String, _ rhs: String) -> Bool {
         lhs.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
@@ -26374,7 +26378,7 @@ final class AppState: ObservableObject {
             let offset = page * 200
             let response = try await bridge.requestJSON(path: profileSessionsPath(profile, offset: offset))
             let batch = response["sessions"] as? [Any] ?? []
-            let normalizedBatch = dashboardOwnedSessions(batch, profile: profile)
+            let normalizedBatch = await dashboardOwnedSessions(batch, profile: profile)
             sessions += normalizedBatch
 
             let rawHasMore = response["has_more"] ?? response["hasMore"]
@@ -26417,7 +26421,7 @@ final class AppState: ObservableObject {
             let offset = page * 200
             let response = try await bridge.requestJSON(path: archivedSessionsPath(profile, offset: offset))
             let batch = response["sessions"] as? [Any] ?? []
-            sessions += dashboardOwnedSessions(batch, profile: profile)
+            sessions += await dashboardOwnedSessions(batch, profile: profile)
 
             let nextOffset = integerValue(response["next_offset"] ?? response["nextOffset"])
             let total = integerValue(response["total"])
@@ -26454,7 +26458,7 @@ final class AppState: ObservableObject {
     ) async throws -> [SessionSummary] {
         let response = try await bridge.requestJSON(path: cronSessionsPath(profile, offset: 0))
         let batch = response["sessions"] as? [Any] ?? []
-        return dashboardOwnedSessions(batch, profile: profile)
+        return await dashboardOwnedSessions(batch, profile: profile)
     }
 
     /// The official profile-session endpoint always tags every row with its
@@ -26462,7 +26466,20 @@ final class AppState: ObservableObject {
     /// can relabel a foreign or malformed aggregate row and leak it into the
     /// selected workspace. The socket fallback remains profile-scoped and may
     /// still supply its known client profile to the normalizer.
-    private func dashboardOwnedSessions(_ batch: [Any], profile: String) -> [SessionSummary] {
+    ///
+    /// A page is up to 200 rows, and converting it took up to 26 ms on main
+    /// at launch, while the Chats list was scrolling: it runs off the main
+    /// actor, in order, like large socket frames (`decodeInBackground`).
+    private func dashboardOwnedSessions(_ batch: [Any], profile: String) async -> [SessionSummary] {
+        await Self.convertDashboardPage(batch, profile: profile)
+    }
+
+    /// Nonisolated and async: runs on the generic executor, off main.
+    nonisolated private static func convertDashboardPage(_ batch: [Any], profile: String) async -> [SessionSummary] {
+        dashboardOwnedSessions(batch, profile: profile)
+    }
+
+    nonisolated static func dashboardOwnedSessions(_ batch: [Any], profile: String) -> [SessionSummary] {
         MessageNormalizer.normalizeSessions(
             AnyCodable.from(["sessions": batch]),
             profile: nil
