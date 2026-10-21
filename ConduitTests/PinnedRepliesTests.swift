@@ -350,6 +350,36 @@ final class PinnedRepliesTests: XCTestCase {
     }
 
     @MainActor
+    func testAnotherChatSharingAnAlternateIdNeverShowsThisChatsPin() {
+        let appState = makeAppState(freshDefaults())
+        appState.sessions = [row("row-a"), row("row-b", alternates: ["row-a"])]
+        appState.activeSessionId = "row-a"
+        let answer = reply("a", "Chat A's plan", rowId: 7)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+
+        appState.activeSessionId = "row-b"
+        appState.messages = [reply("b", "Chat B", rowId: 8)]
+        XCTAssertTrue(appState.openChatPinnedReplies.isEmpty)
+        appState.dropPinnedReplies(forDeleted: row("row-b", alternates: ["row-a"]))
+        XCTAssertEqual(appState.activePinnedReplies.count, 1, "deleting B keeps A's pin")
+    }
+
+    @MainActor
+    func testDeletingAChatDropsAPinStillKeptUnderItsRuntimeId() {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "runtime-1"
+        let answer = reply("a", "The plan", rowId: 7)
+        appState.messages = [answer]
+        appState.togglePinnedReply(answer)
+        // Listed, but the pin has not moved to the row yet.
+        let listed = row("row-1", alternates: ["runtime-1"])
+        appState.sessions = [listed]
+        appState.dropPinnedReplies(forDeleted: listed)
+        XCTAssertTrue(appState.activePinnedReplies.isEmpty)
+    }
+
+    @MainActor
     func testDeletingAChatDropsItsPinnedReplies() {
         let appState = makeAppState(freshDefaults())
         appState.activeSessionId = "row-1"

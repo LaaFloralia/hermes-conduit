@@ -5288,6 +5288,11 @@ final class AppState: ObservableObject {
 
     /// The durable id Hermes confirmed for a chat's runtime id: a Bot Chat's
     /// mapping is under the bot's profile, and the dashboard's is tried too.
+    /// The durable id Hermes confirmed for a runtime id in `profile`.
+    func confirmedDurableSessionID(forRuntime sessionId: String, profile: String) -> String? {
+        conversationIdentityIndex.durableID(forRuntime: sessionId, profile: profile)
+    }
+
     private func confirmedDurableSessionID(forRuntime sessionId: String) -> String? {
         botConversationProfile(for: sessionId)
             .flatMap { conversationIdentityIndex.durableID(forRuntime: sessionId, profile: $0) }
@@ -5819,7 +5824,8 @@ final class AppState: ObservableObject {
 
     /// The id a pin made now is kept under (the chat's row id, else its
     /// durable id, else the open id), and every id the open chat is known
-    /// by, its row's alternate ids included.
+    /// by. Never its row's alternate ids, which another row can share, so
+    /// another chat's pins never show in this one's bar.
     func openChatPinIDs() -> (store: String, own: Set<String>) {
         guard let active = activeSessionId, !active.isEmpty else { return ("", []) }
         let durable = confirmedDurableSessionID(forRuntime: active)
@@ -5830,7 +5836,6 @@ final class AppState: ObservableObject {
         if let summary {
             own.insert(summary.id)
             if let stored = summary.storedSessionId { own.insert(stored) }
-            own.formUnion(summary.alternateIds)
         }
         return (summary?.id ?? durable ?? active, own)
     }
@@ -20040,6 +20045,7 @@ final class AppState: ObservableObject {
         var allowed = CharacterSet.alphanumerics
         allowed.insert(charactersIn: "-_.~")
         let encodedName = bot.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? bot.name
+        let dashboardID = activeDashboardID
         do {
             // The gateway waits up to 10 s for a running profile gateway to
             // stop before removing the directory.
@@ -20051,10 +20057,12 @@ final class AppState: ObservableObject {
         } catch {
             return AppLocalization.string("Could not delete \(bot.displayLabel): \(UserFacingError.message(for: error))")
         }
+        // Its pinned replies keep reply text: they go while the dashboard
+        // is still the open one, even if its bridge was rebuilt meanwhile.
+        if activeDashboardID == dashboardID { forgetPinnedReplies(profile: bot.name) }
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
         sessionStars.save(to: defaults)
-        forgetPinnedReplies(profile: bot.name)
         if let sessionId = activeSessionId,
            let owner = botChatSessionProfiles[sessionId],
            owner.caseInsensitiveCompare(bot.name) == .orderedSame {

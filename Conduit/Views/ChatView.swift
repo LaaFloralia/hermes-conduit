@@ -62,6 +62,8 @@ struct ChatView: View {
     /// Gives up on an overview reveal whose reply the opened chat hasn't
     /// loaded (an older part of it).
     @State private var pinnedRevealFallbackTask: Task<Void, Never>?
+    /// The reveal that fallback is for; another reveal replaces it.
+    @State private var pinnedRevealFallbackReveal: PinnedReplyReveal?
 
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
@@ -551,6 +553,7 @@ struct ChatView: View {
                 latestAnimationTask?.cancel()
                 pinnedRevealFallbackTask?.cancel()
                 pinnedRevealFallbackTask = nil
+                pinnedRevealFallbackReveal = nil
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
             }
             .task(id: appState.chatResumeRestorationRequest?.generation) {
@@ -621,6 +624,8 @@ struct ChatView: View {
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
                 scrollEngine.restorationSystemCancelled()
+                // A pinned reply waiting on the restore goes now.
+                revealPendingPinnedReply()
             }
     }
 
@@ -652,13 +657,18 @@ struct ChatView: View {
         ) else {
             // The chat shows but not the reply: give its transcript a moment
             // to finish loading, then go as close as the bar goes.
-            guard pinnedRevealFallbackTask == nil else { return }
+            if pinnedRevealFallbackTask != nil {
+                guard pinnedRevealFallbackReveal != reveal else { return }
+                pinnedRevealFallbackTask?.cancel()
+            }
+            pinnedRevealFallbackReveal = reveal
             pinnedRevealFallbackTask = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(2))
                 // A cancelled task leaves the slot alone: whoever cancelled
                 // it cleared it, and a newer task may hold it now.
                 guard !Task.isCancelled else { return }
                 pinnedRevealFallbackTask = nil
+                pinnedRevealFallbackReveal = nil
                 guard appState.pendingPinnedReplyReveal == reveal,
                       appState.isShowingChat(for: reveal) else { return }
                 appState.pendingPinnedReplyReveal = nil
@@ -668,6 +678,7 @@ struct ChatView: View {
         }
         pinnedRevealFallbackTask?.cancel()
         pinnedRevealFallbackTask = nil
+        pinnedRevealFallbackReveal = nil
         appState.pendingPinnedReplyReveal = nil
         DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
     }

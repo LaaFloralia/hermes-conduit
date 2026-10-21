@@ -103,10 +103,25 @@ extension AppState {
     /// A deleted chat's pinned replies go with it, under the profile it was
     /// deleted in (the screen may have moved to another one since).
     func dropPinnedReplies(forDeleted session: SessionSummary, profile: String? = nil) {
-        let ids = Set([session.id] + [session.storedSessionId].compactMap { $0 } + session.alternateIds)
+        // Its own ids, and an alternate one only while no other row lists
+        // it: a pin made before the chat was listed may still be kept under
+        // that runtime id, and another chat may share one.
+        let own = [session.id] + [session.storedSessionId].compactMap { $0 }
+        let others = (sessions + cronSessions).filter { $0.id != session.id }
+        let unshared = session.alternateIds.filter { id in
+            !others.contains { $0.id == id || $0.storedSessionId == id || $0.alternateIds.contains(id) }
+        }
+        let ids = Set(own + unshared)
         let profile = profile ?? activeProfile
         let stored = pinnedRepliesByProfile[profile] ?? []
-        let remaining = stored.filter { !pinBelongs($0, toOwnIDs: ids) }
+        let remaining = stored.filter { pin in
+            if ids.contains(pin.sessionID) { return false }
+            // A runtime id Hermes confirmed as this chat's, in the profile
+            // it was deleted in.
+            guard let durable = confirmedDurableSessionID(forRuntime: pin.sessionID, profile: profile)
+            else { return true }
+            return !ids.contains(durable)
+        }
         guard remaining.count != stored.count else { return }
         pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
         if profile == activeProfile, let reveal = pendingPinnedReplyReveal,
@@ -146,8 +161,8 @@ extension AppState {
         }
         if listed {
             requestOpenSession(pin.sessionID) { [weak self] in
-                guard self?.pendingPinnedReplyReveal?.pin.id == pin.id else { return }
-                self?.pendingPinnedReplyReveal = nil
+                guard let self, self.pendingPinnedReplyReveal?.pin.id == pin.id else { return }
+                self.pendingPinnedReplyReveal = nil
             }
         } else {
             // Older than any listed chat: the link route opens it and
