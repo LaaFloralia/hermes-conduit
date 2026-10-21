@@ -772,6 +772,7 @@ final class AppState: ObservableObject {
                 }
                 let startedInApp = self.newChatLaunchStartedInApp
                 self.newChatLaunchStartedInApp = false
+                if startedInApp, outcome == .handled { self.focusNewChatComposerOnMac() }
                 guard case .failed(let widgetMessage) = outcome else { return }
                 self.widgetAwaitingInteractiveAuthenticationDashboardID = nil
                 // The widget's words send someone back to the widget.
@@ -21516,7 +21517,11 @@ final class AppState: ObservableObject {
         guard !showsPendingNewChat, !isStartingNewChat else { return }
         if canStartNewChatNow {
             isStartingNewChat = true
-            Task { await createNewSessionMarkingStart() }
+            Task {
+                let previousSessionID = activeSessionId
+                await createNewSessionMarkingStart()
+                if activeSessionId != previousSessionID { focusNewChatComposerOnMac() }
+            }
             return
         }
         guard canQueueNewChat, let dashboardID = activeDashboardID,
@@ -21530,6 +21535,14 @@ final class AppState: ObservableObject {
         cancelChatResumeRestoration()
         newChatLaunchStartedInApp = true
         widgetLaunchCoordinator.receive(link)
+    }
+
+    /// A Mac has a keyboard at hand: the app's own New Chat opens ready to
+    /// type. A phone or iPad keeps the keyboard down until the field is
+    /// tapped, so it doesn't cover the new chat.
+    private func focusNewChatComposerOnMac() {
+        guard ProcessInfo.processInfo.isiOSAppOnMac, let sessionID = activeSessionId else { return }
+        requestComposerFocus(on: sessionID)
     }
 
     func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async {
