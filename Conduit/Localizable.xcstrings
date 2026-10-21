@@ -176896,88 +176896,6 @@
         }
       }
     },
-    "Hermes lets one app use a chat at a time. When a chat is open in Hermes Desktop or a terminal, Conduit offers to take it over when you send." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes lässt immer nur eine App einen Chat nutzen. Ist ein Chat in Hermes Desktop oder einem Terminal geöffnet, bietet Conduit beim Senden an, ihn zu übernehmen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes permite que solo una app use un chat a la vez. Cuando un chat está abierto en Hermes Desktop o en un terminal, Conduit ofrece retomarlo al enviar."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes ne permet qu'à une seule app à la fois d'utiliser une discussion. Lorsqu'une discussion est ouverte dans Hermes Desktop ou un terminal, Conduit propose de la reprendre quand vous envoyez un message."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes hanya mengizinkan satu app menggunakan obrolan pada satu waktu. Saat obrolan terbuka di Hermes Desktop atau terminal, Conduit menawarkan untuk mengambil alihnya saat Anda mengirim."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes consente a una sola app alla volta di usare una chat. Quando una chat è aperta in Hermes Desktop o in un terminale, Conduit ti propone di riprenderla quando invii un messaggio."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermesでは、1つのチャットを同時に使用できるアプリは1つだけです。チャットがHermes Desktopまたはターミナルで開かれている場合、送信時にConduitが引き継ぐかどうかを確認します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes에서는 한 번에 하나의 앱만 채팅을 사용할 수 있어요. Hermes Desktop이나 터미널에서 채팅이 열려 있으면 보낼 때 Conduit이 넘겨받을지 물어봐요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes pozwala korzystać z czatu tylko jednej aplikacji naraz. Gdy czat jest otwarty w Hermes Desktop lub w terminalu, Conduit proponuje jego przejęcie przy wysyłaniu."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O Hermes permite que só um app use um chat por vez. Quando um chat está aberto no Hermes Desktop ou em um terminal, o Conduit se oferece para assumi-lo quando você envia."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes позволяет работать с чатом одновременно только одному приложению. Если чат открыт в Hermes Desktop или в терминале, при отправке Conduit предложит перенести его сюда."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes, bir sohbetin aynı anda tek bir uygulamada kullanılmasına izin verir. Bir sohbet Hermes Desktop'ta veya bir terminalde açıksa Conduit, gönderdiğinizde sohbeti devralmayı önerir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 同一时间只允许一个应用使用某个对话。当对话在 Hermes Desktop 或终端中打开时，你发送消息时 Conduit 会提供接管选项。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes 一次只允許一個 App 使用同一個聊天。當聊天在 Hermes Desktop 或終端機中打開時，Conduit 會在你傳送訊息時提供接管選項。"
-          }
-        }
-      }
-    },
     "Makes Conduit the app for this chat, then sends your message" : {
       "localizations" : {
         "de" : {
@@ -307544,6 +307462,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已不在 Hermes 主機上的檔案已隱藏。"
+          }
+        }
+      }
+    },
+    "Hermes lets one app use a chat at a time. When a chat is open in Hermes Desktop or a terminal, Conduit takes it over when you send. Calls always take it over; turn this off to be asked first when you type." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes lässt immer nur eine App einen Chat nutzen. Ist ein Chat in Hermes Desktop oder einem Terminal geöffnet, übernimmt Conduit ihn beim Senden. Anrufe übernehmen ihn immer; schalte dies aus, um beim Tippen vorher gefragt zu werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes permite que solo una app use un chat a la vez. Cuando un chat está abierto en Hermes Desktop o en un terminal, Conduit lo retoma al enviar. Las llamadas siempre lo retoman; desactiva esta opción para que se te pregunte antes cuando escribas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ne permet qu'à une seule app à la fois d'utiliser une discussion. Lorsqu'une discussion est ouverte dans Hermes Desktop ou un terminal, Conduit la reprend quand vous envoyez un message. Les appels la reprennent toujours ; désactivez cette option pour qu'on vous le demande d'abord quand vous écrivez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hanya mengizinkan satu app menggunakan obrolan pada satu waktu. Saat obrolan terbuka di Hermes Desktop atau terminal, Conduit mengambil alihnya saat Anda mengirim. Panggilan selalu mengambil alihnya; matikan ini agar Anda ditanya terlebih dahulu saat mengetik."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes consente a una sola app alla volta di usare una chat. Quando una chat è aperta in Hermes Desktop o in un terminale, Conduit la riprende quando invii un messaggio. Le chiamate la riprendono sempre; disattiva questa opzione per ricevere prima una richiesta quando scrivi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesでは、1つのチャットを同時に使用できるアプリは1つだけです。チャットがHermes Desktopまたはターミナルで開かれている場合、送信時にConduitが引き継ぎます。通話では常に引き継ぎます。入力時に先に確認したい場合はオフにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에서는 한 번에 하나의 앱만 채팅을 사용할 수 있어요. Hermes Desktop이나 터미널에서 채팅이 열려 있으면 보낼 때 Conduit이 채팅을 가져와요. 통화는 항상 채팅을 가져와요. 입력할 때 먼저 확인받으려면 이 옵션을 끄세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes pozwala tylko jednej aplikacji naraz korzystać z czatu. Gdy czat jest otwarty w Hermes Desktop lub w terminalu, Conduit przejmuje go przy wysyłaniu. Połączenia zawsze go przejmują; wyłącz tę opcję, aby przy pisaniu najpierw otrzymać pytanie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes permite que apenas um app use um chat por vez. Quando um chat está aberto no Hermes Desktop ou em um terminal, o Conduit assume o chat ao enviar. As chamadas sempre assumem o chat; desative esta opção para ser perguntado antes quando digitar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes позволяет только одному приложению одновременно использовать чат. Если чат открыт в Hermes Desktop или в терминале, Conduit забирает его при отправке. Звонки всегда забирают его; выключите этот параметр, чтобы при наборе текста сначала получать запрос."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, bir sohbetin aynı anda yalnızca tek bir uygulama tarafından kullanılmasına izin verir. Bir sohbet Hermes Desktop'ta veya bir terminalde açıksa Conduit gönderdiğinizde onu devralır. Aramalar onu her zaman devralır; yazarken önce sorulmasını istiyorsanız bunu kapatın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 同一时间只允许一个 app 使用一个聊天。如果聊天已在 Hermes Desktop 或终端中打开，Conduit 会在你发送时接管它。通话始终会接管；关闭此选项可在你输入时先询问你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 同一時間只允許一個 app 使用一個聊天。如果聊天已在 Hermes Desktop 或終端機中開啟，Conduit 會在你傳送時接手。通話一律會接手；關閉此選項可在你輸入時先詢問你。"
           }
         }
       }

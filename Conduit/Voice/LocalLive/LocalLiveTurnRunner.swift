@@ -130,6 +130,18 @@ final class LocalLiveTurnRunner {
         }
     }
 
+    /// Whether the turn sending now is still the newest and not cancelled,
+    /// for a send that waits (a chat takeover, #1061) before going out
+    /// again: a turn the call moved past stops waiting and isn't sent.
+    func currentTurnCheck() -> () -> Bool {
+        let generation = generation
+        let turnID = turn?.id
+        return { [weak self] in
+            guard let self else { return false }
+            return self.generation == generation && self.turn?.id == turnID
+        }
+    }
+
     func cancel(turnID: String) {
         guard turn?.id == turnID else { return }
         turn = nil
@@ -213,7 +225,7 @@ final class LocalLiveTurnRunner {
             }
         } catch {
             if let sentToken, reply?.token == sentToken { reply = nil }
-            say(error is VoiceThreadBusyError ? Self.busyLine : Self.failureLine, to: turnID, generation: generation)
+            say(Self.spokenFailure(for: error), to: turnID, generation: generation)
         }
     }
 
@@ -357,6 +369,14 @@ final class LocalLiveTurnRunner {
     // Spoken to the user by their speech server.
     static var busyLine: String {
         AppLocalization.string("Hermes is still busy in this chat. Try again in a moment.")
+    }
+
+    /// What the call says when a turn couldn't go to Hermes: the reason,
+    /// when the send gave one (the chat is open in Hermes Desktop, #1061).
+    static func spokenFailure(for error: Error) -> String {
+        if error is VoiceThreadBusyError { return busyLine }
+        if case .unavailable(let reason)? = error as? VoiceAudioError, !reason.isEmpty { return reason }
+        return failureLine
     }
 
     static var failureLine: String {

@@ -679,6 +679,8 @@ final class AppState: ObservableObject {
                 publishWidgetCurrentWorkspace(dashboardID: selectedDashboard, profile: selectedProfile)
                 reloadDashboardScopedPresentation()
                 schedulePendingComposerSendCheck()
+                // The takeover belongs to the other host's chat.
+                dismissChatTakeover()
             }
         }
     }
@@ -3440,7 +3442,7 @@ final class AppState: ObservableObject {
     private var localLiveOwnChat: VoiceThreadTarget?
 
     /// A Local Live call's turns, run as Hermes turns in the call's chat.
-    lazy var localLiveTurns = LocalLiveTurnRunner(backend: LocalLiveTurnRunner.Backend(
+    lazy var localLiveTurns: LocalLiveTurnRunner = LocalLiveTurnRunner(backend: LocalLiveTurnRunner.Backend(
         resolveChat: { [weak self] in
             guard let self else { throw HermesError.notConnected }
             let client = try await self.clientForVoiceRequest()
@@ -3475,15 +3477,23 @@ final class AppState: ObservableObject {
                 if !foundBusy {
                     self.spokenSubmissionText = text
                     defer { self.spokenSubmissionText = nil }
-                    if await self.submitComposer(text: text, onBusy: { foundBusy = true }) {
+                    let stillWanted = self.localLiveTurns.currentTurnCheck()
+                    if await self.submitComposerForCall(text: text, onBusy: { foundBusy = true }, stillWanted: stillWanted) {
                         return .started(runtimeID: chat.runtimeID)
                     }
                 }
                 if foundBusy { throw VoiceThreadBusyError() }
-                throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
+                throw VoiceAudioError.unavailable(self.callRefusalMessageForOpenChat()
+                    ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
             await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
-            switch try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true) {
+            let outcome = try await self.sendCallPromptTakingOver(
+                runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
+                stillWanted: self.localLiveTurns.currentTurnCheck()
+            ) {
+                try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
+            }
+            switch outcome {
             case .accepted:
                 return .started(runtimeID: chat.runtimeID)
             case .steered, .redirected:
@@ -7629,6 +7639,12 @@ final class AppState: ObservableObject {
     /// runtime `liveVoiceThreadRuntime` already resolved.
     private func submitLiveVoiceThreadTurn(_ thread: VoiceThreadTarget, runtimeID: String, text: String) async throws -> String {
         let client = try await clientForVoiceRequest()
+        // Wanted only while the call that asked is still on: a hang-up
+        // during a takeover wait neither takes the chat nor sends it.
+        let call = voiceBackgroundJobSupervisor.liveCallID
+        let stillWanted: () -> Bool = { [weak self] in
+            call != nil && self?.voiceBackgroundJobSupervisor.liveCallID == call
+        }
         if isOpenChat(thread), let sessionID = activeSessionId {
             // A turn found running, here or by the composer's own stale-idle
             // probe, is waited for: never steered or interrupted.
@@ -7636,13 +7652,14 @@ final class AppState: ObservableObject {
             if !foundBusy {
                 submissionTurnSurface = (text, messageTurnSurface(spoken: true))
                 defer { submissionTurnSurface = nil }
-                let sent = await submitComposer(text: text, onBusy: { foundBusy = true })
+                let sent = await submitComposerForCall(text: text, onBusy: { foundBusy = true }, stillWanted: stillWanted)
                 // The id captured before the send: the user may have moved to
                 // another chat while it was in flight.
                 if sent { return sessionID }
             }
             if foundBusy { throw VoiceThreadBusyError() }
-            throw VoiceAudioError.unavailable(AppLocalization.string("Hermes could not send this to the chat."))
+            throw VoiceAudioError.unavailable(callRefusalMessageForOpenChat()
+                ?? AppLocalization.string("Hermes could not send this to the chat."))
         }
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         // Alongside the read below, so it adds no wait between the read and the send.
@@ -7658,7 +7675,14 @@ final class AppState: ObservableObject {
             throw VoiceThreadBusyError()
         }
         await surfaceReport?.value
-        switch try await client.sendPrompt(target, text: text) {
+        let outcome = try await sendCallPromptTakingOver(
+            runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
+            profile: thread.profile,
+            stillWanted: stillWanted
+        ) {
+            try await client.sendPrompt(target, text: text)
+        }
+        switch outcome {
         case .accepted:
             return target
         case .steered, .redirected:
@@ -22798,13 +22822,18 @@ final class AppState: ObservableObject {
     static let chatTakeoverWaitLimit: TimeInterval = 15 * 60
 
     var takesOverChatsAutomatically: Bool {
-        UserDefaults.standard.bool(forKey: ChatTakeoverPreference.automaticKey)
+        UserDefaults.standard.object(forKey: ChatTakeoverPreference.automaticKey) as? Bool
+            ?? ChatTakeoverPreference.automaticDefault
     }
 
     /// The chat Conduit last took over automatically. A send refused again
     /// right after that offers the button instead of looping; a successful
     /// send clears it.
     private var chatTakeoverAutomaticSessionID: String?
+    /// The call requests `submitComposerForCall` is sending, while it is:
+    /// their takeover waits in the call, not in the composer. A list, so
+    /// calls overlapping on another text keep their own marks.
+    private var callSubmissionTexts: [String] = []
 
     /// The takeover for the open chat, matched on every id the chat goes by,
     /// so a runtime id rotated mid-takeover keeps the notice and the resend.
@@ -22890,6 +22919,10 @@ final class AppState: ObservableObject {
             if phase == .ready {
                 self.chatTakeoverReadyCount &+= 1
                 settled.readyToken = self.chatTakeoverReadyCount
+            } else if self.chatTakeoverAutomaticSessionID == self.chatTakeoverGuardKey(waiting.sessionID) {
+                // Nothing is resent after a takeover that didn't happen, so
+                // there's no loop to stop: a later refusal tries again.
+                self.chatTakeoverAutomaticSessionID = nil
             }
             self.chatTakeover = settled
         }
@@ -22902,12 +22935,14 @@ final class AppState: ObservableObject {
         client: ChatTakeoverClient,
         state: ChatTakeoverState,
         profile: String,
-        pollInterval: Duration = chatTakeoverPollInterval
+        pollInterval: Duration = chatTakeoverPollInterval,
+        waitLimit: TimeInterval = chatTakeoverWaitLimit,
+        keepWaiting: () -> Bool = { true }
     ) async -> ChatTakeoverState.Phase? {
         let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(chatTakeoverWaitLimit))
+        let deadline = clock.now.advanced(by: .seconds(waitLimit))
         var transientFailures = 0
-        while !Task.isCancelled {
+        while !Task.isCancelled, keepWaiting() {
             do {
                 switch try await client.takeOver(sessionIDs: state.sessionIDs, profile: profile) {
                 case .ready:
@@ -22951,6 +22986,133 @@ final class AppState: ObservableObject {
             return true
         default:
             return false
+        }
+    }
+
+    /// How long a call's request waits for the other app's reply to finish
+    /// before the call says the chat is still busy there.
+    static let callChatTakeoverWaitLimit: TimeInterval = 20
+
+    /// A call's request sent through the composer: Classic voice, Local
+    /// Live, and the live modes' requests in the open chat. Hermes refuses
+    /// it while Hermes Desktop or a terminal still holds the chat; Conduit
+    /// then takes the chat over and sends the same request once more
+    /// (#1061), so the call's first request isn't lost. Calls take over
+    /// regardless of Take over automatically: starting a call in the chat
+    /// already says the user wants it here. `stillWanted` is asked before
+    /// the resend: a turn the call moved past isn't sent late.
+    /// The composer's own resend never runs for it: its draft isn't the
+    /// request, and the notice is gone once the chat is Conduit's.
+    func submitComposerForCall(
+        text: String,
+        onBusy: (() -> Void)? = nil,
+        stillWanted: @escaping () -> Bool = { true }
+    ) async -> Bool {
+        callSubmissionTexts.append(text)
+        defer {
+            if let index = callSubmissionTexts.firstIndex(of: text) { callSubmissionTexts.remove(at: index) }
+        }
+        if await submitComposer(text: text, onBusy: onBusy) { return true }
+        guard let sessionID = activeSessionId, chatTakeoverMatches(sessionID),
+              let refused = chatTakeover, refused.phase == .offered, refused.isRefusedMessage(text),
+              await takeOverChatForCall(stillWanted: stillWanted) else { return false }
+        // The user may have opened another chat while it waited: the
+        // request belongs to the chat that refused it, never that one.
+        guard !Task.isCancelled, stillWanted(), let current = activeSessionId,
+              chatTakeoverGuardKey(current) == chatTakeoverGuardKey(sessionID) else { return false }
+        return await submitComposer(text: text, onBusy: onBusy)
+    }
+
+    /// Takes the refused open chat over for a call's request, waiting 20
+    /// seconds at most. True when the chat is Conduit's now; otherwise the
+    /// notice keeps the outcome for the composer. Each request takes over
+    /// once at most, so it needs no loop guard, and a later request can
+    /// try again once the user fixed what stopped this one.
+    private func takeOverChatForCall(stillWanted: @escaping () -> Bool) async -> Bool {
+        guard var state = chatTakeover, state.phase == .offered else { return false }
+        chatTakeoverTask?.cancel()
+        chatTakeoverTask = nil
+        state.phase = .waiting
+        chatTakeover = state
+        let client = chatTakeoverClient
+        let profile = activeProfile
+        let waiting = state
+        let wait = Task { () -> ChatTakeoverState.Phase? in
+            await Self.runChatTakeover(
+                client: client, state: waiting, profile: profile, waitLimit: Self.callChatTakeoverWaitLimit,
+                keepWaiting: stillWanted
+            )
+        }
+        // Held as the takeover's task, so dismissing the notice (or a profile
+        // or dashboard switch) stops the wait as it does the composer's.
+        let handle = Task {
+            await withTaskCancellationHandler { _ = await wait.value } onCancel: { wait.cancel() }
+        }
+        chatTakeoverTask = handle
+        let phase = await withTaskCancellationHandler { await wait.value } onCancel: { wait.cancel() }
+        if chatTakeoverTask == handle { chatTakeoverTask = nil }
+        // Dismissed, or replaced by another refusal, while it waited.
+        guard chatTakeover?.sessionID == state.sessionID, chatTakeover?.phase == .waiting else { return false }
+        guard let phase else {
+            // The call moved on: the composer offers the button again.
+            state.phase = .offered
+            chatTakeover = state
+            return false
+        }
+        if phase == .ready {
+            dismissChatTakeover()
+            return true
+        }
+        state.phase = phase
+        chatTakeover = state
+        return false
+    }
+
+    /// Why the open chat refused a call's request, when another app holds it.
+    func callRefusalMessageForOpenChat() -> String? {
+        activeChatTakeover?.callRefusalMessage
+    }
+
+    /// A call's request to a chat that isn't on screen. Refused because
+    /// another app holds the chat, it's sent once more after taking the chat
+    /// over, as in the open chat (#1061).
+    func sendCallPromptTakingOver(
+        runtimeID: String,
+        otherSessionIDs: [String],
+        profile: String?,
+        stillWanted: () -> Bool = { true },
+        send: () async throws -> PromptSubmissionOutcome
+    ) async throws -> PromptSubmissionOutcome {
+        do {
+            return try await send()
+        } catch let refusal as RpcError where refusal.isSessionNotOwned {
+            let bridge = dashboardTicketBridge
+            let details = ChatTakeoverState.details(fromRefusal: refusal.message)
+            var ids = [runtimeID]
+            for id in [details.sessionID].compactMap({ $0 }) + otherSessionIDs where !id.isEmpty && !ids.contains(id) {
+                ids.append(id)
+            }
+            var state = ChatTakeoverState(sessionID: runtimeID, sessionIDs: ids, surface: details.surface, phase: .offered)
+            // What a refusal of the resend says: the other app holds it again.
+            let refusedAgainMessage = state.openElsewhereMessage
+            // Nil: the call ended while it waited, so there's no refusal to report.
+            guard let phase = await Self.runChatTakeover(
+                client: chatTakeoverClient, state: state, profile: profile ?? activeProfile,
+                waitLimit: Self.callChatTakeoverWaitLimit, keepWaiting: stillWanted
+            ) else { throw CancellationError() }
+            state.phase = phase
+            guard state.phase == .ready else { throw VoiceAudioError.unavailable(state.callRefusalMessage) }
+            // Another host now, or a turn the call moved past: nothing to send.
+            guard bridge === dashboardTicketBridge, stillWanted() else { throw CancellationError() }
+            lifecycleLog.notice(
+                "call request: took chat over from \(details.surface ?? "another surface", privacy: .public); sending again session=\(runtimeID, privacy: .private(mask: .hash))"
+            )
+            do {
+                return try await send()
+            } catch let again as RpcError where again.isSessionNotOwned {
+                // The other app took it straight back: no third try.
+                throw VoiceAudioError.unavailable(refusedAgainMessage)
+            }
         }
     }
 
@@ -23435,9 +23597,10 @@ final class AppState: ObservableObject {
                 return false
             }
             if isCurrentComposerSubmission(submissionContext) {
-                // A spoken turn keeps the plain error: the takeover notice
-                // lives in the composer, which a live voice call doesn't show.
-                if let refusal = error as? RpcError, refusal.isSessionNotOwned, surface != Self.spokenPromptSurface {
+                // A call's request records the refusal too: the call takes
+                // the chat over itself (`submitComposerForCall`), and the
+                // composer shows the outcome when it can't.
+                if let refusal = error as? RpcError, refusal.isSessionNotOwned {
                     noteChatOwnedElsewhere(
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )
@@ -23448,7 +23611,9 @@ final class AppState: ObservableObject {
             await recoverComposerSubmission(using: submissionContext)
             // Automatic takeover starts once the refused draft is back in
             // the composer, which sends it again when the chat is Conduit's.
-            if chatTakeoverMatches(sessionId), activeChatTakeover?.phase == .offered,
+            // A call's request is taken over and sent again by the call.
+            if !callSubmissionTexts.contains(text), surface != Self.spokenPromptSurface,
+               chatTakeoverMatches(sessionId), activeChatTakeover?.phase == .offered,
                takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != chatTakeoverGuardKey(sessionId) {
                 chatTakeoverAutomaticSessionID = chatTakeoverGuardKey(sessionId)
                 takeOverChat()
@@ -31012,7 +31177,7 @@ final class AppState: ObservableObject {
         // send interleaving on another text never matches.
         spokenSubmissionText = transcript
         defer { spokenSubmissionText = nil }
-        return await submitComposer(text: transcript, attachments: [])
+        return await submitComposerForCall(text: transcript)
     }
 
     /// Speech while Hermes thinks: the words steer the running turn, as

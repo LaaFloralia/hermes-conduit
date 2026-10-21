@@ -967,9 +967,7 @@ struct ComposerBar: View, Equatable {
         case .failed(let message), .unavailable(let message):
             return message
         case .heldHere:
-            return AppLocalization.string(
-                "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
-            )
+            return ChatTakeoverState.heldHereMessage
         }
     }
 
