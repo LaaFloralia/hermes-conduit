@@ -3158,3 +3158,118 @@ final class HeldOnceVoiceConfigRequester: VoiceConfigurationRequesting {
         held = nil
     }
 }
+
+// MARK: "See your iPhone" shows the failure on the phone
+
+@MainActor
+extension CarPlayVoiceCoordinatorTests {
+    func testAFailureTheCarCannotNameShowsOnThePhone() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        harness.coordinator.handleControllerState(.failed("Hermes didn't answer."))
+
+        XCTAssertEqual(harness.activations.last, .error)
+        XCTAssertNil(harness.coordinator.controls.errorIssue, "the car says only \"See your iPhone\"")
+        XCTAssertEqual(harness.appState.pinSyncNotice?.message, "Hermes didn't answer.", "so the phone says what went wrong")
+
+        harness.coordinator.handleControllerState(.idle)
+        XCTAssertNil(harness.appState.pinSyncNotice, "the car moved on, so the phone stops showing it")
+    }
+
+    func testMovingOnLeavesAnotherErrorOnThePhone() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.handleControllerState(.failed("Hermes didn't answer."))
+        harness.appState.showNotice("Couldn't pin the chat.", systemImage: "pin")
+
+        harness.coordinator.handleControllerState(.idle)
+
+        XCTAssertEqual(harness.appState.pinSyncNotice?.message, "Couldn't pin the chat.")
+    }
+
+    func testAFailureWithNothingToSayClearsAnEarlierOne() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.handleControllerState(.failed("Hermes didn't answer."))
+
+        harness.coordinator.handleControllerState(.failed(""))
+
+        XCTAssertNil(harness.appState.pinSyncNotice, "the earlier failure isn't this one")
+    }
+
+    func testAFailureWhileThePhoneIsOffScreenShowsWhenItComesOn() async {
+        let harness = makeHarness()
+        harness.coordinator.phoneScreenProvider = { false }
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+
+        harness.coordinator.handleControllerState(.failed("Hermes didn't answer."))
+        XCTAssertNil(harness.appState.pinSyncNotice, "a notice nobody sees would run out unseen")
+        XCTAssertEqual(harness.appState.carPlayFailureForPhone, "Hermes didn't answer.")
+
+        harness.appState.presentCarPlayFailureIfWaiting()
+        XCTAssertEqual(harness.appState.pinSyncNotice?.message, "Hermes didn't answer.")
+        XCTAssertNil(harness.appState.carPlayFailureForPhone)
+    }
+
+    func testAnInterruptedConversationPutsNothingOnThePhone() async {
+        let harness = await interruptedConversation()
+        defer { harness.coordinator.handleDisconnect() }
+        XCTAssertNil(harness.appState.pinSyncNotice, "it resumes on its own")
+        XCTAssertNil(harness.appState.carPlayFailureForPhone)
+    }
+
+    func testAFailureTheCarNamesLeavesThePhoneAlone() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.appState.isConnected = false
+
+        harness.coordinator.handleControllerState(.failed("Not connected."))
+
+        XCTAssertEqual(harness.coordinator.controls.errorIssue, .notConnected, "the car names the fix itself")
+        XCTAssertNil(harness.appState.pinSyncNotice)
+    }
+
+    func testANamedFixReplacesAnEarlierFailureOnThePhone() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.handleControllerState(.failed("Hermes didn't answer."))
+        harness.appState.isConnected = false
+
+        harness.coordinator.handleControllerState(.failed("Not connected."))
+
+        XCTAssertEqual(harness.coordinator.controls.errorIssue, .notConnected)
+        XCTAssertNil(harness.appState.pinSyncNotice, "the car says what to fix now")
+    }
+
+    func testAGPTLiveCallThatFailsInTheCarShowsWhyOnThePhone() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+        await harness.coordinator.waitForPresentation()
+        let client = FakeGPTLiveClient()
+        client.availabilityResult = .failure(URLError(.timedOut))
+        harness.appState.gptLiveController = GPTLiveConversationController(
+            makeSession: { FakeGPTLiveSessionControl() },
+            availability: { try await client.availability() },
+            briefing: { "[rules]" },
+            supervisor: harness.appState.voiceBackgroundJobSupervisor,
+            requestPermission: { true }
+        )
+        harness.coordinator.selectVoiceMode(.gptLive)
+        XCTAssertEqual(harness.coordinator.observedVoiceMode, .gptLive)
+
+        await harness.appState.gptLiveController.start()
+
+        guard case .failed(let message) = harness.appState.gptLiveController.phase else {
+            return XCTFail("the call failed: \(harness.appState.gptLiveController.phase)")
+        }
+        XCTAssertEqual(harness.activations.last, .error)
+        XCTAssertEqual(harness.appState.pinSyncNotice?.message, message)
+    }
+}

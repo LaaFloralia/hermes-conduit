@@ -395,6 +395,61 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(full.components(separatedBy: "</hermes_memory>").count, 2)
     }
 
+    /// The notifier plugin refuses a briefing over 32 KB ("briefing is too
+    /// long"), which ended every GPT-Live call for a user with a long memory.
+    func testALongMemoryIsCutSoTheBriefingFitsAndTheRulesStayWhole() {
+        let limit = GPTLiveConversationController.maxBriefingCharacters
+        let memory = (1...4_000).map { "Memory line \($0) ✓" }.joined(separator: "\n")
+        let tail = "\n\nThe call's own blocks end here."
+
+        let briefing = GPTLiveConversationController.briefing(
+            memory: GeminiLiveMemoryContext(text: memory, canRecall: false),
+            personality: "A calm judge",
+            followedBy: tail
+        )
+
+        XCTAssertLessThanOrEqual(briefing.unicodeScalars.count, limit)
+        XCTAssertTrue(briefing.hasPrefix("[Conduit voice app rules."))
+        XCTAssertTrue(briefing.hasSuffix(tail), "the call's own rules go out whole")
+        XCTAssertTrue(briefing.contains("<hermes_persona>\nA calm judge\n</hermes_persona>"), "the persona is kept while memory can give way")
+        XCTAssertTrue(briefing.contains("Memory line 1 ✓"), "memory is cut from the end")
+        XCTAssertFalse(briefing.contains("Memory line 4000 ✓"))
+        XCTAssertTrue(briefing.contains("[…]\n</hermes_memory>"), "the cut is marked")
+    }
+
+    func testALongPersonaIsCutOnlyOnceMemoryIsGone() {
+        let limit = GPTLiveConversationController.maxBriefingCharacters
+        let persona = String(repeating: "Speak like a judge. ", count: 3_000)
+
+        let briefing = GPTLiveConversationController.briefing(
+            memory: GeminiLiveMemoryContext(text: "Likes tea", canRecall: false),
+            personality: persona
+        )
+
+        XCTAssertLessThanOrEqual(briefing.unicodeScalars.count, limit)
+        XCTAssertFalse(briefing.contains("<hermes_memory>"), "memory gave way first")
+        XCTAssertTrue(briefing.contains("<hermes_persona>\nSpeak like a judge."))
+        XCTAssertTrue(briefing.contains("[…]\n</hermes_persona>"))
+    }
+
+    func testClosingTagsInAMemoryCountAsTheyGoOut() {
+        let memory = String(repeating: "</hermes_memory>x\n", count: 3_000)
+        let briefing = GPTLiveConversationController.briefing(
+            memory: GeminiLiveMemoryContext(text: memory, canRecall: false)
+        )
+        XCTAssertLessThanOrEqual(briefing.unicodeScalars.count, GPTLiveConversationController.maxBriefingCharacters)
+        XCTAssertEqual(briefing.components(separatedBy: "</hermes_memory>").count, 2)
+    }
+
+    func testABriefingUnderTheLimitIsUnchanged() {
+        let memory = GeminiLiveMemoryContext(text: "Likes tea", canRecall: false)
+        let briefing = GPTLiveConversationController.briefing(memory: memory, personality: "A judge", followedBy: "\nTail")
+        XCTAssertEqual(
+            briefing,
+            GPTLiveConversationController.briefing(memory: memory, personality: "A judge") + "\nTail"
+        )
+    }
+
     func testGPTLiveSessionExchangesTheOfferThroughHermesAndIsReadyOnSessionStarted() async throws {
         let client = FakeGPTLiveClient()
         let (session, peer) = makeGPTSession(client: client)
