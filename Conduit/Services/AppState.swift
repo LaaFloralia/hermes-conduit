@@ -11936,7 +11936,7 @@ final class AppState: ObservableObject {
     /// remains.
     private func clearDashboardWebSession(dashboardID: UUID?, baseURL: String?) {
         if let dashboardID {
-            Task { await DashboardCookiePersistence.clearWebKitSession(for: dashboardID) }
+            DashboardCookiePersistence.scheduleWebKitSessionClear(for: dashboardID)
             if let baseURL {
                 DashboardCookiePersistence.clearNativeCookies(dashboardID: dashboardID, baseURL: baseURL)
             }
@@ -12388,7 +12388,7 @@ final class AppState: ObservableObject {
         // identified WebKit store and the dashboard's native jar (plus
         // exact-host shared-jar residue). Sibling dashboards sharing a parent
         // domain are untouched.
-        Task { await DashboardCookiePersistence.clearWebKitSession(for: id) }
+        DashboardCookiePersistence.scheduleWebKitSessionClear(for: id)
         DashboardCookiePersistence.clearNativeCookies(dashboardID: id, baseURL: dashboard.normalizedURL)
     }
 
@@ -13071,13 +13071,18 @@ final class AppState: ObservableObject {
         turnState = .synchronizing
         noteConnectionStep("Chat sync started")
 
+        // Set while this sync's catalog read is in flight: a failure there
+        // is news only if no list read that started later has listed.
+        var pendingCatalogReadTicket: UInt64?
         do {
             // This intentionally mirrors the proven React Native startup
             // sequence: discover the live gateway's current sessions first,
             // then resume the newest chat. A persisted runtime id can belong
             // to a process that no longer exists after a relaunch.
             let readTicket = takeSessionListReadTicket()
+            pendingCatalogReadTicket = readTicket
             let catalogLoad = try await profileCatalog(using: client, deferringOlderPages: true)
+            pendingCatalogReadTicket = nil
             // The rest of a due full read runs once this sync is over, so
             // the drawer still fills in without holding up the chat. Only a
             // sync that reached its list schedules it (a newer list read may
@@ -13625,11 +13630,18 @@ final class AppState: ObservableObject {
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
             }
             turnState = .reconnecting
-            errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
-            sessionCatalogLoadState.markFailed(
-                UserFacingError.message(for: error),
-                owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
-            )
+            // A list read that started after this sync's catalog read
+            // already listed: the list is current, and this older failure
+            // is no news (as for loadSessions). The chat still did not
+            // resume, so the reconnect below still runs.
+            let catalogFailureIsSuperseded = pendingCatalogReadTicket.map { $0 <= sessionListListedTicket } ?? false
+            if !catalogFailureIsSuperseded {
+                errorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
+                sessionCatalogLoadState.markFailed(
+                    UserFacingError.message(for: error),
+                    owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+                )
+            }
             settleReconciliation(
                 token,
                 automaticSyncOperationID: automaticOperationID
@@ -26737,8 +26749,8 @@ final class AppState: ObservableObject {
 
             let rawHasMore = response["has_more"] ?? response["hasMore"]
             let explicitHasMore = rawHasMore.map { booleanValue($0) }
-            let nextOffset = integerValue(response["next_offset"] ?? response["nextOffset"])
-            let total = integerValue(response["total"])
+            let nextOffset = Self.integerValue(response["next_offset"] ?? response["nextOffset"])
+            let total = Self.integerValue(response["total"])
             let hasExplicitTerminalSignal = explicitHasMore == false
                 || (nextOffset.map { $0 <= offset } ?? false)
                 || (total.map { offset + batch.count >= $0 } ?? false)
@@ -26777,8 +26789,8 @@ final class AppState: ObservableObject {
             let batch = response["sessions"] as? [Any] ?? []
             sessions += await dashboardOwnedSessions(batch, profile: profile)
 
-            let nextOffset = integerValue(response["next_offset"] ?? response["nextOffset"])
-            let total = integerValue(response["total"])
+            let nextOffset = Self.integerValue(response["next_offset"] ?? response["nextOffset"])
+            let total = Self.integerValue(response["total"])
             let hasMore = booleanValue(response["has_more"] ?? response["hasMore"])
                 || (nextOffset ?? 0) > offset
                 || (total.map { offset + batch.count < $0 } ?? false)
@@ -28346,11 +28358,11 @@ final class AppState: ObservableObject {
               let id = stringValue(object["id"] ?? object["session_id"] ?? object["run_id"]), !id.isEmpty else { return nil }
         return CronRun(
             id: id,
-            lastActive: integerValue(object["last_active"] ?? object["lastActive"]),
+            lastActive: Self.integerValue(object["last_active"] ?? object["lastActive"]),
             model: stringValue(object["model"]),
             preview: stringValue(object["preview"] ?? object["summary"]),
             profile: stringValue(object["profile"]),
-            startedAt: integerValue(object["started_at"] ?? object["startedAt"]),
+            startedAt: Self.integerValue(object["started_at"] ?? object["startedAt"]),
             title: stringValue(object["title"] ?? object["name"])
         )
     }
@@ -28368,9 +28380,15 @@ final class AppState: ObservableObject {
         return []
     }
 
-    private func integerValue(_ value: Any?) -> Int? {
+    /// A loosely typed JSON integer. Floats truncate toward zero (an epoch
+    /// with a fraction), and a number no Int can hold is nil, the same as
+    /// for strings, rather than NSNumber.intValue's wrapped garbage. A JSON
+    /// boolean is no integer: JSONSerialization hands it back as an NSNumber
+    /// that `as? Int` would read as 0 or 1.
+    nonisolated static func integerValue(_ value: Any?) -> Int? {
+        if let number = value as? NSNumber, AnyCodable.isBoolean(number) { return nil }
         if let integer = value as? Int { return integer }
-        if let number = value as? NSNumber { return number.intValue }
+        if let number = value as? NSNumber { return Int(exactly: number.doubleValue.rounded(.towardZero)) }
         if let string = value as? String {
             return Int(string) ?? Double(string).flatMap { Int(exactly: $0.rounded(.towardZero)) }
         }
@@ -30279,10 +30297,21 @@ final class AppState: ObservableObject {
     private func expireInputPrompt(requestId: String, reason: String? = nil) {
         guard let index = messages.firstIndex(where: { $0.inputPrompt?.requestId == requestId }),
               var activity = messages[index].inputPrompt else { return }
-        if activity.status == .submitting {
+        if activity.status == .submitting,
+           liveInputPromptSubmissions.contains(requestId) {
             // The in-flight send owns the card; its completion reports the
             // withdrawal instead of a success Hermes never received.
             withdrawnInFlightInputPrompts[requestId] = reason ?? ""
+            return
+        }
+        if activity.status == .submitting {
+            // A `.submitting` card no send owns any more: its send was
+            // fenced off by a client replacement, and only an open-request
+            // replay could re-arm it. A withdrawn request never comes back
+            // in one, so the withdrawal settles the card now.
+            activity.status = .expired
+            activity.error = Self.inputPromptWithdrawnNotice(reason: reason)
+            messages[index].inputPrompt = activity
             return
         }
         guard activity.isAnswerable else { return }
@@ -30311,6 +30340,17 @@ final class AppState: ObservableObject {
         messages[index].inputPrompt?.status = .expired
         messages[index].inputPrompt?.error = Self.inputPromptWithdrawnNotice(reason: reason)
         return true
+    }
+
+    /// A send whose completion failed the ownership fence leaves its card to
+    /// the replacement client, which can re-arm it from an open-request
+    /// replay. A request withdrawn mid-send never comes back in one, so its
+    /// card settles as withdrawn here, on the profile it belongs to.
+    private func settleFencedOffWithdrawnInputPrompt(messageId: String, requestId: String, profile: String) {
+        guard profile == activeProfile,
+              let index = messages.firstIndex(where: { $0.id == messageId }),
+              messages[index].inputPrompt?.status == .submitting else { return }
+        _ = settleWithdrawnInFlightInputPrompt(at: index, requestId: requestId)
     }
 
     /// Sends the value typed into a masked input card, or `nil` to skip.
@@ -30342,13 +30382,19 @@ final class AppState: ObservableObject {
             try await client.respondToInputPrompt(requestId: current.requestId, value: value ?? "")
             guard profile == activeProfile, self.client === client,
                   let updated = messages.firstIndex(where: { $0.id == messageId }),
-                  messages[updated].inputPrompt?.status == .submitting else { return }
+                  messages[updated].inputPrompt?.status == .submitting else {
+                settleFencedOffWithdrawnInputPrompt(messageId: messageId, requestId: current.requestId, profile: profile)
+                return
+            }
             if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
             messages[updated].inputPrompt?.status = skipped ? .skipped : .submitted
         } catch {
             guard profile == activeProfile, self.client === client,
                   let updated = messages.firstIndex(where: { $0.id == messageId }),
-                  messages[updated].inputPrompt?.status == .submitting else { return }
+                  messages[updated].inputPrompt?.status == .submitting else {
+                settleFencedOffWithdrawnInputPrompt(messageId: messageId, requestId: current.requestId, profile: profile)
+                return
+            }
             if settleWithdrawnInFlightInputPrompt(at: updated, requestId: current.requestId) { return }
             messages[updated].inputPrompt?.status = .error
             messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
