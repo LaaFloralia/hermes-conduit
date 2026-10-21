@@ -15069,6 +15069,7 @@ final class AppState: ObservableObject {
             // this one's (session.info), and this chat may run on another.
             runtime.model = ""
             runtime.provider = ""
+            runtime.serviceTier = ""
             keepDelegateAgents(of: [])
             newChatOpenedSessionID = runtimeSessionID
             newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID
@@ -16036,6 +16037,11 @@ final class AppState: ObservableObject {
             runtime.reasoningEffort = reasoningEffort.lowercased() == "none" ? "" : reasoningEffort
         }
         if let fast = snapshot.fast { runtime.fast = fast }
+        // A gateway that reports `fast` without the tier leaves no stale
+        // Ultrafast behind.
+        if let serviceTier = snapshot.serviceTier ?? snapshot.fast.map({ _ in "" }) {
+            runtime.serviceTier = serviceTier
+        }
         if let approvalsMode = authoritativeApprovalsMode ?? snapshot.approvalsMode {
             runtime.approvalsMode = approvalsMode
         }
