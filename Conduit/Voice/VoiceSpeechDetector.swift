@@ -223,6 +223,8 @@ struct VoiceSpeechDetector {
     /// would then hold the utterance open after the user stopped.
     mutating func reset(learnedNoiseFloor: Float) {
         reset()
+        // A garbage floor keeps the plain cold start.
+        guard learnedNoiseFloor.isFinite, learnedNoiseFloor >= 0 else { return }
         adaptNoiseFloor(learnedNoiseFloor, alpha: 1, ceiling: constants.maximumNoiseFloor)
         coldStartRemaining = 0
     }
@@ -234,5 +236,118 @@ struct VoiceSpeechDetector {
     private mutating func adaptNoiseFloor(_ level: Float, alpha: Float, ceiling: Float) {
         noiseFloor += (level - noiseFloor) * alpha
         noiseFloor = min(ceiling, max(constants.minimumNoiseFloor, noiseFloor))
+    }
+}
+
+/// The room's noise floor, learned from levels heard outside a listening
+/// window (while Hermes thinks). A steer window opens while the user is
+/// already speaking, so its detector starts from this floor rather than a
+/// cold start on the user's voice. Like the detector's own floor, suspected
+/// speech never feeds it: quiet speech that never opened a window must not
+/// teach the room, or a later steer would read that speech as silence and
+/// end mid-sentence.
+struct VoiceRoomNoiseFloor {
+    /// How long a level has to hold steady before it is learned although
+    /// it sits above the floor's speech-start threshold: a room that got
+    /// louder (a fan, a TV) holds steady; speech dips between words.
+    static let steadyRunDuration: TimeInterval = 1.0
+
+    private(set) var constants: VoiceSpeechDetectorConstants
+    /// Nil until the room has been heard; a steer window then cold-starts
+    /// as before.
+    private(set) var floor: Float?
+    private var runStartedAt: Date?
+    private var runQuietest: Float = 0
+    private var runLoudest: Float = 0
+    private var runSum: Float = 0
+    private var runCount = 0
+
+    init(constants: VoiceSpeechDetectorConstants = .init()) {
+        self.constants = constants
+    }
+
+    mutating func observe(_ level: Float, at date: Date) {
+        // Garbage samples teach nothing, and an unambiguous level is speech
+        // that also breaks any steady run.
+        guard level.isFinite, level >= 0, level < constants.maximumSpeechStartThreshold else {
+            endRun()
+            return
+        }
+        extendRun(level, at: date)
+        if let floor {
+            if level < ambientCeiling(over: floor) {
+                // Clearly ambient against the floor: adapt, as the
+                // detector does.
+                adapt(
+                    toward: level,
+                    alpha: level < floor ? constants.noiseFloorFallAlpha : constants.noiseFloorRiseAlpha
+                )
+                return
+            }
+        } else if level < constants.minimumSpeechStartThreshold {
+            // Quiet enough to be no one speaking: the first floor.
+            self.floor = clamped(level)
+            return
+        }
+        // Suspected speech: learned only once it has held steady long
+        // enough to be the room.
+        guard let runStartedAt, date.timeIntervalSince(runStartedAt) >= Self.steadyRunDuration else { return }
+        if floor == nil {
+            floor = clamped(runSum / Float(runCount))
+        } else {
+            adapt(toward: level, alpha: constants.noiseFloorRiseAlpha)
+        }
+    }
+
+    /// Forgets the room: a new turn or another microphone learns afresh.
+    mutating func reset() {
+        floor = nil
+        endRun()
+    }
+
+    /// The loudest level still taken for the room over `floor`. Tighter
+    /// than the detector's speech-start threshold: nothing here starts an
+    /// utterance, so quiet speech (well under that threshold) would
+    /// otherwise teach the floor. Anything under the detector's minimum
+    /// start threshold is ambience.
+    private func ambientCeiling(over floor: Float) -> Float {
+        max(constants.minimumSpeechStartThreshold, floor * constants.speechContinuationRiseFactor)
+    }
+
+    /// A run stays steady while its quietest sample is within the
+    /// detector's cold-start dynamic range, or half, of its loudest.
+    /// A sample that breaks it starts a new run.
+    private mutating func extendRun(_ level: Float, at date: Date) {
+        if runStartedAt != nil {
+            let quietest = min(runQuietest, level)
+            let loudest = max(runLoudest, level)
+            if loudest - quietest < max(constants.coldStartMinimumDynamicRange, loudest * 0.5) {
+                runQuietest = quietest
+                runLoudest = loudest
+                runSum += level
+                runCount += 1
+                return
+            }
+        }
+        runStartedAt = date
+        runQuietest = level
+        runLoudest = level
+        runSum = level
+        runCount = 1
+    }
+
+    private mutating func endRun() {
+        runStartedAt = nil
+        runSum = 0
+        runCount = 0
+    }
+
+    private mutating func adapt(toward level: Float, alpha: Float) {
+        guard let floor else { return }
+        self.floor = clamped(floor + (level - floor) * alpha)
+    }
+
+    private func clamped(_ level: Float) -> Float {
+        min(constants.maximumNoiseFloor, max(constants.minimumNoiseFloor, level))
     }
 }
