@@ -192,11 +192,22 @@ extension AppState {
             return
         }
         // Reconnected or switched meanwhile: the next refresh checks again.
-        guard bridge === dashboardTicketBridge, activeProfile == profile else {
+        guard bridge === dashboardTicketBridge, activeDashboardID == dashboardID, activeProfile == profile else {
             automaticPairingAttempts.remove(attempt)
             return
         }
-        guard PushNotificationService.profilePairing(status: status, installationID: installationID) == .unpaired else { return }
+        let pairing = PushNotificationService.profilePairing(status: status, installationID: installationID)
+        if pairing == .thisDevice, let gatewayID = status["gateway_id"] as? String {
+            // Pushes through this pairing come from the host on screen, even
+            // when it was paired from another saved entry for it.
+            recordRelayGatewayID(gatewayID, for: dashboardID, profile: profile)
+        } else if pairing != .thisDevice {
+            // This host no longer pairs the profile with this iPhone: the id
+            // recorded for it no longer counts. A status without the id says
+            // nothing either way.
+            forgetRelayGatewayID(for: dashboardID, profile: profile)
+        }
+        guard pairing == .unpaired else { return }
         do {
             try await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
         } catch DashboardTicketBridgeError.notReady {
@@ -217,7 +228,7 @@ extension AppState {
     }
 
     private func pairProfile(_ profile: String, bridge: DashboardTicketBridge, dashboardID: UUID) async throws {
-        try await PushNotificationService.shared.pairProfile(profile, dashboardID: dashboardID) { [weak self] path, method, body in
+        let gatewayID = try await PushNotificationService.shared.pairProfile(profile, dashboardID: dashboardID) { [weak self] path, method, body in
             // A dashboard switch mid-run stops it: the pairing would belong
             // to the old dashboard's host.
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == dashboardID else {
@@ -225,6 +236,10 @@ extension AppState {
             }
             return try await bridge.requestJSON(path: path, method: method, body: body,
                                                 timeoutMilliseconds: PushNotificationService.pairTimeoutMilliseconds)
+        }
+        // Still the host it was paired on: a switch or move meanwhile isn't.
+        if let gatewayID, bridge === dashboardTicketBridge, activeDashboardID == dashboardID {
+            recordRelayGatewayID(gatewayID, for: dashboardID, profile: profile)
         }
         // The new pairing gets its key right away, before its first push.
         await provisionNotificationEncryption(bridge: bridge)
