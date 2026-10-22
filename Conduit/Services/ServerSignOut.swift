@@ -145,7 +145,7 @@ final class ServerSignOutQueue {
     /// request never got an answer.
     typealias Send = @MainActor (URLRequest) async -> (status: Int, location: String?)?
 
-    private let log = Logger(subsystem: "com.milim.conduit", category: "ServerSignOut")
+    private let log = Logger(subsystem: "com.milim.relay", category: "ServerSignOut")
     private let send: Send
     private let now: () -> Date
     private let load: () -> [PendingServerSignOut]

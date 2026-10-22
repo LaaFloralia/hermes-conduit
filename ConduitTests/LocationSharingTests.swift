@@ -1111,7 +1111,10 @@ extension NotificationE2ETests {
             (22.2819, 114.1582),  // Hong Kong Central
             (22.4450, 114.0200),  // Yuen Long
             (22.5280, 114.1130),  // Lo Wu
+            (22.2930, 114.1700),  // Victoria Harbour
+            (22.2400, 114.1500),  // off Aberdeen
             (22.1987, 113.5439),  // Macau
+            (22.1900, 113.5600),  // between Macau and Taipa
             (47.9184, 106.9177),  // Ulaanbaatar
             (48.9683, 89.9625),   // Ölgii
             (42.8700, 74.6000),   // Bishkek
@@ -1135,6 +1138,7 @@ extension NotificationE2ETests {
             (22.5431, 114.0579),  // Shenzhen
             (22.4800, 113.9100),  // Shekou
             (22.2186, 113.5489),  // Gongbei, Zhuhai
+            (22.1300, 113.5200),  // Hengqin
             (24.4798, 118.0894),  // Xiamen
             (30.0160, 122.2070),  // Zhoushan
             (18.2528, 109.5119),  // Sanya

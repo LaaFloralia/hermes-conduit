@@ -1,9 +1,9 @@
 import XCTest
 @testable import Conduit
 
-/// Preferences shared through the plugin (#1089). An extension of an
-/// existing class so the CI planner gets no new class to place.
-extension ChatReadStateTests {
+/// Preferences shared through the plugin (#1089). Its own class, so a PR
+/// that edits these tests runs exactly them in smoke.
+final class SyncedPreferencesTests: XCTestCase {
     private final class SyncedBox {
         var values: [String: Any] = [:]
         var holds = false
@@ -23,6 +23,7 @@ extension ChatReadStateTests {
         let name = "SyncedPreferencesTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
+        addTeardownBlock { defaults.removePersistentDomain(forName: name) }
         return defaults
     }
 
@@ -205,5 +206,29 @@ extension ChatReadStateTests {
         try? await Task.sleep(for: .milliseconds(50))
         held = false
         await fulfillment(of: [synced], timeout: 5)
+    }
+
+    /// A UserDefaults write off the main thread must not wait for main:
+    /// with the observer on `queue: .main`, a main thread waiting on that
+    /// writer (SessionPresentationCache.waitForPendingWrites) hung until
+    /// the test allowance (Nightly 2026-10-22).
+    @MainActor
+    func testSyncedBackgroundWriteNeverWaitsForTheMainThread() async {
+        let defaults = syncedDefaults()
+        let controller = SyncedPreferencesController(defaults: defaults)
+        controller.setEnabled(true)
+        controller.debounce = .milliseconds(10)
+        let uploaded = expectation(description: "the write still uploads")
+        uploaded.assertForOverFulfill = false
+        controller.observeLocalChanges { uploaded.fulfill() }
+
+        let written = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            defaults.set("x", forKey: "SyncedPreferencesTests.background")
+            written.signal()
+        }
+        XCTAssertEqual(written.wait(timeout: .now() + 5), .success,
+                       "the background write blocked on the main thread")
+        await fulfillment(of: [uploaded], timeout: 10)
     }
 }

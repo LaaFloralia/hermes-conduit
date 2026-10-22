@@ -256,6 +256,13 @@ final class SyncedPreferencesController: ObservableObject {
         isEnabled = defaults.bool(forKey: Self.enabledKey)
     }
 
+    deinit {
+        // A block observer stays registered until removed.
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
+        pendingUpload?.cancel()
+        heldRetry?.cancel()
+    }
+
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
         defaults.set(enabled, forKey: Self.enabledKey)
@@ -321,21 +328,28 @@ final class SyncedPreferencesController: ObservableObject {
         guard defaultsObserver == nil else { return }
         defaultsObserver = NotificationCenter.default.addObserver(
             // No object filter: which object posts it has varied by release.
-            forName: UserDefaults.didChangeNotification, object: nil, queue: .main
+            // No queue either: with `queue: .main` the posting thread waits
+            // for the block on main, so a UserDefaults write off the main
+            // thread blocked on it (and deadlocked a main thread waiting on
+            // that writer, Nightly 2026-10-22). Hop over instead.
+            forName: UserDefaults.didChangeNotification, object: nil, queue: nil
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                // Most writes are other keys: one check per interval, not
-                // a new task per write.
-                guard let self, self.isEnabled, self.pendingUpload == nil else { return }
-                let wait = self.debounce
-                self.uploadGeneration += 1
-                let generation = self.uploadGeneration
-                self.pendingUpload = Task { @MainActor in
-                    try? await Task.sleep(for: wait)
-                    // A task cancelled while a newer one was scheduled leaves it be.
-                    if self.uploadGeneration == generation { self.pendingUpload = nil }
-                    guard !Task.isCancelled else { return }
-                    await upload()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    // Most writes are other keys: one check per interval, not
+                    // a new task per write.
+                    guard let self, self.isEnabled, self.pendingUpload == nil else { return }
+                    let wait = self.debounce
+                    self.uploadGeneration += 1
+                    let generation = self.uploadGeneration
+                    self.pendingUpload = Task { @MainActor [weak self] in
+                        try? await Task.sleep(for: wait)
+                        guard let self else { return }
+                        // A task cancelled while a newer one was scheduled leaves it be.
+                        if self.uploadGeneration == generation { self.pendingUpload = nil }
+                        guard !Task.isCancelled else { return }
+                        await upload()
+                    }
                 }
             }
         }
