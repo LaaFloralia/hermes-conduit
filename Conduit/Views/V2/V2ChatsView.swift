@@ -388,6 +388,9 @@ struct V2ChatsView: View, Equatable {
         // A new render reads the catalog afresh; within it, the list, the
         // filter menu and its counts share each walk.
         let _ = renderMemo.reset()
+        // Read once: it walks the catalog, and the bar measures both its
+        // layouts.
+        let waitingApprovalCount = self.waitingApprovalCount
         ZStack {
             V2Backdrop(isTabRoot: true)
             // Projects sits behind the folder button on the right, so it
@@ -407,7 +410,9 @@ struct V2ChatsView: View, Equatable {
             .v2ProfileSwitchContent()
         }
         .v2EdgeBar(.top) {
-            V2TopBar { trailingControls }
+            V2TopBar(lowerLeading: { filterPill(waitingApprovalCount: waitingApprovalCount) }) { stacked in
+                trailingControls(stacked: stacked, waitingApprovalCount: waitingApprovalCount)
+            }
                 .withoutScrollEdge()
                 .modifier(V2LegacyScrollEdge())
         }
@@ -533,8 +538,9 @@ struct V2ChatsView: View, Equatable {
     // MARK: - Top bar controls
 
     /// One glass capsule: Sessions/Projects toggle, Artifacts, Filter (amber
-    /// dot while approvals wait), New chat.
-    private var trailingControls: some View {
+    /// dot while approvals wait), New chat. Under a row of profiles
+    /// (`stacked`) Filter leaves it for the labeled pill on the left.
+    private func trailingControls(stacked: Bool, waitingApprovalCount: Int) -> some View {
         V2ControlCapsule {
             Button {
                 Haptics.selection()
@@ -555,7 +561,9 @@ struct V2ChatsView: View, Equatable {
             .accessibilityLabel(AppLocalization.string("Artifacts"))
             .macTooltip(AppLocalization.string("Artifacts"))
 
-            filterMenu
+            if !stacked {
+                filterMenu(waitingApprovalCount: waitingApprovalCount) { filterIcon(waitingApprovalCount: waitingApprovalCount) }
+            }
 
             // The gold button beside the tabs makes new chats instead
             // (Settings > Appearance): voice takes New chat's place here.
@@ -581,10 +589,47 @@ struct V2ChatsView: View, Equatable {
         return sourceRows(nil).filter { appState.sessionLiveStatus($0) == .needsInput }.count
     }
 
-    private var filterMenu: some View {
-        // Read once: it walks the catalog.
-        let waitingApprovalCount = self.waitingApprovalCount
-        return Menu {
+    /// The filter menu's button where the bar stacks: what the list shows,
+    /// by name, so the filters aren't hidden behind an icon.
+    private func filterPill(waitingApprovalCount: Int) -> some View {
+        filterMenu(waitingApprovalCount: waitingApprovalCount) {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 14, weight: .semibold))
+                    .conduitFixedGlyph()
+                Text(showingProjects ? AppLocalization.string("Projects") : selectionTitles(separator: ", "))
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .conduitFixedGlyph()
+                if waitingApprovalCount > 0 {
+                    Circle()
+                        .fill(Color.conduitAttention)
+                        .frame(width: 8, height: 8)
+                }
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+            .conduitGlassControl(cornerRadius: 22, interactive: false)
+            .contentShape(Capsule())
+        }
+    }
+
+    private func filterIcon(waitingApprovalCount: Int) -> some View {
+        V2CapsuleIcon(
+            systemImage: selection.isEmpty
+                ? "line.3.horizontal.decrease"
+                : "line.3.horizontal.decrease.circle.fill",
+            dot: waitingApprovalCount > 0 ? Color.conduitAttention : nil
+        )
+    }
+
+    /// The filter menu behind `button`.
+    private func filterMenu<MenuButton: View>(waitingApprovalCount: Int, @ViewBuilder button: () -> MenuButton) -> some View {
+        Menu {
             if showingProjects {
                 Button {
                     Haptics.selection()
@@ -635,19 +680,16 @@ struct V2ChatsView: View, Equatable {
                 }
             }
         } label: {
-            V2CapsuleIcon(
-                systemImage: selection.isEmpty
-                    ? "line.3.horizontal.decrease"
-                    : "line.3.horizontal.decrease.circle.fill",
-                dot: waitingApprovalCount > 0 ? Color.conduitAttention : nil
-            )
+            button()
         }
         .menuOrder(.fixed)
-        .accessibilityLabel(AppLocalization.string("Filter"))
-        .macTooltip(AppLocalization.string("Filter"))
-        .accessibilityValue(waitingApprovalCount > 0
-            ? AppLocalization.string("\(waitingApprovalCount) waiting for approval")
-            : spokenSelection)
+        // With Projects showing, the menu only makes projects.
+        .accessibilityLabel(showingProjects ? AppLocalization.string("Projects") : AppLocalization.string("Filter"))
+        .macTooltip(showingProjects ? AppLocalization.string("Projects") : AppLocalization.string("Filter"))
+        .accessibilityValue([
+            showingProjects ? nil : spokenSelection,
+            waitingApprovalCount > 0 ? AppLocalization.string("\(waitingApprovalCount) waiting for approval") : nil
+        ].compactMap { $0 }.joined(separator: ", "))
     }
 
     /// One filter as a checkable menu item, with the rows it would list

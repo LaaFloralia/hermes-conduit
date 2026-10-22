@@ -3,26 +3,58 @@
 //  Conduit
 //
 //  The V2 top bar (Chats, Tasks, Settings): the profile picker as a row of
-//  profile pictures, and an optional trailing capsule of controls. No large
-//  title; the bar floats over a soft blurred scroll edge.
+//  profile pictures, and an optional trailing capsule of controls. When the
+//  profiles don't fit beside the controls, they get a full-width row of
+//  their own and the controls move under it. No large title; the bar floats
+//  over a soft blurred scroll edge.
 //
 
 import SwiftUI
+import UIKit
 
-struct V2TopBar<Trailing: View>: View {
+struct V2TopBar<Trailing: View, LowerLeading: View>: View {
     @EnvironmentObject private var appState: AppState
     @State private var showProfileManager = false
-    private let trailing: Trailing
+    /// The controls; `true` when they sit on the second row, under the
+    /// profiles.
+    private let trailing: (Bool) -> Trailing
+    /// Leads the second row when the bar stacks (Chats: the filter pill).
+    private let lowerLeading: LowerLeading
     private var drawsScrollEdge = true
 
-    init(@ViewBuilder trailing: () -> Trailing) {
-        self.trailing = trailing()
+    init(@ViewBuilder lowerLeading: () -> LowerLeading,
+         @ViewBuilder trailing: @escaping (_ stacked: Bool) -> Trailing) {
+        self.lowerLeading = lowerLeading()
+        self.trailing = trailing
     }
 
     var body: some View {
-        HStack(spacing: 10) {
-            V2ProfileStrip(onManage: { showProfileManager = true })
-            trailing
+        // Read once: it walks the catalog, and the bar measures both its
+        // layouts.
+        let unread = V2ProfileStrip.unreadProfiles(appState)
+        Group {
+            if Trailing.self == EmptyView.self {
+                V2ProfileStrip(scrolls: true, unread: unread, onManage: { showProfileManager = true })
+            } else {
+                // One row while every profile fits beside the controls
+                // (one or two, usually); otherwise the profiles get the
+                // whole width, where a cut-off one shows that they scroll.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        V2ProfileStrip(scrolls: false, unread: unread, onManage: { showProfileManager = true })
+                        Spacer(minLength: 0)
+                        trailing(false)
+                    }
+                    VStack(spacing: 6) {
+                        V2ProfileStrip(scrolls: true, unread: unread, onManage: { showProfileManager = true })
+                        HStack(spacing: 10) {
+                            lowerLeading
+                            Spacer(minLength: 0)
+                            trailing(true)
+                        }
+                    }
+                }
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 4)
@@ -41,9 +73,15 @@ struct V2TopBar<Trailing: View>: View {
     }
 }
 
-extension V2TopBar where Trailing == EmptyView {
+extension V2TopBar where LowerLeading == EmptyView {
+    init(@ViewBuilder trailing: @escaping (_ stacked: Bool) -> Trailing) {
+        self.init(lowerLeading: { EmptyView() }, trailing: trailing)
+    }
+}
+
+extension V2TopBar where Trailing == EmptyView, LowerLeading == EmptyView {
     init() {
-        self.init { EmptyView() }
+        self.init(lowerLeading: { EmptyView() }, trailing: { _ in EmptyView() })
     }
 }
 
@@ -117,46 +155,122 @@ struct V2ScrollEdgeBackground: View {
     }
 }
 
-/// Profile pictures in a horizontal scroll. The selected one sits in a glass
-/// capsule with its name; the others are dimmed, with a gold dot when that
-/// profile has unread conversations. Tapping the selected one opens the
-/// profile manager (photos, order); tapping another switches to it.
+/// Profile pictures in a row. The selected one sits in a glass capsule with
+/// its name; the others are dimmed, with a gold dot when that profile has
+/// unread conversations. Tapping the selected one opens the profile manager
+/// (photos, order); tapping another switches to it.
+///
+/// A scrolling strip runs past the bar's side padding to the screen edges
+/// and fades out there, so a profile cut off at the edge reads as "more
+/// this way". A fixed one (the Chats bar's single row) is as wide as its
+/// widest selection, so switching profiles never moves the bar between one
+/// row and two.
 struct V2ProfileStrip: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let scrolls: Bool
+    /// Profiles other than the selected one with unread chats
+    /// (`unreadProfiles`).
+    let unread: Set<String>
     let onManage: () -> Void
 
     @Namespace private var selection
 
     private let pictureSize: CGFloat = 34
+    /// The bar's side padding, which the scrolling strip runs into.
+    private let edgeBleed: CGFloat = 16
 
     private var profiles: [String] {
+        Self.profiles(appState)
+    }
+
+    private static func profiles(_ appState: AppState) -> [String] {
         appState.profiles.isEmpty ? [appState.activeProfile] : appState.profiles
     }
 
+    /// The profiles that get a gold dot. The selected chip never shows one.
+    /// Exact match, as the chip's own `isSelected`.
+    static func unreadProfiles(_ appState: AppState) -> Set<String> {
+        appState.profilesWithUnread(among: profiles(appState).filter { $0 != appState.activeProfile })
+    }
+
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // The selected chip never shows a dot. Exact match, as
-                    // the chip's own `isSelected`.
-                    let unread = appState.profilesWithUnread(among: profiles.filter { $0 != appState.activeProfile })
-                    ForEach(profiles, id: \.self) { profile in
-                        chip(profile, unread: unread.contains(profile))
-                            .id(profile)
+        if scrolls {
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    chips
+                        .padding(.horizontal, edgeBleed)
+                }
+                .scrollClipDisabled()
+                // Too few to fill the row: they start at the leading edge
+                // instead of centering.
+                .defaultScrollAnchor(.leading)
+                .mask { edgeFade }
+                .padding(.horizontal, -edgeBleed)
+                // A new strip (launch, or the bar turning to two rows)
+                // starts at the first profile; bring the selected one in.
+                // After the first layout pass, or the scroll does nothing.
+                .onAppear {
+                    Task { @MainActor in proxy.scrollTo(appState.activeProfile, anchor: .center) }
+                }
+                .onChange(of: appState.activeProfile) { _, profile in
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+                        proxy.scrollTo(profile, anchor: .center)
                     }
                 }
-                .padding(.vertical, 2)
-                .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: appState.activeProfile)
             }
-            .scrollClipDisabled()
-            .onChange(of: appState.activeProfile) { _, profile in
-                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                    proxy.scrollTo(profile, anchor: .center)
-                }
+        } else {
+            chips
+                .padding(.trailing, widestNameSlack)
+        }
+    }
+
+    private var chips: some View {
+        HStack(spacing: 8) {
+            ForEach(profiles, id: \.self) { profile in
+                chip(profile, unread: unread.contains(profile))
+                    .id(profile)
             }
         }
+        .padding(.vertical, 2)
+        .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: appState.activeProfile)
+    }
+
+    /// Opaque except the outer `edgeBleed`, which fades to clear. Taller
+    /// than the strip so the glass capsule's edge and the unread dots
+    /// aren't clipped.
+    private var edgeFade: some View {
+        HStack(spacing: 0) {
+            LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                .frame(width: edgeBleed)
+            Rectangle().fill(.black)
+            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                .frame(width: edgeBleed)
+        }
+        .padding(.vertical, -8)
+    }
+
+    /// How much wider the selected chip would be with the longest name, so
+    /// the fixed row measures the same whichever profile is selected. A
+    /// little over, since UIKit's metrics can trail SwiftUI's text by a
+    /// point or two.
+    private var widestNameSlack: CGFloat {
+        let widest = profiles.map { nameWidth(appState.profileDisplayName($0)) }.max() ?? 0
+        return max(0, widest - nameWidth(appState.profileDisplayName(appState.activeProfile))) + 4
+    }
+
+    /// The selected chip's name width: subheadline semibold at the bar's
+    /// text size.
+    private func nameWidth(_ name: String) -> CGFloat {
+        let category = UIContentSizeCategory(min(dynamicTypeSize, .pinnedChromeCap))
+        let size = UIFont.preferredFont(
+            forTextStyle: .subheadline,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: category)
+        ).pointSize
+        let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+        return ceil((name as NSString).size(withAttributes: [.font: font]).width)
     }
 
     /// One view per profile whichever is selected, so a switch moves the
