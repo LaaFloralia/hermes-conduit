@@ -912,7 +912,7 @@ struct LocationPlaceEditor: View {
         self.cancel = cancel
         self.locate = locate
         if let coordinate = draft.coordinate {
-            _camera = State(initialValue: .region(MKCoordinateRegion(center: coordinate, latitudinalMeters: 1_200, longitudinalMeters: 1_200)))
+            _camera = State(initialValue: .region(MKCoordinateRegion(center: MapDatum.toMap(coordinate), latitudinalMeters: 1_200, longitudinalMeters: 1_200)))
         }
     }
 
@@ -934,7 +934,8 @@ struct LocationPlaceEditor: View {
                     Text("At a private place Hermes hears only “at a private place”, never its name or where it is, and your visits there aren't kept.")
                 }
                 Section {
-                    if let coordinate = draft.coordinate {
+                    if let coordinate = draft.coordinate.map(MapDatum.toMap) {
+                        // The draft is WGS-84 like the fixes; the map draws it where Apple Maps puts it.
                         Map(position: $camera) {
                             MapCircle(center: coordinate, radius: draft.radius)
                                 .foregroundStyle(Color.blue.opacity(0.2))
@@ -1010,7 +1011,7 @@ struct LocationPlaceEditor: View {
 
     private func setCoordinate(_ coordinate: CLLocationCoordinate2D) {
         draft.coordinate = coordinate
-        camera = .region(MKCoordinateRegion(center: coordinate, latitudinalMeters: 1_200, longitudinalMeters: 1_200))
+        camera = .region(MKCoordinateRegion(center: MapDatum.toMap(coordinate), latitudinalMeters: 1_200, longitudinalMeters: 1_200))
     }
 
     private func useCurrentLocation() {
@@ -1046,7 +1047,8 @@ struct LocationPlaceEditor: View {
     }
 
     private func choose(_ item: MKMapItem) {
-        setCoordinate(item.placemark.coordinate)
+        // In mainland China Apple Maps answers in GCJ-02; the place is kept in WGS-84 like the fixes (#1122).
+        setCoordinate(MapDatum.fromMap(item.placemark.coordinate))
         if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let name = item.name {
             draft.name = String(name.prefix(LocationSavedPlace.maxNameLength))
         }
