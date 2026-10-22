@@ -952,6 +952,48 @@ extension NotificationE2ETests {
         }
     }
 
+    func testEveryIngestSaysWhetherTheHostsOtherProfilesMayRead() throws {
+        var settings = LocationSharingSettings()
+        settings.talking = true
+        XCTAssertFalse(settings.otherProfiles, "only the bound profile reads unless the user says so")
+        var sharing = try XCTUnwrap(LocationBatch(sentAt: LocationFixtures.at, settings: settings).json()["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["other_profiles"] as? Bool, false)
+        settings.otherProfiles = true
+        sharing = try XCTUnwrap(LocationBatch(sentAt: LocationFixtures.at, settings: settings).json()["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["other_profiles"] as? Bool, true)
+        // Saved before the switch existed: the bound profile alone (notifier #287).
+        let old = try JSONDecoder().decode(LocationSharingSettings.self, from: Data(#"{"talking": true}"#.utf8))
+        XCTAssertFalse(old.otherProfiles)
+        XCTAssertTrue(try JSONDecoder().decode(LocationSharingSettings.self, from: JSONEncoder().encode(settings)).otherProfiles)
+    }
+
+    @MainActor
+    func testTheFirstLayerOnRecordsWhetherOtherProfilesMayReadAndASecondKeepsIt() {
+        let home = LocationBinding(dashboardID: LocationFixtures.dashboardID, profile: "default", host: "hermes.example.com")
+        let other = LocationBinding(dashboardID: UUID(), profile: "default", host: "other.example.com")
+        func decide(_ settings: LocationSharingSettings, to destination: LocationBinding? = nil, offered: Bool) -> Bool {
+            LocationSharingController.otherProfiles(turningOn: settings, bound: home, to: destination ?? home, offered: offered)
+        }
+        var settings = LocationSharingSettings()
+        XCTAssertTrue(decide(settings, offered: true))
+        XCTAssertFalse(decide(settings, offered: false))
+        settings.talking = true
+        settings.otherProfiles = true
+        XCTAssertTrue(decide(settings, offered: false), "the background layer keeps what the user agreed to")
+        settings.otherProfiles = false
+        XCTAssertFalse(decide(settings, offered: true), "turned off in Settings: a second layer doesn't turn it back on")
+        // Off in Settings, then sharing off and on again: the choice stands.
+        settings.otherProfilesChosen = true
+        settings.talking = false
+        XCTAssertFalse(decide(settings, offered: true))
+        settings.otherProfiles = true
+        XCTAssertTrue(decide(settings, offered: false))
+        // On for another host: that host's profiles are asked about afresh.
+        XCTAssertFalse(decide(settings, to: other, offered: false))
+        settings.otherProfiles = false
+        XCTAssertTrue(decide(settings, to: other, offered: true))
+    }
+
     func testEveryIngestSaysThePhoneAnswersMapsAndWhetherTheHostMayToo() throws {
         var settings = LocationSharingSettings()
         settings.background = true

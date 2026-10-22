@@ -1,6 +1,334 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Other Hermes profiles on %@ that are paired with this iPhone can read it too. You can turn this off in Settings > Location." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Hermes-Profile auf %@, die mit diesem iPhone gekoppelt sind, können ihn ebenfalls lesen. Du kannst das unter Einstellungen > Standort ausschalten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otros perfiles de Hermes en %@ vinculados con este iPhone también pueden leerla. Puedes desactivarlo en Ajustes > Ubicación."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les autres profils Hermes sur %@ jumelés avec cet iPhone peuvent aussi la lire. Vous pouvez désactiver cela dans Réglages > Position."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil Hermes lain di %@ yang dipasangkan dengan iPhone ini juga dapat membacanya. Anda dapat menonaktifkannya di Pengaturan > Lokasi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anche gli altri profili Hermes su %@ abbinati a questo iPhone possono leggerla. Puoi disattivarlo in Impostazioni > Posizione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneとペアリングされている%@上のほかのHermesプロファイルも読み取れます。「設定」>「位置情報」でオフにできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPhone과 페어링된 %@의 다른 Hermes 프로필도 읽을 수 있습니다. 설정 > 위치에서 끌 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inne profile Hermes na %@ sparowane z tym iPhone’em też mogą ją odczytywać. Możesz to wyłączyć w Ustawienia > Lokalizacja."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outros perfis do Hermes em %@ pareados com este iPhone também podem lê-la. Você pode desativar isso em Ajustes > Localização."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другие профили Hermes на %@, связанные с этим iPhone, тоже могут её читать. Это можно отключить в Настройки > Геопозиция."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ üzerinde bu iPhone ile eşlenmiş diğer Hermes profilleri de okuyabilir. Bunu Ayarlar > Konum'dan kapatabilirsin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上与这台 iPhone 配对的其他 Hermes 配置文件也可以读取。你可以在“设置”>“位置”中关闭此项。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上與這部 iPhone 配對的其他 Hermes 設定檔也可以讀取。你可以在「設定」>「位置」中關閉此項。"
+          }
+        }
+      }
+    },
+    "When this is on, other Hermes profiles on %@ that are paired with this iPhone can read your location and ask for a fresh one. Place rules stay with %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn das an ist, können andere Hermes-Profile auf %1$@, die mit diesem iPhone gekoppelt sind, deinen Standort lesen und einen aktuellen anfordern. Ortsregeln bleiben bei %2$@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si está activado, otros perfiles de Hermes en %1$@ vinculados con este iPhone pueden leer tu ubicación y pedir una actual. Las reglas de lugar se quedan en %2$@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si cette option est activée, les autres profils Hermes sur %1$@ jumelés avec cet iPhone peuvent lire votre position et en demander une récente. Les règles de lieu restent avec %2$@."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika aktif, profil Hermes lain di %1$@ yang dipasangkan dengan iPhone ini dapat membaca lokasi Anda dan meminta yang terbaru. Aturan tempat tetap di %2$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se attivo, gli altri profili Hermes su %1$@ abbinati a questo iPhone possono leggere la tua posizione e chiederne una aggiornata. Le regole dei luoghi restano su %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンにすると、このiPhoneとペアリングされている%1$@上のほかのHermesプロファイルも、あなたの位置を読み取り、最新の位置を問い合わせられます。場所のルールは%2$@に残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켜면 이 iPhone과 페어링된 %1$@의 다른 Hermes 프로필도 위치를 읽고 최신 위치를 요청할 수 있습니다. 장소 규칙은 %2$@에 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy to jest włączone, inne profile Hermes na %1$@ sparowane z tym iPhone’em mogą odczytywać Twoją lokalizację i prosić o świeżą. Reguły miejsc zostają przy %2$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com isto ativado, outros perfis do Hermes em %1$@ pareados com este iPhone podem ler sua localização e pedir uma atual. As regras de lugar ficam com %2$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда это включено, другие профили Hermes на %1$@, связанные с этим iPhone, могут читать вашу геопозицию и запрашивать свежую. Правила мест остаются у %2$@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu açıkken %1$@ üzerinde bu iPhone ile eşlenmiş diğer Hermes profilleri konumunu okuyabilir ve yenisini isteyebilir. Yer kuralları %2$@ profilinde kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启后，%1$@ 上与这台 iPhone 配对的其他 Hermes 配置文件可以读取你的位置并请求最新位置。地点规则仍留在 %2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟後，%1$@ 上與這部 iPhone 配對的其他 Hermes 設定檔可以讀取你的位置並要求最新位置。地點規則仍留在 %2$@。"
+          }
+        }
+      }
+    },
+    "Other profiles" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Andere Profile"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otros perfiles"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autres profils"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil lain"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altri profili"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかのプロファイル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 프로필"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inne profile"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outros perfis"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другие профили"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diğer profiller"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他配置文件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他設定檔"
+          }
+        }
+      }
+    },
+    "Share with this host's other profiles" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit den anderen Profilen dieses Hosts teilen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir con los otros perfiles de este host"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partager avec les autres profils de cet hôte"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bagikan ke profil lain di host ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Condividi con gli altri profili di questo host"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストのほかのプロファイルとも共有"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트의 다른 프로필과 공유"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Udostępniaj innym profilom na tym hoście"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartilhar com os outros perfis deste host"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Делиться с другими профилями этого хоста"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucudaki diğer profillerle paylaş"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与此主机上的其他配置文件共享"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與此主機上的其他設定檔共享"
+          }
+        }
+      }
+    },
     "Source: %@" : {
       "localizations" : {
         "de" : {
