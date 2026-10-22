@@ -2186,6 +2186,10 @@ final class AppState: ObservableObject {
     /// Asks the composer to take focus (a screenshot chat opened with the
     /// keyboard). ComposerBar focuses and then consumes it.
     @Published var composerFocusRequest: ComposerFocusRequest?
+    /// Asks the open chat's composer to start dictating (its big button
+    /// set to Dictation, or Dictate in the button's menu). ComposerBar
+    /// starts and then consumes it.
+    @Published var composerDictationRequest: ComposerDictationRequest?
 
     // MARK: - Sending while connecting (AppState+PendingSend.swift)
 
@@ -2289,6 +2293,9 @@ final class AppState: ObservableObject {
     @Published private(set) var keepVoiceListeningWhenLocked = false
     /// Push to talk in Classic voice (#886), for the active profile.
     @Published private(set) var voicePushToTalkEnabled = false
+    /// The active profile's own choice for the big button beside a chat's
+    /// composer (`ChatVoiceButtonAction` raw value); nil follows the app's.
+    @Published private(set) var chatVoiceButtonOverride: String?
     @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
 
     private var voiceAssistantObserverID: UUID?
@@ -12349,6 +12356,7 @@ final class AppState: ObservableObject {
         continuousConversationEnabled = true
         keepVoiceListeningWhenLocked = false
         voicePushToTalkEnabled = false
+        chatVoiceButtonOverride = nil
         voiceCallSaveBlockedKeys = []
         pendingVoiceCallSaves = 0
         voiceCallSavesBlocked = false
@@ -32452,6 +32460,7 @@ final class AppState: ObservableObject {
         continuousConversationEnabled = preferences.continuousConversation
         keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
         voicePushToTalkEnabled = preferences.pushToTalk ?? false
+        chatVoiceButtonOverride = preferences.chatVoiceButton
         voiceConversationController.setProfilePreferences(preferences)
         // Voice settings shows this profile's unsaved calls, not the last one's.
         publishVoiceCallSaveStatus()
@@ -32570,6 +32579,16 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         updateActiveProfileVoicePreferences { $0.pushToTalk = enabled ? true : nil }
         voicePushToTalkEnabled = enabled
+        return true
+    }
+
+    /// The big button beside a chat's composer on this profile: nil
+    /// follows the app's choice (Settings > Appearance).
+    @discardableResult
+    func setChatVoiceButtonOverride(_ action: ChatVoiceButtonAction?) -> Bool {
+        guard isConnected else { return false }
+        updateActiveProfileVoicePreferences { $0.chatVoiceButton = action?.rawValue }
+        chatVoiceButtonOverride = action?.rawValue
         return true
     }
 

@@ -38,6 +38,7 @@ struct VoiceSettingsRoute: View {
     let wake: WakePhraseSettingsModel?
     let lockedListening: VoiceLockedListeningSettingsModel?
     let pushToTalk: VoicePushToTalkSettingsModel?
+    let chatVoiceButton: ChatVoiceButtonSettingsModel?
     let speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     let callSaves: VoiceCallSaveStatusModel?
     /// Set when the host lets Hermes change settings: shows the choice and
@@ -77,6 +78,7 @@ struct VoiceSettingsRoute: View {
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         pushToTalk: VoicePushToTalkSettingsModel? = nil,
+        chatVoiceButton: ChatVoiceButtonSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil,
         agentSettingsChanged: (() -> Void)? = nil
@@ -93,6 +95,7 @@ struct VoiceSettingsRoute: View {
         self.wake = wake
         self.lockedListening = lockedListening
         self.pushToTalk = pushToTalk
+        self.chatVoiceButton = chatVoiceButton
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
@@ -144,6 +147,7 @@ struct VoiceSettingsRoute: View {
             wake: wake,
             lockedListening: lockedListening,
             pushToTalk: pushToTalk,
+            chatVoiceButton: chatVoiceButton,
             speakerTalkOver: speakerTalkOver,
             callSaves: callSaves,
             agentSettingsChanged: agentSettingsChanged
@@ -229,6 +233,7 @@ struct VoiceSettingsView: View {
     var wake: WakePhraseSettingsModel?
     var lockedListening: VoiceLockedListeningSettingsModel?
     var pushToTalk: VoicePushToTalkSettingsModel?
+    var chatVoiceButton: ChatVoiceButtonSettingsModel?
     var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     var callSaves: VoiceCallSaveStatusModel?
     var agentSettingsChanged: (() -> Void)?
@@ -236,6 +241,9 @@ struct VoiceSettingsView: View {
     var profileName: String?
     @State private var keepListeningWhenLocked: Bool
     @State private var pushToTalkEnabled: Bool
+    /// The profile's own choice for the chat's big button; nil follows
+    /// the app's.
+    @State private var chatVoiceButtonOverride: ChatVoiceButtonAction?
     @State private var speakerTalkOverEnabled: Bool
     /// The phrase lists as last saved from this page. AppState doesn't
     /// publish a phrase save, so the page keeps its own copy for the
@@ -278,6 +286,7 @@ struct VoiceSettingsView: View {
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
         pushToTalk: VoicePushToTalkSettingsModel? = nil,
+        chatVoiceButton: ChatVoiceButtonSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil,
         agentSettingsChanged: (() -> Void)? = nil
@@ -293,11 +302,13 @@ struct VoiceSettingsView: View {
         self.wake = wake
         self.lockedListening = lockedListening
         self.pushToTalk = pushToTalk
+        self.chatVoiceButton = chatVoiceButton
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         self.profileName = profileName
         _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
         _pushToTalkEnabled = State(initialValue: pushToTalk?.enabled ?? false)
+        _chatVoiceButtonOverride = State(initialValue: chatVoiceButton?.choice)
         _speakerTalkOverEnabled = State(initialValue: speakerTalkOver?.enabled ?? false)
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -346,6 +357,9 @@ struct VoiceSettingsView: View {
                         voiceModeSection
                         liveModeSettings
                         conversationSection
+                        if let chatVoiceButton {
+                            chatVoiceButtonSection(chatVoiceButton)
+                        }
                         if let agentSettingsChanged {
                             AgentSettingsModeSection(onChange: agentSettingsChanged)
                         }
@@ -1170,6 +1184,32 @@ struct VoiceSettingsView: View {
     }
 
     // MARK: Conversation
+
+    /// The big button beside this profile's chats, or the app's choice.
+    private func chatVoiceButtonSection(_ model: ChatVoiceButtonSettingsModel) -> some View {
+        ConduitSettingsSection(title: AppLocalization.string("Chat voice button"), symbol: "mic.circle", tint: .conduitAccent) {
+            Picker("Chat voice button", selection: Binding(
+                get: { chatVoiceButtonOverride },
+                set: { requested in
+                    let previous = chatVoiceButtonOverride
+                    chatVoiceButtonOverride = requested
+                    if !model.setChoice(requested) {
+                        chatVoiceButtonOverride = previous
+                    }
+                }
+            )) {
+                Text(AppLocalization.string("App setting (\(model.appChoice.title))"))
+                    .tag(ChatVoiceButtonAction?.none)
+                ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
+                    Text(action.title).tag(Optional(action))
+                }
+            }
+            .onChange(of: model.choice) { _, newValue in chatVoiceButtonOverride = newValue }
+            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
 
     private var conversationSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Conversation"), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
@@ -2088,6 +2128,16 @@ private struct VoiceProviderFieldEditor: View {
         guard !isSaving, validationMessage == nil else { return }
         Task { await save(value) }
     }
+}
+
+/// The big button beside this profile's chats (Chat voice button).
+struct ChatVoiceButtonSettingsModel {
+    /// The profile's own choice; nil follows the app's.
+    var choice: ChatVoiceButtonAction?
+    /// The app's choice, named on the "App setting" row.
+    var appChoice: ChatVoiceButtonAction
+    /// Returns false when the change couldn't be saved (disconnected).
+    var setChoice: (ChatVoiceButtonAction?) -> Bool
 }
 
 /// Push to talk in Classic voice (#886) on this profile.

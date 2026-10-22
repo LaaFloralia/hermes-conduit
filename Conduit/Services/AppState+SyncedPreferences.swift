@@ -130,6 +130,7 @@ extension AppState {
             .defaults("app.haptics", Haptics.preferenceKey, .bool, in: defaults),
             .defaults("app.return_key_sends", ComposerReturnKey.preferenceKey, .bool, in: defaults),
             .defaults("app.main_button_new_chat", V2MainButtonPreference.key, .bool, in: defaults),
+            .defaults("app.chat_voice_button", ChatVoiceButtonAction.key, .string, in: defaults),
             .defaults("app.project_chats", ProjectChatsInChats.key, .string, in: defaults),
             .defaults("app.take_over_chats", ChatTakeoverPreference.automaticKey, .bool, in: defaults),
             .defaults("app.live_activities", LiveTurnActivities.enabledDefaultsKey, .bool, in: defaults),

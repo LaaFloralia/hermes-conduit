@@ -869,6 +869,15 @@ struct SettingsView: View {
                         enabled: appState.voicePushToTalkEnabled,
                         setEnabled: { appState.setVoicePushToTalk($0) }
                     ),
+                    // Only V2 has the big button beside a chat.
+                    chatVoiceButton: V2ShellPreference.isOn ? ChatVoiceButtonSettingsModel(
+                        choice: ChatVoiceButtonAction.offeredChoice(appState.chatVoiceButtonOverride),
+                        appChoice: ChatVoiceButtonAction.resolved(
+                            profile: nil,
+                            app: UserDefaults.standard.string(forKey: ChatVoiceButtonAction.key)
+                        ),
+                        setChoice: { appState.setChatVoiceButtonOverride($0) }
+                    ) : nil,
                     speakerTalkOver: VoiceSpeakerTalkOverSettingsModel(
                         enabled: appState.liveVoiceSpeakerBargeInEnabled,
                         setEnabled: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
@@ -3061,6 +3070,7 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage("conduit.ipadPersistentSidebar") private var iPadPersistentSidebar = false
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    @AppStorage(ChatVoiceButtonAction.key) private var chatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
     @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
     @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
     @State private var selected: ThemePreference
@@ -3176,6 +3186,27 @@ private struct AppearanceSettingsDetail: View {
                         Text("New Chat").tag(true)
                     }
                     .pickerStyle(.segmented)
+                }
+
+                // The big button beside a chat's composer. A profile can
+                // choose its own in Settings > Voice.
+                ConduitSettingsSection(title: AppLocalization.string("Chat voice button"), symbol: "mic.circle", tint: .conduitAccent) {
+                    Text("Choose what the round button beside a chat's message box does. A live call stays in the chat's top bar and in the button's touch-and-hold menu. Each profile can choose its own in Voice settings.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Picker("Chat voice button", selection: Binding(
+                        get: { ChatVoiceButtonAction.resolved(profile: nil, app: chatVoiceButton) },
+                        set: {
+                            Haptics.selection()
+                            chatVoiceButton = $0.rawValue
+                        }
+                    )) {
+                        ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
+                            Text(action.title).tag(action)
+                        }
+                    }
+                    // Three choices whose names run long in some languages.
+                    .pickerStyle(.menu)
                 }
 
                 // A project's chats otherwise show only on its page.

@@ -1228,7 +1228,9 @@ struct UserMessageCopyButton: View {
     }
 
     static func copyText(for message: ChatMessage) -> String {
-        ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
+        let text = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
+        // A voice message copies what was said.
+        return VoiceMessage.parse(text)?.transcript ?? text
     }
 
     var body: some View {
@@ -1355,17 +1357,42 @@ struct UserMessageContent: View, Equatable {
         return equal
     }
 
+    @ViewBuilder private var attachmentViews: some View {
+        if let attachments = message.attachments {
+            ForEach(attachments) { attachment in
+                if attachment.kind == .image {
+                    UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
+                } else {
+                    UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
+                }
+            }
+        }
+    }
+
     var body: some View {
         // A message that quoted a whole reply (#385) shows a compact
         // "Replying to" card instead of the full quote.
         let reply = ReplyQuoteEnvelope.parse(message.content)
         let text = reply?.message ?? message.content
+        // A voice message: the recording, then what was said.
+        let voice = VoiceMessage.parse(text)
         VStack(alignment: .leading, spacing: 9) {
             if let reply {
                 ReplyReferenceQuoteCard(quote: reply.quote)
             }
 
-            if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let voice {
+                attachmentViews
+                if !voice.transcript.isEmpty {
+                    HugsIdealWidth {
+                        Text(verbatim: voice.transcript)
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.88))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .accessibilityLabel(AppLocalization.string("Transcript: \(voice.transcript)"))
+                }
+            } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 // The text fills the column for its own layout; a sent
                 // bubble fits a short message instead.
                 HugsIdealWidth {
@@ -1373,14 +1400,8 @@ struct UserMessageContent: View, Equatable {
                 }
             }
 
-            if let attachments = message.attachments {
-                ForEach(attachments) { attachment in
-                    if attachment.kind == .image {
-                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
-                    } else {
-                        UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
-                    }
-                }
+            if voice == nil {
+                attachmentViews
             }
         }
         .padding(.horizontal, 17)
@@ -1809,7 +1830,10 @@ private struct UserDocumentAttachmentChip: View {
             if isAudio {
                 InlineAudioClipView(
                     id: "attachment:\(attachment.uri)",
-                    name: attachment.name,
+                    // A recorded voice message, not a file the user picked.
+                    name: VoiceMessage.isVoiceMessageFile(attachment.name)
+                        ? AppLocalization.string("Voice message")
+                        : attachment.name,
                     filename: AttachmentPreviewFilename.make(name: attachment.name, uri: attachment.uri),
                     style: .bubble,
                     opening: loading,
