@@ -203,6 +203,14 @@ final class VoiceConversationController: ObservableObject {
     /// barge-in does not use it; that path keeps the conservative fixed
     /// threshold in `configuration.bargeInActivityThreshold`.
     private var speechDetector: VoiceSpeechDetector
+    /// The room's level while Hermes thinks, learned from the barge-in
+    /// monitor. A steer window opens mid-speech, so its detector starts
+    /// from this floor rather than learning one from the user's voice.
+    /// Each turn learns its own; a steer's return to thinking keeps it.
+    private var thinkingRoom: VoiceRoomNoiseFloor
+
+    /// The floor a steer window would start from now (tests).
+    var thinkingNoiseFloor: Float? { thinkingRoom.floor }
 
     init(
         capture: AudioCaptureService? = nil,
@@ -225,6 +233,7 @@ final class VoiceConversationController: ObservableObject {
         self.gateway = gateway
         self.configuration = configuration
         speechDetector = VoiceSpeechDetector(constants: configuration.speechDetector)
+        thinkingRoom = VoiceRoomNoiseFloor(constants: configuration.speechDetector)
         // Built here (not as a default parameter value) so the live route
         // read stays in MainActor context, matching the capture default.
         if let routePolicyProvider {
@@ -502,6 +511,8 @@ final class VoiceConversationController: ObservableObject {
 
     func startListening(includePreRoll: Bool = false) async {
         failedForAudioInterruption = false
+        // Any window but a steer ends the turn whose room was learned.
+        if !isSteeringTurn { thinkingRoom.reset() }
         let widgetAuthorization = initialWidgetCaptureAuthorization
         initialWidgetCaptureAuthorization = nil
         guard isForegroundActive else { return }
@@ -549,8 +560,13 @@ final class VoiceConversationController: ObservableObject {
             // playback, whichever flag paused it.
             if isMicrophonePaused || isPlaybackCaptureSuspended { capture.pause() }
             // Fresh listening window: the detector must not inherit noise or
-            // speech state from the previous one.
-            speechDetector.reset()
+            // speech state from the previous one. A steer opens mid-speech,
+            // so it starts from the room heard while Hermes thought.
+            if isSteeringTurn, let floor = thinkingRoom.floor {
+                speechDetector.reset(learnedNoiseFloor: floor)
+            } else {
+                speechDetector.reset()
+            }
             resetMicrophoneMeter()
             utteranceStartedAt = Date()
             lastSpeechAt = nil
@@ -760,6 +776,7 @@ final class VoiceConversationController: ObservableObject {
         isPlaybackCaptureSuspended = false
         endSteerBookkeeping()
         speechDetector.reset()
+        thinkingRoom.reset()
         resetMicrophoneMeter()
         isPushToTalkHeld = false
     }
@@ -985,6 +1002,7 @@ final class VoiceConversationController: ObservableObject {
             // else (silent gaps mid-reply, muted output) is ignored, so it
             // can't cut the turn short.
             let talkOver = isTalkOverAvailable
+            if state == .thinking { thinkingRoom.observe(level, at: date) }
             guard talkOver || isSteerAvailable else {
                 bargeInStartedAt = nil
                 break
@@ -1143,6 +1161,7 @@ final class VoiceConversationController: ObservableObject {
             // and a different microphone means a different noise floor.
             bargeInStartedAt = nil
             cachedRoutePolicy = nil
+            thinkingRoom.reset()
             if state == .listening { speechDetector.reset() }
             suspendIfRouteBecameOpenSpeaker()
         }
@@ -1633,6 +1652,7 @@ final class VoiceConversationController: ObservableObject {
         isPushToTalkHeld = false
         endSteerBookkeeping()
         speechDetector.reset()
+        thinkingRoom.reset()
         resetMicrophoneMeter()
         isVoiceSessionActive = false
         isAwaitingVoiceAssistant = false
