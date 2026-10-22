@@ -630,6 +630,42 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertTrue(session.activationCalls.isEmpty)
     }
 
+    /// Classic voice holds nothing while Hermes thinks: the call's session
+    /// stays up, so the Speaker button's choice survives to the reply.
+    func testLastOwnerLeavingInANativeCallKeepsTheSessionAndTheSpeaker() throws {
+        session.reportsCurrentCategory = true
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        let capture = try coordinator.acquire(.conversationCapture)
+        session.resetRecordings()
+
+        coordinator.release(capture)
+
+        XCTAssertEqual(session.deactivationCount, 0, "CallKit deactivates the call's session, not Conduit")
+        XCTAssertNil(coordinator.appliedPolicy)
+
+        _ = try coordinator.acquire(.conversationPlayback)
+
+        XCTAssertTrue(session.categoryCalls.isEmpty, "a category change would clear the speaker override")
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker)
+        XCTAssertEqual(session.activationCount, 1, "the next owner still reactivates the session")
+        XCTAssertEqual(coordinator.appliedPolicy, .conversation)
+    }
+
+    func testLastOwnerLeavingAfterTheCallEndedDeactivates() throws {
+        coordinator.configureForIncomingCall()
+        let capture = try coordinator.acquire(.conversationCapture)
+        coordinator.nativeCallEnded()
+        session.resetRecordings()
+
+        coordinator.release(capture)
+
+        XCTAssertEqual(session.deactivationCount, 1)
+        XCTAssertEqual(session.lastDeactivationOptions, .notifyOthersOnDeactivation)
+        XCTAssertNil(coordinator.appliedPolicy)
+    }
+
     func testFailedCallCategoryStillReappliesOnTheNextTransition() throws {
         _ = try coordinator.acquire(.conversationCapture)
         session.categoryError = VoiceAudioSessionMockError.configurationFailed

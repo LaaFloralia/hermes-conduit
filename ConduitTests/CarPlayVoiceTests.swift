@@ -3263,6 +3263,9 @@ extension CarPlayVoiceCoordinatorTests {
         )
         harness.coordinator.selectVoiceMode(.gptLive)
         XCTAssertEqual(harness.coordinator.observedVoiceMode, .gptLive)
+        // The mode's controls rebuild the car's template; Error shows on
+        // the new one once it is presented.
+        await harness.coordinator.waitForPresentation()
 
         await harness.appState.gptLiveController.start()
 

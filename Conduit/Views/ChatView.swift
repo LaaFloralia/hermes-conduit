@@ -57,6 +57,13 @@ struct ChatView: View {
     /// concern — this is view-lifetime only.)
     @State private var backfillViewportTask: Task<Void, Never>?
     @State private var latestAnimationTask: Task<Void, Never>?
+    /// The overview of every pinned reply, from the pinned bar (#918).
+    @State private var showsPinnedReplies = false
+    /// Gives up on an overview reveal whose reply the opened chat hasn't
+    /// loaded (an older part of it).
+    @State private var pinnedRevealFallbackTask: Task<Void, Never>?
+    /// The reveal that fallback is for; another reveal replaces it.
+    @State private var pinnedRevealFallbackReveal: PinnedReplyReveal?
 
     private var viewportInputs: ChatScrollRenderInputs { scrollEngine.renderInputs }
 
@@ -282,9 +289,14 @@ struct ChatView: View {
     /// typography, while non-chat subtrees keep the `.default` environment
     /// value and today's appearance.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+    /// The chat text style (typeface), stored and injected beside the size.
+    @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
 
-    private var chatTextSize: ChatTextSize {
-        chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw)
+    private var chatTextSize: ChatTextAppearance {
+        ChatTextAppearance(
+            size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
+            style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
+        )
     }
 
     var body: some View {
@@ -380,6 +392,10 @@ struct ChatView: View {
         )
         // The rows show AppState through this, not by observing it.
         .chatRows()
+        .sheet(isPresented: $showsPinnedReplies) {
+            PinnedRepliesSheet()
+                .environmentObject(appState)
+        }
     }
 
     // MARK: - Scroll construction (layered so the type-checker can cope)
@@ -483,6 +499,8 @@ struct ChatView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .id(transcriptScrollID)
+        // The open chat's pinned replies (#918), over the transcript's top.
+        .safeAreaInset(edge: .top, spacing: 0) { pinnedReplyBar }
         .modifier(V2SoftTopScrollEdge(isOn: composerFloats))
         .onTapGesture {
             UIApplication.shared.sendAction(
@@ -538,6 +556,9 @@ struct ChatView: View {
                 scrollEventRouter.rebuildTranscript = nil
                 backfillViewportTask?.cancel()
                 latestAnimationTask?.cancel()
+                pinnedRevealFallbackTask?.cancel()
+                pinnedRevealFallbackTask = nil
+                pinnedRevealFallbackReveal = nil
                 appState.removeChatViewportSnapshotProvider(id: viewportSnapshotProviderID)
             }
             .task(id: appState.chatResumeRestorationRequest?.generation) {
@@ -592,14 +613,24 @@ struct ChatView: View {
             }
             // An Artifacts screen's "Show in chat": once the row is in and
             // any restore is done.
-            .onChange(of: appState.chatTranscriptRevision) { _, _ in revealPendingArtifact() }
+            .onChange(of: appState.chatTranscriptRevision) { _, _ in
+                revealPendingArtifact()
+                revealPendingPinnedReply()
+                appState.refreshOpenChatPinnedReplies()
+            }
             .onChange(of: appState.pendingArtifactReveal) { _, _ in revealPendingArtifact() }
-            .onAppear { revealPendingArtifact() }
+            .onChange(of: appState.pendingPinnedReplyReveal) { _, _ in revealPendingPinnedReply() }
+            .onAppear {
+                revealPendingArtifact()
+                revealPendingPinnedReply()
+            }
             .onChange(of: appState.chatResumeRestorationRequest) { oldRequest, newRequest in
                 guard oldRequest != nil, newRequest == nil else { return }
                 // The published request disappeared on the AppState side
                 // (completed/abandoned/cancelled elsewhere).
                 scrollEngine.restorationSystemCancelled()
+                // A pinned reply waiting on the restore goes now.
+                revealPendingPinnedReply()
             }
     }
 
@@ -614,6 +645,83 @@ struct ChatView: View {
         appState.pendingArtifactReveal = nil
         // After this update's layout, so the engine knows the row.
         DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
+    }
+
+    /// The overview's pinned reply (#918), once its chat shows and has the
+    /// row.
+    private func revealPendingPinnedReply() {
+        guard let reveal = appState.pendingPinnedReplyReveal else { return }
+        guard reveal.expires > Date() else {
+            appState.pendingPinnedReplyReveal = nil
+            return
+        }
+        guard appState.chatResumeRestorationRequest == nil, appState.isShowingChat(for: reveal),
+              !appState.messages.isEmpty else { return }
+        guard let id = PinnedReplies.messageID(
+            for: reveal.pin, in: appState.messages, among: appState.openChatPinnedReplies
+        ) else {
+            // The chat shows but not the reply: give its transcript a moment
+            // to finish loading, then go as close as the bar goes.
+            if pinnedRevealFallbackTask != nil {
+                guard pinnedRevealFallbackReveal != reveal else { return }
+                pinnedRevealFallbackTask?.cancel()
+            }
+            pinnedRevealFallbackReveal = reveal
+            pinnedRevealFallbackTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(2))
+                // A cancelled task leaves the slot alone: whoever cancelled
+                // it cleared it, and a newer task may hold it now.
+                guard !Task.isCancelled else { return }
+                pinnedRevealFallbackTask = nil
+                pinnedRevealFallbackReveal = nil
+                guard appState.pendingPinnedReplyReveal == reveal,
+                      appState.isShowingChat(for: reveal) else { return }
+                appState.pendingPinnedReplyReveal = nil
+                jumpToPinnedReply(reveal.pin)
+            }
+            return
+        }
+        pinnedRevealFallbackTask?.cancel()
+        pinnedRevealFallbackTask = nil
+        pinnedRevealFallbackReveal = nil
+        appState.pendingPinnedReplyReveal = nil
+        DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
+    }
+
+    /// The bar over the transcript while the open chat has pinned replies.
+    @ViewBuilder
+    private var pinnedReplyBar: some View {
+        let pins = appState.openChatPinnedReplies
+        if !pins.isEmpty, !showsOfflineCopy, !appState.showsPendingNewChat {
+            PinnedReplyBar(
+                pins: pins,
+                jump: { pin in jumpToPinnedReply(pin) },
+                unpin: { pin in appState.unpinReply(pin) },
+                showAll: { showsPinnedReplies = true }
+            )
+            .id(appState.activeSessionId)
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    /// A pinned reply not loaded yet sits in an older part of the chat: the
+    /// top of the transcript, where Load earlier messages is, is as close
+    /// as the chat can go.
+    private func jumpToPinnedReply(_ pin: PinnedReply) {
+        if let id = PinnedReplies.messageID(for: pin, in: appState.messages, among: appState.openChatPinnedReplies) {
+            ChatViewportTrace.shared.log("event explicitPinnedReply (bar)")
+            scrollEngine.explicitMessageRequested(id: id)
+        } else {
+            ChatViewportTrace.shared.log("event explicitTop (pinned reply not loaded)")
+            scrollEngine.explicitTopRequested()
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: AppLocalization.string("This reply is earlier in the chat. Load earlier messages to reach it.")
+            )
+        }
     }
 
     private func sessionObservers(proxy: ScrollViewProxy, content: some View) -> some View {
@@ -1163,13 +1271,13 @@ struct SteerMessageContent: View, Equatable {
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see UserMessageContent.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
 
     /// One line of the reply's body text, for the icon's box.
     private var bodyLineHeight: CGFloat {
         ChatTypography.font(
             for: .body,
-            chatSize: chatTextSize,
+            appearance: chatTextSize,
             compatibleWith: UITraitCollection(
                 preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
             )
@@ -1224,7 +1332,7 @@ struct UserMessageContent: View, Equatable {
     /// Explicit chat text-size input (issue #85): a preference change must
     /// re-open the gate and re-render, while ordinary streaming publishes —
     /// which leave both explicit inputs equal — keep the isolation.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // One comparison expression for every configuration — see
@@ -1802,7 +1910,7 @@ struct SettledAssistantMessageContent: View, Equatable {
     /// typography input, so a preference change re-opens the gate and
     /// re-renders (the render cache keys on the chat-size identity), while
     /// unrelated streaming publishes — equal inputs — stay gated.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // ONE comparison expression for every configuration: the field list a
@@ -2027,6 +2135,10 @@ struct AssistantBubble: View {
                 chatTextSize: chatTextSize
             )
             .equatable()
+            // Pin and Unpin sit in the reply's long-press menu (#918).
+            .environment(\.chatPinReplyAction, rowState.canPinReplies
+                ? ChatPinReplyAction(message: message, appState: appState)
+                : nil)
 
             if !message.reactions.isEmpty {
                 MessageReactionChips(
@@ -2340,7 +2452,7 @@ struct SettledThinkingCardContent: View, Equatable {
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see SettledAssistantMessageContent.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
     /// Drawn inside a run's card: no card of its own, its time taken in
     /// place of the clock time.
     var grouped = false
@@ -2395,7 +2507,7 @@ struct SettledThinkingCardContent: View, Equatable {
             if isExpanded {
                 SelectableTextView(
                     text: message.content,
-                    font: ChatTypography.font(for: .thinking, chatSize: chatTextSize),
+                    font: ChatTypography.font(for: .thinking, appearance: chatTextSize),
                     textColor: .secondaryLabel
                 )
                 .padding(.leading, ChatStepStyle.contentInset)

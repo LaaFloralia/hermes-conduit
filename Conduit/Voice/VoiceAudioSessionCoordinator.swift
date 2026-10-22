@@ -201,8 +201,11 @@ final class VoiceAudioSessionCoordinator {
     static let shared = VoiceAudioSessionCoordinator()
 
     /// The session policy currently applied to the system session, or nil
-    /// while no audio intent is active. Exposed read-only for diagnostics
-    /// and deterministic ownership tests.
+    /// while no audio intent is active. Nil means Conduit holds nothing, not
+    /// that the session is off: in a call from Hermes CallKit keeps it
+    /// active, so code that reconfigures the session checks `isInNativeCall`
+    /// too. Exposed read-only for diagnostics and deterministic ownership
+    /// tests.
     private(set) var appliedPolicy: Policy?
 
     /// Raised when a policy transition failed partway — typically the
@@ -529,7 +532,14 @@ final class VoiceAudioSessionCoordinator {
                 try session.setActive(true, options: [])
                 appliedPolicy = .wakeListening
             case nil:
-                try session.setActive(false, options: .notifyOthersOnDeactivation)
+                // In a call from Hermes the session is CallKit's, which
+                // deactivates it when the call ends. Classic voice holds
+                // nothing while Hermes thinks or between listens; a
+                // deactivation there dropped the Speaker button's override,
+                // and the call came back on the earpiece every turn.
+                if !isInNativeCall {
+                    try session.setActive(false, options: .notifyOthersOnDeactivation)
+                }
                 appliedPolicy = nil
             }
             needsReapply = false
