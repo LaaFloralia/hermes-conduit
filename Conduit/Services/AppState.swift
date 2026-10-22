@@ -754,6 +754,8 @@ final class AppState: ObservableObject {
     /// again until Conduit next comes to the front.
     var postponedSharedDraftIDs: Set<UUID> = []
     var widgetAwaitingInteractiveAuthenticationDashboardID: UUID?
+    /// Refresh tokens a sign-out handed to Hermes' logout, until revoked.
+    var serverSignOutQueue: ServerSignOutQueue = .shared
     lazy var widgetLaunchCoordinator: WidgetLaunchCoordinator = {
         let clock = ContinuousClock()
         let origin = clock.now
@@ -11482,6 +11484,8 @@ final class AppState: ObservableObject {
             return
         }
         #endif
+        // A sign-out that couldn't reach Hermes tries again.
+        serverSignOutQueue.retryPending()
         guard let activeID = savedDashboardRegistry.activeDashboardID,
               let dashboard = dashboardForSignIn(activeID) else {
             // No saved dashboards (clean install) or none selected: present
@@ -12127,6 +12131,10 @@ final class AppState: ObservableObject {
         if let signingOutDashboardID { removeWidgetSnapshot(dashboardID: signingOutDashboardID) }
         wipeOfflineChatCache(dashboardID: signingOutDashboardID)
         if let dashboardID = signingOutDashboardID {
+            endServerSignIn(
+                dashboardID: dashboardID,
+                baseURL: connection?.baseUrl ?? savedDashboardRegistry.dashboard(with: dashboardID)?.normalizedURL
+            )
             KeychainHelper.clearConnection(dashboardID: dashboardID)
             keepUsernameForNextSignIn(dashboardID: dashboardID)
             clearSavedPassword(dashboardID: dashboardID)
@@ -12664,6 +12672,7 @@ final class AppState: ObservableObject {
         }
         removeWidgetSnapshot(dashboardID: id)
         liveTurnActivitiesEndDashboard(id.uuidString, false)
+        endServerSignIn(dashboardID: id, baseURL: dashboard.normalizedURL)
         KeychainHelper.clearConnection(dashboardID: id)
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
@@ -12675,6 +12684,26 @@ final class AppState: ObservableObject {
         // domain are untouched.
         DashboardCookiePersistence.scheduleWebKitSessionClear(for: id)
         DashboardCookiePersistence.clearNativeCookies(dashboardID: id, baseURL: dashboard.normalizedURL)
+    }
+
+    /// Hands the dashboard's refresh tokens to Hermes' logout before its
+    /// sign-in is deleted, so the server ends it too (#889). Call before
+    /// `KeychainHelper.clearConnection`: it reads the native grant and the
+    /// cookie mirror.
+    private func endServerSignIn(dashboardID: UUID, baseURL: String?) {
+        guard let baseURL else { return }
+        let cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
+            + (DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? [])
+        serverSignOutQueue.signOut(
+            dashboardID: dashboardID,
+            baseURL: baseURL,
+            refreshTokens: ServerSignOut.refreshTokens(
+                native: KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID),
+                cookies: cookies,
+                baseURL: baseURL
+            ),
+            cloudflare: KeychainHelper.loadCloudflareAccess(dashboardID: dashboardID, for: baseURL)
+        )
     }
 
     /// Remove Dashboard: deletes the SavedDashboard and clears ONLY its
@@ -16982,6 +17011,8 @@ final class AppState: ObservableObject {
             // its own now, as after Conduit was stopped.
             returnPendingComposerSendAfterLongAbsence()
             widgetLaunchCoordinator.readinessChanged()
+            // A sign-out that couldn't reach Hermes tries again.
+            serverSignOutQueue.retryPending()
             // A draft shared from another app opens its chat (#812).
             publishShareDraftSettings()
             postponedSharedDraftIDs = []
@@ -33891,6 +33922,7 @@ enum KeychainHelper {
     private static let credentialsKey = "hermes-conduit.credentials.v1"
     private static let cloudflareAccessKey = "hermes-conduit.cloudflare-access.v1"
     private static let nativeOAuthTokensKey = "hermes-conduit.native-oauth-tokens.v1"
+    private static let pendingServerSignOutsKey = "hermes-conduit.pending-server-sign-outs.v1"
     private static let pushRegistrationKey = "hermes-conduit.push-registration.v1"
     private static let customHeadersKey = "hermes-conduit.custom-headers.v1"
     private static let healthSyncKeyAccount = "hermes-conduit.health-sync-key.v1"
@@ -33991,6 +34023,25 @@ enum KeychainHelper {
 
     static func clearPushRegistration() {
         delete(account: pushRegistrationKey)
+    }
+
+    // MARK: Pending server sign-outs
+
+    /// Refresh tokens kept only until Hermes revokes them (#889). Nothing
+    /// signs in with them. Readable after first unlock: a background launch
+    /// retries too.
+    static func savePendingServerSignOuts(_ entries: [PendingServerSignOut]) {
+        guard !entries.isEmpty else {
+            delete(account: pendingServerSignOutsKey)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        save(data, account: pendingServerSignOutsKey)
+    }
+
+    static func loadPendingServerSignOuts() -> [PendingServerSignOut] {
+        guard let data = load(account: pendingServerSignOutsKey) else { return [] }
+        return (try? JSONDecoder().decode([PendingServerSignOut].self, from: data)) ?? []
     }
 
     // MARK: Health sync key
