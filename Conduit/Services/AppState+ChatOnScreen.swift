@@ -89,18 +89,14 @@ extension AppState {
             done?()
             return
         }
-        // Counted from now; a hold that doesn't land counts as none, so
-        // nothing is released that the host never held.
-        let ends = holdSeconds > 0 ? Date().addingTimeInterval(TimeInterval(holdSeconds)) : nil
-        chatOnScreenHoldEnds = ends
+        // Counted from now. Kept when the report fails: an earlier hold may
+        // still be running on the host, and a release it didn't need costs
+        // nothing.
+        chatOnScreenHoldEnds = holdSeconds > 0 ? Date().addingTimeInterval(TimeInterval(holdSeconds)) : nil
         let previous = chatOnScreenLastSend
-        chatOnScreenLastSend = Task { @MainActor [weak self] in
+        chatOnScreenLastSend = Task { @MainActor in
             await previous?.value
-            do {
-                try await send(path, body)
-            } catch {
-                if let ends, self?.chatOnScreenHoldEnds == ends { self?.chatOnScreenHoldEnds = nil }
-            }
+            try? await send(path, body)
             done?()
         }
     }
