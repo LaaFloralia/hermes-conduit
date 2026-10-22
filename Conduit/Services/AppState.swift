@@ -678,6 +678,7 @@ final class AppState: ObservableObject {
                 presentedScreens.leave()
                 schedulePendingComposerSendCheck()
                 Task { await syncPreferences() }
+                updateChatOnScreen()
             }
         }
     }
@@ -1034,6 +1035,7 @@ final class AppState: ObservableObject {
                     showModelPicker = false
                     showContextSheet = false
                 }
+                updateChatOnScreen()
             }
         }
     }
@@ -1065,6 +1067,7 @@ final class AppState: ObservableObject {
     @Published private(set) var offlineChatPresentation: OfflineChatPresentation? {
         // A message waiting for the chat on screen follows what's shown.
         didSet {
+            if (oldValue == nil) != (offlineChatPresentation == nil) { updateChatOnScreen() }
             guard pendingComposerSend != nil else { return }
             if (oldValue == nil) != (offlineChatPresentation == nil)
                 || oldValue?.chatSessionIDs != offlineChatPresentation?.chatSessionIDs {
@@ -1172,6 +1175,8 @@ final class AppState: ObservableObject {
             // A running turn keeps the backdrop drifting; only its edges
             // are reported, not every streamed token.
             InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
+            // Its reply sends no push while the chat is on screen.
+            updateChatOnScreen()
         }
     }
     /// Whether `turnState` may have missed server-side turn edges. Set at
@@ -2051,6 +2056,7 @@ final class AppState: ObservableObject {
             // reads the catalog again (refreshCatalogAfterLeavingChat, from
             // RootView, whenever the chat is covered).
             if !oldValue, showSidebar { noteChatLeft(activeSessionId) }
+            if oldValue != showSidebar { updateChatOnScreen() }
             // The drawer covers the chat, so its live rows need not redraw at
             // streaming cadence while it is up or animating: the live text and
             // reasoning publishes (to `liveTurn`, which only those rows
@@ -2436,6 +2442,16 @@ final class AppState: ObservableObject {
     var submissionTurnSurface: (text: String, surface: TurnSurface)?
     /// Seam for tests: takes the plugin's turn-surface reports.
     var turnSurfaceSender: (([String: Any]) async throws -> Void)?
+    /// What the host holds as on screen for this device (ChatOnScreen.swift).
+    var chatOnScreenTracker = ChatOnScreen.Tracker()
+    /// Renews the hold while the open chat's turn runs.
+    var chatOnScreenRenewal: Task<Void, Never>?
+    /// The last on-screen report, which the next one goes after.
+    var chatOnScreenLastSend: Task<Void, Never>?
+    /// When the last hold sent runs out on the host; nil once let go.
+    var chatOnScreenHoldEnds: Date?
+    /// Seam for tests: takes the on-screen reports (path, body).
+    var chatOnScreenSender: ((String, [String: Any]) async throws -> Void)?
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
@@ -4447,7 +4463,11 @@ final class AppState: ObservableObject {
     /// startup. `.inactive` is treated like `.background` on purpose — it
     /// immediately precedes backgrounding on home-press, and a socket that
     /// dies under a system overlay is recovered by the `.active` scene task.
-    private(set) var isSceneActive = true
+    private(set) var isSceneActive = true {
+        // Off screen (the app leaving, CarPlay or the Watch taking over): a
+        // reply that lands now pushes.
+        didSet { if oldValue != isSceneActive { updateChatOnScreen() } }
+    }
     /// Whether transport recovery (reconnect cycles and the post-connect
     /// sync they drive) may run. The phone scene being active is one such
     /// surface; a connected CarPlay Voice surface is another. In a car the
@@ -9992,7 +10012,10 @@ final class AppState: ObservableObject {
     /// How many set or remove requests are still on their way for each
     /// room; a room drops out once all of them have settled.
     var groupRoomPicturesChanging: [String: Int] = [:]
-    @Published private(set) var activeRoomSurface: GroupRoomSurface?
+    @Published private(set) var activeRoomSurface: GroupRoomSurface? {
+        // A room takes the chat's place without changing the open chat.
+        didSet { if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() } }
+    }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
 
@@ -21924,6 +21947,7 @@ final class AppState: ObservableObject {
             // Chat draft is this chat's from here.
             if pendingNewChat != nil { newChatOpenedSessionID = nil }
             schedulePendingComposerSendCheck()
+            updateChatOnScreen()
         }
     }
     /// The app's own New Chat is creating its chat right now.
@@ -23194,7 +23218,11 @@ final class AppState: ObservableObject {
     // (SESSION_NOT_OWNED) offers "Take over"; see ChatTakeover.swift.
 
     /// What the host's notifier plugin serves; Settings nudges an update.
-    @Published private(set) var notifierPlugin = NotifierPluginStatus()
+    @Published private(set) var notifierPlugin = NotifierPluginStatus() {
+        // A plugin that just said it takes on-screen reports gets the turn
+        // already running.
+        didSet { if oldValue.state != notifierPlugin.state { updateChatOnScreen() } }
+    }
     /// The plugin on its repository's main branch, once read. A reset for
     /// another host keeps it (`freshNotifierPluginStatus`).
     private var latestNotifierPluginVersion: String?
@@ -33824,6 +33852,11 @@ final class AppState: ObservableObject {
     /// Test-only: what the host's notifier plugin reported serving.
     func setNotifierPluginStateForTesting(_ state: NotifierPluginStatus.State) {
         notifierPlugin.state = state
+    }
+
+    /// Test-only: a group room on screen in place of the chat, or none.
+    func setActiveRoomSurfaceForTesting(_ surface: GroupRoomSurface?) {
+        activeRoomSurface = surface
     }
 
     private func loadVoiceProfilePreferences(profile: String, gateway: String? = nil) -> VoiceProfilePreferences {
