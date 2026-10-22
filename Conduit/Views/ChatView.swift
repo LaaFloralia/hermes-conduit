@@ -289,9 +289,14 @@ struct ChatView: View {
     /// typography, while non-chat subtrees keep the `.default` environment
     /// value and today's appearance.
     @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+    /// The chat text style (typeface), stored and injected beside the size.
+    @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
 
-    private var chatTextSize: ChatTextSize {
-        chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw)
+    private var chatTextSize: ChatTextAppearance {
+        ChatTextAppearance(
+            size: chatTextSizeOverride ?? ChatTypography.resolve(rawValue: chatTextSizeRaw),
+            style: chatTextSizeOverride == nil ? ChatTypography.resolveStyle(rawValue: chatFontStyleRaw) : .standard
+        )
     }
 
     var body: some View {
@@ -1266,13 +1271,13 @@ struct SteerMessageContent: View, Equatable {
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see UserMessageContent.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
 
     /// One line of the reply's body text, for the icon's box.
     private var bodyLineHeight: CGFloat {
         ChatTypography.font(
             for: .body,
-            chatSize: chatTextSize,
+            appearance: chatTextSize,
             compatibleWith: UITraitCollection(
                 preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
             )
@@ -1327,7 +1332,7 @@ struct UserMessageContent: View, Equatable {
     /// Explicit chat text-size input (issue #85): a preference change must
     /// re-open the gate and re-render, while ordinary streaming publishes —
     /// which leave both explicit inputs equal — keep the isolation.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // One comparison expression for every configuration — see
@@ -1905,7 +1910,7 @@ struct SettledAssistantMessageContent: View, Equatable {
     /// typography input, so a preference change re-opens the gate and
     /// re-renders (the render cache keys on the chat-size identity), while
     /// unrelated streaming publishes — equal inputs — stay gated.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         // ONE comparison expression for every configuration: the field list a
@@ -2447,7 +2452,7 @@ struct SettledThinkingCardContent: View, Equatable {
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see SettledAssistantMessageContent.
-    let chatTextSize: ChatTextSize
+    let chatTextSize: ChatTextAppearance
     /// Drawn inside a run's card: no card of its own, its time taken in
     /// place of the clock time.
     var grouped = false
@@ -2502,7 +2507,7 @@ struct SettledThinkingCardContent: View, Equatable {
             if isExpanded {
                 SelectableTextView(
                     text: message.content,
-                    font: ChatTypography.font(for: .thinking, chatSize: chatTextSize),
+                    font: ChatTypography.font(for: .thinking, appearance: chatTextSize),
                     textColor: .secondaryLabel
                 )
                 .padding(.leading, ChatStepStyle.contentInset)

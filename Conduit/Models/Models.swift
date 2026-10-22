@@ -856,6 +856,12 @@ struct SessionSummary: Identifiable, Equatable, Codable {
     /// `session.list` RPC, hosts older than the flag).
     var isPinned: Bool? = nil
     var lineageRootId: String?
+    /// Hermes' `auto_archived` stamp: the row was archived by a sweep, not
+    /// by someone, and comes back by itself once it's used again. Nil when
+    /// the listing didn't carry it.
+    var isAutoArchived: Bool? = nil
+    /// Hermes' `end_reason` for an ended row, when the listing carried one.
+    var endReason: String? = nil
     /// The listing's one-line `preview` (the opening message), when the row
     /// carried one apart from its title. The V2 session list's second line.
     var preview: String? = nil

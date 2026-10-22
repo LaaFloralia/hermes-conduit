@@ -227,7 +227,7 @@ extension AppState {
             callsRing: supportsHermesCalls && notifications.voipToken != nil,
             mainProfileNames: mainProfileNamesByDashboard,
             activeDashboardID: activeDashboardID?.uuidString,
-            accent: UserDefaults.standard.string(forKey: ConduitAccentChoice.storageKey) ?? ConduitAccentChoice.defaultChoice.rawValue
+            accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue
         ))
     }
 

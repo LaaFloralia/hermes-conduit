@@ -349,11 +349,42 @@ struct SelectableTextView: UIViewRepresentable {
                 canvas.height(atWidth: width)
             }
         }
+        // A mounted text view asked for its ideal width gives its unbroken
+        // width too. Without one, an ideal-width bubble (a group room's, or
+        // any bubble under VoiceOver) shrank to nothing.
+        if wrapsLines, selfSizingWidthRange == nil,
+           proposal.width == nil || proposal.width == .infinity {
+            // Its own slot: the wrapping measurement that follows in the
+            // same layout pass would otherwise evict it every time.
+            let coordinator = context.coordinator
+            if let cached = coordinator.cachedNaturalSize,
+               cached.generation == coordinator.presentationGeneration {
+                return cached.size
+            }
+            let size = Self.naturalSize(of: uiView.mountedTextView)
+            coordinator.cachedNaturalSize = Coordinator.CachedMeasurement(
+                generation: coordinator.presentationGeneration,
+                key: .natural,
+                size: size
+            )
+            return size
+        }
         return measuredSizeCached(
             proposalWidth: proposal.width,
             textView: uiView.mountedTextView,
             coordinator: context.coordinator
         )
+    }
+
+    /// The text's unbroken size in a mounted text view, insets included,
+    /// from one layout so the width never wraps the height it came with.
+    @MainActor
+    static func naturalSize(of textView: UITextView) -> CGSize {
+        TranscriptPerf.note(.textKitMeasurement)
+        let measured = textView.sizeThatFits(
+            CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude)
+        )
+        return CGSize(width: max(1, ceil(measured.width)), height: ceil(measured.height))
     }
 
     /// Cached measurement entry for the SwiftUI sizing hook: an unchanged
@@ -699,11 +730,44 @@ struct SelectableTextView: UIViewRepresentable {
                 bridged.addAttribute(.foregroundColor, value: UIColor(runColor), range: range)
             }
             if let link = run.link {
+                // A group room's @mention is linked only to be found here:
+                // it shows as a tinted tag, not a tappable link.
+                if let kind = GroupRoomMentions.kind(ofLink: link) {
+                    let onAccent = linkColor == .white
+                    // A bot's tag takes the bot's own color.
+                    let tint = onAccent ? nil : GroupRoomMentions.tint(ofLink: link)?.readableColor
+                    bridged.addAttribute(
+                        .foregroundColor,
+                        value: onAccent ? UIColor.white : tint ?? UIColor.conduitAccent,
+                        range: range
+                    )
+                    bridged.addAttribute(
+                        .backgroundColor,
+                        value: tint?.withAlphaComponent(0.12) ?? Self.mentionWash(kind, onAccent: onAccent),
+                        range: range
+                    )
+                    continue
+                }
                 bridged.addAttribute(.link, value: link, range: range)
                 bridged.addAttribute(.foregroundColor, value: linkColor, range: range)
             }
         }
         return bridged
+    }
+
+    private static let accentMentionWash = UIColor { traits in
+        UIColor.conduitAccent.resolvedColor(with: traits).withAlphaComponent(0.10)
+    }
+
+    /// The wash behind a mention: the kinds differ (a member, everyone, the
+    /// user), except on the accent bubble, where every mention is white.
+    private static func mentionWash(_ kind: GroupRoomMentions.Kind, onAccent: Bool) -> UIColor {
+        if onAccent { return UIColor.white.withAlphaComponent(0.22) }
+        switch kind {
+        case .agent: return accentMentionWash
+        case .broadcast: return UIColor.orange.withAlphaComponent(0.10)
+        case .human: return UIColor.yellow.withAlphaComponent(0.12)
+        }
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -747,6 +811,7 @@ struct SelectableTextView: UIViewRepresentable {
             case nonWrapping
             case selfSizing
             case wrapping(width: CGFloat)
+            case natural
         }
 
         struct CachedMeasurement {
@@ -771,6 +836,9 @@ struct SelectableTextView: UIViewRepresentable {
         /// generation. Invalidated by any generation bump; lives and dies
         /// with the coordinator (i.e. the mounted view).
         var cachedMeasurement: CachedMeasurement?
+        /// A mounted view's unbroken size, kept apart from the wrapping
+        /// measurement asked for in the same layout pass.
+        var cachedNaturalSize: CachedMeasurement?
         /// The environment's link opener, so in-app links (a voice call's
         /// job link) open inside Conduit; others fall through to the system.
         var openURL: OpenURLAction?
