@@ -786,6 +786,7 @@ final class AppState: ObservableObject {
                 }
                 let startedInApp = self.newChatLaunchStartedInApp
                 self.newChatLaunchStartedInApp = false
+                if startedInApp, outcome == .handled { self.focusNewChatComposer() }
                 guard case .failed(let widgetMessage) = outcome else { return }
                 self.widgetAwaitingInteractiveAuthenticationDashboardID = nil
                 // The widget's words send someone back to the widget.
@@ -808,6 +809,9 @@ final class AppState: ObservableObject {
     }()
     /// The app's own New Chat, not a widget, sent the pending launch.
     var newChatLaunchStartedInApp = false
+    /// A Mac has a keyboard at hand, so the app's own New Chat opens ready
+    /// to type. Tests stand in for a Mac.
+    var newChatFocusesComposer = ProcessInfo.processInfo.isiOSAppOnMac
     /// A widget action waits out the return-to-app refresh: that refresh
     /// can drop a socket that died in the background and restore the last
     /// chat, which would fail a new chat or take over the screen it opened.
@@ -21955,7 +21959,11 @@ final class AppState: ObservableObject {
         guard !showsPendingNewChat, !isStartingNewChat else { return }
         if canStartNewChatNow {
             isStartingNewChat = true
-            Task { await createNewSessionMarkingStart() }
+            Task {
+                let previousSessionID = activeSessionId
+                await createNewSessionMarkingStart()
+                if activeSessionId != previousSessionID { focusNewChatComposer() }
+            }
             return
         }
         guard canQueueNewChat, let dashboardID = activeDashboardID,
@@ -21969,6 +21977,17 @@ final class AppState: ObservableObject {
         cancelChatResumeRestoration()
         newChatLaunchStartedInApp = true
         widgetLaunchCoordinator.receive(link)
+    }
+
+    /// On a Mac the app's own New Chat opens ready to type. A phone or
+    /// iPad keeps the keyboard down until the field is tapped, so it
+    /// doesn't cover the new chat. Only the chat New Chat made takes the
+    /// focus: a notification or another chat opened while it was created
+    /// is left alone.
+    func focusNewChatComposer() {
+        guard newChatFocusesComposer, let created = newChatOpenedSessionID,
+              activeSessionId == created else { return }
+        requestComposerFocus(on: created)
     }
 
     func createNewSession(cwd: String? = nil, widgetLease: WidgetLaunchLease? = nil) async {
