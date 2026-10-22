@@ -492,6 +492,9 @@ final class PushNotificationService: ObservableObject {
     /// The last metadata fetch didn't get an answer (`relayMeta` keeps the
     /// one before, if any).
     @Published private(set) var relayMetaFetchFailed = false
+    /// The relay answered 404 to `/v1/meta` (it predates version reporting),
+    /// so returning to the front doesn't ask it again.
+    private var relayLacksMetaRoute = false
     /// Set after this phone moves to a different relay: pairings live on
     /// the relay, so every Hermes profile has to pair again.
     @Published private(set) var relayNotice: String?
@@ -667,7 +670,12 @@ final class PushNotificationService: ObservableObject {
         return identifier
     }
 
-    private var registration: StoredRegistration?
+    private var registration: StoredRegistration? {
+        didSet { relayHasLocationToken = registration?.locationToken != nil }
+    }
+    /// The relay holds this iPhone's location push token, so Hermes can ask
+    /// it for a fresh position (Settings > Location says when not, #287).
+    @Published private(set) var relayHasLocationToken = false
     /// Sends a registration update to the relay; tests answer it instead.
     var sendRegistrationUpdate: @MainActor (URLRequest) async throws -> (Data, URLResponse) = {
         try await URLSession.shared.data(for: $0)
@@ -734,6 +742,8 @@ final class PushNotificationService: ObservableObject {
                 saved.relayURL = configuredRelayURL.absoluteString
             }
             registration = saved
+            // didSet doesn't run in init.
+            relayHasLocationToken = saved.locationToken != nil
             preferences = saved.preferences
             if needsRelayStamp { persistRegistration() }
         }
@@ -925,6 +935,7 @@ final class PushNotificationService: ObservableObject {
         guard let registration else {
             relayMeta = nil
             relayMetaFetchFailed = false
+            relayLacksMetaRoute = false
             isFetchingMeta = false
             return
         }
@@ -952,6 +963,7 @@ final class PushNotificationService: ObservableObject {
         }
         relayMeta = Self.relayMetaAfterFetch(previous: relayMeta, status: status, fetched: fetched)
         relayMetaFetchFailed = status != 404 && (status != 200 || fetched == nil)
+        relayLacksMetaRoute = status == 404
         // The relay answers again: an update that failed while it couldn't
         // (a cleared location token) goes now. Nothing changed, nothing sent.
         if status == 200, fetched != nil { _ = queueRegistrationUpdate() }
@@ -1320,6 +1332,7 @@ final class PushNotificationService: ObservableObject {
         removeEncryptionKeys(installationID: previous.installationID)
         relayMeta = nil
         relayMetaFetchFailed = false
+        relayLacksMetaRoute = false
         pairingCode = nil
         pairingExpiry = nil
         // Gateway discriminators belong to the old relay; echoing one to
@@ -1525,10 +1538,28 @@ final class PushNotificationService: ObservableObject {
             becomeActiveObserver.token = NotificationCenter.default.addObserver(
                 forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
             ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.requestCurrentDeviceToken() }
+                MainActor.assumeIsolated {
+                    self?.requestCurrentDeviceToken()
+                    self?.refreshMetaIfUnknown()
+                }
             }
         }
         requestCurrentDeviceToken()
+        refreshMetaIfUnknown()
+    }
+
+    /// Whether the relay sends locates decides what happens to the location
+    /// push token, so it's asked at launch (and on return while unknown),
+    /// not only when Settings > Notifications opens (notifier #287). Once
+    /// known, a token change an earlier update failed to send goes again
+    /// (nothing is sent when nothing changed).
+    private func refreshMetaIfUnknown() {
+        guard registration != nil, !isFetchingMeta, !relayLacksMetaRoute else { return }
+        guard relayMeta == nil else {
+            queueRegistrationUpdate()
+            return
+        }
+        Task { await refreshMeta() }
     }
 
     /// Removed with the service (only tests make more than one).
@@ -1750,17 +1781,39 @@ final class PushNotificationService: ObservableObject {
     /// The APNs token for the agent's on-demand locate (the Location Push
     /// extension), while background location sharing is on; nil otherwise.
     private(set) var locationToken: String?
+    /// LocationBackgroundMonitor has said this launch whether there is a
+    /// token: until then a nil `locationToken` means "not known yet".
+    private var locationTokenReported = false
 
     /// LocationBackgroundMonitor has a new location push token, or none.
     func updateLocationToken(_ token: String?) {
-        guard token != locationToken else { return }
+        guard token != locationToken || !locationTokenReported else { return }
         locationToken = token
+        locationTokenReported = true
         queueRegistrationUpdate()
     }
 
     /// The token the relay gets: only one whose relay says it sends locates.
     private var relayLocationToken: String? {
         relayMeta?.supportsLocationPush == true ? locationToken : nil
+    }
+
+    /// What an update does to the relay's location token. Until this launch
+    /// has heard whether the relay sends locates, and whether there is a
+    /// token (`reported`), nothing: neither is kept across launches, and
+    /// taking "not heard yet" for "no" cleared the token at every launch, so
+    /// locates found none (notifier #287).
+    nonisolated static func locationTokenChange(registered: String?, current: String?, reported: Bool,
+                                                relaySendsLocates: Bool?) -> VoIPTokenChange {
+        guard let relaySendsLocates, reported || !relaySendsLocates else { return .keep }
+        let wanted = relaySendsLocates ? current : nil
+        if registered == wanted { return .keep }
+        return wanted.map(VoIPTokenChange.set) ?? .clear
+    }
+
+    private func locationTokenChange(registered: String?) -> VoIPTokenChange {
+        Self.locationTokenChange(registered: registered, current: locationToken, reported: locationTokenReported,
+                                 relaySendsLocates: relayMeta?.supportsLocationPush)
     }
 
     private var ringingWatchVoIPToken: String? {
@@ -1794,7 +1847,7 @@ final class PushNotificationService: ObservableObject {
             let tokenChanged = (deviceToken ?? self.deviceToken).map { $0 != registration.deviceToken } ?? false
             guard tokenChanged || registration.preferences != preferences
                     || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
-                    || registration.locationToken != relayLocationToken else { return }
+                    || locationTokenChange(registered: registration.locationToken) != .keep else { return }
             try await updateRegistration(deviceToken: deviceToken)
         }
         registrationUpdate = update
@@ -2221,7 +2274,7 @@ final class PushNotificationService: ObservableObject {
         let watchToken = ringingWatchVoIPToken
         let watchChange: VoIPTokenChange = registration.watchVoipToken == watchToken ? .keep : (watchToken.map(VoIPTokenChange.set) ?? .clear)
         let locationToken = relayLocationToken
-        let locationChange: VoIPTokenChange = registration.locationToken == locationToken ? .keep : (locationToken.map(VoIPTokenChange.set) ?? .clear)
+        let locationChange = locationTokenChange(registered: registration.locationToken)
         // What the relay keeps once this lands, rather than whatever the
         // preferences are by then.
         let sentPreferences = preferences
