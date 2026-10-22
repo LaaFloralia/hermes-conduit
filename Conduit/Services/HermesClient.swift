@@ -2843,6 +2843,14 @@ final class HermesClient: ObservableObject {
         return (model, provider, providers)
     }
 
+    /// Settings > Usage's quota (#813): `model.options` rows carry each
+    /// signed-in provider's subscription windows and rate limit from Hermes'
+    /// cache, and asking starts Hermes' background refresh of that cache.
+    func providerQuotas() async throws -> [ProviderQuota] {
+        let result = try await rpc("model.options", params: ["explicit_only": true])
+        return ProviderQuota.list(from: result.anyValue as? [String: Any] ?? [:])
+    }
+
     /// The gateway can answer without switching: a guarded pick (expensive
     /// model, data-training tier, or a switch that abandons a large cached
     /// context) comes back as `confirm_required` and nothing is applied until
