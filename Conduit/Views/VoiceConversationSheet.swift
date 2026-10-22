@@ -215,14 +215,23 @@ struct VoiceConversationSheet: View {
     private var controlsCard: some View {
         ConduitSettingsSection(title: AppLocalization.string("Microphone and audio"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             AdaptiveStack(spacing: 10) {
-                Button { microphoneTapped() } label: {
-                    Label(microphoneLabel, systemImage: microphoneSymbol)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6).frame(minHeight: 48)
+                if controller.isPushToTalkActive {
+                    VoicePushToTalkControl(controller: controller) { cancelling in
+                        Label(pushToTalkTitle(cancelling: cancelling), systemImage: pushToTalkSymbol(cancelling: cancelling))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6).frame(minHeight: 48)
+                            .conduitGlassControl(cornerRadius: 17, tint: controller.isPushToTalkHeld ? .conduitAccent.opacity(0.4) : .conduitAccent.opacity(0.16))
+                    }
+                } else {
+                    Button { microphoneTapped() } label: {
+                        Label(microphoneLabel, systemImage: microphoneSymbol)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6).frame(minHeight: 48)
+                    }
+                    .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.16))
+                    .accessibilityHint(microphoneHint)
+                    .disabled(controller.state == .transcribing)
                 }
-                .conduitGlassControl(cornerRadius: 17, tint: .conduitAccent.opacity(0.16))
-                .accessibilityHint(microphoneHint)
-                .disabled(controller.state == .transcribing)
 
                 Button { controller.setOutputMuted(!controller.isOutputMuted) } label: {
                     Label(controller.isOutputMuted ? AppLocalization.string("Unmute") : AppLocalization.string("Mute"), systemImage: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
@@ -232,7 +241,9 @@ struct VoiceConversationSheet: View {
                 .conduitGlassControl(cornerRadius: 17, tint: controller.isOutputMuted ? .orange.opacity(0.18) : .conduitAura.opacity(0.14))
                 .accessibilityHint("Mutes assistant audio without changing chat messages")
             }
-            Text("Pause only affects the microphone. Close ends the voice session.")
+            Text(controller.isPushToTalkActive
+                ? AppLocalization.string("Hold to talk, let go to send. Close ends the voice session.")
+                : AppLocalization.string("Pause only affects the microphone. Close ends the voice session."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -298,6 +309,7 @@ struct VoiceConversationSheet: View {
     }
 
     private var statusTitle: String {
+        if let title = pushToTalkStatusTitle { return title }
         if isInterruptAvailable { return AppLocalization.string("Hermes is speaking") }
         if controller.isMicrophonePaused { return AppLocalization.string("Microphone paused") }
         if controller.isSteeringTurn, controller.state == .listening || controller.state == .transcribing {
@@ -315,6 +327,7 @@ struct VoiceConversationSheet: View {
     }
 
     private var statusDetail: String {
+        if let detail = pushToTalkStatusDetail { return detail }
         if isInterruptAvailable { return AppLocalization.string("Tap Interrupt to speak.") }
         if controller.isMicrophonePaused { return AppLocalization.string("Tap Listen when you are ready to resume.") }
         if controller.isSteeringTurn, controller.state == .listening || controller.state == .transcribing {
@@ -351,6 +364,50 @@ struct VoiceConversationSheet: View {
         case .muted: return .orange
         case .listening, .speaking: return .conduitAccent
         default: return .conduitAura
+        }
+    }
+
+    // MARK: Push to talk
+
+    private func pushToTalkTitle(cancelling: Bool) -> String {
+        if controller.state == .transcribing { return AppLocalization.string("Transcribing") }
+        guard controller.isPushToTalkHeld else { return AppLocalization.string("Hold to talk") }
+        return cancelling ? AppLocalization.string("Let go to cancel") : AppLocalization.string("Let go to send")
+    }
+
+    private func pushToTalkSymbol(cancelling: Bool) -> String {
+        if controller.state == .transcribing { return "waveform" }
+        guard controller.isPushToTalkHeld else { return "mic.fill" }
+        return cancelling ? "xmark" : "waveform"
+    }
+
+    /// Push to talk's status line; nil keeps the hands-free one.
+    private var pushToTalkStatusTitle: String? {
+        guard controller.isPushToTalkActive else { return nil }
+        if controller.isPushToTalkHeld, controller.state == .listening {
+            return controller.isSteeringTurn
+                ? AppLocalization.string("Steering Hermes")
+                : AppLocalization.string("Listening… let go to send")
+        }
+        if controller.state == .idle { return AppLocalization.string("Hold to talk") }
+        return nil
+    }
+
+    private var pushToTalkStatusDetail: String? {
+        guard controller.isPushToTalkActive else { return nil }
+        if controller.isPushToTalkHeld, controller.state == .listening {
+            return AppLocalization.string("Slide away before letting go to cancel.")
+        }
+        if isInterruptAvailable || controller.state == .speaking {
+            return AppLocalization.string("Hold to talk over Hermes.")
+        }
+        switch controller.state {
+        case .idle: return AppLocalization.string("Hold the button while you speak, then let go to send.")
+        case .thinking, .muted:
+            return controller.canPushToTalkNow
+                ? AppLocalization.string("Hold to talk to steer Hermes while it works.")
+                : AppLocalization.string("Hold to talk once Hermes answers.")
+        default: return nil
         }
     }
 
@@ -603,14 +660,24 @@ extension VoiceConversationSheet {
 
     private var v2Controls: some View {
         HStack(alignment: .top, spacing: 0) {
-            LiveVoiceCallButton(
-                symbol: microphoneSymbol,
-                title: microphoneLabel,
-                style: controller.isMicrophonePaused ? .selected : .normal,
-                voiceOverHint: microphoneHint,
-                action: microphoneTapped
-            )
-            .disabled(controller.state == .transcribing)
+            if controller.isPushToTalkActive {
+                VoicePushToTalkControl(controller: controller) { cancelling in
+                    LiveVoiceCallButtonFace(
+                        symbol: pushToTalkSymbol(cancelling: cancelling),
+                        title: pushToTalkTitle(cancelling: cancelling),
+                        style: controller.isPushToTalkHeld ? (cancelling ? .destructive : .selected) : .normal
+                    )
+                }
+            } else {
+                LiveVoiceCallButton(
+                    symbol: microphoneSymbol,
+                    title: microphoneLabel,
+                    style: controller.isMicrophonePaused ? .selected : .normal,
+                    voiceOverHint: microphoneHint,
+                    action: microphoneTapped
+                )
+                .disabled(controller.state == .transcribing)
+            }
             LiveVoiceCallButton(
                 symbol: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
                 title: controller.isOutputMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
@@ -640,6 +707,130 @@ extension VoiceConversationSheet {
         .padding(.horizontal, 12)
         .padding(.top, 14)
         .padding(.bottom, 12)
+    }
+}
+
+/// Classic voice's push-to-talk button (#886): press and hold to listen,
+/// let go to send, slide away before letting go to cancel. VoiceOver
+/// double-taps once to start talking and again to send.
+struct VoicePushToTalkControl<Face: View>: View {
+    @ObservedObject var controller: VoiceConversationController
+    /// Draws the button; true while a slide away would cancel.
+    @ViewBuilder let face: (_ cancelling: Bool) -> Face
+
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isPressed = false
+    @State private var isCancelling = false
+    /// This touch already started a turn: a turn the controller ends under
+    /// the finger (a failed listen, teardown) isn't restarted by it.
+    @State private var claimedThisTouch = false
+    /// Where the finger was when the press was taken, for the cancel slide.
+    @State private var pressOrigin = CGSize.zero
+
+    /// How far a finger slides off the button before letting go cancels.
+    static var cancelDistance: CGFloat { 72 }
+
+    var body: some View {
+        // Never disabled while transcribing: that would cancel a finger
+        // still down after the length cap sent, and its release with it.
+        // A press then is refused by the controller instead.
+        face(isCancelling)
+            .opacity(controller.state == .transcribing ? 0.4 : 1)
+            .scaleEffect(isPressed ? 0.94 : 1)
+            .animation(.easeOut(duration: 0.12), value: isPressed)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        // A press that can't start yet (Hermes is answering)
+                        // is retried as the finger moves, without feedback.
+                        if !isPressed, !claimedThisTouch, controller.pressPushToTalk() {
+                            isPressed = true
+                            claimedThisTouch = true
+                            pressOrigin = value.translation
+                            Haptics.medium()
+                            announceListening()
+                        }
+                        // Once sent (the length cap), letting go can't cancel.
+                        guard isPressed, controller.state == .listening else { return }
+                        let slide = CGSize(
+                            width: value.translation.width - pressOrigin.width,
+                            height: value.translation.height - pressOrigin.height
+                        )
+                        let cancelling = hypot(slide.width, slide.height) > Self.cancelDistance
+                        if cancelling != isCancelling {
+                            isCancelling = cancelling
+                            Haptics.selection()
+                            AccessibilityNotification.Announcement(cancelling
+                                ? AppLocalization.string("Let go to cancel")
+                                : AppLocalization.string("Let go to send")).post()
+                        }
+                    }
+                    .onEnded { _ in
+                        claimedThisTouch = false
+                        guard isPressed else { return }
+                        let send = !isCancelling
+                        isPressed = false
+                        isCancelling = false
+                        // Feedback only when the release ends a hold.
+                        guard controller.isPushToTalkHeld else { return }
+                        controller.endPushToTalk(send: send)
+                        if send { Haptics.light() } else { Haptics.warning() }
+                    }
+            )
+            // The controller ended the turn under the finger: the button
+            // stops looking pressed.
+            .onChange(of: controller.isPushToTalkHeld) { _, held in
+                if !held, isPressed {
+                    isPressed = false
+                    isCancelling = false
+                }
+            }
+            // A sheet closing under a held finger, or a touch the system
+            // takes away (a call, the app switcher), never sends.
+            .onDisappear { cancelHeldPress() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase != .active { cancelHeldPress() }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(Text(verbatim: accessibilityTitle))
+            .accessibilityHint(Text(verbatim: controller.isPushToTalkHeld
+                ? AppLocalization.string("Sends what you said to Hermes")
+                : AppLocalization.string("Listens until you double-tap again to send")))
+            .accessibilityAction {
+                if controller.isPushToTalkHeld {
+                    controller.endPushToTalk(send: true, minimumHold: false)
+                } else if controller.pressPushToTalk() {
+                    announceListening()
+                }
+            }
+            .accessibilityActions {
+                if controller.isPushToTalkHeld {
+                    Button(AppLocalization.string("Cancel")) {
+                        controller.endPushToTalk(send: false)
+                    }
+                }
+            }
+    }
+
+    private var accessibilityTitle: String {
+        if controller.state == .transcribing { return AppLocalization.string("Transcribing") }
+        guard controller.isPushToTalkHeld else { return AppLocalization.string("Start talking") }
+        return isCancelling ? AppLocalization.string("Let go to cancel") : AppLocalization.string("Send")
+    }
+
+    private func announceListening() {
+        AccessibilityNotification.Announcement(AppLocalization.string("Listening")).post()
+    }
+
+    private func cancelHeldPress() {
+        // The touch is gone: the next one may start a turn.
+        claimedThisTouch = false
+        guard isPressed else { return }
+        isPressed = false
+        isCancelling = false
+        controller.endPushToTalk(send: false)
     }
 }
 

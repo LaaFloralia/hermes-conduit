@@ -2264,6 +2264,8 @@ final class AppState: ObservableObject {
     @Published private(set) var continuousConversationEnabled = true
     /// "Keep listening when locked" for the active profile.
     @Published private(set) var keepVoiceListeningWhenLocked = false
+    /// Push to talk in Classic voice (#886), for the active profile.
+    @Published private(set) var voicePushToTalkEnabled = false
     @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
 
     private var voiceAssistantObserverID: UUID?
@@ -3704,7 +3706,14 @@ final class AppState: ObservableObject {
         onEndConversation: { [weak self] in
             self?.closeVoiceConversation()
         },
-        backgroundJobs: self.voiceBackgroundJobSupervisor
+        backgroundJobs: self.voiceBackgroundJobSupervisor,
+        // Push to talk needs the phone's voice screen in front of the user:
+        // CarPlay and a call from Hermes stay hands-free.
+        pushToTalkSurfaceAvailable: { [weak self] in
+            guard let self else { return false }
+            return self.isSceneActive && self.showVoiceSheet
+                && !self.isCarPlayVoiceSurfaceActive && !self.isNativeHermesCallAnswered
+        }
     )
     /// Classic voice audio: the default capture and playback, or one
     /// echo-cancelling engine when speaker talk-over is on, chosen for each
@@ -12175,6 +12184,7 @@ final class AppState: ObservableObject {
         voiceTranscriptionMode = .hermes
         continuousConversationEnabled = true
         keepVoiceListeningWhenLocked = false
+        voicePushToTalkEnabled = false
         voiceCallSaveBlockedKeys = []
         pendingVoiceCallSaves = 0
         voiceCallSavesBlocked = false
@@ -32133,6 +32143,7 @@ final class AppState: ObservableObject {
         voiceSpeechOutputChoice = preferences.speechOutput
         continuousConversationEnabled = preferences.continuousConversation
         keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
+        voicePushToTalkEnabled = preferences.pushToTalk ?? false
         voiceConversationController.setProfilePreferences(preferences)
         // Voice settings shows this profile's unsaved calls, not the last one's.
         publishVoiceCallSaveStatus()
@@ -32241,6 +32252,16 @@ final class AppState: ObservableObject {
         guard isConnected else { return false }
         updateActiveProfileVoicePreferences { $0.keepListeningWhenLocked = enabled ? true : nil }
         keepVoiceListeningWhenLocked = enabled
+        return true
+    }
+
+    /// Push to talk in Classic voice (#886): hold to speak, release to
+    /// send. Applies from the next press, also in an open conversation.
+    @discardableResult
+    func setVoicePushToTalk(_ enabled: Bool) -> Bool {
+        guard isConnected else { return false }
+        updateActiveProfileVoicePreferences { $0.pushToTalk = enabled ? true : nil }
+        voicePushToTalkEnabled = enabled
         return true
     }
 

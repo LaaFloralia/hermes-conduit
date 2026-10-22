@@ -37,6 +37,7 @@ struct VoiceSettingsRoute: View {
     let voiceReplies: VoiceReplyModelSettingsModel?
     let wake: WakePhraseSettingsModel?
     let lockedListening: VoiceLockedListeningSettingsModel?
+    let pushToTalk: VoicePushToTalkSettingsModel?
     let speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     let callSaves: VoiceCallSaveStatusModel?
     /// Set when the host lets Hermes change settings: shows the choice and
@@ -75,6 +76,7 @@ struct VoiceSettingsRoute: View {
         voiceReplies: VoiceReplyModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        pushToTalk: VoicePushToTalkSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil,
         agentSettingsChanged: (() -> Void)? = nil
@@ -90,6 +92,7 @@ struct VoiceSettingsRoute: View {
         self.voiceReplies = voiceReplies
         self.wake = wake
         self.lockedListening = lockedListening
+        self.pushToTalk = pushToTalk
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
@@ -140,6 +143,7 @@ struct VoiceSettingsRoute: View {
             voiceReplies: voiceReplies,
             wake: wake,
             lockedListening: lockedListening,
+            pushToTalk: pushToTalk,
             speakerTalkOver: speakerTalkOver,
             callSaves: callSaves,
             agentSettingsChanged: agentSettingsChanged
@@ -224,12 +228,14 @@ struct VoiceSettingsView: View {
     var voiceReplies: VoiceReplyModelSettingsModel?
     var wake: WakePhraseSettingsModel?
     var lockedListening: VoiceLockedListeningSettingsModel?
+    var pushToTalk: VoicePushToTalkSettingsModel?
     var speakerTalkOver: VoiceSpeakerTalkOverSettingsModel?
     var callSaves: VoiceCallSaveStatusModel?
     var agentSettingsChanged: (() -> Void)?
     /// The host's resolved profile name; nil falls back to the id.
     var profileName: String?
     @State private var keepListeningWhenLocked: Bool
+    @State private var pushToTalkEnabled: Bool
     @State private var speakerTalkOverEnabled: Bool
     /// The phrase lists as last saved from this page. AppState doesn't
     /// publish a phrase save, so the page keeps its own copy for the
@@ -271,6 +277,7 @@ struct VoiceSettingsView: View {
         voiceReplies: VoiceReplyModelSettingsModel? = nil,
         wake: WakePhraseSettingsModel? = nil,
         lockedListening: VoiceLockedListeningSettingsModel? = nil,
+        pushToTalk: VoicePushToTalkSettingsModel? = nil,
         speakerTalkOver: VoiceSpeakerTalkOverSettingsModel? = nil,
         callSaves: VoiceCallSaveStatusModel? = nil,
         agentSettingsChanged: (() -> Void)? = nil
@@ -285,10 +292,12 @@ struct VoiceSettingsView: View {
         self.voiceReplies = voiceReplies
         self.wake = wake
         self.lockedListening = lockedListening
+        self.pushToTalk = pushToTalk
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         self.profileName = profileName
         _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
+        _pushToTalkEnabled = State(initialValue: pushToTalk?.enabled ?? false)
         _speakerTalkOverEnabled = State(initialValue: speakerTalkOver?.enabled ?? false)
         self.service = service
         _conversationController = ObservedObject(wrappedValue: conversationController)
@@ -1164,6 +1173,23 @@ struct VoiceSettingsView: View {
 
     private var conversationSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Conversation"), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
+            if let pushToTalk {
+                Toggle("Push to talk", isOn: Binding(
+                    get: { pushToTalkEnabled },
+                    set: { requested in
+                        let previous = pushToTalkEnabled
+                        pushToTalkEnabled = requested
+                        if !pushToTalk.setEnabled(requested) {
+                            pushToTalkEnabled = previous
+                        }
+                    }
+                ))
+                .onChange(of: pushToTalk.enabled) { _, newValue in pushToTalkEnabled = newValue }
+                .accessibilityHint("In Classic voice, hold the microphone button to speak and let go to send.")
+                Text("Classic voice: hold the microphone button while you speak and let go to send, so pauses never end your turn. Slide away before letting go to cancel. Pressing while Hermes speaks stops the reply. CarPlay, calls from Hermes and a locked phone stay hands-free.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Continuous Conversation", isOn: Binding(
                 get: { continuousConversation },
                 set: { requested in
@@ -1177,7 +1203,11 @@ struct VoiceSettingsView: View {
                 }
             ))
             .accessibilityHint("Automatically listens again after each response and keeps listening through silence. Turn off to start each listening turn manually.")
-            Text("When enabled, Conduit automatically listens again after each response and keeps listening through long silences until you pause the mic. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings.")
+            // With push to talk every turn starts on a press.
+            .disabled(pushToTalk != nil && pushToTalkEnabled)
+            Text(pushToTalk != nil && pushToTalkEnabled
+                ? AppLocalization.string("Not used while push to talk is on: each turn starts when you hold the button.")
+                : AppLocalization.string("When enabled, Conduit automatically listens again after each response and keeps listening through long silences until you pause the mic. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if let lockedListening {
@@ -2058,6 +2088,13 @@ private struct VoiceProviderFieldEditor: View {
         guard !isSaving, validationMessage == nil else { return }
         Task { await save(value) }
     }
+}
+
+/// Push to talk in Classic voice (#886) on this profile.
+struct VoicePushToTalkSettingsModel {
+    var enabled: Bool
+    /// Returns false when the change couldn't be saved (disconnected).
+    var setEnabled: (Bool) -> Bool
 }
 
 /// "Keep listening when locked" for classic Voice on this profile.

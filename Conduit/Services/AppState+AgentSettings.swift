@@ -175,6 +175,13 @@ extension AppState {
             read: { self.keepVoiceListeningWhenLocked },
             write: { _ = self.setKeepVoiceListeningWhenLocked($0) }
         ))
+        catalog.append(boolDescriptor(
+            key: "voice.push_to_talk", section: "Conversation", title: "Push to talk",
+            description: "In Classic voice, the user holds the voice screen's main button to speak and releases it to send, instead of a pause ending the turn. CarPlay and calls from Hermes stay hands-free.",
+            tier: .ask, displayTitle: { AppLocalization.string("Push to talk") },
+            read: { self.voicePushToTalkEnabled },
+            write: { _ = self.setVoicePushToTalk($0) }
+        ))
         return catalog
     }
 

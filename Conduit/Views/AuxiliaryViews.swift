@@ -865,6 +865,10 @@ struct SettingsView: View {
                         enabled: appState.keepVoiceListeningWhenLocked,
                         setEnabled: { appState.setKeepVoiceListeningWhenLocked($0) }
                     ),
+                    pushToTalk: VoicePushToTalkSettingsModel(
+                        enabled: appState.voicePushToTalkEnabled,
+                        setEnabled: { appState.setVoicePushToTalk($0) }
+                    ),
                     speakerTalkOver: VoiceSpeakerTalkOverSettingsModel(
                         enabled: appState.liveVoiceSpeakerBargeInEnabled,
                         setEnabled: { appState.setLiveVoiceSpeakerBargeInEnabled($0) }
