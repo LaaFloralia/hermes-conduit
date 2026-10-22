@@ -4165,6 +4165,14 @@ final class AppState: ObservableObject {
     /// (disconnect, re-login, bridge rotation) is dead and must be rebuilt
     /// rather than kept.
     private var readAloudGatewayBridge: DashboardTicketBridge?
+    /// The room bot whose profile read aloud last spoke as, and the profile
+    /// that was active then. Kept while that profile stays active, so a
+    /// capability refresh doesn't cut off a bot mid-message.
+    private var readAloudSpeaker: (profile: String, activeProfile: String)?
+    /// Test-only seam: builds the read aloud gateway for a profile instead
+    /// of `makeVoiceGateway`, so which profile a read speaks as can be
+    /// checked without opening a socket.
+    var readAloudGatewayFactoryForTesting: ((String) -> VoiceGatewayService?)?
 
     /// Test-only seam: when set, the voice capability refresh requests
     /// through it instead of the dashboard bridge, keeping
@@ -10859,6 +10867,7 @@ final class AppState: ObservableObject {
         // from its own bridge (capability refresh, read-aloud assignment).
         voiceConversationController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         // Server replacement is a destructive Voice boundary: a suspended
         // conversation from the outgoing server must never be restored.
         suspendedVoiceConversation = nil
@@ -12259,6 +12268,7 @@ final class AppState: ObservableObject {
         // never open a stream again, so it must not survive the re-login.
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         suspendedVoiceConversation = nil
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
@@ -12708,6 +12718,7 @@ final class AppState: ObservableObject {
         presentationCacheFlushTask = nil
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         voiceConversationController.setGateway(nil)
         voiceCapabilitySnapshot = .unavailable
         isVoiceEnabled = false
@@ -13358,6 +13369,7 @@ final class AppState: ObservableObject {
         messageReadAloudController.stop()
         messageReadAloudController.setGateway(nil)
         readAloudGatewayBridge = nil
+        readAloudSpeaker = nil
         // Forced sign-out supersedes any suspended Voice conversation (the
         // restore-time connection identity check would fail closed anyway);
         // stop the controller and drop the sheet immediately like
@@ -32057,12 +32069,16 @@ final class AppState: ObservableObject {
     /// `fallsBackToOnDeviceSpeech`: a Hermes reply that fails before any
     /// audio is spoken on this iPhone instead. Settings' speech test turns it
     /// off, because it checks the Hermes provider itself.
-    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true) -> HermesVoiceGateway? {
+    /// `profile`: another profile on this host to speak as (a group room's
+    /// bot); nil is the active one. Whether read aloud is offered, and
+    /// whether Hermes or this iPhone speaks, still follow the active
+    /// profile's Voice settings.
+    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true, profile: String? = nil) -> HermesVoiceGateway? {
         guard let dashboardTicketBridge, let connection else { return nil }
         return HermesVoiceGateway(
             bridge: dashboardTicketBridge,
             baseURL: connection.baseUrl,
-            profile: activeProfile,
+            profile: profile ?? activeProfile,
             speechOutput: { [weak self] in self?.voiceSpeechOutput ?? .onDevice },
             makeOnDeviceSpeech: { onStart, onPCM16 in OnDeviceSpeechStream(onStart: onStart, onPCM16: onPCM16) },
             fallsBackToOnDeviceSpeech: fallsBackToOnDeviceSpeech
@@ -32166,17 +32182,42 @@ final class AppState: ObservableObject {
     }
 
     /// A group room message read aloud. Its id is the room's and the
-    /// event's, so it can never be taken for a chat message.
-    func toggleRoomReadAloud(eventID: String, text: String) {
+    /// event's, so it can never be taken for a chat message. With Hermes
+    /// speaking, a bot's message is read with its own profile's voice
+    /// (`memberProfile`); a profile Hermes can't speak for falls back to
+    /// this iPhone's voice, as any failed Hermes read does.
+    func toggleRoomReadAloud(eventID: String, text: String, memberProfile: String? = nil) {
         guard let roomID = activeRoomSurface?.room.roomID else { return }
-        toggleReadAloud(messageID: Self.roomReadAloudID(roomID: roomID, eventID: eventID), content: text)
+        toggleReadAloud(
+            messageID: Self.roomReadAloudID(roomID: roomID, eventID: eventID),
+            content: text,
+            speakingAs: memberProfile
+        )
     }
 
     static func roomReadAloudID(roomID: String, eventID: String) -> String {
         "room:\(roomID):\(eventID)"
     }
 
-    private func toggleReadAloud(messageID: String, content: String) {
+    /// The profile a read aloud speaks as besides the active one: a room
+    /// bot's own, or nil when none was given or it is the active profile.
+    static func readAloudSpeaker(_ requested: String?, activeProfile: String) -> String? {
+        guard let profile = requested?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
+              profile.caseInsensitiveCompare(activeProfile) != .orderedSame else { return nil }
+        return profile
+    }
+
+    /// The profile a kept read aloud gateway speaks as: the bot it last
+    /// spoke as while the profile active then still is, else the active one.
+    static func readAloudKeptProfile(
+        speaker: (profile: String, activeProfile: String)?,
+        activeProfile: String
+    ) -> String {
+        guard let speaker, speaker.activeProfile == activeProfile else { return activeProfile }
+        return speaker.profile
+    }
+
+    func toggleReadAloud(messageID: String, content: String, speakingAs: String? = nil) {
         if messageReadAloudController.isActiveMessage(messageID) {
             messageReadAloudController.stop()
             return
@@ -32189,8 +32230,11 @@ final class AppState: ObservableObject {
         // The capability refresh keeps the gateway current; this covers the
         // gap before the next refresh has run — including right after a
         // profile switch or re-login, when a stale gateway may still be set.
-        if !readAloudGatewayIsCurrent {
-            assignReadAloudGateway()
+        // A bot's message speaks as its profile; anything else as the
+        // active one, which also takes back a gateway a bot left behind.
+        let speaker = Self.readAloudSpeaker(speakingAs, activeProfile: activeProfile)
+        if !readAloudGateway(isCurrentFor: speaker ?? activeProfile) {
+            assignReadAloudGateway(speakingAs: speaker)
         }
         // Mutual exclusion (reverse of openVoiceConversation / runVoiceTTSTest):
         // the voice conversation and read aloud each own their own playback
@@ -33546,20 +33590,32 @@ final class AppState: ObservableObject {
     /// the live dashboard bridge — a gateway built against an invalidated or
     /// rotated bridge (re-login, profile switch) is rebuilt instead.
     private var readAloudGatewayIsCurrent: Bool {
-        guard let gateway = messageReadAloudController.gateway,
-              let bridge = dashboardTicketBridge else { return false }
-        return gateway.profile == activeProfile && readAloudGatewayBridge === bridge
+        readAloudGateway(isCurrentFor: Self.readAloudKeptProfile(speaker: readAloudSpeaker, activeProfile: activeProfile))
     }
 
-    private func assignReadAloudGateway() {
-        messageReadAloudController.setGateway(makeVoiceGateway())
+    private func readAloudGateway(isCurrentFor profile: String) -> Bool {
+        guard let gateway = messageReadAloudController.gateway,
+              let bridge = dashboardTicketBridge else { return false }
+        return gateway.profile == profile && readAloudGatewayBridge === bridge
+    }
+
+    /// `speakingAs`: a room bot's profile, so Hermes reads its message with
+    /// that profile's own voice. Nil is the active profile.
+    private func assignReadAloudGateway(speakingAs profile: String? = nil) {
+        readAloudSpeaker = profile.map { ($0, activeProfile) }
+        if let factory = readAloudGatewayFactoryForTesting {
+            messageReadAloudController.setGateway(factory(profile ?? activeProfile))
+        } else {
+            messageReadAloudController.setGateway(makeVoiceGateway(profile: profile))
+        }
         readAloudGatewayBridge = dashboardTicketBridge
     }
 
-    private func refreshReadAloudGateway(rebuild: Bool = false) {
+    func refreshReadAloudGateway(rebuild: Bool = false) {
         if readAloudUnavailableReason != nil {
             messageReadAloudController.setGateway(nil)
             readAloudGatewayBridge = nil
+            readAloudSpeaker = nil
             return
         }
         guard rebuild || !readAloudGatewayIsCurrent else { return }
