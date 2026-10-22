@@ -670,6 +670,30 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNil(GroupRoomMentions.tint(ofLink: URL(string: "conduit-mention://broadcast")!))
     }
 
+    func testRoomMembersTakeTheirBotsCurrentNames() {
+        let furina = GroupDecoders.member(any([
+            "member_id": "m1", "profile": "furina", "handle": "furina", "display_name": "Furina",
+        ]))!
+        let peer = GroupDecoders.member(any([
+            "member_id": "m2", "profile": "furina", "handle": "remote", "display_name": "Remote Furina",
+            "target": ["kind": "peer"],
+        ]))!
+        let stranger = GroupDecoders.member(any(["member_id": "m3", "profile": "zhongli", "display_name": "zhongli"]))!
+        var bot = BotProfile(
+            name: "furina", botTitle: "Focalors", displayName: "Furina", profileDescription: "",
+            model: nil, provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+            appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil
+        )
+        bot.previousNames = []
+        let named = GroupRoomTurns.members([furina, peer, stranger], namedBy: [bot])
+        XCTAssertEqual(named.map(GroupRoomTurns.displayName(of:)), ["Focalors", "Remote Furina", "zhongli"])
+        // Identity and routing are untouched; the old name stays known.
+        XCTAssertEqual(named[0].identityKey, furina.identityKey)
+        XCTAssertEqual(named[0].handle, "furina")
+        XCTAssertEqual(named[0].previousNames, ["Furina"])
+        XCTAssertEqual(GroupRoomTurns.members([furina], namedBy: []), [furina])
+    }
+
     func testRecipientsLeadTheMessageOnce() {
         let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
         let atlas = GroupDecoders.member(any(["member_id": "atlas", "profile": "atlas", "handle": "atlas"]))!
