@@ -251,12 +251,16 @@ struct VoiceRoomNoiseFloor {
     /// it sits above the floor's speech-start threshold: a room that got
     /// louder (a fan, a TV) holds steady; speech dips between words.
     static let steadyRunDuration: TimeInterval = 1.0
+    /// A gap longer than this between samples (the tap delivers one about
+    /// every 20 ms) means levels went unheard: a run doesn't span it.
+    static let maximumRunGap: TimeInterval = 0.25
 
     private(set) var constants: VoiceSpeechDetectorConstants
     /// Nil until the room has been heard; a steer window then cold-starts
     /// as before.
     private(set) var floor: Float?
     private var runStartedAt: Date?
+    private var runLastSampleAt: Date?
     private var runQuietest: Float = 0
     private var runLoudest: Float = 0
     private var runSum: Float = 0
@@ -273,7 +277,6 @@ struct VoiceRoomNoiseFloor {
             endRun()
             return
         }
-        extendRun(level, at: date)
         if let floor {
             if level < ambientCeiling(over: floor) {
                 // Clearly ambient against the floor: adapt, as the
@@ -282,15 +285,19 @@ struct VoiceRoomNoiseFloor {
                     toward: level,
                     alpha: level < floor ? constants.noiseFloorFallAlpha : constants.noiseFloorRiseAlpha
                 )
+                endRun()
                 return
             }
         } else if level < constants.minimumSpeechStartThreshold {
             // Quiet enough to be no one speaking: the first floor.
             self.floor = clamped(level)
+            endRun()
             return
         }
         // Suspected speech: learned only once it has held steady long
-        // enough to be the room.
+        // enough to be the room. The run counts suspected samples only, so
+        // ambient dips can't age it.
+        extendRun(level, at: date)
         guard let runStartedAt, date.timeIntervalSince(runStartedAt) >= Self.steadyRunDuration else { return }
         if floor == nil {
             floor = clamped(runSum / Float(runCount))
@@ -318,7 +325,8 @@ struct VoiceRoomNoiseFloor {
     /// detector's cold-start dynamic range, or half, of its loudest.
     /// A sample that breaks it starts a new run.
     private mutating func extendRun(_ level: Float, at date: Date) {
-        if runStartedAt != nil {
+        if runStartedAt != nil, let last = runLastSampleAt,
+           date.timeIntervalSince(last) <= Self.maximumRunGap {
             let quietest = min(runQuietest, level)
             let loudest = max(runLoudest, level)
             if loudest - quietest < max(constants.coldStartMinimumDynamicRange, loudest * 0.5) {
@@ -326,10 +334,12 @@ struct VoiceRoomNoiseFloor {
                 runLoudest = loudest
                 runSum += level
                 runCount += 1
+                runLastSampleAt = date
                 return
             }
         }
         runStartedAt = date
+        runLastSampleAt = date
         runQuietest = level
         runLoudest = level
         runSum = level
@@ -338,6 +348,7 @@ struct VoiceRoomNoiseFloor {
 
     private mutating func endRun() {
         runStartedAt = nil
+        runLastSampleAt = nil
         runSum = 0
         runCount = 0
     }

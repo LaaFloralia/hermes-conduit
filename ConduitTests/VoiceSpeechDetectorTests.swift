@@ -116,6 +116,27 @@ final class VoiceSpeechDetectorTests: XCTestCase {
         XCTAssertEqual(detector.observe(0.03), .continued)
     }
 
+    func testQuietSpeechAfterALongQuietRoomStillHasToHoldSteady() {
+        var room = VoiceRoomNoiseFloor()
+        let end = feed(&room, Array(repeating: 0.012, count: 100), from: Date())
+        // Speech just over the room, with dips back to it: the long quiet
+        // run before it must not count as the speech holding steady.
+        let words: [Float] = [0.021, 0.023, 0.012, 0.022, 0.02, 0.012]
+        _ = feed(&room, Array(Array(repeating: words, count: 25).joined()), from: end)
+        XCTAssertLessThanOrEqual(room.floor ?? 1, 0.0121)
+    }
+
+    func testARunDoesNotSpanUnheardTime() {
+        var room = VoiceRoomNoiseFloor()
+        _ = feed(&room, Array(repeating: 0.005, count: 5), from: Date())
+        // Suspected speech, then nothing heard for two seconds (a steer
+        // window, playback), then the same level once.
+        let start = Date().addingTimeInterval(1)
+        room.observe(0.03, at: start)
+        room.observe(0.03, at: start.addingTimeInterval(2))
+        XCTAssertEqual(room.floor ?? 0, 0.005, accuracy: 0.0005)
+    }
+
     func testRoomFloorFollowsARoomThatGetsLouder() {
         var room = VoiceRoomNoiseFloor()
         let end = feed(&room, Array(repeating: 0.012, count: 75), from: Date())
