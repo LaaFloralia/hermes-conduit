@@ -560,8 +560,13 @@ final class VoiceConversationController: ObservableObject {
             // playback, whichever flag paused it.
             if isMicrophonePaused || isPlaybackCaptureSuspended { capture.pause() }
             // Fresh listening window: the detector must not inherit noise or
-            // speech state from the previous one.
-            speechDetector.reset()
+            // speech state from the previous one. A steer opens mid-speech,
+            // so it starts from the room heard while Hermes thought.
+            if isSteeringTurn, let floor = thinkingRoom.floor {
+                speechDetector.reset(learnedNoiseFloor: floor)
+            } else {
+                speechDetector.reset()
+            }
             resetMicrophoneMeter()
             utteranceStartedAt = Date()
             lastSpeechAt = nil
@@ -1723,13 +1728,7 @@ final class VoiceConversationController: ObservableObject {
         }
         guard isSteeringTurn else { return }
         // The window never opened (backgrounded, permission): carry on.
-        guard state == .listening else {
-            resumeTurnAfterSteer()
-            return
-        }
-        if let floor = thinkingRoom.floor {
-            speechDetector.reset(learnedNoiseFloor: floor)
-        }
+        if state != .listening { resumeTurnAfterSteer() }
     }
 
     /// Ends a steer window: back to waiting on the same turn, and its held

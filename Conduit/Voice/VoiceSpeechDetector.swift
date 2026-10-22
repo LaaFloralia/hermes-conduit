@@ -248,12 +248,16 @@ struct VoiceSpeechDetector {
 /// end mid-sentence.
 struct VoiceRoomNoiseFloor {
     /// How long a level has to hold steady before it is learned although
-    /// it sits above the floor's speech-start threshold: a room that got
+    /// it sits above the floor's ambient ceiling: a room that got
     /// louder (a fan, a TV) holds steady; speech dips between words.
     static let steadyRunDuration: TimeInterval = 1.0
     /// A gap longer than this between samples (the tap delivers one about
     /// every 20 ms) means levels went unheard: a run doesn't span it.
     static let maximumRunGap: TimeInterval = 0.25
+    /// How fast a steady run raises an existing floor, per sample: a tenth
+    /// of the detector's rise, so a held vowel or a hum barely moves it
+    /// while a room that got louder is followed within seconds.
+    static let steadyRunRiseScale: Float = 0.1
 
     private(set) var constants: VoiceSpeechDetectorConstants
     /// Nil until the room has been heard; a steer window then cold-starts
@@ -302,7 +306,7 @@ struct VoiceRoomNoiseFloor {
         if floor == nil {
             floor = clamped(runSum / Float(runCount))
         } else {
-            adapt(toward: level, alpha: constants.noiseFloorRiseAlpha)
+            adapt(toward: runSum / Float(runCount), alpha: constants.noiseFloorRiseAlpha * Self.steadyRunRiseScale)
         }
     }
 
@@ -349,6 +353,8 @@ struct VoiceRoomNoiseFloor {
     private mutating func endRun() {
         runStartedAt = nil
         runLastSampleAt = nil
+        runQuietest = 0
+        runLoudest = 0
         runSum = 0
         runCount = 0
     }

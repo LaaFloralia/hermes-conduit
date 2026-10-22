@@ -140,9 +140,22 @@ final class VoiceSpeechDetectorTests: XCTestCase {
     func testRoomFloorFollowsARoomThatGetsLouder() {
         var room = VoiceRoomNoiseFloor()
         let end = feed(&room, Array(repeating: 0.012, count: 75), from: Date())
-        // A fan comes on: steady, so it is the room once it has held.
-        _ = feed(&room, Array(repeating: 0.04, count: 150), from: end)
+        // A fan comes on: steady, so it becomes the room within seconds.
+        _ = feed(&room, Array(repeating: 0.04, count: 300), from: end)
         XCTAssertGreaterThan(room.floor ?? 0, 0.03)
+    }
+
+    func testAHeldVowelBarelyMovesTheRoomFloor() {
+        var room = VoiceRoomNoiseFloor()
+        let end = feed(&room, Array(repeating: 0.012, count: 75), from: Date())
+        // Two seconds of a flat "ummm" just too quiet to steer.
+        _ = feed(&room, Array(repeating: 0.03, count: 100), from: end)
+        let floor = room.floor ?? 1
+        XCTAssertLessThan(floor, 0.02)
+        var detector = VoiceSpeechDetector()
+        detector.reset(learnedNoiseFloor: floor)
+        XCTAssertEqual(detector.observe(0.1), .started)
+        XCTAssertEqual(detector.observe(0.03), .continued, "the same level still reads as speech in a steer")
     }
 
     func testRoomFloorIgnoresGarbageAndForgetsOnReset() {
