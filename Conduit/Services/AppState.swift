@@ -27526,6 +27526,9 @@ final class AppState: ObservableObject {
     ) async throws -> DashboardSessionCatalog {
         var sessions: [SessionSummary] = []
         var isAuthoritative = false
+        // Sent alongside the live list: the plugin archives a standalone
+        // call when it ends, which Conduit still lists with its calls.
+        async let archivedCalls = archivedVoiceCallSessions(profile: profile, maximumPages: maximumPages, using: bridge)
 
         for page in 0..<maximumPages {
             let offset = page * 200
@@ -27559,10 +27562,67 @@ final class AppState: ObservableObject {
             }
         }
 
+        // A failed read keeps the call rows the list showed before, so the
+        // live list's authority doesn't hang on this one.
+        let tags = voiceSessionTagsByKey[voiceHistoryKey(profile: profile)] ?? [:]
+        let listedIDs = Set(sessions.map(\.id))
+        let calls = await archivedCalls ?? (self.sessions + self.cronSessions).filter {
+            var archived = $0
+            archived.isArchived = true
+            return Self.isArchivedVoiceChat(archived, tags: tags) && sessionBelongsToProfile($0, profile: profile)
+                && !listedIDs.contains($0.id)  // used since: the live read has it fresh
+        }
         return DashboardSessionCatalog(
-            sessions: sessions,
+            sessions: V2FilterSelection.mergedByRecency(sessions, calls),
             isAuthoritative: isAuthoritative
         )
+    }
+
+    /// What a saved call row ends with: the plugin ends the rows it writes.
+    nonisolated static let voiceCallEndReason = "conduit_voice"
+
+    /// A call row, or a chat a Classic voice call started, that was archived
+    /// when the call ended (#1124): Hermes Desktop's list leaves it out,
+    /// Conduit keeps listing it with its calls. One the user archived, or
+    /// one used since, isn't one.
+    nonisolated static func isArchivedVoiceChat(_ session: SessionSummary, tags: [String: VoiceSessionTag]) -> Bool {
+        guard session.isArchived, session.isAutoArchived == true else { return false }
+        if session.endReason == voiceCallEndReason { return true }
+        let ids = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
+        return ids.contains { tags[$0]?.kind == .classic }
+    }
+
+    /// The archived pages' voice chats, as deep as the live list reads,
+    /// listed as unarchived. Nil when a read failed or wasn't a listing.
+    private func archivedVoiceCallSessions(
+        profile: String,
+        maximumPages: Int,
+        using bridge: DashboardTicketBridge
+    ) async -> [SessionSummary]? {
+        var calls: [SessionSummary] = []
+        let tags = voiceSessionTagsByKey[voiceHistoryKey(profile: profile)] ?? [:]
+        do {
+            for page in 0..<maximumPages {
+                let response = try await bridge.requestJSON(path: archivedSessionsPath(profile, offset: page * 200))
+                guard let batch = response["sessions"] as? [Any] else { return nil }
+                calls += await dashboardOwnedSessions(batch, profile: profile)
+                    .filter { Self.isArchivedVoiceChat($0, tags: tags) }
+                    .map { session in
+                        var listed = session
+                        listed.isArchived = false
+                        return listed
+                    }
+                let offset = page * 200
+                let nextOffset = Self.integerValue(response["next_offset"] ?? response["nextOffset"])
+                let total = Self.integerValue(response["total"])
+                let done = (nextOffset.map { $0 <= offset } ?? false) || (total.map { offset + batch.count >= $0 } ?? false)
+                let hasMore = !done && (booleanValue(response["has_more"] ?? response["hasMore"]) || batch.count == 200)
+                if !hasMore || batch.isEmpty { break }
+            }
+        } catch {
+            return nil
+        }
+        return calls
     }
 
     private func dashboardArchivedSessions(
@@ -27570,11 +27630,14 @@ final class AppState: ObservableObject {
         using bridge: DashboardTicketBridge
     ) async throws -> [SessionSummary] {
         var sessions: [SessionSummary] = []
+        let tags = voiceSessionTagsByKey[voiceHistoryKey(profile: profile)] ?? [:]
         for page in 0..<SessionCatalogCache.maximumHistoryPages {
             let offset = page * 200
             let response = try await bridge.requestJSON(path: archivedSessionsPath(profile, offset: offset))
             let batch = response["sessions"] as? [Any] ?? []
+            // Archived calls are listed with the chats instead.
             sessions += await dashboardOwnedSessions(batch, profile: profile)
+                .filter { !Self.isArchivedVoiceChat($0, tags: tags) }
 
             let nextOffset = Self.integerValue(response["next_offset"] ?? response["nextOffset"])
             let total = Self.integerValue(response["total"])
@@ -32784,6 +32847,7 @@ final class AppState: ObservableObject {
             return .failed(voiceUnavailableReason ?? AppLocalization.string("Voice is unavailable."))
         }
         let previousSessionID = activeSessionId
+        classicVoiceChatToArchive = nil
         if startsFreshConversation || activeSessionId == nil {
             await createNewSession(widgetLease: widgetLease)
             guard widgetLease?.isCurrent != false else { return .deferred }
@@ -32795,6 +32859,8 @@ final class AppState: ObservableObject {
             // into partway stays a chat.
             if let created = activeSessionId, created != previousSessionID {
                 tagVoiceSessions(Array(knownSessionIDs(for: created)), kind: .classic)
+                // Archived when this call ends, like a live call's own row (#1124).
+                classicVoiceChatToArchive = (created, activeProfile, activeDashboardID)
             }
         }
         guard let sessionID = activeSessionId, let gateway = makeVoiceGateway() else {
@@ -33502,6 +33568,7 @@ final class AppState: ObservableObject {
         }
         voiceConversationController.endVoiceSession()
         voiceControllerSessionProfile = nil
+        archiveClassicVoiceChatIfStarted()
         // A Hermes call's opening never carries over to a later conversation.
         voiceBackgroundJobSupervisor.clearCallOpening()
         showVoiceSheet = false
@@ -33510,6 +33577,33 @@ final class AppState: ObservableObject {
         // stale-true until the next lifecycle event (a CarPlay-presented
         // conversation keeps it open by the same rule).
         reassertVoiceSurfaceGate()
+    }
+
+    /// The chat a Classic voice call started fresh, archived on the host
+    /// when that call ends (#1124): Hermes Desktop's list leaves it out,
+    /// Conduit keeps listing it with its calls, and the next turn anyone
+    /// runs in it brings it back. Calls in an existing chat stay with it.
+    private var classicVoiceChatToArchive: (chatID: String, profile: String, dashboardID: UUID?)?
+
+    private func archiveClassicVoiceChatIfStarted() {
+        guard let chat = classicVoiceChatToArchive else { return }
+        classicVoiceChatToArchive = nil
+        guard chat.dashboardID == activeDashboardID else { return }
+        // The tag was written under every id the chat had; the host's row
+        // answers to its stored one, so the rest are refused and ignored.
+        let ids = Array(knownSessionIDs(for: chat.chatID))
+        Task { [weak self] in
+            await self?.voiceTagChain?.value
+            for id in ids {
+                guard let self, self.activeDashboardID == chat.dashboardID else { return }
+                do {
+                    if try await self.voiceHistoryClient.archiveClassicChat(sessionID: id, profile: chat.profile) { return }
+                } catch {
+                    // An older plugin has no route, and a chat nobody spoke in has no row.
+                    Self.voiceHistoryLog.debug("Archiving a Classic voice chat failed: \(LogRedaction.describing(error), privacy: .public)")
+                }
+            }
+        }
     }
 
     func runVoiceASRTest() async -> VoiceProviderTestResult {

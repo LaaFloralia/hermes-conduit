@@ -3697,6 +3697,9 @@ enum MessageNormalizer {
                 readWatermark: obj["last_read_at"]?.doubleValue,
                 isPinned: obj["pinned"]?.boolValue,
                 lineageRootId: obj["_lineage_root_id"]?.stringValue,
+                // SQLite's 0/1: Hermes turns only `archived` and `pinned` into booleans.
+                isAutoArchived: obj["auto_archived"].flatMap { $0.boolValue ?? $0.intValue.map { $0 != 0 } },
+                endReason: obj["end_reason"]?.stringValue,
                 preview: Self.sessionListPreview(in: obj)
             )
         }
