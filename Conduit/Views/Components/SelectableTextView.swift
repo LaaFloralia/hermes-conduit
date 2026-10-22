@@ -349,11 +349,42 @@ struct SelectableTextView: UIViewRepresentable {
                 canvas.height(atWidth: width)
             }
         }
+        // A mounted text view asked for its ideal width gives its unbroken
+        // width too. Without one, an ideal-width bubble (a group room's, or
+        // any bubble under VoiceOver) shrank to nothing.
+        if wrapsLines, selfSizingWidthRange == nil,
+           proposal.width == nil || proposal.width == .infinity {
+            // Its own slot: the wrapping measurement that follows in the
+            // same layout pass would otherwise evict it every time.
+            let coordinator = context.coordinator
+            if let cached = coordinator.cachedNaturalSize,
+               cached.generation == coordinator.presentationGeneration {
+                return cached.size
+            }
+            let size = Self.naturalSize(of: uiView.mountedTextView)
+            coordinator.cachedNaturalSize = Coordinator.CachedMeasurement(
+                generation: coordinator.presentationGeneration,
+                key: .natural,
+                size: size
+            )
+            return size
+        }
         return measuredSizeCached(
             proposalWidth: proposal.width,
             textView: uiView.mountedTextView,
             coordinator: context.coordinator
         )
+    }
+
+    /// The text's unbroken size in a mounted text view, insets included,
+    /// from one layout so the width never wraps the height it came with.
+    @MainActor
+    static func naturalSize(of textView: UITextView) -> CGSize {
+        TranscriptPerf.note(.textKitMeasurement)
+        let measured = textView.sizeThatFits(
+            CGSize(width: SelectableTextCanvas.unboundedWidth, height: CGFloat.greatestFiniteMagnitude)
+        )
+        return CGSize(width: max(1, ceil(measured.width)), height: ceil(measured.height))
     }
 
     /// Cached measurement entry for the SwiftUI sizing hook: an unchanged
@@ -780,6 +811,7 @@ struct SelectableTextView: UIViewRepresentable {
             case nonWrapping
             case selfSizing
             case wrapping(width: CGFloat)
+            case natural
         }
 
         struct CachedMeasurement {
@@ -804,6 +836,9 @@ struct SelectableTextView: UIViewRepresentable {
         /// generation. Invalidated by any generation bump; lives and dies
         /// with the coordinator (i.e. the mounted view).
         var cachedMeasurement: CachedMeasurement?
+        /// A mounted view's unbroken size, kept apart from the wrapping
+        /// measurement asked for in the same layout pass.
+        var cachedNaturalSize: CachedMeasurement?
         /// The environment's link opener, so in-app links (a voice call's
         /// job link) open inside Conduit; others fall through to the system.
         var openURL: OpenURLAction?
