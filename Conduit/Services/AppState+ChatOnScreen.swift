@@ -10,17 +10,20 @@ import Foundation
 
 @MainActor
 extension AppState {
-    /// The chat on screen now: the open one, with Conduit active and the
-    /// list not covering it. Nil when the plugin doesn't take reports.
+    /// The chat on screen now: the open, live one, with Conduit active and
+    /// neither the list nor a group room covering it. Nil when the plugin
+    /// doesn't take reports.
     var chatOnScreenClaim: ChatOnScreen.Claim? {
         guard chatOnScreenSender != nil || ChatOnScreen.isTaken(by: notifierPlugin),
-              isSceneActive, !showSidebar,
-              let sessionID = activeSessionId, !sessionID.isEmpty else { return nil }
+              isSceneActive, !showSidebar, activeRoomSurface == nil,
+              let sessionID = activeSessionId, !sessionID.isEmpty,
+              composerChatOnScreen == .live(sessionID) else { return nil }
         return ChatOnScreen.Claim(profile: activeProfile, sessionIDs: chatOwnSessionIDs(for: sessionID))
     }
 
     /// Brings the host's hold in line with what is on screen. Called on each
-    /// change of the open chat, the list, the scene and the turn.
+    /// change of the open chat, the list, a group room, the scene, the
+    /// profile and the turn.
     func updateChatOnScreen() {
         for action in chatOnScreenTracker.update(wanted: chatOnScreenClaim, turnRunning: turnState.isRunning) {
             switch action {
@@ -40,7 +43,8 @@ extension AppState {
                 // A hold that already ran out (or was let go) needs nothing.
                 guard let ends = chatOnScreenHoldEnds, ends > Date() else { continue }
                 // Leaving for the background: the release still gets out.
-                let end = beginVoiceTranscriptBackgroundTask(named: "conduit.chatOnScreen.release")
+                let end: (() -> Void)? = isSceneActive ? nil
+                    : beginVoiceTranscriptBackgroundTask(named: "conduit.chatOnScreen.release")
                 sendChatOnScreen(claim, holdSeconds: 0, then: end)
             }
         }
@@ -52,13 +56,14 @@ extension AppState {
         // Low Power and Low Data Mode stretch the renewal like every other
         // timed read; the hold stretches with it.
         let interval = ChatOnScreen.renewalInterval(under: deviceConditions())
-        if InteractionIdleState.shared.usedWithin(ChatOnScreen.engagedWindow) {
-            // The chat's ids as they stand now: a stored id learned mid-turn
-            // rides the next renewal.
-            sendChatOnScreen(chatOnScreenClaim ?? claim, holdSeconds: ChatOnScreen.holdSeconds(renewingEvery: interval))
+        // The chat's ids as they stand now: a stored id learned mid-turn
+        // rides the next renewal. Nothing on screen holds nothing.
+        if let current = chatOnScreenClaim, InteractionIdleState.shared.usedWithin(ChatOnScreen.engagedWindow) {
+            sendChatOnScreen(current, holdSeconds: ChatOnScreen.holdSeconds(renewingEvery: interval))
             holding = true
         } else if holding {
-            // A long turn left running unattended: its reply pushes.
+            // A long turn left running unattended, or the chat no longer on
+            // screen: its reply pushes.
             sendChatOnScreen(claim, holdSeconds: 0)
             holding = false
         }
@@ -69,7 +74,6 @@ extension AppState {
     /// the one the host keeps. A report that fails is dropped: the reply
     /// then pushes, as before.
     private func sendChatOnScreen(_ claim: ChatOnScreen.Claim, holdSeconds: Int, then done: (() -> Void)? = nil) {
-        chatOnScreenHoldEnds = holdSeconds > 0 ? Date().addingTimeInterval(TimeInterval(holdSeconds)) : nil
         let body = ChatOnScreen.body(device: ChatOnScreen.device, claim: claim, holdSeconds: holdSeconds)
         let path = DashboardPath.withProfile(ChatOnScreen.path, profile: claim.profile)
         let send: (String, [String: Any]) async throws -> Void
@@ -81,13 +85,22 @@ extension AppState {
                                                  timeoutMilliseconds: ChatOnScreen.timeoutMilliseconds)
             }
         } else {
+            chatOnScreenHoldEnds = nil
             done?()
             return
         }
+        // Counted from now; a hold that doesn't land counts as none, so
+        // nothing is released that the host never held.
+        let ends = holdSeconds > 0 ? Date().addingTimeInterval(TimeInterval(holdSeconds)) : nil
+        chatOnScreenHoldEnds = ends
         let previous = chatOnScreenLastSend
-        chatOnScreenLastSend = Task { @MainActor in
+        chatOnScreenLastSend = Task { @MainActor [weak self] in
             await previous?.value
-            try? await send(path, body)
+            do {
+                try await send(path, body)
+            } catch {
+                if let ends, self?.chatOnScreenHoldEnds == ends { self?.chatOnScreenHoldEnds = nil }
+            }
             done?()
         }
     }

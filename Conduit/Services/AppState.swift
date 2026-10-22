@@ -678,6 +678,7 @@ final class AppState: ObservableObject {
                 presentedScreens.leave()
                 schedulePendingComposerSendCheck()
                 Task { await syncPreferences() }
+                updateChatOnScreen()
             }
         }
     }
@@ -1062,6 +1063,7 @@ final class AppState: ObservableObject {
     @Published private(set) var offlineChatPresentation: OfflineChatPresentation? {
         // A message waiting for the chat on screen follows what's shown.
         didSet {
+            if (oldValue == nil) != (offlineChatPresentation == nil) { updateChatOnScreen() }
             guard pendingComposerSend != nil else { return }
             if (oldValue == nil) != (offlineChatPresentation == nil)
                 || oldValue?.chatSessionIDs != offlineChatPresentation?.chatSessionIDs {
@@ -4457,7 +4459,11 @@ final class AppState: ObservableObject {
     /// startup. `.inactive` is treated like `.background` on purpose — it
     /// immediately precedes backgrounding on home-press, and a socket that
     /// dies under a system overlay is recovered by the `.active` scene task.
-    private(set) var isSceneActive = true
+    private(set) var isSceneActive = true {
+        // Off screen (the app leaving, CarPlay or the Watch taking over): a
+        // reply that lands now pushes.
+        didSet { if oldValue != isSceneActive { updateChatOnScreen() } }
+    }
     /// Whether transport recovery (reconnect cycles and the post-connect
     /// sync they drive) may run. The phone scene being active is one such
     /// surface; a connected CarPlay Voice surface is another. In a car the
@@ -10002,7 +10008,10 @@ final class AppState: ObservableObject {
     /// How many set or remove requests are still on their way for each
     /// room; a room drops out once all of them have settled.
     var groupRoomPicturesChanging: [String: Int] = [:]
-    @Published private(set) var activeRoomSurface: GroupRoomSurface?
+    @Published private(set) var activeRoomSurface: GroupRoomSurface? {
+        // A room takes the chat's place without changing the open chat.
+        didSet { if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() } }
+    }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "")
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
 
@@ -17169,7 +17178,6 @@ final class AppState: ObservableObject {
             if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
-            updateChatOnScreen()
             // Polls left long while nothing moved catch up at once.
             noteChatListInteraction()
             openChatSync.resetIdlePace()
@@ -17371,8 +17379,6 @@ final class AppState: ObservableObject {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
-            // Off screen: a reply that lands now pushes.
-            updateChatOnScreen()
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
             // Audio may keep the socket open off screen; it pings less.
@@ -17457,8 +17463,6 @@ final class AppState: ObservableObject {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
-            // Off screen: a reply that lands now pushes.
-            updateChatOnScreen()
             disarmWakeListeningForBackground()
             // Same reasoning as .background: a dip through Control Center or a
             // system overlay can miss turn edges. This never causes a resume —
@@ -21939,6 +21943,7 @@ final class AppState: ObservableObject {
             // Chat draft is this chat's from here.
             if pendingNewChat != nil { newChatOpenedSessionID = nil }
             schedulePendingComposerSendCheck()
+            updateChatOnScreen()
         }
     }
     /// The app's own New Chat is creating its chat right now.
@@ -33828,6 +33833,11 @@ final class AppState: ObservableObject {
     /// Test-only: what the host's notifier plugin reported serving.
     func setNotifierPluginStateForTesting(_ state: NotifierPluginStatus.State) {
         notifierPlugin.state = state
+    }
+
+    /// Test-only: a group room on screen in place of the chat, or none.
+    func setActiveRoomSurfaceForTesting(_ surface: GroupRoomSurface?) {
+        activeRoomSurface = surface
     }
 
     private func loadVoiceProfilePreferences(profile: String, gateway: String? = nil) -> VoiceProfilePreferences {

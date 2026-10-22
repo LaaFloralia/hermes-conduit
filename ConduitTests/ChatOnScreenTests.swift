@@ -60,6 +60,22 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertTrue(idle.usedWithin(ChatOnScreen.engagedWindow))
     }
 
+    func testATurnStartingOrEndingIsNotSomeoneLooking() {
+        // A queued message sends itself when a turn ends, starting the next
+        // turn with nobody there: neither edge renews the 2-minute window.
+        let clock = UptimeBox()
+        let idle = InteractionIdleState(idleAfter: 120, now: { clock.now }, schedule: { _, _ in {} },
+                                        notificationCenter: NotificationCenter())
+        clock.now += 121
+        idle.setTurnRunning(true)
+        XCTAssertFalse(idle.usedWithin(ChatOnScreen.engagedWindow))
+        idle.setTurnRunning(false)
+        XCTAssertFalse(idle.usedWithin(ChatOnScreen.engagedWindow))
+        idle.setVoiceConversationShown(true)
+        XCTAssertFalse(idle.usedWithin(ChatOnScreen.engagedWindow))
+        XCTAssertFalse(idle.isIdle, "The backdrop still wakes for them")
+    }
+
     // MARK: - Tracker
 
     private let chat = ChatOnScreen.Claim(profile: "default", sessionIDs: ["rt-1", "stored-1"])
@@ -137,12 +153,32 @@ final class ChatOnScreenTests: XCTestCase {
         try await recorder.waitFor(count: 1)
 
         appState.handleStreamEvent(.sessionBusy(sessionId: "rt-list", busy: false))
-        try await Task.sleep(for: .milliseconds(100))
+        // A release would be queued behind the last report: wait that out.
+        await appState.chatOnScreenLastSend?.value
         XCTAssertEqual(recorder.reports.count, 1, "The reply's hooks still find the hold")
 
         appState.showSidebar = true
         try await recorder.waitFor(count: 2)
         XCTAssertEqual(recorder.reports.last?.hold, 0)
+    }
+
+    func testAGroupRoomTakingTheChatsPlaceReleasesIt() async throws {
+        let recorder = OnScreenRecorder()
+        let appState = makeAppState(recorder: recorder)
+        openChat("rt-room", in: appState)
+        appState.handleStreamEvent(.sessionBusy(sessionId: "rt-room", busy: true))
+        try await recorder.waitFor(count: 1)
+
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: UUID(), room: Self.room))
+        XCTAssertNil(appState.chatOnScreenClaim, "The room covers the chat, whose session is unchanged")
+        try await recorder.waitFor(count: 2)
+        XCTAssertEqual(recorder.reports.last?.hold, 0)
+
+        // Back from the room with the turn still running: held again.
+        appState.setActiveRoomSurfaceForTesting(nil)
+        try await recorder.waitFor(count: 3)
+        XCTAssertEqual(recorder.reports.last?.ids, ["rt-room"])
+        XCTAssertEqual(recorder.reports.last?.hold, 90)
     }
 
     func testAPluginWithoutTheRouteIsNeverAsked() async throws {
@@ -178,8 +214,26 @@ final class ChatOnScreenTests: XCTestCase {
         if let recorder {
             appState.chatOnScreenSender = { path, body in recorder.report(path: path, body: body) }
         }
+        // Default pace whatever the test device's Low Power and Low Data
+        // Mode, and someone just used Conduit (the suite may have run for
+        // longer than the 2-minute window before this class).
+        appState.deviceConditions = { DeviceConditions() }
+        InteractionIdleState.shared.noteInteraction()
         return appState
     }
+
+    private static let room = GroupRoom(
+        roomID: "room-1",
+        name: "Planning",
+        members: [],
+        authorityGatewayID: "gw-a",
+        authorityEpoch: 1,
+        revision: 1,
+        createdAt: 0,
+        updatedAt: 0,
+        disbandedAt: nil,
+        latestSeq: 0
+    )
 
     private func openChat(_ id: String, in appState: AppState) {
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
