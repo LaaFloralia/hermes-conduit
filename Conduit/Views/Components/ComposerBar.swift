@@ -63,8 +63,9 @@ struct ComposerBar: View, Equatable {
     /// Round 6: non-nil presents the Repair Connection wizard seeded from
     /// the failed connection.
     @State private var repairContext: ConnectionRepairContext?
-    /// Local, device-only input preference. Defaults to off so existing
-    /// users keep Return inserting a newline after updating.
+    /// Local, device-only input preference. Until it is set, Return sends
+    /// on a Mac and inserts a newline on iPhone and iPad
+    /// (`ComposerReturnKey.sendsByDefault`).
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
     @Namespace private var glassNamespace
