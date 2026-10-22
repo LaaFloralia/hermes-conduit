@@ -339,6 +339,11 @@ struct V2ChatsView: View, Equatable {
     @State private var collapsedSections = ChatListSection.collapsed(
         from: UserDefaults.standard.string(forKey: V2ChatsView.collapsedSectionsKey) ?? ChatListSection.defaultCollapsedRaw
     )
+    /// All grouped by profile: the closed profile sections, by name.
+    @State private var collapsedProfiles = Set(
+        (UserDefaults.standard.string(forKey: V2ChatsView.collapsedProfilesKey) ?? "")
+            .split(separator: "\n").map(String.init)
+    )
 
     init(appState: AppState) {
         self.appState = appState
@@ -360,7 +365,35 @@ struct V2ChatsView: View, Equatable {
     /// list beside it.
     private var listInView: Bool { appState.showSidebar || shell.isSplit }
 
-    private var showingProjects: Bool { sessionPresentationRaw == "projects" }
+    /// Projects belong to one profile, so All shows chats only.
+    private var showingProjects: Bool { sessionPresentationRaw == "projects" && !appState.isAllProfilesChatsOn }
+
+    /// All's rows carry their profile's picture, unless the list groups by
+    /// profile and the section says it.
+    private var badgesRows: Bool {
+        appState.isAllProfilesChatsOn && !appState.allProfilesGroupsByProfile
+    }
+
+    /// What leads a row's list id: nothing outside All, else its profile.
+    private func rowScope(_ session: SessionSummary) -> String {
+        appState.isAllProfilesChatsOn ? appState.rowProfile(session) + "\u{1F}" : ""
+    }
+
+    private func profileBadge(for session: SessionSummary) -> V2ProfileBadge? {
+        guard badgesRows else { return nil }
+        let profile = appState.rowProfile(session)
+        return V2ProfileBadge(
+            profile: profile,
+            name: appState.profileDisplayName(profile),
+            url: appState.profileAvatarURL(for: profile)
+        )
+    }
+
+    /// The listed chats and cron runs: the profile in use's, or in All
+    /// every included profile's. Worked out once per render.
+    private var listed: (sessions: [SessionSummary], cron: [SessionSummary]) {
+        renderMemo.listed { (appState.chatListSessions, appState.chatListCronSessions) }
+    }
 
     private var savedSelection: V2FilterSelection {
         V2FilterSelection(rawValue: filterRaw)
@@ -413,6 +446,7 @@ struct V2ChatsView: View, Equatable {
             V2TopBar(lowerLeading: { filterPill(waitingApprovalCount: waitingApprovalCount) }) { stacked in
                 trailingControls(stacked: stacked, waitingApprovalCount: waitingApprovalCount)
             }
+                .withAllProfilesChip()
                 .withoutScrollEdge()
                 .modifier(V2LegacyScrollEdge())
         }
@@ -480,6 +514,11 @@ struct V2ChatsView: View, Equatable {
         .task(id: "\(appState.activeProfile)|\(isShown)|\(listInView)") {
             guard isShown, listInView else { return }
             await appState.runChatListPolling()
+        }
+        // All reads every profile's chats on its own, slower poll.
+        .task(id: "\(appState.activeProfile)|\(appState.isAllProfilesChatsOn)|\(appState.isConnected)|\(isShown)|\(listInView)") {
+            guard appState.isAllProfilesChatsOn, appState.isConnected, isShown, listInView else { return }
+            await appState.runAllProfilesCatalogPolling()
         }
         // Searching is looking at the list: it catches up at once.
         .onChange(of: searchText) { _, _ in
@@ -550,6 +589,7 @@ struct V2ChatsView: View, Equatable {
                     .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
             }
             .buttonStyle(PressableButtonStyle())
+            .disabled(appState.isAllProfilesChatsOn)
             .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
             .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
 
@@ -569,10 +609,17 @@ struct V2ChatsView: View, Equatable {
             // (Settings > Appearance): voice takes New chat's place here.
             if mainButtonNewChat {
                 V2VoiceButton(context: .home, style: .capsule)
+            } else if appState.isAllProfilesChatsOn && appState.allProfilesIncluded.count > 1 {
+                newChatInProfileMenu
             } else {
                 Button {
                     Haptics.medium()
-                    appState.startNewChat()
+                    // All with one profile in it: that one.
+                    if appState.isAllProfilesChatsOn, let only = appState.allProfilesIncluded.first {
+                        appState.startNewChat(inProfile: only)
+                    } else {
+                        appState.startNewChat()
+                    }
                 } label: {
                     V2CapsuleIcon(systemImage: "square.and.pencil")
                 }
@@ -582,6 +629,30 @@ struct V2ChatsView: View, Equatable {
                 .macTooltip(AppLocalization.string("New Chat"))
             }
         }
+    }
+
+    /// New Chat in All asks which profile, the one in use first.
+    private var newChatInProfileMenu: some View {
+        let included = appState.allProfilesIncluded
+        let ordered = included.filter { $0 == appState.activeProfile } + included.filter { $0 != appState.activeProfile }
+        return Menu {
+            Section(AppLocalization.string("New chat in")) {
+                ForEach(ordered, id: \.self) { profile in
+                    Button {
+                        Haptics.medium()
+                        appState.startNewChat(inProfile: profile)
+                    } label: {
+                        Text(appState.profileDisplayName(profile))
+                    }
+                }
+            }
+        } label: {
+            V2CapsuleIcon(systemImage: "square.and.pencil")
+        }
+        .menuOrder(.fixed)
+        .disabled(!appState.canTapNewChat)
+        .accessibilityLabel(AppLocalization.string("New Chat"))
+        .macTooltip(AppLocalization.string("New Chat"))
     }
 
     private var waitingApprovalCount: Int {
@@ -653,6 +724,21 @@ struct V2ChatsView: View, Equatable {
                 Section(AppLocalization.string("Sources")) {
                     ForEach(sourceFilters, id: \.self) { option in
                         filterToggle(option)
+                    }
+                }
+
+                if appState.isAllProfilesChatsOn {
+                    Section {
+                        Toggle(isOn: Binding(
+                            get: { appState.allProfilesGroupsByProfile },
+                            set: { grouped in
+                                Haptics.selection()
+                                appState.setAllProfilesGroupsByProfile(grouped)
+                            }
+                        )) {
+                            Label(AppLocalization.string("Group by profile"), systemImage: "rectangle.stack")
+                        }
+                        .menuActionDismissBehavior(.disabled)
                     }
                 }
 
@@ -743,8 +829,8 @@ struct V2ChatsView: View, Equatable {
     private func sourceRows(_ source: SessionSource?) -> [SessionSummary] {
         renderMemo.sourceRows(source) {
             SidebarSourceRows.rows(
-                sessions: appState.listedSessions,
-                cronSessions: appState.listedCronSessions,
+                sessions: listed.sessions,
+                cronSessions: listed.cron,
                 source: source,
                 category: category,
                 isPinned: appState.isSessionPinned
@@ -776,8 +862,8 @@ struct V2ChatsView: View, Equatable {
         }
         return selection.rows(
             everything: sourceRows(nil),
-            sessions: appState.listedSessions,
-            cronSessions: appState.listedCronSessions,
+            sessions: listed.sessions,
+            cronSessions: listed.cron,
             category: category,
             hasStatus: hasStatus
         )
@@ -855,14 +941,15 @@ struct V2ChatsView: View, Equatable {
     /// What the content search follows: the query, and where it goes.
     private var contentSearchKey: String {
         let bridge = appState.dashboardTicketBridge.map { String(describing: ObjectIdentifier($0)) } ?? "-"
-        return [showingProjects ? "" : searchText, appState.activeProfile, String(appState.isConnected), bridge]
+        let others = appState.isAllProfilesChatsOn ? appState.allProfilesIncluded.joined(separator: ",") : ""
+        return [showingProjects ? "" : searchText, appState.activeProfile, others, String(appState.isConnected), bridge]
             .joined(separator: "\u{1F}")
     }
 
     private func updateContentSearch() {
         contentSearch.update(
             query: showingProjects ? "" : searchText,
-            context: appState.sessionContentSearchContext
+            context: appState.sessionContentSearchContext(acrossAllProfiles: appState.isAllProfilesChatsOn)
         )
     }
 
@@ -871,11 +958,14 @@ struct V2ChatsView: View, Equatable {
     private func contentSearchRows(_ displayed: [SessionSummary]) -> [SessionContentSearchRow] {
         guard isSearching, !contentSearch.hits.isEmpty else { return [] }
         let known = appState.activeProfileSessions + appState.activeProfileCronSessions
+            + (appState.isAllProfilesChatsOn ? listed.sessions.filter(appState.isOtherProfileRow) : [])
         return SessionContentSearch.rows(
             hits: contentSearch.hits,
             listed: displayed,
             known: known,
-            allowed: selection.isEmpty ? nil : filterRows(selection, searching: true)
+            allowed: selection.isEmpty ? nil : filterRows(selection, searching: true),
+            activeProfile: appState.isAllProfilesChatsOn ? appState.activeProfile : "",
+            owner: { session in appState.isAllProfilesChatsOn ? appState.rowProfile(session) : "" }
         )
     }
 
@@ -970,7 +1060,7 @@ struct V2ChatsView: View, Equatable {
                         hasOfflineCopy: false,
                         catalogPhase: appState.sessionCatalogPhase,
                         isRefreshing: appState.isRefreshingSessionCatalog,
-                        filteredOutRows: !appState.listedSessions.isEmpty || !appState.listedCronSessions.isEmpty
+                        filteredOutRows: !listed.sessions.isEmpty || !listed.cron.isEmpty
                     ),
                     emptyTitle: selection.emptyStateFilter.emptyTitle,
                     emptyDescription: isSearching
@@ -982,13 +1072,20 @@ struct V2ChatsView: View, Equatable {
                 .listRowSeparator(.hidden)
             }
 
-            if layout.liveSections && !sections.pinned.isEmpty {
-                collapsibleSection(.pinned, nodes: sections.pinned, expanded: expanded)
-            }
+            if layout.liveSections && appState.allProfilesGroupsByProfile {
+                // A section per profile, its pinned chats first.
+                ForEach(profileGroups(sections), id: \.profile) { group in
+                    profileSection(group.profile, nodes: group.items, expanded: expanded)
+                }
+            } else {
+                if layout.liveSections && !sections.pinned.isEmpty {
+                    collapsibleSection(.pinned, nodes: sections.pinned, expanded: expanded)
+                }
 
-            if layout.liveSections {
-                ForEach(ChatListSection.byDate(sections.recent)) { group in
-                    collapsibleSection(group.section, nodes: group.nodes, expanded: expanded)
+                if layout.liveSections {
+                    ForEach(ChatListSection.byDate(sections.recent)) { group in
+                        collapsibleSection(group.section, nodes: group.nodes, expanded: expanded)
+                    }
                 }
             }
 
@@ -1011,7 +1108,9 @@ struct V2ChatsView: View, Equatable {
         // times a second: a scroll draws them once it rests.
         .v2HoldsUpdatesWhileScrolling(updates)
         .refreshable {
+            appState.refreshAllProfilesCatalog()
             await appState.refreshSessionCatalog()
+            await appState.allProfilesCatalogTask?.value
         }
         .onAppear {
             revealActiveNestAncestors()
@@ -1033,6 +1132,7 @@ struct V2ChatsView: View, Equatable {
     }
 
     static let collapsedSectionsKey = "conduit.v2.collapsedChatSections"
+    static let collapsedProfilesKey = "conduit.v2.collapsedProfileSections"
 
     /// A search or a status filter is a lookup: every section shows its
     /// matches, and the saved open/closed state waits for the browse. The
@@ -1063,11 +1163,104 @@ struct V2ChatsView: View, Equatable {
     ) -> some View {
         Section {
             if !isCollapsed(section) {
-                listRows(V2ChatsListItem.items(nodes, expanded: expanded))
+                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope))
             }
         } header: {
             collapsibleHeader(section, count: nodes.count)
         }
+    }
+
+    /// All grouped by profile: each included profile's rows, its pinned
+    /// ones first, in the strip's order.
+    private func profileGroups(
+        _ sections: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])
+    ) -> [(profile: String, items: [SessionNesting.Node])] {
+        AllProfilesChats.groups(
+            sections.pinned + sections.recent,
+            profiles: appState.allProfilesIncluded,
+            fallback: appState.activeProfile,
+            owner: { appState.rowProfile($0.session) }
+        )
+    }
+
+    private func isProfileCollapsed(_ profile: String) -> Bool {
+        sectionsCollapsible && collapsedProfiles.contains(profile)
+    }
+
+    private func toggleProfileSection(_ profile: String, haptic: Bool = true) {
+        if haptic { Haptics.selection() }
+        var collapsed = collapsedProfiles
+        if collapsed.contains(profile) { collapsed.remove(profile) } else { collapsed.insert(profile) }
+        collapsed = collapsed.filter { name in appState.profiles.contains(name) }
+        UserDefaults.standard.set(collapsed.sorted().joined(separator: "\n"), forKey: Self.collapsedProfilesKey)
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            collapsedProfiles = collapsed
+        }
+    }
+
+    /// One profile's chats under its picture and name, opening and closing
+    /// like the date sections.
+    private func profileSection(
+        _ profile: String,
+        nodes: [SessionNesting.Node],
+        expanded: Set<String>
+    ) -> some View {
+        Section {
+            if !isProfileCollapsed(profile) {
+                listRows(V2ChatsListItem.items(nodes, expanded: expanded, scope: rowScope))
+            }
+        } header: {
+            profileSectionHeader(profile, count: nodes.count)
+        }
+    }
+
+    private func profileSectionHeader(_ profile: String, count: Int) -> some View {
+        let name = appState.profileDisplayName(profile)
+        let collapsible = sectionsCollapsible
+        let collapsed = isProfileCollapsed(profile)
+        return Button {
+            toggleProfileSection(profile)
+        } label: {
+            HStack(spacing: 8) {
+                ProfileAvatarView(
+                    profile: profile,
+                    displayName: name,
+                    url: appState.profileAvatarURL(for: profile),
+                    size: 20
+                )
+                Text(name)
+                    .lineLimit(1)
+                if collapsible {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .conduitFixedGlyph()
+                        .rotationEffect(.degrees(collapsed ? 0 : 90))
+                }
+                Spacer(minLength: 6)
+                if collapsed {
+                    Text(count, format: .number)
+                        .monospacedDigit()
+                }
+            }
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(nil)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!collapsible)
+        .listRowInsets(EdgeInsets())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(AppLocalization.string("\(name) profile")))
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityValue(collapsible
+            ? (collapsed
+                ? Text(AppLocalization.string("Collapsed")) + Text(verbatim: ", ") + Text(count, format: .number)
+                : Text(AppLocalization.string("Expanded")))
+            : Text(verbatim: ""))
     }
 
     /// The section's name and a chevron that turns with it; a closed
@@ -1129,6 +1322,15 @@ struct V2ChatsView: View, Equatable {
             return
         }
         guard !showingProjects, sectionsCollapsible else { return }
+        if appState.allProfilesGroupsByProfile {
+            // The open chat is always the profile in use's.
+            pendingSectionReveal = nil
+            if let profile = AllProfilesChats.profile(named: appState.activeProfile, in: appState.allProfilesIncluded),
+               collapsedProfiles.contains(profile) {
+                toggleProfileSection(profile, haptic: false)
+            }
+            return
+        }
         let sections = nestedSections(displayedSessions)
         guard let section = ChatListSection.section(
             of: active,
@@ -1175,8 +1377,13 @@ struct V2ChatsView: View, Equatable {
         let button = Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
-            if row.session != nil {
+            if let session = row.session, appState.isOtherProfileRow(session) {
+                appState.openListedSession(session)
+            } else if row.session != nil {
                 appState.requestOpenSession(row.openID)
+            } else if let owner = row.hit.profile, !AppState.profilesMatch(owner, appState.activeProfile) {
+                // Another profile's chat All hasn't listed: its link's way.
+                appState.openOtherProfileChat(row.hit.sessionID, inProfile: owner)
             } else {
                 // Older than any listed row: the link route opens it and
                 // refreshes the list, as a job link does.
@@ -1185,11 +1392,12 @@ struct V2ChatsView: View, Equatable {
         } label: {
             V2ContentMatchRow(
                 title: row.title,
-                time: row.session?.updatedLabel ?? "",
+                time: contentMatchTime(row),
                 snippet: row.hit.snippet,
                 isUnread: row.session.map { appState.isSessionUnread($0) } ?? false,
                 isStarred: row.session.map { appState.isSessionStarred($0) } ?? false,
-                isSelected: row.openID == appState.activeSessionId
+                isSelected: row.openID == appState.activeSessionId && row.hit.profile == nil
+                    && !(row.session.map(appState.isOtherProfileRow) ?? false)
             )
         }
         .buttonStyle(.plain)
@@ -1209,9 +1417,19 @@ struct V2ChatsView: View, Equatable {
         }
     }
 
+    /// A match's time, led in All by the other profile it was found in.
+    private func contentMatchTime(_ row: SessionContentSearchRow) -> String {
+        let time = row.session?.updatedLabel ?? ""
+        let owner = row.session.map { appState.isOtherProfileRow($0) ? appState.rowProfile($0) : nil } ?? row.hit.profile
+        guard let owner, !AppState.profilesMatch(owner, appState.activeProfile) else { return time }
+        let name = appState.profileDisplayName(owner)
+        return time.isEmpty ? name : "\(name) · \(time)"
+    }
+
     /// "Search Home" names the profile the list belongs to.
     private var searchPrompt: String {
         if showingProjects { return AppLocalization.string("Search projects") }
+        if appState.isAllProfilesChatsOn { return AppLocalization.string("Search all profiles") }
         let name = appState.profileDisplayName(appState.activeProfile)
         return AppLocalization.string("Search \(name)")
     }
@@ -1322,6 +1540,7 @@ struct V2ChatsView: View, Equatable {
             V2ChatsRow(
                 item: item,
                 projectTitle: rowProjectTitle(item, namesProjects: namesProjects),
+                profileBadge: profileBadge(for:),
                 onRename: { sessionPendingRename = $0 },
                 onDelete: { sessionPendingDeletion = $0 },
                 setExpanded: setExpanded
@@ -1543,19 +1762,26 @@ struct V2ChatsListItem: Identifiable {
     /// when it has children, and, when `expanded` holds its nest key, its
     /// descendants depth first. A conversation's row keeps its id whether
     /// it sits at the top or in a nest, so moving between them is a move.
-    static func items(_ nodes: [SessionNesting.Node], expanded: Set<String>) -> [V2ChatsListItem] {
+    /// `scope` leads every id: in All, the row's profile, since another
+    /// profile can hold a chat with the same id (a cloned profile).
+    static func items(
+        _ nodes: [SessionNesting.Node],
+        expanded: Set<String>,
+        scope: (SessionSummary) -> String = { _ in "" }
+    ) -> [V2ChatsListItem] {
         var items: [V2ChatsListItem] = []
         for node in nodes {
-            items.append(V2ChatsListItem(id: node.id, kind: .session(node)))
+            let prefix = scope(node.session)
+            items.append(V2ChatsListItem(id: prefix + node.id, kind: .session(node)))
             guard !node.children.isEmpty else { continue }
             let key = SessionNesting.nestKey(of: node.session)
             let isExpanded = expanded.contains(key)
-            items.append(V2ChatsListItem(id: "nest:" + node.id, kind: .nest(node, key: key, isExpanded: isExpanded)))
+            items.append(V2ChatsListItem(id: prefix + "nest:" + node.id, kind: .nest(node, key: key, isExpanded: isExpanded)))
             guard isExpanded else { continue }
             let descendants = descendants(of: node.children, depth: 0)
             for (index, entry) in descendants.enumerated() {
                 items.append(V2ChatsListItem(
-                    id: entry.session.id,
+                    id: prefix + entry.session.id,
                     kind: .child(
                         entry.session,
                         depth: entry.depth,
@@ -1586,6 +1812,8 @@ private struct V2ChatsRow: View {
     let item: V2ChatsListItem
     /// The project a listed project chat sits in, named before its preview.
     let projectTitle: String?
+    /// All: the picture of the profile a row belongs to.
+    let profileBadge: (SessionSummary) -> V2ProfileBadge?
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
     /// Opens or closes the nest with this key.
@@ -1636,9 +1864,10 @@ private struct V2ChatsRow: View {
                 status: appState.v2RowStatus(for: session),
                 isUnread: signals.isUnread,
                 isStarred: appState.isSessionStarred(session),
-                isSelected: session.id == appState.activeSessionId,
+                isSelected: session.id == appState.activeSessionId && !appState.isOtherProfileRow(session),
                 icon: appState.sessionCategory(for: session),
-                hasNestBelow: hasChildren
+                hasNestBelow: hasChildren,
+                profileBadge: profileBadge(session)
             )
         }
         .buttonStyle(.plain)
@@ -1963,8 +2192,10 @@ final class V2ChatsRenderMemo {
     private var sources: [SessionSource?: [SessionSummary]] = [:]
     private var categories: [String: SessionSource] = [:]
     private var filtered: [String: [SessionSummary]] = [:]
+    private var listed: (sessions: [SessionSummary], cron: [SessionSummary])?
 
     func reset() {
+        listed = nil
         sources.removeAll(keepingCapacity: true)
         categories.removeAll(keepingCapacity: true)
         filtered.removeAll(keepingCapacity: true)
@@ -1975,6 +2206,13 @@ final class V2ChatsRenderMemo {
         let rows = make()
         sources[source] = rows
         return rows
+    }
+
+    func listed(_ make: () -> (sessions: [SessionSummary], cron: [SessionSummary])) -> (sessions: [SessionSummary], cron: [SessionSummary]) {
+        if let listed { return listed }
+        let made = make()
+        listed = made
+        return made
     }
 
     func category(_ key: String, _ make: () -> SessionSource) -> SessionSource {

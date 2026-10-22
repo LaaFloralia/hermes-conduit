@@ -15,12 +15,16 @@ import UIKit
 struct V2TopBar<Trailing: View, LowerLeading: View>: View {
     @EnvironmentObject private var appState: AppState
     @State private var showProfileManager = false
+    @State private var showAllProfilesChooser = false
     /// The controls; `true` when they sit on the second row, under the
     /// profiles.
     private let trailing: (Bool) -> Trailing
     /// Leads the second row when the bar stacks (Chats: the filter pill).
     private let lowerLeading: LowerLeading
     private var drawsScrollEdge = true
+    /// Chats: an All chip leads the profiles, for every profile's chats in
+    /// one list.
+    private var leadsWithAllChip = false
 
     init(@ViewBuilder lowerLeading: () -> LowerLeading,
          @ViewBuilder trailing: @escaping (_ stacked: Bool) -> Trailing) {
@@ -34,19 +38,19 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
         let unread = V2ProfileStrip.unreadProfiles(appState)
         Group {
             if Trailing.self == EmptyView.self {
-                V2ProfileStrip(scrolls: true, unread: unread, onManage: { showProfileManager = true })
+                strip(scrolls: true, unread: unread)
             } else {
                 // One row while every profile fits beside the controls
                 // (one or two, usually); otherwise the profiles get the
                 // whole width, where a cut-off one shows that they scroll.
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 10) {
-                        V2ProfileStrip(scrolls: false, unread: unread, onManage: { showProfileManager = true })
+                        strip(scrolls: false, unread: unread)
                         Spacer(minLength: 0)
                         trailing(false)
                     }
                     VStack(spacing: 6) {
-                        V2ProfileStrip(scrolls: true, unread: unread, onManage: { showProfileManager = true })
+                        strip(scrolls: true, unread: unread)
                         HStack(spacing: 10) {
                             lowerLeading
                             Spacer(minLength: 0)
@@ -70,6 +74,22 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
                 .presentationDragIndicator(.visible)
                 .environmentObject(appState)
         }
+        .sheet(isPresented: $showAllProfilesChooser) {
+            V2AllProfilesSheet()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .environmentObject(appState)
+        }
+    }
+
+    private func strip(scrolls: Bool, unread: Set<String>) -> some View {
+        V2ProfileStrip(
+            scrolls: scrolls,
+            unread: unread,
+            showsAllChip: leadsWithAllChip && AllProfilesChats.isAvailable(profiles: appState.profiles),
+            onManage: { showProfileManager = true },
+            onChooseAll: { showAllProfilesChooser = true }
+        )
     }
 }
 
@@ -91,6 +111,13 @@ extension V2TopBar {
     func withoutScrollEdge() -> Self {
         var bar = self
         bar.drawsScrollEdge = false
+        return bar
+    }
+
+    /// The Chats bar: an All chip before the profiles.
+    func withAllProfilesChip() -> Self {
+        var bar = self
+        bar.leadsWithAllChip = true
         return bar
     }
 }
@@ -174,9 +201,21 @@ struct V2ProfileStrip: View {
     /// Profiles other than the selected one with unread chats
     /// (`unreadProfiles`).
     let unread: Set<String>
+    /// The All chip first (Chats, with two or more profiles).
+    var showsAllChip = false
     let onManage: () -> Void
+    /// A tap on the selected All chip: which profiles it shows.
+    var onChooseAll: () -> Void = {}
 
     @Namespace private var selection
+
+    /// The All chip's scroll id; no profile is named this.
+    private static let allChipID = "\u{1F}all"
+
+    /// All is on and its chip is the selected one.
+    private var allSelected: Bool {
+        showsAllChip && appState.isAllProfilesChatsOn
+    }
 
     private let pictureSize: CGFloat = 34
     /// The bar's side padding, which the scrolling strip runs into.
@@ -229,6 +268,10 @@ struct V2ProfileStrip: View {
 
     private var chips: some View {
         HStack(spacing: 8) {
+            if showsAllChip {
+                allChip
+                    .id(Self.allChipID)
+            }
             ForEach(profiles, id: \.self) { profile in
                 chip(profile, unread: unread.contains(profile))
                     .id(profile)
@@ -236,6 +279,7 @@ struct V2ProfileStrip: View {
         }
         .padding(.vertical, 2)
         .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: appState.activeProfile)
+        .animation(ConduitMotion.overshoot(reduceMotion: reduceMotion), value: allSelected)
     }
 
     /// Opaque except the outer `edgeBleed`, which fades to clear. Taller
@@ -257,9 +301,13 @@ struct V2ProfileStrip: View {
     /// little over, since UIKit's metrics can trail SwiftUI's text by a
     /// point or two.
     private var widestNameSlack: CGFloat {
-        let widest = profiles.map { nameWidth(appState.profileDisplayName($0)) }.max() ?? 0
-        return max(0, widest - nameWidth(appState.profileDisplayName(appState.activeProfile))) + 4
+        let names = profiles.map { appState.profileDisplayName($0) } + (showsAllChip ? [Self.allTitle] : [])
+        let widest = names.map(nameWidth).max() ?? 0
+        let selected = allSelected ? Self.allTitle : appState.profileDisplayName(appState.activeProfile)
+        return max(0, widest - nameWidth(selected)) + 4
     }
+
+    private static var allTitle: String { AppLocalization.string("All") }
 
     /// The selected chip's name width: subheadline semibold at the bar's
     /// text size.
@@ -278,11 +326,16 @@ struct V2ProfileStrip: View {
     /// buttons (which also reloaded both pictures).
     private func chip(_ profile: String, unread: Bool) -> some View {
         let name = appState.profileDisplayName(profile)
-        let isSelected = profile == appState.activeProfile
+        let isSelected = !allSelected && profile == appState.activeProfile
         return Button {
             if isSelected {
                 onManage()
+            } else if allSelected, profile == appState.activeProfile {
+                // Back to this profile's own list: nothing to switch.
+                Haptics.selection()
+                appState.setAllProfilesChatsOn(false)
             } else {
+                if allSelected { appState.setAllProfilesChatsOn(false) }
                 shell.pickProfile(profile)
             }
         } label: {
@@ -332,6 +385,66 @@ struct V2ProfileStrip: View {
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
         .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
         .accessibilityHint(isSelected ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// All: up to three of its profiles' pictures, overlapping, and its
+    /// name while selected. It shares the glass capsule with the profile
+    /// chips, so choosing it slides the capsule over.
+    private var allChip: some View {
+        let isSelected = allSelected
+        let shown = Array(appState.allProfilesIncluded.prefix(3))
+        return Button {
+            Haptics.selection()
+            if isSelected {
+                onChooseAll()
+            } else {
+                appState.setAllProfilesChatsOn(true)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                ZStack(alignment: .leading) {
+                    ForEach(Array(shown.enumerated()), id: \.element) { index, profile in
+                        ProfileAvatarView(
+                            profile: profile,
+                            displayName: appState.profileDisplayName(profile),
+                            url: appState.profileAvatarURL(for: profile),
+                            size: 22
+                        )
+                        .offset(x: CGFloat(index) * 6)
+                        .zIndex(Double(shown.count - index))
+                    }
+                }
+                .frame(width: pictureSize, height: pictureSize, alignment: .leading)
+                .opacity(isSelected ? 1 : 0.62)
+                if isSelected {
+                    Text(Self.allTitle)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .leading)))
+                }
+            }
+            .padding(.leading, 3)
+            .padding(.trailing, isSelected ? 12 : 3)
+            .padding(.vertical, 3)
+            .background {
+                if isSelected {
+                    Color.clear
+                        .conduitGlassControl(cornerRadius: 20, interactive: false)
+                        .matchedGeometryEffect(id: "selectedProfile", in: selection)
+                }
+            }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityIdentifier("v2.profile.all")
+        .accessibilityLabel(AppLocalization.string("All profiles"))
+        .accessibilityHint(isSelected
+            ? AppLocalization.string("Chooses which profiles All shows")
+            : AppLocalization.string("Shows the chats of several profiles in one list"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

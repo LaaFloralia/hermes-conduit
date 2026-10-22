@@ -1360,8 +1360,9 @@ struct SessionActionMenuItems: View {
 
         ReadStateToggleButton(session: session, nest: nest)
 
-        // A cron run keeps the job's workspace (#485).
-        if session.source != .cron {
+        // A cron run keeps the job's workspace (#485). Another profile's
+        // chat in All would land in this profile's projects.
+        if session.source != .cron && !appState.isOtherProfileRow(session) {
             MoveToProjectMenu(session: session, excludingProjectID: excludingProjectID, onMoved: onChanged)
         }
 

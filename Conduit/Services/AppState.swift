@@ -626,6 +626,13 @@ final class AppState: ObservableObject {
     /// The device has a usable network path (the app's one path monitor).
     @Published private(set) var networkPathUsable = true
     @Published var profiles: [String] = []
+    /// The Chats list's All view, per dashboard (`AllProfilesChatsSettings`).
+    @Published var allProfilesChatsSettings = AllProfilesChatsSettings()
+    /// Every profile's chats for All, read in one request.
+    @Published var allProfilesCatalog = AllProfilesCatalog()
+    var allProfilesCatalogTask: Task<Void, Never>?
+    /// Which read `allProfilesCatalogTask` is, so only it clears the handle.
+    var allProfilesCatalogRead: UUID?
     @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
     static let defaultSessionFilterOrder: [SessionSource] = [.chat, .voice, .voiceJob, .discord, .telegram, .api, .webhook, .cron, .other]
     /// Stable per-profile gateway-media resolver for settled row content.
@@ -5035,7 +5042,8 @@ final class AppState: ObservableObject {
     /// kept pinned ones. It takes no actions, which would act on a list
     /// Hermes hasn't sent yet.
     func isSavedChatRow(_ session: SessionSummary) -> Bool {
-        guard let saved = savedChatListForActiveScope else { return false }
+        // Another profile's row in All comes from Hermes' own listing.
+        guard !isOtherProfileRow(session), let saved = savedChatListForActiveScope else { return false }
         return saved.isShowingSavedRows || saved.isKeptRow(session)
     }
 
@@ -5043,6 +5051,18 @@ final class AppState: ObservableObject {
     /// shows at once (its saved copy, or its title while it opens) and opens
     /// for real once the live list lands.
     func openListedSession(_ session: SessionSummary) {
+        // Another profile's row in All opens the way a link to it does:
+        // the switch to its profile, then the chat.
+        let owner = rowProfile(session)
+        if owner != activeProfile {
+            // A switch ends a call: say so here, where the tap was.
+            guard !isVoiceCallInProgress else {
+                showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
+                return
+            }
+            Task { @MainActor [weak self] in await self?.routeLinkedSession(session.id, toProfile: owner) }
+            return
+        }
         guard isShowingSavedChatList, let dashboardID = activeDashboardID else {
             // A kept row isn't in the live list yet: it opens by its saved
             // durable id, as a pick does.
@@ -5719,6 +5739,7 @@ final class AppState: ObservableObject {
             pinnedSessionIDsByProfile = stored
         }
         sessionStars = SessionStars(defaults: defaults)
+        allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
         if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
            let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
             pinnedRepliesByProfile = stored
@@ -6470,7 +6491,7 @@ final class AppState: ObservableObject {
             for: session,
             tag: voiceSessionTag(for: session)?.tag,
             chatLinks: voiceCallChatLinks,
-            profile: activeProfile
+            profile: rowProfile(session)
         )
     }
 
@@ -8292,6 +8313,15 @@ final class AppState: ObservableObject {
 
     func isSessionPinned(_ session: SessionSummary) -> Bool {
         let ids = SessionPinSync.pinIDs(for: session)
+        let owner = rowProfile(session)
+        if owner != activeProfile {
+            // Another profile's row in All: Hermes' flag when its listing
+            // has one, else the pins this phone keeps for that profile.
+            // A pin Hermes refused stays on this phone, over the listing.
+            let kept = (pinnedSessionIDsByProfile[owner] ?? []).contains { ids.contains($0) }
+            if kept, sessionPinSync.isPhoneOnly(pinID: pinID(for: session), profile: owner) { return true }
+            return session.isPinned ?? kept
+        }
         if pinnedSessionIDs.contains(where: { ids.contains($0) }) { return true }
         guard let saved = savedChatListForActiveScope else { return false }
         // A kept row is listed only because it is pinned.
@@ -8303,10 +8333,13 @@ final class AppState: ObservableObject {
     }
 
     func toggleSessionPinned(_ session: SessionSummary) {
-        let profile = activeProfile
+        let profile = rowProfile(session)
         guard sessionBelongsToProfile(session, profile: profile) else { return }
         let pinned = !isSessionPinned(session)
         setLocalPin(session, pinned: pinned, profile: profile)
+        if profile != activeProfile {
+            updateAllProfilesCatalogRow(session) { $0.isPinned = pinned }
+        }
         let pinID = pinID(for: session)
         guard let bridge = dashboardTicketBridge,
               sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
@@ -8355,11 +8388,11 @@ final class AppState: ObservableObject {
     // MARK: - Stars (#757)
 
     func isSessionStarred(_ session: SessionSummary) -> Bool {
-        sessionStars.isStarred(session, profile: activeProfile)
+        sessionStars.isStarred(session, profile: rowProfile(session))
     }
 
     func toggleSessionStarred(_ session: SessionSummary) {
-        let profile = activeProfile
+        let profile = rowProfile(session)
         guard sessionBelongsToProfile(session, profile: profile) else { return }
         setSessionStarred(session, starred: !isSessionStarred(session), profile: profile)
     }
@@ -8377,13 +8410,16 @@ final class AppState: ObservableObject {
     private let chatReadLedgerKey = "conduit.chatReadLedger.v1"
 
     func isSessionUnread(_ session: SessionSummary) -> Bool {
-        chatReadState.isUnread(session, profile: activeProfile)
+        chatReadState.isUnread(session, profile: rowProfile(session))
     }
 
     /// Whether a turn is running in the conversation or it waits on the user.
     /// The open chat's own turn state is authoritative for "working"; the
     /// registry snapshot can lag it by a poll.
     func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
+        // The registry is the profile in use's: another profile's row in
+        // All has no live status.
+        guard !isOtherProfileRow(session) else { return nil }
         // A snapshot from before a disconnect may be long stale.
         let registry = isConnected && liveSessionStatusProfile == activeProfile
             ? liveSessionStatusIndex.status(for: session)
@@ -8529,7 +8565,7 @@ final class AppState: ObservableObject {
     }
 
     func markSessionRead(_ session: SessionSummary) {
-        let profile = activeProfile
+        let profile = rowProfile(session)
         let flagged = chatReadState.serverUnread(session, profile: profile)
         updateChatReadState { $0.markSeen(session, profile: profile) }
         if flagged {
@@ -8538,14 +8574,16 @@ final class AppState: ObservableObject {
     }
 
     func markSessionUnread(_ session: SessionSummary) {
-        let profile = activeProfile
+        let profile = rowProfile(session)
         updateChatReadState { $0.markUnread(session, profile: profile) }
         writeSessionUnreadFlag(session, unread: true, profile: profile)
     }
 
     func markAllSessionsRead() {
-        // What All lists: the chats and pinned cron runs (#485).
-        markSessionsRead(activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) })
+        // What All lists: the chats and pinned cron runs (#485), and in the
+        // All profiles view the other profiles' chats too.
+        let others = isAllProfilesChatsOn ? chatListSessions.filter(isOtherProfileRow) : []
+        markSessionsRead(activeProfileSessions + activeProfileCronSessions.filter { isSessionPinned($0) } + others)
     }
 
     /// Marks a whole nest read at once (#556 follow-up): a parent row's
@@ -8559,14 +8597,15 @@ final class AppState: ObservableObject {
     /// session records its own generation), then one request at a time
     /// through the dashboard bridge.
     private func markSessionsRead(_ sessions: [SessionSummary]) {
-        let profile = activeProfile
+        // Each row under its own profile: All lists several.
         let unread = sessions.filter { !$0.isArchived && isSessionUnread($0) }
+            .map { (session: $0, profile: rowProfile($0)) }
         guard !unread.isEmpty else { return }
-        let flagged = unread.filter { chatReadState.serverUnread($0, profile: profile) }
+        let flagged = unread.filter { chatReadState.serverUnread($0.session, profile: $0.profile) }
         updateChatReadState { state in
-            for session in unread { state.markSeen(session, profile: profile) }
+            for row in unread { state.markSeen(row.session, profile: row.profile) }
         }
-        let writes = flagged.compactMap { preparedUnreadFlagWrite($0, unread: false, profile: profile) }
+        let writes = flagged.compactMap { preparedUnreadFlagWrite($0.session, unread: false, profile: $0.profile) }
         guard !writes.isEmpty else { return }
         Task {
             for write in writes { await write() }
@@ -9780,6 +9819,9 @@ final class AppState: ObservableObject {
         resetHostPins()
         sessionStars = SessionStars()
         defaults.removeObject(forKey: SessionStars.storageKey)
+        allProfilesCatalogTask?.cancel()
+        allProfilesCatalogTask = nil
+        allProfilesCatalog = AllProfilesCatalog()
         clearPinnedReplies()
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
@@ -12314,6 +12356,9 @@ final class AppState: ObservableObject {
         resetHostPins()
         sessionStars = SessionStars()
         defaults.removeObject(forKey: SessionStars.storageKey)
+        allProfilesCatalogTask?.cancel()
+        allProfilesCatalogTask = nil
+        allProfilesCatalog = AllProfilesCatalog()
         clearPinnedReplies()
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
@@ -19401,6 +19446,9 @@ final class AppState: ObservableObject {
     }
 
     private func setSessionArchived(_ session: SessionSummary, archived: Bool) async -> Bool {
+        if archived, isOtherProfileRow(session) {
+            return await archiveOtherProfileSession(session)
+        }
         guard sessionBelongsToProfile(session, profile: activeProfile),
               sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil || widgetSessionMutationRequestOverride != nil)
         else { return false }
@@ -19462,6 +19510,9 @@ final class AppState: ObservableObject {
     }
     @discardableResult
     func renameSession(_ session: SessionSummary, to title: String) async -> Bool {
+        if isOtherProfileRow(session) {
+            return await renameOtherProfileSession(session, to: title)
+        }
         guard let trimmedTitle = SessionRenameOperation.normalizedTitle(
             title,
             currentTitle: session.title
@@ -19546,6 +19597,9 @@ final class AppState: ObservableObject {
     }
 
     func deleteSession(_ session: SessionSummary) async -> Bool {
+        if isOtherProfileRow(session) {
+            return await deleteOtherProfileSession(session)
+        }
         guard sessionBelongsToProfile(session, profile: activeProfile),
               sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil || widgetSessionMutationRequestOverride != nil)
         else { return false }
@@ -34651,6 +34705,306 @@ private enum AttachmentError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unreadableFile(let name): return AppLocalization.string("Could not read \(name).")
+        }
+    }
+}
+
+// MARK: - All profiles in one Chats list
+
+extension AppState {
+    /// The profile a listed row belongs to: the one in use, or, for another
+    /// profile's row in the Chats list's All view, the listed profile its
+    /// tag names. A row tagged with a profile this dashboard doesn't list
+    /// stays with the one in use, as before All.
+    func rowProfile(_ session: SessionSummary) -> String {
+        guard let owner = session.profile,
+              !sessionBelongsToProfile(session, profile: activeProfile),
+              let listed = AllProfilesChats.profile(named: owner, in: profiles) else { return activeProfile }
+        return listed
+    }
+
+    /// Another profile's row in All: it opens with a switch to its profile
+    /// and has no live status here.
+    func isOtherProfileRow(_ session: SessionSummary) -> Bool {
+        rowProfile(session) != activeProfile
+    }
+
+    /// All's settings on the dashboard in use.
+    var allProfilesChats: AllProfilesChatsSettings.Dashboard {
+        allProfilesChatsSettings[dashboard: activeDashboardID]
+    }
+
+    /// The Chats list shows All: it is on here, and the dashboard lists two
+    /// or more profiles.
+    var isAllProfilesChatsOn: Bool {
+        allProfilesChats.isOn && AllProfilesChats.isAvailable(profiles: profiles)
+    }
+
+    /// The profiles All lists, in the strip's order.
+    var allProfilesIncluded: [String] {
+        AllProfilesChats.included(profiles, excluded: allProfilesChats.excluded)
+    }
+
+    /// All is on and splits into a section per profile.
+    var allProfilesGroupsByProfile: Bool {
+        isAllProfilesChatsOn && allProfilesChats.groupsByProfile
+    }
+
+    func setAllProfilesChatsOn(_ on: Bool) {
+        updateAllProfilesChats { $0.isOn = on }
+        if on { refreshAllProfilesCatalog() }
+    }
+
+    func setAllProfilesGroupsByProfile(_ grouped: Bool) {
+        updateAllProfilesChats { $0.groupsByProfile = grouped }
+    }
+
+    /// Puts a profile in All or leaves it out. The last one in stays: All
+    /// never lists nothing.
+    func setProfile(_ profile: String, includedInAll included: Bool) {
+        guard included || allProfilesIncluded.count > 1 else { return }
+        updateAllProfilesChats { settings in
+            settings.excluded.removeAll { Self.profilesMatch($0, profile) }
+            if !included { settings.excluded.append(profile) }
+        }
+    }
+
+    private func updateAllProfilesChats(_ change: (inout AllProfilesChatsSettings.Dashboard) -> Void) {
+        var settings = allProfilesChatsSettings
+        var dashboard = settings[dashboard: activeDashboardID]
+        change(&dashboard)
+        settings[dashboard: activeDashboardID] = dashboard
+        guard settings != allProfilesChatsSettings else { return }
+        allProfilesChatsSettings = settings
+        settings.save(to: defaults)
+    }
+
+    /// The Chats list's chats: in All, every included profile's, newest
+    /// first; otherwise the profile in use's (`listedSessions`).
+    var chatListSessions: [SessionSummary] {
+        guard isAllProfilesChatsOn else { return listedSessions }
+        return AllProfilesChats.rows(
+            active: activeProfile,
+            activeRows: listedSessions,
+            combined: allProfilesCatalog.dashboardID == activeDashboardID ? allProfilesCatalog.sessions : [],
+            included: allProfilesIncluded
+        )
+    }
+
+    /// Cron runs stay with their own profile's list: All shows the profile
+    /// in use's, while it is included.
+    var chatListCronSessions: [SessionSummary] {
+        guard isAllProfilesChatsOn else { return listedCronSessions }
+        return allProfilesIncluded.contains { Self.profilesMatch($0, activeProfile) } ? listedCronSessions : []
+    }
+
+    /// Reads every profile's chats for All, one read at a time. The profile
+    /// in use keeps its own list and poll; this brings the others'.
+    func refreshAllProfilesCatalog() {
+        guard isAllProfilesChatsOn, allProfilesCatalogTask == nil, let bridge = dashboardTicketBridge else { return }
+        let dashboardID = activeDashboardID
+        let read = UUID()
+        allProfilesCatalogRead = read
+        allProfilesCatalogTask = Task { @MainActor [weak self] () -> Void in
+            guard let self else { return }
+            await self.readAllProfilesCatalog(using: bridge, dashboardID: dashboardID)
+            // A reset since may have started a newer read.
+            if self.allProfilesCatalogRead == read { self.allProfilesCatalogTask = nil }
+        }
+    }
+
+    /// All's poll while the list shows. Slower than the profile in use's
+    /// own: Hermes opens every profile's database for it.
+    func runAllProfilesCatalogPolling() async {
+        while !Task.isCancelled {
+            refreshAllProfilesCatalog()
+            try? await Task.sleep(for: .seconds(20))
+        }
+    }
+
+    private func readAllProfilesCatalog(using bridge: DashboardTicketBridge, dashboardID: UUID?) async {
+        do {
+            let response = try await bridge.requestJSON(path: AllProfilesChats.sessionsPath)
+            let batch = response["sessions"] as? [Any] ?? []
+            let rows = await Self.convertAllProfilesPage(batch)
+            // A dashboard switched meanwhile has its own profiles.
+            guard activeDashboardID == dashboardID, dashboardTicketBridge === bridge else { return }
+            listAllProfilesCatalog(rows, dashboardID: dashboardID)
+        } catch {
+            // A failed read keeps what All showed; the next poll asks again.
+            sessionCatalogLog.notice("All profiles' chats unavailable: \(LogRedaction.describing(error), privacy: .public)")
+        }
+    }
+
+    /// Nonisolated and async: runs on the generic executor, off main.
+    nonisolated private static func convertAllProfilesPage(_ batch: [Any]) async -> [SessionSummary] {
+        MessageNormalizer.normalizeSessions(
+            AnyCodable.from(["sessions": batch]),
+            profile: nil
+        ).filter { $0.profile != nil && $0.messageCount != 0 && !$0.isArchived }
+    }
+
+    private func listAllProfilesCatalog(_ rows: [SessionSummary], dashboardID: UUID?) {
+        // A bot's chats belong to its Bot Chat, as in each profile's own list.
+        let botOwned = botOwnedSessionIDs
+        let kept = rows.filter { session in
+            !BotChatHygiene.isCanonicalBotChatRow(session, roster: botRoster)
+                && !BotChatHygiene.isBotOwnedRow(session, botOwnedSessionIDs: botOwned)
+        }
+        // Each other profile's rows are noted the way its own list notes
+        // them, so a reply that lands there later lights its dot here.
+        // A row whose profile isn't listed goes in no group.
+        let others = AllProfilesChats.groups(kept, profiles: profiles, fallback: "", owner: { $0.profile })
+            .filter { !$0.profile.isEmpty && !Self.profilesMatch($0.profile, activeProfile) }
+        if !others.isEmpty {
+            updateChatReadState { state in
+                for group in others { _ = state.observe(group.items, profile: group.profile) }
+            }
+        }
+        let next = AllProfilesCatalog(dashboardID: dashboardID, sessions: kept, isLoaded: true)
+        if next != allProfilesCatalog { allProfilesCatalog = next }
+    }
+
+    private func updateAllProfilesCatalogRow(_ session: SessionSummary, _ change: (inout SessionSummary) -> Void) {
+        guard let index = allProfilesCatalog.sessions.firstIndex(where: {
+            $0.id == session.id && Self.profilesMatch($0.profile ?? "", session.profile ?? "")
+        }) else { return }
+        change(&allProfilesCatalog.sessions[index])
+    }
+
+    private func removeFromAllProfilesCatalog(_ session: SessionSummary) {
+        let ids = Set(session.nestingIDs)
+        allProfilesCatalog.sessions.removeAll {
+            Self.profilesMatch($0.profile ?? "", session.profile ?? "") && !ids.isDisjoint(with: $0.nestingIDs)
+        }
+    }
+
+    /// A message hit in another profile's chat that All hasn't listed: its
+    /// link's way, refused with a notice during a call.
+    func openOtherProfileChat(_ id: String, inProfile profile: String) {
+        guard !isVoiceCallInProgress else {
+            showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
+            return
+        }
+        Task { await routeLinkedSession(id, toProfile: profile) }
+    }
+
+    /// New Chat from All's menu: here, or in `profile` after a switch to
+    /// it. A switch ends a call, so none while one is up.
+    func startNewChat(inProfile profile: String) {
+        guard profile != activeProfile else {
+            startNewChat()
+            return
+        }
+        guard !isVoiceCallInProgress else {
+            showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.switchProfile(to: profile)
+            guard self.activeProfile == profile else { return }
+            self.startNewChat()
+        }
+    }
+
+    // Another profile's row in All goes to Hermes under its own profile,
+    // and its result lands in All's list. Nothing here touches the profile
+    // in use's catalog or open chat.
+
+    private func archiveOtherProfileSession(_ session: SessionSummary) async -> Bool {
+        let profile = rowProfile(session)
+        guard sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil),
+              let owner = currentDashboardRuntimeOwner() else { return false }
+        sessionMutationID = session.id
+        defer { sessionMutationID = nil }
+        do {
+            try await sendSessionMutation(session.id, body: ["archived": true], profile: profile, bridge: owner.bridge)
+            guard ownsDashboardRuntime(owner) else { return false }
+            sessionYoloStore.clearOverride(for: profile, sessionIDs: [session.id] + session.alternateIds)
+            setLocalPin(session, pinned: false, profile: profile)
+            removeFromAllProfilesCatalog(session)
+            return true
+        } catch {
+            guard ownsDashboardRuntime(owner) else { return false }
+            showSessionMutationNotice(AppLocalization.string("Could not archive this conversation: \(UserFacingError.message(for: error))"))
+            return false
+        }
+    }
+
+    private func deleteOtherProfileSession(_ session: SessionSummary) async -> Bool {
+        let profile = rowProfile(session)
+        let dashboardID = activeDashboardID
+        guard sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil),
+              let owner = currentDashboardRuntimeOwner() else { return false }
+        sessionMutationID = session.id
+        defer { sessionMutationID = nil }
+        let deletedSessionIDs = Set(session.nestingIDs)
+        do {
+            try await sendSessionMutation(session.id, body: nil, profile: profile, bridge: owner.bridge)
+            // Hermes deleted it: its saved copy and pinned replies go too,
+            // whatever the screen shows now (#1040).
+            if let dashboardID {
+                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+            }
+            dropPinnedReplies(forDeleted: session, profile: profile)
+            guard ownsDashboardRuntime(owner) else { return false }
+            sessionYoloStore.clearOverride(for: profile, sessionIDs: Array(deletedSessionIDs))
+            revokeDeletedConversationIdentity(sessionIDs: deletedSessionIDs, profile: profile)
+            removeFromAllProfilesCatalog(session)
+            setLocalPin(session, pinned: false, profile: profile)
+            setSessionStarred(session, starred: false, profile: profile)
+            updateChatReadState { $0.forget(session, profile: profile) }
+            return true
+        } catch DashboardTicketBridgeError.answeredAfterSwitch {
+            if let dashboardID {
+                offlineChatCache.removeTranscripts(sessionIDs: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
+            }
+            return false
+        } catch {
+            guard ownsDashboardRuntime(owner) else { return false }
+            showSessionMutationNotice(AppLocalization.string("Could not delete this conversation: \(UserFacingError.message(for: error))"))
+            return false
+        }
+    }
+
+    private func renameOtherProfileSession(_ session: SessionSummary, to title: String) async -> Bool {
+        let profile = rowProfile(session)
+        guard SessionRenameOperation.normalizedTitle(title, currentTitle: session.title) != nil,
+              sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil),
+              let owner = currentDashboardRuntimeOwner() else { return false }
+        sessionMutationID = session.id
+        defer { sessionMutationID = nil }
+        // Not the open chat's: only the stored title changes.
+        let operations = SessionRenameOperation.Operations(
+            renameRuntime: nil,
+            renameStored: { [weak self] sessionID, newTitle in
+                guard let self, self.ownsDashboardRuntime(owner) else {
+                    throw SessionRenameOperation.ContextChanged()
+                }
+                try await self.sendSessionMutation(
+                    sessionID,
+                    body: ["title": newTitle],
+                    profile: profile,
+                    bridge: owner.bridge
+                )
+            }
+        )
+        do {
+            guard let result = try await SessionRenameOperation.perform(
+                session: session,
+                activeSessionID: nil,
+                title: title,
+                operations: operations
+            ), ownsDashboardRuntime(owner) else { return false }
+            updateAllProfilesCatalogRow(session) { $0.title = result.title }
+            return true
+        } catch is SessionRenameOperation.ContextChanged {
+            return false
+        } catch {
+            guard ownsDashboardRuntime(owner) else { return false }
+            showSessionMutationNotice(SessionRenameOperation.failureMessage(error))
+            return false
         }
     }
 }
