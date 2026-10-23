@@ -581,7 +581,11 @@ final class WatchBridgeCallModel: ObservableObject {
     private func connect() {
         guard isActive, let bridgeURL, let grantID, let grantRoot, let watchKey else { return }
         // A stream id is taken once per grant, and a grant takes 32.
-        guard streamsOpened < 30, let stream = WatchAudioBridgeStream(grantID: grantID, root: grantRoot) else {
+        guard streamsOpened < 30 else {
+            finish(WatchCallEnd.streamsSpent)
+            return
+        }
+        guard let stream = WatchAudioBridgeStream(grantID: grantID, root: grantRoot) else {
             finish(String(localized: "Couldn't reconnect to Hermes."))
             return
         }
@@ -786,6 +790,11 @@ final class WatchBridgeCallModel: ObservableObject {
             }
         case .error(let code, let message):
             note("bridgeHostError", ["code": code as Any, "message": String(message.prefix(200)), "live": live])
+            if code == WatchAudioBridgeWire.streamsSpent {
+                // No stream left to rejoin on: waiting for a start is pointless.
+                finish(endRequestedAt == nil ? WatchCallEnd.streamsSpent : WatchCallEnd.byUser)
+                return
+            }
             let text = message.isEmpty ? String(localized: "GPT-Live failed on Hermes.") : message
             switch code ?? "" {
             case "unreachable", "failed":

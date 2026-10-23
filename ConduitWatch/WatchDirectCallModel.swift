@@ -190,6 +190,8 @@ final class WatchDirectCallModel: ObservableObject {
     private var linkGaveUp = false
     /// Grok's bridge streams opened on the call's grant, which takes 32.
     private var grokStreams = 0
+    /// The bridge has no streams left for this call: a rejoin can't help.
+    private var streamsSpent = false
     /// Local Live: the Hermes chat the host runs the call's turns in, which
     /// a fresh connection carries on in.
     private var localLiveChatID: String?
@@ -818,9 +820,11 @@ final class WatchDirectCallModel: ObservableObject {
                     stream = WatchAudioBridgeStream(grantID: bridge.grantID, root: bridge.root)
                 } else {
                     stream = nil
+                    self?.streamsSpent = true
                 }
                 let socket = WatchGrokBridgeSocket(bridge: bridge, stream: stream)
                 socket.onNote = { [weak self] kind, fields in self?.socketEvent(.grokBridge, number: number, kind: kind, fields) }
+                socket.onStreamsSpent = { [weak self] in self?.streamsSpent = true }
                 return socket
             }
         )
@@ -886,9 +890,11 @@ final class WatchDirectCallModel: ObservableObject {
                     stream = WatchAudioBridgeStream(grantID: bridge.grantID, root: bridge.root)
                 } else {
                     stream = nil
+                    self?.streamsSpent = true
                 }
                 let socket = WatchGrokBridgeSocket(bridge: bridge, stream: stream)
                 socket.onNote = { [weak self] kind, fields in self?.socketEvent(.grokBridge, number: number, kind: kind, fields) }
+                socket.onStreamsSpent = { [weak self] in self?.streamsSpent = true }
                 socket.onStarted = { [weak self] info in
                     if let chat = info.sessionID { self?.localLiveChatID = chat }
                 }
@@ -1118,7 +1124,9 @@ final class WatchDirectCallModel: ObservableObject {
             // Once the call has been live, a fresh session carries it on;
             // not on the bridge once its grant is over, which its bridge was.
             let grantOver = engine.usesBridge && (toolRelay.map { $0.isGone || $0.expires(within: Self.grantEndMargin) } ?? true)
-            if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins, !grantOver {
+            if streamsSpent {
+                finish(endRequestedAt == nil ? WatchCallEnd.streamsSpent : WatchCallEnd.byUser)
+            } else if firstReadyAt != nil, endRequestedAt == nil, rejoins < Self.maxRejoins, !grantOver {
                 waitToRejoin(message)
             } else {
                 finish(message)
@@ -3101,6 +3109,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     private func reset() {
         grokStreams = 0
+        streamsSpent = false
         localLiveChatID = nil
         localLiveGreeted = false
         ring = nil

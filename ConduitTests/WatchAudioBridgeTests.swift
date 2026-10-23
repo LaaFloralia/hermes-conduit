@@ -129,6 +129,11 @@ extension HermesVoiceGatewayTimeoutTests {
             WatchAudioBridgeWire.control(Data(#"{"type":"error","code":"busy","message":"Another Watch call is running."}"#.utf8)),
             .error(code: "busy", message: "Another Watch call is running.")
         )
+        // The plugin's refusal of a hello past the grant's streams (plugin_api.py _hello).
+        XCTAssertEqual(
+            WatchAudioBridgeWire.control(Data(#"{"type":"error","code":"streams_spent","message":"Start the call again."}"#.utf8)),
+            .error(code: WatchAudioBridgeWire.streamsSpent, message: "Start the call again.")
+        )
         XCTAssertNil(WatchAudioBridgeWire.control(Data(#"{"type":"later"}"#.utf8)))
         XCTAssertNil(WatchAudioBridgeWire.control(Data("not json".utf8)))
     }
