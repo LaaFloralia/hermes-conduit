@@ -23278,6 +23278,8 @@ final class AppState: ObservableObject {
     private var latestNotifierPluginVersion: String?
     /// The stable plugin version, once read; kept like the latest.
     private var stableNotifierPluginVersion: String?
+    /// What each plugin version brings, once read (NotifierPluginChangelog).
+    @Published private(set) var notifierPluginChangelog: NotifierPluginChangelog?
     /// Which plugin versions the update notice asks for (Settings >
     /// Conduit plugin > Update notices).
     @Published private(set) var notifierPluginNoticeChannel: NotifierPluginNoticeChannel
@@ -23401,6 +23403,21 @@ final class AppState: ObservableObject {
         Task { await runPhoneSync(reason: .connected) }
     }
 
+    /// The plugin's capabilities answer read at the end of an update: it
+    /// replaces the status right away, and any status read already on its
+    /// way (asked of the old plugin) lands under it, so "Finish Update"
+    /// doesn't linger until the next refresh (#299).
+    func applyNotifierPluginReport(_ json: [String: Any]) {
+        let state = NotifierPluginStatus.state(from: json)
+        guard state != .unknown else { return }
+        notifierPluginStatusGeneration += 1
+        notifierPluginStatusAcceptedGeneration = notifierPluginStatusGeneration
+        notifierPlugin.hostCopy = nil
+        notifierPlugin.state = state
+        notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
+        clearSettledNotifierPluginUpdateOutcome()
+    }
+
     /// Reads the latest and stable plugin versions (saved, then from GitHub
     /// at most hourly), so a plugin release is offered without a new
     /// Conduit build, and where this copy of Conduit came from, which picks
@@ -23423,9 +23440,13 @@ final class AppState: ObservableObject {
         if stableNotifierPluginVersion == nil, let saved = NotifierPluginLatestVersion.cachedStable(in: defaults) {
             applyStableNotifierPluginVersion(saved)
         }
+        if notifierPluginChangelog == nil, let saved = NotifierPluginChangelog.cached(in: defaults) {
+            notifierPluginChangelog = saved
+        }
         guard let fetched = await NotifierPluginLatestVersion.refresh(defaults: defaults) else { return }
         if let latest = fetched.latest { applyLatestNotifierPluginVersion(latest) }
         if let stable = fetched.stable { applyStableNotifierPluginVersion(stable) }
+        if let changelog = fetched.changelog, changelog != notifierPluginChangelog { notifierPluginChangelog = changelog }
     }
 
     private func applyLatestNotifierPluginVersion(_ version: String) {
