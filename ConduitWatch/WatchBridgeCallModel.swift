@@ -1155,14 +1155,17 @@ final class WatchBridgeCallModel: ObservableObject {
         // runs (#455). A number with no job is just new work.
         // Read where the phone reads it: the delegation's own text, else
         // the user's words GPT-Live left it in.
-        if let marker = WatchBridgeDelegation.jobMarker(in: ownWords) {
+        // "Add to job 2: a quiet table" adds to job 2 without changing its
+        // direction: the job is steered, not redirected.
+        let addition = WatchBridgeDelegation.addToJobMarker(in: ownWords)
+        if let marker = addition ?? WatchBridgeDelegation.jobMarker(in: ownWords) {
             if let jobID = jobNumbers[marker.number] {
                 let words = WatchBridgeDelegation.followUpWords(userWords: userWords, delegated: marker.rest)
                 guard !words.isEmpty else {
                     answer(id, WatchBridgeDelegation.noRequest, channel: .speakable)
                     return
                 }
-                followUp(for: id, jobID: jobID, words: words, relay: relay)
+                followUp(for: id, jobID: jobID, words: words, kind: addition == nil ? nil : "add", relay: relay)
                 return
             }
             // A bare "Job 9:" asks for nothing, as on the phone: the user's
@@ -1287,7 +1290,7 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     /// A correction to a job this call started, into the job on the host.
-    private func followUp(for delegationID: String, jobID: String, words: String, relay: WatchToolRelayClient) {
+    private func followUp(for delegationID: String, jobID: String, words: String, kind: String? = nil, relay: WatchToolRelayClient) {
         followUps += 1
         guard relay.tools.contains(WatchJobAnswer.interruptJob) else {
             answer(delegationID, WatchBridgeDelegation.followUpsUnavailable, channel: .speakable)
@@ -1297,7 +1300,7 @@ final class WatchBridgeCallModel: ObservableObject {
             answer(delegationID, WatchBridgeDelegation.relay("Hermes didn't get that (\(WatchBridgeDelegation.grantRanOutClause))"), channel: .speakable)
             return
         }
-        guard let arguments = WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": jobID, "message": words]) else {
+        guard let arguments = WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": jobID, "message": words, "kind": kind ?? ""]) else {
             answer(delegationID, WatchBridgeDelegation.noRequest, channel: .speakable)
             return
         }
