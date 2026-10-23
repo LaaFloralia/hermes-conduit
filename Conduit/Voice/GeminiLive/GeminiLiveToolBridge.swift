@@ -476,7 +476,7 @@ final class GeminiLiveToolBridge {
                     "kind": [
                         "type": "STRING",
                         "enum": ["add", "change"],
-                        "description": "add when the user adds to the work without changing it; change when they correct, pause, or cancel it. Omit only when uncertain.",
+                        "description": "add when the user adds to the work without changing it; change when they correct, pause, or cancel it. Omit when uncertain.",
                     ],
                 ],
                 "required": ["job_id", "message"],

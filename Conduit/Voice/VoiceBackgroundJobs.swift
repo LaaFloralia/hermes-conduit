@@ -302,7 +302,8 @@ struct VoiceBackgroundJobBackend {
     /// direction at once (#451).
     var redirect: @MainActor (_ sessionID: String, _ text: String) async throws -> VoiceRedirectResult = { _, _ in .notRunning }
     /// Adds words to a running turn without replacing its current direction.
-    /// A gateway that does not accept this call lets the supervisor redirect.
+    /// Throwing HermesError.steerRejected (a refusal, or a gateway without
+    /// steer) lets the supervisor redirect the words instead.
     var steer: @MainActor (_ sessionID: String, _ text: String) async throws -> VoiceRedirectResult = { _, _ in .notRunning }
     /// The chat's latest assistant reply, read without starting a turn.
     var latestThreadReply: @MainActor (_ thread: VoiceThreadTarget) async -> String? = { _ in nil }

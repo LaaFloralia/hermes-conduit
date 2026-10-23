@@ -8040,8 +8040,9 @@ final class AppState: ObservableObject {
     }
 
     /// Adds a live-call follow-up to a running turn. Only an explicit gateway
-    /// refusal is eligible for the supervisor's redirect fallback: a timeout
-    /// leaves delivery unknown and must not send the words a second time.
+    /// refusal, or a gateway without `session.steer`, is eligible for the
+    /// supervisor's redirect fallback: a timeout leaves delivery unknown and
+    /// must not send the words a second time.
     private func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
@@ -8052,7 +8053,8 @@ final class AppState: ObservableObject {
             } else {
                 try await client.steer(sessionID, text: text)
             }
-        } catch HermesError.steerRejected {
+        } catch let error as RpcError where Self.isUnsupportedSteer(code: error.code, message: error.message) {
+            // Method not found: the words never arrived, so redirecting them is safe.
             throw HermesError.steerRejected
         }
         if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
@@ -26515,6 +26517,15 @@ final class AppState: ObservableObject {
             // The TUI gateway's wording ("unknown method: session.redirect"):
             // only when it names this method.
             || (message.contains("unknown method") && message.contains("session.redirect"))
+    }
+
+    /// A gateway without `session.steer` answers JSON-RPC "method not found",
+    /// as isUnsupportedRedirect reads it for `session.redirect`.
+    nonisolated static func isUnsupportedSteer(code: Int?, message: String) -> Bool {
+        let message = message.lowercased()
+        return code == -32601
+            || message.contains("method not found")
+            || (message.contains("unknown method") && message.contains("session.steer"))
     }
 
     private func isSessionNotFound(_ error: RpcError) -> Bool {

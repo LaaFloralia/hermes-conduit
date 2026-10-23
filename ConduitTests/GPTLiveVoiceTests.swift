@@ -1226,6 +1226,7 @@ extension VoiceConversationControllerTests {
         typealias C = GPTLiveConversationController
         XCTAssertTrue(C.isConduitMarkerDelegation("Look up: weather in Boston"))
         XCTAssertTrue(C.isConduitMarkerDelegation("Job 2: what's the status"))
+        XCTAssertTrue(C.isConduitMarkerDelegation("Add to job 2: also ask for a quiet table"))
         XCTAssertTrue(C.isConduitMarkerDelegation("Send: the draft"))
         XCTAssertTrue(C.isConduitMarkerDelegation("Mode: ask first"))
         XCTAssertFalse(C.isConduitMarkerDelegation("check whether the build passed"))

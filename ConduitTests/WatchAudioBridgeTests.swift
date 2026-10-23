@@ -316,6 +316,21 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual(watch?.number, phone?.number, text)
             XCTAssertEqual(watch?.rest, phone?.rest, text)
         }
+        // Additions steer the job (#1076), with the phone's marker.
+        for text in ["Add to job 2: a quiet table", "add to job #3, the receipts", "Job 2: make it Alex", "Add to job 2:30 reminder"] {
+            let watch = WatchBridgeDelegation.addToJobMarker(in: text)
+            let phone = GPTLiveDelegationBridge.addToJobMarker(in: text)
+            XCTAssertEqual(watch?.number, phone?.number, text)
+            XCTAssertEqual(watch?.rest, phone?.rest, text)
+        }
+        XCTAssertEqual(WatchBridgeDelegation.addToJobMarker(in: "Add to job 2: a quiet table")?.rest, "a quiet table")
+        XCTAssertEqual(WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": "watch-2", "message": "a quiet table", "kind": " ADD "]) as? [String: String],
+                       ["job_id": "watch-2", "message": "a quiet table", "kind": "add"])
+        // No kind, or one Conduit doesn't know, redirects as before.
+        XCTAssertEqual(WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": "watch-2", "message": "hold that", "kind": ""]) as? [String: String],
+                       ["job_id": "watch-2", "message": "hold that"])
+        XCTAssertEqual(WatchJobAnswer.arguments(name: WatchJobAnswer.interruptJob, ["job_id": "watch-2", "message": "hold that", "kind": "pause"]) as? [String: String],
+                       ["job_id": "watch-2", "message": "hold that"])
         XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: " make it Alex ", delegated: "Alex"), "make it Alex")
         XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: "", delegated: " hold that "), "hold that")
         XCTAssertEqual(WatchBridgeDelegation.followUpWords(userWords: "", delegated: "hold that" + WatchBridgeDelegation.contextMarker + "User: hi\n"), "hold that")

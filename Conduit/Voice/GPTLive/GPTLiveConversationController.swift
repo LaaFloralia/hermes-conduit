@@ -870,6 +870,7 @@ final class GPTLiveConversationController: ObservableObject {
         typealias Bridge = GPTLiveDelegationBridge
         return Bridge.lookUpMarker(in: own) != nil
             || Bridge.jobMarker(in: own) != nil
+            || Bridge.addToJobMarker(in: own) != nil
             || Bridge.findChatMarker(in: own) != nil
             || Bridge.openChatMarker(in: own) != nil
             || Bridge.readChatMarker(in: own) != nil

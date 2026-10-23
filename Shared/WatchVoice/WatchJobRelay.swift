@@ -60,7 +60,12 @@ enum WatchJobAnswer {
             let message = arguments["message"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             // Clipped as GPT-Live's words are, under the plugin's 3,000-byte cap.
             let words = WatchBridgeDelegation.clipped(message, bytes: WatchBridgeDelegation.maxRequestBytes)
-            return jobID.isEmpty || message.isEmpty ? nil : ["job_id": jobID, "message": words]
+            guard !jobID.isEmpty, !message.isEmpty else { return nil }
+            // add steers the job, change (or none) redirects it, as on the phone.
+            let kind = arguments["kind"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            var relayed: [String: Any] = ["job_id": jobID, "message": words]
+            if let kind, ["add", "change"].contains(kind) { relayed["kind"] = kind }
+            return relayed
         default:
             return nil
         }
