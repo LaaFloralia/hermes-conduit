@@ -335,7 +335,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         center.post(
             name: AVAudioSession.interruptionNotification,
             object: nil,
-            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSessionInterruptionType.ended.rawValue]
+            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
         )
         await settle(until: { !call.controller.isAudioPausedForTesting })
         call.controller.deliverPendingJobUpdates()
