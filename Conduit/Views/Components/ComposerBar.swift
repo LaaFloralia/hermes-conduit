@@ -312,7 +312,10 @@ struct ComposerBar: View, Equatable {
         // A slash command runs on Hermes, so it waits for the chat itself
         // rather than being sent later.
         if appState.composerWaitsForChat, Self.slashPrefix(in: text) != nil { return .unavailable }
-        return appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty || pendingScreenshot != nil)
+        // A waiting screenshot rides on the next new turn only, so while
+        // Hermes replies it doesn't turn the typed message into a Queue.
+        let screenshotCounts = pendingScreenshot != nil && !appState.turnState.isRunning
+        return appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty || screenshotCounts)
     }
 
     /// A screenshot from Ask Hermes About Screen waiting on this chat. It
@@ -1182,7 +1185,8 @@ struct ComposerBar: View, Equatable {
                 .contentShape(Self.controlHitShape)
         }
         .accessibilityLabel(Text("Attach"))
-        .disabled(!appState.composerIsEnabled || appState.isBusy)
+        // Open while Hermes replies: the files go as Queue (#1146).
+        .disabled(!appState.composerIsEnabled)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
         .accessibilityShowsLargeContentViewer {
             Label("Attach", systemImage: "plus")

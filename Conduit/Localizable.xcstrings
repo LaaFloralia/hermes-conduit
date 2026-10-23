@@ -63265,88 +63265,6 @@
         }
       }
     },
-    "Attachments can only be sent in a new message, after the current response finishes." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anhänge können nur in einer neuen Nachricht gesendet werden, nachdem die aktuelle Antwort fertig ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los archivos adjuntos solo se pueden enviar en un mensaje nuevo, cuando termine la respuesta actual."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les pièces jointes ne peuvent être envoyées que dans un nouveau message, une fois la réponse en cours terminée."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lampiran hanya dapat dikirim dalam pesan baru, setelah respons saat ini selesai."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gli allegati possono essere inviati solo in un nuovo messaggio, al termine della risposta attuale."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添付ファイルは、現在の応答が完了した後に新しいメッセージでのみ送信できます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "첨부 파일은 현재 응답이 끝난 후 새 메시지로만 보낼 수 있어요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Załączniki można wysłać tylko w nowej wiadomości, po zakończeniu bieżącej odpowiedzi."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os anexos só podem ser enviados em uma nova mensagem, depois que a resposta atual terminar."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Вложения можно отправить только в новом сообщении, когда текущий ответ будет завершён."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ekler yalnızca geçerli yanıt bittikten sonra yeni bir mesajla gönderilebilir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "附件只能在当前回复结束后随新消息发送。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "附件只能在目前的回覆結束後，隨新訊息一起傳送。"
-          }
-        }
-      }
-    },
     "Audio was interrupted." : {
       "localizations" : {
         "de" : {
@@ -325340,6 +325258,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "任務已完成"
+          }
+        }
+      }
+    },
+    "This Hermes can't queue attachments. Update Hermes, or send them once the reply has finished." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Hermes kann keine Anhänge einreihen. Aktualisiere Hermes oder sende sie, wenn die Antwort fertig ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Hermes no puede poner archivos adjuntos en cola. Actualiza Hermes o envíalos cuando termine la respuesta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet Hermes ne peut pas mettre de pièces jointes en file d'attente. Mettez Hermes à jour, ou envoyez-les une fois la réponse terminée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ini tidak bisa mengantrekan lampiran. Perbarui Hermes, atau kirim setelah balasan selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo Hermes non può mettere in coda gli allegati. Aggiorna Hermes, oppure inviali quando la risposta è finita."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このHermesは添付ファイルをキューに追加できません。Hermesをアップデートするか、返信が終わってから送信してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes는 첨부 파일을 대기열에 넣을 수 없어요. Hermes를 업데이트하거나, 답변이 끝난 뒤에 보내세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten Hermes nie umie kolejkować załączników. Zaktualizuj Hermesa albo wyślij je, gdy odpowiedź się skończy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Hermes não consegue colocar anexos na fila. Atualize o Hermes ou envie-os quando a resposta terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот Hermes не умеет ставить вложения в очередь. Обновите Hermes или отправьте их, когда ответ закончится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Hermes ekleri sıraya alamıyor. Hermes'i güncelle ya da yanıt bittiğinde gönder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 无法将附件排队。请更新 Hermes，或在回复结束后再发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Hermes 無法將附件排隊。請更新 Hermes，或在回覆結束後再傳送。"
           }
         }
       }
