@@ -165,6 +165,7 @@ struct V2ConversationScreen: View {
                     }
                     .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isConnected)
                     .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isRecoveringConnection)
+                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.hidesBriefReconnect)
                 }
             }
             // The big button does something else: a live call stays one
@@ -247,12 +248,13 @@ private struct V2FadingBarBackdrop: ViewModifier {
 }
 
 /// Shown under the title only while the gateway isn't connected, so the
-/// header stays quiet when all is well.
+/// header stays quiet when all is well. Coming back to the app, a
+/// reconnect gets a few seconds to land before it shows (#296).
 private struct V2ConnectionLine: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        if !appState.isConnected {
+        if !appState.isConnected, !appState.hidesBriefReconnect {
             let connecting = appState.isRecoveringConnection
             HStack(spacing: 4) {
                 Image(systemName: connecting ? "arrow.triangle.2.circlepath" : "wifi.slash")

@@ -609,6 +609,8 @@ final class AppState: ObservableObject {
                 if !oldValue { noteChatListInteraction() }
             }
             if oldValue != isConnected { schedulePendingComposerSendCheck() }
+            // Nothing left to keep answering pings for off screen.
+            if oldValue, !isConnected { backgroundConnectionGrace.end() }
         }
     }
     @Published var isConnecting = false
@@ -622,6 +624,11 @@ final class AppState: ObservableObject {
         isConnecting
             || (networkPathUsable && !isConnected && connection != nil
                 && turnState == .reconnecting && reconnectAttempts < 3)
+    }
+    /// Just back on screen and reconnecting: the header stays quiet, since
+    /// the reconnect usually lands before anyone could read the words.
+    var hidesBriefReconnect: Bool {
+        isReturningQuietly && isRecoveringConnection
     }
     /// The device has a usable network path (the app's one path monitor).
     @Published private(set) var networkPathUsable = true
@@ -4363,6 +4370,15 @@ final class AppState: ObservableObject {
     private var responseHaptics = ResponseHapticState()
     private var scenePhaseTask: Task<Void, Never>?
     private var scenePhaseAttemptID: UUID?
+    /// Keeps the chat socket answering Hermes' pings for a short while
+    /// off screen, so a quick switch to another app comes back to the same
+    /// connection (notifier #296).
+    var backgroundConnectionGrace = BackgroundConnectionGrace()
+    /// The first few seconds back on screen: a reconnect that finishes in
+    /// that time doesn't flash "Reconnecting…" over the saved chat.
+    @Published private(set) var isReturningQuietly = false
+    private var quietReturnTask: Task<Void, Never>?
+    static let quietReturnWindow: TimeInterval = 3
     /// Armed only by a real .background phase. Ordinary inactive → active
     /// transitions (Control Center, incoming-call banner) must not be treated
     /// as reopening the app, so they never arm the preferred return surface.
@@ -17190,6 +17206,7 @@ final class AppState: ObservableObject {
             if !(isSceneActive && sceneHasBeenActive) { sceneActiveSince = Date() }
             isSceneActive = true
             sceneHasBeenActive = true
+            backgroundConnectionGrace.end()
             // Polls left long while nothing moved catch up at once.
             noteChatListInteraction()
             openChatSync.resetIdlePace()
@@ -17257,6 +17274,7 @@ final class AppState: ObservableObject {
             // sync restores the chat underneath, and explicit navigation
             // still wins via the suppression guards on both sides.
             if didReturnFromBackground {
+                beginQuietReturn()
                 requestPreferredReturnSurface()
                 let away = lastLeftForegroundAt.map {
                     " after \(ConnectionTimeline.seconds(Date().timeIntervalSince($0))) away"
@@ -17395,6 +17413,13 @@ final class AppState: ObservableObject {
             hasEnteredBackgroundScenePhase = true
             // Audio may keep the socket open off screen; it pings less.
             client?.setKeepaliveBackgrounded(true)
+            endQuietReturn()
+            // Without audio, iOS suspends Conduit at once and the socket
+            // stops answering Hermes' pings: hold the process a little so a
+            // quick trip to another app doesn't cost a reconnect.
+            if client?.isConnected == true {
+                backgroundConnectionGrace.begin()
+            }
             // The socket can die while suspended and turn edges can be missed,
             // so the local turn state must be re-confirmed against the
             // authoritative runtime registry before the next composer submit
@@ -17526,6 +17551,23 @@ final class AppState: ObservableObject {
 
     private func scenePhaseAttemptIsCurrent(_ id: UUID) -> Bool {
         !Task.isCancelled && scenePhaseAttemptID == id
+    }
+
+    private func beginQuietReturn() {
+        quietReturnTask?.cancel()
+        isReturningQuietly = true
+        quietReturnTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(Self.quietReturnWindow * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            self?.isReturningQuietly = false
+            self?.quietReturnTask = nil
+        }
+    }
+
+    private func endQuietReturn() {
+        quietReturnTask?.cancel()
+        quietReturnTask = nil
+        if isReturningQuietly { isReturningQuietly = false }
     }
 
     /// Background transition for the Voice conversation. An open Voice sheet
