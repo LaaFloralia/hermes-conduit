@@ -59,6 +59,8 @@ struct ChatView: View {
     @State private var latestAnimationTask: Task<Void, Never>?
     /// The overview of every pinned reply, from the pinned bar (#918).
     @State private var showsPinnedReplies = false
+    /// The pin whose label is being edited from the bar (#1147).
+    @State private var labelingPin: PinnedReply?
     /// Gives up on an overview reveal whose reply the opened chat hasn't
     /// loaded (an older part of it).
     @State private var pinnedRevealFallbackTask: Task<Void, Never>?
@@ -397,6 +399,9 @@ struct ChatView: View {
             PinnedRepliesSheet()
                 .environmentObject(appState)
         }
+        .pinnedReplyLabelEditor($labelingPin) { pin, label in
+            appState.setPinnedReplyLabel(pin, to: label)
+        }
     }
 
     // MARK: - Scroll construction (layered so the type-checker can cope)
@@ -699,7 +704,11 @@ struct ChatView: View {
         pinnedRevealFallbackTask = nil
         pinnedRevealFallbackReveal = nil
         appState.pendingPinnedReplyReveal = nil
-        DispatchQueue.main.async { scrollEngine.explicitMessageRequested(id: id) }
+        let passage = reveal.pin.passage
+        DispatchQueue.main.async {
+            scrollEngine.explicitMessageRequested(id: id)
+            if let passage { PinnedPassageFlasher.flash(passage, inMessage: id) }
+        }
     }
 
     /// The bar over the transcript while the open chat has pinned replies.
@@ -711,6 +720,7 @@ struct ChatView: View {
                 pins: pins,
                 jump: { pin in jumpToPinnedReply(pin) },
                 unpin: { pin in appState.unpinReply(pin) },
+                label: { pin in labelingPin = pin },
                 showAll: { showsPinnedReplies = true }
             )
             .id(appState.activeSessionId)
@@ -728,6 +738,7 @@ struct ChatView: View {
         if let id = PinnedReplies.messageID(for: pin, in: appState.messages, among: appState.openChatPinnedReplies) {
             ChatViewportTrace.shared.log("event explicitPinnedReply (bar)")
             scrollEngine.explicitMessageRequested(id: id)
+            if let passage = pin.passage { PinnedPassageFlasher.flash(passage, inMessage: id) }
         } else {
             ChatViewportTrace.shared.log("event explicitTop (pinned reply not loaded)")
             scrollEngine.explicitTopRequested()
@@ -2013,8 +2024,9 @@ struct SettledAssistantMessageContent: View, Equatable {
     }
 }
 
-/// The dynamic half of an assistant row: copy/quote/branch controls that depend
-/// on busy state, kept small so their per-publish re-evaluation is cheap.
+/// The dynamic half of an assistant row: the copy control (quote, branch
+/// and pin sit in `AssistantMessageMoreMenu`), kept small so its
+/// per-publish re-evaluation is cheap.
 struct AssistantMessageActions: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
@@ -2035,35 +2047,6 @@ struct AssistantMessageActions: View {
         .buttonStyle(.plain)
         .foregroundStyle(copied ? Color.conduitAccent : Color.secondary)
         .accessibilityLabel(copied ? AppLocalization.string("Response copied") : AppLocalization.string("Copy response"))
-
-        // Attaches this whole reply to the next message (#385); the
-        // composer plays the haptic when the chip lands.
-        Button {
-            appState.replyInComposer(to: message)
-        } label: {
-            Image(systemName: "quote.bubble")
-                .font(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .disabled(!rowState.canQuoteIntoComposer || !message.content.contains(where: { !$0.isWhitespace }))
-        .opacity(rowState.canQuoteIntoComposer ? 1 : 0.45)
-        .accessibilityLabel(AppLocalization.string("Quote this response"))
-
-        Button {
-            Haptics.medium()
-            Task { await appState.branchFromAssistantMessage(message.id) }
-        } label: {
-            Image(systemName: "arrow.triangle.branch")
-                .font(.subheadline.weight(.semibold))
-                .frame(width: 34, height: 34)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.secondary)
-        .disabled(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline)
-        .opacity(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline ? 0.45 : 1)
-        .accessibilityLabel("Branch from this response")
     }
 
     private func copyResponse() {
@@ -2075,6 +2058,66 @@ struct AssistantMessageActions: View {
             guard !Task.isCancelled else { return }
             copied = false
         }
+    }
+}
+
+/// The ⋯ at the end of a reply's row (#1147): Quote, Branch and Pin reply,
+/// so the row keeps a few icons while each action stays a tap away.
+struct AssistantMessageMoreMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let message: ChatMessage
+    @Environment(\.chatRowState) private var rowState
+    @Environment(\.chatRowActions) private var rowActions
+    /// Acted on, not observed: what a row shows comes from `rowState`.
+    private var appState: AppState { rowActions.required }
+
+    private var hasText: Bool {
+        message.content.contains(where: { !$0.isWhitespace })
+    }
+
+    var body: some View {
+        Menu {
+            // Attaches this whole reply to the next message (#385); the
+            // composer plays the haptic when the chip lands.
+            Button {
+                appState.replyInComposer(to: message)
+            } label: {
+                Label(AppLocalization.string("Quote"), systemImage: "quote.bubble")
+            }
+            .disabled(!rowState.canQuoteIntoComposer || !hasText)
+
+            Button {
+                Haptics.medium()
+                Task { await appState.branchFromAssistantMessage(message.id) }
+            } label: {
+                Label(AppLocalization.string("Branch"), systemImage: "arrow.triangle.branch")
+            }
+            .disabled(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline)
+
+            // The whole reply; a selection's menu pins a passage.
+            if rowState.canPinReplies {
+                let isPinned = rowState.pinnedMessageIDs.contains(message.id)
+                Button {
+                    Haptics.light()
+                    appState.togglePinnedReply(appState.messages.first { $0.id == message.id } ?? message)
+                } label: {
+                    Label(
+                        AppLocalization.string(isPinned ? "Unpin reply" : "Pin reply"),
+                        systemImage: isPinned ? "pin.slash.fill" : "pin.fill"
+                    )
+                }
+                .disabled(!hasText)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(AppLocalization.string("More"))
+        .accessibilityIdentifier("chat.replyMoreMenu")
     }
 }
 
@@ -2173,7 +2216,9 @@ struct AssistantBubble: View {
                 chatTextSize: chatTextSize
             )
             .equatable()
-            // Pin and Unpin sit in the reply's long-press menu (#918).
+            // Pin sits in the reply's long-press menu, not its action row
+            // (#918): Pin for the selected passage, Pin reply for all of it
+            // (#1147). A pinned passage's jump flashes it in this text.
             .environment(\.chatPinReplyAction, rowState.canPinReplies
                 ? ChatPinReplyAction(message: message, appState: appState)
                 : nil)
@@ -2197,6 +2242,8 @@ struct AssistantBubble: View {
                 if message.role == .assistant {
                     ReadAloudButton(message: message, controller: readAloudController)
                 }
+
+                AssistantMessageMoreMenu(message: message)
             }
             .padding(.top, 2)
             // Fixed 34 pt buttons: larger glyphs would overlap each other.

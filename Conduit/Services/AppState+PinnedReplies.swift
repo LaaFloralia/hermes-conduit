@@ -2,11 +2,12 @@
 //  AppState+PinnedReplies.swift
 //  Conduit
 //
-//  Replies pinned to the top of their chat (#918): Pin in a reply's
-//  long-press menu, the bar over the open chat that cycles through its pins, and the
-//  Chats list's overview of every pinned reply, which opens a chat at the
-//  reply. Pins stay on this device, per profile; Hermes has no pinned
-//  message of its own to share them with.
+//  Replies pinned to the top of their chat (#918): Pin reply or, for just
+//  the selected passage, Pin in a reply's long-press menu (#1147), the
+//  bar over the open chat that cycles through its pins, and the Chats
+//  list's overview of every pin, which opens a chat at the reply and
+//  labels pins. Pins stay on this device, per profile; Hermes has no
+//  pinned message of its own to share them with.
 //
 
 import Foundation
@@ -36,7 +37,8 @@ extension AppState {
         pinnedRepliesForOpenChat.messageIDs
     }
 
-    /// Pins `message` to the top of the open chat, or unpins it.
+    /// Pins the whole of `message` to the top of the open chat, or unpins
+    /// it.
     func togglePinnedReply(_ message: ChatMessage) {
         guard canPinReplies, message.role == .assistant,
               message.content.contains(where: { !$0.isWhitespace }) else { return }
@@ -54,6 +56,59 @@ extension AppState {
         var stored = activePinnedReplies
         stored.append(pin)
         pinnedRepliesByProfile[activeProfile] = stored
+        persistPinnedReplies()
+    }
+
+    /// Pins the selected `passage` of `message` (#1147), or unpins it when
+    /// that passage is pinned already.
+    func togglePinnedPassage(_ passage: String, of message: ChatMessage) {
+        guard canPinReplies, message.role == .assistant,
+              PinnedReply.normalizedPassage(passage) != nil else { return }
+        if let existing = PinnedReplies.pin(
+            forPassage: passage, of: message, in: openChatPinnedReplies, messages: messages
+        ) {
+            unpinReply(existing)
+            return
+        }
+        pinPassage(passage, of: message)
+    }
+
+    /// Pins the selected `passage` of `message` unless it is pinned already.
+    func pinPassage(_ passage: String, of message: ChatMessage) {
+        guard canPinReplies, message.role == .assistant,
+              PinnedReply.normalizedPassage(passage) != nil,
+              PinnedReplies.pin(
+                  forPassage: passage, of: message, in: openChatPinnedReplies, messages: messages
+              ) == nil else { return }
+        let pin = PinnedReply(
+            sessionID: openChatPinIDs().store,
+            message: message,
+            chatTitle: activeChatSessionSummary?.title ?? activeSessionTitle,
+            passage: passage
+        )
+        var stored = activePinnedReplies
+        stored.append(pin)
+        pinnedRepliesByProfile[activeProfile] = stored
+        persistPinnedReplies()
+    }
+
+    /// Whether `passage` of the open chat's `messageID` is pinned.
+    func isPassagePinned(_ passage: String, messageID: String) -> Bool {
+        guard let message = messages.first(where: { $0.id == messageID }) else { return false }
+        return PinnedReplies.pin(
+            forPassage: passage, of: message, in: openChatPinnedReplies, messages: messages
+        ) != nil
+    }
+
+    /// Names a pin for the bar and the list; a blank label clears it.
+    func setPinnedReplyLabel(_ pin: PinnedReply, to label: String) {
+        let profile = activeProfile
+        var stored = pinnedRepliesByProfile[profile] ?? []
+        guard let index = stored.firstIndex(where: { $0.id == pin.id }) else { return }
+        let normalized = PinnedReply.normalizedLabel(label)
+        guard stored[index].label != normalized else { return }
+        stored[index].label = normalized
+        pinnedRepliesByProfile[profile] = stored
         persistPinnedReplies()
     }
 

@@ -4,9 +4,11 @@
 //
 //  Replies pinned to the top of their chat (#918), like a pinned message in
 //  Telegram or WhatsApp: a long answer worked through point by point stays
-//  one tap away however far the chat has moved on. Pins are kept on this
-//  device, per profile. Pure list shaping, so finding a pin's row in a
-//  transcript and the bar's order stay testable without a view.
+//  one tap away however far the chat has moved on. A pin can hold the
+//  whole reply or just a passage of it, and can carry a label (#1147).
+//  Pins are kept on this device, per profile. Pure list shaping, so
+//  finding a pin's row in a transcript and the bar's order stay testable
+//  without a view.
 //
 
 import Foundation
@@ -32,15 +34,29 @@ struct PinnedReply: Codable, Equatable, Identifiable, Hashable {
     /// one while the chat is in the list.
     var chatTitle: String
     let pinnedAt: Date
+    /// The text selected when this pin was made, when it pins a passage of
+    /// the reply rather than all of it (#1147): what the bar and the list
+    /// show, and what the jump finds and flashes in the reply. Nil pins the
+    /// whole reply.
+    let passage: String?
+    /// A short name for the pin, shown in place of its text in the bar and
+    /// at the top of its row in the list.
+    var label: String?
 
     /// How much of a reply a pin keeps.
     static let excerptLength = 280
+    /// How much of a selection a passage pin keeps.
+    static let passageLength = 2000
+    /// How long a label can be.
+    static let labelLength = 80
 
     init(
         id: String = UUID().uuidString,
         sessionID: String,
         message: ChatMessage,
         chatTitle: String,
+        passage: String? = nil,
+        label: String? = nil,
         pinnedAt: Date = Date()
     ) {
         self.id = id
@@ -49,27 +65,71 @@ struct PinnedReply: Codable, Equatable, Identifiable, Hashable {
         self.messageID = message.id
         self.excerpt = Self.excerpt(of: message.content)
         self.chatTitle = chatTitle
+        self.passage = passage.flatMap(Self.normalizedPassage)
+        self.label = label.flatMap(Self.normalizedLabel)
         self.pinnedAt = pinnedAt
+    }
+
+    /// Whether this pin holds a passage of its reply rather than all of it.
+    var isPassage: Bool { passage != nil }
+
+    /// The pinned text on one line: the passage, else the reply's start.
+    var shownText: String {
+        passage.map { Self.excerpt(of: $0) } ?? excerpt
+    }
+
+    /// What the bar shows for the pin: its label, else its text.
+    var title: String { label ?? shownText }
+
+    /// Whether `text` is this pin's passage, whitespace aside.
+    func holdsPassage(_ text: String) -> Bool {
+        guard let passage, let other = Self.normalizedPassage(text) else { return false }
+        return Self.folded(passage, limit: .max) == Self.folded(other, limit: .max)
+    }
+
+    /// A selection as a passage pin keeps it: trimmed and cut to
+    /// `passageLength`; nil when nothing but whitespace was selected.
+    static func normalizedPassage(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(passageLength))
+    }
+
+    /// A label on one line, cut to `labelLength`; nil when blank, which
+    /// clears it.
+    static func normalizedLabel(_ text: String) -> String? {
+        let label = folded(text, limit: labelLength)
+        return label.isEmpty ? nil : label
     }
 
     /// The reply's text on one line, cut to `excerptLength`. Reads only as
     /// much of a long reply as the excerpt needs.
     static func excerpt(of content: String) -> String {
+        folded(content, limit: excerptLength)
+    }
+
+    /// `content` on one line, whitespace runs folded to a space, cut to
+    /// `limit` characters.
+    static func folded(_ content: String, limit: Int) -> String {
         var folded = ""
+        var count = 0
         var pendingSpace = false
         for character in content {
             if character.isWhitespace {
-                pendingSpace = !folded.isEmpty
+                pendingSpace = count > 0
                 continue
             }
             if pendingSpace {
                 folded.append(" ")
+                count += 1
                 pendingSpace = false
+                if count >= limit { break }
             }
             folded.append(character)
-            if folded.count >= excerptLength { break }
+            count += 1
+            if count >= limit { break }
         }
-        return String(folded.prefix(excerptLength))
+        return folded
     }
 
     /// Whether `message` is the reply this pin was made on, by id alone.
@@ -89,11 +149,36 @@ struct PinnedReply: Codable, Equatable, Identifiable, Hashable {
 
 enum PinnedReplies {
     /// The transcript row each pin shows, by pin id; a pin whose reply
-    /// isn't loaded (an older part of a long chat) has none. Resolved in one
-    /// pass so no two pins land on the same reply: ids claim their rows
-    /// first, then a pin matched by its text takes the latest reply reading
-    /// that way that no other pin has, the newest pin first.
+    /// isn't loaded (an older part of a long chat) has none. Whole-reply
+    /// pins are resolved in one pass so no two of them land on the same
+    /// reply: ids claim their rows first, then a pin matched by its text
+    /// takes the latest reply reading that way that no other pin has, the
+    /// newest pin first. Passage pins share their reply with any other pin
+    /// (#1147), so each finds its own.
     static func resolved(_ pins: [PinnedReply], in messages: [ChatMessage]) -> [String: String] {
+        guard !pins.isEmpty else { return [:] }
+        var result = resolvedWholeReplies(pins.filter { !$0.isPassage }, in: messages)
+        for pin in pins where pin.isPassage {
+            let exact: ChatMessage?
+            if let rowId = pin.rowId {
+                exact = messages.first { $0.role == .assistant && $0.rowId == rowId }
+            } else {
+                exact = messages.first { pin.isExactly($0) }
+            }
+            // Replies opening alike: the latest one holding the passage,
+            // else the latest (the reply's source can mark up the text).
+            let byText = exact == nil ? messages.filter { pin.matchesText(of: $0) } : []
+            let holding = byText.last { message in
+                pin.passage.map { !PinnedPassageMatch.ranges(of: $0, in: message.content).isEmpty } ?? false
+            }
+            if let match = exact ?? holding ?? byText.last {
+                result[pin.id] = match.id
+            }
+        }
+        return result
+    }
+
+    private static func resolvedWholeReplies(_ pins: [PinnedReply], in messages: [ChatMessage]) -> [String: String] {
         guard !pins.isEmpty else { return [:] }
         var result: [String: String] = [:]
         var claimed = Set<String>()
@@ -143,17 +228,32 @@ enum PinnedReplies {
         return resolved(all, in: messages)[pin.id]
     }
 
-    /// The rows of `messages` that are pinned.
+    /// The rows of `messages` pinned whole; a passage pin leaves its reply
+    /// free to be pinned whole as well.
     static func pinnedMessageIDs(_ pins: [PinnedReply], in messages: [ChatMessage]) -> Set<String> {
-        Set(resolved(pins, in: messages).values)
+        Set(resolvedWholeReplies(pins.filter { !$0.isPassage }, in: messages).values)
     }
 
-    /// The pin that is `message` in this transcript, if any: the pin whose
-    /// reply resolves to it, so a second reply reading like a pinned one is
-    /// not taken for it.
+    /// The whole-reply pin that is `message` in this transcript, if any:
+    /// the pin whose reply resolves to it, so a second reply reading like a
+    /// pinned one is not taken for it.
     static func pin(for message: ChatMessage, in pins: [PinnedReply], messages: [ChatMessage]) -> PinnedReply? {
-        let ids = resolved(pins, in: messages)
-        return pins.first { ids[$0.id] == message.id }
+        let whole = pins.filter { !$0.isPassage }
+        let ids = resolvedWholeReplies(whole, in: messages)
+        return whole.first { ids[$0.id] == message.id }
+    }
+
+    /// The pin holding `passage` of `message`, if it has been pinned.
+    static func pin(
+        forPassage passage: String,
+        of message: ChatMessage,
+        in pins: [PinnedReply],
+        messages: [ChatMessage]
+    ) -> PinnedReply? {
+        let candidates = pins.filter { $0.holdsPassage(passage) }
+        guard !candidates.isEmpty else { return nil }
+        let ids = resolved(candidates, in: messages)
+        return candidates.first { ids[$0.id] == message.id }
     }
 
     /// The pins with the ids their rows have now: a reply pinned as it
@@ -187,15 +287,22 @@ enum PinnedReplies {
         let placed = pins.enumerated().map { offset, pin -> (pin: PinnedReply, index: Int?, offset: Int) in
             (pin, ids[pin.id].flatMap { position[$0] }, offset)
         }
+        func pinnedEarlier(_ lhs: (pin: PinnedReply, index: Int?, offset: Int), _ rhs: (pin: PinnedReply, index: Int?, offset: Int)) -> Bool {
+            lhs.pin.pinnedAt == rhs.pin.pinnedAt
+                ? lhs.offset < rhs.offset
+                : lhs.pin.pinnedAt < rhs.pin.pinnedAt
+        }
         return placed.sorted { lhs, rhs in
             switch (lhs.index, rhs.index) {
-            case let (l?, r?): return l < r
+            case let (l?, r?):
+                if l != r { return l < r }
+                // Pins on one reply: the whole reply, then its passages
+                // in the order they were pinned.
+                if lhs.pin.isPassage != rhs.pin.isPassage { return !lhs.pin.isPassage }
+                return pinnedEarlier(lhs, rhs)
             case (nil, _?): return true
             case (_?, nil): return false
-            case (nil, nil):
-                return lhs.pin.pinnedAt == rhs.pin.pinnedAt
-                    ? lhs.offset < rhs.offset
-                    : lhs.pin.pinnedAt < rhs.pin.pinnedAt
+            case (nil, nil): return pinnedEarlier(lhs, rhs)
             }
         }.map(\.pin)
     }
@@ -223,6 +330,80 @@ enum PinnedReplies {
         }
         return sections.sorted { lhs, rhs in
             (lhs.pins.first?.pinnedAt ?? .distantPast) > (rhs.pins.first?.pinnedAt ?? .distantPast)
+        }
+    }
+}
+
+/// Where a pinned passage sits in a block of a reply's shown text (#1147),
+/// so the jump can flash it. Whitespace is folded on both sides: a
+/// selection's line breaks and the text's need not agree.
+enum PinnedPassageMatch {
+    /// Lines shorter than this are too common to flash on their own.
+    static let minimumLineLength = 4
+
+    /// The UTF-16 ranges of `text` that show `passage`: all of it when the
+    /// block holds all of it, else each of its lines the block holds (a
+    /// passage selected across several blocks shows a part in each).
+    static func ranges(of passage: String, in text: String) -> [NSRange] {
+        let haystack = Folded(text)
+        guard !haystack.characters.isEmpty else { return [] }
+        let whole = PinnedReply.folded(passage, limit: .max)
+        guard !whole.isEmpty else { return [] }
+        if let range = haystack.range(of: whole) { return [range] }
+        var ranges: [NSRange] = []
+        var seen = Set<String>()
+        for line in passage.split(whereSeparator: \.isNewline) {
+            let folded = PinnedReply.folded(String(line), limit: .max)
+            guard folded.count >= minimumLineLength, seen.insert(folded).inserted,
+                  let range = haystack.range(of: folded) else { continue }
+            ranges.append(range)
+        }
+        return ranges.sorted { $0.location < $1.location }
+    }
+
+    /// `text` with whitespace folded as `PinnedReply.folded` does, and
+    /// where each kept character sits in the original's UTF-16.
+    private struct Folded {
+        var characters: [Character] = []
+        var starts: [Int] = []
+        var ends: [Int] = []
+
+        init(_ text: String) {
+            var offset = 0
+            var pendingSpace: (start: Int, end: Int)?
+            for character in text {
+                let length = character.utf16.count
+                defer { offset += length }
+                if character.isWhitespace {
+                    guard !characters.isEmpty else { continue }
+                    pendingSpace = (pendingSpace?.start ?? offset, offset + length)
+                    continue
+                }
+                if let space = pendingSpace {
+                    characters.append(" ")
+                    starts.append(space.start)
+                    ends.append(space.end)
+                    pendingSpace = nil
+                }
+                characters.append(character)
+                starts.append(offset)
+                ends.append(offset + length)
+            }
+        }
+
+        func range(of needle: String) -> NSRange? {
+            let target = Array(needle)
+            guard !target.isEmpty, target.count <= characters.count else { return nil }
+            var index = 0
+            while index + target.count <= characters.count {
+                if characters[index] == target[0],
+                   characters[index..<(index + target.count)].elementsEqual(target) {
+                    let start = starts[index]
+                    return NSRange(location: start, length: ends[index + target.count - 1] - start)
+                }
+                index += 1
+            }
+            return nil
         }
     }
 }

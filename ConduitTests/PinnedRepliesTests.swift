@@ -2,7 +2,8 @@ import XCTest
 import UIKit
 @testable import Conduit
 
-/// Replies pinned to the top of their chat (#918).
+/// Replies pinned to the top of their chat (#918), whole or by passage,
+/// with labels (#1147).
 final class PinnedRepliesTests: XCTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 
@@ -199,7 +200,7 @@ final class PinnedRepliesTests: XCTestCase {
     }
 
     @MainActor
-    func testTheLongPressMenuPinsAndUnpinsTheReplyAfterQuote() throws {
+    func testTheSelectionMenuPinsTheSelectedPassageAfterQuote() throws {
         let appState = makeAppState(freshDefaults())
         appState.activeSessionId = "chat-1"
         let answer = reply("a", "Twenty points", rowId: 7)
@@ -209,20 +210,44 @@ final class PinnedRepliesTests: XCTestCase {
         bridge.pinReplyAction = try XCTUnwrap(ChatPinReplyAction(message: answer, appState: appState))
 
         let menu = try XCTUnwrap(editMenu(bridge))
-        XCTAssertEqual(menu.children.count, 3)
+        XCTAssertEqual(menu.children.count, 4)
         XCTAssertEqual((menu.children[0] as? UIMenu)?.identifier, .standardEdit)
         XCTAssertEqual((menu.children[1] as? UIAction)?.title, AppLocalization.string("Quote"))
         let pin = try XCTUnwrap(menu.children[2] as? UIAction)
         XCTAssertEqual(pin.title, AppLocalization.string("Pin"))
+        XCTAssertEqual((menu.children[3] as? UIAction)?.title, AppLocalization.string("Pin reply"))
 
-        bridge.pinReplyAction?()
-        XCTAssertEqual(appState.openChatPinnedMessageIDs, ["a"])
+        // The menu's selection is "Twenty".
+        bridge.pinReplyAction?.togglePassage("Twenty")
+        let pinned = try XCTUnwrap(appState.activePinnedReplies.first)
+        XCTAssertEqual(pinned.passage, "Twenty")
+        XCTAssertEqual(pinned.shownText, "Twenty")
+        XCTAssertTrue(appState.openChatPinnedMessageIDs.isEmpty, "the reply itself is not pinned whole")
         // The menu asks again when it next opens.
-        let unpin = try XCTUnwrap(editMenu(bridge)?.children.last as? UIAction)
+        let unpin = try XCTUnwrap(editMenu(bridge)?.children[2] as? UIAction)
         XCTAssertEqual(unpin.title, AppLocalization.string("Unpin"))
 
-        bridge.pinReplyAction?()
+        bridge.pinReplyAction?.togglePassage("Twenty")
         XCTAssertTrue(appState.activePinnedReplies.isEmpty)
+
+        // Pin reply pins all of it, and offers Unpin reply after.
+        bridge.pinReplyAction?()
+        XCTAssertEqual(appState.openChatPinnedMessageIDs, ["a"])
+        let unpinReply = try XCTUnwrap(editMenu(bridge)?.children.last as? UIAction)
+        XCTAssertEqual(unpinReply.title, AppLocalization.string("Unpin reply"))
+    }
+
+    @MainActor
+    func testPinReplyAndVoiceOversActionPinTheWholeReply() throws {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "Twenty points", rowId: 7)
+        appState.messages = [answer]
+        let action = try XCTUnwrap(ChatPinReplyAction(message: answer, appState: appState))
+        action()
+        XCTAssertTrue(action.isPinned)
+        XCTAssertEqual(appState.openChatPinnedMessageIDs, ["a"])
+        XCTAssertNil(appState.activePinnedReplies.first?.passage)
     }
 
     @MainActor
@@ -235,7 +260,10 @@ final class PinnedRepliesTests: XCTestCase {
         bridge.pinReplyAction = try XCTUnwrap(ChatPinReplyAction(message: answer, appState: appState))
 
         let menu = try XCTUnwrap(editMenu(bridge))
-        XCTAssertEqual(menu.children.map { ($0 as? UIAction)?.title }, [nil, AppLocalization.string("Pin")])
+        XCTAssertEqual(
+            menu.children.map { ($0 as? UIAction)?.title },
+            [nil, AppLocalization.string("Pin"), AppLocalization.string("Pin reply")]
+        )
     }
 
     @MainActor
@@ -496,5 +524,199 @@ final class PinnedRepliesTests: XCTestCase {
         appState.showPinnedReply(pinned)
         appState.unpinReply(pinned)
         XCTAssertNil(appState.pendingPinnedReplyReveal)
+    }
+
+    // MARK: - Passages and labels (#1147)
+
+    private func passagePin(_ message: ChatMessage, _ passage: String, at offset: TimeInterval = 0) -> PinnedReply {
+        PinnedReply(sessionID: "s1", message: message, chatTitle: "Plan", passage: passage, pinnedAt: t0.addingTimeInterval(offset))
+    }
+
+    func testAPassagePinSharesItsReplyWithAWholePin() {
+        let answer = reply("a", "1. Patch\n2. Rotate keys", rowId: 7)
+        let whole = pin(answer, at: 0)
+        let passage = passagePin(answer, "Rotate keys", at: 10)
+        let pins = [whole, passage]
+        let ids = PinnedReplies.resolved(pins, in: [answer])
+        XCTAssertEqual(ids[whole.id], "a")
+        XCTAssertEqual(ids[passage.id], "a")
+        XCTAssertEqual(PinnedReplies.pinnedMessageIDs(pins, in: [answer]), ["a"])
+        XCTAssertEqual(PinnedReplies.pinnedMessageIDs([passage], in: [answer]), [], "a passage leaves the reply unpinned")
+        XCTAssertEqual(PinnedReplies.pin(for: answer, in: pins, messages: [answer])?.id, whole.id)
+        XCTAssertEqual(PinnedReplies.pin(forPassage: " Rotate\nkeys ", of: answer, in: pins, messages: [answer])?.id, passage.id)
+        XCTAssertNil(PinnedReplies.pin(forPassage: "Patch", of: answer, in: pins, messages: [answer]))
+    }
+
+    func testTwoPassagesOfOneReplySitInTheBarAfterTheWholeReply() {
+        let earlier = reply("e", "Earlier", rowId: 1)
+        let answer = reply("a", "One two three", rowId: 7)
+        let second = passagePin(answer, "three", at: 5)
+        let first = passagePin(answer, "One", at: 1)
+        let whole = pin(answer, at: 9)
+        let other = pin(earlier, at: 20)
+        let order = PinnedReplies.barOrder([second, first, whole, other], in: [earlier, answer])
+        XCTAssertEqual(order.map(\.id), [other.id, whole.id, first.id, second.id])
+    }
+
+    func testAPassagePinMadeAsTheReplyArrivedIsFoundByItsTextOnceReloaded() {
+        let pinned = passagePin(reply("live-3", "Step one.\nStep two."), "Step two.")
+        let reloaded = [reply("r-12", "Step one. Step two.", rowId: 12)]
+        XCTAssertEqual(PinnedReplies.messageID(for: pinned, in: reloaded), "r-12")
+        XCTAssertEqual(PinnedReplies.refreshed([pinned], in: reloaded)?.first?.rowId, 12)
+    }
+
+    func testPassageAndLabelAreTrimmedAndCut() {
+        let answer = reply("a", "Answer")
+        XCTAssertNil(PinnedReply(sessionID: "s", message: answer, chatTitle: "", passage: " \n ").passage)
+        let long = String(repeating: "x", count: PinnedReply.passageLength + 10)
+        XCTAssertEqual(PinnedReply(sessionID: "s", message: answer, chatTitle: "", passage: long).passage?.count, PinnedReply.passageLength)
+        XCTAssertEqual(PinnedReply.normalizedLabel("  Security\n recommendations "), "Security recommendations")
+        XCTAssertNil(PinnedReply.normalizedLabel("   "))
+        XCTAssertEqual(PinnedReply.normalizedLabel(String(repeating: "y", count: 200))?.count, PinnedReply.labelLength)
+    }
+
+    func testTheBarShowsTheLabelElseThePassageElseTheReply() {
+        let answer = reply("a", "Long answer opening")
+        var whole = pin(answer)
+        XCTAssertEqual(whole.title, "Long answer opening")
+        let passage = passagePin(answer, "answer\nopening")
+        XCTAssertEqual(passage.title, "answer opening")
+        whole.label = "Security"
+        XCTAssertEqual(whole.title, "Security")
+    }
+
+    func testPinsSavedBeforePassagesAndLabelsStillLoad() throws {
+        let saved = """
+        {"id":"p1","sessionID":"s1","rowId":7,"messageID":"a","excerpt":"Twenty points","chatTitle":"Plan","pinnedAt":0}
+        """
+        let pin = try JSONDecoder().decode(PinnedReply.self, from: Data(saved.utf8))
+        XCTAssertNil(pin.passage)
+        XCTAssertNil(pin.label)
+        XCTAssertFalse(pin.isPassage)
+    }
+
+    func testAPassageIsFoundWhereverTheLineBreaksFall() throws {
+        let text = "First point.\nRotate the\nkeys  every month.\nLast point."
+        let ranges = PinnedPassageMatch.ranges(of: "Rotate the keys every\nmonth.", in: text)
+        XCTAssertEqual(ranges.count, 1)
+        let range = try XCTUnwrap(ranges.first)
+        XCTAssertEqual((text as NSString).substring(with: range), "Rotate the\nkeys  every month.")
+    }
+
+    func testAPassageAcrossBlocksLightsTheLinesEachBlockHolds() {
+        // Selected across a paragraph and a list: each block holds a line.
+        let passage = "Keep secrets out of logs.\nRotate keys monthly.\nOK"
+        let first = PinnedPassageMatch.ranges(of: passage, in: "Intro. Keep secrets out of logs.")
+        XCTAssertEqual(first, [NSRange(location: 7, length: 25)])
+        let second = PinnedPassageMatch.ranges(of: passage, in: "Rotate keys monthly. Then OK")
+        XCTAssertEqual(second, [NSRange(location: 0, length: 20)], "a line too short to place is left out")
+        XCTAssertEqual(PinnedPassageMatch.ranges(of: passage, in: "Nothing here"), [])
+    }
+
+    func testAPassageCountsUTF16ForTheTextView() {
+        let text = "😀 Rotate keys"
+        XCTAssertEqual(PinnedPassageMatch.ranges(of: "Rotate keys", in: text), [NSRange(location: 3, length: 11)])
+    }
+
+    @MainActor
+    func testPinningAPassageTwiceKeepsOnePinBesideTheWholeReply() {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "Patch now. Rotate keys.", rowId: 7)
+        appState.messages = [answer]
+        appState.pinPassage("Rotate keys.", of: answer)
+        appState.pinPassage("Rotate keys.", of: answer)
+        XCTAssertEqual(appState.activePinnedReplies.count, 1)
+        XCTAssertTrue(appState.isPassagePinned("Rotate keys.", messageID: "a"))
+        XCTAssertFalse(appState.isPassagePinned("Patch now.", messageID: "a"))
+
+        appState.togglePinnedReply(answer)
+        XCTAssertEqual(appState.activePinnedReplies.count, 2)
+        XCTAssertEqual(appState.openChatPinnedMessageIDs, ["a"])
+        appState.togglePinnedReply(answer)
+        XCTAssertEqual(appState.activePinnedReplies.map(\.passage), ["Rotate keys."], "unpinning the reply keeps its passage")
+    }
+
+    @MainActor
+    func testALabelIsSavedRenamedAndClearedAcrossARelaunch() throws {
+        let defaults = freshDefaults()
+        let appState = makeAppState(defaults)
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "Patch now. Rotate keys.", rowId: 7)
+        appState.messages = [answer]
+        appState.pinPassage("Rotate keys.", of: answer)
+        let pin = try XCTUnwrap(appState.activePinnedReplies.first)
+
+        appState.setPinnedReplyLabel(pin, to: "  Security recommendations ")
+        XCTAssertEqual(appState.openChatPinnedReplies.first?.title, "Security recommendations")
+        let relaunched = makeAppState(defaults)
+        XCTAssertEqual(relaunched.activePinnedReplies.first?.label, "Security recommendations")
+
+        appState.setPinnedReplyLabel(pin, to: "")
+        XCTAssertNil(appState.activePinnedReplies.first?.label)
+        XCTAssertEqual(appState.activePinnedReplies.first?.title, "Rotate keys.")
+    }
+
+    @MainActor
+    func testAPassageCannotBePinnedWhereRepliesCannot() {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = nil
+        appState.pinPassage("Rotate keys.", of: reply("a", "Rotate keys.", rowId: 1))
+        appState.activeSessionId = "chat-1"
+        appState.pinPassage("Hello", of: user("u", "Hello"))
+        appState.pinPassage("  ", of: reply("a", "Rotate keys.", rowId: 1))
+        XCTAssertTrue(appState.activePinnedReplies.isEmpty)
+    }
+
+    @MainActor
+    func testThePillPinsASelectionAcrossBlocks() throws {
+        let appState = makeAppState(freshDefaults())
+        appState.activeSessionId = "chat-1"
+        let answer = reply("a", "First\n\nSecond", rowId: 7)
+        appState.messages = [answer]
+
+        let coordinator = MarkdownSelectionCoordinator()
+        let descriptors = [
+            MarkdownSelectionSegmentDescriptor(id: "first", order: 0, separatorBefore: ""),
+            MarkdownSelectionSegmentDescriptor(id: "second", order: 1, separatorBefore: "\n\n")
+        ]
+        coordinator.replaceSegments(descriptors, revision: "pin-pill-v1")
+        let firstTextView = SelectableTextView.makeTextView()
+        firstTextView.attributedText = NSAttributedString(string: "First")
+        coordinator.register(descriptor: descriptors[0], textView: firstTextView)
+        let secondTextView = SelectableTextView.makeTextView()
+        secondTextView.attributedText = NSAttributedString(string: "Second")
+        coordinator.register(descriptor: descriptors[1], textView: secondTextView)
+        coordinator.beginSelection(segmentID: "first", offset: 2, windowPoint: .zero)
+        coordinator.updateSelection(segmentID: "second", offset: 3, windowPoint: CGPoint(x: 0, y: 10))
+
+        let container = MarkdownSelectionHandleContainerView(frame: .zero)
+        container.coordinator = coordinator
+        XCTAssertEqual(container.pinPill?.accessibilityIdentifier, "selection.pinPill")
+
+        // Text outside a reply that can be pinned has no Pin.
+        container.pinActiveSelection()
+        XCTAssertTrue(coordinator.hasActiveSelection)
+
+        let bridge = SelectableTextView(text: "First").makeCoordinator()
+        bridge.pinReplyAction = try XCTUnwrap(ChatPinReplyAction(message: answer, appState: appState))
+        firstTextView.delegate = bridge
+        container.pinActiveSelection()
+
+        XCTAssertEqual(appState.activePinnedReplies.map(\.passage), ["rst\n\nSec"])
+        XCTAssertFalse(coordinator.hasActiveSelection)
+        withExtendedLifetime(bridge) {}
+    }
+
+    func testAPassagePinFindsTheReplyHoldingItAmongRepliesOpeningAlike() {
+        // Pinned as it arrived; after a reload two replies open the same
+        // way, and only the earlier one holds the passage.
+        let opening = String(repeating: "Same opening. ", count: 30)
+        let pinned = passagePin(reply("live-1", opening + "Rotate keys monthly."), "Rotate keys monthly.")
+        let reloaded = [
+            reply("r-1", opening + "Rotate keys monthly.", rowId: 1),
+            reply("r-2", opening + "Something else.", rowId: 2)
+        ]
+        XCTAssertEqual(PinnedReplies.messageID(for: pinned, in: reloaded), "r-1")
     }
 }
