@@ -591,6 +591,42 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(link.isInterrupted, "Observers are gone after stop")
     }
 
+    /// #1145: in a call from Hermes CallKit takes the audio away and gives
+    /// it back with no interruption end, and off screen (answered on
+    /// CarPlay, locked) the app never becomes active: CallKit's own
+    /// deactivate and activate pause and resume the call.
+    func testGPTLiveAudioLinkFollowsCallKitsCallAudio() async {
+        let audio = FakeGPTLiveAudio()
+        let center = NotificationCenter()
+        let link = GPTLiveAudioLink(audio: audio, center: center)
+        var paused: [Bool] = []
+        link.onPausedChanged = { paused.append($0) }
+        XCTAssertNoThrow(try link.start())
+
+        center.post(name: .hermesCallAudioDeactivated, object: nil)
+        await settle(until: { link.isInterrupted })
+        XCTAssertTrue(link.isInterrupted)
+        XCTAssertEqual(audio.events.last, "disable")
+
+        center.post(name: .hermesCallAudioActivated, object: nil)
+        await settle(until: { !link.isInterrupted })
+        XCTAssertFalse(link.isInterrupted)
+        XCTAssertEqual(Array(audio.events.suffix(2)), ["reassert", "enable"])
+        XCTAssertEqual(paused, [true, false])
+
+        // CallKit's audio came on after the call started on a session
+        // Conduit activated: WebRTC's audio restarts on CallKit's.
+        let before = audio.events.count
+        link.callAudioActivated()
+        XCTAssertEqual(Array(audio.events.dropFirst(before)), ["reassert", "disable", "enable"])
+        XCTAssertEqual(paused, [true, false], "A restart isn't a pause")
+
+        link.stop()
+        let afterStop = audio.events.count
+        link.callAudioActivated()
+        XCTAssertEqual(audio.events.count, afterStop, "Nothing after stop")
+    }
+
     func testGPTLiveAudioPauseKeepsTheSession() async {
         let (session, peer) = makeGPTSession(client: FakeGPTLiveClient())
         var paused: [Bool] = []

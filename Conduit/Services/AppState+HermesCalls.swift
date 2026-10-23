@@ -604,6 +604,38 @@ extension AppState {
         reassertVoiceSurfaceGate()
     }
 
+    /// CallKit gave an answered call its audio back (#1145). Classic voice
+    /// the interruption ended listens again, after a moment for the other
+    /// sound to let go, as it does in the car: off screen (locked, or in
+    /// another app) there's no Listen to tap, and the call would stay
+    /// silent. In the car CarPlay restarts it; on screen the sheet's
+    /// Listen is there.
+    func hermesCallAudioActivated(after delay: Duration = .milliseconds(800)) {
+        guard isNativeHermesCallAnswered, showVoiceSheet, hermesCallVoiceRunning(),
+              !CarPlayVoiceCoordinator.shared.isConnected, !hermesCallPhoneOnScreen() else { return }
+        let controller = voiceConversationController
+        guard Self.listensAgainAfterInterruption(controller) else { return }
+        Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            // Still the same call's conversation, and nothing moved it on.
+            guard let self, self.isNativeHermesCallAnswered, self.showVoiceSheet,
+                  !self.isNativeHermesCallMuted, !self.hermesCallPhoneOnScreen(),
+                  !CarPlayVoiceCoordinator.shared.isConnected,
+                  self.voiceConversationController === controller,
+                  Self.listensAgainAfterInterruption(controller) else { return }
+            if controller.hasLiveVoiceSession {
+                guard self.attachToLiveVoiceConversation() else { return }
+            }
+            HermesCallTrace.shared.note("Classic voice listening again on the call's audio")
+            await controller.startListening()
+        }
+    }
+
+    private static func listensAgainAfterInterruption(_ controller: VoiceConversationController) -> Bool {
+        guard controller.failedForAudioInterruption, case .failed = controller.state else { return false }
+        return true
+    }
+
     /// The user hung up the CallKit call: the voice conversation it opened
     /// ends as its End button would, and one still opening doesn't open.
     func endVoiceForNativeCall() {
