@@ -3889,9 +3889,27 @@ final class AppState: ObservableObject {
             } else if self.isGrokLiveActive {
                 self.grokLiveController.deliverPendingJobUpdates()
             } else if self.isLocalLiveActive {
-                // Hermes' replies are the call's own turns: nothing else is
-                // spoken on a Local Live call.
-                self.voiceBackgroundJobSupervisor.dropPendingNotices()
+                // Live > Local puts the host's fast model on the front, so a
+                // job's result is news to the call and goes out as one of its
+                // turns, as in the other live modes. A call that hands each
+                // utterance to Hermes drops it instead: Hermes' reply is the
+                // call's own turn, and a notice would be said twice.
+                //
+                // A call with no ready connection yet has no mode to read:
+                // while the microphone permission and the handshake are
+                // pending, it keeps the notice for the connection to come
+                // rather than spending it on a drop it can't take back.
+                let controller = self.localLiveController
+                switch LocalLiveNoticeHandling.forCall(
+                    runsAgentTurns: controller.sessionRunsAgentTurns,
+                    sessionIsReady: controller.sessionIsReady,
+                    configuredAgent: self.isLocalLiveAgent
+                ) {
+                case .deliverAsUpdate:
+                    controller.deliverPendingJobUpdates()
+                case .drop:
+                    self.voiceBackgroundJobSupervisor.dropPendingNotices()
+                }
             } else {
                 self.voiceConversationController.deliverPendingBackgroundJobNoticeIfIdle()
             }
