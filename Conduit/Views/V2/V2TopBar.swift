@@ -381,6 +381,7 @@ struct V2ProfileStrip: View {
         }
         .buttonStyle(PressableButtonStyle())
         .disabled(!isSelected && appState.isProfileSwitching)
+        .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
         .accessibilityValue(unread ? AppLocalization.string("Unread") : "")
@@ -455,6 +456,41 @@ struct V2ProfileStrip: View {
             url: appState.profileAvatarURL(for: profile),
             size: pictureSize
         )
+    }
+}
+
+/// Long-pressing the active profile's chip (selected, or under All) lists
+/// the other saved dashboards, for moving to another Hermes without
+/// opening Settings (#288 in the notifier repo). Only with two or more
+/// saved; the Profiles sheet lists them too.
+private struct DashboardSwitchMenu: ViewModifier {
+    @EnvironmentObject private var appState: AppState
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        // Always attached, with the items gated: switching the modifier on
+        // and off would rebuild the chip as it becomes (or stops being) the
+        // selected one, under its matched-geometry capsule. An empty menu
+        // doesn't open.
+        content.contextMenu {
+            let others = appState.savedDashboardRegistry.dashboards.filter { $0.id != appState.activeDashboardID }
+            if enabled && !others.isEmpty {
+                Section(AppLocalization.string("Saved Dashboards")) {
+                    ForEach(others) { dashboard in
+                        Button {
+                            Haptics.medium()
+                            Task { await appState.switchDashboard(to: dashboard.id) }
+                        } label: {
+                            Label {
+                                Text(verbatim: dashboard.label)
+                            } icon: {
+                                Image(systemName: "server.rack")
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
