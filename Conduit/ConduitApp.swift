@@ -265,6 +265,8 @@ struct ConduitApp: App {
                 // cannot refresh them.
                 appState.appLanguageDidChange()
                 appState.publishWidgetLanguage()
+                // The Notification Service Extension writes banners in it.
+                NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
                 HermesCallNotifications.registerCategory()
             }
             .preferredColorScheme(appState.themePreference.colorScheme)

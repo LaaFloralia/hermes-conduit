@@ -748,6 +748,7 @@ final class PushNotificationService: ObservableObject {
             if needsRelayStamp { persistRegistration() }
         }
         NotificationSharedSettings.showPreviews = preferences.showPreviews
+        NotificationSharedSettings.appLanguage = AppLanguage.current.rawValue
         refreshEncryptionState()
     }
 
