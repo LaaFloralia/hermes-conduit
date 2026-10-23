@@ -637,6 +637,11 @@ final class GeminiLiveConversationController: ObservableObject {
         }
     }
 
+    /// Whether this call's live connection runs its own agent (Live > Local),
+    /// so Hermes' job news is news to it. False while connecting, and for
+    /// every call that answers each utterance with a Hermes turn.
+    var sessionRunsAgentTurns: Bool { session?.runsAgentTurns == true }
+
     /// Background-job updates became pending (the supervisor's
     /// onNoticePending, routed here while this mode is active).
     func deliverPendingJobUpdates() {
