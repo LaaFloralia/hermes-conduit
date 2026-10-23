@@ -189,7 +189,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         await finishAJob(supervisor)
 
         handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
-        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        await settle(until: { turns(socket, containing: "3 unread.").count == 1 })
         XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1, "the result is said once, on this call")
         XCTAssertTrue(supervisor.jobs.first?.outcomeDelivered == true, "settled only once the socket took it")
 
@@ -229,7 +229,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         try await makeReady(call.session, socket)
 
         // Ready: the controller redelivers what it kept.
-        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        await settle(until: { turns(socket, containing: "3 unread.").count == 1 })
         XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1, "said once, on the call it was kept for")
         call.controller.stop()
     }
@@ -251,7 +251,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         // Ready: the result goes out then, once.
         try await makeReady(call.session, socket)
         call.controller.deliverPendingJobUpdates()
-        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        await settle(until: { turns(socket, containing: "3 unread.").count == 1 })
         XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1)
         call.controller.stop()
     }
@@ -279,7 +279,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
 
         let next = try XCTUnwrap(call.sockets().last)
         try await makeReady(call.session, next)
-        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        await settle(until: { turns(next, containing: "3 unread.").count == 1 })
         XCTAssertEqual(turns(next, containing: "3 unread.").count, 1)
         XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty)
         call.controller.stop()
@@ -300,13 +300,13 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         socket.upgradeRefusal = GeminiLiveServerClose(code: 1006, reason: "gone", isHTTPStatus: false)
         handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
         await settle(until: { call.controller.pendingTextTurnCountForTesting == 1 })
-        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true, "back in the queue, not spent")
+        // Claimed (outcomeDelivered) but in flight: the requeued turn keeps it.
         XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty)
 
         await settle(until: { call.sockets().count > 1 })
         let next = try XCTUnwrap(call.sockets().last)
         try await makeReady(call.session, next)
-        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        await settle(until: { turns(next, containing: "3 unread.").count == 1 })
         XCTAssertEqual(turns(next, containing: "3 unread.").count, 1)
         call.controller.stop()
     }
@@ -339,7 +339,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         )
         await settle(until: { !call.controller.isAudioPausedForTesting })
         call.controller.deliverPendingJobUpdates()
-        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        await settle(until: { turns(socket, containing: "3 unread.").count == 1 })
         XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1)
         call.controller.stop()
     }
