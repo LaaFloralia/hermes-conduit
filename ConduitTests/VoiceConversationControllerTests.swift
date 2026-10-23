@@ -540,6 +540,145 @@ final class VoiceConversationControllerTests: XCTestCase {
         )
     }
 
+    // MARK: An approval the running turn waits on
+
+    func testApprovalWhileHermesThinksIsSaidThenAYesAnswersItAsASteer() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+
+        controller.noteApprovalWaiting(sessionID: "session", request: "req-1",
+                                       line: "Hermes needs your OK to go on: delete the logs.",
+                                       stillWaiting: { true })
+        let opened = await controller.waitForState(.listening)
+
+        XCTAssertTrue(opened, "the microphone opens for the answer once the notice is said")
+        XCTAssertTrue(controller.isSteeringTurn, "the answer steers the waiting turn")
+        XCTAssertEqual(gateway.stream?.appended, ["Hermes needs your OK to go on: delete the logs."])
+        XCTAssertEqual(gateway.stream?.finishCount, 1, "the notice ends its own speech")
+        XCTAssertEqual(controller.conversationTranscript.last?.text, "Hermes needs your OK to go on: delete the logs.")
+
+        gateway.transcript = "Yes"
+        let words = Date()
+        controller.ingestAudioLevel(0.1, at: words)
+        controller.ingestAudioLevel(0, at: words.addingTimeInterval(1.3))
+        await steers.waitUntilSubmitted(1)
+        await drainPendingMainActorWork()
+
+        XCTAssertEqual(steers.texts, ["Yes"])
+        XCTAssertEqual(submitted.texts, ["Question"], "the answer is not a new turn")
+        XCTAssertEqual(interrupts.value, 0, "the waiting turn is never cancelled")
+        XCTAssertEqual(controller.state, .thinking)
+
+        // The same request again (a resend) is not said twice.
+        controller.noteApprovalWaiting(sessionID: "session", request: "req-1",
+                                       line: "Hermes needs your OK to go on: delete the logs.",
+                                       stillWaiting: { true })
+        await drainPendingMainActorWork()
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertEqual(controller.state, .thinking)
+    }
+
+    func testStopOverAnApprovalNoticeListensForTheAnswerWithoutCancellingTheTurn() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true, blocksFirstStreamAppend: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+
+        controller.noteApprovalWaiting(sessionID: "session", request: "req-1",
+                                       line: "Hermes needs your OK to go on: delete the logs.",
+                                       stillWaiting: { true })
+        // The notice is still being said.
+        await gateway.waitUntilSpeechAppended(1)
+        XCTAssertEqual(controller.state, .speaking)
+
+        await controller.stopAssistantReply()
+
+        XCTAssertEqual(interrupts.value, 0, "the turn waiting on the approval goes on")
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertTrue(controller.isSteeringTurn, "the words answer the approval")
+    }
+
+    func testApprovalWithOutputMutedIsOnlyShown() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+        controller.setOutputMuted(true)
+
+        controller.noteApprovalWaiting(sessionID: "session", request: "req-1",
+                                       line: "Hermes needs your OK to go on: delete the logs.",
+                                       stillWaiting: { true })
+        await drainPendingMainActorWork()
+
+        XCTAssertEqual(gateway.openCount, 0)
+        XCTAssertEqual(controller.conversationTranscript.last?.text, "Hermes needs your OK to go on: delete the logs.")
+        XCTAssertFalse(controller.isSteeringTurn)
+    }
+
+    func testApprovalForAnotherChatIsNotSaid() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+
+        controller.noteApprovalWaiting(sessionID: "other", request: "req-1",
+                                       line: "Hermes needs your OK to go on: delete the logs.",
+                                       stillWaiting: { true })
+        await drainPendingMainActorWork()
+
+        XCTAssertEqual(gateway.openCount, 0)
+        XCTAssertEqual(controller.state, .thinking)
+    }
+
+    func testApprovalArrivingWhileTheUserSteersIsSaidAfterIfItStillWaits() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await driveToThinking(controller, submitted: submitted)
+
+        gateway.transcript = "Use the staging server instead"
+        let speech = Date()
+        controller.ingestAudioLevel(0.5, at: speech)
+        controller.ingestAudioLevel(0.5, at: speech.addingTimeInterval(0.31))
+        let steering = await controller.waitForState(.listening)
+        XCTAssertTrue(steering)
+        controller.noteApprovalWaiting(sessionID: "session", request: "req-1",
+                                       line: "Hermes needs your OK to go on: delete the logs.",
+                                       stillWaiting: { true })
+        XCTAssertEqual(gateway.openCount, 0, "not said over the user")
+
+        let words = Date()
+        controller.ingestAudioLevel(0.1, at: words)
+        controller.ingestAudioLevel(0, at: words.addingTimeInterval(1.3))
+        await steers.waitUntilSubmitted(1)
+        await gateway.waitUntilSpeechStreamOpened(1)
+
+        XCTAssertEqual(steers.texts, ["Use the staging server instead"])
+        XCTAssertEqual(gateway.stream?.appended, ["Hermes needs your OK to go on: delete the logs."])
+    }
+
     func testSteerSpokenAfterTheTurnFinishedBecomesANewTurn() async {
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
         let submitted = SubmitSpy()

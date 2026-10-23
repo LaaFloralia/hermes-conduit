@@ -103,6 +103,14 @@ final class VoiceConversationController: ObservableObject {
     /// A late steer's follow-up reply that started while the steered reply
     /// was still playing, held until that speech settles.
     private var heldPromotedSteerEvents: [VoiceAssistantEvent] = []
+    /// Approvals already said out loud in this conversation, by request.
+    private var announcedApprovals: Set<String> = []
+    /// An approval's notice that couldn't be said yet (the user was
+    /// speaking), and whether it still waits when it can be.
+    private var pendingApprovalNotice: (line: String, stillWaiting: @MainActor () -> Bool)?
+    /// The notice playing ends its own speech, then the microphone opens
+    /// for the yes or no while Hermes' turn waits on it.
+    private var approvalNoticeOpensAnswerWindow = false
     /// Installed by AppState: the authoritative Voice Close teardown
     /// (persist mute → `endVoiceSession` → sheet dismissal). A spoken End
     /// Conversation phrase converges on it instead of a second teardown;
@@ -280,6 +288,8 @@ final class VoiceConversationController: ObservableObject {
         expectedAssistantSessionIDs = [sessionID]
         conversationTranscript.removeAll(keepingCapacity: true)
         activeAssistantTranscriptEntryID = nil
+        announcedApprovals = []
+        endApprovalNotice()
     }
 
     /// Adds session ids an admitted resume positively rebound to this
@@ -358,6 +368,9 @@ final class VoiceConversationController: ObservableObject {
 
     private func openPushToTalkWindow() async {
         isMicrophonePaused = false
+        // A press over an approval's notice answers it: the turn that waits
+        // on it goes on.
+        stopApprovalNotice()
         if isPlaybackCaptureSuspended || state == .speaking || state == .muted {
             await stopAssistantReplyAndListen()
         } else if state == .thinking {
@@ -660,6 +673,13 @@ final class VoiceConversationController: ObservableObject {
     private func stopAssistantReplyAndListen() async {
         bargeInTask?.cancel()
         bargeInTask = nil
+        if approvalNoticeOpensAnswerWindow {
+            // Interrupt over an approval's notice: the notice stops and the
+            // microphone opens for the answer; the turn waiting on it goes on.
+            stopApprovalNotice()
+            await openApprovalAnswerWindow(operation: operationGeneration)
+            return
+        }
         cachedRoutePolicy = nil
         // Deliberately leaves lastBargeInState alone: that property records
         // acoustic barge-in provenance, and this path always lands in
@@ -716,6 +736,7 @@ final class VoiceConversationController: ObservableObject {
         expectedAssistantSessionIDs = []
         suspendedInFlightTurnOrphaned = false
         isRuntimeSuspended = false
+        announcedApprovals = []
         state = .idle
     }
 
@@ -775,6 +796,7 @@ final class VoiceConversationController: ObservableObject {
         assistantFinished = false
         isPlaybackCaptureSuspended = false
         endSteerBookkeeping()
+        endApprovalNotice()
         speechDetector.reset()
         thinkingRoom.reset()
         resetMicrophoneMeter()
@@ -788,6 +810,7 @@ final class VoiceConversationController: ObservableObject {
             playback.stop()
             cancelSpeechDrainAndStream()
             clearSpeechQueue()
+            approvalNoticeOpensAnswerWindow = false
             if state == .speaking { state = .muted }
             endPlaybackCaptureSuspensionAfterMute()
         } else if state == .muted {
@@ -1043,6 +1066,7 @@ final class VoiceConversationController: ObservableObject {
             assistantFinished = false
             clearSpeechQueue()
             cancelSpeechDrainAndStream()
+            approvalNoticeOpensAnswerWindow = false
             if state == .thinking || state == .muted { beginBargeInMonitoring() }
         case .delta(_, let text):
             awaitedAssistantResponseStarted = true
@@ -1070,6 +1094,7 @@ final class VoiceConversationController: ObservableObject {
             assistantFinished = true
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
+            endApprovalNotice()
             if steerSentThisTurn {
                 promotedSteerReplyDeadline = Date().addingTimeInterval(promotedSteerReplyWindow)
             }
@@ -1084,6 +1109,7 @@ final class VoiceConversationController: ObservableObject {
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
             endSteerBookkeeping()
+            endApprovalNotice()
             state = .failed(message)
             playback.stop()
             cancelSpeechDrainAndStream()
@@ -1093,6 +1119,7 @@ final class VoiceConversationController: ObservableObject {
             isAwaitingVoiceAssistant = false
             awaitedAssistantResponseStarted = false
             endSteerBookkeeping()
+            endApprovalNotice()
             playback.stop()
             cancelSpeechDrainAndStream()
             endPlaybackCaptureSuspensionWithoutRelistening()
@@ -1651,6 +1678,7 @@ final class VoiceConversationController: ObservableObject {
         isPlaybackCaptureSuspended = false
         isPushToTalkHeld = false
         endSteerBookkeeping()
+        endApprovalNotice()
         speechDetector.reset()
         thinkingRoom.reset()
         resetMicrophoneMeter()
@@ -1681,7 +1709,9 @@ final class VoiceConversationController: ObservableObject {
     /// output muted, the user's speech would only cut the turn short, so
     /// it is ignored.
     private var isTalkOverAvailable: Bool {
-        guard state == .speaking else { return false }
+        // An approval's notice: the yes or no comes once it has been said,
+        // and must not cancel the turn that waits on it.
+        guard state == .speaking, !approvalNoticeOpensAnswerWindow else { return false }
         return playback.isPlaying || !isAwaitingVoiceAssistant
     }
 
@@ -1741,7 +1771,85 @@ final class VoiceConversationController: ObservableObject {
         }
         state = .thinking
         beginBargeInMonitoring()
+        if let pending = pendingApprovalNotice {
+            pendingApprovalNotice = nil
+            // Said after the reply speech held for the steer, if any.
+            if pending.stillWaiting() {
+                sayApprovalNotice(pending.line)
+                return
+            }
+        }
         if !speechDeltas.isEmpty || assistantFinished { startSpeechDrainIfNeeded() }
+    }
+
+    /// Hermes' running turn stopped on an approval in this conversation's
+    /// chat. Nothing else would be said until someone answers it, so the
+    /// user hears what it asks and that a yes or no answers it, then the
+    /// microphone opens for that answer (a steer, which answers it). Each
+    /// request is said once; while the user is speaking it waits for the
+    /// words to land, and is dropped if they answered it.
+    func noteApprovalWaiting(sessionID: String, request: String, line: String,
+                             stillWaiting: @escaping @MainActor () -> Bool) {
+        guard isVoiceSessionActive, isAwaitingVoiceAssistant,
+              expectedAssistantSessionIDs.contains(sessionID),
+              !announcedApprovals.contains(request) else { return }
+        announcedApprovals.insert(request)
+        if !isSteeringTurn, utteranceTask == nil, bargeInTask == nil,
+           state == .thinking || state == .speaking || state == .muted {
+            sayApprovalNotice(line)
+        } else {
+            pendingApprovalNotice = (line: line, stillWaiting: stillWaiting)
+        }
+    }
+
+    /// Shows the notice and says it after any reply speech already queued,
+    /// as the end of that speech. Muted, it is only shown.
+    private func sayApprovalNotice(_ line: String) {
+        conversationTranscript.append(VoiceConversationTranscriptEntry(speaker: .assistant, text: line))
+        activeAssistantTranscriptEntryID = nil
+        guard !isOutputMuted else { return }
+        // The reply's held tail goes first; the notice isn't filtered.
+        let tail = spokenTextFilter.finish()
+        speechDeltas.append(tail.isEmpty ? line : tail + " " + line)
+        approvalNoticeOpensAnswerWindow = true
+        startSpeechDrainIfNeeded()
+    }
+
+    /// After the notice: a listening window whose words steer the waiting
+    /// turn, so a yes or no answers the approval. Silence goes back to
+    /// waiting on the turn, as an empty steer does.
+    private func openApprovalAnswerWindow(operation: UInt64) async {
+        // The reply went on meanwhile (or the turn ended): it carries on.
+        guard isCurrent(operation), isAwaitingVoiceAssistant, !isSteeringTurn,
+              !isDrainingSpeech, speechDeltas.isEmpty, speechStream == nil,
+              utteranceTask == nil, bargeInTask == nil else { return }
+        approvalNoticeOpensAnswerWindow = false
+        cachedRoutePolicy = nil
+        isPlaybackCaptureSuspended = false
+        state = .thinking
+        // A microphone the user paused can't hear the answer, and a window
+        // over it would hold the reply's speech with nothing to end it.
+        guard !isMicrophonePaused else { return }
+        isSteeringTurn = true
+        await startListening()
+        guard isSteeringTurn else { return }
+        if state != .listening { resumeTurnAfterSteer() }
+    }
+
+    /// Cuts an approval's notice short, back to waiting on the turn.
+    private func stopApprovalNotice() {
+        guard approvalNoticeOpensAnswerWindow else { return }
+        approvalNoticeOpensAnswerWindow = false
+        playback.stop()
+        cancelSpeechDrainAndStream()
+        clearSpeechQueue()
+        isPlaybackCaptureSuspended = false
+        state = .thinking
+    }
+
+    private func endApprovalNotice() {
+        pendingApprovalNotice = nil
+        approvalNoticeOpensAnswerWindow = false
     }
 
     private func endSteerBookkeeping() {
@@ -2096,7 +2204,7 @@ final class VoiceConversationController: ObservableObject {
                 try await speechStream.append(speechDeltas.removeFirst())
                 guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
             }
-            if assistantFinished, let speechStream {
+            if assistantFinished || approvalNoticeOpensAnswerWindow, let speechStream {
                 _ = try await speechStream.finish()
                 guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
                 try playback.finish()
@@ -2108,6 +2216,7 @@ final class VoiceConversationController: ObservableObject {
             guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
             if isSpeechCancellation(error) {
                 speechStream = nil
+                approvalNoticeOpensAnswerWindow = false
                 // A cancelled drain never reaches the replay below.
                 dropPromotedSteerReply()
                 if assistantFinished {
@@ -2129,6 +2238,21 @@ final class VoiceConversationController: ObservableObject {
             playback.stop()
             endPlaybackCaptureSuspensionWithoutRelistening()
             if state == .speaking || state == .thinking { state = .failed(UserFacingError.message(for: error)) }
+            return
+        }
+        if approvalNoticeOpensAnswerWindow, !assistantFinished, speechDeltas.isEmpty, speechStream == nil {
+            guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
+            // Once this drain has settled, so the turn's reply can start
+            // one of its own. The notice stays the notice until then, so a
+            // Stop in between still keeps the turn.
+            Task { @MainActor [weak self] in await self?.openApprovalAnswerWindow(operation: operation) }
+            return
+        }
+        if approvalNoticeOpensAnswerWindow, !speechDeltas.isEmpty {
+            // Reply text that arrived while the notice finished: said next,
+            // and the answer window opens after it.
+            guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
+            Task { @MainActor [weak self] in self?.startSpeechDrainIfNeeded() }
             return
         }
         if assistantFinished && speechDeltas.isEmpty && speechStream == nil {

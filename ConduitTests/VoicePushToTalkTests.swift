@@ -169,6 +169,37 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertEqual(submitted.texts, ["Question"], "a steer is not a new turn")
     }
 
+    func testPushToTalkAnApprovalIsSaidThenAPressAnswersIt() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let controller = makePushToTalkController(
+            capture: capture, gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts
+        )
+        await pushToTalkTurn(controller, submitted: submitted, count: 1)
+        controller.receiveAssistantEvent(.started(sessionID: "session"))
+
+        controller.noteApprovalWaiting(sessionID: "session", request: "req-1",
+                                       line: "Hermes needs your OK to go on: delete the logs.",
+                                       stillWaiting: { true })
+        await gateway.waitUntilSpeechStreamOpened(1)
+        let thinking = await controller.waitForState(.thinking)
+        XCTAssertTrue(thinking, "push to talk waits for a press to answer")
+        XCTAssertFalse(controller.isSteeringTurn)
+
+        gateway.transcript = "Yes"
+        await controller.beginPushToTalk()
+        XCTAssertTrue(controller.isSteeringTurn)
+        controller.ingestAudioLevel(0.1, at: Date())
+        controller.endPushToTalk(send: true)
+        await steers.waitUntilSubmitted(1)
+
+        XCTAssertEqual(steers.texts, ["Yes"])
+        XCTAssertEqual(interrupts.value, 0, "the turn waiting on the approval goes on")
+    }
+
     func testPushToTalkStaysHandsFreeWhereTheButtonIsNotShown() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "From the car")
