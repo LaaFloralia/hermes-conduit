@@ -642,6 +642,10 @@ final class GeminiLiveConversationController: ObservableObject {
     /// every call that answers each utterance with a Hermes turn.
     var sessionRunsAgentTurns: Bool { session?.runsAgentTurns == true }
 
+    /// Whether the live connection can take a send yet. The session's own
+    /// state, not the setting: a call keeps the mode it connected with.
+    var sessionIsReady: Bool { session?.isReady == true }
+
     /// Background-job updates became pending (the supervisor's
     /// onNoticePending, routed here while this mode is active).
     func deliverPendingJobUpdates() {

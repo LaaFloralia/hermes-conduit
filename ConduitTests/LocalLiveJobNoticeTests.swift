@@ -8,6 +8,9 @@
 //  utterance to Hermes (hermes_turns) still drops it: Hermes' reply is the
 //  call's own turn and a notice said as well would be said twice.
 //
+//  The route itself is a pure function of what AppState reads off the call,
+//  so these tests drive that same function rather than re-deciding here.
+//
 
 import AVFAudio
 import XCTest
@@ -24,13 +27,31 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         VoiceBackgroundJobSupervisor(backend: FakeVoiceJobBackend().backend, pollInterval: .seconds(3_600))
     }
 
+    /// Availability the test opens by hand, so a call can be caught with no
+    /// session yet: the window the microphone prompt and the handshake keep
+    /// open (`start()` asks before it makes one).
+    @MainActor
+    private final class GatedAvailability {
+        private var opened = false
+
+        func wait() async {
+            while !opened { await Task.yield() }
+        }
+
+        func open() { opened = true }
+    }
+
+    private static let model = "qwen3.8-omni-flash-realtime"
+
     /// A Local Live call on the real session seam, driven by a fake socket.
     private func makeLocalLiveController(
         agent: Bool,
         supervisor: VoiceBackgroundJobSupervisor,
-        notificationCenter: NotificationCenter = NotificationCenter()
+        notificationCenter: NotificationCenter = NotificationCenter(),
+        availability: (@MainActor () async throws -> GeminiLiveAvailability)? = nil
     ) -> (controller: GeminiLiveConversationController, session: LocalLiveSession,
           input: FakeGeminiLiveInput, sockets: () -> [FakeGeminiLiveSocket]) {
+        let availability = availability ?? { .available(model: LocalLiveJobNoticeTests.model) }
         var sockets: [FakeGeminiLiveSocket] = []
         let session = LocalLiveSession(
             client: FakeLocalLiveConnection(),
@@ -50,7 +71,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         let input = FakeGeminiLiveInput()
         let controller = GeminiLiveConversationController(
             makeSession: { session },
-            availability: { .available(model: "qwen3.8-omni-flash-realtime") },
+            availability: availability,
             tools: GeminiLiveToolBridge(supervisor: supervisor, webSearch: nil, holdsJobCalls: false),
             input: input,
             output: FakeGeminiLiveOutput(),
@@ -96,11 +117,41 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         supervisor.observe(.messageComplete(sessionId: "st-1", messageId: nil, content: "3 unread.", reasoning: nil))
     }
 
+    /// What AppState's `onNoticePending` does for this call, from the values
+    /// it reads: the route decides, and only its `deliverAsUpdate` branch can
+    /// settle a notice.
+    private func handlePendingNotice(
+        _ controller: GeminiLiveConversationController,
+        supervisor: VoiceBackgroundJobSupervisor,
+        configuredAgent: Bool
+    ) {
+        switch LocalLiveNoticeHandling.forCall(
+            runsAgentTurns: controller.sessionRunsAgentTurns,
+            sessionIsReady: controller.sessionIsReady,
+            configuredAgent: configuredAgent
+        ) {
+        case .deliverAsUpdate:
+            controller.deliverPendingJobUpdates()
+        case .drop:
+            supervisor.dropPendingNotices()
+        }
+    }
+
     // MARK: Routing
 
-    func testAnAgentLocalLiveCallDeliversJobNewsAndAHermesTurnCallStillDropsIt() {
-        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: true), .deliverAsUpdate)
-        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: false), .drop)
+    func testTheRouteFollowsTheReadyConnectionAndOnlyUsesTheSettingBeforeThat() {
+        // A ready connection is the truth: a call keeps the mode it
+        // connected with, even if Settings was switched mid-conversation.
+        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: true, sessionIsReady: true, configuredAgent: true), .deliverAsUpdate)
+        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: true, sessionIsReady: true, configuredAgent: false), .deliverAsUpdate)
+        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: false, sessionIsReady: true, configuredAgent: true), .drop)
+        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: false, sessionIsReady: true, configuredAgent: false), .drop)
+
+        // Before that, Settings says what the connection that arrives will
+        // be. Agent mode keeps the notice for it; Classic drops it as it
+        // always did (Hermes' own reply is the Classic turn).
+        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: false, sessionIsReady: false, configuredAgent: true), .deliverAsUpdate)
+        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: false, sessionIsReady: false, configuredAgent: false), .drop)
     }
 
     func testALocalLiveSessionSaysWhetherItsConnectionRunsAgentTurns() async throws {
@@ -108,9 +159,11 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         await agent.controller.start()
         await settle(until: { agent.sockets().isEmpty == false })
         let agentSocket = try XCTUnwrap(agent.sockets().first)
+        XCTAssertFalse(agent.controller.sessionIsReady, "connecting: nothing can be sent yet")
         try await makeReady(agent.session, agentSocket)
         XCTAssertTrue(agent.session.runsAgentTurns)
         XCTAssertTrue(agent.controller.sessionRunsAgentTurns)
+        XCTAssertTrue(agent.controller.sessionIsReady)
         agent.controller.stop()
 
         let plain = makeLocalLiveController(agent: false, supervisor: makeSupervisor())
@@ -120,6 +173,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         try await makeReady(plain.session, plainSocket)
         XCTAssertFalse(plain.session.runsAgentTurns)
         XCTAssertFalse(plain.controller.sessionRunsAgentTurns)
+        XCTAssertTrue(plain.controller.sessionIsReady)
         plain.controller.stop()
     }
 
@@ -134,15 +188,49 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         try await makeReady(call.session, socket)
         await finishAJob(supervisor)
 
-        call.controller.deliverPendingJobUpdates()
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
         await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
         XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1, "the result is said once, on this call")
         XCTAssertTrue(supervisor.jobs.first?.outcomeDelivered == true, "settled only once the socket took it")
 
-        call.controller.deliverPendingJobUpdates()
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
         call.controller.flushPendingTextIfIdle()
         await settle(until: { false }, limit: .milliseconds(150))
         XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1, "never said twice")
+        call.controller.stop()
+    }
+
+    /// The gap this fix closes: the notice lands while the call has no
+    /// session at all (microphone prompt, the handshake). It must wait for
+    /// the connection the setting promises, then be said once — not be
+    /// dropped as if the call were Classic.
+    func testANoticeArrivingBeforeTheAgentCallHasAConnectionIsKeptForTheReadyOne() async throws {
+        let gate = GatedAvailability()
+        let supervisor = makeSupervisor()
+        let call = makeLocalLiveController(agent: true, supervisor: supervisor, availability: {
+            await gate.wait()
+            return .available(model: LocalLiveJobNoticeTests.model)
+        })
+        let starting = Task { await call.controller.start() }
+        await settle(until: { call.controller.isActive })
+        XCTAssertTrue(call.controller.isActive, "the call is up; the session isn't made yet")
+        XCTAssertFalse(call.controller.sessionIsReady)
+        XCTAssertFalse(call.controller.sessionRunsAgentTurns, "no session to ask")
+
+        await finishAJob(supervisor)
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
+        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true, "kept, not spent")
+        XCTAssertTrue(call.sockets().isEmpty)
+
+        gate.open()
+        await starting.value
+        await settle(until: { call.sockets().isEmpty == false })
+        let socket = try XCTUnwrap(call.sockets().first)
+        try await makeReady(call.session, socket)
+
+        // Ready: the controller redelivers what it kept.
+        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1, "said once, on the call it was kept for")
         call.controller.stop()
     }
 
@@ -156,7 +244,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
 
         // Still connecting: nothing can be sent, so nothing is spent.
         XCTAssertFalse(call.session.isReady)
-        call.controller.deliverPendingJobUpdates()
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
         XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty)
         XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true)
 
@@ -165,6 +253,61 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         call.controller.deliverPendingJobUpdates()
         await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
         XCTAssertEqual(turns(socket, containing: "3 unread.").count, 1)
+        call.controller.stop()
+    }
+
+    /// A reconnect is a new connection to the same mode: the next ready
+    /// session says the result once, and only then is it settled.
+    func testALocalLiveAgentCallSaysTheResultOnceOnTheConnectionAfterAReconnect() async throws {
+        let supervisor = makeSupervisor()
+        let call = makeLocalLiveController(agent: true, supervisor: supervisor)
+        await call.controller.start()
+        await settle(until: { call.sockets().isEmpty == false })
+        let socket = try XCTUnwrap(call.sockets().first)
+        try await makeReady(call.session, socket)
+
+        // The socket drops mid-call.
+        socket.close()
+        await settle(until: { !call.session.isReady })
+        await settle(until: { call.sockets().count > 1 })
+        XCTAssertFalse(call.session.isReady, "the new socket is still handshaking")
+
+        await finishAJob(supervisor)
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
+        XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty, "never the dropped socket")
+        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true, "kept while reconnecting")
+
+        let next = try XCTUnwrap(call.sockets().last)
+        try await makeReady(call.session, next)
+        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        XCTAssertEqual(turns(next, containing: "3 unread.").count, 1)
+        XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty)
+        call.controller.stop()
+    }
+
+    /// A send the socket never took goes back in the queue, and its job is
+    /// not settled: the next ready connection says it, once.
+    func testALocalLiveAgentCallKeepsTheResultWhenTheSendFails() async throws {
+        let supervisor = makeSupervisor()
+        let call = makeLocalLiveController(agent: true, supervisor: supervisor)
+        await call.controller.start()
+        await settle(until: { call.sockets().isEmpty == false })
+        let socket = try XCTUnwrap(call.sockets().first)
+        try await makeReady(call.session, socket)
+        await finishAJob(supervisor)
+
+        // The next send on this socket fails, as a socket that went away does.
+        socket.upgradeRefusal = GeminiLiveServerClose(code: 1006, reason: "gone", isHTTPStatus: false)
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
+        await settle(until: { call.controller.pendingTextTurnCountForTesting == 1 })
+        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true, "back in the queue, not spent")
+        XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty)
+
+        await settle(until: { call.sockets().count > 1 })
+        let next = try XCTUnwrap(call.sockets().last)
+        try await makeReady(call.session, next)
+        await settle(until: { supervisor.jobs.first?.outcomeDelivered == true })
+        XCTAssertEqual(turns(next, containing: "3 unread.").count, 1)
         call.controller.stop()
     }
 
@@ -184,7 +327,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         XCTAssertTrue(call.controller.isAudioPausedForTesting)
 
         await finishAJob(supervisor)
-        call.controller.deliverPendingJobUpdates()
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
         XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty, "nothing is said over the alarm")
         XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true, "still pending, not spent")
 
@@ -201,6 +344,27 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         call.controller.stop()
     }
 
+    /// Ending: the call is closing, so the notice stays pending for Hermes
+    /// to report rather than going out into a goodbye.
+    func testALocalLiveAgentCallHoldsTheResultWhileItIsEnding() async throws {
+        let supervisor = makeSupervisor()
+        let call = makeLocalLiveController(agent: true, supervisor: supervisor)
+        await call.controller.start()
+        await settle(until: { call.sockets().isEmpty == false })
+        let socket = try XCTUnwrap(call.sockets().first)
+        try await makeReady(call.session, socket)
+
+        call.controller.requestEnd()
+        XCTAssertTrue(call.controller.isEnding)
+
+        await finishAJob(supervisor)
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: true)
+        XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty)
+        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true)
+        XCTAssertEqual(call.controller.pendingTextTurnCountForTesting, 0, "not even queued for a call that is closing")
+        call.controller.stop()
+    }
+
     func testALocalLiveHermesTurnCallDropsTheNoticeWithoutSayingIt() async throws {
         let supervisor = makeSupervisor()
         let call = makeLocalLiveController(agent: false, supervisor: supervisor)
@@ -210,13 +374,48 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         try await makeReady(call.session, socket)
         await finishAJob(supervisor)
 
-        // What the notice route does for this call, unchanged: dropped rather
-        // than said a second time after Hermes' own reply.
-        XCTAssertEqual(LocalLiveNoticeHandling.forCall(runsAgentTurns: call.session.runsAgentTurns), .drop)
-        supervisor.dropPendingNotices()
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: false)
         await settle(until: { false }, limit: .milliseconds(150))
         XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty)
+        XCTAssertTrue(supervisor.jobs.first?.outcomeDelivered == true, "consumed, as Classic always did")
         XCTAssertNil(supervisor.takePendingNotice(), "dropped, not left for another call")
+
+        // A drop is not a queue: reconnecting doesn't replay it.
+        socket.close()
+        await settle(until: { call.sockets().count > 1 })
+        let next = try XCTUnwrap(call.sockets().last)
+        try await makeReady(call.session, next)
+        call.controller.deliverPendingJobUpdates()
+        await settle(until: { false }, limit: .milliseconds(150))
+        XCTAssertTrue(turns(next, containing: "3 unread.").isEmpty, "never said on the next connection either")
+        call.controller.stop()
+    }
+
+    /// Classic, still connecting: dropped as before — Hermes' reply is the
+    /// Classic turn, so there is nothing to keep for it.
+    func testALocalLiveClassicCallStillConnectingDropsTheNotice() async throws {
+        let gate = GatedAvailability()
+        let supervisor = makeSupervisor()
+        let call = makeLocalLiveController(agent: false, supervisor: supervisor, availability: {
+            await gate.wait()
+            return .available(model: LocalLiveJobNoticeTests.model)
+        })
+        let starting = Task { await call.controller.start() }
+        await settle(until: { call.controller.isActive })
+        XCTAssertFalse(call.controller.sessionIsReady, "no session yet")
+
+        await finishAJob(supervisor)
+        handlePendingNotice(call.controller, supervisor: supervisor, configuredAgent: false)
+        XCTAssertTrue(supervisor.jobs.first?.outcomeDelivered == true, "consumed")
+        XCTAssertNil(supervisor.takePendingNotice())
+
+        gate.open()
+        await starting.value
+        await settle(until: { call.sockets().isEmpty == false })
+        let socket = try XCTUnwrap(call.sockets().first)
+        try await makeReady(call.session, socket)
+        await settle(until: { false }, limit: .milliseconds(150))
+        XCTAssertTrue(turns(socket, containing: "3 unread.").isEmpty, "never said on a Classic call")
         call.controller.stop()
     }
 }
