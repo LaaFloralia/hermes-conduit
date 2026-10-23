@@ -219,8 +219,6 @@ final class VoiceAudioSessionCoordinator {
     /// call is gone: the conversation then uses the call's policy, whose
     /// speaker the call screen can turn off.
     private(set) var isInNativeCall = false
-    /// The call's audio has had its one move to the loudspeaker.
-    private var nativeCallSpeakerChosen = false
     /// CallKit activated the call's audio and hasn't taken it back. The
     /// session is then CallKit's to keep active: activating it again from
     /// here (every acquire and every route change's reassert did) flipped
@@ -375,7 +373,6 @@ final class VoiceAudioSessionCoordinator {
     /// CallKit activated.
     func configureForIncomingCall() {
         isInNativeCall = true
-        nativeCallSpeakerChosen = false
         isNativeCallAudioActive = false
         // Raised first: a conversation already holding the session must
         // move onto the call's policy even if this category change fails.
@@ -388,29 +385,15 @@ final class VoiceAudioSessionCoordinator {
         }
     }
 
-    /// CallKit activated the call's audio: it starts on the loudspeaker as
-    /// it always has, now as an override the Speaker button can clear.
-    /// Only the first activation: CallKit activates again after an
-    /// interruption, and that must not undo the earpiece the user chose.
-    /// And only from the earpiece: like `.defaultToSpeaker`, a call
-    /// answered on headphones, Bluetooth or in the car stays there (the
-    /// override would take the loudspeaker and the phone's own microphone).
+    /// CallKit activated the call's audio. The call starts where a phone
+    /// call does, on the earpiece (or the headset, Bluetooth, the car):
+    /// CallKit's Speaker button never learns of a move Conduit makes
+    /// itself, so a call Conduit put on the loudspeaker showed the button
+    /// off, and the first tap seemed to do nothing. The button is the way
+    /// onto the speaker.
     func nativeCallAudioActivated() {
         guard isInNativeCall else { return }
         isNativeCallAudioActive = true
-        guard !nativeCallSpeakerChosen else { return }
-        guard session.isOutputOnBuiltInReceiver else {
-            nativeCallSpeakerChosen = true
-            return
-        }
-        do {
-            try session.overrideOutputToSpeaker()
-            // Only once it took: a failed move retries on the next
-            // activation rather than leaving the call on the earpiece.
-            nativeCallSpeakerChosen = true
-        } catch {
-            audioSessionLogger.error("call speaker override failed: \(LogRedaction.describing(error), privacy: .public)")
-        }
     }
 
     /// CallKit took the call's audio back (an interruption, the call

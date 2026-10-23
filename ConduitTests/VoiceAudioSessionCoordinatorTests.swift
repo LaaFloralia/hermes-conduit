@@ -484,11 +484,19 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.categoryCalls.last?.mode, .voiceChat)
     }
 
-    func testNativeCallStartsOnTheSpeaker() {
+    /// CallKit's Speaker button never learns of a move Conduit makes: a
+    /// call Conduit put on the loudspeaker showed the button off.
+    func testNativeCallStartsOnTheEarpieceForTheSpeakerButton() throws {
+        // A conversation before the call had moved to the loudspeaker.
+        try session.overrideOutputToSpeaker()
+        session.resetRecordings()
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
+        _ = try coordinator.acquire(.conversationCapture)
+        _ = try coordinator.acquire(.conversationPlayback)
 
-        XCTAssertEqual(session.speakerOverrides, 1)
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
     }
 
     func testReactivatedCallAudioLeavesTheEarpieceTheUserChose() {
@@ -519,21 +527,11 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.speakerOverrides, 0)
     }
 
-    func testFailedSpeakerMoveRetriesOnTheNextActivation() {
-        coordinator.configureForIncomingCall()
-        session.overrideError = VoiceAudioSessionMockError.configurationFailed
-        coordinator.nativeCallAudioActivated()
-        session.overrideError = nil
-
-        coordinator.nativeCallAudioActivated()
-
-        XCTAssertEqual(session.speakerOverrides, 1, "the call must not be left on the earpiece by one failure")
-    }
-
     func testReapplyInANativeCallKeepsTheSpeakerWhileItIsOn() throws {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
+        session.speakerButtonTurnedOn()
         session.resetRecordings()
 
         try coordinator.reassert()
@@ -541,15 +539,16 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.speakerOverrides, 1, "the category change clears the override: put it back")
     }
 
-    func testReassertAfterTheCallsOwnSpeakerMoveDoesNotLoop() throws {
+    func testReassertAfterTheSpeakerButtonDoesNotLoop() throws {
         session.reportsCurrentCategory = true
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
+        session.speakerButtonTurnedOn()
         let categoryChanges = session.categoryCalls.count
         let overrides = session.speakerOverrides
 
-        // The override's own route change reasserts (GPT-Live's link
+        // The button's route change reasserts (GPT-Live's link
         // reasserts on every route change but a category change).
         try coordinator.reassert()
 
@@ -677,6 +676,7 @@ extension VoiceAudioSessionCoordinatorTests {
         coordinator.configureForIncomingCall()
         coordinator.nativeCallAudioActivated()
         let capture = try coordinator.acquire(.conversationCapture)
+        session.speakerButtonTurnedOn()
         session.resetRecordings()
 
         coordinator.release(capture)
@@ -879,6 +879,13 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
 
     var overrideError: Error?
     private var speakerOverridden = false
+
+    /// CallKit's Speaker button: an override Conduit didn't make.
+    func speakerButtonTurnedOn() {
+        speakerOverridden = true
+        isOutputOnBuiltInSpeaker = true
+        isOutputOnBuiltInReceiver = false
+    }
 
     /// Option bits the system adds on its own, reported on top of the
     /// last category set.
