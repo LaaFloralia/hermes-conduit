@@ -3070,6 +3070,7 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage("conduit.ipadPersistentSidebar") private var iPadPersistentSidebar = false
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(ChatVoiceButtonAction.key) private var chatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
     @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
     @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
@@ -3226,7 +3227,23 @@ private struct AppearanceSettingsDetail: View {
                 }
             }
 
-            if isPad {
+            // V2's wide windows: the list beside the open chat, or the
+            // chat on its own (#1164). The chat's top bar switches it too.
+            if isPad, usesV2 {
+                ConduitSettingsSection(title: AppLocalization.string("Layout"), symbol: "sidebar.left", tint: .conduitAura) {
+                    Text("Choose whether Chats and Bots keep their list beside the open chat when the window is wide enough. The sidebar button at the top of a chat switches it too.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Picker("Chat list", selection: Binding(get: { chatListBeside }, set: {
+                        Haptics.selection()
+                        chatListBeside = $0
+                    })) {
+                        Text("Beside chat").tag(true)
+                        Text("Hidden").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                }
+            } else if isPad {
                 ConduitSettingsSection(title: AppLocalization.string("Layout"), symbol: "sidebar.left", tint: .conduitAura) {
                     Toggle("Persistent session sidebar", isOn: $iPadPersistentSidebar)
                         .tint(.conduitAccent)

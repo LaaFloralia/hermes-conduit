@@ -28,6 +28,9 @@ enum ReadableWidth {
     static let chat: CGFloat = 760
     /// Settings' pages.
     static let settings: CGFloat = 720
+    /// A Chats or Bots list shown on its own on a wide window, the list
+    /// beside the chat hidden (`V2ChatListPreference`).
+    static let list: CGFloat = 720
     /// A voice call's captions and controls.
     static let call: CGFloat = 640
 

@@ -24,6 +24,17 @@ extension SidebarLayoutTests {
         }
     }
 
+    func testV2SplitHiddenListKeepsOneColumn() {
+        // #1164: the list hidden, a wide window keeps the phone's column.
+        for width: CGFloat in [806, 1032, 1376] {
+            XCTAssertTrue(V2SplitLayout.isSplit(width: width, showsList: true), "\(width) pt splits with the list shown.")
+            XCTAssertFalse(V2SplitLayout.isSplit(width: width, showsList: false), "\(width) pt keeps one column with the list hidden.")
+        }
+        // Showing the list never splits a narrow window.
+        XCTAssertFalse(V2SplitLayout.isSplit(width: 805, showsList: true))
+        XCTAssertTrue(V2ChatListPreference.defaultValue, "The list shows beside the chat unless the user hides it.")
+    }
+
     func testV2SplitListStackLeavesOutTheConversation() {
         let project = ProjectSummary(id: "p1", title: "Trips", isHome: false, sessionCount: 0, previewSessions: [])
         XCTAssertEqual(V2SplitLayout.listRoutes([.conversation]), [])
