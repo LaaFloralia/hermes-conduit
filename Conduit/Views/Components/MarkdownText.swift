@@ -3022,7 +3022,19 @@ enum MarkdownParser {
 
             if orderedItem(trimmed) != nil {
                 var items: [String] = []
-                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)) { items.append(item); index += 1 }
+                while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)) {
+                    let itemLine = lines[index]
+                    items.append(item); index += 1
+                    // Blank lines between items make a loose list, not a
+                    // new one (#1163): the list goes on when the next line
+                    // after them is an item with the same indent and
+                    // delimiter as the last one, so it numbers 1, 2, 3 and
+                    // not 1, 1, 1. A table, MEDIA: tag or preview still
+                    // wins, as it does above.
+                    var next = index
+                    while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
+                    if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])) { index = next }
+                }
                 blocks.append(.orderedList(items))
                 continue
             }
@@ -3165,6 +3177,24 @@ enum MarkdownParser {
     private static func orderedItem(_ value: String) -> String? {
         guard let range = value.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) else { return nil }
         return String(value[range.upperBound...])
+    }
+    /// Whether `line` carries on the ordered list after its item `previous`:
+    /// the same leading whitespace and the same "." or ")" after the number.
+    private static func continuesOrderedList(_ line: String, from previous: String) -> Bool {
+        let indent = line.prefix { $0 == " " || $0 == "\t" }
+        guard indent == previous.prefix(while: { $0 == " " || $0 == "\t" }) else { return false }
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard orderedItem(trimmed) != nil else { return false }
+        return orderedDelimiter(trimmed) == orderedDelimiter(previous.trimmingCharacters(in: .whitespaces))
+    }
+    /// Whether the gateway-media branches of `parseBlocks` take `line`.
+    private static func claimsGatewayMedia(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return GatewayMediaTags.segments(in: trimmed) != nil
+            || (!trimmed.hasPrefix(">") && TranscriptDirectives.segments(in: trimmed) != nil)
+    }
+    private static func orderedDelimiter(_ value: String) -> Character? {
+        value.first { !$0.isNumber }
     }
     static func isTableHeader(_ lines: [String], at index: Int) -> Bool {
         guard index + 1 < lines.count, lines[index].contains("|") else { return false }
