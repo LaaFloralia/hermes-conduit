@@ -401,11 +401,8 @@ final class WatchBridgeCallModel: ObservableObject {
         let choice = approve ? WatchJobAnswer.approve : WatchJobAnswer.deny
         let id = callID
         Task { [weak self] in
-            let outcome = await relay.run(name: WatchJobAnswer.answerApproval, arguments: [
-                "job_id": approval.jobID,
-                "request_id": approval.requestID,
-                "choice": choice,
-            ])
+            let outcome = await relay.run(name: WatchJobAnswer.answerApproval,
+                                          arguments: WatchJobAnswer.answerArguments(approval, choice: choice))
             guard let self, self.callID == id, self.isActive else { return }
             // The grant ran out (it isn't renewed: the bridge belongs to it),
             // so no card can be answered from the Watch any more.
@@ -416,12 +413,19 @@ final class WatchBridgeCallModel: ObservableObject {
             }
             var taken = false
             // Hermes answered, and turned it down (already handled, or
-            // expired): asking again can't change that.
+            // expired), or the plugin held it back because the request
+            // changed (its new card comes with news): asking again can't
+            // change that.
             var refused = false
             if case .answered(let body) = outcome {
                 let result = WatchJobAnswer.result(body: body)
-                taken = result["error"] == nil && result["status"] != "failed"
+                taken = WatchJobAnswer.answerTaken(result)
                 refused = !taken
+                // Job news has stopped (the calls left are kept for
+                // answers), so the new request's card can't follow.
+                if result["status"] == "changed", !self.followingJobs {
+                    self.caption = String(localized: "The job's request changed. Answer it in Conduit on your iPhone.")
+                }
             }
             self.note("bridgeApproval", ["choice": choice, "taken": taken, "outcome": outcome.logLabel])
             if taken {
@@ -1525,8 +1529,8 @@ final class WatchBridgeCallModel: ObservableObject {
     private func jobNews(_ news: WatchJobAnswer.News) {
         relayJobsRunning = news.running
         jobNewsItems += news.items.count
-        let open = Set(news.openApprovals.map { "\($0.jobID)\n\($0.requestID)" })
-        approvals.removeAll { !open.contains("\($0.jobID)\n\($0.requestID)") }
+        let open = Set(news.openApprovals.map { WatchJobAnswer.openKey(jobID: $0.jobID, requestID: $0.requestID, fingerprint: $0.fingerprint) })
+        approvals.removeAll { !open.contains(WatchJobAnswer.openKey(jobID: $0.jobID, requestID: $0.requestID, fingerprint: $0.fingerprint)) }
         var shown = 0
         var statusChanged = false
         for item in news.items {
