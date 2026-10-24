@@ -835,6 +835,30 @@ speech-server transcription stream (listening, not speaking)
 
 **Checked:** 2026-10-24, at #1190.
 
+## Chats top bar and search
+
+The Chats screen's controls: the profile row, the filter, Projects,
+Artifacts, New chat and the search field, and how they lay out when the
+profiles don't fit beside the controls.
+
+**Siblings:** the chats list · the Projects view (same bar and field) · the
+one-row bar (every profile fits) and the stacked bar (profiles on their own
+row) · iPad and Mac (same view) · searching messages ("In messages")
+
+**Code**
+- Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
+- Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, filterPill, barSearchField, searchField, searchCapsule)
+
+**Rulings**
+- The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
+- In the stacked bar, search is a magnifier leading the controls. Tapping it turns the whole second row (filter and controls) into the field with Cancel until the search is cancelled, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
+- Going from the stacked bar to the one-row bar carries a query over to the list's field and closes an empty open field (2026-10-24, #1199).
+
+**Open gaps**
+- The bar reports its layout from whichever row appears (onAppear), so on launch or rotation into the stacked bar the list can show its search row for a frame before it moves into the bar.
+
+**Checked:** 2026-10-24, at #1199.
+
 ## Plan card
 
 The agent's plan ("Tasks", from Hermes's `todo` tool) docked above the
