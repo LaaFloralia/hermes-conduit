@@ -27,6 +27,7 @@ enum WatchVoiceWire {
         var newSessionExpiresAt: Date?
         var model: String
         var webSocketURL: String
+        var voice: String? = nil
     }
 
     /// Everything a Watch call needs to run Gemini Live the way a call on

@@ -21,7 +21,7 @@ enum LiveVoiceModeName: Equatable {
 
     var displayName: String {
         switch self {
-        case .geminiLive: return "Gemini Live"
+        case .geminiLive: return AppLocalization.string("Gemini / Qwen Live")
         case .gptLive: return "GPT-Live"
         case .grokLive: return "Grok Live"
         case .localLive: return AppLocalization.string("Local Live")
@@ -41,7 +41,7 @@ enum LiveVoiceModeName: Equatable {
     /// The company that runs the model, which receives what it reads.
     var company: String {
         switch self {
-        case .geminiLive: return "Google"
+        case .geminiLive: return "Google / Alibaba Cloud"
         case .gptLive: return "OpenAI"
         case .grokLive: return "xAI"
         // Whichever model the user set their Hermes host to run for it.

@@ -42,7 +42,7 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .geminiLive: return String(localized: "Gemini Live")
+        case .geminiLive: return String(localized: "Gemini / Qwen Live")
         case .gptLive: return String(localized: "GPT-Live")
         case .grokLive: return String(localized: "Grok")
         case .localLive: return String(localized: "Local Live")
@@ -51,7 +51,7 @@ enum WatchVoiceEngine: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
-        case .geminiLive: return String(localized: "Runs on your Watch")
+        case .geminiLive: return String(localized: "Connects directly from your Watch")
         case .gptLive, .grokLive: return String(localized: "Runs on your Hermes host")
         case .localLive: return String(localized: "Your own speech server")
         }

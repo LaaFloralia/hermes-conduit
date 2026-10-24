@@ -49,10 +49,15 @@ struct GeminiLiveToken: Equatable {
     let newSessionExpiresAt: Date?
     let model: String
     let webSocketURL: URL
+    var voice: String? = nil
+
+    var isQwen: Bool { model.hasPrefix("qwen") }
 
     /// The URL to open: the plugin's WebSocket URL with the single-use token
     /// as `access_token` (kept if the plugin already appended it).
     var connectURL: URL {
+        // Qwen authenticates in the upgrade header, never in a URL.
+        if isQwen { return webSocketURL }
         guard var components = URLComponents(url: webSocketURL, resolvingAgainstBaseURL: false) else {
             return webSocketURL
         }

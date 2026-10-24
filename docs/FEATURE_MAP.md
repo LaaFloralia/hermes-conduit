@@ -1,5 +1,32 @@
 # Feature map
 
+## Qwen direct voice
+
+**Siblings:** phone direct voice · Watch direct voice · CarPlay · incoming
+Hermes calls · tools and jobs · consent · saved transcripts · notifier tokens
+
+**Code**
+- Adapter: `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift`
+- Credentials: `Shared/GeminiLive/GeminiLiveToken.swift`, `Conduit/Voice/GeminiLive/GeminiLiveTokenClient.swift`
+- Watch wire: `Shared/WatchVoice/WatchDirectWire.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
+- Provider setup: `docs/QWEN_LIVE.md`; notifier: `notifier/dashboard/plugin_api.py`
+
+**Rulings**
+- The direct slot supports Gemini or Qwen, selected per host profile. Audio
+  connects from the device to the provider; Hermes only mints credentials
+  and executes tools. Watch audio does not use the relay.
+- Expanded direct-mode consent names Google and Alibaba Cloud and invalidates
+  prior Google-only consent. Existing direct-mode data permissions are shared.
+- Qwen uses Hermes search functions instead of incompatible native search.
+
+**Open gaps**
+- This first integration retains legacy `gemini-live` history/preferences IDs
+  and the shared picker item; Qwen voice is configured on the host.
+- Apple builds, credentials, entitlement and Watch background behavior need
+  macOS/device validation; Windows checks cannot establish those properties.
+
+**Checked:** 2026-10-24, based on 8c3a4c59; source integration and mocked protocol tests.
+
 Features that have siblings: other screens, voice modes or notifier pieces
 that must do the same thing. A change that reaches one sibling and not the
 others leaves a gap that users find later. Each entry lists the siblings,

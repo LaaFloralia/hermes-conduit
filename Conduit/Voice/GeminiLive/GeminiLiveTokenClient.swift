@@ -57,8 +57,8 @@ protocol GeminiLiveMemoryRecalling: AnyObject {
 
 @MainActor
 final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearching, GeminiLiveMemoryRecalling {
-    static let statusPath = "/api/plugins/conduit_push/gemini-live/status"
-    static let tokenPath = "/api/plugins/conduit_push/gemini-live/token"
+    static let statusPath = "/api/plugins/conduit_push/direct-live/status"
+    static let tokenPath = "/api/plugins/conduit_push/direct-live/token"
     static let webSearchStatusPath = "/api/plugins/conduit_push/web-search/status"
     static let webSearchPath = "/api/plugins/conduit_push/web-search"
     static let memoryContextPath = "/api/plugins/conduit_push/memory/context"
@@ -86,6 +86,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// The Hermes profile whose key the host should use, read at call time
     /// (same `?profile=` scoping as /api/audio/*).
     private let profile: @MainActor () -> String
+    private(set) var isQwen = false
 
     init(profile: @escaping @MainActor () -> String = { "default" }, request: @escaping Request) {
         self.profile = profile
@@ -105,7 +106,14 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         _ body: [String: Any]?,
         timeoutMilliseconds: Int = GeminiLiveTokenClient.defaultTimeoutMilliseconds
     ) async throws -> [String: Any] {
-        try await request(path, method, body, timeoutMilliseconds)
+        do {
+            return try await request(path, method, body, timeoutMilliseconds)
+        } catch let error as DashboardTicketBridgeError {
+            // Old notifier versions only have the Gemini endpoints. Fall
+            // back on missing routes, never on auth, quota or server errors.
+            guard Self.isMissingRoute(error), path.contains("/direct-live/") else { throw error }
+            return try await request(path.replacingOccurrences(of: "/direct-live/", with: "/gemini-live/"), method, body, timeoutMilliseconds)
+        }
     }
 
     private func scoped(_ path: String) -> String {
@@ -120,6 +128,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
             if Self.isMissingRoute(error) { return .pluginMissing }
             throw error
         }
+        isQwen = response["provider"] as? String == "qwen" || (response["model"] as? String)?.hasPrefix("qwen") == true
         return Self.availability(from: response)
     }
 
@@ -275,7 +284,8 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
             expiresAt: date(response["expires_at"]),
             newSessionExpiresAt: date(response["new_session_expires_at"]),
             model: model,
-            webSocketURL: url
+            webSocketURL: url,
+            voice: response["voice"] as? String
         )
     }
 

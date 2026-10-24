@@ -1,5 +1,8 @@
 # Hermes Conduit
 
+Qwen direct voice is available in the shared **Gemini / Qwen Live** mode.
+See [setup and validation limits](docs/QWEN_LIVE.md).
+
 A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/NousResearch/hermes-agent). Free, no ads, no tracking.
 
 [![App Store](https://img.shields.io/badge/App_Store-Hermes_Conduit-blue)](https://apps.apple.com/us/app/hermes-conduit/id6790977764)

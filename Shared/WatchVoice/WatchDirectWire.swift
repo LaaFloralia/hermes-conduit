@@ -19,14 +19,15 @@ extension WatchVoiceWire.DirectToken {
             expiresAt: token.expiresAt,
             newSessionExpiresAt: token.newSessionExpiresAt,
             model: token.model,
-            webSocketURL: token.webSocketURL.absoluteString
+            webSocketURL: token.webSocketURL.absoluteString,
+            voice: token.voice
         )
     }
 
     /// Nil if the URL can't be read.
     var geminiToken: GeminiLiveToken? {
         guard let url = URL(string: webSocketURL) else { return nil }
-        return GeminiLiveToken(token: token, expiresAt: expiresAt, newSessionExpiresAt: newSessionExpiresAt, model: model, webSocketURL: url)
+        return GeminiLiveToken(token: token, expiresAt: expiresAt, newSessionExpiresAt: newSessionExpiresAt, model: model, webSocketURL: url, voice: voice)
     }
 }
 
@@ -247,7 +248,8 @@ enum WatchLiveToken {
             expiresAt: date(body["expires_at"]),
             newSessionExpiresAt: date(body["new_session_expires_at"]),
             model: model,
-            webSocketURL: url
+            webSocketURL: url,
+            voice: body["voice"] as? String
         )
     }
 

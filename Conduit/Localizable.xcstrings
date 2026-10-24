@@ -329443,6 +329443,680 @@
           }
         }
       }
+    },
+    "Gemini / Qwen Live": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live"
+          }
+        }
+      }
+    },
+    "Use Gemini / Qwen Live for voice": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live als Sprachmodus nutzen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar Gemini / Qwen Live para la voz"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser Gemini / Qwen Live pour la voix"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gunakan Gemini / Qwen Live untuk suara"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa Gemini / Qwen Live per la voce"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "音声にGemini / Qwen Liveを使用"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "음성에 Gemini / Qwen Live 사용"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live jako tryb głosowy"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar Gemini / Qwen Live para voz"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Использовать Gemini / Qwen Live для голоса"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses için Gemini / Qwen Live'ı kullan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Gemini / Qwen Live 进行语音"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Gemini / Qwen Live 進行語音"
+          }
+        }
+      }
+    },
+    "Check Gemini / Qwen Live": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live prüfen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comprobar Gemini / Qwen Live"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vérifier Gemini / Qwen Live"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Periksa Gemini / Qwen Live"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifica Gemini / Qwen Live"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Liveを確認"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live 확인"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprawdź Gemini / Qwen Live"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificar Gemini / Qwen Live"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверить Gemini / Qwen Live"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live'ı denetle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查 Gemini / Qwen Live"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢查 Gemini / Qwen Live"
+          }
+        }
+      }
+    },
+    "Connecting to Gemini / Qwen Live…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbinden mit Gemini / Qwen Live …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectando con Gemini / Qwen Live…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connexion à Gemini / Qwen Live…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menghubungkan ke Gemini / Qwen Live…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connessione a Gemini / Qwen Live…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Liveに接続中…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live에 연결 중…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Łączenie z Gemini / Qwen Live…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectando ao Gemini / Qwen Live…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подключение к Gemini / Qwen Live…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live'a bağlanılıyor…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在连接 Gemini / Qwen Live…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在連線到 Gemini / Qwen Live…"
+          }
+        }
+      }
+    },
+    "Invalid Qwen Live credential.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid Qwen Live credential."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 凭证无效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 憑證無效。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ungültige Qwen Live-Zugangsdaten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credencial de Qwen Live no válida."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identifiant Qwen Live non valide."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kredensial Qwen Live tidak valid."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credenziali Qwen Live non valide."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live の認証情報が無効です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 인증 정보가 올바르지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nieprawidłowe dane uwierzytelniające Qwen Live."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Credencial do Qwen Live inválida."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недействительные учётные данные Qwen Live."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geçersiz Qwen Live kimlik bilgisi."
+          }
+        }
+      }
+    },
+    "Invalid Qwen Live event.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid Qwen Live event."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 事件无效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 事件無效。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ungültiges Qwen Live-Ereignis."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evento de Qwen Live no válido."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Événement Qwen Live non valide."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peristiwa Qwen Live tidak valid."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evento Qwen Live non valido."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live のイベントが無効です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 이벤트가 올바르지 않습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nieprawidłowe zdarzenie Qwen Live."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Evento do Qwen Live inválido."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недопустимое событие Qwen Live."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geçersiz Qwen Live olayı."
+          }
+        }
+      }
+    },
+    "Qwen Live request failed. Check the model, workspace and quota.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live request failed. Check the model, workspace and quota."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 请求失败。请检查模型、业务空间和配额。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 請求失敗。請檢查模型、業務空間和配額。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live-Anfrage fehlgeschlagen. Modell, Arbeitsbereich und Kontingent prüfen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La solicitud de Qwen Live falló. Comprueba el modelo, el espacio de trabajo y la cuota."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Échec de la requête Qwen Live. Vérifiez le modèle, l’espace de travail et le quota."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permintaan Qwen Live gagal. Periksa model, ruang kerja, dan kuota."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richiesta Qwen Live non riuscita. Controlla modello, spazio di lavoro e quota."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live のリクエストに失敗しました。モデル、ワークスペース、クォータを確認してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 요청이 실패했습니다. 모델, 작업 공간 및 할당량을 확인하세요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Żądanie Qwen Live nie powiodło się. Sprawdź model, obszar roboczy i limit."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A solicitação ao Qwen Live falhou. Verifique o modelo, o espaço de trabalho e a cota."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запрос Qwen Live не выполнен. Проверьте модель, рабочее пространство и квоту."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live isteği başarısız oldu. Modeli, çalışma alanını ve kotayı kontrol edin."
+          }
+        }
+      }
+    },
+    "Talk with Gemini / Qwen Live instead of the Hermes speech pipeline. Hermes still does the work: The live model starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sprich mit Gemini / Qwen Live statt über die Sprachverarbeitung von Hermes. Hermes erledigt weiterhin die Arbeit: Gemini / Qwen startet Hintergrundjobs in diesem Profil und teilt dir ihre Ergebnisse mit. Der API-Schlüssel bleibt auf deinem Hermes-Server. Freigaben werden nie per Sprache erteilt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habla con Gemini / Qwen Live en lugar de con el sistema de voz de Hermes. Hermes sigue haciendo el trabajo: Gemini / Qwen inicia trabajos en segundo plano en este perfil y te cuenta sus resultados. La clave de API se queda en tu servidor Hermes. Las aprobaciones nunca se dan por voz."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parlez avec Gemini / Qwen Live au lieu du pipeline vocal d'Hermes. Hermes fait toujours le travail : Gemini / Qwen lance des jobs en arrière-plan sur ce profil et vous donne leurs résultats. La clé API reste sur votre serveur Hermes. Les approbations ne sont jamais données à la voix."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Berbicara dengan Gemini / Qwen Live, bukan pemrosesan ucapan Hermes. Pekerjaannya tetap dilakukan Hermes: Gemini / Qwen memulai pekerjaan latar di profil ini dan memberi tahu Anda hasilnya. Kunci API tetap di server Hermes Anda. Persetujuan tidak pernah diberikan lewat suara."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Parla con Gemini / Qwen Live invece che con l'elaborazione vocale di Hermes. Il lavoro lo fa sempre Hermes: Gemini / Qwen avvia job in background su questo profilo e ti comunica i risultati. La chiave API resta sul tuo server Hermes. Le approvazioni non vengono mai date a voce."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesの音声パイプラインの代わりにGemini / Qwen Liveで会話します。作業は引き続きHermesが行い、Gemini / Qwenはこのプロファイルでバックグラウンドジョブを開始してその結果を伝えます。APIキーはHermesサーバに保管されたままです。音声で承認が行われることはありません。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 음성 처리 대신 Gemini / Qwen Live로 대화해요. 작업은 여전히 Hermes가 해요. Gemini / Qwen가 이 프로필에서 백그라운드 작업을 시작하고 그 결과를 알려 줘요. API 키는 Hermes 서버에 그대로 있어요. 승인은 절대 음성으로 하지 않아요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmawiaj z Gemini / Qwen Live zamiast korzystać z przetwarzania mowy Hermesa. Pracę nadal wykonuje Hermes: Gemini / Qwen uruchamia zlecenia w tle w tym profilu i przekazuje Ci ich wyniki. Klucz API pozostaje na Twoim serwerze Hermes. Zatwierdzenia nigdy nie są udzielane głosem."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Converse com o Gemini / Qwen Live em vez de usar o fluxo de fala do Hermes. O Hermes continua fazendo o trabalho: o Gemini / Qwen inicia trabalhos em segundo plano neste perfil e conta os resultados para você. A chave de API fica no seu servidor Hermes. Aprovações nunca são dadas por voz."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Говорите с Gemini / Qwen Live вместо конвейера речи Hermes. Работу по-прежнему выполняет Hermes: Gemini / Qwen запускает фоновые задания в этом профиле и сообщает вам их результаты. Ключ API остаётся на вашем сервере Hermes. Разрешения голосом никогда не даются."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes konuşma işleme hattı yerine Gemini / Qwen Live ile konuşun. İşi yine Hermes yapar: Gemini / Qwen bu profilde arka plan işleri başlatır ve size sonuçlarını söyler. API anahtarı Hermes sunucunuzda kalır. Onaylar asla sesle verilmez."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Gemini / Qwen Live 进行语音对话，替代 Hermes 的语音流程。工作仍由 Hermes 完成：Gemini / Qwen 会在此配置中启动后台任务并告诉你结果。API 密钥保存在你的 Hermes 服务器上。审批永远不会通过语音进行。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改用 Gemini / Qwen Live 進行語音，而不是 Hermes 的語音處理流程。實際工作仍由 Hermes 完成：Gemini / Qwen 會在此設定檔上開始背景工作並告訴你結果。API 金鑰會保留在你的 Hermes 伺服器上。絕不會透過語音給予核准。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -295,6 +295,7 @@ final class GeminiLiveSession {
     private var handoffReceiveTask: Task<Void, Never>?
     private var connectTask: Task<Void, Never>?
     private var hasConnectedOnce = false
+    private(set) var transcribesWholeUtterances = false
     /// The connection still waiting for setupComplete, and which attempt it
     /// is. A socket that closes before setup is a failed attempt, not a
     /// lost connection, so it counts toward the retry limit.
@@ -414,7 +415,23 @@ final class GeminiLiveSession {
             return
         }
         guard !Task.isCancelled, state != .stopped else { return }
-        let socket = openSocket(token.connectURL)
+        let socket: GeminiLiveSocket
+        transcribesWholeUtterances = token.isQwen
+        if token.isQwen {
+            // Qwen has no Google resumption handle. A reconnect must tell
+            // the controller to restore context instead of claiming resume.
+            resumptionHandle = nil
+            if hasConnectedOnce { startingFresh = true }
+            do {
+                let request = try QwenLiveSocket.request(token: token)
+                socket = QwenLiveSocket(upstream: URLSessionGeminiLiveSocket(request: request), voice: token.voice ?? "Tina")
+            } catch {
+                fail(UserFacingError.message(for: error))
+                return
+            }
+        } else {
+            socket = openSocket(token.connectURL)
+        }
         let id = UUID()
         let setup = GeminiLiveProtocol.setupMessage(
             model: token.model,
@@ -546,6 +563,10 @@ final class GeminiLiveSession {
 
     private func connectionFailed(_ id: UUID, error: Error, serverClose: GeminiLiveServerClose? = nil) {
         guard state != .stopped, !isFailed else { return }
+        if error is QwenLiveError {
+            fail(UserFacingError.message(for: error))
+            return
+        }
         if id == handoffID {
             handoffFailed(error: error, serverClose: serverClose)
             return

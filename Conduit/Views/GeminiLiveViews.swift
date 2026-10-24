@@ -72,9 +72,9 @@ struct GeminiLiveSettingsSection: View {
     }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Gemini Live"), symbol: "waveform.badge.mic", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Gemini / Qwen Live"), symbol: "waveform.badge.mic", tint: .conduitAura) {
             if showsModeToggle {
-                Toggle("Use Gemini Live for voice", isOn: Binding(
+                Toggle("Use Gemini / Qwen Live for voice", isOn: Binding(
                     get: { enabled },
                     set: { requested in
                         enabled = requested
@@ -83,7 +83,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 ))
             }
-            Text("Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice.")
+            Text("Talk with Gemini / Qwen Live instead of the Hermes speech pipeline. Hermes still does the work: The live model starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: .gemini)
@@ -102,7 +102,7 @@ struct GeminiLiveSettingsSection: View {
                 Button {
                     Task { await check() }
                 } label: {
-                    Label(isChecking ? AppLocalization.string("Checking…") : AppLocalization.string("Check Gemini Live"), systemImage: "arrow.clockwise")
+                    Label(isChecking ? AppLocalization.string("Checking…") : AppLocalization.string("Check Gemini / Qwen Live"), systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
                 }
@@ -220,7 +220,7 @@ struct GeminiLiveVoiceSheet: View {
 
         var title: String {
             switch self {
-            case .gemini: return "Gemini Live"
+            case .gemini: return AppLocalization.string("Gemini / Qwen Live")
             case .grok: return "Grok Live"
             case .local: return AppLocalization.string("Local Live")
             }
@@ -333,7 +333,7 @@ struct GeminiLiveVoiceSheet: View {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting:
             switch engine {
-            case .gemini: return AppLocalization.string("Connecting to Gemini Live…")
+            case .gemini: return AppLocalization.string("Connecting to Gemini / Qwen Live…")
             case .grok: return AppLocalization.string("Connecting to Grok Live…")
             case .local: return AppLocalization.string("Connecting to your speech server…")
             }

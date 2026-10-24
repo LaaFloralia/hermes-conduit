@@ -17,7 +17,7 @@ enum VoiceModeChoice: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .classic: return AppLocalization.string("Classic")
-        case .gemini: return AppLocalization.string("Gemini Live")
+        case .gemini: return AppLocalization.string("Gemini / Qwen Live")
         case .gpt: return AppLocalization.string("GPT-Live")
         case .grok: return AppLocalization.string("Grok Live")
         case .local: return AppLocalization.string("Local")

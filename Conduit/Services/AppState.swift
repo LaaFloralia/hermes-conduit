@@ -2472,6 +2472,11 @@ final class AppState: ObservableObject {
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
         let mode = geminiLiveSearchMode
+        _ = try? await geminiLiveTokenClient.availability()
+        if geminiLiveTokenClient.isQwen {
+            guard mode != .off else { return .none }
+            return await geminiLiveTokenClient.webSearchAvailable() ? .hermes : .none
+        }
         let hermesAvailable = mode == .automatic ? await geminiLiveTokenClient.webSearchAvailable() : false
         return mode.resolved(hermesAvailable: hermesAvailable)
     }

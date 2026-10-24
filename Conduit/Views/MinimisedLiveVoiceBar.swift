@@ -24,7 +24,7 @@ struct MinimisedLiveVoiceBar: View {
     private var callBar: some View {
         switch appState.minimisedLiveVoice {
         case .geminiLive?:
-            GeminiLiveBarContent(controller: appState.geminiLiveController, jobs: appState.voiceBackgroundJobSupervisor, name: "Gemini Live")
+            GeminiLiveBarContent(controller: appState.geminiLiveController, jobs: appState.voiceBackgroundJobSupervisor, name: AppLocalization.string("Gemini / Qwen Live"))
         case .grokLive?:
             GeminiLiveBarContent(controller: appState.grokLiveController, jobs: appState.voiceBackgroundJobSupervisor, name: "Grok Live")
         case .localLive?:
