@@ -132,7 +132,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(queue.deviceID.hasPrefix("inbox-"))
         XCTAssertEqual(queue.deviceID, queue.deviceID, "The device id stays the same across runs")
 
-        let stale = ShortcutEvent(id: "stale", kind: .other, at: now.addingTimeInterval(-15 * 86_400), text: "old")
+        let stale = ShortcutEvent(id: "stale", kind: .other, at: now.addingTimeInterval(-31 * 86_400), text: "old")
         queue.add(stale, now: now)
         XCTAssertTrue(queue.pending(now: now).isEmpty, "Older than the host keeps: never sent")
 

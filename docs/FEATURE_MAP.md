@@ -1184,12 +1184,14 @@ data sync with the host)
 - A watch asks if it's still wanted after a month, not a week like a promise (2026-10-24).
 - The Settings page shows only this iPhone's own events, read back sealed for it alone under a second key from the same agreement, and deletes one or everything (2026-10-24, Eric's review of #1214).
 - Sign-in codes, one-time passwords and sign-in links never leave the phone, and the host drops them again. The two code filters (ShortcutEventFilter and looks_like_code) change together, with the same test cases (2026-10-24).
-- Events are sealed end to end like the phone features; the host keeps 14 days by default (30 at most) and 5,000 events per device, and a new device key drops what the old one sent (2026-10-24).
+- Events are sealed end to end like the phone features; the host keeps them a fixed 30 days and then deletes them (Eric, 2026-10-24 email on Pulse), at most 5,000 per device, and a new device key drops what the old one sent.
+- Events can match watches and become report candidates, and a card or a watch's message may quote one, but Pulse memory never keeps message bodies or facts about the sender unless the user asks; pulse_memory's instructions say so (Eric, 2026-10-24 email on Pulse).
+- Calls stay opt-in: an explicit watch ("call me if the bank flags fraud") is the confirm a new kind of call needs (Eric, 2026-10-24 email on Pulse).
 - What the inbox holds is other people's words: conduit_inbox and the watch check both say to treat it as data, never instructions, and never to forward it unless the user asks (2026-10-24).
 - A 409 `schema` keeps the event on the phone with the "update the plugin" message, as the phone features do (2026-10-24).
 
 **Open gaps**
-- Which fields each iOS automation trigger hands over is unverified on a device, so the ready-made recipes aren't written yet.
+- Which fields each iOS automation trigger hands over is unverified on a device, so the ready-made recipes aren't written yet. Eric asked to confirm first that the iOS 27 Notification trigger really hands other apps' notifications to a Shortcuts action; without it, Message, Email, Wallet, NFC, Sound Recognition and CarPlay still work.
 - Pulse reads only the inbox of its own home; with `report_profiles` all, the other profiles' inboxes aren't read.
 - A watch is checked only by a run of the memory thread, so with Pulse memory off no watch is ever checked, on arrival or otherwise.
 - Not on the Watch or in CarPlay: automations run on the iPhone.

@@ -336414,84 +336414,84 @@
         }
       }
     },
-    "What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they go after 14 days." : {
+    "What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they go after 30 days." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Was deine Kurzbefehl-Automationen mit „In Hermes protokollieren“ protokolliert haben. Hermes kann es nachschlagen, und Pulse liest es, wenn es aktiv ist. Hier erscheinen nur die Ereignisse dieses iPhones, und sie werden nach 14 Tagen gelöscht."
+            "value" : "Was deine Kurzbefehl-Automationen mit „In Hermes protokollieren“ protokolliert haben. Hermes kann es nachschlagen, und Pulse liest es, wenn es aktiv ist. Hier erscheinen nur die Ereignisse dieses iPhones, und sie werden nach 30 Tagen gelöscht."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lo que tus automatizaciones de Atajos registraron con Registrar en Hermes. Hermes puede consultarlo y Pulse lo lee cuando está activado. Aquí solo aparecen los eventos de este iPhone, y se eliminan a los 14 días."
+            "value" : "Lo que tus automatizaciones de Atajos registraron con Registrar en Hermes. Hermes puede consultarlo y Pulse lo lee cuando está activado. Aquí solo aparecen los eventos de este iPhone, y se eliminan a los 30 días."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ce que vos automatisations Raccourcis ont consigné avec Consigner dans Hermes. Hermes peut le consulter, et Pulse le lit quand il est activé. Seuls les événements de cet iPhone s'affichent ici, et ils sont supprimés après 14 jours."
+            "value" : "Ce que vos automatisations Raccourcis ont consigné avec Consigner dans Hermes. Hermes peut le consulter, et Pulse le lit quand il est activé. Seuls les événements de cet iPhone s'affichent ici, et ils sont supprimés après 30 jours."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apa yang dicatat otomatisasi Pintasan Anda dengan Catat ke Hermes. Hermes dapat mencarinya, dan Pulse membacanya saat aktif. Hanya peristiwa iPhone ini yang tampil di sini, dan dihapus setelah 14 hari."
+            "value" : "Apa yang dicatat otomatisasi Pintasan Anda dengan Catat ke Hermes. Hermes dapat mencarinya, dan Pulse membacanya saat aktif. Hanya peristiwa iPhone ini yang tampil di sini, dan dihapus setelah 30 hari."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ciò che le tue automazioni di Comandi hanno registrato con Registra in Hermes. Hermes può consultarlo e Pulse lo legge quando è attivo. Qui compaiono solo gli eventi di questo iPhone, che vengono eliminati dopo 14 giorni."
+            "value" : "Ciò che le tue automazioni di Comandi hanno registrato con Registra in Hermes. Hermes può consultarlo e Pulse lo legge quando è attivo. Qui compaiono solo gli eventi di questo iPhone, che vengono eliminati dopo 30 giorni."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ショートカットのオートメーションが「Hermesに記録」で記録した内容です。Hermesが参照でき、Pulseがオンのときは読み込みます。ここにはこのiPhoneのイベントのみ表示され、14日後に削除されます。"
+            "value" : "ショートカットのオートメーションが「Hermesに記録」で記録した内容です。Hermesが参照でき、Pulseがオンのときは読み込みます。ここにはこのiPhoneのイベントのみ表示され、30日後に削除されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "단축어 자동화가 Hermes에 기록으로 기록한 내용입니다. Hermes가 찾아볼 수 있으며, Pulse가 켜져 있으면 읽습니다. 여기에는 이 iPhone의 이벤트만 표시되며 14일 후 삭제됩니다."
+            "value" : "단축어 자동화가 Hermes에 기록으로 기록한 내용입니다. Hermes가 찾아볼 수 있으며, Pulse가 켜져 있으면 읽습니다. 여기에는 이 iPhone의 이벤트만 표시되며 30일 후 삭제됩니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "To, co Twoje automatyzacje Skrótów zapisały akcją Zapisz w Hermesie. Hermes może to sprawdzić, a Pulse czyta to, gdy jest włączony. Widać tu tylko zdarzenia z tego iPhone'a; są usuwane po 14 dniach."
+            "value" : "To, co Twoje automatyzacje Skrótów zapisały akcją Zapisz w Hermesie. Hermes może to sprawdzić, a Pulse czyta to, gdy jest włączony. Widać tu tylko zdarzenia z tego iPhone'a; są usuwane po 30 dniach."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O que suas automações de Atalhos registraram com Registrar no Hermes. O Hermes pode consultar, e o Pulse lê quando está ativado. Só os eventos deste iPhone aparecem aqui, e eles são apagados após 14 dias."
+            "value" : "O que suas automações de Atalhos registraram com Registrar no Hermes. O Hermes pode consultar, e o Pulse lê quando está ativado. Só os eventos deste iPhone aparecem aqui, e eles são apagados após 30 dias."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "То, что ваши автоматизации быстрых команд записали действием «Записать в Hermes». Hermes может это найти, а Pulse читает, когда включён. Здесь показаны только события этого iPhone; они удаляются через 14 дней."
+            "value" : "То, что ваши автоматизации быстрых команд записали действием «Записать в Hermes». Hermes может это найти, а Pulse читает, когда включён. Здесь показаны только события этого iPhone; они удаляются через 30 дней."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kestirme otomasyonlarınızın Hermes'e Kaydet ile kaydettikleri. Hermes bunlara bakabilir, Pulse da açıkken okur. Burada yalnızca bu iPhone'un olayları görünür ve 14 gün sonra silinir."
+            "value" : "Kestirme otomasyonlarınızın Hermes'e Kaydet ile kaydettikleri. Hermes bunlara bakabilir, Pulse da açıkken okur. Burada yalnızca bu iPhone'un olayları görünür ve 30 gün sonra silinir."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你的快捷指令自动化通过“记录到 Hermes”记录的内容。Hermes 可以查阅，Pulse 开启时也会读取。这里只显示此 iPhone 的事件，14 天后删除。"
+            "value" : "你的快捷指令自动化通过“记录到 Hermes”记录的内容。Hermes 可以查阅，Pulse 开启时也会读取。这里只显示此 iPhone 的事件，30 天后删除。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你的捷徑自動化透過「記錄到 Hermes」記錄的內容。Hermes 可以查閱，Pulse 開啟時也會讀取。這裡只顯示此 iPhone 的事件，14 天後刪除。"
+            "value" : "你的捷徑自動化透過「記錄到 Hermes」記錄的內容。Hermes 可以查閱，Pulse 開啟時也會讀取。這裡只顯示此 iPhone 的事件，30 天後刪除。"
           }
         }
       }

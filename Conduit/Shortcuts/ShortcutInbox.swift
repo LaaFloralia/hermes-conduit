@@ -182,7 +182,7 @@ enum ShortcutInboxCrypto {
 /// the days the host keeps.
 struct ShortcutInboxQueue {
     static let capacity = 50
-    static let keepDays = 14
+    static let keepDays = 30
     private static let eventsKey = "conduit.shortcutInbox.pending"
     private static let deviceKey = "conduit.shortcutInbox.deviceID"
 
