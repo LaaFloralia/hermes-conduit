@@ -542,7 +542,7 @@ memory), its routes under /pulse and its capabilities · the Shortcuts inbox
 - The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
 - What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
 
-**Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
+**Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6; the Shortcuts inbox added as a sibling in #1214 (fork CI #87).
 
 ## Artifacts
 
@@ -1152,7 +1152,7 @@ inbox (the same 409 codes)
 - A locate answered from the push extension drops its fix on any failed post, a 409 `schema` included, and shows no pause: it is a one-shot answer, and the app shares its own fix next time.
 - A voice read that meets a 409 `schema` tells the model only that the read failed, not that the plugin needs an update.
 
-**Checked:** 2026-10-24, at main e9d9592.
+**Checked:** 2026-10-24, at main e9d9592; the Shortcuts inbox added as a sibling in #1214 (fork CI #87).
 
 ## Shortcuts inbox (Log to Hermes)
 
@@ -1195,7 +1195,7 @@ data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-24, at main e9d9592 with this branch, and notifier main 7dc52ab with its branch.
+**Checked:** 2026-10-24, #1214 (fork CI #87), at main e9d9592 and notifier main 7dc52ab with their branches.
 
 ## Feature map rules
 
