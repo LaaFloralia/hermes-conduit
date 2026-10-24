@@ -537,6 +537,35 @@ memory), its routes under /pulse and its capabilities · the
 
 **Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
 
+## Artifacts
+
+The files, pages and links Hermes made, listed for every chat (the Chats
+bar's Artifacts page) or for one chat (its … menu), opened in the chat's own
+viewers, with Show in Chat.
+
+**Siblings:** the Artifacts page · a chat's own Artifacts sheet · Bot Chats
+(kept in the bot's own profile) · All (every included profile's chats) ·
+group rooms (no Artifacts list) · the notifier's artifacts route · README.md
+
+**Code**
+- List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient)
+- Which stores a list reads, Show in Chat: `Conduit/Services/AppState+Artifacts.swift` (artifactSources, showArtifactInChat)
+- Screens: `Conduit/Views/V2/V2ArtifactsViews.swift`
+- A chat's store: `Conduit/Services/AppState.swift` (botStoreProfile, openLinkedBotChat, openOtherProfileChat)
+- Host: `notifier/artifacts_index.py`, `notifier/dashboard/plugin_api.py` (GET /artifacts, one profile per request)
+
+**Rulings**
+- A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
+- Stores are read one at a time (the host reads two lists at once at most) and each shows as it arrives; a refresh keeps the list it is refreshing until every store answers. A bot's chat or other profile that can't be read leaves the rest listed.
+- A bot whose profile is read whole (the profile in use, or one All shows) isn't read again for its Bot Chat; that chat's rows still go by the bot's name and open the way Bots opens them.
+- The profile in use is always read, even when All leaves it out.
+- One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
+
+**Open gaps**
+- Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
+
+**Checked:** 2026-10-24, at #1203.
+
 ## Bots: create and edit
 
 New Bot and Edit Bot, and what they write to the bot's Hermes profile.
