@@ -827,13 +827,13 @@ speech-server transcription stream (listening, not speaking)
 - Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
 
 **Rulings**
-- A dead connection is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." and "Lost the connection to your speech server." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190).
+- A dead Hermes speech stream is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190). The speech-server speech stream can't tell yet (Open gaps); listening on a speech server says "Lost the connection to your speech server." when a send fails or the server closes early.
 - Before any audio, a Hermes stream that drops or goes quiet tries the one-shot fallback instead of failing.
 
 **Open gaps**
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
-**Checked:** 2026-10-24, at #1190.
+**Checked:** 2026-10-24, at 3be6699c.
 
 ## Chats top bar and search
 
