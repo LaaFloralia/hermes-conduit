@@ -416,6 +416,38 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 
 **Checked:** 2026-10-23, seeded from main at 64d53c3.
 
+## Conduit plugin update
+
+Updating (or installing) the Conduit plugin on the dashboard's host from
+Conduit, and telling the user when it's done.
+
+**Siblings:** the update notice over the main screen · Settings > Conduit
+plugin (same status rows, Update and Cancel) · the Settings and Chats notice
+that opens it · Finish setting up's plugin row · the host-run update on the
+notifier (`/self/update`) and its push when it ends · the phone-run steps for
+a plugin without it · the plugin's CHANGELOG.md (What's New) · what the
+confirmation and README say about restarts
+
+**Code**
+- Updater and state: `Conduit/Services/NotifierPluginUpdate.swift` (NotifierPluginUpdater, NotifierPluginUpdateSlot), `Conduit/Services/AppState+NotifierPluginUpdate.swift` (the run, reconnecting after it, settled outcomes)
+- Status and offer: `Conduit/Services/NotifierPluginStatus.swift`, `Conduit/Services/NotifierPluginLatestVersion.swift`, `Conduit/Services/NotifierPluginNoticeChannel.swift`, `Conduit/Services/NotifierPluginChangelog.swift`
+- Views: `Conduit/Views/ConduitPluginViews.swift` (NotifierPluginUpdateBanner, NotifierPluginUpdateStatusView, ConduitPluginSettingsDetail), `Conduit/Views/AuxiliaryViews.swift` (NotifierPluginUpdateNotice), `Conduit/Views/V2/V2FinishSetupCard.swift`
+- Gateway restart it reuses: `Conduit/Services/GatewayRestart.swift`
+- Notifier: `notifier/dashboard/plugin_api.py` (/self/update, /self/restart, /capabilities, finish_self_update_after_restart), `notifier/CHANGELOG.md`, `notifier/channels.yaml`
+- Tests: `ConduitTests/GatewayRestartTests+PluginUpdate.swift`, `notifier/tests/test_self_update.py`
+
+**Rulings**
+- No automatic updates: restarts are the user's call; the notice offers each version once, and Update runs the whole update (2026-10-13, #582, Eric).
+- App Store builds are asked only below the stable floor, TestFlight and Xcode builds for every version on notifier main (2026-10-20, #984; 2026-10-23, #1166, Eric).
+- The notice stays until the update truly ends: after the host is done, it shows Reconnecting until Conduit is back, has read the new plugin and the gateway serves, and only then says the plugin is ready. A failure the plugin's report contradicts (the new version runs) reads as ready, not as a silent close (2026-10-24, Eric's report on build 228).
+- A gateway restart that takes the dashboard down with it (a service manager restarting both) still finishes the host job: the restarted dashboard marks it done when it loaded the new version (2026-10-24, notifier 0.69.1).
+
+**Open gaps**
+- Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
+- A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
+
+**Checked:** 2026-10-24, at main 79a5319.
+
 ## Notifications
 
 What a push says, in which language, where tapping it goes, and when it
