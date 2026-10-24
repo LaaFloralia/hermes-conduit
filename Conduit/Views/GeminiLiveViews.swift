@@ -83,7 +83,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 ))
             }
-            Text("Talk with Gemini / Qwen Live instead of the Hermes speech pipeline. Hermes still does the work: The live model starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice.")
+            Text("Gemini / Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: .gemini)

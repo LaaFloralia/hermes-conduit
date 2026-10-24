@@ -13,14 +13,15 @@ import Foundation
 enum WatchVoiceWire {
     /// Bumped when either side changes what a message means; a mismatch
     /// refuses the call instead of misreading it.
-    static let version = 2
+    // Version 3 adds Qwen token semantics. Older Watches must update before
+    // receiving credentials they would send through Google's auth path.
+    static let version = 3
     /// The message dictionary's only key.
     static let messageKey = "wv"
 
-    /// A single-use Gemini Live token the iPhone got from the Hermes host
-    /// (designs/apple-watch-voice-direct.md). With the call's tool grant,
-    /// the only credential the Watch ever holds: it works for one session
-    /// and expires within the half hour.
+    /// A short-lived Gemini or Qwen credential obtained through Hermes.
+    /// The permanent provider key is never sent to the Watch. Qwen uses
+    /// this credential in an Authorization header, not Google's URL auth.
     struct DirectToken: Codable, Equatable {
         var token: String
         var expiresAt: Date?

@@ -18,6 +18,9 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
 - Expanded direct-mode consent names Google and Alibaba Cloud and invalidates
   prior Google-only consent. Existing direct-mode data permissions are shared.
 - Qwen uses Hermes search functions instead of incompatible native search.
+- Watch wire version 3 rejects pre-Qwen clients before sending credentials.
+  Cancelled responses discard undelivered tools while retaining delivered
+  calls until their results arrive (#1182).
 
 **Open gaps**
 - This first integration retains legacy `gemini-live` history/preferences IDs
@@ -25,7 +28,7 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
 - Apple builds, credentials, entitlement and Watch background behavior need
   macOS/device validation; Windows checks cannot establish those properties.
 
-**Checked:** 2026-10-24, based on 8c3a4c59; source integration and mocked protocol tests.
+**Checked:** 2026-10-24, #1182; reviewed against 79a5319c with protocol regression tests.
 
 Features that have siblings: other screens, voice modes or notifier pieces
 that must do the same thing. A change that reaches one sibling and not the

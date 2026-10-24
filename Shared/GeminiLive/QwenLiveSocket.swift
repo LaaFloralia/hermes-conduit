@@ -156,6 +156,10 @@ final class QwenLiveSocket: GeminiLiveSocket {
                 }
             case "response.done":
                 activeResponse = false
+                // Cancelled responses can end before a call's arguments
+                // arrive. No controller can answer an undelivered call.
+                pendingTools.formIntersection(deliveredTools)
+                toolNames = toolNames.filter { deliveredTools.contains($0.key) }
                 if let response = event["response"] as? [String: Any], response["status"] as? String == "failed" {
                     throw QwenLiveError.providerFailure
                 }

@@ -18,6 +18,30 @@ private final class QwenTestSocket: GeminiLiveSocket {
 // Keep these in the existing direct-session CI lane.
 extension HermesVoiceGatewayTimeoutTests {
     @MainActor
+    func testQwenVoiceDefaultsForMissingOrBlankNames() {
+        var token = GeminiLiveToken(token: "st-test", expiresAt: nil, newSessionExpiresAt: nil,
+            model: "qwen3.8-omni-flash-realtime",
+            webSocketURL: URL(string: "wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime")!)
+        let voices: [String?] = [nil, "", " \n\t"]
+        for voice in voices {
+            token.voice = voice
+            XCTAssertEqual(token.qwenVoice, "Tina")
+        }
+        token.voice = "Serena"
+        XCTAssertEqual(token.qwenVoice, "Serena")
+    }
+
+    @MainActor
+    func testPreQwenWatchIsRefusedBeforeReceivingCredentials() {
+        let broker = WatchDirectBroker(link: WatchVoiceLink.shared)
+        var reply: WatchVoiceWire.Message?
+        broker.handle(.directStart(callID: 71, version: 2), reply: { reply = WatchVoiceWire.decode($0) })
+        guard case .callRefused(let id, let reason)? = reply else { return XCTFail("Old Watch must be refused") }
+        XCTAssertEqual(id, 71)
+        XCTAssertEqual(reason, WatchVoiceStartFailure.versionMismatch)
+    }
+
+    @MainActor
     func testGoogleOnlyConsentDoesNotAuthorizeQwen() throws {
         let name = "qwen-consent-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
@@ -145,5 +169,44 @@ extension HermesVoiceGatewayTimeoutTests {
             id: "b", name: "start_job", result: [:], scheduling: .whenIdle)))
         XCTAssertEqual(fake.sent.count, 3)
         XCTAssertEqual(fake.sent.last?["type"] as? String, "response.create")
+    }
+
+    @MainActor
+    func testQwenUndeliveredToolsDoNotBlockLaterTextTurns() async throws {
+        for status in ["cancelled", "incomplete", "completed"] {
+            let fake = QwenTestSocket()
+            fake.frames = [
+                ["type": "response.created"],
+                ["type": "response.output_item.added", "item": ["type": "function_call", "call_id": "abandoned", "name": "start_job"]],
+                ["type": "response.done", "response": ["status": status]],
+            ]
+            let socket = QwenLiveSocket(upstream: fake)
+            let done = GeminiLiveProtocol.decode(try await socket.receive())
+            XCTAssertEqual(done, [.turnComplete])
+            try await socket.send(GeminiLiveProtocol.encode(GeminiLiveProtocol.textTurnMessage("The job is done")))
+            XCTAssertEqual(fake.sent.compactMap { $0["type"] as? String },
+                           ["conversation.item.create", "response.create"], status)
+        }
+    }
+
+    @MainActor
+    func testQwenResponseDoneRetainsDeliveredToolWaiters() async throws {
+        let fake = QwenTestSocket()
+        fake.frames = [
+            ["type": "response.created"],
+            ["type": "response.output_item.added", "item": ["type": "function_call", "call_id": "delivered", "name": "list_jobs"]],
+            ["type": "response.function_call_arguments.done", "call_id": "delivered", "arguments": "{}"],
+            ["type": "response.output_item.added", "item": ["type": "function_call", "call_id": "abandoned", "name": "start_job"]],
+            ["type": "response.done", "response": ["status": "cancelled"]],
+        ]
+        let socket = QwenLiveSocket(upstream: fake)
+        _ = try await socket.receive() // Delivered call is still awaiting its result.
+        _ = try await socket.receive() // Undelivered call is discarded at response.done.
+        try await socket.send(GeminiLiveProtocol.encode(GeminiLiveProtocol.textTurnMessage("An update")))
+        XCTAssertEqual(fake.sent.count, 1, "Delivered call must still block response.create")
+        try await socket.send(GeminiLiveProtocol.encode(GeminiLiveProtocol.toolResponseMessage(
+            id: "delivered", name: "list_jobs", result: ["status": "done"], scheduling: .whenIdle)))
+        XCTAssertEqual(fake.sent.compactMap { $0["type"] as? String },
+                       ["conversation.item.create", "conversation.item.create", "response.create"])
     }
 }

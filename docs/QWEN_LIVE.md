@@ -26,6 +26,10 @@ Gemini voice picker only affects Google. Set the provider back to `gemini`
 to return to Google. Failed Qwen requests never fall back to Google or
 expose the permanent key.
 
+Update both iPhone and Watch apps together. Watch voice protocol version 3
+rejects older Watch clients before issuing credentials, since they do not
+understand Qwen's direct connection and authentication.
+
 ## Paths and behavior
 
 ```text

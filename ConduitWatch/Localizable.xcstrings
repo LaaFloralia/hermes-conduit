@@ -9944,79 +9944,85 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Läuft auf deiner Watch"
+            "value": "Verbindet sich direkt von deiner Watch"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se ejecuta en tu Apple Watch"
+            "value": "Se conecta directamente desde tu Watch"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "S'exécute sur votre Apple Watch"
+            "value": "Se connecte directement depuis votre Watch"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Berjalan di Watch Anda"
+            "value": "Terhubung langsung dari Watch Anda"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Funziona su Apple Watch"
+            "value": "Si connette direttamente dal tuo Watch"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Watch 上で動作"
+            "value": "Watch から直接接続"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Watch에서 실행"
+            "value": "Watch에서 직접 연결"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Działa na Twoim zegarku"
+            "value": "Łączy się bezpośrednio z Twojego Watcha"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Roda no seu Watch"
+            "value": "Conecta diretamente do seu Watch"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Работает на часах"
+            "value": "Подключается напрямую с ваших часов Watch"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Watch'unuzda çalışır"
+            "value": "Watch’unuzdan doğrudan bağlanır"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在你的 Watch 上运行"
+            "value": "从 Apple Watch 直接连接"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "在你的 Apple Watch 上執行"
+            "value": "從 Apple Watch 直接連線"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connects directly from your Watch"
           }
         }
       }

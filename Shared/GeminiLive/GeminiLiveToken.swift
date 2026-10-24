@@ -53,6 +53,12 @@ struct GeminiLiveToken: Equatable {
 
     var isQwen: Bool { model.hasPrefix("qwen") }
 
+    /// Qwen rejects empty voice names; nil or whitespace uses its default.
+    var qwenVoice: String {
+        let value = voice?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? "Tina" : value
+    }
+
     /// The URL to open: the plugin's WebSocket URL with the single-use token
     /// as `access_token` (kept if the plugin already appended it).
     var connectURL: URL {

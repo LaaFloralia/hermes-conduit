@@ -330609,6 +330609,94 @@
           }
         }
       }
+    },
+    "Gemini / Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live spricht mit dir, während Hermes Aufgaben ausführt. Der permanente API-Schlüssel bleibt auf deinem Server. Dein iPhone oder deine Watch verbindet sich mit kurzlebigen Zugangsdaten direkt mit dem Anbieter."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live habla contigo mientras Hermes ejecuta tareas. La clave API permanente permanece en tu servidor. Tu iPhone o Watch se conecta directamente al proveedor con una credencial de corta duración."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live vous parle pendant que Hermes exécute les tâches. La clé API permanente reste sur votre serveur. Votre iPhone ou Watch se connecte directement au fournisseur avec un identifiant de courte durée."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live berbicara dengan Anda sementara Hermes menjalankan tugas. Kunci API permanen tetap di server Anda. iPhone atau Watch Anda terhubung langsung ke penyedia dengan kredensial berumur pendek."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live parla con te mentre Hermes esegue le attività. La chiave API permanente resta sul tuo server. Il tuo iPhone o Watch si connette direttamente al fornitore con una credenziale temporanea."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live が会話を担当し、Hermes がジョブを実行します。永続的な API キーはサーバーに保存されます。iPhone または Watch は短期間のみ有効な認証情報でプロバイダーに直接接続します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live가 대화를 담당하고 Hermes가 작업을 실행합니다. 영구 API 키는 서버에 보관됩니다. iPhone 또는 Watch는 단기 인증 정보로 제공업체에 직접 연결합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live rozmawia z Tobą, a Hermes wykonuje zadania. Stały klucz API pozostaje na Twoim serwerze. iPhone lub Watch łączy się bezpośrednio z dostawcą przy użyciu krótkotrwałych danych uwierzytelniających."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Gemini / Qwen Live conversa com você enquanto o Hermes executa tarefas. A chave de API permanente fica no seu servidor. Seu iPhone ou Watch se conecta diretamente ao provedor com uma credencial de curta duração."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live общается с вами, а Hermes выполняет задачи. Постоянный API-ключ остаётся на вашем сервере. iPhone или Watch подключается напрямую к провайдеру с краткосрочными учётными данными."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live sizinle konuşurken Hermes işleri yürütür. Kalıcı API anahtarı sunucunuzda kalır. iPhone veya Watch’unuz kısa ömürlü bir kimlik bilgisiyle sağlayıcıya doğrudan bağlanır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live 负责对话，Hermes 执行任务。长期 API 密钥保留在你的服务器上。iPhone 或 Apple Watch 使用短期凭证直接连接服务商。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gemini / Qwen Live 負責對話，Hermes 執行工作。長期 API 金鑰保留在你的伺服器上。iPhone 或 Apple Watch 使用短期憑證直接連線至服務供應商。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

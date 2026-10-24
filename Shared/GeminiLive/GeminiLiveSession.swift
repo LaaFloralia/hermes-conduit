@@ -424,7 +424,7 @@ final class GeminiLiveSession {
             if hasConnectedOnce { startingFresh = true }
             do {
                 let request = try QwenLiveSocket.request(token: token)
-                socket = QwenLiveSocket(upstream: URLSessionGeminiLiveSocket(request: request), voice: token.voice ?? "Tina")
+                socket = QwenLiveSocket(upstream: URLSessionGeminiLiveSocket(request: request), voice: token.qwenVoice)
             } catch {
                 fail(UserFacingError.message(for: error))
                 return
