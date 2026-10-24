@@ -933,6 +933,10 @@ final class PushNotificationService: ObservableObject {
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
             guard let status = try? await request(path, "GET", nil) else { continue }
+            // Unregistered or moved relays while the request was out: what
+            // the host says is about a pairing this iPhone no longer has, so
+            // no key is adopted, retired or rotated for it.
+            guard registration?.installationID == installationID else { break }
             let rotates = Self.hostKeepsReplacedKeys(status: status)
             guard let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
                 if let held = Self.confirmedKey(status: status, installationID: installationID, records: records) {
