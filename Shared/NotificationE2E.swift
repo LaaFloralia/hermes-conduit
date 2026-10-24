@@ -40,7 +40,7 @@ enum NotificationE2E {
     }
 
     /// A key this old is rotated on the next dashboard connect, by hosts
-    /// whose plugin keeps the replaced key (notifier 0.70+).
+    /// whose plugin keeps the replaced key (notifier 0.71+).
     static let keyMaxAge: TimeInterval = 30 * 24 * 60 * 60
     /// How long a replaced key is kept, here and on the host: pushes and
     /// answers sealed with it before the rotation still open. Same as the

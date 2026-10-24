@@ -1003,7 +1003,7 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// Whether the host keeps a replaced key for answers in flight, so new
-    /// keys lose nothing (notifier 0.70+, which reports `rotate`).
+    /// keys lose nothing (notifier 0.71+, which reports `rotate`).
     nonisolated static func hostKeepsReplacedKeys(status: [String: Any]) -> Bool {
         (status["rotate"] as? Bool) != nil
     }
