@@ -789,7 +789,6 @@ final class PushNotificationService: ObservableObject {
         let kid: String
         /// The host's plugin keeps a replaced key, so this iPhone rotates.
         let rotates: Bool
-        let confirmedAt: Date
     }
 
     /// Whether a pairing's notifications are private, for the padlock.
@@ -938,11 +937,11 @@ final class PushNotificationService: ObservableObject {
             guard let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
                 if let held = Self.confirmedKey(status: status, installationID: installationID, records: records) {
                     adoptConfirmedKey(kid: held.kid, installationID: installationID, gatewayID: held.gatewayID, records: &records, now: now)
-                    setEncryptionConfirmation(EncryptionConfirmation(kid: held.kid, rotates: rotates, confirmedAt: now), gatewayID: held.gatewayID)
-                    if rotates && (status["rotate"] as? Bool == true || forceRotation) {
+                    setEncryptionConfirmation(EncryptionConfirmation(kid: held.kid, rotates: rotates), gatewayID: held.gatewayID)
+                    if rotates && (status["rotate"] as? Bool == true || forceRotation),
+                       await rotateEncryptionKey(of: held, dashboardID: dashboardID, profile: profile, path: path,
+                                                 records: &records, request: request) {
                         rotatedAny = true
-                        await rotateEncryptionKey(of: held, dashboardID: dashboardID, profile: profile, path: path,
-                                                  records: &records, request: request)
                     }
                 }
                 continue
@@ -998,7 +997,7 @@ final class PushNotificationService: ObservableObject {
             }
             records.append(record)
             rotatedAny = true
-            setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: rotates, confirmedAt: now), gatewayID: gatewayID)
+            setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: rotates), gatewayID: gatewayID)
         }
         refreshEncryptionState()
     }
@@ -1025,6 +1024,7 @@ final class PushNotificationService: ObservableObject {
     /// Hands the host a new key for a pairing that already has one. The new
     /// key is saved before it is sent, so a push sealed with it always opens;
     /// the old one stays a week for pushes and answers already on their way.
+    /// True once the host took it.
     private func rotateEncryptionKey(
         of current: E2EKeyRecord,
         dashboardID: UUID,
@@ -1032,7 +1032,7 @@ final class PushNotificationService: ObservableObject {
         path: String,
         records: inout [E2EKeyRecord],
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
-    ) async {
+    ) async -> Bool {
         let now = Date()
         // Retired until the host takes it: answers stay sealed with the key
         // the host is known to hold.
@@ -1043,7 +1043,7 @@ final class PushNotificationService: ObservableObject {
             profile: profile,
             now: now
         ).retired(at: now)
-        guard Self.e2eKeyStore.save(record) else { return }
+        guard Self.e2eKeyStore.save(record) else { return false }
         records.append(record)
         let body: [String: Any] = [
             "installation_id": record.installationID,
@@ -1058,15 +1058,16 @@ final class PushNotificationService: ObservableObject {
             // The host may have taken it with the answer lost: the key stays
             // (retired) so its pushes open, and the next connect adopts it if
             // the host reports it.
-            return
+            return false
         }
         guard response["ok"] as? Bool == true, response["kid"] as? String == record.kid else {
             Self.e2eKeyStore.remove(kid: record.kid)
             records.removeAll { $0.kid == record.kid }
-            return
+            return false
         }
         adoptConfirmedKey(kid: record.kid, installationID: record.installationID, gatewayID: record.gatewayID, records: &records, now: now)
-        setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: true, confirmedAt: now), gatewayID: record.gatewayID)
+        setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: true), gatewayID: record.gatewayID)
+        return true
     }
 
     /// The relay gateway id of a profile's pairing that still needs a key
