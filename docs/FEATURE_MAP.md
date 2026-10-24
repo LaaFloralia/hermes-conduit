@@ -660,6 +660,32 @@ reading of the line and its new-plan announcement
 
 **Checked:** 2026-10-24, at 78f21daa.
 
+## White text on the accent
+
+A chip, badge or step number that puts white text or a white glyph on a
+solid accent fill. The accent the user picks is light in dark mode, so
+white on it can fall to about 2:1; the sent-bubble colour is the shade held
+to 4.5:1 under white in both modes.
+
+**Siblings:** the running timer chip and the "Recommended" badge on rich
+cards · the numbered or symbol marker on a rich card's place rows · the
+step numbers of the notification setup commands · the Gemini Live setup
+step number · marks picked by `markColor(on:)` (text selection on a sent
+bubble, the accent swatch check)
+
+**Code**
+- Fill: `Conduit/Theme.swift` (conduitUserBubble, ConduitAccentChoice.markColor)
+- Surfaces: `Conduit/Cards/RichInfoCardViews.swift` (RichOptionColumn, RichStepTimer), `Conduit/Cards/RichCardViews.swift` (the place row marker), `Conduit/Views/AuxiliaryViews.swift` (NotificationSetupCommand), `Conduit/Views/LiveVoiceSetupSheet.swift` (the Gemini step)
+- Tests: `ConduitTests/AccentContrastTests.swift`
+
+**Rulings**
+- White text on a solid fill uses the sent-bubble colour, not the accent; a mark whose colour is computed takes whichever of black and white contrasts more with its fill (2026-10-24, #1188, salvage of the #955 review).
+
+**Open gaps**
+- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge) aren't checked against a custom accent.
+
+**Checked:** 2026-10-24, at #1188.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

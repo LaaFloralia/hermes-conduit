@@ -3995,7 +3995,9 @@ struct NotificationSetupCommand: View {
                     .conduitFixedGlyph()
                     .foregroundStyle(.white)
                     .frame(width: 22, height: 22)
-                    .background(Color.conduitAccent, in: Circle())
+                    // The sent-bubble fill: the dark-mode accent is too
+                    // light under white text.
+                    .background(Color.conduitUserBubble, in: Circle())
                 Text(title).font(.subheadline.weight(.semibold))
             }
             Button {
