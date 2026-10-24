@@ -271,6 +271,15 @@ struct ComposerBar: View, Equatable {
         composerRevision &+= 1
     }
 
+    /// Adds `@tag ` to the draft from the + menu and puts the cursor after it.
+    private func mention(_ candidate: MentionAutocomplete.Candidate) {
+        Haptics.selection()
+        replaceComposerText(MentionAutocomplete.inserting(text, with: candidate), cursorAtEnd: true)
+        Task { @MainActor in
+            isFocused = true
+        }
+    }
+
     /// "New Chat" beside the screenshot: what was typed goes with it, so
     /// none of it is left behind in this chat's draft.
     private func moveScreenshotToNewChat() {
@@ -1177,6 +1186,24 @@ struct ComposerBar: View, Equatable {
                 Task { await appState.openWorkspace() }
             } label: {
                 Label("Workspace", systemImage: "folder")
+            }
+            // The other bots, for a tag without typing `@` (the same tag
+            // the @ list inserts; the chat's own bot is left out).
+            let bots = appState.composerMentionCandidates
+            if !bots.isEmpty {
+                Menu {
+                    ForEach(bots) { candidate in
+                        Button {
+                            mention(candidate)
+                        } label: {
+                            // Two bots can share a title; the tag tells them apart.
+                            Text(verbatim: candidate.title)
+                            Text(verbatim: "@\(candidate.tag)")
+                        }
+                    }
+                } label: {
+                    Label(AppLocalization.string("Mention a Bot"), systemImage: "at")
+                }
             }
         } label: {
             Image(systemName: "plus")
