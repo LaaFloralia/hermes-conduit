@@ -1191,6 +1191,29 @@ the run's one-sentence summary and its switch in Settings > Chat · /btw
 
 **Checked:** 2026-10-24, at #1202, carried in #1215.
 
+## Review labels
+
+Whose turn a contributor's PR is: `waiting on contributor` while it waits on
+its author, `waiting on Eric` once the author has answered.
+
+**Siblings:** this repo's label workflow · the notifier's copy of it ·
+CONTRIBUTING.md's Review labels section here and in the notifier · docs/CI.md's
+workflow table
+
+**Code**
+- Workflow: `.github/workflows/contributor-label.yml`
+- Notifier: `notifier/.github/workflows/contributor-label.yml`, `notifier/CONTRIBUTING.md` (Review labels)
+- Text: `CONTRIBUTING.md` (Review labels), `docs/CI.md` (the workflow table)
+
+**Rulings**
+- `waiting on contributor` marks a PR waiting on its author; a push or a PR comment by the author swaps it for `waiting on Eric`, and adding `waiting on contributor` again takes `waiting on Eric` off (2026-10-24, notifier #351, Eric asked for the flip).
+- The workflow only edits labels: nothing from the PR is checked out or run, so it can run on forks' PRs (2026-10-24, notifier #351).
+
+**Open gaps**
+- A reply inside a review thread doesn't flip the label, since a fork's review events get a read-only token; the docs tell contributors to comment on the PR or push.
+
+**Checked:** 2026-10-24, at #1216.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
@@ -1220,4 +1243,4 @@ point at the map and its check
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
 
-**Checked:** 2026-10-24, at #1209.
+**Checked:** 2026-10-24, at #1216.
