@@ -14,11 +14,11 @@ extension AppState {
     /// running): asks for its last run's sentence when the user wants
     /// them, the run is long enough and it hasn't been asked about.
     func requestStepSummaryIfWanted(sessionId: String) {
+        reapStepSummaryQuestions()
         guard ChatStepSummaries.isEnabled(), !sessionId.isEmpty, !isBusy, let client,
               let run = ChatStepSummaries.lastRun(in: messages),
               let toolID = ChatStepSummaries.key(toolIDs: run.map { $0.tool?.id }) else { return }
         let target = ChatStepSummaries.Run(scope: toolCatalogKey, toolID: toolID)
-        reapStepSummaryQuestions()
         guard stepSummaries[target.scope]?[toolID] == nil, stepSummaryRequested[target] == nil else { return }
         stepSummaryRequested[target] = Date()
         let question = ChatStepSummaries.question(language: ChatStepSummaries.languageName)
@@ -63,7 +63,7 @@ extension AppState {
         return true
     }
 
-    /// Before each new question, ones unanswered after `answerWait` are
+    /// Each time a turn settles, questions unanswered after `answerWait` are
     /// forgotten with their task ids, so the bookkeeping stays small. A
     /// late answer is still kept out of the chat (`isQuestion`); its run
     /// keeps the count.

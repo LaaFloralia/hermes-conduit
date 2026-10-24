@@ -1180,6 +1180,7 @@ the run's one-sentence summary and its switch in Settings > Chat · /btw
 **Open gaps**
 - Summaries are kept on the device that saw the turn end: other devices, the Watch and turns that ended elsewhere show the count only. Sharing them would need the plugin to store them.
 - A turn that ends while another chat is open on this device isn't asked about either; opening its chat later shows the count. Asking then would spend a model call on each old chat opened.
+- An older Hermes without the hidden `/btw` (`prompt.btw`) leaves the count, with no notice that the switch does nothing there.
 - A Hermes that routes `auxiliary.side_question` to another model answers from a transcript digest, not the cached prefix.
 - Other clients on the same chat (Hermes Desktop, the TUI, an older Conduit) show the hidden question and its answer as a `[btw …]` note.
 - Runs from a provider that numbers its tool call ids per turn (`functions.web_search:0`) get no sentence; keying them would need the chat's durable id.
