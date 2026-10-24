@@ -430,6 +430,10 @@ enum BotAvatarImage {
 struct BotProfileDetails: Equatable {
     var description: String
     var soul: String
+    /// The profile's own `model.provider` / `model.default`; empty when it
+    /// has no pin of its own.
+    var provider: String = ""
+    var model: String = ""
 }
 
 /// The bot editor's form, shared by create and edit.
@@ -444,11 +448,91 @@ struct BotEditorDraft: Equatable {
     var newAvatarPNG: Data?
     /// The user removed the existing picture.
     var removesAvatar = false
+
+    // Advanced (Desktop's New Bot "Advanced" section).
+    /// The profile a new bot copies its settings from: the main profile
+    /// (Desktop's default), another bot, or "" for a fresh profile with the
+    /// bundled skills.
+    var cloneFrom: String = BotCreateRequest.mainProfile
+    /// A provider and model pin. Both empty: a new bot inherits the main
+    /// profile's model, an edited bot keeps its own.
+    var provider: String = ""
+    var model: String = ""
+    /// Share (not copy) the main profile's keys and accounts, so a token
+    /// refresh in one never signs the other out.
+    var shareAuth = true
+    /// Skip the bundled skills.
+    var noSkills = false
+}
+
+/// Upstream `create-dialog.tsx` `ensureAgentCreated`: the `profiles.create`
+/// parameters for a new bot.
+enum BotCreateRequest {
+    /// The profile Desktop clones by default.
+    static let mainProfile = "default"
+
+    static func params(slug: String, description: String, soul: String, draft: BotEditorDraft) -> [String: Any] {
+        var params: [String: Any] = [
+            "name": slug,
+            "description": description,
+            "soul": soul,
+            "no_skills": draft.noSkills,
+            "share_auth": draft.shareAuth
+        ]
+        let cloneFrom = draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Omitted = a fresh profile with the bundled skills.
+        if !cloneFrom.isEmpty { params["clone_from"] = cloneFrom }
+        let provider = draft.provider.trimmingCharacters(in: .whitespacesAndNewlines)
+        let model = draft.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The gateway pins a model only with both; one alone inherits.
+        if !provider.isEmpty, !model.isEmpty {
+            params["provider"] = provider
+            params["model"] = model
+        }
+        return params
+    }
+
+    /// Whether a model the create asked for was pinned. `profiles.create`
+    /// reports a failed pin only as `model_set: false`; an older gateway
+    /// that omits the key counts as pinned.
+    static func modelPinned(_ params: [String: Any], result: AnyCodable) -> Bool {
+        guard params["model"] != nil else { return true }
+        return result.objectValue?["model_set"]?.boolValue != false
+    }
+}
+
+/// `setup.runtime_check` for a new bot: can its profile reach a model?
+/// Only an explicit `ok: false` counts, so an older gateway goes ahead as
+/// before (upstream `create-dialog.tsx` `submit`).
+enum BotRuntimeCheck {
+    static func needsModel(_ result: AnyCodable?) -> Bool {
+        result?.objectValue?["ok"]?.boolValue == false
+    }
+}
+
+/// A `profiles.configure` model pin the gateway would not write unasked
+/// (an expensive or data-training model): its `confirm_message`.
+enum BotModelConfirmation {
+    static func message(in result: AnyCodable) -> String? {
+        let object = result.objectValue ?? [:]
+        guard object["confirm_required"]?.boolValue == true else { return nil }
+        // `warning` is the older gateways' name for the same text.
+        let message = [object["confirm_message"], object["warning"]]
+            .lazy
+            .compactMap { $0?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? ""
+        return message.isEmpty ? AppLocalization.string("Hermes requires confirmation before using this model.") : message
+    }
 }
 
 /// What a create or edit came to. `saved` with a warning means the bot was
 /// written but a best-effort part (look, picture, personality) was not.
 enum BotSaveResult: Equatable {
-    case saved(warning: String?)
+    /// `needsModel`: a new bot that cannot reach a model yet, so it skips
+    /// its introduction.
+    case saved(warning: String?, needsModel: Bool = false)
+    /// Everything else saved; the model pin waits for the user to confirm
+    /// the gateway's message.
+    case confirmModel(String)
     case failed(String)
 }

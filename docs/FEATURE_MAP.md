@@ -442,3 +442,35 @@ Settings > Notifications
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 
 **Checked:** 2026-10-23, seeded from main at 64d53c3.
+
+## Bots: create and edit
+
+New Bot and Edit Bot, and what they write to the bot's Hermes profile.
+Hermes Desktop's bot editor writes the same records, so both apps show the
+same bot.
+
+**Siblings:** New Bot · Edit Bot · Hermes Desktop's bot editor (same
+profile records) · the bot's face in the Bots list, its Bot Chat and group
+rooms · profile pictures in the profile picker · the SOUL a new bot is
+born with (the messaging section older gateways need) · the text that
+describes them (the editor's footers and README.md's bots line)
+
+**Code**
+- Editor: `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotRosterView.swift`
+- Writes: `Conduit/Services/BotManagement.swift` (BotCreateRequest, BotSoul, BotMetaPatch), `Conduit/Services/AppState.swift` (createBot, updateBot, saveBotModel, openNewBotChat), `Conduit/Services/HermesClient.swift` (createBotProfile, describeBotProfile, configureBotProfile, configureBotModel, botRuntimeCheck)
+- Roster: `Conduit/Services/BotModeModels.swift`
+
+**Rulings**
+- A bot's look lives on Hermes: title, color and picture kind in `ui_meta['hermes-bots']`, the picture in the profile's asset store, never on the device (2026-10-02, #297; 2026-10-14, #580).
+- New Bot does what Desktop's does: it copies the main profile's settings and shares its keys and accounts unless Advanced says otherwise (Start From another bot or a fresh profile, a separate copy of the keys, no bundled skills), then introduces itself only when its profile can reach a model (2026-10-23, Eric asked for Desktop parity).
+- An edited bot always keeps a model of its own: Edit Bot offers no "Same as Main Profile", since `profiles.configure` pins a provider and model and has no way to clear the pin (2026-10-23).
+- On Edit Bot, a model pick the gateway guards (expensive or data-training) is saved only after the user confirms its message (2026-10-23).
+
+**Open gaps**
+- No per-skill, toolset or MCP server toggles on New Bot or Edit Bot (New Bot can only skip the bundled skills), and no installing MCP servers from Hermes' catalog.
+- No generated pictures for bots or group rooms, though Hermes can generate them (`image.generate`).
+- New Bot's model pick isn't guarded: `profiles.create` pins it without the gateway's expensive-model check, the same as on Desktop.
+- Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
+- No Duplicate or Hide in the Bots list.
+
+**Checked:** 2026-10-23, at fc9c388.
