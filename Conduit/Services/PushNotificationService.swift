@@ -473,6 +473,12 @@ final class PushNotificationService: ObservableObject {
     /// Relay gateways this iPhone holds an end-to-end encryption key for
     /// (#431). Settings > Notifications marks those pairings encrypted.
     @Published private(set) var encryptedGatewayIDs: Set<String> = []
+    /// What each host last said about its key (`GET /e2e`), so the padlock
+    /// only shows when the host holds the same key as this iPhone.
+    @Published private(set) var encryptionConfirmations: [String: EncryptionConfirmation] = PushNotificationService.loadEncryptionConfirmations()
+    /// Settings > Notifications > Rotate: the next provisioning run gives
+    /// every pairing that can rotate a new key.
+    private var rotationRequested = false
     @Published private(set) var relayMeta: RelayMetaInfo? {
         // Plaintext from a pairing this iPhone has never seen listed isn't
         // trusted once it holds an encryption key (#431). Kept on failure.
@@ -768,7 +774,106 @@ final class PushNotificationService: ObservableObject {
     func refreshEncryptionState() {
         // Unreadable (a launch before first unlock): keep what was shown.
         guard let records = Self.e2eKeyStore.readRecords() else { return }
-        encryptedGatewayIDs = Set(records.map(\.gatewayID))
+        encryptedGatewayIDs = Set(records.filter { $0.retiredAt == nil }.map(\.gatewayID))
+        encryptionRecords = records
+    }
+
+    /// The stored keys as last read, for the padlock; nil until they could
+    /// be read (before first unlock).
+    @Published private(set) var encryptionRecords: [E2EKeyRecord]?
+
+    /// What a host confirmed about its pairing's key.
+    struct EncryptionConfirmation: Codable, Equatable {
+        /// The key the host seals with.
+        let kid: String
+        /// The host's plugin keeps a replaced key, so this iPhone rotates.
+        let rotates: Bool
+        let confirmedAt: Date
+    }
+
+    /// Whether a pairing's notifications are private, for the padlock.
+    enum EncryptionAssurance: Equatable {
+        /// The host seals with a key only this iPhone holds, and it's fresh.
+        case ensured(keyCreatedAt: Date, rotates: Bool)
+        /// This iPhone holds a key the host hasn't confirmed yet (it does
+        /// on the next connect to its dashboard).
+        case unconfirmed
+        /// The host seals with a key this iPhone doesn't hold (lost, or a
+        /// change that never finished): pushes show generic text until the
+        /// next connect sets up a new one.
+        case mismatched
+        /// The key is past its rotation date and the grace period, so a
+        /// rotation keeps failing.
+        case overdue(keyCreatedAt: Date)
+        case notEncrypted
+    }
+
+    nonisolated static func encryptionAssurance(
+        gatewayID: String,
+        installationID: String?,
+        records: [E2EKeyRecord],
+        confirmation: EncryptionConfirmation?,
+        now: Date = Date()
+    ) -> EncryptionAssurance {
+        let current = NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records)
+        guard let confirmation else { return current == nil ? .notEncrypted : .unconfirmed }
+        guard let held = records.first(where: { $0.kid == confirmation.kid && $0.gatewayID == gatewayID }) else {
+            return .mismatched
+        }
+        if confirmation.rotates,
+           now.timeIntervalSince(held.createdAt) >= NotificationE2E.keyMaxAge + NotificationE2E.previousKeyGrace {
+            return .overdue(keyCreatedAt: held.createdAt)
+        }
+        return .ensured(keyCreatedAt: held.createdAt, rotates: confirmation.rotates)
+    }
+
+    func encryptionAssurance(gatewayID: String) -> EncryptionAssurance {
+        guard let records = encryptionRecords else {
+            return encryptionConfirmations[gatewayID] == nil ? .notEncrypted : .unconfirmed
+        }
+        return Self.encryptionAssurance(
+            gatewayID: gatewayID,
+            installationID: registration?.installationID,
+            records: records,
+            confirmation: encryptionConfirmations[gatewayID]
+        )
+    }
+
+    /// Whether any pairing this iPhone knows can rotate its key now.
+    var canRotateEncryptionKeys: Bool {
+        encryptionConfirmations.values.contains(where: \.rotates)
+    }
+
+    /// Settings > Notifications > Rotate: new keys on the next provisioning
+    /// run, which the caller starts.
+    func requestEncryptionKeyRotation() {
+        rotationRequested = true
+    }
+
+    private static let encryptionConfirmationsKey = "conduit.e2e.confirmations"
+
+    nonisolated private static func loadEncryptionConfirmations() -> [String: EncryptionConfirmation] {
+        guard let data = UserDefaults.standard.data(forKey: encryptionConfirmationsKey) else { return [:] }
+        return (try? JSONDecoder().decode([String: EncryptionConfirmation].self, from: data)) ?? [:]
+    }
+
+    private func setEncryptionConfirmation(_ confirmation: EncryptionConfirmation?, gatewayID: String) {
+        encryptionConfirmations[gatewayID] = confirmation
+        if let data = try? JSONEncoder().encode(encryptionConfirmations) {
+            UserDefaults.standard.set(data, forKey: Self.encryptionConfirmationsKey)
+        }
+    }
+
+    /// The host's key for a pairing is the one this iPhone treats as
+    /// current: a key the host took after a rotation whose answer never
+    /// arrived comes back, and the others for the pairing are retired.
+    private func adoptConfirmedKey(kid: String, installationID: String, gatewayID: String, records: inout [E2EKeyRecord], now: Date) {
+        for (index, record) in records.enumerated()
+        where record.installationID == installationID && record.gatewayID == gatewayID {
+            let retiredAt: Date? = record.kid == kid ? nil : (record.retiredAt ?? now)
+            guard retiredAt != record.retiredAt, Self.e2eKeyStore.save(record.retired(at: retiredAt)) else { continue }
+            records[index] = record.retired(at: retiredAt)
+        }
     }
 
     /// Gives every pairing of this dashboard's profiles that belongs to this
@@ -794,6 +899,15 @@ final class PushNotificationService: ObservableObject {
         // the next connect.
         Self.e2eKeyStore.removeUnparseable()
         guard var records = Self.e2eKeyStore.readRecords() else { return }
+        // Keys a rotation replaced over a week ago: the host dropped them too.
+        let now = Date()
+        for expired in NotificationE2E.expiredRecords(records, now: now) {
+            Self.e2eKeyStore.remove(kid: expired.kid)
+        }
+        let expiredKIDs = Set(NotificationE2E.expiredRecords(records, now: now).map(\.kid))
+        records.removeAll { expiredKIDs.contains($0.kid) }
+        let forceRotation = rotationRequested
+        rotationRequested = false
         // A marker with no keys means they are gone for good (a restore to
         // another iPhone drops this-device-only Keychain items but brings the
         // App Group marker back). Start over as on the first key; the marker
@@ -813,8 +927,19 @@ final class PushNotificationService: ObservableObject {
         }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
-            guard let status = try? await request(path, "GET", nil),
-                  let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
+            guard let status = try? await request(path, "GET", nil) else { continue }
+            // A plugin that reports `rotate` keeps a replaced key, so new
+            // keys lose nothing in flight (notifier 0.70+).
+            let rotates = status["rotate"] is Bool
+            guard let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
+                if let held = Self.confirmedKey(status: status, installationID: installationID, records: records) {
+                    adoptConfirmedKey(kid: held.kid, installationID: installationID, gatewayID: held.gatewayID, records: &records, now: now)
+                    setEncryptionConfirmation(EncryptionConfirmation(kid: held.kid, rotates: rotates, confirmedAt: now), gatewayID: held.gatewayID)
+                    if rotates && (status["rotate"] as? Bool == true || forceRotation) {
+                        await rotateEncryptionKey(of: held, dashboardID: dashboardID, profile: profile, path: path,
+                                                  records: &records, request: request)
+                    }
+                }
                 continue
             }
             let record = NotificationE2E.newRecord(
@@ -855,15 +980,81 @@ final class PushNotificationService: ObservableObject {
                 if firstKey && !markerWasSet { NotificationSharedSettings.clearKeysProvisioned() }
                 continue
             }
-            // The plugin now holds only this key for the pairing.
+            // The plugin now seals with this key. An older plugin dropped the
+            // one it replaced; a newer one keeps it for a week, and so do we.
             for stale in records
             where stale.installationID == installationID && stale.gatewayID == gatewayID && stale.kid != record.kid {
-                Self.e2eKeyStore.remove(kid: stale.kid)
+                if rotates, stale.retiredAt == nil, Self.e2eKeyStore.save(stale.retired(at: now)) { continue }
+                if !rotates { Self.e2eKeyStore.remove(kid: stale.kid) }
             }
-            records.removeAll { $0.installationID == installationID && $0.gatewayID == gatewayID }
+            records = records.compactMap { stale in
+                guard stale.installationID == installationID && stale.gatewayID == gatewayID else { return stale }
+                return rotates ? (stale.retiredAt == nil ? stale.retired(at: now) : stale) : nil
+            }
             records.append(record)
+            setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: rotates, confirmedAt: now), gatewayID: gatewayID)
         }
         refreshEncryptionState()
+    }
+
+    /// The key this iPhone holds that the host says it seals with, or nil.
+    nonisolated static func confirmedKey(status: [String: Any], installationID: String, records: [E2EKeyRecord]) -> E2EKeyRecord? {
+        guard status["ok"] as? Bool == true,
+              status["paired"] as? Bool == true,
+              status["crypto"] as? Bool != false,
+              status["installation_id"] as? String == installationID,
+              let gatewayID = status["gateway_id"] as? String,
+              let kid = (status["e2e"] as? [String: Any])?["kid"] as? String else {
+            return nil
+        }
+        return records.first { $0.kid == kid && $0.gatewayID == gatewayID && $0.installationID == installationID }
+    }
+
+    /// Hands the host a new key for a pairing that already has one. The new
+    /// key is saved before it is sent, so a push sealed with it always opens;
+    /// the old one stays a week for pushes and answers already on their way.
+    private func rotateEncryptionKey(
+        of current: E2EKeyRecord,
+        dashboardID: UUID,
+        profile: String,
+        path: String,
+        records: inout [E2EKeyRecord],
+        request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    ) async {
+        let now = Date()
+        // Retired until the host takes it: answers stay sealed with the key
+        // the host is known to hold.
+        let record = NotificationE2E.newRecord(
+            installationID: current.installationID,
+            gatewayID: current.gatewayID,
+            dashboardID: dashboardID.uuidString,
+            profile: profile,
+            now: now
+        ).retired(at: now)
+        guard Self.e2eKeyStore.save(record) else { return }
+        records.append(record)
+        let body: [String: Any] = [
+            "installation_id": record.installationID,
+            "gateway_id": record.gatewayID,
+            "kid": record.kid,
+            "secret": NotificationE2E.base64URL(record.secret),
+        ]
+        let response: [String: Any]
+        do {
+            response = try await request(path, "POST", body)
+        } catch {
+            // The host may have taken it with the answer lost: the key stays
+            // (retired) so its pushes open, and the next connect adopts it if
+            // the host reports it.
+            return
+        }
+        guard response["ok"] as? Bool == true, response["kid"] as? String == record.kid else {
+            Self.e2eKeyStore.remove(kid: record.kid)
+            records.removeAll { $0.kid == record.kid }
+            return
+        }
+        adoptConfirmedKey(kid: record.kid, installationID: record.installationID, gatewayID: record.gatewayID, records: &records, now: now)
+        setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: true, confirmedAt: now), gatewayID: record.gatewayID)
     }
 
     /// The relay gateway id of a profile's pairing that still needs a key
@@ -899,6 +1090,8 @@ final class PushNotificationService: ObservableObject {
         if Self.e2eKeyStore.readRecords()?.isEmpty == true {
             NotificationSharedSettings.knownGatewayIDs = []
             NotificationSharedSettings.clearKeysProvisioned()
+            encryptionConfirmations = [:]
+            UserDefaults.standard.removeObject(forKey: Self.encryptionConfirmationsKey)
         }
         UserDefaults.standard.removeObject(forKey: Self.encryptedDecisionGatewaysKey)
         refreshEncryptionState()
@@ -914,7 +1107,7 @@ final class PushNotificationService: ObservableObject {
     ) throws -> [String: String] {
         guard let gatewayID = body["gateway_id"],
               let answer = body["answer"],
-              let record = records.first(where: { $0.gatewayID == gatewayID && $0.installationID == installationID }) else {
+              let record = NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records) else {
             return body
         }
         var sealed = body
