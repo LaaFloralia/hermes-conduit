@@ -16,6 +16,7 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
 - Picker/setup identity: `Conduit/Voice/VoiceModeChoice.swift`, `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Voice/VoiceSetupIssue.swift`
 - Saved-call preferences/identity: `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceHistory.swift`
 - Watch transport and diagnostics: `ConduitWatch/WatchGeminiSocket.swift`
+- Watch capability compatibility tests: `ConduitTests/HermesCallsTests.swift` (legacy plugins, Qwen-only and concurrent providers)
 
 **Rulings**
 - Gemini and Qwen are independent picker entries, concurrently configurable on
