@@ -1,6 +1,6 @@
 # Hermes Conduit
 
-Qwen direct voice is available in the shared **Gemini / Qwen Live** mode.
+Qwen Live is an independently selectable provider alongside Gemini Live.
 See [setup and validation limits](docs/QWEN_LIVE.md).
 
 A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/NousResearch/hermes-agent). Free, no ads, no tracking.
@@ -32,7 +32,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 **Voice**
 
-- Live voice calls with Gemini / Qwen Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
+- Live voice calls with Gemini Live, Qwen Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
 - Start, check and cancel Hermes jobs by voice; results come back into the call
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
@@ -197,7 +197,7 @@ Key places:
 - `Conduit/Services/HermesClient.swift` - WebSocket client and RPC layer
 - `Conduit/Services/AppState.swift` (and its `AppState+*.swift` extensions) - state and session lifecycle
 - `Conduit/Views/V2/` - the app shell: Chats, Tasks, Bots, Settings
-- `Conduit/Voice/` - Classic voice, dictation and the live voice engines (Gemini / Qwen Live, GPT-Live, Grok Live, Local Live)
+- `Conduit/Voice/` - Classic voice, dictation and the live voice engines (Gemini Live, Qwen Live, GPT-Live, Grok Live, Local Live)
 - `Conduit/Health`, `Conduit/Location`, `Conduit/Phone` - opt-in phone data sync
 - `ConduitWatch/` - the Apple Watch app
 - `Shared/` - code shared with the extensions and the Watch

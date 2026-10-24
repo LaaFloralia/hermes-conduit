@@ -23,9 +23,7 @@ enum LiveVoiceProviderConsent {
     /// Kept per provider on this device, so switching to another mode asks
     /// again. Not per Hermes profile: the consent is the person's.
     static func key(for mode: LiveVoiceModeName) -> String {
-        // The direct slot can now send audio to Alibaba Cloud. Existing
-        // Google-only consent must not authorize that new recipient.
-        "conduit.liveVoiceProviderConsent.\(mode.storageID)" + (mode == .geminiLive ? ".direct-v2" : "")
+        "conduit.liveVoiceProviderConsent.\(mode.storageID)"
     }
 
     static func isGranted(_ mode: LiveVoiceModeName, defaults: UserDefaults = .standard) -> Bool {

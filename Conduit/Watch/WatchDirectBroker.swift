@@ -117,6 +117,7 @@ final class WatchDirectBroker {
     /// the iPhone out of reach. False once the host refused it (a plugin
     /// before 0.8).
     private var grantLiveToken = false
+    private var directProvider: DirectLiveProvider = .gemini
     private var grantMaxJobs = 0
     private var grantJobOptions: [String: String] = [:]
     /// The names the call's jobs may give the user's profiles.
@@ -149,12 +150,13 @@ final class WatchDirectBroker {
     func handle(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
         func answer(_ message: WatchVoiceWire.Message) { reply?(WatchVoiceWire.encode(message)) }
         switch message {
-        case .directStart(let id, let version, let ring):
+        case .directStart(let id, let version, let ring, let requestedProvider):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
-            if let refusal = consentRefusal(.geminiLive) {
+            let provider = requestedProvider ?? .gemini
+            if let refusal = consentRefusal(provider == .qwen ? .qwenLive : .geminiLive) {
                 answer(.callRefused(callID: id, reason: refusal))
                 return
             }
@@ -165,7 +167,7 @@ final class WatchDirectBroker {
             if let preparing, preparing.callID == id {
                 task = preparing.task
             } else {
-                task = Task { await self.prepare(id, ring: ring) }
+                task = Task { await self.prepare(id, ring: ring, provider: provider) }
                 preparing = (id, task)
             }
             Task {
@@ -251,7 +253,7 @@ final class WatchDirectBroker {
             }
             // The Watch's own Gemini session gets no credential without the
             // user's OK either.
-            if let refusal = consentRefusal(.geminiLive) {
+            if let refusal = consentRefusal(provider == .qwen ? .qwenLive : .geminiLive) {
                 answer(.callRefused(callID: id, reason: refusal))
                 return
             }
@@ -261,7 +263,7 @@ final class WatchDirectBroker {
                 defer { end() }
                 let startedAt = Date()
                 do {
-                    let token = try await self.appState.watchDirectToken()
+                    let token = try await self.appState.watchDirectToken(provider: directProvider)
                     // Minted while the phone switched: not this call's.
                     guard self.onCallsConnection(id) else {
                         answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
@@ -316,7 +318,7 @@ final class WatchDirectBroker {
         appState.requestLiveVoiceConsentIfMissing(mode).map { VoiceSetupIssue.providerConsentNeeded($0).message }
     }
 
-    private func prepare(_ id: UInt32, ring: String? = nil) async -> WatchVoiceWire.Message {
+    private func prepare(_ id: UInt32, ring: String? = nil, provider: DirectLiveProvider = .gemini) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
@@ -333,6 +335,7 @@ final class WatchDirectBroker {
         // CarPlay call.
         appState.setWatchVoiceCallActive(true)
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
+        directProvider = provider
         let startedAt = Date()
         link.log.note("watchDirectStart", [
             "callID": Int(id),
@@ -342,7 +345,7 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -393,7 +396,7 @@ final class WatchDirectBroker {
                 chosen = (built, attempt)
                 functions = declared
                 hostTools = tools
-                hostToolsMode = .geminiLive
+                hostToolsMode = provider == .qwen ? .qwenLive : .geminiLive
                 break
             }
             guard let picked = chosen else {
@@ -464,7 +467,7 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -576,7 +579,7 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -1132,7 +1135,7 @@ final class WatchDirectBroker {
         let dashboard = appState.watchDirectConnection.dashboard
         do {
             var grant = try await grantClient.grant(
-                tools: grantTools + (withJobs ? grantJobTools : []) + (liveToken ? [WatchLiveToken.tool] : []),
+                tools: grantTools + (withJobs ? grantJobTools : []) + (liveToken ? [directProvider == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool] : []),
                 profile: profile,
                 maxJobs: withJobs ? grantMaxJobs : nil,
                 jobOptions: withJobs ? grantJobOptions : [:],

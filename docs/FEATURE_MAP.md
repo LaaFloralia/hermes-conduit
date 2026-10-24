@@ -12,23 +12,20 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
 - Provider setup: `docs/QWEN_LIVE.md`; notifier: `notifier/dashboard/plugin_api.py`
 
 **Rulings**
-- The direct slot supports Gemini or Qwen, selected per host profile. Audio
-  connects from the device to the provider; Hermes only mints credentials
-  and executes tools. Watch audio does not use the relay.
-- Expanded direct-mode consent names Google and Alibaba Cloud and invalidates
-  prior Google-only consent. Existing direct-mode data permissions are shared.
-- Qwen uses Hermes search functions instead of incompatible native search.
-- Watch wire version 3 rejects pre-Qwen clients before sending credentials.
-  Cancelled responses discard undelivered tools while retaining delivered
-  calls until their results arrive (#1182).
+- Gemini and Qwen are independent picker entries, concurrently configurable on
+  the host, with separate preferences, consent, data permissions and saved
+  call identity. Shared controllers/adapters must not combine their product
+  identities (2026-10-24, maintainer request on #1182).
+- Both providers connect directly from the device. Watch starts explicitly
+  name the provider; reconnect grants authorize the selected token tool only.
+- Qwen voice can be selected on the phone independently of Gemini, with the
+  host's configured voice as fallback. Qwen uses Hermes search functions.
 
 **Open gaps**
-- This first integration retains legacy `gemini-live` history/preferences IDs
-  and the shared picker item; Qwen voice is configured on the host.
-- Apple builds, credentials, entitlement and Watch background behavior need
-  macOS/device validation; Windows checks cannot establish those properties.
+- Real credentials, entitlement, voice availability and Watch background
+  behavior need device testing; Windows checks cannot establish them.
 
-**Checked:** 2026-10-24, #1182; reviewed against 79a5319c with protocol regression tests.
+**Checked:** 2026-10-24, #1182; independent provider routes and regression tests.
 
 Features that have siblings: other screens, voice modes or notifier pieces
 that must do the same thing. A change that reaches one sibling and not the

@@ -157,6 +157,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// audio bridge.
     enum Engine: Equatable {
         case gemini
+        case qwen
         case grok
         case localLive
 
@@ -638,6 +639,7 @@ final class WatchDirectCallModel: ObservableObject {
     static func startRequest(engine: Engine, callID: UInt32, ring: String?) -> WatchVoiceWire.Message {
         switch engine {
         case .gemini: return .directStart(callID: callID, version: WatchVoiceWire.version, ring: ring)
+        case .qwen: return .directStart(callID: callID, version: WatchVoiceWire.version, ring: ring, provider: .qwen)
         case .grok: return .grokStart(callID: callID, version: WatchVoiceWire.version, ring: ring)
         // Calls from Hermes don't ring a Watch on Local Live.
         case .localLive: return .localLiveStart(callID: callID, version: WatchVoiceWire.version)
@@ -649,6 +651,7 @@ final class WatchDirectCallModel: ObservableObject {
     static func transcriptEngine(_ engine: Engine) -> String? {
         switch engine {
         case .gemini: return nil
+        case .qwen: return "qwen-live"
         case .grok: return WatchAudioBridgeWire.grok
         case .localLive: return WatchAudioBridgeWire.localLive
         }
@@ -689,7 +692,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// The iPhone's answer to the start, over the link or through the relay.
     private func sessionAnswered(_ answer: WatchVoiceWire.Message?) {
         switch answer {
-        case .directSession(_, let session)? where engine == .gemini:
+        case .directSession(_, let session)? where engine == .gemini || engine == .qwen:
             begin(session)
         case .grokSession(_, let session)? where engine == .grok:
             begin(session)
@@ -971,10 +974,10 @@ final class WatchDirectCallModel: ObservableObject {
     /// A new single-use token from Hermes through the grant's relay. The
     /// log has how it went, never the token.
     private func requestRelayToken() async throws -> GeminiLiveToken {
-        guard let relay = toolRelay, relay.canRun(WatchLiveToken.tool) else { throw WatchDirectError.noRelayToken }
+        guard let relay = toolRelay, relay.canRun((engine == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool)) else { throw WatchDirectError.noRelayToken }
         let id = callID
         let sentAt = now
-        let outcome = await relay.run(name: WatchLiveToken.tool, arguments: [:])
+        let outcome = await relay.run(name: (engine == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool), arguments: [:])
         guard callID == id, isActive else {
             WatchCallLog.shared.note("directRelayTokenAbandoned", [
                 "outcome": outcome.logLabel,
@@ -1190,7 +1193,7 @@ final class WatchDirectCallModel: ObservableObject {
 
     /// The grant can bring a fresh Gemini token through the relay.
     private var canMintThroughRelay: Bool {
-        toolRelay?.canRun(WatchLiveToken.tool) == true
+        toolRelay?.canRun((engine == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool)) == true
     }
 
     /// From the tick: a rejoin that hasn't come back gives up, as a failed
@@ -1209,6 +1212,7 @@ final class WatchDirectCallModel: ObservableObject {
         let reason: String
         switch engine {
         case .gemini: reason = String(localized: "Gemini didn't come back after the connection broke.")
+        case .qwen: reason = String(localized: "Qwen didn't come back after the connection broke.")
         case .grok: reason = String(localized: "Grok didn't come back after the connection broke.")
         case .localLive: reason = String(localized: "Local Live didn't come back after the connection broke.")
         }

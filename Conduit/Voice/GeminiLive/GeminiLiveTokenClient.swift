@@ -57,8 +57,8 @@ protocol GeminiLiveMemoryRecalling: AnyObject {
 
 @MainActor
 final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearching, GeminiLiveMemoryRecalling {
-    static let statusPath = "/api/plugins/conduit_push/direct-live/status"
-    static let tokenPath = "/api/plugins/conduit_push/direct-live/token"
+    static let statusPath = "/api/plugins/conduit_push/gemini-live/status"
+    static let tokenPath = "/api/plugins/conduit_push/gemini-live/token"
     static let webSearchStatusPath = "/api/plugins/conduit_push/web-search/status"
     static let webSearchPath = "/api/plugins/conduit_push/web-search"
     static let memoryContextPath = "/api/plugins/conduit_push/memory/context"
@@ -86,10 +86,11 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// The Hermes profile whose key the host should use, read at call time
     /// (same `?profile=` scoping as /api/audio/*).
     private let profile: @MainActor () -> String
-    private(set) var isQwen = false
+    private let provider: @MainActor () -> DirectLiveProvider
 
-    init(profile: @escaping @MainActor () -> String = { "default" }, request: @escaping Request) {
+    init(profile: @escaping @MainActor () -> String = { "default" }, provider: @escaping @MainActor () -> DirectLiveProvider = { .gemini }, request: @escaping Request) {
         self.profile = profile
+        self.provider = provider
         self.request = request
     }
 
@@ -106,14 +107,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         _ body: [String: Any]?,
         timeoutMilliseconds: Int = GeminiLiveTokenClient.defaultTimeoutMilliseconds
     ) async throws -> [String: Any] {
-        do {
-            return try await request(path, method, body, timeoutMilliseconds)
-        } catch let error as DashboardTicketBridgeError {
-            // Old notifier versions only have the Gemini endpoints. Fall
-            // back on missing routes, never on auth, quota or server errors.
-            guard Self.isMissingRoute(error), path.contains("/direct-live/") else { throw error }
-            return try await request(path.replacingOccurrences(of: "/direct-live/", with: "/gemini-live/"), method, body, timeoutMilliseconds)
-        }
+        try await request(path, method, body, timeoutMilliseconds)
     }
 
     private func scoped(_ path: String) -> String {
@@ -123,24 +117,25 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     func availability() async throws -> GeminiLiveAvailability {
         let response: [String: Any]
         do {
-            response = try await fetch(scoped(Self.statusPath), "GET", nil)
+            response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/status" : Self.statusPath), "GET", nil)
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { return .pluginMissing }
             throw error
         }
-        isQwen = response["provider"] as? String == "qwen" || (response["model"] as? String)?.hasPrefix("qwen") == true
         return Self.availability(from: response)
     }
 
     func freshToken() async throws -> GeminiLiveToken {
         let response: [String: Any]
         do {
-            response = try await fetch(scoped(Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)
+            response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/token" : Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)
         } catch let error as DashboardTicketBridgeError {
             if Self.isMissingRoute(error) { throw GeminiLiveTokenError.unavailable(.pluginMissing) }
             throw error
         }
-        return try Self.token(from: response)
+        let token = try Self.token(from: response)
+        guard token.isQwen == (provider() == .qwen) else { throw GeminiLiveTokenError.malformedResponse }
+        return token
     }
 
     /// Whether the host can answer quick lookups with its own backend. Any

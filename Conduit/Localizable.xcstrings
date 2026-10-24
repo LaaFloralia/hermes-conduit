@@ -329936,334 +329936,6 @@
         }
       }
     },
-    "Gemini / Qwen Live": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live"
-          }
-        }
-      }
-    },
-    "Use Gemini / Qwen Live for voice": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live als Sprachmodus nutzen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Usar Gemini / Qwen Live para la voz"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Utiliser Gemini / Qwen Live pour la voix"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gunakan Gemini / Qwen Live untuk suara"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Usa Gemini / Qwen Live per la voce"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "音声にGemini / Qwen Liveを使用"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "음성에 Gemini / Qwen Live 사용"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live jako tryb głosowy"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Usar Gemini / Qwen Live para voz"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Использовать Gemini / Qwen Live для голоса"
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ses için Gemini / Qwen Live'ı kullan"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用 Gemini / Qwen Live 进行语音"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "使用 Gemini / Qwen Live 進行語音"
-          }
-        }
-      }
-    },
-    "Check Gemini / Qwen Live": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live prüfen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Comprobar Gemini / Qwen Live"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vérifier Gemini / Qwen Live"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Periksa Gemini / Qwen Live"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verifica Gemini / Qwen Live"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Liveを確認"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live 확인"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sprawdź Gemini / Qwen Live"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verificar Gemini / Qwen Live"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Проверить Gemini / Qwen Live"
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live'ı denetle"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "检查 Gemini / Qwen Live"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "檢查 Gemini / Qwen Live"
-          }
-        }
-      }
-    },
-    "Connecting to Gemini / Qwen Live…": {
-      "localizations": {
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verbinden mit Gemini / Qwen Live …"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Conectando con Gemini / Qwen Live…"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connexion à Gemini / Qwen Live…"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Menghubungkan ke Gemini / Qwen Live…"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connessione a Gemini / Qwen Live…"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Liveに接続中…"
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live에 연결 중…"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Łączenie z Gemini / Qwen Live…"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Conectando ao Gemini / Qwen Live…"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Подключение к Gemini / Qwen Live…"
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gemini / Qwen Live'a bağlanılıyor…"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在连接 Gemini / Qwen Live…"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在連線到 Gemini / Qwen Live…"
-          }
-        }
-      }
-    },
     "Invalid Qwen Live credential.": {
       "localizations": {
         "en": {
@@ -330528,172 +330200,1256 @@
         }
       }
     },
-    "Talk with Gemini / Qwen Live instead of the Hermes speech pipeline. Hermes still does the work: The live model starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Approvals are never given by voice.": {
+    "Check Qwen Live": {
       "localizations": {
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sprich mit Gemini / Qwen Live statt über die Sprachverarbeitung von Hermes. Hermes erledigt weiterhin die Arbeit: Gemini / Qwen startet Hintergrundjobs in diesem Profil und teilt dir ihre Ergebnisse mit. Der API-Schlüssel bleibt auf deinem Hermes-Server. Freigaben werden nie per Sprache erteilt."
+            "value": "Qwen Live prüfen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Habla con Gemini / Qwen Live en lugar de con el sistema de voz de Hermes. Hermes sigue haciendo el trabajo: Gemini / Qwen inicia trabajos en segundo plano en este perfil y te cuenta sus resultados. La clave de API se queda en tu servidor Hermes. Las aprobaciones nunca se dan por voz."
+            "value": "Comprobar Qwen Live"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Parlez avec Gemini / Qwen Live au lieu du pipeline vocal d'Hermes. Hermes fait toujours le travail : Gemini / Qwen lance des jobs en arrière-plan sur ce profil et vous donne leurs résultats. La clé API reste sur votre serveur Hermes. Les approbations ne sont jamais données à la voix."
+            "value": "Vérifier Qwen Live"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Berbicara dengan Gemini / Qwen Live, bukan pemrosesan ucapan Hermes. Pekerjaannya tetap dilakukan Hermes: Gemini / Qwen memulai pekerjaan latar di profil ini dan memberi tahu Anda hasilnya. Kunci API tetap di server Hermes Anda. Persetujuan tidak pernah diberikan lewat suara."
+            "value": "Periksa Qwen Live"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Parla con Gemini / Qwen Live invece che con l'elaborazione vocale di Hermes. Il lavoro lo fa sempre Hermes: Gemini / Qwen avvia job in background su questo profilo e ti comunica i risultati. La chiave API resta sul tuo server Hermes. Le approvazioni non vengono mai date a voce."
+            "value": "Verifica Qwen Live"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermesの音声パイプラインの代わりにGemini / Qwen Liveで会話します。作業は引き続きHermesが行い、Gemini / Qwenはこのプロファイルでバックグラウンドジョブを開始してその結果を伝えます。APIキーはHermesサーバに保管されたままです。音声で承認が行われることはありません。"
+            "value": "Qwen Liveを確認"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes 음성 처리 대신 Gemini / Qwen Live로 대화해요. 작업은 여전히 Hermes가 해요. Gemini / Qwen가 이 프로필에서 백그라운드 작업을 시작하고 그 결과를 알려 줘요. API 키는 Hermes 서버에 그대로 있어요. 승인은 절대 음성으로 하지 않아요."
+            "value": "Qwen Live 확인"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Rozmawiaj z Gemini / Qwen Live zamiast korzystać z przetwarzania mowy Hermesa. Pracę nadal wykonuje Hermes: Gemini / Qwen uruchamia zlecenia w tle w tym profilu i przekazuje Ci ich wyniki. Klucz API pozostaje na Twoim serwerze Hermes. Zatwierdzenia nigdy nie są udzielane głosem."
+            "value": "Sprawdź Qwen Live"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Converse com o Gemini / Qwen Live em vez de usar o fluxo de fala do Hermes. O Hermes continua fazendo o trabalho: o Gemini / Qwen inicia trabalhos em segundo plano neste perfil e conta os resultados para você. A chave de API fica no seu servidor Hermes. Aprovações nunca são dadas por voz."
+            "value": "Verificar Qwen Live"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Говорите с Gemini / Qwen Live вместо конвейера речи Hermes. Работу по-прежнему выполняет Hermes: Gemini / Qwen запускает фоновые задания в этом профиле и сообщает вам их результаты. Ключ API остаётся на вашем сервере Hermes. Разрешения голосом никогда не даются."
+            "value": "Проверить Qwen Live"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hermes konuşma işleme hattı yerine Gemini / Qwen Live ile konuşun. İşi yine Hermes yapar: Gemini / Qwen bu profilde arka plan işleri başlatır ve size sonuçlarını söyler. API anahtarı Hermes sunucunuzda kalır. Onaylar asla sesle verilmez."
+            "value": "Qwen Live'ı denetle"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "使用 Gemini / Qwen Live 进行语音对话，替代 Hermes 的语音流程。工作仍由 Hermes 完成：Gemini / Qwen 会在此配置中启动后台任务并告诉你结果。API 密钥保存在你的 Hermes 服务器上。审批永远不会通过语音进行。"
+            "value": "检查 Qwen Live"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "改用 Gemini / Qwen Live 進行語音，而不是 Hermes 的語音處理流程。實際工作仍由 Hermes 完成：Gemini / Qwen 會在此設定檔上開始背景工作並告訴你結果。API 金鑰會保留在你的 Hermes 伺服器上。絕不會透過語音給予核准。"
+            "value": "檢查 Qwen Live"
           }
         }
       }
     },
-    "Gemini / Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential.": {
+    "Qwen uses Hermes web search. Native search is disabled while function tools are enabled.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential."
+            "value": "Qwen uses Hermes web search. Native search is disabled while function tools are enabled."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live spricht mit dir, während Hermes Aufgaben ausführt. Der permanente API-Schlüssel bleibt auf deinem Server. Dein iPhone oder deine Watch verbindet sich mit kurzlebigen Zugangsdaten direkt mit dem Anbieter."
+            "value": "Qwen nutzt die Websuche von Hermes. Bei aktivierten Funktionstools ist die native Suche deaktiviert."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live habla contigo mientras Hermes ejecuta tareas. La clave API permanente permanece en tu servidor. Tu iPhone o Watch se conecta directamente al proveedor con una credencial de corta duración."
+            "value": "Qwen usa la búsqueda web de Hermes. La búsqueda nativa se desactiva al usar herramientas."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live vous parle pendant que Hermes exécute les tâches. La clé API permanente reste sur votre serveur. Votre iPhone ou Watch se connecte directement au fournisseur avec un identifiant de courte durée."
+            "value": "Qwen utilise la recherche web de Hermes. La recherche native est désactivée avec les outils de fonction."
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live berbicara dengan Anda sementara Hermes menjalankan tugas. Kunci API permanen tetap di server Anda. iPhone atau Watch Anda terhubung langsung ke penyedia dengan kredensial berumur pendek."
+            "value": "Qwen menggunakan pencarian web Hermes. Pencarian bawaan dinonaktifkan saat alat fungsi aktif."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live parla con te mentre Hermes esegue le attività. La chiave API permanente resta sul tuo server. Il tuo iPhone o Watch si connette direttamente al fornitore con una credenziale temporanea."
+            "value": "Qwen usa la ricerca web di Hermes. La ricerca nativa è disabilitata con gli strumenti funzione."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live が会話を担当し、Hermes がジョブを実行します。永続的な API キーはサーバーに保存されます。iPhone または Watch は短期間のみ有効な認証情報でプロバイダーに直接接続します。"
+            "value": "Qwen は Hermes のウェブ検索を使用します。関数ツールの有効時は標準の検索を無効にします。"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live가 대화를 담당하고 Hermes가 작업을 실행합니다. 영구 API 키는 서버에 보관됩니다. iPhone 또는 Watch는 단기 인증 정보로 제공업체에 직접 연결합니다."
+            "value": "Qwen은 Hermes 웹 검색을 사용합니다. 함수 도구가 활성화되면 기본 검색은 비활성화됩니다."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live rozmawia z Tobą, a Hermes wykonuje zadania. Stały klucz API pozostaje na Twoim serwerze. iPhone lub Watch łączy się bezpośrednio z dostawcą przy użyciu krótkotrwałych danych uwierzytelniających."
+            "value": "Qwen używa wyszukiwania Hermes. Wyszukiwanie natywne jest wyłączone przy aktywnych narzędziach funkcji."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "O Gemini / Qwen Live conversa com você enquanto o Hermes executa tarefas. A chave de API permanente fica no seu servidor. Seu iPhone ou Watch se conecta diretamente ao provedor com uma credencial de curta duração."
+            "value": "O Qwen usa a busca web do Hermes. A busca nativa fica desativada com as ferramentas de função."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live общается с вами, а Hermes выполняет задачи. Постоянный API-ключ остаётся на вашем сервере. iPhone или Watch подключается напрямую к провайдеру с краткосрочными учётными данными."
+            "value": "Qwen использует веб-поиск Hermes. Встроенный поиск отключён при использовании инструментов."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live sizinle konuşurken Hermes işleri yürütür. Kalıcı API anahtarı sunucunuzda kalır. iPhone veya Watch’unuz kısa ömürlü bir kimlik bilgisiyle sağlayıcıya doğrudan bağlanır."
+            "value": "Qwen, Hermes web aramasını kullanır. İşlev araçları etkinken yerel arama devre dışıdır."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live 负责对话，Hermes 执行任务。长期 API 密钥保留在你的服务器上。iPhone 或 Apple Watch 使用短期凭证直接连接服务商。"
+            "value": "Qwen 使用 Hermes 网页搜索。启用函数工具时会停用模型原生搜索。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gemini / Qwen Live 負責對話，Hermes 執行工作。長期 API 金鑰保留在你的伺服器上。iPhone 或 Apple Watch 使用短期憑證直接連線至服務供應商。"
+            "value": "Qwen 使用 Hermes 網頁搜尋。啟用函式工具時會停用模型原生搜尋。"
+          }
+        }
+      }
+    },
+    "The permanent API key stays on your Hermes server.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The permanent API key stays on your Hermes server."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der permanente API-Schlüssel bleibt auf deinem Hermes-Server."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La clave API permanente permanece en tu servidor Hermes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La clé API permanente reste sur votre serveur Hermes."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci API permanen tetap di server Hermes Anda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La chiave API permanente resta sul tuo server Hermes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "永続的な API キーは Hermes サーバーに保存されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "영구 API 키는 Hermes 서버에 보관됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stały klucz API pozostaje na Twoim serwerze Hermes."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A chave de API permanente fica no seu servidor Hermes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Постоянный API-ключ остаётся на вашем сервере Hermes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalıcı API anahtarı Hermes sunucunuzda kalır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长期 API 密钥保留在你的 Hermes 服务器上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "長期 API 金鑰保留在你的 Hermes 伺服器上。"
+          }
+        }
+      }
+    },
+    "A real-time conversation with Qwen that hands the work to Hermes. Needs the Hermes notifier plugin and a Qwen key on your Hermes server.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Echtzeit-Unterhaltung mit Qwen, die die Arbeit an Hermes übergibt. Erfordert das Hermes-Notifier-Plug-in und einen Qwen-Schlüssel auf deinem Hermes-Server."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una conversación en tiempo real con Qwen que pasa el trabajo a Hermes. Requiere el plugin de notificaciones de Hermes y una clave de Qwen en tu servidor Hermes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une conversation en temps réel avec Qwen, qui confie le travail à Hermes. Nécessite le plugin de notification Hermes et une clé Qwen sur votre serveur Hermes."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Percakapan real-time dengan Qwen yang menyerahkan pekerjaannya kepada Hermes. Memerlukan plugin notifier Hermes dan kunci Qwen di server Hermes Anda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una conversazione in tempo reale con Qwen che passa il lavoro a Hermes. Richiede il plugin di notifica di Hermes e una chiave Qwen sul tuo server Hermes."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwenとのリアルタイムの会話で、作業はHermesに引き継がれます。Hermes通知プラグインと、HermesサーバのQwenキーが必要です。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen와 나누는 실시간 대화로, 작업은 Hermes에 넘겨요. Hermes 알림 플러그인과 Hermes 서버의 Qwen 키가 필요해요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozmowa w czasie rzeczywistym z Qwen, która przekazuje pracę Hermesowi. Wymaga wtyczki powiadomień Hermes i klucza Qwen na Twoim serwerze Hermes."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uma conversa em tempo real com o Qwen, que passa o trabalho para o Hermes. Requer o plugin notificador do Hermes e uma chave do Qwen no seu servidor Hermes."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разговор с Qwen в реальном времени, который передаёт работу Hermes. Нужны плагин уведомлений Hermes и ключ Qwen на вашем сервере Hermes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen ile yapılan ve işi Hermes'e devreden gerçek zamanlı bir konuşma. Hermes bildirim eklentisi ve Hermes sunucunuzda bir Qwen anahtarı gerekir."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与 Qwen 实时对话，并把任务交给 Hermes 完成。需要 Hermes 通知插件，以及 Hermes 服务器上的 Qwen 密钥。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "與 Qwen 進行即時對話，並把事情交給 Hermes 處理。需要 Hermes 通知外掛程式，以及 Hermes 伺服器上的 Qwen 金鑰。"
+          }
+        }
+      }
+    },
+    "Qwen gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Alibaba Cloud with the conversation. Applies to the next conversation.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen erhält, was dein Hermes-Agent über dich weiß – aus dem Gedächtnis, mit dem Hermes eingerichtet ist –, und kann darin nach mehr suchen. Dieses Gedächtnis wird mit der Unterhaltung an Alibaba Cloud gesendet. Gilt ab der nächsten Unterhaltung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen recibe lo que tu agente Hermes recuerda de ti, de la memoria que tenga configurada Hermes, y puede buscar en ella para saber más. Esa memoria se envía a Alibaba Cloud con la conversación. Se aplica a la próxima conversación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen reçoit ce que votre agent Hermes sait de vous, depuis la mémoire configurée dans Hermes, et peut y chercher davantage. Cette mémoire est envoyée à Alibaba Cloud avec la conversation. S'applique à la prochaine conversation."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen menerima apa yang diingat agen Hermes Anda tentang Anda, dari memori mana pun yang disiapkan di Hermes, dan dapat mencarinya untuk informasi lebih lanjut. Memori tersebut dikirim ke Alibaba Cloud bersama percakapan. Berlaku mulai percakapan berikutnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen riceve ciò che il tuo agente Hermes ricorda di te, dalla memoria configurata in Hermes, e può cercarvi altro. Quella memoria viene inviata a Alibaba Cloud con la conversazione. Vale dalla prossima conversazione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermesエージェントがあなたについて記憶している内容（Hermesに設定されているメモリから取得）がQwenに渡され、Qwenはさらに検索することもできます。このメモリは会話とともにAlibaba Cloudに送信されます。次回の会話から適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen는 Hermes에 설정된 메모리에서 Hermes 에이전트가 사용자에 대해 기억하는 내용을 받고, 필요하면 더 검색할 수도 있어요. 이 메모리는 대화와 함께 Alibaba Cloud로 전송돼요. 다음 대화부터 적용돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen otrzymuje to, co Twój agent Hermes pamięta o Tobie — z pamięci skonfigurowanej w Hermesie — i może ją przeszukiwać w poszukiwaniu kolejnych informacji. Ta pamięć jest wysyłana do Alibaba Cloud razem z rozmową. Obowiązuje od następnej rozmowy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Qwen recebe o que seu agente Hermes lembra sobre você, da memória que o Hermes estiver usando, e pode buscar nela para saber mais. Essa memória é enviada ao Alibaba Cloud com a conversa. Vale a partir da próxima conversa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen получает то, что ваш агент Hermes помнит о вас, из памяти, настроенной в Hermes, и может искать в ней дополнительные сведения. Эта память отправляется в Alibaba Cloud вместе с разговором. Действует со следующего разговора."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen, Hermes hangi bellekle ayarlandıysa oradan Hermes ajanınızın sizinle ilgili hatırladıklarını alır ve daha fazlası için bu bellekte arama yapabilir. Bu bellek konuşmayla birlikte Alibaba Cloud'a gönderilir. Sonraki konuşmada geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 会获得 Hermes 智能体记住的关于你的信息（来自 Hermes 所配置的记忆），并可搜索更多内容。这些记忆会随对话发送给 Alibaba Cloud。从下一次对话开始生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 會取得 Hermes 代理程式記得的關於你的內容（來自 Hermes 所設定的記憶系統），也能搜尋更多內容。這些記憶會隨對話傳送給 Alibaba Cloud。下次對話起生效。"
+          }
+        }
+      }
+    },
+    "Qwen didn't come back after the connection broke.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen ist nach dem Verbindungsabbruch nicht zurückgekommen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen no volvió después de que se cortara la conexión."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen n'est pas revenu après la coupure de la connexion."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen tidak kembali setelah koneksi terputus."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen non è tornato dopo l'interruzione della connessione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続が切れた後、Qwen が復帰しませんでした。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결이 끊긴 후 Qwen가 돌아오지 않았어요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen nie wrócił po zerwaniu połączenia."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Qwen não voltou depois que a conexão caiu."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen не восстановил связь после обрыва соединения."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı koptuktan sonra Qwen geri gelmedi."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接断开后，Qwen 没有恢复。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線中斷後，Qwen 未能恢復。"
+          }
+        }
+      }
+    },
+    "Connecting to Qwen Live…": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbinden mit Qwen Live …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectando con Qwen Live…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connexion à Qwen Live…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menghubungkan ke Qwen Live…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connessione a Qwen Live…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Liveに接続中…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live에 연결 중…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Łączenie z Qwen Live…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conectando ao Qwen Live…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подключение к Qwen Live…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live'a bağlanılıyor…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在连接 Qwen Live…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在連線到 Qwen Live…"
+          }
+        }
+      }
+    },
+    "The voice Qwen speaks with. Applies to the next conversation.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Stimme, mit der Qwen spricht. Gilt ab der nächsten Unterhaltung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La voz con la que habla Qwen. Se aplica a la próxima conversación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La voix avec laquelle parle Qwen. S'applique à la prochaine conversation."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suara yang digunakan Qwen untuk berbicara. Berlaku mulai percakapan berikutnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La voce con cui parla Qwen. Vale dalla prossima conversazione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwenが話すときの声です。次回の会話から適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen가 말할 때 사용하는 목소리예요. 다음 대화부터 적용돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Głos, którym mówi Qwen. Obowiązuje od następnej rozmowy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A voz com que o Qwen fala. Vale a partir da próxima conversa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Голос, которым говорит Qwen. Действует со следующего разговора."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen'nin konuştuğu ses. Sonraki konuşmada geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 说话时使用的声音。从下一次对话开始生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 說話時使用的聲音。下次對話起生效。"
+          }
+        }
+      }
+    },
+    "Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Setze DASHSCOPE_API_KEY und CONDUIT_QWEN_LIVE_WORKSPACE in deinem Hermes-Profil. Der permanente Schlüssel bleibt auf deinem Server."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configura DASHSCOPE_API_KEY y CONDUIT_QWEN_LIVE_WORKSPACE en tu perfil Hermes. La clave permanente permanece en tu servidor."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Définissez DASHSCOPE_API_KEY et CONDUIT_QWEN_LIVE_WORKSPACE dans votre profil Hermes. La clé permanente reste sur votre serveur."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atur DASHSCOPE_API_KEY dan CONDUIT_QWEN_LIVE_WORKSPACE di profil Hermes. Kunci permanen tetap di server Anda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imposta DASHSCOPE_API_KEY e CONDUIT_QWEN_LIVE_WORKSPACE nel profilo Hermes. La chiave permanente resta sul server."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes プロファイルに DASHSCOPE_API_KEY と CONDUIT_QWEN_LIVE_WORKSPACE を設定してください。永続キーはサーバーに保存されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes 프로필에 DASHSCOPE_API_KEY와 CONDUIT_QWEN_LIVE_WORKSPACE를 설정하세요. 영구 키는 서버에 보관됩니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ustaw DASHSCOPE_API_KEY i CONDUIT_QWEN_LIVE_WORKSPACE w profilu Hermes. Stały klucz pozostaje na Twoim serwerze."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure DASHSCOPE_API_KEY e CONDUIT_QWEN_LIVE_WORKSPACE no perfil Hermes. A chave permanente fica no servidor."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Задайте DASHSCOPE_API_KEY и CONDUIT_QWEN_LIVE_WORKSPACE в профиле Hermes. Постоянный ключ остаётся на сервере."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hermes profilinde DASHSCOPE_API_KEY ve CONDUIT_QWEN_LIVE_WORKSPACE değerlerini ayarlayın. Kalıcı anahtar sunucuda kalır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Hermes 配置中设置 DASHSCOPE_API_KEY 和 CONDUIT_QWEN_LIVE_WORKSPACE。长期密钥保留在服务器上。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Hermes 設定檔中設定 DASHSCOPE_API_KEY 和 CONDUIT_QWEN_LIVE_WORKSPACE。長期金鑰保留在伺服器上。"
+          }
+        }
+      }
+    },
+    "Add a Qwen API key": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen-API-Schlüssel hinzufügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añade una clave de API de Qwen"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter une clé API Qwen"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tambahkan kunci API Qwen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi una chiave API Qwen"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen APIキーを追加"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen API 키 추가"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj klucz API Qwen"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicionar uma chave de API do Qwen"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавьте ключ API Qwen"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen API anahtarı ekleyin"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加 Qwen API 密钥"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "加入 Qwen API 金鑰"
+          }
+        }
+      }
+    },
+    "Qwen talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Alibaba Cloud with the conversation. Applies to the next conversation.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen spricht mit der Persönlichkeit aus der SOUL.md dieses Profils, ohne Aktionen oder Emoji vorzulesen. SOUL.md wird mit der Unterhaltung an Alibaba Cloud gesendet. Gilt ab der nächsten Unterhaltung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen habla con la personalidad del SOUL.md de este perfil, sin leer en voz alta acciones ni emojis. SOUL.md se envía a Alibaba Cloud con la conversación. Se aplica a la próxima conversación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen parle avec la personnalité du SOUL.md de ce profil, sans lire à voix haute les actions ni les emoji. SOUL.md est envoyé à Alibaba Cloud avec la conversation. S'applique à la prochaine conversation."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen berbicara dengan kepribadian di SOUL.md profil ini, tanpa membacakan tindakan atau emoji. SOUL.md dikirim ke Alibaba Cloud bersama percakapan. Berlaku mulai percakapan berikutnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen parla con la personalità del SOUL.md di questo profilo, senza leggere ad alta voce azioni o emoji. SOUL.md viene inviato a Alibaba Cloud con la conversazione. Vale dalla prossima conversazione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwenは、このプロファイルのSOUL.mdにあるパーソナリティで話します。動作の描写や絵文字は読み上げません。SOUL.mdは会話とともにAlibaba Cloudに送信されます。次回の会話から適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen는 이 프로필의 SOUL.md에 있는 성격으로 말하며, 행동 묘사나 이모지는 읽지 않아요. SOUL.md는 대화와 함께 Alibaba Cloud로 전송돼요. 다음 대화부터 적용돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen mówi z osobowością z pliku SOUL.md tego profilu, bez odczytywania opisów działań ani emoji. SOUL.md jest wysyłany do Alibaba Cloud razem z rozmową. Obowiązuje od następnej rozmowy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Qwen fala com a personalidade do SOUL.md deste perfil, sem ler em voz alta ações ou emojis. O SOUL.md é enviado ao Alibaba Cloud com a conversa. Vale a partir da próxima conversa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen говорит с личностью из SOUL.md этого профиля, не зачитывая действия и эмодзи. SOUL.md отправляется в Alibaba Cloud вместе с разговором. Действует со следующего разговора."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen, eylemleri veya emojileri sesli okumadan bu profilin SOUL.md dosyasındaki kişilikle konuşur. SOUL.md konuşmayla birlikte Alibaba Cloud'a gönderilir. Sonraki konuşmada geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 会以此配置文件 SOUL.md 中的性格说话，但不会读出动作描写或表情符号。SOUL.md 会随对话发送给 Alibaba Cloud。将在下次对话时生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen 會以此設定檔 SOUL.md 中的個性說話，但不會唸出動作描述或表情符號。SOUL.md 會隨對話傳送給 Alibaba Cloud。下次對話起生效。"
+          }
+        }
+      }
+    },
+    "Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live spricht mit dir, während Hermes Aufgaben ausführt. Der permanente API-Schlüssel bleibt auf deinem Server. Dein iPhone oder deine Watch verbindet sich mit kurzlebigen Zugangsdaten direkt mit dem Anbieter."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live habla contigo mientras Hermes ejecuta tareas. La clave API permanente permanece en tu servidor. Tu iPhone o Watch se conecta directamente al proveedor con una credencial de corta duración."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live vous parle pendant que Hermes exécute les tâches. La clé API permanente reste sur votre serveur. Votre iPhone ou Watch se connecte directement au fournisseur avec un identifiant de courte durée."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live berbicara dengan Anda sementara Hermes menjalankan tugas. Kunci API permanen tetap di server Anda. iPhone atau Watch Anda terhubung langsung ke penyedia dengan kredensial berumur pendek."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live parla con te mentre Hermes esegue le attività. La chiave API permanente resta sul tuo server. Il tuo iPhone o Watch si connette direttamente al fornitore con una credenziale temporanea."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live が会話を担当し、Hermes がジョブを実行します。永続的な API キーはサーバーに保存されます。iPhone または Watch は短期間のみ有効な認証情報でプロバイダーに直接接続します。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live가 대화를 담당하고 Hermes가 작업을 실행합니다. 영구 API 키는 서버에 보관됩니다. iPhone 또는 Watch는 단기 인증 정보로 제공업체에 직접 연결합니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live rozmawia z Tobą, a Hermes wykonuje zadania. Stały klucz API pozostaje na Twoim serwerze. iPhone lub Watch łączy się bezpośrednio z dostawcą przy użyciu krótkotrwałych danych uwierzytelniających."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O Qwen Live conversa com você enquanto o Hermes executa tarefas. A chave de API permanente fica no seu servidor. Seu iPhone ou Watch se conecta diretamente ao provedor com uma credencial de curta duração."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live общается с вами, а Hermes выполняет задачи. Постоянный API-ключ остаётся на вашем сервере. iPhone или Watch подключается напрямую к провайдеру с краткосрочными учётными данными."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live sizinle konuşurken Hermes işleri yürütür. Kalıcı API anahtarı sunucunuzda kalır. iPhone veya Watch’unuz kısa ömürlü bir kimlik bilgisiyle sağlayıcıya doğrudan bağlanır."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 负责对话，Hermes 执行任务。长期 API 密钥保留在你的服务器上。iPhone 或 Apple Watch 使用短期凭证直接连接服务商。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 負責對話，Hermes 執行工作。長期 API 金鑰保留在你的伺服器上。iPhone 或 Apple Watch 使用短期憑證直接連線至服務供應商。"
+          }
+        }
+      }
+    },
+    "Set up Qwen Live": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live einrichten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar Qwen Live"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurer Qwen Live"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siapkan Qwen Live"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configura Qwen Live"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Liveを設定"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live 설정"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skonfiguruj Qwen Live"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configurar o Qwen Live"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Настройка Qwen Live"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live'ı kur"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置 Qwen Live"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定 Qwen Live"
+          }
+        }
+      }
+    },
+    "Qwen Live": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qwen Live"
+          }
+        }
+      }
+    },
+    "Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Grok Live and Classic voice. Applies to the next conversation.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimentell. Hält das Mikrofon offen, während Qwen über den Lautsprecher des iPhone oder im Auto spricht, mit der Echounterdrückung von iOS, damit du durch Sprechen unterbrechen kannst. Mit Kopfhörern und AirPods geht das immer. Schalte es aus, wenn Qwen sich ständig selbst unterbricht. Gilt gemeinsam für Qwen Live, Grok Live und den klassischen Sprachmodus. Gilt ab der nächsten Unterhaltung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimental. Mantiene el micrófono abierto mientras Qwen habla por el altavoz del teléfono o en el coche, con la cancelación de eco de iOS, para que puedas interrumpir hablando. Con auriculares y AirPods siempre es posible. Desactívalo si Qwen se corta solo una y otra vez. Compartido por Qwen Live, Grok Live y la voz clásica. Se aplica a la próxima conversación."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expérimental. Garde le micro ouvert pendant que Qwen parle sur le haut-parleur du téléphone ou dans la voiture, avec l'annulation d'écho d'iOS, pour que vous puissiez l'interrompre en parlant. C'est toujours possible avec des écouteurs et des AirPods. Désactivez cette option si Qwen n'arrête pas de se couper la parole. Partagé par Qwen Live, Grok Live et la voix Classique. S'applique à la prochaine conversation."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksperimental. Mikrofon tetap terbuka saat Qwen berbicara melalui speaker ponsel atau di mobil, dengan peredam gema iOS, sehingga Anda dapat menyela dengan berbicara. Headphone dan AirPods selalu mengizinkan ini. Matikan jika Qwen terus memotong ucapannya sendiri. Digunakan bersama oleh Qwen Live, Grok Live, dan suara Klasik. Berlaku mulai percakapan berikutnya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sperimentale. Tiene aperto il microfono mentre Qwen parla dall'altoparlante del telefono o in auto, con la cancellazione dell'eco di iOS, così puoi interromperlo parlando. Con cuffie e AirPods è sempre possibile. Disattiva l'opzione se Qwen continua a interrompersi da solo. Condiviso da Qwen Live, Grok Live e voce Classica. Vale dalla prossima conversazione."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "試験的な機能です。QwenがiPhoneのスピーカーや車内で話している間もマイクをオンのままにし、iOSのエコーキャンセルを使って、話しかけるだけで割り込めるようにします。ヘッドフォンとAirPodsでは常に割り込めます。Qwenの発話が勝手に途切れる場合はオフにしてください。Qwen Live、Grok Live、クラシック音声で共通の設定です。次の会話から適用されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "실험적 기능이에요. Qwen가 iPhone 스피커나 차량에서 말하는 동안에도 iOS 에코 제거를 사용해 마이크를 켜 두므로 말해서 끼어들 수 있어요. 헤드폰과 AirPods에서는 항상 가능해요. Qwen가 계속 스스로 말을 끊는다면 끄세요. Qwen Live, Grok Live, 클래식 음성에 공통으로 적용돼요. 다음 대화부터 적용돼요."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funkcja eksperymentalna. Mikrofon pozostaje włączony, gdy Qwen mówi przez głośnik telefonu lub w samochodzie (z redukcją echa iOS), więc możesz mu przerwać, mówiąc. Ze słuchawkami i AirPods jest to zawsze możliwe. Wyłącz, jeśli Qwen ciągle sam sobie przerywa. Wspólne dla Qwen Live, Grok Live i klasycznego trybu głosowego. Obowiązuje od następnej rozmowy."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Experimental. Mantém o microfone aberto enquanto o Qwen fala pelo alto-falante do telefone ou no carro, com o cancelamento de eco do iOS, para você poder interromper falando. Fones de ouvido e AirPods sempre permitem isso. Desative se o Qwen ficar se interrompendo. Compartilhado pelo Qwen Live, Grok Live e modo de voz Clássico. Vale a partir da próxima conversa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Экспериментальная функция. Микрофон остаётся включённым, пока Qwen говорит через динамик телефона или в автомобиле, а iOS подавляет эхо, — так можно перебить, просто заговорив. В наушниках и AirPods это работает всегда. Выключите, если Qwen постоянно прерывает сам себя. Общая настройка для Qwen Live, Grok Live и классического голосового режима. Действует со следующего разговора."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deneysel. Qwen telefonun hoparlöründen veya arabada konuşurken iOS yankı engellemesiyle mikrofonu açık tutar; böylece konuşarak araya girebilirsiniz. Kulaklıklarda ve AirPods'ta bu her zaman mümkündür. Qwen kendi sözünü kesip duruyorsa bunu kapatın. Qwen Live, Grok Live ve Klasik ses için ortaktır. Sonraki konuşmada geçerli olur."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实验功能。Qwen 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Qwen 不断打断自己，请关闭此选项。Qwen Live、Grok Live 与经典语音共用此设置。从下一次对话开始生效。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "實驗性功能。Qwen 透過手機揚聲器或在車上說話時，麥克風會保持開啟並使用 iOS 回音消除，讓你可以直接開口插話。使用耳機和 AirPods 時一律可以這樣做。若 Qwen 一直打斷自己，請關閉此選項。Qwen Live、Grok Live 和經典語音共用此設定。下次對話起生效。"
           }
         }
       }

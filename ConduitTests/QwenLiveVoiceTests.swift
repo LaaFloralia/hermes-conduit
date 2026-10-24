@@ -18,6 +18,55 @@ private final class QwenTestSocket: GeminiLiveSocket {
 // Keep these in the existing direct-session CI lane.
 extension HermesVoiceGatewayTimeoutTests {
     @MainActor
+    func testQwenIsAnIndependentPickerAndHistoryIdentity() {
+        XCTAssertEqual(VoiceModeChoice(engine: .qwenLive), .qwen)
+        XCTAssertEqual(VoiceModeChoice(engine: .geminiLive), .gemini)
+        XCTAssertEqual(VoiceCallEngine.qwenLive.rawValue, "qwen-live")
+        XCTAssertEqual(VoiceCallEngine.watchBridge("qwen-live"), .qwenLive)
+        XCTAssertNotEqual(LiveVoiceProviderConsent.key(for: .qwenLive), LiveVoiceProviderConsent.key(for: .geminiLive))
+    }
+
+    func testQwenPreferencesDoNotOverwriteGeminiPreferences() throws {
+        var preferences = try JSONDecoder().decode(VoiceProfilePreferences.self, from: Data("{}".utf8))
+        XCTAssertFalse(preferences.qwenLiveEnabled)
+        preferences.geminiLiveVoice = "Kore"
+        preferences.geminiLiveMemory = true
+        preferences.qwenLiveVoice = "Tina"
+        preferences.qwenLiveMemory = false
+        let decoded = try JSONDecoder().decode(VoiceProfilePreferences.self, from: JSONEncoder().encode(preferences))
+        XCTAssertEqual(decoded.geminiLiveVoice, "Kore")
+        XCTAssertEqual(decoded.qwenLiveVoice, "Tina")
+        XCTAssertEqual(decoded.geminiLiveMemory, true)
+        XCTAssertEqual(decoded.qwenLiveMemory, false)
+    }
+
+    @MainActor
+    func testEachDirectProviderUsesItsOwnCredentialRoutes() async throws {
+        for provider in [DirectLiveProvider.gemini, .qwen] {
+            var paths: [String] = []
+            let client = GeminiLiveTokenClient(profile: { "work" }, provider: { provider }, request: { path, _, _, _ in
+                paths.append(path)
+                if path.contains("/status") { return ["ok": true, "available": true, "model": provider == .qwen ? "qwen-test" : "gemini-test"] }
+                return ["ok": true, "model": provider == .qwen ? "qwen-test" : "gemini-test",
+                        "token": provider == .qwen ? "st-test" : "google-test",
+                        "websocket_url": provider == .qwen ? "wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime" : "wss://generativelanguage.googleapis.com/ws/live"]
+            })
+            _ = try await client.availability()
+            _ = try await client.freshToken()
+            let prefix = "/api/plugins/conduit_push/" + (provider == .qwen ? "qwen-live" : "gemini-live")
+            XCTAssertEqual(paths, [prefix + "/status?profile=work", prefix + "/token?profile=work"])
+        }
+    }
+
+    func testWatchStartCarriesExplicitProvider() throws {
+        let qwen = WatchVoiceWire.Message.directStart(callID: 9, version: WatchVoiceWire.version, provider: .qwen)
+        let gemini = WatchVoiceWire.Message.directStart(callID: 9, version: WatchVoiceWire.version)
+        XCTAssertNotEqual(qwen, gemini)
+        XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(qwen)), qwen)
+        XCTAssertEqual(WatchVoiceWire.decode(WatchVoiceWire.encode(gemini)), gemini)
+    }
+
+    @MainActor
     func testQwenVoiceDefaultsForMissingOrBlankNames() {
         var token = GeminiLiveToken(token: "st-test", expiresAt: nil, newSessionExpiresAt: nil,
             model: "qwen3.8-omni-flash-realtime",
@@ -47,8 +96,11 @@ extension HermesVoiceGatewayTimeoutTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
         defer { defaults.removePersistentDomain(forName: name) }
         defaults.set(true, forKey: "conduit.liveVoiceProviderConsent.gemini-live")
-        XCTAssertFalse(LiveVoiceProviderConsent.isGranted(.geminiLive, defaults: defaults))
-        LiveVoiceProviderConsent.setGranted(true, for: .geminiLive, defaults: defaults)
+        XCTAssertTrue(LiveVoiceProviderConsent.isGranted(.geminiLive, defaults: defaults))
+        XCTAssertFalse(LiveVoiceProviderConsent.isGranted(.qwenLive, defaults: defaults))
+        LiveVoiceProviderConsent.setGranted(true, for: .qwenLive, defaults: defaults)
+        XCTAssertTrue(LiveVoiceProviderConsent.isGranted(.qwenLive, defaults: defaults))
+        LiveVoiceProviderConsent.setGranted(false, for: .qwenLive, defaults: defaults)
         XCTAssertTrue(LiveVoiceProviderConsent.isGranted(.geminiLive, defaults: defaults))
     }
 

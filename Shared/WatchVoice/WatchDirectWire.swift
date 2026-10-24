@@ -233,6 +233,7 @@ enum WatchStall {
 /// the host could have sent it; the Gemini key itself stays there.
 enum WatchLiveToken {
     static let tool = "live_token"
+    static let qwenTool = "qwen_live_token"
 
     /// Nil unless it's a token with a wss URL (as the iPhone's
     /// GeminiLiveTokenClient reads the route).

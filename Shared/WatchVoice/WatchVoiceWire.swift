@@ -15,7 +15,7 @@ enum WatchVoiceWire {
     /// refuses the call instead of misreading it.
     // Version 3 adds Qwen token semantics. Older Watches must update before
     // receiving credentials they would send through Google's auth path.
-    static let version = 3
+    static let version = 4
     /// The message dictionary's only key.
     static let messageKey = "wv"
 
@@ -315,7 +315,7 @@ enum WatchVoiceWire {
         /// A Watch call to Gemini Live wants its session. `ring`: the call
         /// from Hermes it answers (designs/hermes-calls-watch.md), so it
         /// opens with what Hermes called about.
-        case directStart(callID: UInt32, version: Int, ring: String? = nil)
+        case directStart(callID: UInt32, version: Int, ring: String? = nil, provider: DirectLiveProvider? = nil)
         /// A new single-use token for the call's next connection.
         case directToken(callID: UInt32)
         case directTool(callID: UInt32, call: DirectToolCall)

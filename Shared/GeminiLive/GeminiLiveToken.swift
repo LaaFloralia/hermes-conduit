@@ -10,6 +10,8 @@
 
 import Foundation
 
+enum DirectLiveProvider: String, Codable { case gemini, qwen }
+
 enum GeminiLiveAvailability: Equatable {
     case available(model: String)
     /// Reachable, but the host cannot serve Gemini Live (no key, plugin
