@@ -37,6 +37,9 @@ struct BotEditorSheet: View {
     @State private var showsAdvanced = false
     /// The gateway's message for a model pick it wants confirmed.
     @State private var modelConfirmation: String?
+    @State private var capabilitiesLoadFailed = false
+    /// The Start From profile the staged lists were read from.
+    @State private var capabilitiesSource: String?
 
     private enum DetailsState {
         case idle, loading, loaded, failed
@@ -132,6 +135,7 @@ struct BotEditorSheet: View {
             pickedImage = nil
         }
         .task { await seed() }
+        .task(id: capabilitySource) { await loadStartFromCapabilities() }
         .task {
             // The stored picture, independent of whether the roster row's
             // fetch succeeded.
@@ -339,8 +343,9 @@ struct BotEditorSheet: View {
     }
 
     /// Desktop's Advanced disclosure. Creating: where the profile starts
-    /// from, its model, shared keys and bundled skills. Editing: its model,
-    /// once the bot's details have loaded.
+    /// from, its model, skills, tools and MCP, shared keys and bundled
+    /// skills. Editing: its model, skills, tools and MCP, once the bot's
+    /// details have loaded.
     @ViewBuilder
     private var advancedSection: some View {
         if isCreating || detailsState == .loaded {
@@ -363,7 +368,7 @@ struct BotEditorSheet: View {
                 .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
                 if showsAdvanced {
                     if isCreating {
-                        Picker(AppLocalization.string("Start From"), selection: $draft.cloneFrom) {
+                        Picker(AppLocalization.string("Start From"), selection: startFromSelection) {
                             Text(AppLocalization.string("Main Profile")).tag(BotCreateRequest.mainProfile)
                             ForEach(cloneSources, id: \.name) { bot in
                                 Text(verbatim: bot.displayLabel).tag(bot.name)
@@ -378,6 +383,7 @@ struct BotEditorSheet: View {
                             Text(verbatim: BotModelPicker.summary(model: draft.model, allowsInherit: isCreating))
                         }
                     }
+                    capabilitiesRow
                     if isCreating {
                         Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
                         Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
@@ -389,6 +395,106 @@ struct BotEditorSheet: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var capabilitiesRow: some View {
+        if isCreating, draft.cloneFrom.isEmpty {
+            // Nothing to diff against before the profile exists: a fresh
+            // one starts with Hermes' own defaults.
+            Text(draft.noSkills
+                ? AppLocalization.string("A fresh profile starts with Hermes' default tools. Edit the bot afterwards to change them.")
+                : AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if draft.capabilities != nil {
+            NavigationLink {
+                BotCapabilitiesView(
+                    capabilities: Binding(
+                        get: { draft.capabilities ?? BotCapabilities() },
+                        set: { draft.capabilities = $0 }
+                    ),
+                    skillsSkipped: isCreating && draft.noSkills,
+                    sourceLabel: isCreating ? startFromLabel : nil
+                )
+            } label: {
+                Text(AppLocalization.string("Skills, Tools and MCP"))
+            }
+        } else if capabilitiesLoadFailed {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(AppLocalization.string("Could not load skills, tools or MCP servers."))
+                    .foregroundStyle(.secondary)
+                Button(AppLocalization.string("Try Again")) {
+                    Task { await loadStartFromCapabilities() }
+                }
+            }
+        } else {
+            LabeledContent(AppLocalization.string("Skills, Tools and MCP")) {
+                ProgressView()
+            }
+        }
+    }
+
+    /// The profile a new bot's skills, tools and MCP lists are read from
+    /// while Advanced is open: its Start From profile. Nil when nothing
+    /// should load, a fresh start included: its real set is Hermes'
+    /// defaults, which no profile here shows (Desktop reads the main
+    /// profile's and diffs against it).
+    private var capabilitySource: String? {
+        guard isCreating, showsAdvanced, !draft.cloneFrom.isEmpty else { return nil }
+        return draft.cloneFrom
+    }
+
+    private var startFromLabel: String {
+        let source = capabilitySource ?? BotCreateRequest.mainProfile
+        if BotManagement.isDefaultProfile(source) { return AppLocalization.string("Main Profile") }
+        return appState.botRoster.first { $0.name == source }?.displayLabel ?? source
+    }
+
+    /// A new Start From pick replaces the staged lists: picks made against
+    /// another profile's set don't carry over.
+    private func loadStartFromCapabilities() async {
+        guard let source = capabilitySource else {
+            // Picks made against another profile don't carry to a fresh one.
+            if isCreating, draft.cloneFrom.isEmpty {
+                capabilitiesSource = nil
+                draft.capabilities = nil
+                draft.capabilitiesBaseline = nil
+                capabilitiesLoadFailed = false
+            }
+            return
+        }
+        guard source != capabilitiesSource || draft.capabilities == nil else { return }
+        capabilitiesSource = source
+        draft.capabilities = nil
+        draft.capabilitiesBaseline = nil
+        capabilitiesLoadFailed = false
+        let loaded = await appState.loadBotCapabilities(startingFrom: source)
+        // A Try Again isn't cancelled with the task: a newer Start From wins.
+        guard !Task.isCancelled, source == capabilitySource else { return }
+        if let loaded {
+            draft.capabilities = loaded
+            draft.capabilitiesBaseline = loaded
+        } else {
+            capabilitiesSource = nil
+            capabilitiesLoadFailed = true
+        }
+    }
+
+    /// Start From, dropping the staged lists at once: a Create before the
+    /// new profile's lists load must not send the old profile's picks.
+    private var startFromSelection: Binding<String> {
+        Binding(
+            get: { draft.cloneFrom },
+            set: { source in
+                guard source != draft.cloneFrom else { return }
+                draft.cloneFrom = source
+                capabilitiesSource = nil
+                draft.capabilities = nil
+                draft.capabilitiesBaseline = nil
+                capabilitiesLoadFailed = false
+            }
+        )
     }
 
     /// Bots a new one can copy its settings from, besides the main profile.
@@ -454,6 +560,7 @@ struct BotEditorSheet: View {
         draft.soul = loaded.soul
         draft.provider = loaded.provider
         draft.model = loaded.model
+        draft.capabilities = loaded.capabilities
         detailsState = .loaded
     }
 

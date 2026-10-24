@@ -20254,6 +20254,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The skills, toolsets and MCP servers a new bot starting from
+    /// `profile` would have (`profiles.describe` of that profile).
+    func loadBotCapabilities(startingFrom profile: String) async -> BotCapabilities? {
+        guard let client, isConnected else { return nil }
+        return try? await client.describeBotProfile(name: profile).capabilities
+    }
+
     /// `profiles.describe` for the edit sheet: the description and SOUL.md.
     func loadBotDetails(_ bot: BotProfile) async -> BotProfileDetails? {
         guard let client, isConnected else { return nil }
@@ -20312,11 +20319,16 @@ final class AppState: ObservableObject {
             return .failed(AppLocalization.string("Could not create the bot: \(UserFacingError.message(for: error))"))
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
-            // The server changed mid-save: the bot exists, its look and
-            // picture were never written.
-            return .saved(warning: AppLocalization.string(
+            // The server changed mid-save: the bot exists, its look,
+            // picture and staged tool choices were never written.
+            var warning = AppLocalization.string(
                 "The bot was created, but its picture or look was not saved. Edit the bot to try again."
-            ))
+            )
+            if let edited = draft.capabilities, let baseline = draft.capabilitiesBaseline,
+               !BotCapabilities.configureParams(original: baseline, edited: edited).isEmpty {
+                warning += " " + AppLocalization.string("The skills, tools or MCP choices were not saved.")
+            }
+            return .saved(warning: warning)
         }
 
         // The picture goes first so ui_meta only claims a photo the asset
@@ -20335,12 +20347,26 @@ final class AppState: ObservableObject {
             meta["imageKind"] = "photo"
             meta["custom"] = true
         }
+        // Skills, tools and MCP picks staged from the Start From profile
+        // ride the same write; the profile holds the source's set already.
+        var sections: [String: Any] = [:]
+        if let edited = draft.capabilities, let baseline = draft.capabilitiesBaseline {
+            sections = BotCapabilities.configureParams(original: baseline, edited: edited)
+            // Skipping the bundled skills leaves nothing to toggle.
+            if draft.noSkills { sections["disabled_skills"] = nil }
+        }
         var lookSaved = true
+        var capabilitiesSaved = true
         do {
-            let result = try await client.configureBotProfile(name: slug, botMeta: meta)
+            let result = try await client.configureBotProfile(name: slug, botMeta: meta, sections: sections)
             lookSaved = BotMetaWriteOutcome(configureResult: result) != .failed
+            capabilitiesSaved = BotConfigureSections.failed(
+                in: result,
+                among: BotCapabilities.appliedSections(for: sections)
+            ).isEmpty
         } catch {
             lookSaved = false
+            capabilitiesSaved = sections.isEmpty
         }
         // The introduction is a real model turn: a bot whose profile has no
         // usable model skips it and says so, instead of a failed first turn.
@@ -20355,6 +20381,9 @@ final class AppState: ObservableObject {
         }
         if !modelPinned {
             warnings.append(AppLocalization.string("The model was not saved."))
+        }
+        if !capabilitiesSaved {
+            warnings.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
         }
         if needsModel {
             warnings.append(AppLocalization.string(
@@ -20454,6 +20483,22 @@ final class AppState: ObservableObject {
         // SOUL is only editable once `profiles.describe` answered, so an
         // unloaded editor can never blank a bot's personality.
         let soulChanged = loadedDetails.map { draft.soul != $0.soul } ?? false
+        let capabilitySections = loadedDetails.flatMap { details in
+            draft.capabilities.map { BotCapabilities.configureParams(original: details.capabilities, edited: $0) }
+        } ?? [:]
+        let modelChanged = loadedDetails.map { details in
+            !draft.provider.isEmpty && !draft.model.isEmpty
+                && (draft.provider != details.provider || draft.model != details.model)
+        } ?? false
+        /// The later writes a save that stops early never reaches.
+        func laterWritesSkipped() -> [String] {
+            var skipped: [String] = []
+            if !capabilitySections.isEmpty {
+                skipped.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+            }
+            if modelChanged { skipped.append(AppLocalization.string("The model was not saved.")) }
+            return skipped
+        }
 
         /// The warnings for a meta write that did not land.
         func metaNotSaved() -> [String] {
@@ -20483,7 +20528,7 @@ final class AppState: ObservableObject {
                 guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
                     // The server changed mid-save: the meta write's outcome
                     // is unknown, so a pending removal never runs.
-                    problems += metaNotSaved()
+                    problems += metaNotSaved() + laterWritesSkipped()
                     return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
                 }
                 var sections: [String] = []
@@ -20511,6 +20556,7 @@ final class AppState: ObservableObject {
                 if descriptionChanged || soulChanged {
                     problems.append(AppLocalization.string("The description or personality was not saved."))
                 }
+                problems += laterWritesSkipped()
                 await refreshBotRosterAfterWrite()
                 return .saved(warning: problems.joined(separator: " "))
             }
@@ -20525,11 +20571,36 @@ final class AppState: ObservableObject {
                 problems.append(AppLocalization.string("The picture was not removed."))
             }
         }
+        // The server may have changed during the writes above: the tool
+        // choices and the model pick must not land on a same-named bot
+        // elsewhere.
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            problems += laterWritesSkipped()
+            return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
+        }
+        // Skills, tools and MCP: only the sections the user changed, and
+        // only once the editor loaded them from the bot itself.
+        if !capabilitySections.isEmpty {
+            do {
+                let result = try await client.configureBotProfile(name: bot.name, sections: capabilitySections)
+                if !BotConfigureSections.failed(
+                    in: result,
+                    among: BotCapabilities.appliedSections(for: capabilitySections)
+                ).isEmpty {
+                    problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+                }
+            } catch {
+                problems.append(AppLocalization.string("The skills, tools or MCP choices were not saved."))
+            }
+        }
+        // And again for the model, after the capabilities await.
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+            if modelChanged { problems.append(AppLocalization.string("The model was not saved.")) }
+            return .saved(warning: problems.isEmpty ? nil : problems.joined(separator: " "))
+        }
         // The model goes last and on its own: a pick the gateway wants
         // confirmed must not hold back the rest of the save.
-        if let loadedDetails,
-           !draft.provider.isEmpty, !draft.model.isEmpty,
-           draft.provider != loadedDetails.provider || draft.model != loadedDetails.model {
+        if modelChanged {
             switch await saveBotModel(
                 bot,
                 provider: draft.provider,
