@@ -388,6 +388,7 @@ final class CarPlayVoiceCoordinator {
         let appState = lastBoundAppState ?? appStateProvider()
         appState.setCarPlayVoiceSurfaceActive(false)
         appState.handleCarPlayVoiceSurfaceRemoved()
+        appState.releaseCarPlayQwenLive()
         appState.releaseCarPlayGeminiLive()
         appState.releaseCarPlayGPTLive()
         appState.releaseCarPlayGrokLive()

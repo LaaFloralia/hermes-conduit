@@ -38,7 +38,7 @@ extension AppStateVoiceCapabilityTests {
     }
 
     @discardableResult
-    private func installModeSwitchFakeGeminiLive(in appState: AppState) -> FakeGeminiLiveSessionControl {
+    private func installModeSwitchFakeGeminiLive(in appState: AppState, provider: DirectLiveProvider = .gemini) -> FakeGeminiLiveSessionControl {
         let session = FakeGeminiLiveSessionControl()
         let tokens = FakeGeminiLiveTokens()
         let controller = GeminiLiveConversationController(
@@ -49,8 +49,13 @@ extension AppStateVoiceCapabilityTests {
             output: FakeGeminiLiveOutput(),
             routePolicy: { .fullDuplex }
         )
-        _ = appState.geminiLiveController
-        appState.geminiLiveController = controller
+        if provider == .qwen {
+            _ = appState.qwenLiveController
+            appState.qwenLiveController = controller
+        } else {
+            _ = appState.geminiLiveController
+            appState.geminiLiveController = controller
+        }
         return session
     }
 
@@ -78,6 +83,37 @@ extension AppStateVoiceCapabilityTests {
         appState.applyVoiceMode(.classic)
         XCTAssertFalse(appState.isQwenLiveEnabled)
         XCTAssertNil(appState.configuredLiveVoiceEngine(profile: appState.activeProfile))
+    }
+
+    func testQwenPhoneEntryWorksWithClassicDisabledAndHasInstructionsPreview() async {
+        let appState = makeModeSwitchAppState()
+        _ = await appState.setVoiceEnabled(false)
+        appState.setQwenLiveEnabled(true)
+        appState.setQwenLiveMemoryEnabled(true)
+        appState.setQwenLivePersonalityEnabled(true)
+        XCTAssertNotNil(appState.voiceUnavailableReason)
+        XCTAssertNil(appState.phoneVoiceUnavailableReason)
+        XCTAssertTrue(appState.showsComposerVoiceButton)
+        let preview = appState.liveVoiceInstructionsPreview()
+        XCTAssertEqual(preview?.mode, "Qwen Live")
+        XCTAssertEqual(preview?.instructions.contains("SOUL.md"), true)
+        appState.isConnected = false
+        XCTAssertNotNil(appState.phoneVoiceUnavailableReason)
+    }
+
+    func testReopeningQwenDoesNotLetGeminiTeardownDetachItsChat() async {
+        let appState = makeModeSwitchAppState()
+        appState.setQwenLiveEnabled(true)
+        installModeSwitchFakeGeminiLive(in: appState, provider: .qwen)
+        let thread = VoiceThreadTarget(runtimeSessionID: "qwen-runtime", storedSessionID: "qwen-stored", title: "Qwen")
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        appState.showQwenLiveSheet = true
+        await appState.qwenLiveController.start()
+        XCTAssertTrue(appState.qwenLiveController.isActive)
+        XCTAssertTrue(appState.openQwenLiveConversation())
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread, thread)
+        XCTAssertTrue(appState.qwenLiveController.isActive)
+        appState.closeQwenLiveConversation()
     }
 
     func testAHandsFreeLocalCallCanMoveToClassic() {

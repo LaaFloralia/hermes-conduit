@@ -2820,7 +2820,7 @@ final class AppState: ObservableObject {
     private func stopGeminiLiveConversation() {
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
-        guard showQwenLiveSheet || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive || isQwenLiveActive || isGeminiLiveActive else {
+        guard showGeminiLiveSheet || minimisedLiveVoice == .geminiLive || isGeminiLiveActive else {
             dropGeminiLiveHostContext()
             // Its recording still closes, so the call is saved, and its
             // work lets go of the call (#449).
@@ -4139,8 +4139,9 @@ final class AppState: ObservableObject {
         )
         supervisor.onNoticePending = { [weak self] in
             guard let self else { return }
-            if self.isQwenLiveActive { self.qwenLiveController.deliverPendingJobUpdates() }
-            if self.isGeminiLiveActive {
+            if self.isQwenLiveActive {
+                self.qwenLiveController.deliverPendingJobUpdates()
+            } else if self.isGeminiLiveActive {
                 self.geminiLiveController.deliverPendingJobUpdates()
             } else if self.isGPTLiveActive {
                 self.gptLiveController.deliverPendingJobUpdates()
@@ -6736,6 +6737,14 @@ final class AppState: ObservableObject {
                 personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
                 answerLength: style.answerLength
             ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
+        } else if isQwenLiveEnabled {
+            mode = "Qwen Live"
+            text = GeminiLiveConversationController.instructions(
+                search: qwenLiveSearchMode == .off ? .none : qwenLiveSearchSource,
+                memory: qwenLiveMemoryEnabled ? placeholderMemory : nil,
+                personality: qwenLivePersonalityEnabled ? placeholderPersona : nil,
+                answerLength: style.answerLength
+            )
         } else if isGeminiLiveEnabled {
             mode = "Gemini Live"
             text = GeminiLiveConversationController.instructions(
@@ -7875,7 +7884,7 @@ final class AppState: ObservableObject {
     /// End button does.
     func endLiveVoiceCall() {
         if isQwenLiveActive || showQwenLiveSheet || minimisedLiveVoice == .qwenLive { closeQwenLiveConversation() }
-        if isQwenLiveActive || isGeminiLiveActive || showQwenLiveSheet || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive { closeGeminiLiveConversation() }
+        if isGeminiLiveActive || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive { closeGeminiLiveConversation() }
         if isGPTLiveActive || showGPTLiveSheet || minimisedLiveVoice == .gptLive { closeGPTLiveConversation() }
         if isGrokLiveActive || showGrokLiveSheet || minimisedLiveVoice == .grokLive { closeGrokLiveConversation() }
         if isLocalLiveActive || showLocalLiveSheet || minimisedLiveVoice == .localLive { closeLocalLiveConversation() }
@@ -32945,7 +32954,7 @@ final class AppState: ObservableObject {
     /// own; classic-only surfaces (suspension restore, provider tests) keep
     /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
-        if isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled {
+        if isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled {
             return isConnected ? nil : VoiceSetupIssue.notConnected.message
         }
         return voiceUnavailableReason
@@ -32968,7 +32977,7 @@ final class AppState: ObservableObject {
     /// `setVoiceEnabled` and the first setup in `refreshVoiceCapabilities`,
     /// the only writers of the persisted key.
     var showsComposerVoiceButton: Bool {
-        persistedVoiceEnabled(profile: activeProfile) || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled
+        persistedVoiceEnabled(profile: activeProfile) || isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled
     }
 
     /// The profile's saved Voice switch. Voice is on out of the box, so a

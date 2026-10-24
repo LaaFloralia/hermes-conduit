@@ -333,7 +333,7 @@ struct GeminiLiveVoiceSheet: View {
     private func speakerLabel(_ text: String) -> String {
         switch engine {
         case .gemini: return AppLocalization.string("Gemini: \(text)")
-        case .qwen: return AppLocalization.string("Gemini: \(text)")
+        case .qwen: return AppLocalization.string("Qwen: \(text)")
         case .grok: return AppLocalization.string("Grok: \(text)")
         // Hermes writes a Local Live call's replies; the server only speaks them.
         case .local: return AppLocalization.string("Hermes: \(text)")

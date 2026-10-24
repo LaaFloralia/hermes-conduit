@@ -860,7 +860,7 @@ struct SettingsView: View {
                         agent: appState.isLocalLiveAgent,
                         setAgent: { appState.setLocalLiveAgent($0) }
                     ),
-                    liveStyle: appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
+                    liveStyle: appState.isQwenLiveEnabled || appState.isGeminiLiveEnabled || appState.isGPTLiveEnabled || appState.isGrokLiveEnabled
                         ? LiveVoiceStyleSettingsModel(
                             profile: appState.activeProfile,
                             style: appState.liveVoiceStyle,

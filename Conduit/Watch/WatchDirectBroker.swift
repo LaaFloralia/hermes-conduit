@@ -251,13 +251,16 @@ final class WatchDirectBroker {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
                 return
             }
-            // The Watch's own Gemini session gets no credential without the
-            // user's OK either.
-            if let refusal = consentRefusal(provider == .qwen ? .qwenLive : .geminiLive) {
+            // Restore the provider before checking consent or minting a token.
+            adoptIfKnown(id)
+            guard callID == id else {
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
+                return
+            }
+            if let refusal = consentRefusal(directProvider == .qwen ? .qwenLive : .geminiLive) {
                 answer(.callRefused(callID: id, reason: refusal))
                 return
             }
-            adoptIfKnown(id)
             let end = Self.beginBackgroundTask("conduit.watchDirect.token")
             Task {
                 defer { end() }
@@ -322,7 +325,7 @@ final class WatchDirectBroker {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
-        callMode = .geminiLive
+        callMode = provider == .qwen ? .qwenLive : .geminiLive
         bridge = nil
         lateOutgoing = []
         hostTools = []
@@ -351,7 +354,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             // Only the lookups and job tools the call declares, jobs only
             // as the user allows; the call goes on without a grant when the
             // host can't give one.
@@ -467,13 +470,13 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
+            let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             // GPT-Live delegates its lookups and chats to the Watch, which
             // runs them all through the grant.
             grantTools = grantable([WatchToolAnswer.webSearch] + WatchToolAnswer.chatTools.sorted())
@@ -579,13 +582,13 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
+            let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             let declared = plan.functions.map(\.name)
             grantTools = grantable(declared.filter { WatchToolAnswer.tools.contains($0) })
             grantMaxJobs = WatchJobSettings.jobsPerCall
@@ -709,7 +712,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             grantTools = grantable([WatchToolAnswer.webSearch])
             grantMaxJobs = 0
             grantJobTools = []
@@ -1199,6 +1202,10 @@ final class WatchDirectBroker {
     private func renewGrant(_ id: UInt32, carryJobsFrom: String?) async -> WatchVoiceWire.Message {
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }
         adoptIfKnown(id)
+        if let mode = callMode, let refusal = consentRefusal(mode) {
+            endCall()
+            return .callRefused(callID: id, reason: refusal)
+        }
         guard id == callID, let profile = connection?.profile, !grantTools.isEmpty || !grantJobTools.isEmpty || grantLiveToken else {
             return .callRefused(callID: id, reason: AppLocalization.string("This call has no Watch lookups to renew."))
         }
@@ -1222,6 +1229,8 @@ final class WatchDirectBroker {
     private func adoptIfKnown(_ id: UInt32) {
         guard callID == nil, let known = ledger.call(id), !known.ended else { return }
         callID = id
+        callMode = known.liveMode
+        directProvider = known.directProvider
         connection = known.connection
         if let scope = known.grant {
             grantTools = scope.tools
@@ -1511,6 +1520,12 @@ struct WatchDirectCallLedger {
         let id: UInt32
         let connection: WatchDirectConnection
         let saveCalls: Bool
+        /// Missing in ledgers written before providers had separate identities.
+        var mode: String? = nil
+        var liveMode: LiveVoiceModeName? {
+            LiveVoiceModeName.all.first { $0.storageID == mode }
+        }
+        var directProvider: DirectLiveProvider { liveMode == .qwenLive ? .qwen : .gemini }
         var ended = false
         var jobs: [String] = []
         /// What its grants cover, so it can renew them after a restart.
@@ -1574,9 +1589,9 @@ struct WatchDirectCallLedger {
         call(id)?.jobs.contains(toolID) == true
     }
 
-    mutating func begin(_ id: UInt32, connection: WatchDirectConnection, saveCalls: Bool) {
+    mutating func begin(_ id: UInt32, connection: WatchDirectConnection, saveCalls: Bool, mode: LiveVoiceModeName? = nil) {
         calls.removeAll { $0.id == id }
-        calls.append(Call(id: id, connection: connection, saveCalls: saveCalls))
+        calls.append(Call(id: id, connection: connection, saveCalls: saveCalls, mode: mode?.storageID))
         if calls.count > Self.callLimit { calls.removeFirst(calls.count - Self.callLimit) }
         store()
     }

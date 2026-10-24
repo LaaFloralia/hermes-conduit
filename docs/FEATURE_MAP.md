@@ -11,6 +11,8 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
 - Watch wire: `Shared/WatchVoice/WatchDirectWire.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
 - Provider setup: `docs/QWEN_LIVE.md`; notifier: `notifier/dashboard/plugin_api.py`
 - Plugin capability inventory: `Conduit/Views/ConduitPluginViews.swift` (separate Gemini/Qwen feature entries)
+- Lifecycle/recovery: `Conduit/Watch/WatchDirectBroker.swift`, `ConduitWatch/WatchDirectCallModel.swift`, `Conduit/CarPlay/CarPlayVoiceCoordinator.swift`
+- Phone entry, shared settings and captions: `Conduit/Services/AppState.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
 
 **Rulings**
 - Gemini and Qwen are independent picker entries, concurrently configurable on

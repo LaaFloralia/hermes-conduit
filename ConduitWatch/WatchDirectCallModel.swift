@@ -163,7 +163,7 @@ final class WatchDirectCallModel: ObservableObject {
 
         /// Through the call grant's audio bridge, which the relay carries:
         /// no token, and nothing the iPhone has to serve once it started.
-        var usesBridge: Bool { self != .gemini }
+        var usesBridge: Bool { self == .grok || self == .localLive }
     }
 
     @Published private(set) var phase: Phase = .idle
