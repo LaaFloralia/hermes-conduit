@@ -1433,6 +1433,7 @@ final class CarPlayVoiceCoordinator {
         endConversation()
         switch mode {
         case .classic:
+            appState.setQwenLiveEnabled(false)
             appState.setGeminiLiveEnabled(false)
             appState.setGPTLiveEnabled(false)
             appState.setGrokLiveEnabled(false)

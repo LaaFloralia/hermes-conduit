@@ -2482,7 +2482,7 @@ final class AppState: ObservableObject {
 
     /// The search the next Qwen Live session uses, resolved when it
     /// starts (automatic asks the host whether it has a search backend).
-    private var qwenLiveSearchSource: GeminiLiveSearchSource = .google
+    private var qwenLiveSearchSource: GeminiLiveSearchSource = .none
 
     /// Whether Qwen Live gets the Hermes host's memory on this profile.
     /// Off until the user turns it on: it sends that memory to Alibaba Cloud.
@@ -33431,6 +33431,7 @@ final class AppState: ObservableObject {
     func applyVoiceMode(_ choice: VoiceModeChoice) {
         switch choice {
         case .classic:
+            setQwenLiveEnabled(false)
             setGeminiLiveEnabled(false)
             setGPTLiveEnabled(false)
             setGrokLiveEnabled(false)

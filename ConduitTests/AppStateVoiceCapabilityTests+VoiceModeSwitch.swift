@@ -63,6 +63,23 @@ extension AppStateVoiceCapabilityTests {
                        "Local Live outside agent mode is Classic's hands-free option, as Settings lists it")
     }
 
+    func testQwenCanSwitchToGeminiAndClassicWithoutLosingPreferences() {
+        let appState = makeModeSwitchAppState()
+        appState.setGeminiLiveVoice("Kore")
+        appState.setQwenLiveVoice("Tina")
+        appState.applyVoiceMode(.qwen)
+        XCTAssertEqual(appState.configuredLiveVoiceEngine(profile: appState.activeProfile), .qwenLive)
+        XCTAssertFalse(appState.isGeminiLiveEnabled)
+        appState.applyVoiceMode(.gemini)
+        XCTAssertFalse(appState.isQwenLiveEnabled)
+        XCTAssertEqual(appState.geminiLiveVoice, "Kore")
+        XCTAssertEqual(appState.qwenLiveVoice, "Tina")
+        appState.applyVoiceMode(.qwen)
+        appState.applyVoiceMode(.classic)
+        XCTAssertFalse(appState.isQwenLiveEnabled)
+        XCTAssertNil(appState.configuredLiveVoiceEngine(profile: appState.activeProfile))
+    }
+
     func testAHandsFreeLocalCallCanMoveToClassic() {
         let appState = makeModeSwitchAppState()
         appState.setLocalLiveEnabled(true)
