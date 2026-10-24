@@ -899,20 +899,23 @@ to 4.5:1 under white in both modes.
 cards · the numbered or symbol marker on a rich card's place rows · the
 step numbers of the notification setup commands · the Gemini Live setup
 step number · marks picked by `markColor(on:)` (text selection on a sent
-bubble, the accent swatch check)
+bubble, the accent swatch check) · the primary buttons (the sign-in flow's
+Continue and Sign in, Settings' Save and Apply), white only in light mode
 
 **Code**
 - Fill: `Conduit/Theme.swift` (conduitUserBubble, ConduitAccentChoice.markColor)
 - Surfaces: `Conduit/Cards/RichInfoCardViews.swift` (RichOptionColumn, RichStepTimer), `Conduit/Cards/RichCardViews.swift` (the place row marker), `Conduit/Views/AuxiliaryViews.swift` (NotificationSetupCommand), `Conduit/Views/LiveVoiceSetupSheet.swift` (the Gemini step)
+- Primary buttons: `Conduit/Views/Login/LoginScreens.swift` (LoginPrimaryButton), `Conduit/Views/AuxiliaryViews.swift` (SettingsButtonLabel)
 - Tests: `ConduitTests/AccentContrastTests.swift`
 
 **Rulings**
 - White text on a solid fill uses the sent-bubble colour, not the accent; a mark whose colour is computed takes whichever of black and white contrasts more with its fill (2026-10-24, #1188, salvage of the #955 review).
+- The primary buttons need no change: their white label is light mode only, where the accent is the sent-bubble colour, and dark mode draws a black label (2026-10-24, from #1188's late review).
 
 **Open gaps**
-- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge) aren't checked against a custom accent.
+- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule, the primary buttons' dark-mode label) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge, a rich card's prominent action in `Conduit/Cards/RichMediaCardViews.swift`) aren't checked against a custom accent.
 
-**Checked:** 2026-10-24, at #1188.
+**Checked:** 2026-10-24, at 3be6699c.
 
 ## Feature map rules
 
