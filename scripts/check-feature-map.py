@@ -46,10 +46,11 @@ class Unreachable(Exception):
 
 def is_path(span):
     """Whether a code span names a file or directory rather than a symbol, a
-    method or a route: `Conduit/Voice/VoiceTypes.swift`, `docs/` and
-    `notifier/events.py` are paths; `session.steer`, `answer_approval` and
+    method or a route: `Conduit/Voice/VoiceTypes.swift`, `docs/`,
+    `.github/workflows/ci.yml`, `.coderabbit.yaml` and `notifier/events.py`
+    are paths; `session.steer`, `answer_approval`, `.interrupted` and
     `/voice-tools` are not."""
-    if any(char.isspace() for char in span) or "://" in span or span.startswith(("/", ".", "-")):
+    if any(char.isspace() for char in span) or "://" in span or span.startswith(("/", "-")):
         return False
     return "/" in span or FILE_NAME.match(span) is not None
 

@@ -8,8 +8,11 @@ already known.
 
 Before changing a feature, read its entry and put every sibling on the plan.
 In the PR, say for each sibling whether it's done, not needed (and why), or
-left as a gap, and update the entry in the same PR.
-[CONTRIBUTING.md](../CONTRIBUTING.md) has the rules.
+left as a gap, and update the entry in the same PR. Nobody tends the map
+separately: a feature with siblings and no entry gets one in the PR that
+changes it, and a fix that brings a sibling in line with a change it missed
+adds that sibling to the entry. [CONTRIBUTING.md](../CONTRIBUTING.md) has the
+rules.
 
 An entry holds the current state only; history stays in the PRs it cites.
 Keep each to about a screen, and split one that grows past that. Every entry
@@ -512,3 +515,32 @@ Read Aloud and live voice read-back · chat list previews and quotes
 - A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
 
 **Checked:** 2026-10-23, at #1175.
+
+## Feature map rules
+
+How a change brings its connected features along, and how this map stays
+current with nobody tending it.
+
+**Siblings:** CONTRIBUTING.md (the full rules) · this map's intro · the PR
+template · the reviewer prompt · the notifier's CONTRIBUTING.md, PR template
+and reviewer prompt · the map check in CI · README.md and docs/CI.md, which
+point at the map and its check
+
+**Code**
+- Rules: `CONTRIBUTING.md`, `docs/FEATURE_MAP.md` (the intro and the sibling sets), `.github/pull_request_template.md` (Siblings)
+- Reviewers: `.github/workflows/opencode-review.yml` (the Connected features focus area)
+- Notifier: `notifier/CONTRIBUTING.md`, `notifier/.github/pull_request_template.md`, `notifier/.github/workflows/opencode-review.yml`
+- Map check: `scripts/check-feature-map.py` (paths and entry shape), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist)
+- Pointers: `README.md` (Architecture), `docs/CI.md` (the plan job under Jobs)
+
+**Rulings**
+- A checked-in map, a Siblings section in every PR, and rulings in each entry; a sibling left out without a reason is a major review finding (2026-10-23, #1167, Eric).
+- Nobody tends the map separately: the PR that changes a feature updates its entry, adds one for a connected feature that has none, adds a sibling an earlier change missed, and records the maintainer's rulings with the date and the PR (2026-10-24, #1178, Eric).
+- CONTRIBUTING.md holds the full rules. The intro, the PR templates and the reviewer prompts each carry the part their reader needs, so a rule change starts in CONTRIBUTING.md and then reaches each copy (2026-10-24, #1178).
+- The notifier's reviewers can't read this map, so a notifier PR names its entry, or the hermes-conduit PR that adds or updates it (2026-10-24, #1178).
+
+**Open gaps**
+- A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
+- A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
+
+**Checked:** 2026-10-24, at #1178.

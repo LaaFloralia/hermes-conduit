@@ -9,15 +9,21 @@ CarPlay. Its plugin and push relay are
 Many features have siblings: the same behavior in each voice mode, on the
 Watch and in CarPlay, in group rooms, or in the notifier.
 [docs/FEATURE_MAP.md](docs/FEATURE_MAP.md) lists them, feature by feature.
+Nobody tends it separately: each PR that changes a feature keeps its entry
+current.
 
 1. Before changing a feature, find its entry in the map and put every sibling
    on your plan before writing code.
-2. Follow the entry's rulings. Changing a ruling is the maintainer's call.
+2. Follow the entry's rulings. Changing a ruling is the maintainer's call;
+   record their decision in the entry, with the date and the PR.
 3. In the PR, fill in Siblings: each one done, not needed (and why), or a gap
-   left open for the maintainer to decide.
+   left open for the maintainer to decide. "No mapped feature" is only for a
+   change with no siblings.
 4. Update the entry in the same PR: its siblings, code paths, rulings, the gaps
    opened or closed, and the Checked line. A feature with siblings and no
-   entry gets one.
+   entry gets one in that PR. A fix that brings a sibling in line with an
+   earlier change it missed adds that sibling to the entry, so the next change
+   reaches it.
 5. Text that describes a behavior is one of its siblings: Settings captions,
    the briefings and tool results models read, the notifier's tool
    descriptions, README.md and docs/.
