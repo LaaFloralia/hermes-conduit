@@ -499,7 +499,7 @@ Dashboards and the Profiles sheet)
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 
-**Checked:** 2026-10-24, at main 8a96d80 (encryption keys and padlock).
+**Checked:** 2026-10-24, at #1197 (encryption keys and padlock; fork CI #82).
 
 ## Pulse
 
