@@ -31,7 +31,11 @@ extension AppState {
             if let taskId, let early = stepSummaryEarlyAnswers.removeValue(forKey: taskId) {
                 // Unless the question was forgotten meanwhile (waited too
                 // long, or its dashboard signed out).
-                if stepSummaryRequested[target] != nil { recordStepSummary(early, for: target) }
+                if let asked = stepSummaryRequested[target], Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
+                    recordStepSummary(early, for: target)
+                } else {
+                    stepSummaryRequested[target] = nil
+                }
             } else if let taskId {
                 stepSummaryTasks[taskId] = target
             } else {
