@@ -320,7 +320,7 @@ private struct PlanSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let plan = cards.plan {
+                if let plan = cards.plan, cards.showsPlan {
                     List {
                         Section {
                             ProgressView(value: plan.progress) {
@@ -337,7 +337,8 @@ private struct PlanSheet: View {
                         }
                     }
                 } else {
-                    // The plan went (another chat opened): nothing to list.
+                    // The plan went (another chat opened) or, finished, it
+                    // has had its time and the line hid: the sheet goes too.
                     Color.clear.onAppear { dismiss() }
                 }
             }

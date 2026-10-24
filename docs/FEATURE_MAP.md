@@ -656,7 +656,6 @@ reading of the line and its new-plan announcement
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
-- The whole-plan sheet can stay up after a finished plan retires: it only dismisses itself when the plan goes, not when it is hidden (#1135 review).
 - Two announcements within 450 ms race on the pulse (#1135 review).
 
 **Checked:** 2026-10-24, at 78f21daa.
