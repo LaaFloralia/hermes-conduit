@@ -534,6 +534,7 @@ struct ChatView: View {
             ChatJumpControls(
                 chrome: scrollEngine.chrome,
                 pendingClarifyMessageID: appState.pendingClarifyMessageID,
+                pendingIsApproval: appState.pendingDecisionIsApproval,
                 jumpToQuestion: { id in scrollEngine.explicitMessageRequested(id: id) },
                 jumpToLatest: { requestLatest(animated: true) },
                 followingChanged: {
@@ -952,6 +953,8 @@ private final class ChatScrollEventRouter {
 private struct ChatJumpControls: View {
     @ObservedObject var chrome: ChatScrollChrome
     let pendingClarifyMessageID: String?
+    /// The waiting card is an approval: the button says so.
+    let pendingIsApproval: Bool
     let jumpToQuestion: @MainActor (String) -> Void
     let jumpToLatest: @MainActor () -> Void
     let followingChanged: @MainActor () -> Void
@@ -981,8 +984,8 @@ private struct ChatJumpControls: View {
                 } label: {
                     if hasPendingClarify {
                         HStack(spacing: 7) {
-                            Image(systemName: "questionmark.bubble")
-                            Text(AppLocalization.string("Go to your question"))
+                            Image(systemName: pendingIsApproval ? "checkmark.shield" : "questionmark.bubble")
+                            Text(pendingIsApproval ? AppLocalization.string("Go to the approval") : AppLocalization.string("Go to your question"))
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -1002,11 +1005,11 @@ private struct ChatJumpControls: View {
                 )
                 .accessibilityLabel(
                     hasPendingClarify
-                        ? AppLocalization.string("Go to the question that needs your answer")
+                        ? (pendingIsApproval ? AppLocalization.string("Go to the approval") : AppLocalization.string("Go to the question that needs your answer"))
                         : AppLocalization.string("Scroll to latest message")
                 )
                 .modifier(OptionalAccessibilityHint(
-                    hint: hasPendingClarify
+                    hint: hasPendingClarify && !pendingIsApproval
                         ? AppLocalization.string("Scrolls to the pending question in the conversation")
                         : nil
                 ))
@@ -3696,7 +3699,9 @@ struct ApprovalCard: View {
                     let explanation = approval.error?.isEmpty == false
                         ? approval.error!
                         : AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
-                    Text(explanation)
+                    // The gateway's text can carry the same hidden marks
+                    // as the command.
+                    Text(verbatim: ApprovalDisplayText.revealingHidden(explanation))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -3734,7 +3739,7 @@ struct ApprovalCard: View {
                 }
 
                 if approval.status != .expired, let error = approval.error, !error.isEmpty {
-                    Label(error, systemImage: "exclamationmark.circle")
+                    Label(ApprovalDisplayText.revealingHidden(error), systemImage: "exclamationmark.circle")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
