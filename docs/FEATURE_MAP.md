@@ -736,8 +736,8 @@ sealing (health, location, phone sync use the same scheme) · Pulse
 **Code**
 - Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`
 - Queue, filter and sealing: `Conduit/Shortcuts/ShortcutInbox.swift`; key: `Conduit/Services/AppState.swift` (KeychainHelper shortcutInboxKey)
-- Store: `notifier/inbox_store.py`; tool: `notifier/inbox_tool.py`; routes: `notifier/dashboard/plugin_api.py` (/inbox, ROUTE_CAPABILITIES)
-- Tests: `ConduitTests/ShortcutInboxTests.swift`, `notifier/tests/test_inbox.py`, `notifier/tests/inbox_vector.json` (both sides seal against it)
+- Notifier, not in backticks until its PR reaches notifier main (the map check reads main): notifier/inbox_store.py (store), notifier/inbox_tool.py (tool), `notifier/dashboard/plugin_api.py` (/inbox, ROUTE_CAPABILITIES), notifier/tests/test_inbox.py and notifier/tests/inbox_vector.json (both sides seal against it)
+- Tests: `ConduitTests/ShortcutInboxTests.swift`
 
 **Rulings**
 - The inbox works with Pulse off, and nothing in it reaches a chat or a push on its own (2026-10-24, Michel; Pulse's use of it is Eric's call).
@@ -750,6 +750,7 @@ sealing (health, location, phone sync use the same scheme) · Pulse
 - No Settings page shows or deletes what was logged; the wipe route is there for one.
 - Which fields each iOS automation trigger hands over is unverified on a device, so the ready-made recipes aren't written yet.
 - Not on the Watch or in CarPlay: automations run on the iPhone.
+- The notifier paths above go in backticks once the notifier PR is on its main.
 
 **Checked:** 2026-10-24, on 35dffc3 with this branch, and notifier c2f6a19 with its branch.
 
