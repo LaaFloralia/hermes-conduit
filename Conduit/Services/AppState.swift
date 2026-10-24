@@ -5315,6 +5315,8 @@ final class AppState: ObservableObject {
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
         TranscriptImageCache.purge()
+        // The sentences describing runs of steps go with the chats.
+        forgetStepSummaries(scopePrefix: nil)
         if connection == nil, let copy = offlineChatPresentation {
             // Until this launch's sign-in goes through, the copy is what keeps
             // the app and its Retry up: it stays, with nothing saved in it.
