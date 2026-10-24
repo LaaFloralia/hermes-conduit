@@ -458,14 +458,15 @@ phone changes · missed call · Pulse (pulse.noticed, pulse.brief, pulse.followu
 side on the `pulse` branch only, see Pulse) · the Watch (mirrors the iPhone) · Bot Chat ·
 the notification service extension · the relay's plain copy ·
 Settings > Notifications · end-to-end encryption (keys, rotation, the
-padlock in Settings > Notifications and on Saved Dashboards rows)
+padlock in Settings > Notifications and on the dashboard rows of Saved
+Dashboards and the Profiles sheet)
 
 **Code**
 - Extension: `ConduitNotificationService/NotificationService.swift`, `ConduitNotificationService/NotificationLocalization.swift`
 - Shared copy: `Shared/Notifications/NotificationCopy.swift`, `Shared/NotificationE2E.swift`
 - App: `Conduit/Services/PushNotificationService.swift` (showPreviews), `Conduit/Services/AppState.swift` (openNotificationTarget, routeBotOwnedNotification), `Conduit/Services/ChatOnScreen.swift`, `Conduit/Services/AppState+ChatOnScreen.swift`, `Conduit/Services/CronNotifications.swift`, `Conduit/Services/ReplySourceNotifications.swift`
 - Missed calls: `Conduit/Voice/HermesCalls.swift`
-- Settings: `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/SavedDashboardsView.swift` (padlock on dashboard rows)
+- Settings: `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/SavedDashboardsView.swift` (padlock on dashboard rows, also drawn by `Conduit/Views/ProfilePickerSheet.swift`)
 - Notifier: `notifier/events.py` (push_event), `notifier/session_titles.py`, `notifier/chat_on_screen.py`, `notifier/e2e.py`, `notifier/relay/src/apns.mjs`
 
 **Rulings**
@@ -474,8 +475,8 @@ padlock in Settings > Notifications and on Saved Dashboards rows)
 - A reply's push stays quiet while its chat is on screen and in use (2026-10-22, #1132, notifier #301).
 - A push from a Bot Chat opens the Bot Chat (2026-10-16, #654), and a call from one opens the bot (2026-10-16, #630).
 - Notification status in Settings is for the active dashboard only (2026-10-05, #395).
-- Encryption keys rotate: every 30 days, on Settings > Notifications > Rotate, or when the host asks (`hermes conduit-push e2e rotate`). The phone saves the new key before sending it, and both sides keep the replaced key 7 days for pushes and answers in flight (2026-10-24, notifier 0.70.0; proposed by Michel, Eric to confirm).
-- The padlock is closed only when the host confirmed it seals with the key this iPhone holds, and that key isn't past 30 days plus the 7-day overlap (2026-10-24, notifier 0.70.0; Eric to confirm).
+- Encryption keys rotate: every 30 days, on Settings > Notifications > Rotate, or when the host asks (`hermes conduit-push e2e rotate`). The phone saves the new key before sending it, and both sides keep the replaced key 7 days for pushes and answers in flight. Rotation is per pairing and below every event kind, so reply, approval, question, failed turn, tasks and cron, phone changes, missed call, Pulse and Bot Chat pushes need no change; the relay's plain copy is for pairings with no key and is untouched (2026-10-24, #1197 and notifier #344; proposed by Michel, pending Eric's review there).
+- The padlock is closed only when the host confirmed it seals with the key this iPhone holds, and that key isn't past 30 days plus the 7-day overlap. A host whose notifier can't rotate (before 0.70) keeps a closed padlock at any key age, with a caption asking for an update, since nothing on the phone could rotate it (2026-10-24, #1197; pending Eric's review there).
 
 **Open gaps**
 - The Watch shows no padlock; it mirrors the iPhone's notifications.

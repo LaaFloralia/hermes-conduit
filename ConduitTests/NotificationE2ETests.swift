@@ -354,8 +354,11 @@ extension NotificationE2ETests {
         XCTAssertEqual(assurance([record], confirmed), .ensured(keyCreatedAt: record.createdAt, rotates: true))
         XCTAssertEqual(assurance([], nil), .notEncrypted)
         XCTAssertEqual(assurance([record], nil), .unconfirmed)
-        // The host seals with a key this iPhone lost.
+        // The host seals with a key this iPhone lost, or holds for another installation.
         XCTAssertEqual(assurance([], confirmed), .mismatched)
+        let otherInstallation = E2EKeyRecord(kid: Self.kid, secret: Self.secret, installationID: "other", gatewayID: Self.gatewayID,
+                                             dashboardID: nil, profile: nil, createdAt: record.createdAt)
+        XCTAssertEqual(assurance([otherInstallation], confirmed), .mismatched)
         // Rotation kept failing past the grace period.
         let late = now.addingTimeInterval(NotificationE2E.keyMaxAge + NotificationE2E.previousKeyGrace)
         XCTAssertEqual(assurance([record], confirmed, at: late), .overdue(keyCreatedAt: record.createdAt))

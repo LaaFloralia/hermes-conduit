@@ -3594,8 +3594,7 @@ private struct NotificationsSettingsDetail: View {
                         ForEach(pairings.thisDashboard) { gateway in
                             gatewayRow(gateway)
                         }
-                        if notifications.canRotateEncryptionKeys,
-                           pairings.thisDashboard.contains(where: { notifications.encryptedGatewayIDs.contains($0.id) }) {
+                        if notifications.canRotateEncryptionKeys(gatewayIDs: pairings.thisDashboard.map(\.id)) {
                             Button {
                                 notifications.requestEncryptionKeyRotation()
                                 Task { await appState.provisionNotificationEncryptionNow() }
@@ -3603,6 +3602,9 @@ private struct NotificationsSettingsDetail: View {
                                 Label(AppLocalization.string("Rotate encryption keys"), systemImage: "arrow.triangle.2.circlepath")
                             }
                             .font(.footnote)
+                            // A tap while keys are being set up would only
+                            // wait for the next connect.
+                            .disabled(notifications.isProvisioningEncryption)
                             Text("Conduit gives this dashboard's hosts new keys by itself every 30 days. The old keys still open notifications already on their way for 7 days.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)

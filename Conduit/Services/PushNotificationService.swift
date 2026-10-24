@@ -769,7 +769,8 @@ final class PushNotificationService: ObservableObject {
     static let e2eSeenStore: E2ESeenStore = .shared
 
     static let e2ePath = "/api/plugins/conduit_push/e2e"
-    private var isProvisioningEncryption = false
+    /// Settings > Notifications disables Rotate while a run is under way.
+    @Published private(set) var isProvisioningEncryption = false
 
     func refreshEncryptionState() {
         // Unreadable (a launch before first unlock): keep what was shown.
@@ -817,7 +818,9 @@ final class PushNotificationService: ObservableObject {
     ) -> EncryptionAssurance {
         let current = NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records)
         guard let confirmation else { return current == nil ? .notEncrypted : .unconfirmed }
-        guard let held = records.first(where: { $0.kid == confirmation.kid && $0.gatewayID == gatewayID }) else {
+        guard let held = records.first(where: {
+            $0.kid == confirmation.kid && $0.gatewayID == gatewayID && $0.installationID == installationID
+        }) else {
             return .mismatched
         }
         if confirmation.rotates,
@@ -839,9 +842,9 @@ final class PushNotificationService: ObservableObject {
         )
     }
 
-    /// Whether any pairing this iPhone knows can rotate its key now.
-    var canRotateEncryptionKeys: Bool {
-        encryptionConfirmations.values.contains(where: \.rotates)
+    /// Whether any of these pairings can rotate its key now.
+    func canRotateEncryptionKeys(gatewayIDs: [String]) -> Bool {
+        gatewayIDs.contains { encryptionConfirmations[$0]?.rotates == true }
     }
 
     /// Settings > Notifications > Rotate: new keys on the next provisioning
@@ -901,13 +904,9 @@ final class PushNotificationService: ObservableObject {
         guard var records = Self.e2eKeyStore.readRecords() else { return }
         // Keys a rotation replaced over a week ago: the host dropped them too.
         let now = Date()
-        for expired in NotificationE2E.expiredRecords(records, now: now) {
-            Self.e2eKeyStore.remove(kid: expired.kid)
-        }
         let expiredKIDs = Set(NotificationE2E.expiredRecords(records, now: now).map(\.kid))
+        for kid in expiredKIDs { Self.e2eKeyStore.remove(kid: kid) }
         records.removeAll { expiredKIDs.contains($0.kid) }
-        let forceRotation = rotationRequested
-        rotationRequested = false
         // A marker with no keys means they are gone for good (a restore to
         // another iPhone drops this-device-only Keychain items but brings the
         // App Group marker back). Start over as on the first key; the marker
@@ -925,9 +924,16 @@ final class PushNotificationService: ObservableObject {
             // runs again on the next connect.
             guard relayMeta != nil else { return }
         }
+        // A tap on Rotate is used up only once a host answered; a run that
+        // reaches none keeps it for the next one.
+        let forceRotation = rotationRequested
+        rotationRequested = false
+        var reachedHost = false
+        defer { if forceRotation && !reachedHost { rotationRequested = true } }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
             guard let status = try? await request(path, "GET", nil) else { continue }
+            reachedHost = true
             // A plugin that reports `rotate` keeps a replaced key, so new
             // keys lose nothing in flight (notifier 0.70+).
             let rotates = status["rotate"] is Bool
