@@ -10532,7 +10532,7 @@ final class AppState: ObservableObject {
             // history (upstream keeps 200 — GROUP_CHAT_HISTORY_LIMIT). The
             // window never exceeds the gateway's advertised page limit, so
             // the since_seq and the page limit always agree.
-            let window = min(200, groupCapabilities?.maxLogLimit ?? 500)
+            let window = min(GroupRoomReplay.tailWindow, groupCapabilities?.maxLogLimit ?? 500)
             let (state, driver) = try await groupsState(client, roomID: room.roomID)
             guard groupRoomEpoch == epoch else { return }
             if state.isDisbanded {
@@ -10804,7 +10804,7 @@ final class AppState: ObservableObject {
             activeRoomSurface = GroupRoomSurface(dashboardID: surface.dashboardID, room: state)
             activeRoomDriverStatus = driver
             var fresh = GroupRoomReplay(roomID: state.roomID)
-            let window = min(200, groupCapabilities?.maxLogLimit ?? 500)
+            let window = min(GroupRoomReplay.tailWindow, groupCapabilities?.maxLogLimit ?? 500)
             let start = max(0, (state.latestSeq ?? 0) - window)
             let tail = try await groupsLog(
                 client, roomID: state.roomID, sinceSeq: start, limit: window)
