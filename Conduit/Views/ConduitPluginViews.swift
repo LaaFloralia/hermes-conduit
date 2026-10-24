@@ -34,7 +34,7 @@ enum NotifierPluginSummary {
 /// The features Conduit uses from the plugin, by capability id, and what
 /// the user calls them.
 enum NotifierPluginFeature: CaseIterable {
-    case chatTakeover, savedCalls, liveVoiceContext, geminiLive, gptLive, grokLive
+    case chatTakeover, savedCalls, liveVoiceContext, geminiLive, qwenLive, gptLive, grokLive
     case encryptedNotifications, pairing, hermesCalls, agentSettings, healthSync, updates
 
     /// Every capability id the feature needs.
