@@ -93,11 +93,12 @@ the host answers with the user's words (`_local_live_call_answer`).
 - CarPlay shows no card: Apple allows only the voice control template while voice runs, so the ask is spoken and the listening window takes the answer (2026-10-24, #1194).
 - Classic's notice tells the user to hold to talk under push to talk, and to answer on the card while the microphone is paused (2026-10-24, #1194).
 - The resume jump and its button go to the newest question or approval waiting on the user (2026-10-24, #1194).
+- A voice mode says an approval went only once Hermes took it: the phone's modes read the gateway's `resolved` count (expired otherwise), and the Watch's `answer_call` and Local Live wait up to 10 seconds for the plugin's follower to settle it, saying it didn't go through when no pending request was the one read out, and taking back an answer nothing picked up (2026-10-24, notifier 0.70.1).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-24, at #1194 (after #1188, the approval card's shield).
+**Checked:** 2026-10-24, at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran.
 
 ## Voice follow-ups
 
