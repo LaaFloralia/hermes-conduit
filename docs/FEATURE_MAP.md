@@ -504,7 +504,7 @@ Dashboards and the Profiles sheet)
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 
-**Checked:** 2026-10-24, at #1197 (encryption keys and padlock; fork CI #82); the registration update race at #1191.
+**Checked:** 2026-10-24, at #1197, carried in #1217 (encryption keys and padlock; fork CI #82); the registration update race at #1191.
 
 ## Pulse
 
