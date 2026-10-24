@@ -268,6 +268,41 @@ extension ScreenQuestionTests {
         XCTAssertEqual(outcome, .answered("Done."))
     }
 
+    /// Read from the saved history before sending and from the open chat
+    /// after: the ids can't be compared, but the new reply answers what
+    /// this run sent (#996).
+    @MainActor
+    func testASameWordedReplyInTheOpenChatAfterASavedOneIsTheAnswer() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        _ = try await sender(hermes, chats).send(shortcutRequest("Lights off", chat: "Home"), deadline: hermes.now.addingTimeInterval(25))
+        hermes.polls = [[liveRow("resumed-1", "working")], [liveRow("resumed-1", "idle")]]
+        hermes.replies = [
+            ShortcutReply(text: "Done.", rowID: 7, prompt: "Lights on"),
+            ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off"),
+        ]
+        let outcome = try await sender(hermes, chats).send(shortcutRequest("Lights off", chat: "Home", wait: true), deadline: hermes.now.addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .answered("Done."))
+    }
+
+    func testARepliesPromptTellsTurnsApartAcrossReads() {
+        let saved = ShortcutReply(text: "Done.", rowID: 7, prompt: "Lights on")
+        XCTAssertFalse(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off").mayBe(saved, sent: "Lights off"),
+                       "the open chat's reply to this run, after a saved reply to another message")
+        XCTAssertFalse(ShortcutReply(text: "Done.", rowID: 9, prompt: "Lights off")
+            .mayBe(ShortcutReply(text: "Done.", openChatID: "a", prompt: "Lights on"), sent: "Lights off"),
+                       "saved since, after an open chat's reply to another message")
+        // The same reply read again answers the same message: still the old one.
+        XCTAssertTrue(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights on").mayBe(saved, sent: "Lights off"))
+        // The same message sent twice: only the wording is left to go by.
+        XCTAssertTrue(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off")
+            .mayBe(ShortcutReply(text: "Done.", rowID: 7, prompt: "Lights off"), sent: "Lights off"))
+        // The earlier read didn't reach its message: the same.
+        XCTAssertTrue(ShortcutReply(text: "Done.", openChatID: "live", prompt: "Lights off")
+            .mayBe(ShortcutReply(text: "Done.", rowID: 7), sent: "Lights off"))
+    }
+
     func testARepliesIdentityDecidesBeforeItsWording() {
         let saved = ShortcutReply(text: "Done.", rowID: 7)
         XCTAssertTrue(ShortcutReply(text: "Done.", rowID: 7).mayBe(saved))

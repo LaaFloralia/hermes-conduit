@@ -290526,6 +290526,88 @@
         }
       }
     },
+    "Your message to “%@” wasn't sent: Hermes no longer has that chat. It's in the composer now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Nachricht an „%@“ wurde nicht gesendet: Hermes hat diesen Chat nicht mehr. Sie steht jetzt im Eingabefeld."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu mensaje a «%@» no se envió: Hermes ya no tiene ese chat. Ahora está en el cuadro de texto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre message à « %@ » n'a pas été envoyé : Hermes n'a plus cette discussion. Il est maintenant dans la zone de saisie."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan Anda ke “%@” tidak terkirim: Hermes tidak lagi memiliki obrolan itu. Pesan sekarang ada di kolom tulis."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo messaggio a «%@» non è stato inviato: Hermes non ha più quella chat. Ora è nel campo di scrittura."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「%@」宛てのメッセージは送信されませんでした。Hermes にそのチャットがもうありません。入力欄に戻しました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@”에 보낼 메시지가 전송되지 않았어요. Hermes에 그 채팅이 더 이상 없어요. 지금 입력란에 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoja wiadomość do „%@” nie została wysłana: Hermes nie ma już tego czatu. Jest teraz w polu wpisywania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sua mensagem para “%@” não foi enviada: o Hermes não tem mais esse chat. Ela está agora no campo de texto."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение в «%@» не отправлено: у Hermes больше нет этого чата. Теперь оно в поле ввода."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” sohbetine yazdığınız mesaj gönderilmedi: Hermes'te artık o sohbet yok. Mesaj şimdi yazma alanında."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "发往“%@”的消息未发送：Hermes 已没有该聊天。消息现在在输入框中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "傳給「%@」的訊息未傳送：Hermes 已沒有該聊天。訊息現在在輸入框中。"
+          }
+        }
+      }
+    },
     "Puts the message back in the composer to change or delete" : {
       "localizations" : {
         "de" : {
