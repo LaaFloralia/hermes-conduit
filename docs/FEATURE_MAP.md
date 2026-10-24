@@ -85,7 +85,7 @@ A call Hermes made about an approval or question takes the answer by voice:
 - The resume jump finds clarify cards, not approvals (#486).
 - Settings > Gemini Live says "Approvals are never given by voice", and the header comments of `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` and `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` say the same; stale since #991.
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1188 (the approval card's shield).
 
 ## Voice follow-ups
 
@@ -658,7 +658,7 @@ reading of the line and its new-plan announcement
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
 
-**Checked:** 2026-10-24, at 78f21daa.
+**Checked:** 2026-10-24, at #1188.
 
 ## White text on the accent
 
