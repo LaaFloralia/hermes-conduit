@@ -924,24 +924,23 @@ final class PushNotificationService: ObservableObject {
             // runs again on the next connect.
             guard relayMeta != nil else { return }
         }
-        // A tap on Rotate is used up only once a host answered; a run that
-        // reaches none keeps it for the next one.
+        // A tap on Rotate is used up only once a pairing got a new key; a run
+        // that rotates nothing (no host reached, or none that can rotate)
+        // keeps it for the next one.
         let forceRotation = rotationRequested
         rotationRequested = false
-        var reachedHost = false
-        defer { if forceRotation && !reachedHost { rotationRequested = true } }
+        var rotatedAny = false
+        defer { if forceRotation && !rotatedAny { rotationRequested = true } }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
             guard let status = try? await request(path, "GET", nil) else { continue }
-            reachedHost = true
-            // A plugin that reports `rotate` keeps a replaced key, so new
-            // keys lose nothing in flight (notifier 0.70+).
-            let rotates = status["rotate"] is Bool
+            let rotates = Self.hostKeepsReplacedKeys(status: status)
             guard let gatewayID = Self.gatewayNeedingEncryptionKey(status: status, installationID: installationID, records: records) else {
                 if let held = Self.confirmedKey(status: status, installationID: installationID, records: records) {
                     adoptConfirmedKey(kid: held.kid, installationID: installationID, gatewayID: held.gatewayID, records: &records, now: now)
                     setEncryptionConfirmation(EncryptionConfirmation(kid: held.kid, rotates: rotates, confirmedAt: now), gatewayID: held.gatewayID)
                     if rotates && (status["rotate"] as? Bool == true || forceRotation) {
+                        rotatedAny = true
                         await rotateEncryptionKey(of: held, dashboardID: dashboardID, profile: profile, path: path,
                                                   records: &records, request: request)
                     }
@@ -998,9 +997,16 @@ final class PushNotificationService: ObservableObject {
                 return rotates ? (stale.retiredAt == nil ? stale.retired(at: now) : stale) : nil
             }
             records.append(record)
+            rotatedAny = true
             setEncryptionConfirmation(EncryptionConfirmation(kid: record.kid, rotates: rotates, confirmedAt: now), gatewayID: gatewayID)
         }
         refreshEncryptionState()
+    }
+
+    /// Whether the host keeps a replaced key for answers in flight, so new
+    /// keys lose nothing (notifier 0.70+, which reports `rotate`).
+    nonisolated static func hostKeepsReplacedKeys(status: [String: Any]) -> Bool {
+        (status["rotate"] as? Bool) != nil
     }
 
     /// The key this iPhone holds that the host says it seals with, or nil.
