@@ -10222,6 +10222,8 @@ final class AppState: ObservableObject {
     private func invalidateGroupChatState() {
         groupChatPhase = .idle
         groupCapabilities = nil
+        // Whether the gateway can make pictures is the outgoing one's answer.
+        canGeneratePictures = false
         groupRooms = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
@@ -20272,6 +20274,66 @@ final class AppState: ObservableObject {
     func loadBotModelProviders() async -> [ProviderInfo]? {
         guard let client, isConnected else { return nil }
         return try? await client.modelOptions().providers
+    }
+
+    /// Whether Hermes can generate pictures, as last asked
+    /// (`refreshPictureGeneration`).
+    @Published private(set) var canGeneratePictures = false
+
+    /// Asks Hermes whether it can generate pictures (`image.generate`
+    /// probe). Asked each time a picture screen opens: the owner may set a
+    /// backend up meanwhile. Nil when Hermes wasn't asked (offline, or the
+    /// server changed), so no screen says to set a backend up.
+    @discardableResult
+    func refreshPictureGeneration() async -> Bool? {
+        guard let client, isConnected else { return nil }
+        let available = await client.imageGenerationAvailable()
+        // The answer belongs to the server it came from.
+        guard self.client === client else { return nil }
+        // No answer keeps the last one: only Hermes saying no hides Generate.
+        if let available, canGeneratePictures != available { canGeneratePictures = available }
+        return available
+    }
+
+    /// One generated picture from `prompt`, decoded. Throws with a message
+    /// fit to show.
+    func generatePicture(prompt: String) async throws -> UIImage {
+        guard let client, isConnected else {
+            throw PictureGenerationError(message: AppLocalization.string("Connect to Hermes to generate pictures."))
+        }
+        let result: AnyCodable
+        do {
+            result = try await client.generateImage(prompt: prompt)
+        } catch {
+            throw PictureGenerationError(message: AppLocalization.string(
+                "Could not generate a picture: \(UserFacingError.message(for: error))"
+            ))
+        }
+        let data: Data
+        switch PictureGeneration.outcome(of: result) {
+        case .image(let bytes):
+            data = bytes
+        case .remote(let url):
+            // Bounded like any picture Conduit fetches: the backend's URL
+            // could answer with anything.
+            guard case .downloaded(let bytes, _) = await MediaPreviewPresenter.boundedDownloadResult(url) else {
+                throw PictureGenerationError(message: AppLocalization.string("The picture was made but could not be downloaded."))
+            }
+            // The server may have changed during the download.
+            guard !Task.isCancelled, self.client === client, isConnected else {
+                throw PictureGenerationError(message: AppLocalization.string("Connect to Hermes to generate pictures."))
+            }
+            data = bytes
+        case .failed(let reason):
+            if let reason {
+                throw PictureGenerationError(message: AppLocalization.string("Could not generate a picture: \(reason)"))
+            }
+            throw PictureGenerationError(message: AppLocalization.string("Could not generate a picture."))
+        }
+        guard let image = UIImage(data: data) else {
+            throw PictureGenerationError(message: AppLocalization.string("That picture could not be used."))
+        }
+        return image
     }
 
     /// The profile id a new bot named `name` gets, and whether it is free.
