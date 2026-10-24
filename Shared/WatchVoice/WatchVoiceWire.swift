@@ -13,8 +13,8 @@ import Foundation
 enum WatchVoiceWire {
     /// Bumped when either side changes what a message means; a mismatch
     /// refuses the call instead of misreading it.
-    // Version 3 adds Qwen token semantics. Older Watches must update before
-    // receiving credentials they would send through Google's auth path.
+    // Version 4 separates provider selection and Qwen token semantics.
+    // Older Watches must update before receiving Qwen credentials.
     static let version = 4
     /// The message dictionary's only key.
     static let messageKey = "wv"
@@ -29,6 +29,7 @@ enum WatchVoiceWire {
         var model: String
         var webSocketURL: String
         var voice: String? = nil
+        var provider: DirectLiveProvider? = nil
     }
 
     /// Everything a Watch call needs to run Gemini Live the way a call on

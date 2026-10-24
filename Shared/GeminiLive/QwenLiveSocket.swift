@@ -107,6 +107,8 @@ final class QwenLiveSocket: GeminiLiveSocket {
             "instructions": parts.compactMap { $0["text"] as? String }.joined(separator: "\n"),
             "audio": ["input": ["format": ["type": "pcm", "sample_rate": 16000]],
                       "output": ["format": ["type": "pcm", "sample_rate": 24000], "voice": voice]],
+            // The Omni Realtime client-events contract fixes this model value.
+            // https://help.aliyun.com/en/model-studio/client-events
             "input_audio_transcription": ["model": "qwen3-asr-flash-realtime"],
             "turn_detection": ["type": "server_vad", "threshold": 0.5, "silence_duration_ms": 800],
             "tools": tools,

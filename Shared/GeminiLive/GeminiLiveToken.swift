@@ -27,7 +27,19 @@ enum GeminiLiveAvailability: Equatable {
 
     /// What Voice settings and the Voice sheet show. Never a silent
     /// fallback: when Gemini Live cannot run, the user is told why.
-    var userFacingReason: String? {
+    var userFacingReason: String? { userFacingReason(for: .gemini) }
+
+    func userFacingReason(for provider: DirectLiveProvider) -> String? {
+        if provider == .qwen {
+            switch self {
+            case .available: return nil
+            case .pluginMissing: return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+            case .unavailable(let reason):
+                if reason == "no_api_key" { return AppLocalization.string("Add a DashScope API key on your Hermes server.") }
+                if let reason, !reason.isEmpty { return AppLocalization.string("Qwen Live is not available on this Hermes server: \(reason)") }
+                return AppLocalization.string("Qwen Live is not available on this Hermes server.")
+            }
+        }
         switch self {
         case .available:
             return nil
@@ -53,7 +65,10 @@ struct GeminiLiveToken: Equatable {
     let webSocketURL: URL
     var voice: String? = nil
 
-    var isQwen: Bool { model.hasPrefix("qwen") }
+    /// Explicit for current host/wire credentials; prefix fallback reads older credentials.
+    var provider: DirectLiveProvider? = nil
+    var effectiveProvider: DirectLiveProvider { provider ?? (model.hasPrefix("qwen") ? .qwen : .gemini) }
+    var isQwen: Bool { effectiveProvider == .qwen }
 
     /// Qwen rejects empty voice names; nil or whitespace uses its default.
     var qwenVoice: String {
@@ -81,6 +96,8 @@ struct GeminiLiveToken: Equatable {
 enum GeminiLiveTokenError: LocalizedError, Equatable {
     case unavailable(GeminiLiveAvailability)
     case malformedResponse
+    case providerUnavailable(GeminiLiveAvailability, DirectLiveProvider)
+    case invalidProviderToken(DirectLiveProvider)
 
     var errorDescription: String? {
         switch self {
@@ -88,14 +105,24 @@ enum GeminiLiveTokenError: LocalizedError, Equatable {
             return availability.userFacingReason
         case .malformedResponse:
             return AppLocalization.string("Hermes returned an invalid Gemini Live token.")
+        case .providerUnavailable(let availability, let provider):
+            return availability.userFacingReason(for: provider)
+        case .invalidProviderToken(let provider):
+            return provider == .qwen ? AppLocalization.string("Hermes returned an invalid Qwen Live token.") : AppLocalization.string("Hermes returned an invalid Gemini Live token.")
         }
     }
 }
 
 @MainActor
 protocol GeminiLiveTokenProviding: AnyObject {
+    var directProvider: DirectLiveProvider { get }
     func availability() async throws -> GeminiLiveAvailability
     /// A fresh single-use token. Call once per WebSocket connection,
     /// including resumptions: tokens are never reused.
     func freshToken() async throws -> GeminiLiveToken
+}
+
+
+extension GeminiLiveTokenProviding {
+    var directProvider: DirectLiveProvider { .gemini }
 }

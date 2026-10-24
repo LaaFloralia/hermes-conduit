@@ -87,6 +87,7 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
     /// (same `?profile=` scoping as /api/audio/*).
     private let profile: @MainActor () -> String
     private let provider: @MainActor () -> DirectLiveProvider
+    var directProvider: DirectLiveProvider { provider() }
 
     init(profile: @escaping @MainActor () -> String = { "default" }, provider: @escaping @MainActor () -> DirectLiveProvider = { .gemini }, request: @escaping Request) {
         self.profile = profile
@@ -130,11 +131,22 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         do {
             response = try await fetch(scoped(provider() == .qwen ? "/api/plugins/conduit_push/qwen-live/token" : Self.tokenPath), "POST", [:], timeoutMilliseconds: Self.tokenTimeoutMilliseconds)
         } catch let error as DashboardTicketBridgeError {
-            if Self.isMissingRoute(error) { throw GeminiLiveTokenError.unavailable(.pluginMissing) }
+            if Self.isMissingRoute(error) { throw provider() == .gemini ? GeminiLiveTokenError.unavailable(.pluginMissing) : GeminiLiveTokenError.providerUnavailable(.pluginMissing, .qwen) }
             throw error
         }
-        let token = try Self.token(from: response)
-        guard token.isQwen == (provider() == .qwen) else { throw GeminiLiveTokenError.malformedResponse }
+        var token: GeminiLiveToken
+        do { token = try Self.token(from: response) }
+        catch {
+            if let tokenError = error as? GeminiLiveTokenError, case .unavailable(let availability) = tokenError {
+                throw provider() == .gemini ? tokenError : GeminiLiveTokenError.providerUnavailable(availability, .qwen)
+            }
+            throw provider() == .gemini ? GeminiLiveTokenError.malformedResponse : GeminiLiveTokenError.invalidProviderToken(.qwen)
+        }
+        guard token.model.hasPrefix("qwen") == (provider() == .qwen),
+              response["provider"] == nil || response["provider"] as? String == provider().rawValue else {
+            throw GeminiLiveTokenError.invalidProviderToken(provider())
+        }
+        token.provider = provider()
         return token
     }
 

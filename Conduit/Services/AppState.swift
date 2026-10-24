@@ -2585,7 +2585,7 @@ final class AppState: ObservableObject {
         guard preferences.qwenLiveEnabled != enabled else { return }
         objectWillChange.send()
         preferences.qwenLiveEnabled = enabled
-        // One live voice engine per profile: turning Gemini on turns the others off.
+        // One live voice engine per profile: turning Qwen on turns the others off.
         if enabled {
             preferences.geminiLiveEnabled = false
             preferences.gptLiveEnabled = false
@@ -2713,7 +2713,8 @@ final class AppState: ObservableObject {
                 return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
             },
             // A call Hermes made opens with why it called, not a greeting (#449).
-            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt }
+            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt },
+            provider: provider
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in
@@ -2782,9 +2783,8 @@ final class AppState: ObservableObject {
     /// conversation that already failed drops its memory and persona too:
     /// nothing presents it, so nothing would close it.
     func releaseCarPlayGeminiLive() {
-        guard !(isSceneActive && (showQwenLiveSheet || showGeminiLiveSheet || minimisedLiveVoice == .geminiLive)) else { return }
+        guard !(isSceneActive && (showGeminiLiveSheet || minimisedLiveVoice == .geminiLive)) else { return }
         if isGeminiLiveActive {
-            closeQwenLiveConversation()
             closeGeminiLiveConversation()
         } else {
             // Its work lets go of the call too (#449).
@@ -33926,7 +33926,7 @@ final class AppState: ObservableObject {
         let status = try await tokens.availability()
         noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable)
         guard status.isAvailable else {
-            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Gemini Live is not available on this Hermes server."))
+            throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.unavailable(reason: nil).userFacingReason(for: provider)!)
         }
         let search = await searchLookup
         let memory = await memoryLookup

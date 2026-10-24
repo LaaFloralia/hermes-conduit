@@ -209,7 +209,7 @@ struct GeminiLiveSettingsSection: View {
             if case .available(let modelName) = availability {
                 status = AppLocalization.string("Available (\(modelName))")
             } else {
-                status = availability.userFacingReason
+                status = availability.userFacingReason(for: model.provider == .qwenLive ? .qwen : .gemini)
             }
         case .failure(let error):
             isAvailable = false

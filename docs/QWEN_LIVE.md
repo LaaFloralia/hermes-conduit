@@ -62,3 +62,8 @@ on Wi-Fi/cellular and without the phone.
 References: [Realtime](https://help.aliyun.com/zh/model-studio/realtime),
 [events](https://help.aliyun.com/zh/model-studio/client-events),
 [temporary keys](https://help.aliyun.com/zh/model-studio/generate-temporary-api-key).
+
+Input transcription uses `qwen3-asr-flash-realtime`: Alibaba Cloud's
+[client-events contract](https://help.aliyun.com/en/model-studio/client-events)
+fixes that model value. It is not an independently selectable ASR model.
+The adapter requests it so saved calls retain the user's spoken turns.

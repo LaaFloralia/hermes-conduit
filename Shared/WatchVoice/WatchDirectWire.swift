@@ -20,14 +20,16 @@ extension WatchVoiceWire.DirectToken {
             newSessionExpiresAt: token.newSessionExpiresAt,
             model: token.model,
             webSocketURL: token.webSocketURL.absoluteString,
-            voice: token.voice
+            voice: token.voice,
+            provider: token.provider
         )
     }
 
     /// Nil if the URL can't be read.
     var geminiToken: GeminiLiveToken? {
-        guard let url = URL(string: webSocketURL) else { return nil }
-        return GeminiLiveToken(token: token, expiresAt: expiresAt, newSessionExpiresAt: newSessionExpiresAt, model: model, webSocketURL: url, voice: voice)
+        guard let url = URL(string: webSocketURL), url.scheme?.lowercased() == "wss" else { return nil }
+        if let provider, model.isEmpty || model.hasPrefix("qwen") != (provider == .qwen) { return nil }
+        return GeminiLiveToken(token: token, expiresAt: expiresAt, newSessionExpiresAt: newSessionExpiresAt, model: model, webSocketURL: url, voice: voice, provider: provider)
     }
 }
 
@@ -244,13 +246,17 @@ enum WatchLiveToken {
               let url = URL(string: urlString),
               url.scheme?.lowercased() == "wss" else { return nil }
         let model = (body["model"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? GeminiLiveProtocol.model
+        let provider = (body["provider"] as? String).flatMap(DirectLiveProvider.init(rawValue:))
+        if body["provider"] != nil && provider == nil { return nil }
+        if let provider, model.hasPrefix("qwen") != (provider == .qwen) { return nil }
         return GeminiLiveToken(
             token: token,
             expiresAt: date(body["expires_at"]),
             newSessionExpiresAt: date(body["new_session_expires_at"]),
             model: model,
             webSocketURL: url,
-            voice: body["voice"] as? String
+            voice: body["voice"] as? String,
+            provider: provider
         )
     }
 

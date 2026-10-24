@@ -92,6 +92,7 @@ enum LiveVoiceHostIssue: Equatable {
     init?(error: any Error) {
         switch error {
         case GeminiLiveTokenError.unavailable(let availability): self.init(availability)
+        case GeminiLiveTokenError.providerUnavailable(let availability, _): self.init(availability)
         case GPTLiveClientError.unavailable(let availability): self.init(availability)
         case GrokLiveClientError.unavailable(let availability): self.init(availability)
         default: return nil

@@ -267,7 +267,7 @@ final class GeminiLiveSession {
     private var startingFresh: Bool?
 
     private let tokens: GeminiLiveTokenProviding
-    private let openSocket: @MainActor (URL) -> GeminiLiveSocket
+    private let openSocket: @MainActor (URLRequest) -> GeminiLiveSocket
     private let systemInstruction: String
     private let functions: [GeminiLiveProtocol.FunctionDeclaration]
     /// Whether this session's lookups use Google Search at all (the user may
@@ -313,7 +313,7 @@ final class GeminiLiveSession {
         functions: [GeminiLiveProtocol.FunctionDeclaration],
         googleSearch: Bool = true,
         voice: String? = nil,
-        openSocket: @escaping @MainActor (URL) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(url: $0) },
+        openSocket: @escaping @MainActor (URLRequest) -> GeminiLiveSocket = { URLSessionGeminiLiveSocket(request: $0) },
         reconnectDelay: @escaping @MainActor @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
         }
@@ -424,13 +424,13 @@ final class GeminiLiveSession {
             if hasConnectedOnce { startingFresh = true }
             do {
                 let request = try QwenLiveSocket.request(token: token)
-                socket = QwenLiveSocket(upstream: URLSessionGeminiLiveSocket(request: request), voice: voice.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } ?? token.qwenVoice)
+                socket = QwenLiveSocket(upstream: openSocket(request), voice: voice.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } ?? token.qwenVoice)
             } catch {
                 fail(UserFacingError.message(for: error))
                 return
             }
         } else {
-            socket = openSocket(token.connectURL)
+            socket = openSocket(URLRequest(url: token.connectURL))
         }
         let id = UUID()
         let setup = GeminiLiveProtocol.setupMessage(
@@ -638,7 +638,7 @@ final class GeminiLiveSession {
             // The current connection keeps serving while a fresh session
             // sets up to take over.
             if startFreshIfResumptionRefused(serverClose, attempt: attempt, heardDropout: false) { return }
-            fail(Self.refusalMessage(serverClose))
+            fail(Self.refusalMessage(serverClose, provider: tokens.directProvider))
             return
         }
         if let serverClose { lastSetupClose = serverClose }
@@ -668,7 +668,7 @@ final class GeminiLiveSession {
         // still serves, so the user heard no break.
         let heardDropout = !(isHandingOff && socket != nil)
         if startFreshIfResumptionRefused(close, attempt: attempt, heardDropout: heardDropout) { return }
-        fail(Self.refusalMessage(close))
+        fail(Self.refusalMessage(close, provider: tokens.directProvider))
     }
 
     /// A setup that carried a resumption handle was refused because Google
@@ -692,7 +692,10 @@ final class GeminiLiveSession {
 
     /// What a final refusal says: plain words for the cases people hit,
     /// Google's own reason for the rest.
-    static func refusalMessage(_ close: GeminiLiveServerClose) -> String {
+    static func refusalMessage(_ close: GeminiLiveServerClose, provider: DirectLiveProvider = .gemini) -> String {
+        if provider == .qwen {
+            return AppLocalization.string("Qwen Live refused the connection: \(close.summary)")
+        }
         if close.isResumptionLost {
             return AppLocalization.string("Gemini Live lost this conversation on its side. Tap Try again to start a new one.")
         }
@@ -702,9 +705,9 @@ final class GeminiLiveSession {
     private func retry(after attempt: Int, error: Error) async {
         guard attempt < Self.maximumReconnectAttempts else {
             if let close = lastSetupClose {
-                fail(AppLocalization.string("Couldn't connect to Gemini Live: \(close.summary)"))
+                fail(tokens.directProvider == .qwen ? AppLocalization.string("Couldn't connect to Qwen Live: \(close.summary)") : AppLocalization.string("Couldn't connect to Gemini Live: \(close.summary)"))
             } else {
-                fail(AppLocalization.string("Couldn't connect to Gemini Live."))
+                fail(tokens.directProvider == .qwen ? AppLocalization.string("Couldn't connect to Qwen Live.") : AppLocalization.string("Couldn't connect to Gemini Live."))
             }
             return
         }

@@ -731,7 +731,8 @@ final class WatchDirectCallModel: ObservableObject {
         sessionAt = now
         guard let setup = WatchVoiceWire.DirectSetup(compressed: direct.setup),
               let functions = setup.declarations,
-              let token = direct.token.geminiToken else {
+              let token = direct.token.geminiToken,
+              token.isQwen == (engine == .qwen) else {
             finish(String(localized: "The iPhone's session couldn't be read. Update Conduit on both devices."))
             return
         }
@@ -755,7 +756,7 @@ final class WatchDirectCallModel: ObservableObject {
             functions: functions,
             googleSearch: direct.googleSearch,
             voice: direct.voice,
-            openSocket: { url in meter.makeSocket(url) }
+            openSocket: { request in meter.makeSocket(request) }
         )
         // A reconnect the iPhone can't serve resumes on the token in hand.
         tokens.canResume = { [weak session] in session?.resumptionHandle != nil }
@@ -974,7 +975,8 @@ final class WatchDirectCallModel: ObservableObject {
     /// A new single-use token from Hermes through the grant's relay. The
     /// log has how it went, never the token.
     private func requestRelayToken() async throws -> GeminiLiveToken {
-        guard let relay = toolRelay, relay.canRun((engine == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool)) else { throw WatchDirectError.noRelayToken }
+        let provider: DirectLiveProvider = engine == .qwen ? .qwen : .gemini
+        guard let relay = toolRelay, relay.canRun((engine == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool)) else { throw WatchDirectError.noRelayToken(provider) }
         let id = callID
         let sentAt = now
         let outcome = await relay.run(name: (engine == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool), arguments: [:])
@@ -1001,9 +1003,9 @@ final class WatchDirectCallModel: ObservableObject {
             }
             let detail = (body["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             fields["status"] = body["status"] as Any
-            throw WatchDirectError.relayToken(detail ?? String(localized: "Hermes sent no usable Gemini token."))
+            throw WatchDirectError.relayToken(detail ?? (provider == .qwen ? String(localized: "Hermes sent no usable Qwen token.") : String(localized: "Hermes sent no usable Gemini token.")), provider)
         case .timedOut:
-            throw WatchDirectError.relayToken(String(localized: "Hermes didn't answer in time."))
+            throw WatchDirectError.relayToken(String(localized: "Hermes didn't answer in time."), provider)
         case .unavailable(let reason, let grantGone, _):
             fields["reason"] = reason
             fields["grantGone"] = grantGone
@@ -1011,7 +1013,7 @@ final class WatchDirectCallModel: ObservableObject {
                 toolRelay = nil
                 closeIfUnused(relay)
             }
-            throw WatchDirectError.relayToken(String(localized: "The relay couldn't reach Hermes (\(reason))."))
+            throw WatchDirectError.relayToken(String(localized: "The relay couldn't reach Hermes (\(reason))."), provider)
         }
     }
 
@@ -2653,7 +2655,7 @@ final class WatchDirectCallModel: ObservableObject {
         session.stop()
         let reason = engine == .grok
             ? String(localized: "Grok stopped answering.")
-            : String(localized: "Gemini stopped answering.")
+            : (engine == .qwen ? String(localized: "Qwen stopped answering.") : String(localized: "Gemini stopped answering."))
         // Never Local Live's: it isn't prompted (promptIfStalled).
         if rejoins < Self.maxRejoins {
             waitToRejoin(reason, cause: .froze)
@@ -3508,6 +3510,7 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
     var onIssued: ((Source, String?) -> Void)?
     private var first: GeminiLiveToken?
     private var latest: GeminiLiveToken
+    var directProvider: DirectLiveProvider { latest.effectiveProvider }
     /// One try through the relay per rejoin, or per connection lost: the
     /// session's next connect attempt doesn't spend another of the grant's
     /// tokens.
@@ -3538,6 +3541,7 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
         do {
             guard let fetch else { throw WatchDirectError.ended }
             let token = try await fetch()
+            guard token.effectiveProvider == directProvider else { throw WatchDirectError.unreadable }
             latest = token
             onIssued?(.phone, nil)
             return token
@@ -3558,6 +3562,7 @@ final class WatchDirectTokens: GeminiLiveTokenProviding {
             defer { relayInFlight = false }
             do {
                 let token = try await relayFetch()
+                guard token.effectiveProvider == directProvider else { throw WatchDirectError.unreadable }
                 latest = token
                 onIssued?(.relay, error.localizedDescription)
                 return token
@@ -3575,8 +3580,8 @@ enum WatchDirectError: LocalizedError {
     case timedOut
     case refused(String)
     /// The call's grant can't bring a Gemini token through the relay.
-    case noRelayToken
-    case relayToken(String)
+    case noRelayToken(DirectLiveProvider)
+    case relayToken(String, DirectLiveProvider)
 
     var errorDescription: String? {
         switch self {
@@ -3584,8 +3589,8 @@ enum WatchDirectError: LocalizedError {
         case .unreadable: return String(localized: "Conduit on the iPhone sent something this Watch app can't read.")
         case .timedOut: return String(localized: "Conduit on the iPhone didn't answer in time.")
         case .refused(let reason): return reason
-        case .noRelayToken: return String(localized: "This call can't get a Gemini token through the relay.")
-        case .relayToken(let reason): return String(localized: "No Gemini token through the relay: \(reason)")
+        case .noRelayToken(let provider): return provider == .qwen ? String(localized: "This call can't get a Qwen token through the relay.") : String(localized: "This call can't get a Gemini token through the relay.")
+        case .relayToken(let reason, let provider): return provider == .qwen ? String(localized: "No Qwen token through the relay: \(reason)") : String(localized: "No Gemini token through the relay: \(reason)")
         }
     }
 }

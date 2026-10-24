@@ -144,7 +144,7 @@ struct VoiceProfilePreferences: Codable, Equatable {
     var qwenLiveEnabled: Bool = false
     /// Where Qwen Live's quick lookups search. Nil is automatic.
     var qwenLiveSearch: GeminiLiveSearchMode? = nil
-    /// Qwen Live's prebuilt voice ("Kore", "Puck"…). Nil is Qwen's
+    /// Qwen Live's prebuilt voice ("Tina", "Serena"…). Nil is Qwen's
     /// default voice.
     var qwenLiveVoice: String? = nil
     /// Whether Qwen Live gets the Hermes host's memory. Nil is off.

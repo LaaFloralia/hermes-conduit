@@ -15,8 +15,51 @@ private final class QwenTestSocket: GeminiLiveSocket {
     func close() {}
 }
 
+@MainActor
+private final class QwenTestTokens: GeminiLiveTokenProviding {
+    let directProvider: DirectLiveProvider = .qwen
+    let value = GeminiLiveToken(token: "st-test", expiresAt: nil, newSessionExpiresAt: nil,
+        model: "qwen3.8-omni-flash-realtime",
+        webSocketURL: URL(string: "wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime")!, provider: .qwen)
+    func availability() async throws -> GeminiLiveAvailability { .available(model: value.model) }
+    func freshToken() async throws -> GeminiLiveToken { value }
+}
+
 // Keep these in the existing direct-session CI lane.
 extension HermesVoiceGatewayTimeoutTests {
+    @MainActor
+    func testQwenUsesInjectedSocketFactoryWithAuthorizationHeader() async throws {
+        var captured: URLRequest?
+        let session = GeminiLiveSession(tokens: QwenTestTokens(), systemInstruction: "Test", functions: [],
+            openSocket: { request in
+                captured = request
+                return FakeGeminiLiveSocket(url: request.url!)
+            })
+        defer { session.stop() }
+        session.start()
+        let deadline = ContinuousClock.now + .seconds(2)
+        while captured == nil, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        let request = try XCTUnwrap(captured)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer st-test")
+        XCTAssertFalse(request.url!.absoluteString.contains("access_token"))
+    }
+
+    @MainActor
+    func testQwenFailureMessagesAndWireIdentityDoNotFallBackToGemini() throws {
+        let missing = GeminiLiveAvailability.unavailable(reason: "no_api_key")
+        XCTAssertEqual(missing.userFacingReason(for: .qwen), AppLocalization.string("Add a DashScope API key on your Hermes server."))
+        let close = GeminiLiveServerClose(code: 401, reason: "refused", isHTTPStatus: true)
+        XCTAssertEqual(GeminiLiveSession.refusalMessage(close, provider: .qwen),
+            AppLocalization.string("Qwen Live refused the connection: \(close.summary)"))
+        var wire = WatchVoiceWire.DirectToken(QwenTestTokens().value)
+        XCTAssertEqual(wire.provider, .qwen)
+        XCTAssertEqual(wire.geminiToken?.effectiveProvider, .qwen)
+        wire.model = ""
+        XCTAssertNil(wire.geminiToken)
+        wire.model = "gemini-test"
+        XCTAssertNil(wire.geminiToken)
+    }
+
     @MainActor
     func testQwenIsAnIndependentPickerAndHistoryIdentity() {
         XCTAssertEqual(VoiceModeChoice(engine: .qwenLive), .qwen)
