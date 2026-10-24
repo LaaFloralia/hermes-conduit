@@ -631,6 +631,36 @@ much history an open transcript keeps
 
 **Checked:** 2026-10-24, at #1184.
 
+## Plan card
+
+The agent's plan ("Tasks", from Hermes's `todo` tool) docked above the
+composer: a slim line that opens upward into a card, and a sheet with the
+whole plan. [docs/PLAN_CARD.md](PLAN_CARD.md) is the design.
+
+**Siblings:** the line · the card · the whole-plan sheet · chats, project
+chats and Bot Chat (one chat screen) · group rooms (no plan) · the `todo`
+tool result in the transcript, which draws the same items · VoiceOver's
+reading of the line and its new-plan announcement
+
+**Code**
+- Model: `Conduit/Services/ChatCardsModel.swift` (present, announcement, planRetired), `Conduit/Services/AgentPlan.swift` (AgentPlanTranscript, AgentPlanWindow)
+- Views: `Conduit/Views/Components/ChatCards.swift` (ChatPlanDock, PlanStrip, PlanCard, PlanSheet, PlanText)
+- Feeding it: `Conduit/Services/AppState+ChatCards.swift`, `Conduit/Views/ChatView.swift` (planDock), `Conduit/Services/HermesClient.swift` (`todo_state` on resume)
+- Transcript row: `Conduit/Views/ToolResultViews.swift` (the todos case)
+- Tests: `ConduitTests/GatewayRestartTests+ChatCards.swift`
+
+**Rulings**
+- Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
+- An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, salvage of the #1135 review).
+- The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, salvage of the #1135 review).
+
+**Open gaps**
+- The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
+- The whole-plan sheet can stay up after a finished plan retires: it only dismisses itself when the plan goes, not when it is hidden (#1135 review).
+- Two announcements within 450 ms race on the pulse (#1135 review).
+
+**Checked:** 2026-10-24, at 78f21daa.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
