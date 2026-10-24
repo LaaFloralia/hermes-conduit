@@ -1195,7 +1195,7 @@ data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-24, #1214 (fork CI #87), at main e9d9592 and notifier main 7dc52ab with their branches.
+**Checked:** 2026-10-24, #1214 (fork CI #87), at main f7f4743 and notifier main 7dc52ab with their branches.
 
 ## Feature map rules
 
