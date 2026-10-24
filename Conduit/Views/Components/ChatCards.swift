@@ -44,9 +44,13 @@ struct ChatPlanDock: View {
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: isCompact)
         .dynamicTypeSize(...DynamicTypeSize.accessibility1)
         // A new plan announces itself on the line, without opening over
-        // the chat: a pulse, and a light tap.
+        // the chat: a pulse, and a light tap. VoiceOver reads the line,
+        // since its user may not be looking at it.
         .onChange(of: cards.announcement) {
             Haptics.light()
+            if let plan = cards.plan, cards.showsPlan {
+                UIAccessibility.post(notification: .announcement, argument: PlanText.spoken(plan))
+            }
             guard !reduceMotion else { return }
             withAnimation(ConduitMotion.overshoot(reduceMotion: false)) { pulses = true }
             Task { @MainActor in
