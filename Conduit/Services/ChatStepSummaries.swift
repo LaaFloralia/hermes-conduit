@@ -129,4 +129,16 @@ enum ChatStepSummaries {
         entries.append([run.scope, run.toolID, summary])
         defaults.set(Array(entries.suffix(savedLimit)), forKey: savedKey)
     }
+
+    /// Forgets the sentences of scopes starting with `scopePrefix` (one
+    /// dashboard's profiles), or all of them when it is nil.
+    static func remove(scopePrefix: String?, defaults: UserDefaults = .standard) {
+        guard let scopePrefix else {
+            defaults.removeObject(forKey: savedKey)
+            return
+        }
+        let entries = (defaults.array(forKey: savedKey) as? [[String]] ?? [])
+            .filter { $0.count == 3 && !$0[0].hasPrefix(scopePrefix) }
+        defaults.set(entries, forKey: savedKey)
+    }
 }

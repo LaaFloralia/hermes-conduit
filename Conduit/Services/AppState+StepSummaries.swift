@@ -29,7 +29,9 @@ extension AppState {
             guard let self else { return }
             stepSummaryUnclaimed = max(0, stepSummaryUnclaimed - 1)
             if let taskId, let early = stepSummaryEarlyAnswers.removeValue(forKey: taskId) {
-                recordStepSummary(early, for: target)
+                // Unless the question was forgotten meanwhile (waited too
+                // long, or its dashboard signed out).
+                if stepSummaryRequested[target] != nil { recordStepSummary(early, for: target) }
             } else if let taskId {
                 stepSummaryTasks[taskId] = target
             } else {
@@ -47,7 +49,13 @@ extension AppState {
     func takeStepSummaryAnswer(_ event: StreamEvent) -> Bool {
         guard case .sideAgentComplete(_, .btw, let taskId, let text, let question) = event else { return false }
         if let target = stepSummaryTasks.removeValue(forKey: taskId) {
-            recordStepSummary(text, for: target)
+            // An answer after `answerWait` is forgotten like an unanswered
+            // question: that run keeps the count.
+            if let asked = stepSummaryRequested[target], Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
+                recordStepSummary(text, for: target)
+            } else {
+                stepSummaryRequested[target] = nil
+            }
             return true
         }
         guard ChatStepSummaries.isQuestion(question) else { return false }
@@ -64,6 +72,16 @@ extension AppState {
         guard !waited.isEmpty else { return }
         for run in waited.keys { stepSummaryRequested[run] = nil }
         stepSummaryTasks = stepSummaryTasks.filter { stepSummaryRequested[$0.value] != nil }
+    }
+
+    /// The sentences describe chats, so they leave with a dashboard's saved
+    /// chats (sign-out, removal), with any question still waiting.
+    func forgetStepSummaries(scopePrefix: String?) {
+        ChatStepSummaries.remove(scopePrefix: scopePrefix)
+        stepSummaries = ChatStepSummaries.saved()
+        stepSummaryTasks = [:]
+        stepSummaryRequested = [:]
+        stepSummaryEarlyAnswers = [:]
     }
 
     private func recordStepSummary(_ text: String, for target: ChatStepSummaries.Run) {
