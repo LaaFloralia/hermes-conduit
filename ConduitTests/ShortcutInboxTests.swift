@@ -40,6 +40,53 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(envelope["ct"] as? String, "WYzqHIN89Jlkn_pcNRgJchZ31aO3JaXbL_e5-an_ib5yvEdsOnUjoPqgYL_7")
         XCTAssertThrowsError(try ShortcutInboxCrypto.agree(devicePrivate: device, deviceID: "device-vector-1",
                                                            hostPublicKey: hostPublicKey, kid: "0" + kid.dropFirst()))
+
+        // The Settings page's read-back, sealed by the host for this phone alone.
+        XCTAssertEqual(key.answer.map { String(format: "%02x", $0) }.joined(),
+                       "00da256af8fb67ae658b3c495436a9f103a02ca41933f1f305c5de3e5f875257")
+        let answer: [String: Any] = [
+            "nonce": "AAAAAAAAAAAAAAAA",
+            "ct": "d6j8jwhtiMNt38XcZlCYKzaftuH2vl5PDqphYvyfIBQobShtnWSM9CkbN_cPwBloKxK2oUB7zEfb2vrpzd78_NwfX_Pwn7H6invv-8Jk-cbOiAU796IQqwu7eCdqYj36rrvN2aHvEji0MQaaXTbJQDs-hwleqlc3bJuWlxcAi1pwG2mo3a01fwrvb9WMVp_by1h-qKZ4Ydmn5JV_Wk6pptHKZsM",
+        ]
+        let opened = try ShortcutInboxCrypto.openAnswer(answer, key: key, deviceID: "device-vector-1",
+                                                        requestID: "request-vector-1")
+        XCTAssertEqual(String(decoding: opened, as: UTF8.self),
+                       #"{"request_id":"request-vector-1","events":[{"id":"evt-1","kind":"email","at":"2026-10-14T09:15:00-04:00","title":"Your order shipped"}],"next":null}"#)
+        XCTAssertThrowsError(try ShortcutInboxCrypto.openAnswer(answer, key: key, deviceID: "device-vector-1",
+                                                                requestID: "request-other"),
+                             "An answer opens only for the request it answers")
+    }
+
+    func testShortcutInboxSettingsPageReadsAPageAndForgetsALostKey() async throws {
+        let suite = "ShortcutInboxBrowserTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let queue = ShortcutInboxQueue(defaults: defaults)
+        var stored: ShortcutInboxCrypto.SessionKey? = ShortcutInboxCrypto.SessionKey(
+            kid: String(repeating: "a", count: 32), ingest: Data(repeating: 1, count: 32), answer: Data(repeating: 2, count: 32))
+        let keys = ShortcutInboxKeyStore(load: { stored }, save: { stored = $0 }, clear: { stored = nil })
+        let browser = ShortcutInboxBrowser(queue: queue, keys: keys)
+
+        let page = try await browser.page { path, _, body in
+            XCTAssertEqual(path, "/api/plugins/conduit_push/inbox/list")
+            let requestID = try XCTUnwrap(body?["request_id"] as? String)
+            let plain = #"{"request_id":"\#(requestID)","events":[{"id":"e2","kind":"transaction","at":"2026-10-14T09:15:00-04:00","source":"Desjardins","amount":"45,20 $"},{"id":"e1","kind":"bogus"}],"next":[1792000000,"e1"]}"#
+            let box = try ChaChaPoly.seal(Data(plain.utf8), using: SymmetricKey(data: Data(repeating: 2, count: 32)),
+                                          authenticating: ShortcutInboxCrypto.listAAD(kid: String(repeating: "a", count: 32),
+                                                                                       deviceID: queue.deviceID, requestID: requestID))
+            return ["nonce": NotificationE2E.base64URL(Data(box.nonce)), "ct": NotificationE2E.base64URL(box.ciphertext + box.tag)]
+        }
+        XCTAssertEqual(page.entries.map(\.id), ["e2", "e1"])
+        XCTAssertEqual(page.entries.first?.kind, .transaction)
+        XCTAssertEqual(page.entries.first?.amount, "45,20 $")
+        XCTAssertEqual(page.entries.last?.kind, .other, "An unknown kind still shows")
+        XCTAssertEqual(page.next, ShortcutInboxBrowser.Cursor(at: 1_792_000_000, id: "e1"))
+
+        let lost = try await browser.page { _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 409, detail: "This device's inbox key isn't on this profile; set it up again")
+        }
+        XCTAssertTrue(lost.entries.isEmpty)
+        XCTAssertNil(stored, "A key the host no longer has is forgotten; the next Log to Hermes agrees a new one")
     }
 
     // inbox_store.py's test_what_counts_as_a_code: keep both lists in step.

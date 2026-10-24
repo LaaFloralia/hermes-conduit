@@ -512,7 +512,8 @@ off, model, nudge, budgets, home chat) · Pulse pushes (kinds
 pulse.noticed, pulse.brief and pulse.followup, titled per the Notifications
 rulings, opening the Pulse screen) · a call from Hermes (Pulse may call only
 once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
-memory), its routes under /pulse and its capabilities · the
+memory), its routes under /pulse and its capabilities · the Shortcuts inbox
+(the report reads it, and new events bring watches' checks forward) · the
 `hermes conduit-push pulse` commands
 
 **Code**
@@ -1129,7 +1130,8 @@ what it does when the host refuses.
 **Siblings:** phone sync (calendar, reminders, alarms, contacts, Focus and
 status) · health sync · location sharing · the voice reads that use the same
 keys · each one's pause message in Settings · a locate answered from the push
-extension · the notifier's three stores and their refusals
+extension · the notifier's three stores and their refusals · the Shortcuts
+inbox (the same 409 codes)
 
 **Code**
 - Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
@@ -1156,35 +1158,44 @@ extension · the notifier's three stores and their refusals
 
 What the user's Shortcuts automations hand over (a notification from an app
 they pick, a message, an email, a Wallet payment, an NFC tag, a sound),
-kept on the host for Hermes to look up later. Logging starts no chat and
-sends no push; Send to Hermes is the action that talks.
+kept on the host for Hermes to look up later, read by Pulse when it's on,
+and shown on the phone in Settings > Shortcuts inbox. Logging starts no chat
+and sends no push; Send to Hermes is the action that talks.
 
 **Siblings:** the Log to Hermes action (typed fields, the phone's queue, the
-sign-in code filter) · the notifier's inbox store, its sealed routes under
-/inbox and the shortcut-inbox capability · the conduit_inbox tool and its
-description · the plugin's README and CHANGELOG · the phone features'
-sealing (health, location, phone sync use the same scheme) · Pulse
+sign-in code filter) · Settings > Shortcuts inbox (read back and delete) ·
+the notifier's inbox store, its sealed routes under /inbox and the
+shortcut-inbox capability · the conduit_inbox tool and its description ·
+Pulse's report and its watches (pulse_report, pulse_followup) · the plugin's
+README and CHANGELOG · the phone features' sealing and 409 handling (Phone
+data sync with the host)
 
 **Code**
 - Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`
-- Queue, filter and sealing: `Conduit/Shortcuts/ShortcutInbox.swift`; key: `Conduit/Services/AppState.swift` (KeychainHelper shortcutInboxKey)
-- Notifier, not in backticks until its PR reaches notifier main (the map check reads main): notifier/inbox_store.py (store), notifier/inbox_tool.py (tool), `notifier/dashboard/plugin_api.py` (/inbox, ROUTE_CAPABILITIES), notifier/tests/test_inbox.py and notifier/tests/inbox_vector.json (both sides seal against it)
+- Queue, filter, sealing and the Settings page's reader: `Conduit/Shortcuts/ShortcutInbox.swift` (ShortcutInboxBrowser); key: `Conduit/Services/AppState.swift` (KeychainHelper shortcutInboxKey)
+- Settings page: `Conduit/Views/ShortcutInboxSettingsViews.swift`, linked from `Conduit/Views/AuxiliaryViews.swift` (SettingsDestination.shortcutInbox)
+- Notifier, not in backticks until its PR reaches notifier main (the map check reads main): notifier/inbox_store.py (store, list_sealed, delete_events), notifier/inbox_tool.py (tool), `notifier/dashboard/plugin_api.py` (/inbox, _inbox_tell_pulse, ROUTE_CAPABILITIES), notifier/tests/test_inbox.py and notifier/tests/inbox_vector.json (both sides seal against it)
+- Pulse: `notifier/pulse_report.py` (inbox_context, in gather), `notifier/pulse_followup.py` (watch checks, inbox_arrived, check_watches_now), `notifier/pulse.py` (wake, the memory run), `notifier/tests/test_pulse_followup.py`
 - Tests: `ConduitTests/ShortcutInboxTests.swift`
 
 **Rulings**
-- The inbox works with Pulse off, and nothing in it reaches a chat or a push on its own (2026-10-24, Michel; Pulse's use of it is Eric's call).
+- The inbox works with Pulse off, and nothing in it reaches a chat or a push on its own; only Pulse, when the user turned it on, may bring something up (2026-10-24, Michel).
+- With Pulse on, its report reads what was logged since the last one, and the user's watches are checked against new events as they arrive (at most a run every 15 minutes), so a watch is told on arrival, not at the next report (2026-10-24, Eric's review of #1214).
+- A watch asks if it's still wanted after a month, not a week like a promise (2026-10-24).
+- The Settings page shows only this iPhone's own events, read back sealed for it alone under a second key from the same agreement, and deletes one or everything (2026-10-24, Eric's review of #1214).
 - Sign-in codes, one-time passwords and sign-in links never leave the phone, and the host drops them again. The two code filters (ShortcutEventFilter and looks_like_code) change together, with the same test cases (2026-10-24).
 - Events are sealed end to end like the phone features; the host keeps 14 days by default (30 at most) and 5,000 events per device, and a new device key drops what the old one sent (2026-10-24).
-- What the inbox holds is other people's words: conduit_inbox says to treat it as data, never instructions, and never to forward it unless the user asks (2026-10-24).
+- What the inbox holds is other people's words: conduit_inbox and the watch check both say to treat it as data, never instructions, and never to forward it unless the user asks (2026-10-24).
+- A 409 `schema` keeps the event on the phone with the "update the plugin" message, as the phone features do (2026-10-24).
 
 **Open gaps**
-- Pulse doesn't read the inbox yet (an events source), and nothing reacts when an event arrives (a watch or arrival hook). Both are Eric's to decide.
-- No Settings page shows or deletes what was logged; the wipe route is there for one.
 - Which fields each iOS automation trigger hands over is unverified on a device, so the ready-made recipes aren't written yet.
+- Pulse reads only the inbox of its own home; with `report_profiles` all, the other profiles' inboxes aren't read.
+- A watch is checked only by a run of the memory thread, so with Pulse memory off no watch is ever checked, on arrival or otherwise.
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-24, on 35dffc3 with this branch, and notifier c2f6a19 with its branch.
+**Checked:** 2026-10-24, at main e9d9592 with this branch, and notifier main 7dc52ab with its branch.
 
 ## Feature map rules
 

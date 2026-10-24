@@ -97,16 +97,21 @@ enum ShortcutEventFilter {
 enum ShortcutInboxCrypto {
     static let salt = Data("conduit-inbox-v1".utf8)
     static let ingestInfo = Data("conduit-inbox-v1 ingest device-to-host".utf8)
+    /// What the host seals for this phone alone: its own events, read back
+    /// on the Settings page.
+    static let answerInfo = Data("conduit-inbox-v1 answer host-to-device".utf8)
     static let aadTag = "conduit-inbox/1"
 
     enum Failure: Error, Equatable {
         case malformedHostKey
         case keyIDMismatch
+        case malformedAnswer
     }
 
     struct SessionKey: Codable, Equatable {
         var kid: String
         var ingest: Data
+        var answer: Data
     }
 
     static func keyID(devicePublic: Data, hostPublic: Data) -> String {
@@ -127,13 +132,33 @@ enum ShortcutInboxCrypto {
         let devicePublic = devicePrivate.publicKey.rawRepresentation
         guard keyID(devicePublic: devicePublic, hostPublic: hostPublic) == kid else { throw Failure.keyIDMismatch }
         let shared = try devicePrivate.sharedSecretFromKeyAgreement(with: host)
-        let info = ingestInfo + Data("\n\(deviceID)\n".utf8) + devicePublic + hostPublic
-        let key = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: salt, sharedInfo: info, outputByteCount: 32)
-        return SessionKey(kid: kid, ingest: key.withUnsafeBytes { Data($0) })
+        func derive(_ purpose: Data) -> Data {
+            let info = purpose + Data("\n\(deviceID)\n".utf8) + devicePublic + hostPublic
+            let key = shared.hkdfDerivedSymmetricKey(using: SHA256.self, salt: salt, sharedInfo: info, outputByteCount: 32)
+            return key.withUnsafeBytes { Data($0) }
+        }
+        return SessionKey(kid: kid, ingest: derive(ingestInfo), answer: derive(answerInfo))
     }
 
     static func ingestAAD(kid: String, deviceID: String, batchID: String) -> Data {
         Data([aadTag, "ingest", "kid=\(kid)", "dev=\(deviceID)", "batch=\(batchID)"].joined(separator: "\n").utf8)
+    }
+
+    static func listAAD(kid: String, deviceID: String, requestID: String) -> Data {
+        Data([aadTag, "list", "kid=\(kid)", "dev=\(deviceID)", "req=\(requestID)"].joined(separator: "\n").utf8)
+    }
+
+    /// Opens an `/inbox/list` answer: it opens only for this request.
+    static func openAnswer(_ body: [String: Any], key: SessionKey, deviceID: String, requestID: String) throws -> Data {
+        guard let nonceText = body["nonce"] as? String, let ctText = body["ct"] as? String,
+              let nonceData = NotificationE2E.base64URLDecoded(nonceText),
+              let sealed = NotificationE2E.base64URLDecoded(ctText), sealed.count >= 16 else {
+            throw Failure.malformedAnswer
+        }
+        let box = try ChaChaPoly.SealedBox(nonce: ChaChaPoly.Nonce(data: nonceData), ciphertext: sealed.dropLast(16),
+                                           tag: sealed.suffix(16))
+        return try ChaChaPoly.open(box, using: SymmetricKey(data: key.answer),
+                                   authenticating: listAAD(kid: key.kid, deviceID: deviceID, requestID: requestID))
     }
 
     /// The `/inbox/ingest` body for a batch's JSON.
@@ -274,5 +299,96 @@ struct ShortcutInboxSender {
                                                 hostPublicKey: hostPublic, kid: kid)
         keys.save(key)
         return key
+    }
+}
+
+/// One logged event as the Settings page shows it.
+struct ShortcutInboxEntry: Identifiable, Equatable {
+    var id: String
+    var kind: ShortcutEvent.Kind
+    var at: Date?
+    var source: String?
+    var title: String?
+    var text: String?
+    var amount: String?
+
+    init?(_ item: [String: Any]) {
+        guard let id = item["id"] as? String else { return nil }
+        self.id = id
+        kind = (item["kind"] as? String).flatMap(ShortcutEvent.Kind.init(rawValue:)) ?? .other
+        at = (item["at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+        source = item["source"] as? String
+        title = item["title"] as? String
+        text = item["text"] as? String
+        amount = item["amount"] as? String
+    }
+}
+
+/// Settings > Shortcuts inbox: reads back what this iPhone logged, sealed
+/// for it alone, and deletes what the user picks. Only this iPhone's own
+/// events: the key is this phone's, and the host answers for its device id.
+@MainActor
+struct ShortcutInboxBrowser {
+    typealias Request = ShortcutInboxSender.Request
+
+    struct Page: Equatable {
+        var entries: [ShortcutInboxEntry]
+        /// Where the next page starts (the host's `next`), nil at the end.
+        var next: Cursor?
+    }
+
+    struct Cursor: Equatable {
+        var at: Int
+        var id: String
+    }
+
+    let queue: ShortcutInboxQueue
+    let keys: ShortcutInboxKeyStore
+    var pageSize = 50
+
+    /// The page after ``before``, newest first. Empty when this iPhone
+    /// never logged anything, or the host no longer has its key (a wipe:
+    /// nothing it sent is left there).
+    func page(before: Cursor? = nil, request: Request) async throws -> Page {
+        guard let key = keys.load() else { return Page(entries: [], next: nil) }
+        let deviceID = queue.deviceID
+        let requestID = "list-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(24)
+        var body: [String: Any] = ["device_id": deviceID, "kid": key.kid, "request_id": String(requestID),
+                                   "limit": pageSize]
+        if let before { body["before"] = [before.at, before.id] }
+        let answer: [String: Any]
+        do {
+            answer = try await request("\(ShortcutInboxSender.base)/list", "POST", body)
+        } catch DashboardTicketBridgeError.http(let status, let detail) where status == 409 && HostKeyConflict.isKeyLoss(detail) {
+            keys.clear()  // the next Log to Hermes agrees a new one
+            return Page(entries: [], next: nil)
+        }
+        let opened = try ShortcutInboxCrypto.openAnswer(answer, key: key, deviceID: deviceID, requestID: String(requestID))
+        guard let page = try JSONSerialization.jsonObject(with: opened) as? [String: Any],
+              page["request_id"] as? String == String(requestID) else {
+            throw ShortcutInboxCrypto.Failure.malformedAnswer
+        }
+        let entries = (page["events"] as? [[String: Any]] ?? []).compactMap(ShortcutInboxEntry.init)
+        var next: Cursor?
+        if let raw = page["next"] as? [Any], raw.count == 2, let at = raw[0] as? Int, let id = raw[1] as? String {
+            next = Cursor(at: at, id: id)
+        }
+        return Page(entries: entries, next: next)
+    }
+
+    /// Deletes these events from the host; how many it deleted.
+    func delete(_ ids: [String], request: Request) async throws -> Int {
+        guard let key = keys.load(), !ids.isEmpty else { return 0 }
+        let answer = try await request("\(ShortcutInboxSender.base)/delete", "POST",
+                                       ["device_id": queue.deviceID, "kid": key.kid, "ids": ids])
+        return answer["deleted"] as? Int ?? 0
+    }
+
+    /// Deletes everything this iPhone logged, on the host and waiting here,
+    /// and its key: the next Log to Hermes starts over.
+    func deleteAll(request: Request) async throws {
+        _ = try await request("\(ShortcutInboxSender.base)/wipe", "POST", ["device_id": queue.deviceID])
+        queue.clear()
+        keys.clear()
     }
 }

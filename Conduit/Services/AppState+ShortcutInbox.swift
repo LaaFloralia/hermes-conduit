@@ -52,26 +52,41 @@ extension AppState {
         for _ in 0..<10 where dashboardTicketBridge == nil && Date().addingTimeInterval(8) < deadline {
             try? await Task.sleep(for: .seconds(1))
         }
-        guard let bridge = dashboardTicketBridge else { throw ShortcutLogError.notConnected }
+        guard let request = shortcutInboxRequest(deadline: deadline) else { throw ShortcutLogError.notConnected }
         if !notifierPlugin.mightSupport(Self.shortcutInboxCapability) { throw ShortcutLogError.pluginTooOld }
-        let profile = activeProfile
         let sender = ShortcutInboxSender(queue: queue, keys: .keychain, deviceName: UIDevice.current.name)
         do {
-            let sent = try await sender.send { path, method, body in
-                try await bridge.requestJSON(
-                    path: DashboardPath.withProfile(path, profile: profile),
-                    method: method,
-                    body: body,
-                    timeoutMilliseconds: max(1_000, min(20_000, Int(deadline.timeIntervalSinceNow * 1_000)))
-                )
-            }
-            return .logged(sent)
+            return .logged(try await sender.send(request: request))
         } catch DashboardTicketBridgeError.http(let status, _) where status == 404 {
             // A plugin without /inbox: the event waits for the update.
+            throw ShortcutLogError.pluginTooOld
+        } catch DashboardTicketBridgeError.http(let status, let detail) where status == 409 && HostKeyConflict.isNewerPluginStore(detail) {
+            // The inbox was written by a newer plugin: the event waits for the update.
             throw ShortcutLogError.pluginTooOld
         } catch {
             Self.shortcutInboxLog.info("Log to Hermes kept the event for later: \(String(describing: error), privacy: .private)")
             throw ShortcutLogError.notConnected
+        }
+    }
+
+    /// The Settings page's entry: shown once the plugin keeps events, or
+    /// while this iPhone has logged some there.
+    var showsShortcutInboxSettings: Bool {
+        notifierPlugin.reports(Self.shortcutInboxCapability) || ShortcutInboxKeyStore.keychain.load() != nil
+    }
+
+    /// Requests to the plugin's inbox over the active dashboard's own
+    /// connection, for its profile; nil while not connected.
+    func shortcutInboxRequest(deadline: Date? = nil) -> ShortcutInboxSender.Request? {
+        guard let bridge = dashboardTicketBridge else { return nil }
+        let profile = activeProfile
+        return { path, method, body in
+            try await bridge.requestJSON(
+                path: DashboardPath.withProfile(path, profile: profile),
+                method: method,
+                body: body,
+                timeoutMilliseconds: deadline.map { max(1_000, min(20_000, Int($0.timeIntervalSinceNow * 1_000))) } ?? 20_000
+            )
         }
     }
 }
