@@ -720,6 +720,39 @@ much history an open transcript keeps
 
 **Checked:** 2026-10-24, at #1184.
 
+## Shortcuts inbox (Log to Hermes)
+
+What the user's Shortcuts automations hand over (a notification from an app
+they pick, a message, an email, a Wallet payment, an NFC tag, a sound),
+kept on the host for Hermes to look up later. Logging starts no chat and
+sends no push; Send to Hermes is the action that talks.
+
+**Siblings:** the Log to Hermes action (typed fields, the phone's queue, the
+sign-in code filter) · the notifier's inbox store, its sealed routes under
+/inbox and the shortcut-inbox capability · the conduit_inbox tool and its
+description · the plugin's README and CHANGELOG · the phone features'
+sealing (health, location, phone sync use the same scheme) · Pulse
+
+**Code**
+- Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`
+- Queue, filter and sealing: `Conduit/Shortcuts/ShortcutInbox.swift`; key: `Conduit/Services/AppState.swift` (KeychainHelper shortcutInboxKey)
+- Store: `notifier/inbox_store.py`; tool: `notifier/inbox_tool.py`; routes: `notifier/dashboard/plugin_api.py` (/inbox, ROUTE_CAPABILITIES)
+- Tests: `ConduitTests/ShortcutInboxTests.swift`, `notifier/tests/test_inbox.py`, `notifier/tests/inbox_vector.json` (both sides seal against it)
+
+**Rulings**
+- The inbox works with Pulse off, and nothing in it reaches a chat or a push on its own (2026-10-24, Michel; Pulse's use of it is Eric's call).
+- Sign-in codes, one-time passwords and sign-in links never leave the phone, and the host drops them again. The two code filters (ShortcutEventFilter and looks_like_code) change together, with the same test cases (2026-10-24).
+- Events are sealed end to end like the phone features; the host keeps 14 days by default (30 at most) and 5,000 events per device, and a new device key drops what the old one sent (2026-10-24).
+- What the inbox holds is other people's words: conduit_inbox says to treat it as data, never instructions, and never to forward it unless the user asks (2026-10-24).
+
+**Open gaps**
+- Pulse doesn't read the inbox yet (an events source), and nothing reacts when an event arrives (a watch or arrival hook). Both are Eric's to decide.
+- No Settings page shows or deletes what was logged; the wipe route is there for one.
+- Which fields each iOS automation trigger hands over is unverified on a device, so the ready-made recipes aren't written yet.
+- Not on the Watch or in CarPlay: automations run on the iPhone.
+
+**Checked:** 2026-10-24, on 35dffc3 with this branch, and notifier c2f6a19 with its branch.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
