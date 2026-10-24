@@ -269,7 +269,8 @@ answered.
 **Siblings:** CallKit on the phone (unlocked, locked, in another app) ·
 CarPlay · the Apple Watch · each voice mode that answers (Classic, Gemini,
 Grok, GPT-Live; Local Live opens Classic) · the missed-call notification ·
-Bot Chat calls · the call trace · the notifier's call tool and skill
+Bot Chat calls · the call trace · the notifier's call tool and skill ·
+Pulse (it may call only once the user opts in)
 
 **Code**
 - Ringing and answering: `Conduit/Voice/HermesNativeCalls.swift` (receive, stopsWatchRing, startWatchCall), `Conduit/Voice/HermesCalls.swift`, `Conduit/Services/AppState+HermesCalls.swift` (answerHermesCall, hermesCallAudioActivated)
@@ -292,7 +293,7 @@ Bot Chat calls · the call trace · the notifier's call tool and skill
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - The first push after install, before the first status read, can still switch dashboards, and missed-call outcomes are keyed by the pushed dashboard id (#1096).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1180 (Siblings only).
 
 ## Audio route, Speaker and mute
 
@@ -421,7 +422,8 @@ What a push says, in which language, where tapping it goes, and when it
 stays quiet.
 
 **Siblings:** reply · approval · question · failed turn · tasks and cron ·
-phone changes · missed call · the Watch (mirrors the iPhone) · Bot Chat ·
+phone changes · missed call · Pulse (pulse.noticed, pulse.brief, pulse.followup; app
+side on the `pulse` branch only, see Pulse) · the Watch (mirrors the iPhone) · Bot Chat ·
 the notification service extension · the relay's plain copy ·
 Settings > Notifications
 
@@ -444,7 +446,51 @@ Settings > Notifications
 - Still English: the relay's plain copy (pairings with no key), the redacted decision text, and a clarify body with no arguments (#1158).
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1180 (Siblings only).
+
+## Pulse
+
+Hermes speaking up on its own: the report a few times a day, the morning
+brief and follow-ups, each landing as cards on the Pulse screen, with what
+Pulse remembers from the chats and how ratings change what it sends. It's a
+beta, so its app side is only on the `pulse` branch.
+
+**Siblings:** the Pulse screen (cards, New and Earlier, thumbs and the
+one-tap reason, Not now, Done and Undo, Do it) · Settings > Pulse (on and
+off, model, nudge, budgets, home chat) · Pulse pushes (kinds
+pulse.noticed, pulse.brief and pulse.followup, titled per the Notifications
+rulings, opening the Pulse screen) · a call from Hermes (Pulse may call only
+once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
+memory), its routes under /pulse and its capabilities · the
+`hermes conduit-push pulse` commands
+
+**Code**
+- App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen), Conduit/Services/PulseFeed.swift (cards, marks, ratings), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse)
+- Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
+- Report: `notifier/pulse_report.py` (what it reads), `notifier/pulse_candidates.py` (the candidate list, the router and the 30-day journal)
+- Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py`, `notifier/pulse_brief.py`
+- Ratings and lessons: `notifier/pulse_learning.py`; outcomes: `notifier/pulse_ledger.py`; store: `notifier/pulse_store.py`
+- Control: `notifier/pulse_control.py` (shared by the commands and the routes), `notifier/cli.py`, `notifier/dashboard/plugin_api.py` (/pulse)
+- Tests: `notifier/tests/test_pulse.py`, `notifier/tests/test_pulse_candidates.py`, `notifier/tests/test_pulse_personas.py` (personas over two weeks)
+
+**Rulings**
+- The app side stays off main: public TestFlight builds main, and internal testers' builds come from `pulse` (2026-10-21, #1092). The notifier side is on its main, off by default (2026-10-21, notifier #275).
+- No Pulse chat in sight: reports and the brief land as cards on the Pulse screen, and the home chat is hidden from Chats, search and voice recents (2026-10-22, #1116, notifier #291).
+- Ratings act in code, not as a line in a prompt: thumbs move a kind along the loudness ladder (push now, Pulse screen, brief, off), and a thumbs-down asks one tap for why (2026-10-22, notifier #284). Each report item is its own card with its own thumbs (2026-10-23, notifier #330).
+- A report that finds nothing leaves no card (2026-10-23, notifier #324).
+- Not now hides a card without teaching Pulse anything, and the item rests a week (2026-10-23, #1173, notifier #334); it stays neutral when Pulse learns from ratings (2026-10-24, Eric).
+- Pulse gets louder on its own only within the channels and intensity the user allowed. It never turns on a channel they turned off and never grants calling: calls need an opt-in, and adding the kinds that may call asks first (2026-10-24, Eric).
+- Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
+- Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
+- Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
+
+**Open gaps**
+- Learning from ratings in code is the next slice. Until it lands, the persona criteria (Quiet and Samantha diverge, a changed interest is heard, due items always surface) are strict xfail in `notifier/tests/test_pulse_personas.py`.
+- Create Pulse chat in Settings > Pulse hasn't been tried on a real host: it must make a chat Pulse finds before anything is sent in it.
+- The app paths above aren't checked by the map check while they live only on `pulse`; they go in backticks if the app side ever reaches main.
+- What a Pulse push does on the Watch, which has no Pulse screen, hasn't been checked.
+
+**Checked:** 2026-10-24, at #1180, with notifier #337 and the `pulse` branch at fae4ec6.
 
 ## Bots: create and edit
 
