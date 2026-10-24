@@ -1185,7 +1185,7 @@ the run's one-sentence summary and its switch in Settings > Chat · /btw
 - The Live Activity, fed by the app and by the notifier's `tool_category` twin, says "Using a tool" for a step the chat row and working line name.
 - An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
 
-**Checked:** 2026-10-24, at #1202.
+**Checked:** 2026-10-24, at #1202, carried in #1215.
 
 ## Feature map rules
 
