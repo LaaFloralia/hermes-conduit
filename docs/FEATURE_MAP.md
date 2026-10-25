@@ -271,12 +271,13 @@ Hermes · Resume Call · memory at call end (notifier)
 - A call joined to a chat is kept with the chat, not in a second session, and a reconnect within 120 seconds continues the same call (2026-10-13, #574, notifier #98).
 - A call that stands alone, and a chat a Classic call created, are archived when the call ends; a typed turn brings them back (2026-10-22, #1127, notifier #295).
 - Ending a call runs Hermes' session-end hooks and memory commit; a call kept with its chat writes memory under the chat (2026-10-06, notifier #46; 2026-10-13, notifier #98).
+- A call's turns stay in memory until the host has them; each capture starts after the last line it took, and rescans only when the engine changed a line before it (2026-10-24, #1222, from #1004).
 - A Watch call, in every voice mode, keeps only the newest 40 KB of its transcript while it runs, the most its saved call can carry. Lines still in use (an open line, the user turn a tool call answers) and a single newest turn over 40 KB are kept whole; the saved call clips them (2026-10-24, #1221).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-24, at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review).
+**Checked:** 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review).
 
 ## The Watch call log
 
@@ -492,7 +493,7 @@ confirmation and README say about restarts
 - Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
 - A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
 
-**Checked:** 2026-10-25, at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
+**Checked:** 2026-10-25, at #1222 (install and update requests wait in the profile config queue); at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
 
 ## Notifications
 
@@ -659,7 +660,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-10-24, at #1192; group pictures at #1191.
+**Checked:** 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Bot mentions and teammate messages
 
@@ -922,12 +923,13 @@ create and edit)
 **Rulings**
 - A list read that started before a switch was flipped commits nothing, in AppState and in CapabilitiesStore alike (#867; AppState's lists at #1191).
 - Switches reach Hermes one after another in the order flipped, since each rewrites one config.yaml. A failed write puts back what Hermes last confirmed only when no newer flip of that switch is on its way, and a flip a newer one replaced reports no failure (#868 follow-up, #1191).
+- Switches, the store's other config-changing writes and the bot editor's writes wait their turn with every other profile config save (Profile config saves), so a settings GET→PUT can't put a flip back (2026-10-24, #1222).
 
 **Open gaps**
 - AppState's list reads go through a live DashboardTicketBridge with no test seam, so its generation guard has no test.
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 
-**Checked:** 2026-10-24, at #1191.
+**Checked:** 2026-10-24, at #1222.
 
 ## Reply progress signals
 
@@ -1079,6 +1081,97 @@ speech-server transcription stream (listening, not speaking)
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
 **Checked:** 2026-10-24, at #1190.
+
+## Profile config saves
+
+Every change Conduit makes to a profile's Hermes config. Most are a GET, a
+change and a PUT of the whole document, so two that overlap read the same
+old config and the later one puts back what the earlier one changed.
+
+**Siblings:** voice settings (providers, typed fields, live transcription) ·
+the speech server page · Local Live settings · the toolset provider endpoint
+(Hermes writes the config) · the Model page's savers and fallback models ·
+the main and voice reply models (`/api/model/set`, Hermes writes the
+config) · Advanced settings (`setProfileSetting`, and the default profile's
+context engine and memory provider through `/api/dashboard/plugin-providers`)
+· display preferences · Capabilities' skill and toolset switches, backends,
+terminal backend, connectors and installs (Hermes writes the config; see
+Skill and tool switches) · the bot editor's skills, tools, MCP servers and
+model (`profiles.configure`, `mcp.servers.add`) · the busy input mode
+(`config.set busy`) · the Conduit plugin's install and update (Hermes writes
+the plugin list)
+
+**Code**
+- Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
+- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
+- AppState: `Conduit/Services/AppState.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, setProfileMainModel, setVoiceReplyModel, setProfileSetting, toggleSkill, toggleToolset)
+- Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig)
+- Gateway RPCs: `Conduit/Services/HermesClient.swift` (configureBotProfile, configureBotModel, addBotMcpServer, setBusyInputMode)
+- Plugin update: `Conduit/Services/NotifierPluginUpdate.swift` (NotifierPluginUpdater install and update requests)
+- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`
+
+**Rulings**
+- Every profile config write, whichever page or service makes it, runs in the one app-wide queue, one at a time; a failed one doesn't hold up the next (2026-10-24, #1222, from #1004).
+- Credentials go to `/api/env` and the speech server's voice key to the notifier's token store, and connector tests and sign-ins change no config, so none of them waits in the queue. Session-scoped
+`config.set` (model, reasoning, speed, yolo for one chat) changes no config
+file either. `profiles.create` (New Bot, Duplicate) writes a new profile's
+first config, which nothing else is saving yet, and Delete Bot
+(`DELETE /api/profiles/{name}`) removes the whole profile, so neither waits. The notifier, the Watch and
+CarPlay don't write a profile's config.
+
+**Open gaps**
+- A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
+
+**Checked:** 2026-10-24, at #1222.
+
+## Wake phrase
+
+Saying a phrase while Conduit is open starts voice on that phrase's profile.
+
+**Siblings:** the foreground listener (iPhone and CarPlay) · Settings' Wake
+phrase section and its captions · Siri, Shortcuts and the Action button (the
+other ways to start, in Starting a call) · the Sherpa wake service (not
+wired into the app, so not needed)
+
+**Code**
+- Listener: `Conduit/Voice/Wake/AppleSpeechWakeWordService.swift` (makeRecognizers, watchInterruption), `Conduit/Voice/Wake/WakeSpeechLocale.swift`, `Conduit/Voice/Wake/WakePhraseMatcher.swift`
+- When it listens: `Conduit/Services/AppState+WakePhrase.swift`, `Conduit/Voice/Wake/WakeLifecycleCoordinator.swift`
+- Settings: `Conduit/Views/VoiceSettingsView.swift` (the Wake phrase section), `Conduit/Views/AuxiliaryViews.swift` (wakeSettings), `Conduit/Services/AppState+WakePhrase.swift` (wakeListenedPhrases)
+- Tests: `ConduitTests/WakePhraseCompilerTests.swift`, `ConduitTests/SpeechRecognitionLocaleTests+WakePhrases.swift`
+
+**Rulings**
+- Recognition is on-device only, and nothing is recorded or kept (#174).
+- A Latin-letter phrase is heard in the app's locale. A phrase in another writing system is heard by a recognizer for a language that writes it, the person's own first (the app's language only when it has an on-device model), up to three languages at once; Settings names the language, or says this iPhone can't hear the phrase (2026-10-24, #1222, from #1004).
+- A phrase past the third language isn't heard, and Settings says so beside it. The cap counts every profile's phrases on the dashboard, in the listener's order, so Settings and the listener agree (2026-10-24, #1222 review).
+- After an interruption with no end from iOS, listening resumes only when no phone call is in progress, no other Conduit audio owner has the session and the session activates again (2026-10-24, #1222, from #1004).
+
+**Open gaps**
+- Han-only phrases on a phone with no Chinese or Japanese language set are heard in Simplified Chinese; a Japanese kanji-only name may be missed.
+
+**Checked:** 2026-10-24, at #1222.
+
+## Dictation and voice message length
+
+How long the microphone stays open for words that become text, and how much
+audio is kept for them.
+
+**Siblings:** composer dictation (chats, project chats, Bot Chat, group
+rooms; Apple, Apple's new model and Hermes engines) · voice messages ·
+Classic voice utterances
+
+**Code**
+- Dictation: `Conduit/Voice/ComposerDictationService.swift` (maximumDuration), `Conduit/Voice/DictationRecognizers.swift` (HermesDictationRecognizer.maximumRecordedBytes)
+- Voice messages: `Conduit/Voice/VoiceMessageRecorder.swift` (maximumDuration)
+- Classic: `Conduit/Voice/VoiceConversationController.swift` (maximumUtterance)
+
+**Rulings**
+- Dictation and voice messages stop by themselves at 15 minutes and keep what was said; Hermes dictation keeps at most that much audio for its upload (2026-10-24, #1222, from #1004).
+- A Classic utterance ends at 60 seconds.
+
+**Open gaps**
+- Dictation stopping at the limit says nothing; the words are in the draft.
+
+**Checked:** 2026-10-24, at #1222.
 
 ## Chats top bar and search
 
