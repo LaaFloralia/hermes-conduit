@@ -1092,6 +1092,7 @@ extension VoiceConversationControllerTests {
         openingPrompt: String? = nil,
         headsetMute: HeadsetMicrophoneMute? = nil,
         notificationCenter: NotificationCenter = NotificationCenter(),
+        holdsJobCalls: Bool = true,
         clock: @escaping () -> Date
     ) -> (GeminiLiveConversationController, FakeGeminiLiveSessionControl, FakeGeminiLiveInput, FakeGeminiLiveOutput, VoiceBackgroundJobSupervisor) {
         let tokens = providedTokens ?? FakeGeminiLiveTokens()
@@ -1102,7 +1103,7 @@ extension VoiceConversationControllerTests {
         let controller = GeminiLiveConversationController(
             makeSession: { session },
             availability: { try await tokens.availability() },
-            tools: GeminiLiveToolBridge(supervisor: supervisor, webSearch: webSearch),
+            tools: GeminiLiveToolBridge(supervisor: supervisor, webSearch: webSearch, holdsJobCalls: holdsJobCalls),
             input: input,
             output: output,
             now: clock,
@@ -1445,6 +1446,43 @@ extension VoiceConversationControllerTests {
         session.onEvent?(.outputTranscription("All green on the server."))
         controller.respeakOutcomeIfSilent(jobID: supervisor.jobs.first?.id, since: current - 1)
         XCTAssertEqual(session.textTurns.count, turns)
+        controller.stop()
+    }
+
+    /// #1210: on Grok (and Local Live) every result is a text update. One
+    /// the model lets pass in silence is sent once more, never a third time,
+    /// and list_jobs names the job until the result has been said.
+    func testGrokJobResultTheModelLetsPassIsSentOnceMoreAndStaysListedUntilSaid() async {
+        var current = Date(timeIntervalSince1970: 1_000)
+        let (controller, session, _, output, supervisor) = makeGeminiController(holdsJobCalls: false, clock: { current })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.toolCall([.init(id: "c1", name: "start_job", arguments: ["instructions": "check the server"])]))
+        await settle(40)
+        session.onEvent?(.turnComplete)
+        output.isPlaying = false
+        func resultTurns() -> Int { session.textTurns.filter { $0.contains("All green.") }.count }
+
+        current += 5
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        controller.deliverPendingJobUpdates()
+        XCTAssertEqual(resultTurns(), 1)
+        let jobID = supervisor.jobs.first?.id
+        XCTAssertEqual(supervisor.listedJobs.map(\.id), [jobID].compactMap { $0 }, "Sent, not yet said: still listed")
+
+        // The model said nothing: the result goes out once more.
+        let sentAt = current
+        current += GeminiLiveConversationController.outcomeSpeechGrace
+        controller.respeakOutcomeIfSilent(jobID: jobID, since: sentAt)
+        XCTAssertEqual(resultTurns(), 2)
+        XCTAssertEqual(supervisor.listedJobs.count, 1)
+
+        // Silent again: not a third time, and the job is done with.
+        let resentAt = current
+        current += GeminiLiveConversationController.outcomeSpeechGrace
+        controller.respeakOutcomeIfSilent(jobID: jobID, since: resentAt)
+        XCTAssertEqual(resultTurns(), 2)
+        XCTAssertTrue(supervisor.listedJobs.isEmpty)
         controller.stop()
     }
 
