@@ -656,18 +656,19 @@ enum GroupRoomMentions {
         tints: [String: CustomAccentColor] = [:]
     ) -> String {
         guard let regex = mentionScanRegex, text.contains("@") else { return text }
-        var fence: String?
+        var fence: MarkdownFence?
         let lines = text.components(separatedBy: "\n").map { line -> String in
             // A fence inside a quote is a fence too.
             let trimmed = line
                 .replacingOccurrences(of: "^\\s*(?:>\\s?)*", with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespaces)
             if let open = fence {
-                if trimmed.hasPrefix(open), trimmed.drop(while: { $0 == open.first }).isEmpty { fence = nil }
+                // As MarkdownText reads it: a ```` block's ``` line is code.
+                if open.closes(trimmed) { fence = nil }
                 return line
             }
-            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
-                fence = String(trimmed.prefix(3))
+            if let open = MarkdownFence.opening(trimmed) {
+                fence = open
                 return line
             }
             guard line.contains("@") else { return line }

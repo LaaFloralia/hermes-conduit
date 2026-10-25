@@ -504,13 +504,16 @@ final class VoiceTranscriptRecorder {
 
     /// `text` within what the plugin keeps, cut here so a code block the
     /// cut leaves open is closed (a screen turn can hold 20,000 characters).
-    /// Cut in code points, as the plugin counts, in one pass.
+    /// Cut in code points, as the plugin counts.
     static func clipped(_ text: String) -> String {
         guard text.unicodeScalars.count > maxTurnCharacters else { return text }
-        // Room for a closing fence, so the turn stays within the limit.
-        var cut = String.UnicodeScalarView()
-        cut.append(contentsOf: text.unicodeScalars.prefix(maxTurnCharacters - 16))
-        return VoiceBackgroundJobSupervisor.closingCutFence(String(cut))
+        // The closing fence's room comes off the cut, so the turn stays
+        // within the limit however long the fence.
+        return VoiceBackgroundJobSupervisor.fenceClosedPrefix(within: maxTurnCharacters, length: \.unicodeScalars.count) {
+            var cut = String.UnicodeScalarView()
+            cut.append(contentsOf: text.unicodeScalars.prefix($0))
+            return String(cut)
+        }
     }
 
     /// Saves whatever the host doesn't have. Saves run one at a time, in
@@ -913,6 +916,16 @@ struct VoiceCallAttachment: Equatable, Codable {
     var resumed: Bool
     /// Set when the call closes, so a slow save doesn't lengthen it.
     var endedAt: Date? = nil
+}
+
+/// What a running call's checkpoint puts in the outbox, less the time it
+/// was taken: one equal to the last is nothing new to store.
+struct VoiceCallCheckpoint: Equatable {
+    var request: VoiceTranscriptSaveRequest
+    var dashboard: String
+    var profile: String
+    var jobs: [String]
+    var attachment: VoiceCallAttachment?
 }
 
 struct VoiceCallChatLinks: Codable, Equatable {

@@ -680,6 +680,11 @@ final class GroupChatModelsTests: XCTestCase {
             GroupRoomMentions.linkingMarkdown(fenced, members: members),
             "```\n@all\n```\n[@all](conduit-mention://broadcast)"
         )
+        // A ```` block's ``` line is code, as MarkdownText draws it.
+        XCTAssertEqual(
+            GroupRoomMentions.linkingMarkdown("````md\n```\n@all\n````\n@all", members: members),
+            "````md\n```\n@all\n````\n[@all](conduit-mention://broadcast)"
+        )
         // A link's label can't hold another link, and a quoted fence is a fence.
         XCTAssertEqual(
             GroupRoomMentions.linkingMarkdown("see [the @all notes](https://example.com) @all", members: members),

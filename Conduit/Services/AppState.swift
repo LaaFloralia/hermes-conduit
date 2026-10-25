@@ -6311,6 +6311,14 @@ final class AppState: ObservableObject {
         voiceCallRecorder?.capture(turns, unsettled: [])
         voiceCallRecorder?.jobSessionIDs += jobs
     }
+
+    /// Test seam: the running call's checkpoint, as the 15-second timer
+    /// takes it, once `turns` have settled.
+    func checkpointVoiceCallForTesting(adding turns: [VoiceConversationTranscriptEntry] = []) {
+        guard let recorder = voiceCallRecorder else { return }
+        recorder.capture(turns, unsettled: [])
+        checkpointVoiceCall(recorder)
+    }
     #endif
     private var voiceTagsFetchedAt: [String: Date] = [:]
     private var voiceTagRefreshTask: Task<Void, Never>?
@@ -6340,6 +6348,9 @@ final class AppState: ObservableObject {
     static let voiceCallCheckpointInterval: Duration = .seconds(15)
     private var voiceCallCheckpointedTurns = 0
     private var voiceCallCheckpointedAt = Date.distantPast
+    /// What the last checkpoint stored, so one with nothing new (the
+    /// 15-second timer in a quiet call) doesn't rewrite the outbox.
+    private var voiceCallCheckpointed: VoiceCallCheckpoint?
     static let voiceCallTurnCheckpointSpacing: TimeInterval = 10
     /// The call whose closing save is still running: a job it started that
     /// reports in now is still tagged with its row.
@@ -6786,6 +6797,9 @@ final class AppState: ObservableObject {
             liveVoiceResumeContext = VoiceResumeContext.continuing(previous.recorder.turns)
         }
         voiceCallRecorder = recorder
+        // A reconnect that continues the call checkpoints afresh: the
+        // closing save before it may have taken the entry.
+        voiceCallCheckpointed = nil
         voiceCallDashboard = callDashboard
         voiceCallAttachment = thread.map {
             VoiceCallAttachment(thread: $0, callID: recorder.callID, startedAt: previous?.startedAt ?? Date(), resumed: resume != nil)
@@ -6823,15 +6837,24 @@ final class AppState: ObservableObject {
     /// Keeps the running call's unsaved turns in the on-device outbox, so
     /// they survive the app being closed mid-call. The outbox leaves the
     /// entry alone while the call runs; the closing save settles it.
+    /// Each checkpoint stores the call's whole entry, so one with nothing
+    /// new since the last (no turn settled, no job started) is skipped.
     private func checkpointVoiceCall(_ recorder: VoiceTranscriptRecorder) {
         voiceCallCheckpointedTurns = recorder.turns.count
-        voiceCallCheckpointedAt = Date()
         guard let request = recorder.outboxRequest else { return }
+        let dashboard = voiceCallDashboard?.id ?? activeDashboardID?.uuidString ?? "-"
+        let checkpoint = VoiceCallCheckpoint(
+            request: request, dashboard: dashboard, profile: recorder.profile,
+            jobs: recorder.jobSessionIDs, attachment: voiceCallAttachment
+        )
+        guard checkpoint != voiceCallCheckpointed else { return }
+        voiceCallCheckpointed = checkpoint
+        voiceCallCheckpointedAt = Date()
         // If the app dies before the call closes, its chat marker measures
-        // the call to this checkpoint rather than to the later retry.
+        // the call to this checkpoint (its last new turn) rather than to
+        // the later retry.
         var attachment = voiceCallAttachment
         attachment?.endedAt = voiceCallCheckpointedAt
-        let dashboard = voiceCallDashboard?.id ?? activeDashboardID?.uuidString ?? "-"
         queueVoiceTranscript(request, dashboard: dashboard, profile: recorder.profile, jobs: recorder.jobSessionIDs, attachment: attachment)
         voiceTranscriptsSaving.insert(request.callID)
     }
@@ -6871,6 +6894,7 @@ final class AppState: ObservableObject {
     private func finishVoiceCallRecording() {
         voiceCallCheckpointTask?.cancel()
         voiceCallCheckpointTask = nil
+        voiceCallCheckpointed = nil
         liveVoiceResumeContext = nil
         liveHermesCall = nil
         hermesCallToldCards = []
@@ -12569,6 +12593,8 @@ final class AppState: ObservableObject {
             KeychainHelper.clearConnection(dashboardID: dashboardID)
             keepUsernameForNextSignIn(dashboardID: dashboardID)
             clearSavedPassword(dashboardID: dashboardID)
+            // Log to Hermes events waiting for it belong to the signed-out user.
+            ShortcutInboxQueue.forgetDashboard(dashboardID)
             // The Cloudflare Access token stays, like the address and the
             // extra headers: it reaches the server, it doesn't sign in.
             // Remove Dashboard deletes it.
@@ -13116,6 +13142,7 @@ final class AppState: ObservableObject {
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
+        ShortcutInboxQueue.forgetDashboard(id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
         // identified WebKit store and the dashboard's native jar (plus
@@ -13177,6 +13204,8 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
+        // Log to Hermes events waiting for it, and its inbox keys.
+        ShortcutInboxQueue.forgetDashboard(id)
         if wasActive {
             showLogin = true
         }
@@ -24219,6 +24248,8 @@ final class AppState: ObservableObject {
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
         Task { await runPhoneSync(reason: .connected) }
+        // Log to Hermes events that waited for this host.
+        Task { await drainShortcutInbox() }
     }
 
     /// The plugin's capabilities answer read at the end of an update: it
@@ -32826,7 +32857,9 @@ final class AppState: ObservableObject {
         }
     }
 
-    func workspaceDownloadURL(for entry: WorkspaceEntry) async -> URL? {
+    /// The file staged for Save to Files; the caller removes it with
+    /// `WorkspaceDownloads.remove` once it is done with it.
+    func workspaceDownload(for entry: WorkspaceEntry) async -> WorkspaceDownload? {
         guard let owner = currentDashboardRuntimeOwner() else { return nil }
         let dashboardTicketBridge = owner.bridge
         let profile = activeProfile
@@ -32843,11 +32876,7 @@ final class AppState: ObservableObject {
                   let data = DataURLLimits.decodeBase64DataURL(dataURL) else {
                 throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The gateway returned an invalid file payload."))
             }
-            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Hermes-Conduit-Downloads", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let url = directory.appendingPathComponent("\(UUID().uuidString)-\(entry.name)")
-            try data.write(to: url, options: .atomic)
-            return url
+            return try WorkspaceDownloads.stage(data, name: entry.name)
         } catch {
             guard profile == activeProfile, ownsDashboardRuntime(owner) else { return nil }
             workspaceFileError = UserFacingError.message(for: error)
@@ -35430,6 +35459,7 @@ enum KeychainHelper {
     private static let customHeadersKey = "hermes-conduit.custom-headers.v1"
     private static let healthSyncKeyAccount = "hermes-conduit.health-sync-key.v1"
     private static let phoneSyncKeyAccount = "hermes-conduit.phone-sync-key.v1"
+    private static let shortcutInboxKeyAccount = "hermes-conduit.shortcut-inbox-key.v1"
     private static let service = "com.milim.conduit"
 
     static func saveConnection(_ conn: HermesConnection) {
@@ -35577,6 +35607,22 @@ enum KeychainHelper {
 
     static func clearPhoneSyncKey() {
         delete(account: phoneSyncKeyAccount)
+    }
+
+    /// The key this phone agreed with one dashboard and profile its Log to
+    /// Hermes Shortcuts action posts to (`scope` is
+    /// ShortcutInboxScope.storageID). Readable after first unlock, as
+    /// above: automations run while the phone is locked.
+    static func saveShortcutInboxKey(_ data: Data, scope: String) {
+        save(data, account: "\(shortcutInboxKeyAccount).\(scope)")
+    }
+
+    static func loadShortcutInboxKey(scope: String) -> Data? {
+        load(account: "\(shortcutInboxKeyAccount).\(scope)")
+    }
+
+    static func clearShortcutInboxKey(scope: String) {
+        delete(account: "\(shortcutInboxKeyAccount).\(scope)")
     }
 
     // MARK: Dashboard registry (multi-server, #148)
