@@ -1886,7 +1886,7 @@ private struct StepSummarySettings: View {
             Text("Each summary is one more short request to your model. It reuses the chat's prompt cache and never changes the chat.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Text("On or off, you can touch and hold any folded steps and choose Explain these steps.")
+            Text("On or off, you can touch and hold any folded steps and choose Explain these steps, or a single finished step and choose Explain this step.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Toggle("Describe finished steps", isOn: $enabled)

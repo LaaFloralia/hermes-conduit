@@ -339840,84 +339840,84 @@
         }
       }
     },
-    "On or off, you can touch and hold any folded steps and choose Explain these steps." : {
+    "On or off, you can touch and hold any folded steps and choose Explain these steps, or a single finished step and choose Explain this step." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ob ein oder aus: Halte gefaltete Schritte gedrückt und wähle „Diese Schritte erklären“."
+            "value" : "Ob ein oder aus: Halte gefaltete Schritte gedrückt und wähle „Diese Schritte erklären“, oder einen einzelnen fertigen Schritt und wähle „Diesen Schritt erklären“."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Esté activado o no, mantén pulsados unos pasos plegados y elige Explicar estos pasos."
+            "value" : "Esté activado o no, mantén pulsados unos pasos plegados y elige Explicar estos pasos, o un solo paso terminado y elige Explicar este paso."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Activé ou non, touchez longuement des étapes repliées et choisissez Expliquer ces étapes."
+            "value" : "Activé ou non, touchez longuement des étapes repliées et choisissez Expliquer ces étapes, ou une seule étape terminée et choisissez Expliquer cette étape."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aktif atau tidak, sentuh dan tahan langkah yang dilipat lalu pilih Jelaskan langkah-langkah ini."
+            "value" : "Aktif atau tidak, sentuh dan tahan langkah yang dilipat lalu pilih Jelaskan langkah-langkah ini, atau satu langkah yang selesai lalu pilih Jelaskan langkah ini."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Attivo o no, tieni premuti dei passaggi compressi e scegli Spiega questi passaggi."
+            "value" : "Attivo o no, tieni premuti dei passaggi compressi e scegli Spiega questi passaggi, oppure un singolo passaggio concluso e scegli Spiega questo passaggio."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オンでもオフでも、折りたたまれたステップを長押しして「これらのステップを説明」を選べます。"
+            "value" : "オンでもオフでも、折りたたまれたステップを長押しして「これらのステップを説明」を、完了した1つのステップなら「このステップを説明」を選べます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "켜져 있든 꺼져 있든, 접힌 단계를 길게 눌러 '이 단계들 설명하기'를 선택할 수 있습니다."
+            "value" : "켜져 있든 꺼져 있든, 접힌 단계를 길게 눌러 '이 단계들 설명하기'를, 끝난 단계 하나라면 '이 단계 설명하기'를 선택할 수 있습니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Niezależnie od ustawienia przytrzymaj zwinięte kroki i wybierz Wyjaśnij te kroki."
+            "value" : "Niezależnie od ustawienia przytrzymaj zwinięte kroki i wybierz Wyjaśnij te kroki albo pojedynczy zakończony krok i wybierz Wyjaśnij ten krok."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ligado ou não, toque e segure etapas recolhidas e escolha Explicar estas etapas."
+            "value" : "Ligado ou não, toque e segure etapas recolhidas e escolha Explicar estas etapas, ou uma única etapa concluída e escolha Explicar esta etapa."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Включено или нет, нажмите и удерживайте свёрнутые шаги и выберите «Объяснить эти шаги»."
+            "value" : "Включено или нет, нажмите и удерживайте свёрнутые шаги и выберите «Объяснить эти шаги» или один завершённый шаг и выберите «Объяснить этот шаг»."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Açık ya da kapalı, katlanmış adımlara dokunup basılı tutun ve Bu adımları açıkla'yı seçin."
+            "value" : "Açık ya da kapalı, katlanmış adımlara dokunup basılı tutun ve Bu adımları açıkla'yı, tek bir bitmiş adımda ise Bu adımı açıkla'yı seçin."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无论开关与否，都可以长按折叠的步骤并选择“解释这些步骤”。"
+            "value" : "无论开关与否，都可以长按折叠的步骤并选择“解释这些步骤”，或长按单个已完成的步骤并选择“解释此步骤”。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無論開關與否，都可以長按收合的步驟並選擇「解釋這些步驟」。"
+            "value" : "無論開關與否，都可以長按收合的步驟並選擇「解釋這些步驟」，或長按單個已完成的步驟並選擇「解釋此步驟」。"
           }
         }
       }
