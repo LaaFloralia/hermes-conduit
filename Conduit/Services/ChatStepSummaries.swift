@@ -21,7 +21,7 @@ enum ChatStepSummaries {
     /// tool call in it: thinking alone already reads as itself.
     static let minimumSteps = 2
 
-    /// How many sentences the device keeps; the oldest go first.
+    /// How many summaries the device keeps; the oldest go first.
     static let savedLimit = 500
     private static let savedKey = "conduit.stepRunSummaries"
 
@@ -142,7 +142,8 @@ enum ChatStepSummaries {
 
     private static func trimmed(_ text: String?, to limit: Int) -> String? {
         guard let text else { return nil }
-        let flat = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        // Cut first: a result can be megabytes, and this runs on the main actor.
+        let flat = text.prefix(limit * 4).split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !flat.isEmpty else { return nil }
         return flat.count > limit ? String(flat.prefix(limit)) + "…" : flat
     }
@@ -216,9 +217,9 @@ enum ChatStepSummaries {
         return paragraph
     }
 
-    // MARK: - Saved sentences
+    // MARK: - Saved summaries
 
-    /// A run, as its sentence is kept: the dashboard and profile it ran on
+    /// A run, as its summary is kept: the dashboard and profile it ran on
     /// (`AppState.toolCatalogKey`) and its first tool call.
     struct Run: Hashable {
         let scope: String
@@ -242,7 +243,7 @@ enum ChatStepSummaries {
         defaults.set(Array(entries.suffix(savedLimit)), forKey: savedKey)
     }
 
-    /// Forgets the sentences of scopes starting with `scopePrefix` (one
+    /// Forgets the summaries of scopes starting with `scopePrefix` (one
     /// dashboard's profiles), or all of them when it is nil.
     static func remove(scopePrefix: String?, defaults: UserDefaults = .standard) {
         guard let scopePrefix else {

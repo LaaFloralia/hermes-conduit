@@ -628,7 +628,7 @@ private struct ChatStepRowBody: View {
         let visible = group.visibleMembers(showReasoning: showReasoning, showTools: showTools)
         if let position = visible.firstIndex(where: { $0.messageID == message.id }) {
             if visible.count < 2 {
-                if message.role == .tool, explain != nil || summary != nil || lookingBack {
+                if message.role == .tool, (explain != nil && !isLive) || summary != nil || lookingBack {
                     singleExplained
                 } else {
                     Self.single(message)
@@ -679,6 +679,9 @@ private struct ChatStepRowBody: View {
         }
     }
 
+    /// The turn is still running and may add to this run.
+    private var isLive: Bool { placement.group.isTrailing && isBusy }
+
     /// A lone tool step: its card, then what Hermes said about it, if it
     /// was asked (its menu).
     private var singleExplained: some View {
@@ -699,7 +702,8 @@ private struct ChatStepRowBody: View {
             }
         }
         .chatStepExplainMenu(
-            explain: lookingBack || message.tool?.status == .running ? nil : explain,
+            // Not while the turn may still add to it, like the run's own menu.
+            explain: lookingBack || isLive || message.tool?.status == .running ? nil : explain,
             title: summary == nil ? AppLocalization.string("Explain this step") : AppLocalization.string("Explain again")
         )
     }
@@ -760,7 +764,7 @@ private struct ChatStepGroupHeader: View {
         let looks = members.prefix(Self.maxStepIcons).map(Self.look)
         // Each count tried in turn, all of them first when they can all show.
         let most = min(members.count, Self.maxStepIcons)
-        let fits = (members.count == most ? [most] : []) + Array(stride(from: most - 1, through: 1, by: -1))
+        let fits = Array(stride(from: most, through: 1, by: -1))
         return ViewThatFits(in: .horizontal) {
             ForEach(fits, id: \.self) { shown in
                 HStack(spacing: 4) {
