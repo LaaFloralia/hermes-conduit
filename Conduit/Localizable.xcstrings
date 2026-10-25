@@ -19519,166 +19519,166 @@
         }
       }
     },
-    "Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Gemini Live, Grok Live and Classic voice. Applies to the next conversation." : {
+    "Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimentell. Hält das Mikrofon offen, während Gemini über den Lautsprecher des iPhone oder im Auto spricht, mit der Echounterdrückung von iOS, damit du durch Sprechen unterbrechen kannst. Mit Kopfhörern und AirPods geht das immer. Schalte es aus, wenn Gemini sich ständig selbst unterbricht. Gilt gemeinsam für Gemini Live, Grok Live und den klassischen Sprachmodus. Gilt ab der nächsten Unterhaltung."
+            "value" : "Experimentell. Hält das Mikrofon offen, während Gemini über den Lautsprecher des iPhone oder im Auto spricht, mit der Echounterdrückung von iOS, damit du durch Sprechen unterbrechen kannst. Mit Kopfhörern und AirPods geht das immer. Schalte es aus, wenn Gemini sich ständig selbst unterbricht. Gilt gemeinsam für Qwen Live, Gemini Live, Grok Live und den klassischen Sprachmodus. Gilt ab der nächsten Unterhaltung."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimental. Mantiene el micrófono abierto mientras Gemini habla por el altavoz del teléfono o en el coche, con la cancelación de eco de iOS, para que puedas interrumpir hablando. Con auriculares y AirPods siempre es posible. Desactívalo si Gemini se corta solo una y otra vez. Compartido por Gemini Live, Grok Live y la voz clásica. Se aplica a la próxima conversación."
+            "value" : "Experimental. Mantiene el micrófono abierto mientras Gemini habla por el altavoz del teléfono o en el coche, con la cancelación de eco de iOS, para que puedas interrumpir hablando. Con auriculares y AirPods siempre es posible. Desactívalo si Gemini se corta solo una y otra vez. Compartido por Qwen Live, Gemini Live, Grok Live y la voz clásica. Se aplica a la próxima conversación."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Expérimental. Garde le micro ouvert pendant que Gemini parle sur le haut-parleur du téléphone ou dans la voiture, avec l'annulation d'écho d'iOS, pour que vous puissiez l'interrompre en parlant. C'est toujours possible avec des écouteurs et des AirPods. Désactivez cette option si Gemini n'arrête pas de se couper la parole. Partagé par Gemini Live, Grok Live et la voix Classique. S'applique à la prochaine conversation."
+            "value" : "Expérimental. Garde le micro ouvert pendant que Gemini parle sur le haut-parleur du téléphone ou dans la voiture, avec l'annulation d'écho d'iOS, pour que vous puissiez l'interrompre en parlant. C'est toujours possible avec des écouteurs et des AirPods. Désactivez cette option si Gemini n'arrête pas de se couper la parole. Partagé par Qwen Live, Gemini Live, Grok Live et la voix Classique. S'applique à la prochaine conversation."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eksperimental. Mikrofon tetap terbuka saat Gemini berbicara melalui speaker ponsel atau di mobil, dengan peredam gema iOS, sehingga Anda dapat menyela dengan berbicara. Headphone dan AirPods selalu mengizinkan ini. Matikan jika Gemini terus memotong ucapannya sendiri. Digunakan bersama oleh Gemini Live, Grok Live, dan suara Klasik. Berlaku mulai percakapan berikutnya."
+            "value" : "Eksperimental. Mikrofon tetap terbuka saat Gemini berbicara melalui speaker ponsel atau di mobil, dengan peredam gema iOS, sehingga Anda dapat menyela dengan berbicara. Headphone dan AirPods selalu mengizinkan ini. Matikan jika Gemini terus memotong ucapannya sendiri. Digunakan bersama oleh Qwen Live, Gemini Live, Grok Live, dan suara Klasik. Berlaku mulai percakapan berikutnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sperimentale. Tiene aperto il microfono mentre Gemini parla dall'altoparlante del telefono o in auto, con la cancellazione dell'eco di iOS, così puoi interromperlo parlando. Con cuffie e AirPods è sempre possibile. Disattiva l'opzione se Gemini continua a interrompersi da solo. Condiviso da Gemini Live, Grok Live e voce Classica. Vale dalla prossima conversazione."
+            "value" : "Sperimentale. Tiene aperto il microfono mentre Gemini parla dall'altoparlante del telefono o in auto, con la cancellazione dell'eco di iOS, così puoi interromperlo parlando. Con cuffie e AirPods è sempre possibile. Disattiva l'opzione se Gemini continua a interrompersi da solo. Condiviso da Qwen Live, Gemini Live, Grok Live e voce Classica. Vale dalla prossima conversazione."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "試験的な機能です。GeminiがiPhoneのスピーカーや車内で話している間もマイクをオンのままにし、iOSのエコーキャンセルを使って、話しかけるだけで割り込めるようにします。ヘッドフォンとAirPodsでは常に割り込めます。Geminiの発話が勝手に途切れる場合はオフにしてください。Gemini Live、Grok Live、クラシック音声で共通の設定です。次の会話から適用されます。"
+            "value" : "試験的な機能です。GeminiがiPhoneのスピーカーや車内で話している間もマイクをオンのままにし、iOSのエコーキャンセルを使って、話しかけるだけで割り込めるようにします。ヘッドフォンとAirPodsでは常に割り込めます。Geminiの発話が勝手に途切れる場合はオフにしてください。Qwen Live、Gemini Live、Grok Live、クラシック音声で共通の設定です。次の会話から適用されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "실험적 기능이에요. Gemini가 iPhone 스피커나 차량에서 말하는 동안에도 iOS 에코 제거를 사용해 마이크를 켜 두므로 말해서 끼어들 수 있어요. 헤드폰과 AirPods에서는 항상 가능해요. Gemini가 계속 스스로 말을 끊는다면 끄세요. Gemini Live, Grok Live, 클래식 음성에 공통으로 적용돼요. 다음 대화부터 적용돼요."
+            "value" : "실험적 기능이에요. Gemini가 iPhone 스피커나 차량에서 말하는 동안에도 iOS 에코 제거를 사용해 마이크를 켜 두므로 말해서 끼어들 수 있어요. 헤드폰과 AirPods에서는 항상 가능해요. Gemini가 계속 스스로 말을 끊는다면 끄세요. Qwen Live, Gemini Live, Grok Live, 클래식 음성에 공통으로 적용돼요. 다음 대화부터 적용돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funkcja eksperymentalna. Mikrofon pozostaje włączony, gdy Gemini mówi przez głośnik telefonu lub w samochodzie (z redukcją echa iOS), więc możesz mu przerwać, mówiąc. Ze słuchawkami i AirPods jest to zawsze możliwe. Wyłącz, jeśli Gemini ciągle sam sobie przerywa. Wspólne dla Gemini Live, Grok Live i klasycznego trybu głosowego. Obowiązuje od następnej rozmowy."
+            "value" : "Funkcja eksperymentalna. Mikrofon pozostaje włączony, gdy Gemini mówi przez głośnik telefonu lub w samochodzie (z redukcją echa iOS), więc możesz mu przerwać, mówiąc. Ze słuchawkami i AirPods jest to zawsze możliwe. Wyłącz, jeśli Gemini ciągle sam sobie przerywa. Wspólne dla Qwen Live, Gemini Live, Grok Live i klasycznego trybu głosowego. Obowiązuje od następnej rozmowy."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimental. Mantém o microfone aberto enquanto o Gemini fala pelo alto-falante do telefone ou no carro, com o cancelamento de eco do iOS, para você poder interromper falando. Fones de ouvido e AirPods sempre permitem isso. Desative se o Gemini ficar se interrompendo. Compartilhado pelo Gemini Live, Grok Live e modo de voz Clássico. Vale a partir da próxima conversa."
+            "value" : "Experimental. Mantém o microfone aberto enquanto o Gemini fala pelo alto-falante do telefone ou no carro, com o cancelamento de eco do iOS, para você poder interromper falando. Fones de ouvido e AirPods sempre permitem isso. Desative se o Gemini ficar se interrompendo. Compartilhado pelo Qwen Live, Gemini Live, Grok Live e modo de voz Clássico. Vale a partir da próxima conversa."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Экспериментальная функция. Микрофон остаётся включённым, пока Gemini говорит через динамик телефона или в автомобиле, а iOS подавляет эхо, — так можно перебить, просто заговорив. В наушниках и AirPods это работает всегда. Выключите, если Gemini постоянно прерывает сам себя. Общая настройка для Gemini Live, Grok Live и классического голосового режима. Действует со следующего разговора."
+            "value" : "Экспериментальная функция. Микрофон остаётся включённым, пока Gemini говорит через динамик телефона или в автомобиле, а iOS подавляет эхо, — так можно перебить, просто заговорив. В наушниках и AirPods это работает всегда. Выключите, если Gemini постоянно прерывает сам себя. Общая настройка для Qwen Live, Gemini Live, Grok Live и классического голосового режима. Действует со следующего разговора."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deneysel. Gemini telefonun hoparlöründen veya arabada konuşurken iOS yankı engellemesiyle mikrofonu açık tutar; böylece konuşarak araya girebilirsiniz. Kulaklıklarda ve AirPods'ta bu her zaman mümkündür. Gemini kendi sözünü kesip duruyorsa bunu kapatın. Gemini Live, Grok Live ve Klasik ses için ortaktır. Sonraki konuşmada geçerli olur."
+            "value" : "Deneysel. Gemini telefonun hoparlöründen veya arabada konuşurken iOS yankı engellemesiyle mikrofonu açık tutar; böylece konuşarak araya girebilirsiniz. Kulaklıklarda ve AirPods'ta bu her zaman mümkündür. Gemini kendi sözünü kesip duruyorsa bunu kapatın. Qwen Live, Gemini Live, Grok Live ve Klasik ses için ortaktır. Sonraki konuşmada geçerli olur."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "实验功能。Gemini 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Gemini 不断打断自己，请关闭此选项。Gemini Live、Grok Live 与经典语音共用此设置。从下一次对话开始生效。"
+            "value" : "实验功能。Gemini 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Gemini 不断打断自己，请关闭此选项。Qwen Live、Gemini Live、Grok Live 与经典语音共用此设置。从下一次对话开始生效。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "實驗性功能。Gemini 透過手機揚聲器或在車上說話時，麥克風會保持開啟並使用 iOS 回音消除，讓你可以直接開口插話。使用耳機和 AirPods 時一律可以這樣做。若 Gemini 一直打斷自己，請關閉此選項。Gemini Live、Grok Live 和經典語音共用此設定。下次對話起生效。"
+            "value" : "實驗性功能。Gemini 透過手機揚聲器或在車上說話時，麥克風會保持開啟並使用 iOS 回音消除，讓你可以直接開口插話。使用耳機和 AirPods 時一律可以這樣做。若 Gemini 一直打斷自己，請關閉此選項。Qwen Live、Gemini Live、Grok Live 和經典語音共用此設定。下次對話起生效。"
           }
         }
       }
     },
-    "Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Gemini Live, Grok Live and Classic voice. Applies to the next conversation." : {
+    "Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimentell. Hält das Mikrofon offen, während Grok über den Lautsprecher des iPhone oder im Auto spricht, mit der Echounterdrückung von iOS, damit du durch Sprechen unterbrechen kannst. Mit Kopfhörern und AirPods geht das immer. Schalte es aus, wenn Grok sich ständig selbst unterbricht. Gilt gemeinsam für Gemini Live, Grok Live und den klassischen Sprachmodus. Gilt ab der nächsten Unterhaltung."
+            "value" : "Experimentell. Hält das Mikrofon offen, während Grok über den Lautsprecher des iPhone oder im Auto spricht, mit der Echounterdrückung von iOS, damit du durch Sprechen unterbrechen kannst. Mit Kopfhörern und AirPods geht das immer. Schalte es aus, wenn Grok sich ständig selbst unterbricht. Gilt gemeinsam für Qwen Live, Gemini Live, Grok Live und den klassischen Sprachmodus. Gilt ab der nächsten Unterhaltung."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimental. Mantiene el micrófono abierto mientras Grok habla por el altavoz del teléfono o en el coche, con la cancelación de eco de iOS, para que puedas interrumpir hablando. Con auriculares y AirPods siempre es posible. Desactívalo si Grok se corta solo una y otra vez. Compartido por Gemini Live, Grok Live y la voz clásica. Se aplica a la próxima conversación."
+            "value" : "Experimental. Mantiene el micrófono abierto mientras Grok habla por el altavoz del teléfono o en el coche, con la cancelación de eco de iOS, para que puedas interrumpir hablando. Con auriculares y AirPods siempre es posible. Desactívalo si Grok se corta solo una y otra vez. Compartido por Qwen Live, Gemini Live, Grok Live y la voz clásica. Se aplica a la próxima conversación."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Expérimental. Garde le micro ouvert pendant que Grok parle sur le haut-parleur du téléphone ou dans la voiture, avec l'annulation d'écho d'iOS, pour que vous puissiez l'interrompre en parlant. C'est toujours possible avec des écouteurs et des AirPods. Désactivez cette option si Grok n'arrête pas de se couper la parole. Partagé par Gemini Live, Grok Live et la voix Classique. S'applique à la prochaine conversation."
+            "value" : "Expérimental. Garde le micro ouvert pendant que Grok parle sur le haut-parleur du téléphone ou dans la voiture, avec l'annulation d'écho d'iOS, pour que vous puissiez l'interrompre en parlant. C'est toujours possible avec des écouteurs et des AirPods. Désactivez cette option si Grok n'arrête pas de se couper la parole. Partagé par Qwen Live, Gemini Live, Grok Live et la voix Classique. S'applique à la prochaine conversation."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eksperimental. Mikrofon tetap terbuka saat Grok berbicara melalui speaker ponsel atau di mobil, dengan peredam gema iOS, sehingga Anda dapat menyela dengan berbicara. Headphone dan AirPods selalu mengizinkan ini. Matikan jika Grok terus memotong ucapannya sendiri. Digunakan bersama oleh Gemini Live, Grok Live, dan suara Klasik. Berlaku mulai percakapan berikutnya."
+            "value" : "Eksperimental. Mikrofon tetap terbuka saat Grok berbicara melalui speaker ponsel atau di mobil, dengan peredam gema iOS, sehingga Anda dapat menyela dengan berbicara. Headphone dan AirPods selalu mengizinkan ini. Matikan jika Grok terus memotong ucapannya sendiri. Digunakan bersama oleh Qwen Live, Gemini Live, Grok Live, dan suara Klasik. Berlaku mulai percakapan berikutnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sperimentale. Tiene aperto il microfono mentre Grok parla dall'altoparlante del telefono o in auto, con la cancellazione dell'eco di iOS, così puoi interromperlo parlando. Con cuffie e AirPods è sempre possibile. Disattiva l'opzione se Grok continua a interrompersi da solo. Condiviso da Gemini Live, Grok Live e voce Classica. Vale dalla prossima conversazione."
+            "value" : "Sperimentale. Tiene aperto il microfono mentre Grok parla dall'altoparlante del telefono o in auto, con la cancellazione dell'eco di iOS, così puoi interromperlo parlando. Con cuffie e AirPods è sempre possibile. Disattiva l'opzione se Grok continua a interrompersi da solo. Condiviso da Qwen Live, Gemini Live, Grok Live e voce Classica. Vale dalla prossima conversazione."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "試験的な機能です。GrokがiPhoneのスピーカーや車内で話している間もマイクをオンのままにし、iOSのエコーキャンセルを使って、話しかけるだけで割り込めるようにします。ヘッドフォンとAirPodsでは常に割り込めます。Grokの発話が勝手に途切れる場合はオフにしてください。Gemini Live、Grok Live、クラシック音声で共通の設定です。次の会話から適用されます。"
+            "value" : "試験的な機能です。GrokがiPhoneのスピーカーや車内で話している間もマイクをオンのままにし、iOSのエコーキャンセルを使って、話しかけるだけで割り込めるようにします。ヘッドフォンとAirPodsでは常に割り込めます。Grokの発話が勝手に途切れる場合はオフにしてください。Qwen Live、Gemini Live、Grok Live、クラシック音声で共通の設定です。次の会話から適用されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "실험적 기능이에요. Grok이 iPhone 스피커나 차량에서 말하는 동안에도 iOS 에코 제거를 사용해 마이크를 켜 두므로 말해서 끼어들 수 있어요. 헤드폰과 AirPods에서는 항상 가능해요. Grok이 계속 스스로 말을 끊는다면 끄세요. Gemini Live, Grok Live, 클래식 음성에 공통으로 적용돼요. 다음 대화부터 적용돼요."
+            "value" : "실험적 기능이에요. Grok이 iPhone 스피커나 차량에서 말하는 동안에도 iOS 에코 제거를 사용해 마이크를 켜 두므로 말해서 끼어들 수 있어요. 헤드폰과 AirPods에서는 항상 가능해요. Grok이 계속 스스로 말을 끊는다면 끄세요. Qwen Live, Gemini Live, Grok Live, 클래식 음성에 공통으로 적용돼요. 다음 대화부터 적용돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funkcja eksperymentalna. Mikrofon pozostaje włączony, gdy Grok mówi przez głośnik telefonu lub w samochodzie (z redukcją echa iOS), więc możesz mu przerwać, mówiąc. Ze słuchawkami i AirPods jest to zawsze możliwe. Wyłącz, jeśli Grok ciągle sam sobie przerywa. Wspólne dla Gemini Live, Grok Live i klasycznego trybu głosowego. Obowiązuje od następnej rozmowy."
+            "value" : "Funkcja eksperymentalna. Mikrofon pozostaje włączony, gdy Grok mówi przez głośnik telefonu lub w samochodzie (z redukcją echa iOS), więc możesz mu przerwać, mówiąc. Ze słuchawkami i AirPods jest to zawsze możliwe. Wyłącz, jeśli Grok ciągle sam sobie przerywa. Wspólne dla Qwen Live, Gemini Live, Grok Live i klasycznego trybu głosowego. Obowiązuje od następnej rozmowy."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimental. Mantém o microfone aberto enquanto o Grok fala pelo alto-falante do telefone ou no carro, com o cancelamento de eco do iOS, para você poder interromper falando. Fones de ouvido e AirPods sempre permitem isso. Desative se o Grok ficar se interrompendo. Compartilhado pelo Gemini Live, Grok Live e modo de voz Clássico. Vale a partir da próxima conversa."
+            "value" : "Experimental. Mantém o microfone aberto enquanto o Grok fala pelo alto-falante do telefone ou no carro, com o cancelamento de eco do iOS, para você poder interromper falando. Fones de ouvido e AirPods sempre permitem isso. Desative se o Grok ficar se interrompendo. Compartilhado pelo Qwen Live, Gemini Live, Grok Live e modo de voz Clássico. Vale a partir da próxima conversa."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Экспериментальная функция. Микрофон остаётся включённым, пока Grok говорит через динамик телефона или в автомобиле, а iOS подавляет эхо, — так можно перебить, просто заговорив. В наушниках и AirPods это работает всегда. Выключите, если Grok постоянно прерывает сам себя. Общая настройка для Gemini Live, Grok Live и классического голосового режима. Действует со следующего разговора."
+            "value" : "Экспериментальная функция. Микрофон остаётся включённым, пока Grok говорит через динамик телефона или в автомобиле, а iOS подавляет эхо, — так можно перебить, просто заговорив. В наушниках и AirPods это работает всегда. Выключите, если Grok постоянно прерывает сам себя. Общая настройка для Qwen Live, Gemini Live, Grok Live и классического голосового режима. Действует со следующего разговора."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deneysel. Grok telefonun hoparlöründen veya arabada konuşurken iOS yankı engellemesiyle mikrofonu açık tutar; böylece konuşarak araya girebilirsiniz. Kulaklıklarda ve AirPods'ta bu her zaman mümkündür. Grok kendi sözünü kesip duruyorsa bunu kapatın. Gemini Live, Grok Live ve Klasik ses için ortaktır. Sonraki konuşmada geçerli olur."
+            "value" : "Deneysel. Grok telefonun hoparlöründen veya arabada konuşurken iOS yankı engellemesiyle mikrofonu açık tutar; böylece konuşarak araya girebilirsiniz. Kulaklıklarda ve AirPods'ta bu her zaman mümkündür. Grok kendi sözünü kesip duruyorsa bunu kapatın. Qwen Live, Gemini Live, Grok Live ve Klasik ses için ortaktır. Sonraki konuşmada geçerli olur."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "实验功能。Grok 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Grok 不断打断自己，请关闭此选项。Gemini Live、Grok Live 与经典语音共用此设置。从下一次对话开始生效。"
+            "value" : "实验功能。Grok 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Grok 不断打断自己，请关闭此选项。Qwen Live、Gemini Live、Grok Live 与经典语音共用此设置。从下一次对话开始生效。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "實驗性功能。Grok 透過手機揚聲器或在車上說話時，麥克風會保持開啟並使用 iOS 回音消除，讓你可以直接開口插話。使用耳機和 AirPods 時一律可以這樣做。若 Grok 一直打斷自己，請關閉此選項。Gemini Live、Grok Live 和經典語音共用此設定。下次對話起生效。"
+            "value" : "實驗性功能。Grok 透過手機揚聲器或在車上說話時，麥克風會保持開啟並使用 iOS 回音消除，讓你可以直接開口插話。使用耳機和 AirPods 時一律可以這樣做。若 Grok 一直打斷自己，請關閉此選項。Qwen Live、Gemini Live、Grok Live 和經典語音共用此設定。下次對話起生效。"
           }
         }
       }
@@ -332110,84 +332110,84 @@
         }
       }
     },
-    "Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Grok Live and Classic voice. Applies to the next conversation." : {
+    "Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimentell. Hält das Mikrofon offen, während Qwen über den Lautsprecher des iPhone oder im Auto spricht, mit der Echounterdrückung von iOS, damit du durch Sprechen unterbrechen kannst. Mit Kopfhörern und AirPods geht das immer. Schalte es aus, wenn Qwen sich ständig selbst unterbricht. Gilt gemeinsam für Qwen Live, Grok Live und den klassischen Sprachmodus. Gilt ab der nächsten Unterhaltung."
+            "value" : "Experimentell. Hält das Mikrofon offen, während Qwen über den Lautsprecher des iPhone oder im Auto spricht, mit der Echounterdrückung von iOS, damit du durch Sprechen unterbrechen kannst. Mit Kopfhörern und AirPods geht das immer. Schalte es aus, wenn Qwen sich ständig selbst unterbricht. Gilt gemeinsam für Qwen Live, Gemini Live, Grok Live und den klassischen Sprachmodus. Gilt ab der nächsten Unterhaltung."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimental. Mantiene el micrófono abierto mientras Qwen habla por el altavoz del teléfono o en el coche, con la cancelación de eco de iOS, para que puedas interrumpir hablando. Con auriculares y AirPods siempre es posible. Desactívalo si Qwen se corta solo una y otra vez. Compartido por Qwen Live, Grok Live y la voz clásica. Se aplica a la próxima conversación."
+            "value" : "Experimental. Mantiene el micrófono abierto mientras Qwen habla por el altavoz del teléfono o en el coche, con la cancelación de eco de iOS, para que puedas interrumpir hablando. Con auriculares y AirPods siempre es posible. Desactívalo si Qwen se corta solo una y otra vez. Compartido por Qwen Live, Gemini Live, Grok Live y la voz clásica. Se aplica a la próxima conversación."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Expérimental. Garde le micro ouvert pendant que Qwen parle sur le haut-parleur du téléphone ou dans la voiture, avec l'annulation d'écho d'iOS, pour que vous puissiez l'interrompre en parlant. C'est toujours possible avec des écouteurs et des AirPods. Désactivez cette option si Qwen n'arrête pas de se couper la parole. Partagé par Qwen Live, Grok Live et la voix Classique. S'applique à la prochaine conversation."
+            "value" : "Expérimental. Garde le micro ouvert pendant que Qwen parle sur le haut-parleur du téléphone ou dans la voiture, avec l'annulation d'écho d'iOS, pour que vous puissiez l'interrompre en parlant. C'est toujours possible avec des écouteurs et des AirPods. Désactivez cette option si Qwen n'arrête pas de se couper la parole. Partagé par Qwen Live, Gemini Live, Grok Live et la voix Classique. S'applique à la prochaine conversation."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eksperimental. Mikrofon tetap terbuka saat Qwen berbicara melalui speaker ponsel atau di mobil, dengan peredam gema iOS, sehingga Anda dapat menyela dengan berbicara. Headphone dan AirPods selalu mengizinkan ini. Matikan jika Qwen terus memotong ucapannya sendiri. Digunakan bersama oleh Qwen Live, Grok Live, dan suara Klasik. Berlaku mulai percakapan berikutnya."
+            "value" : "Eksperimental. Mikrofon tetap terbuka saat Qwen berbicara melalui speaker ponsel atau di mobil, dengan peredam gema iOS, sehingga Anda dapat menyela dengan berbicara. Headphone dan AirPods selalu mengizinkan ini. Matikan jika Qwen terus memotong ucapannya sendiri. Digunakan bersama oleh Qwen Live, Gemini Live, Grok Live, dan suara Klasik. Berlaku mulai percakapan berikutnya."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sperimentale. Tiene aperto il microfono mentre Qwen parla dall'altoparlante del telefono o in auto, con la cancellazione dell'eco di iOS, così puoi interromperlo parlando. Con cuffie e AirPods è sempre possibile. Disattiva l'opzione se Qwen continua a interrompersi da solo. Condiviso da Qwen Live, Grok Live e voce Classica. Vale dalla prossima conversazione."
+            "value" : "Sperimentale. Tiene aperto il microfono mentre Qwen parla dall'altoparlante del telefono o in auto, con la cancellazione dell'eco di iOS, così puoi interromperlo parlando. Con cuffie e AirPods è sempre possibile. Disattiva l'opzione se Qwen continua a interrompersi da solo. Condiviso da Qwen Live, Gemini Live, Grok Live e voce Classica. Vale dalla prossima conversazione."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "試験的な機能です。QwenがiPhoneのスピーカーや車内で話している間もマイクをオンのままにし、iOSのエコーキャンセルを使って、話しかけるだけで割り込めるようにします。ヘッドフォンとAirPodsでは常に割り込めます。Qwenの発話が勝手に途切れる場合はオフにしてください。Qwen Live、Grok Live、クラシック音声で共通の設定です。次の会話から適用されます。"
+            "value" : "試験的な機能です。QwenがiPhoneのスピーカーや車内で話している間もマイクをオンのままにし、iOSのエコーキャンセルを使って、話しかけるだけで割り込めるようにします。ヘッドフォンとAirPodsでは常に割り込めます。Qwenの発話が勝手に途切れる場合はオフにしてください。Qwen Live、Gemini Live、Grok Live、クラシック音声で共通の設定です。次の会話から適用されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "실험적 기능이에요. Qwen가 iPhone 스피커나 차량에서 말하는 동안에도 iOS 에코 제거를 사용해 마이크를 켜 두므로 말해서 끼어들 수 있어요. 헤드폰과 AirPods에서는 항상 가능해요. Qwen가 계속 스스로 말을 끊는다면 끄세요. Qwen Live, Grok Live, 클래식 음성에 공통으로 적용돼요. 다음 대화부터 적용돼요."
+            "value" : "실험적 기능이에요. Qwen가 iPhone 스피커나 차량에서 말하는 동안에도 iOS 에코 제거를 사용해 마이크를 켜 두므로 말해서 끼어들 수 있어요. 헤드폰과 AirPods에서는 항상 가능해요. Qwen가 계속 스스로 말을 끊는다면 끄세요. Qwen Live, Gemini Live, Grok Live, 클래식 음성에 공통으로 적용돼요. 다음 대화부터 적용돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Funkcja eksperymentalna. Mikrofon pozostaje włączony, gdy Qwen mówi przez głośnik telefonu lub w samochodzie (z redukcją echa iOS), więc możesz mu przerwać, mówiąc. Ze słuchawkami i AirPods jest to zawsze możliwe. Wyłącz, jeśli Qwen ciągle sam sobie przerywa. Wspólne dla Qwen Live, Grok Live i klasycznego trybu głosowego. Obowiązuje od następnej rozmowy."
+            "value" : "Funkcja eksperymentalna. Mikrofon pozostaje włączony, gdy Qwen mówi przez głośnik telefonu lub w samochodzie (z redukcją echa iOS), więc możesz mu przerwać, mówiąc. Ze słuchawkami i AirPods jest to zawsze możliwe. Wyłącz, jeśli Qwen ciągle sam sobie przerywa. Wspólne dla Qwen Live, Gemini Live, Grok Live i klasycznego trybu głosowego. Obowiązuje od następnej rozmowy."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Experimental. Mantém o microfone aberto enquanto o Qwen fala pelo alto-falante do telefone ou no carro, com o cancelamento de eco do iOS, para você poder interromper falando. Fones de ouvido e AirPods sempre permitem isso. Desative se o Qwen ficar se interrompendo. Compartilhado pelo Qwen Live, Grok Live e modo de voz Clássico. Vale a partir da próxima conversa."
+            "value" : "Experimental. Mantém o microfone aberto enquanto o Qwen fala pelo alto-falante do telefone ou no carro, com o cancelamento de eco do iOS, para você poder interromper falando. Fones de ouvido e AirPods sempre permitem isso. Desative se o Qwen ficar se interrompendo. Compartilhado pelo Qwen Live, Gemini Live, Grok Live e modo de voz Clássico. Vale a partir da próxima conversa."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Экспериментальная функция. Микрофон остаётся включённым, пока Qwen говорит через динамик телефона или в автомобиле, а iOS подавляет эхо, — так можно перебить, просто заговорив. В наушниках и AirPods это работает всегда. Выключите, если Qwen постоянно прерывает сам себя. Общая настройка для Qwen Live, Grok Live и классического голосового режима. Действует со следующего разговора."
+            "value" : "Экспериментальная функция. Микрофон остаётся включённым, пока Qwen говорит через динамик телефона или в автомобиле, а iOS подавляет эхо, — так можно перебить, просто заговорив. В наушниках и AirPods это работает всегда. Выключите, если Qwen постоянно прерывает сам себя. Общая настройка для Qwen Live, Gemini Live, Grok Live и классического голосового режима. Действует со следующего разговора."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Deneysel. Qwen telefonun hoparlöründen veya arabada konuşurken iOS yankı engellemesiyle mikrofonu açık tutar; böylece konuşarak araya girebilirsiniz. Kulaklıklarda ve AirPods'ta bu her zaman mümkündür. Qwen kendi sözünü kesip duruyorsa bunu kapatın. Qwen Live, Grok Live ve Klasik ses için ortaktır. Sonraki konuşmada geçerli olur."
+            "value" : "Deneysel. Qwen telefonun hoparlöründen veya arabada konuşurken iOS yankı engellemesiyle mikrofonu açık tutar; böylece konuşarak araya girebilirsiniz. Kulaklıklarda ve AirPods'ta bu her zaman mümkündür. Qwen kendi sözünü kesip duruyorsa bunu kapatın. Qwen Live, Gemini Live, Grok Live ve Klasik ses için ortaktır. Sonraki konuşmada geçerli olur."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "实验功能。Qwen 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Qwen 不断打断自己，请关闭此选项。Qwen Live、Grok Live 与经典语音共用此设置。从下一次对话开始生效。"
+            "value" : "实验功能。Qwen 通过手机扬声器或在车内说话时保持麦克风开启，并使用 iOS 回声消除，让你可以直接开口打断。耳机和 AirPods 始终支持此功能。如果 Qwen 不断打断自己，请关闭此选项。Qwen Live、Gemini Live、Grok Live 与经典语音共用此设置。从下一次对话开始生效。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "實驗性功能。Qwen 透過手機揚聲器或在車上說話時，麥克風會保持開啟並使用 iOS 回音消除，讓你可以直接開口插話。使用耳機和 AirPods 時一律可以這樣做。若 Qwen 一直打斷自己，請關閉此選項。Qwen Live、Grok Live 和經典語音共用此設定。下次對話起生效。"
+            "value" : "實驗性功能。Qwen 透過手機揚聲器或在車上說話時，麥克風會保持開啟並使用 iOS 回音消除，讓你可以直接開口插話。使用耳機和 AirPods 時一律可以這樣做。若 Qwen 一直打斷自己，請關閉此選項。Qwen Live、Gemini Live、Grok Live 和經典語音共用此設定。下次對話起生效。"
           }
         }
       }

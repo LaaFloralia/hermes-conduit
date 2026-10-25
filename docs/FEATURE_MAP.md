@@ -1,44 +1,5 @@
 # Feature map
 
-## Qwen direct voice
-
-**Siblings:** phone direct voice · Watch direct voice · CarPlay · incoming
-Hermes calls · tools and jobs · consent · saved transcripts · notifier tokens
-
-**Code**
-- Adapter: `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift`
-- Credentials: `Shared/GeminiLive/GeminiLiveToken.swift`, `Conduit/Voice/GeminiLive/GeminiLiveTokenClient.swift`
-- Watch wire: `Shared/WatchVoice/WatchDirectWire.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
-- Provider setup: `docs/QWEN_LIVE.md`; notifier: `notifier/dashboard/plugin_api.py`
-- Plugin capability inventory: `Conduit/Views/ConduitPluginViews.swift` (separate Gemini/Qwen feature entries)
-- Lifecycle/recovery: `Conduit/Watch/WatchDirectBroker.swift`, `ConduitWatch/WatchDirectCallModel.swift`, `Conduit/CarPlay/CarPlayVoiceCoordinator.swift`
-- Phone entry, shared settings and captions: `Conduit/Services/AppState.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
-- Picker/setup identity: `Conduit/Voice/VoiceModeChoice.swift`, `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Voice/VoiceSetupIssue.swift`
-- Saved-call preferences/identity: `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceHistory.swift`
-- Watch transport and diagnostics: `ConduitWatch/WatchGeminiSocket.swift`
-- Watch capability compatibility tests: `ConduitTests/HermesCallsTests.swift` (legacy plugins, Qwen-only and concurrent providers)
-
-**Rulings**
-- Gemini and Qwen are independent picker entries, concurrently configurable on
-  the host, with separate preferences, consent, data permissions and saved
-  call identity. Shared controllers/adapters must not combine their product
-  identities (2026-10-24, maintainer request on #1182).
-- Both providers connect directly from the device. Watch starts explicitly
-  name the provider; reconnect grants authorize the selected token tool only.
-- Qwen voice can be selected on the phone independently of Gemini, with the
-  host's configured voice as fallback. Qwen uses Hermes search functions.
-- Qwen inherits job approvals/questions, follow-up steering, quiet job-result
-  delivery, barge-in and incoming Agent Calls through the shared direct-call
-  controller/tool bridge. The corresponding entries below apply to Qwen as
-  to Gemini; separate implementation rows are unnecessary because those
-  behaviors use the same code paths. Provider consent and history stay separate.
-
-**Open gaps**
-- Real credentials, entitlement, voice availability and Watch background
-  behavior need device testing; Windows checks cannot establish them.
-
-**Checked:** 2026-10-24, #1182; independent provider routes and regression tests.
-
 Features that have siblings: other screens, voice modes or notifier pieces
 that must do the same thing. A change that reaches one sibling and not the
 others leaves a gap that users find later. Each entry lists the siblings,
@@ -100,7 +61,7 @@ A call Hermes made about an approval or question is briefed from the
 chat's card: every question with its numbered choices (marked
 "(Recommended)" as Hermes wrote them), the command and why, and what Hermes
 wrote before asking. The user answers by voice: `answer_approval` and
-`answer_question` on Gemini, Grok and Local Live agent mode, "Approve:",
+`answer_question` on Gemini, Qwen, Grok and Local Live agent mode, "Approve:",
 "Deny:" and "Answer:" on GPT-Live. A number or "the recommended one" sends
 what that choice's tap sends. Hermes is paused while it waits, so asking it
 to explain goes as the answer itself, starting "Before I choose:". On the
@@ -140,7 +101,7 @@ the host answers with the user's words (`_local_live_call_answer`).
 **Open gaps**
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 
-**Checked:** 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #CARRYPR; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Voice follow-ups
 
@@ -179,7 +140,7 @@ the outcome text each model is told
 **Open gaps**
 - After a steer the model is still told Hermes "changes course now": steer and redirect both end as `.interrupted`, and the text has four copies, in `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`, `Shared/WatchVoice/WatchJobRelay.swift` and `Shared/WatchVoice/WatchBridgeDelegation.swift` (#1157).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-25, Qwen in the siblings and the table, at #1182, carried in #CARRYPR; 2026-10-23, seeded from main at 64d53c3.
 
 ## Job results during calls
 
@@ -223,7 +184,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 **Open gaps**
 - GPT-Live's model can't put a card on the call screen: Gemini, Grok and Local Live agent have `show_on_screen`, GPT-Live has no marker for it. Cards Hermes shows still appear (#366).
 
-**Checked:** 2026-10-25, at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
+**Checked:** 2026-10-25, Qwen in the siblings, at #1182, carried in #CARRYPR; at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
 
 ## Tools and consent in calls
 
@@ -241,13 +202,13 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Chats by voice: `Conduit/Voice/VoiceChatFinder.swift`, `Shared/WatchVoice/VoiceChatToolText.swift`
 - Provider consent: `Conduit/Voice/LiveVoiceProviderConsent.swift`, `Conduit/Services/AppState+LiveVoiceConsent.swift`, `Conduit/Views/LiveVoiceConsentViews.swift`
 - Consent for reads, per mode: `Conduit/Views/HealthSettingsViews.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
-- Watch: `Conduit/Watch/WatchDirectBroker.swift`, `Conduit/Watch/WatchToolGrantClient.swift`, `Shared/WatchVoice/WatchToolRelay.swift`
+- Watch: `Conduit/Watch/WatchDirectBroker.swift` (directToken: consent checked again once the token is minted), `Conduit/Watch/WatchToolGrantClient.swift`, `Shared/WatchVoice/WatchToolRelay.swift`
 - Notifier: `notifier/phone_tool.py`, `notifier/health_tool.py`, `notifier/location_tool.py`, `notifier/maps_tool.py`, `notifier/conduit_first.py`, `notifier/dashboard/plugin_api.py` (/voice-tools), `notifier/relay/src/watch-tools.mjs`
 
 **Rulings**
 - Live calls do phone actions on the device rather than handing them to Hermes (2026-10-20, #991).
 - Live modes read health, location and calendar through the host's /voice-tools, with consent for each voice mode that names its provider, off by default (2026-10-14, #585, notifier #104).
-- A live provider hears nothing until the user agrees, once per provider on the device; Local Live never asks (2026-10-20, #1052).
+- A live provider hears nothing until the user agrees, once per provider on the device; Local Live never asks (2026-10-20, #1052). Qwen asks for Alibaba Cloud on its own, and a Watch token minted while the user took consent back is dropped, not sent (2026-10-25, #1182).
 - Conduit's tools come first: models use them before handing work to Hermes or older routes such as gog (2026-10-16, #634, notifier #121).
 - With asking first on, a held request goes to Hermes only on the user's own yes, read the same way in every live mode: Gemini, Grok and Local Live's send_request and GPT-Live's next delegation. A no drops it, other words change it or keep it waiting (2026-10-24, #1223).
 
@@ -257,7 +218,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Watch GPT-Live and Local Live calls have no phone tools, and the Watch doesn't announce Hermes' phone changes (#994).
 - Classic finds and reads old chats through Hermes' session_search but can't open one in Conduit (#535).
 
-**Checked:** 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
+**Checked:** 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #CARRYPR; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
 ## Starting a call
 
@@ -357,7 +318,7 @@ answered.
 
 **Siblings:** CallKit on the phone (unlocked, locked, in another app) ·
 CarPlay · the Apple Watch (every voice, Local Live included) · each voice mode that answers (Classic, Gemini,
-Grok, GPT-Live, Local Live agent mode; Local Live otherwise opens Classic) · the missed-call notification ·
+Qwen, Grok, GPT-Live, Local Live agent mode; Local Live otherwise opens Classic) · the missed-call notification ·
 Bot Chat calls · the call trace · the notifier's call tool and skill ·
 Pulse (it may call only once the user opts in)
 
@@ -385,13 +346,13 @@ Pulse (it may call only once the user opts in)
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - The first push after install, before the first status read, can still switch dashboards, and missed-call outcomes are keyed by the pushed dashboard id (#1096).
 
-**Checked:** 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
+**Checked:** 2026-10-25, Qwen among the modes that answer, and its mute on a call kept on the iPhone's headset (nativeCallVoiceMuted), at #1182, carried in #CARRYPR; 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
 
 ## Audio route, Speaker and mute
 
 Where the voice comes out, who owns the audio session, and what mutes what.
 
-**Siblings:** Classic · Gemini, Grok and Local Live (default and
+**Siblings:** Classic · Gemini, Qwen, Grok and Local Live (default and
 echo-cancelling audio) · GPT-Live (WebRTC) · calls from Hermes (CallKit's
 Speaker button) · CarPlay · AirPods and Bluetooth · Read Aloud · the call
 screen's Mute and Silence · the minimised call bar · a Watch-answered call
@@ -416,22 +377,22 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #CARRYPR; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
 Speaking while Hermes talks or thinks: barge-in, talk-over, steering, push to
 talk, and how long the microphone waits.
 
-**Siblings:** Classic (phone, CarPlay, locked phone) · Gemini Live · Grok
-Live · GPT-Live · Local Live · Watch calls · headset, speaker and car routes ·
+**Siblings:** Classic (phone, CarPlay, locked phone) · Gemini Live · Qwen
+Live · Grok Live · GPT-Live · Local Live · Watch calls · headset, speaker and car routes ·
 push to talk · Continuous Conversation · the Action, headset and CarPlay
 buttons
 
 | Mode | On a headset | On the speaker or in the car |
 |---|---|---|
 | Classic | talk-over starts a new turn; speech while Hermes thinks steers | the same, with "Talk over it on the speaker" on |
-| Gemini, Grok, Local Live | barge-in | barge-in with "Talk over it on the speaker" on |
+| Gemini, Qwen, Grok, Local Live | barge-in | barge-in with "Talk over it on the speaker" on |
 | GPT-Live | barge-in (WebRTC cancels the echo) | barge-in |
 
 **Code**
@@ -443,14 +404,65 @@ buttons
 
 **Rulings**
 - In Classic, talking over a spoken reply stops it and starts a new turn; speech while Hermes thinks steers it (2026-10-04, #391).
-- Talking over on the speaker is opt-in, "Talk over it on the speaker", off by default (2026-10-03, #351; Classic 2026-10-04, #393).
+- Talking over on the speaker is opt-in, "Talk over it on the speaker", off by default, one setting shared by Qwen, Gemini, Grok and Classic, which each mode's caption says (2026-10-03, #351; Classic 2026-10-04, #393; Qwen 2026-10-25, #1182).
 - Push to talk is per profile and off by default. While held no silence timer runs; a press while Hermes speaks interrupts, while it thinks steers. CarPlay and calls from Hermes stay hands-free (2026-10-22, #1106).
 - With Continuous Conversation on, the default, Classic keeps listening through silence instead of pausing the microphone (2026-10-10, #520).
 
 **Open gaps**
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #CARRYPR; 2026-10-23, seeded from main at 64d53c3.
+
+## Qwen direct voice
+
+**Siblings:** phone direct voice · Watch direct voice · CarPlay · incoming
+Hermes calls · tools and jobs · consent · saved transcripts · notifier tokens
+
+**Code**
+- Adapter: `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift`
+- Credentials: `Shared/GeminiLive/GeminiLiveToken.swift`, `Conduit/Voice/GeminiLive/GeminiLiveTokenClient.swift`
+- Watch wire: `Shared/WatchVoice/WatchDirectWire.swift`, `Shared/WatchVoice/WatchVoiceWire.swift`
+- Provider setup: `docs/QWEN_LIVE.md`; notifier: `notifier/dashboard/plugin_api.py`
+- Plugin capability inventory: `Conduit/Views/ConduitPluginViews.swift` (separate Gemini/Qwen feature entries)
+- Lifecycle/recovery: `Conduit/Watch/WatchDirectBroker.swift` (directToken, tokenRefusalAfterMint), `ConduitWatch/WatchDirectCallModel.swift`, `Conduit/CarPlay/CarPlayVoiceCoordinator.swift`
+- Watch relay token: `Shared/WatchVoice/WatchToolRelayClient.swift` (keeps `qwen_live_token` beside `live_token`), tests in `ConduitTests/WatchVoiceWireTests.swift`
+- Which provider runs: `Conduit/Services/AppState.swift` (configuredLiveVoiceEngine, isQwenLiveEnabled, resumeVoiceCall, adoptSyncedVoicePreferences); what models read: `Conduit/Services/AppState+AgentSettings.swift` (voice.mode)
+- Phone entry, shared settings and captions: `Conduit/Services/AppState.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
+- Picker/setup identity: `Conduit/Voice/VoiceModeChoice.swift`, `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Voice/VoiceSetupIssue.swift`
+- Saved-call preferences/identity: `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceHistory.swift`
+- Watch transport and diagnostics: `ConduitWatch/WatchGeminiSocket.swift`
+- Watch capability compatibility tests: `ConduitTests/HermesCallsTests.swift` (legacy plugins, Qwen-only and concurrent providers)
+
+**Rulings**
+- Gemini and Qwen are independent picker entries, concurrently configurable on
+  the host, with separate preferences, consent, data permissions and saved
+  call identity. Shared controllers/adapters must not combine their product
+  identities (2026-10-24, maintainer request on #1182).
+- Both providers connect directly from the device. Watch starts explicitly
+  name the provider; reconnect grants authorize the selected token tool only,
+  and a token minted after the call ended or its provider's consent was
+  withdrawn never reaches the Watch (Gemini too).
+- With both providers' flags on (a synced blob merged across devices), Gemini
+  wins everywhere: normal routing, a resumed call, CarPlay and voice.mode.
+- Qwen voice can be selected on the phone independently of Gemini, with the
+  host's configured voice as fallback. Qwen uses Hermes search functions.
+- Qwen inherits job approvals/questions, follow-up steering, quiet job-result
+  delivery, barge-in, the audio routes, bounded socket sends and calls from
+  Hermes through the shared direct-call controller/tool bridge, and is named
+  in those entries ("Hermes is waiting on you", "Voice follow-ups", "Job
+  results during calls", "Tools and consent in calls", "Calls from Hermes",
+  "Audio route, Speaker and mute", "Talking over Hermes", "Live-call sends on
+  a slow connection"), which apply to Qwen as to Gemini. Provider consent and
+  history stay separate.
+
+**Open gaps**
+- Real credentials, entitlement, voice availability and Watch background
+  behavior need device testing; mocked tests cannot establish them.
+- A screen question on a Qwen profile falls back to Classic voice:
+  `Conduit/Services/AppState+ScreenQuestion.swift` (ScreenQuestionVoiceRouting.liveEngines)
+  lists GPT-Live, Gemini and Grok only, until Qwen is device-tested there.
+
+**Checked:** 2026-10-25, the Watch's qwen_live_token, a token minted after consent was withdrawn, provider precedence and the screen-question gap, at #1182, carried in #CARRYPR; 2026-10-24, #1182: independent provider routes and regression tests.
 
 ## Texting someone for the user
 
@@ -1150,8 +1162,8 @@ sent beside it, go out when the connection stops taking them: in order,
 with a bounded backlog, so a stalled socket doesn't pile up audio the model
 can't use or hold text without end.
 
-**Siblings:** Gemini Live · Grok Live · Local Live · GPT-Live (WebRTC) ·
-Classic's transcription streams · Watch calls (Gemini, Grok, Local Live; GPT-Live over the host's audio bridge)
+**Siblings:** Gemini Live · Qwen Live (its socket goes through the same writer) · Grok Live · Local Live · GPT-Live (WebRTC) ·
+Classic's transcription streams · Watch calls (Gemini, Qwen, Grok, Local Live; GPT-Live over the host's audio bridge)
 
 **Code**
 - The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift` (maxQueuedAudio, maxQueuedOther, Backlogged); what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
@@ -1167,7 +1179,7 @@ Classic's transcription streams · Watch calls (Gemini, Grok, Local Live; GPT-Li
 **Open gaps**
 - On the Watch's GPT-Live bridge, a reply already handed to a socket that then drops is lost with it, on any dropped connection and not only a backlogged one: the bridge sends without asking for a confirmation, where the phone's writer hands a failed frame's result back.
 
-**Checked:** 2026-10-25, #1231, for the text cap; 2026-10-24, #1223.
+**Checked:** 2026-10-25, Qwen in the siblings, at #1182, carried in #CARRYPR; #1231, for the text cap; 2026-10-24, #1223.
 
 ## Speech stream failures
 

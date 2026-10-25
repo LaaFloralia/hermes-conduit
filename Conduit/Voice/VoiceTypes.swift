@@ -198,10 +198,10 @@ struct VoiceProfilePreferences: Codable, Equatable {
     /// Reasoning effort for voice jobs ("none", "low", …). Nil keeps the
     /// profile default.
     var voiceJobReasoningEffort: String? = nil
-    /// Whether live voice calls (Gemini Live, GPT-Live, Grok Live) are saved to the Hermes
+    /// Whether live voice calls (Gemini Live, Qwen Live, GPT-Live, Grok Live) are saved to the Hermes
     /// host's session history. Nil is on.
     var saveVoiceCalls: Bool? = nil
-    /// Whether Gemini Live and Grok Live keep the microphone open while
+    /// Whether Gemini Live, Qwen Live and Grok Live keep the microphone open while
     /// the model speaks on the loudspeaker or in the car, with echo
     /// cancellation. Nil is off (experimental).
     var liveVoiceSpeakerBargeIn: Bool? = nil

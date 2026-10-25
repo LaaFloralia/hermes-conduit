@@ -3,10 +3,11 @@
 //  Conduit
 //
 //  The user's OK for a live voice mode to send their voice to the company
-//  that runs it (#827, App Review 5.1.2(i)). Gemini Live, GPT-Live and Grok
-//  Live send microphone audio, the transcript and what Hermes adds to
-//  Google, OpenAI or xAI, so each asks once before its first call. Local
-//  Live stays with the user's own Hermes host and never asks.
+//  that runs it (#827, App Review 5.1.2(i)). Gemini Live, Qwen Live, GPT-Live
+//  and Grok Live send microphone audio, the transcript and what Hermes adds
+//  to Google, Alibaba Cloud, OpenAI or xAI, so each asks once before its
+//  first call. Local Live stays with the user's own Hermes host and never
+//  asks.
 //
 
 import Foundation

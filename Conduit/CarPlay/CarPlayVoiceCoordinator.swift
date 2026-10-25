@@ -1510,10 +1510,10 @@ final class CarPlayVoiceCoordinator {
             }
             return
         case .qwenLive:
-            let gemini = appState.qwenLiveController
-            switch CarPlayGeminiLiveListenAction.forPhase(gemini.phase) {
+            let qwen = appState.qwenLiveController
+            switch CarPlayGeminiLiveListenAction.forPhase(qwen.phase) {
             case .start: await establishLiveVoice(.qwenLive, appState: appState, generation: generation, attachingTo: thread)
-            case .interrupt: gemini.interruptSpeaking()
+            case .interrupt: qwen.interruptSpeaking()
             case .nothing: break
             }
             return
@@ -1640,8 +1640,8 @@ final class CarPlayVoiceCoordinator {
             let gemini = appState.geminiLiveController
             gemini.setMicrophoneMuted(!gemini.isMicrophoneMuted)
         case .qwenLive:
-            let gemini = appState.qwenLiveController
-            gemini.setMicrophoneMuted(!gemini.isMicrophoneMuted)
+            let qwen = appState.qwenLiveController
+            qwen.setMicrophoneMuted(!qwen.isMicrophoneMuted)
         case .gptLive:
             let gpt = appState.gptLiveController
             gpt.setMicrophoneMuted(!gpt.isMicrophoneMuted)
@@ -1789,10 +1789,10 @@ final class CarPlayVoiceCoordinator {
         case .qwenLive:
             // A conversation already running (started on the phone) is
             // just shown; otherwise the CarPlay launch starts one.
-            let gemini = appState.qwenLiveController
-            guard !gemini.isActive else {
+            let qwen = appState.qwenLiveController
+            guard !qwen.isActive else {
                 // Unmuted for the driver as with GPT-Live.
-                gemini.setMicrophoneMuted(false)
+                qwen.setMicrophoneMuted(false)
                 return
             }
             await establishLiveVoice(.qwenLive, appState: appState, generation: generation)
