@@ -30875,7 +30875,8 @@ final class AppState: ObservableObject {
             displayPreferences = ProfileDisplayPreferences(
                 showReasoning: display["show_reasoning"] as? Bool ?? true,
                 showToolProgress: display["tool_progress"] as? String != "off",
-                expandToolsByDefault: display["expand_tools"] as? Bool ?? false
+                expandToolsByDefault: display["expand_tools"] as? Bool ?? false,
+                showReviews: ProfileDisplayPreferences.showsReviews(display["memory_notifications"])
             )
         } catch {
             // A read cut off by a dashboard switch fails here; it must not
@@ -31140,6 +31141,10 @@ final class AppState: ObservableObject {
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
+            }
+            if key == "display.memory_notifications" {
+                // Rows already in the chat hide or come back with it.
+                displayPreferences.showReviews = ProfileDisplayPreferences.showsReviews(value.textValue)
             }
             if key == "approvals.mode", let mode = value.textValue?.lowercased() {
                 // Mirror the saved profile mode immediately and re-resolve the

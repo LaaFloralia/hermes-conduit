@@ -139,12 +139,7 @@ struct ChatView: View {
         let preferences = appState.displayPreferences
         let isBusy = appState.isBusy
         let draws: (ChatMessageScrollTarget) -> Bool = { target in
-            target.step?.drawsRow(
-                messageID: target.id,
-                preferences: preferences,
-                isBusy: isBusy,
-                disclosure: rowDisclosure
-            ) ?? true
+            target.drawsRow(preferences: preferences, isBusy: isBusy, disclosure: rowDisclosure)
         }
         guard targets.contains(where: { !draws($0) }) else { return targets }
         return targets.filter(draws)

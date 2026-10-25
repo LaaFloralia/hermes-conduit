@@ -1809,6 +1809,32 @@ Settings caption, briefing or doc says how pictures load)
 
 **Checked:** 2026-10-25, at #1239.
 
+## Self-improvement updates
+
+The "💾 Self-improvement review" rows Hermes adds to a chat after it saves a
+memory or a skill, and the Chat setting that shows or hides them
+(`display.memory_notifications`: Use Hermes default, Always show, Never show).
+
+**Siblings:** the Chat settings row and its caption · the review row in the
+chat, live and in the offline copy · chats, project chats, Bot Chat and group
+rooms (all the dashboard's chats) · Hermes' messaging platforms · the
+notifier's live read of the setting for chats already open
+
+**Code**
+- Setting: `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail fields, `display.memory_notifications`), `Conduit/Models/Models.swift` (ProfileDisplayPreferences.showReviews), `Conduit/Services/AppState.swift` (loadProfileDisplayPreferences, setProfileSetting)
+- Row: `Conduit/Services/StreamEventParser.swift` (`review.summary`), `Conduit/Services/HermesClient.swift` (reviewActivity), `Conduit/Services/AppState.swift` (the review cache, mergeCachedReviews), `Conduit/Views/ChatView.swift` (SELF-IMPROVEMENT REVIEW, drawnMessageScrollTargets), `Conduit/Views/ChatActivityRows.swift` (ChatMessageScrollTarget.drawsRow, isReview), `Conduit/Views/OfflineChatTranscriptView.swift` (the offline copy)
+- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testReviewRowsFollowTheSelfImprovementSetting)
+- Notifier: `notifier/review_notices.py`, `notifier/tests/test_review_notices.py`
+
+**Rulings**
+- A changed setting reaches chats already open at their next review, with no restart: the dashboard reads it only when it builds a chat's agent, so the plugin reads it again from the chat's profile before each review. Hermes' messaging platforms need nothing, its gateway reads it every turn (2026-10-25, notifier #373, #1260).
+- Never show hides the rows a chat already has too, live and in the offline copy (once the profile's display settings have been read), without deleting them: they come back when the setting does. Anything but "off" (or a YAML false) shows them, as Hermes reads it (2026-10-25, #1260; Eric's rule to close gaps in the same change).
+
+**Open gaps**
+- Opened offline before any dashboard answered since launch, the offline copy shows review rows whatever the setting, as it does thinking and tool steps: no display setting is kept on the phone.
+
+**Checked:** 2026-10-25, #1260.
+
 ## Profile glow color
 
 The backdrop's warm glow takes a profile's color: the one picked for it in
