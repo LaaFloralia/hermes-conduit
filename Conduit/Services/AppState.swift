@@ -2291,7 +2291,7 @@ final class AppState: ObservableObject {
     @Published var toolsets: [CapabilityToolset] = []
     /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
     @Published private(set) var toolCatalog = ToolCatalog()
-    /// One sentence per finished run of steps: by dashboard and profile
+    /// A short summary per finished run of steps: by dashboard and profile
     /// (`toolCatalogKey`), then by the run's first tool call
     /// (AppState+StepSummaries.swift).
     @Published var stepSummaries: [String: [String: String]] = ChatStepSummaries.saved()
@@ -2303,7 +2303,7 @@ final class AppState: ObservableObject {
     /// once no question is waiting for its id.
     var stepSummaryEarlyAnswers: [String: String] = [:]
     /// Runs asked about and not answered yet, with when they were asked.
-    var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
     /// Whose catalog `toolCatalog` is (dashboard and profile), and the
     /// catalogs Hermes already sent this run, or is sending now.
     private var toolCatalogOwner: String?
