@@ -2618,7 +2618,7 @@ final class AppState: ObservableObject {
 
     func setQwenLiveEnabled(_ enabled: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-        guard preferences.qwenLiveEnabled != enabled else { return }
+        guard preferences.qwenLiveEnabled != enabled || (enabled && (preferences.geminiLiveEnabled || preferences.gptLiveEnabled || preferences.grokLiveEnabled || preferences.localLiveEnabled)) else { return }
         objectWillChange.send()
         preferences.qwenLiveEnabled = enabled
         // One live voice engine per profile: turning Qwen on turns the others off.
@@ -35341,9 +35341,12 @@ final class AppState: ObservableObject {
     /// Voice catches up as on a profile switch.
     func adoptSyncedVoicePreferences(_ preferences: VoiceProfilePreferences) {
         var preferences = preferences
-        // Blobs merged across devices can carry both direct providers on;
-        // Gemini wins, as configuredLiveVoiceEngine reads them.
+        // Blobs merged across devices can carry several live engines on;
+        // keep the one configuredLiveVoiceEngine reads, in its order.
         if preferences.geminiLiveEnabled { preferences.qwenLiveEnabled = false }
+        if preferences.geminiLiveEnabled || preferences.qwenLiveEnabled { preferences.gptLiveEnabled = false }
+        if preferences.geminiLiveEnabled || preferences.qwenLiveEnabled || preferences.gptLiveEnabled { preferences.grokLiveEnabled = false }
+        if preferences.geminiLiveEnabled || preferences.qwenLiveEnabled || preferences.gptLiveEnabled || preferences.grokLiveEnabled { preferences.localLiveEnabled = false }
         objectWillChange.send()
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         voiceConversationController.setProfilePreferences(preferences)

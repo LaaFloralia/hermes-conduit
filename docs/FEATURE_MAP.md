@@ -415,6 +415,9 @@ buttons
 
 ## Qwen direct voice
 
+A live call on Alibaba Cloud's Qwen realtime model, from the phone or the
+Watch, with temporary credentials the notifier mints.
+
 **Siblings:** phone direct voice · Watch direct voice · CarPlay · incoming
 Hermes calls · tools and jobs · consent · saved transcripts · notifier tokens
 
@@ -1278,7 +1281,7 @@ wired into the app, so not needed)
 - A phrase spelled in Bopomofo or in loose Hangul jamo goes to the right language but can't match: the recognizer writes Han characters and whole Hangul syllables (#1230 review).
 - Han-only phrases on a phone with no Chinese or Japanese language set are heard in Simplified Chinese; a Japanese kanji-only name may be missed.
 
-**Checked:** 2026-10-25, at #1230 (halfwidth Hangul, Jamo extensions, Bopomofo); at #1222.
+**Checked:** 2026-10-25, the Qwen call screen holds the listener, at #1182, carried in #1235; at #1230 (halfwidth Hangul, Jamo extensions, Bopomofo); at #1222.
 
 ## Dictation and voice message length
 
