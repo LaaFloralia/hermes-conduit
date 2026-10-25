@@ -69,18 +69,18 @@ extension AppState {
             let taskId = try? await client.startSideAgent(.btw, sessionId: sessionId, text: question)
             guard let self else { return }
             stepSummaryUnclaimed = max(0, stepSummaryUnclaimed - 1)
-            if let taskId, let early = stepSummaryEarlyAnswers.removeValue(forKey: taskId) {
-                // Unless the question was forgotten meanwhile (waited too
-                // long, or its dashboard signed out).
-                if let asked = stepSummaryRequested[target], Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
+            let early = taskId.flatMap { stepSummaryEarlyAnswers.removeValue(forKey: $0) }
+            // Only while this is still the run's question: forgotten
+            // meanwhile (waited too long, or its dashboard signed out), or
+            // asked again since, its answer is just taken from the stream.
+            if stepSummaryRequested[target] == asked {
+                if let early, Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
                     recordStepSummary(early, for: target)
+                } else if early == nil, let taskId {
+                    stepSummaryTasks[taskId] = target
                 } else {
                     stepSummaryRequested[target] = nil
                 }
-            } else if let taskId {
-                stepSummaryTasks[taskId] = target
-            } else {
-                stepSummaryRequested[target] = nil
             }
             if stepSummaryUnclaimed == 0 { stepSummaryEarlyAnswers = [:] }
         }

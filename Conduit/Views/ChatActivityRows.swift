@@ -628,9 +628,10 @@ private struct ChatStepRowBody: View {
         let visible = group.visibleMembers(showReasoning: showReasoning, showTools: showTools)
         if let position = visible.firstIndex(where: { $0.messageID == message.id }) {
             if visible.count < 2 {
-                // A kept summary shows under whichever step is left showing,
-                // a thought too when Settings > Display hides the tools.
-                if summary != nil || lookingBack || (message.role == .tool && explain != nil) {
+                // Whichever step is left showing carries the run's summary
+                // and menu, a thought too when Settings > Display hides the
+                // tools (a run with no tool call has no menu).
+                if summary != nil || lookingBack || explain != nil {
                     singleExplained
                 } else {
                     Self.single(message)
