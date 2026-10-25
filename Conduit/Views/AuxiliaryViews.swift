@@ -72,7 +72,8 @@ struct ContextSheet: View {
             }
             .navigationTitle("Context")
         }
-        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.activeProfile))
+        // The open chat's glow: a Bot Chat's is its bot's.
+        .environment(\.settingsGlowTint, appState.profileGlowTint(appState.conversationIdentityProfile))
         .task { await loadBreakdown() }
     }
 

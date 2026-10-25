@@ -1807,6 +1807,36 @@ Settings caption, briefing or doc says how pictures load)
 
 **Checked:** 2026-10-25, at #1239.
 
+## Profile glow color
+
+The backdrop's warm glow takes a profile's color: the one picked for it in
+the Profiles sheet, else the main color of its photo, else its bot's color in
+Hermes, else the gold accent.
+
+**Siblings:** the tab roots and the iPad chat placeholder (the profile in
+use) · the open chat (chats, project chats, Bot Chat: the chat's own agent)
+and its working line · sheets over the open chat (Model, Context) · group
+rooms (the profile in use) · Settings and its pages · the Profiles and All
+profiles sheets · the Live Activity's color · Settings captions and
+model-facing text (none describe the glow)
+
+**Code**
+- Colors: `Conduit/Services/ProfileGlowColors.swift`, `Conduit/Services/AppState+V2Shell.swift` (profileGlowTint), `Conduit/Services/AppState.swift` (profileGlowColors, setProfileGlowColor, conversationIdentityProfile), `Conduit/Services/ProfileAppearanceStore.swift` (picks)
+- Backdrop: `Conduit/Theme.swift` (ConduitBackdrop), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
+- Open chat: `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/ChatRowState.swift` (agentGlowTint), `Conduit/Views/ModelPickerView.swift`, `Conduit/Views/AuxiliaryViews.swift` (ContextSheet, SettingsBackdrop)
+- Elsewhere: `Conduit/Views/V2/V2SettingsTab.swift`, `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2AllProfilesSheet.swift`
+- Tests: `ConduitTests/ProfileGlowColorTests.swift`, `ConduitTests/BotModeTests.swift` (conversationIdentityProfile, the bot's glow)
+
+**Rulings**
+- A Bot Chat glows in its bot's color: its backdrop, the Model and Context sheets over it, its working line and its Live Activity; the Bots list and every other root keep the profile in use (2026-10-25, Eric's report, #1263).
+- Sheets reached from Settings or a page take the glow as an environment value (`settingsGlowTint`), not from AppState, so a sheet built on them needs nothing injected (#638).
+
+**Open gaps**
+- The drawer shell (Appearance, V2 off) draws every chat on the gold backdrop, a Bot Chat included, though the Model and Context sheets over it take the chat's glow.
+- The chat's other sheets (gateway diagnostics, workspace browser, delegate agents, pinned replies) never took a profile glow and stay gold.
+
+**Checked:** 2026-10-25, #1263.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
