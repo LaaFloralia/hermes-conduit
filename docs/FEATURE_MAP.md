@@ -177,12 +177,13 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 - Results show during the call as job cards on the call screen, on the phone only, with no writes to the host mid-call (2026-10-03, #364).
 - The saved transcript links each job the call started, drawn as a card (2026-10-03, #358; 2026-10-18, #758).
 - Local Live agent calls announce results; calls that hand each turn to Hermes drop them (2026-10-23, #1160).
+- A result that can't go out now is kept, never dropped: GPT-Live's quiet replies wait with the spoken ones, and replies still on their way when a conversation ends or is replaced go back to pending, as Gemini's unsent answers become text updates (2026-10-24, #1223).
 - On the Watch, a job answered as accepted that Hermes then refuses is taken back as news, and an answer that can't go on its call while the session reconnects is said as a text update, as the phone's fallback is (2026-10-24, #1221).
 
 **Open gaps**
 - GPT-Live's model can't put a card on the call screen: Gemini, Grok and Local Live agent have `show_on_screen`, GPT-Live has no marker for it. Cards Hermes shows still appear (#366).
 
-**Checked:** 2026-10-24, at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191: a cut screen card keeps its last line unless it can be half a fence, so prose that opens with inline code stays (#926 review), and message.interim counts as a job's progress (#912 review).
+**Checked:** 2026-10-24, at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191: a cut screen card keeps its last line unless it can be half a fence, so prose that opens with inline code stays (#926 review), and message.interim counts as a job's progress (#912 review).
 
 ## Tools and consent in calls
 
@@ -208,6 +209,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Live modes read health, location and calendar through the host's /voice-tools, with consent for each voice mode that names its provider, off by default (2026-10-14, #585, notifier #104).
 - A live provider hears nothing until the user agrees, once per provider on the device; Local Live never asks (2026-10-20, #1052).
 - Conduit's tools come first: models use them before handing work to Hermes or older routes such as gog (2026-10-16, #634, notifier #121).
+- With asking first on, a held request goes to Hermes only on the user's own yes, read the same way in every live mode: Gemini, Grok and Local Live's send_request and GPT-Live's next delegation. A no drops it, other words change it or keep it waiting (2026-10-24, #1223).
 
 **Open gaps**
 - The consent ask doesn't cover Classic with cloud speech through the host, or Local Live (#1052).
@@ -215,7 +217,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Watch GPT-Live and Local Live calls have no phone tools, and the Watch doesn't announce Hermes' phone changes (#994).
 - Classic finds and reads old chats through Hermes' session_search but can't open one in Conduit (#535).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
+**Checked:** 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
 ## Starting a call
 
@@ -232,7 +234,8 @@ entry)
 - Which chat: `Conduit/Services/AppState.swift` (liveVoiceThreadForOpenChat, savedCallToResume)
 - Chat voice button: `Conduit/Views/V2/V2VoiceButton.swift`, `Conduit/Views/V2/ChatVoiceButtonAction.swift`, `Conduit/Services/AppState+VoiceMessage.swift`, `Conduit/Voice/VoiceMessageRecorder.swift`
 - Siri and Shortcuts: `Conduit/Intents/StartVoiceConversationIntent.swift`; wake phrase: `Conduit/Voice/Wake/WakeLifecycleCoordinator.swift`
-- CarPlay: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift`, `Conduit/CarPlay/CarPlayBrowseTemplates.swift`
+- CarPlay: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (prepareWaitingForConnection, establishLiveVoice), `Conduit/CarPlay/CarPlayBrowseTemplates.swift`
+- A start's late answers: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (callEpoch, isStarting; Gemini, Grok, Local Live), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (startAttempt), `Conduit/Voice/VoiceConversationController.swift` (operationGeneration), `ConduitWatch/WatchDirectCallModel.swift` (callID)
 - Watch: `ConduitWatch/WatchHomeView.swift`, `ConduitWatch/TalkToHermesIntent.swift`
 - A chat open elsewhere: `Conduit/Services/ChatTakeover.swift` (ChatTakeoverPreference), `Conduit/Services/AppState.swift` (submitComposerForCall, sendCallPromptTakingOver)
 - How an attached call behaves: `docs/VOICE_BACKGROUND_JOBS.md`
@@ -243,12 +246,13 @@ entry)
 - A call always takes over a chat that Desktop holds, whatever the setting, and "Take over automatically" is on by default (2026-10-21, #1066).
 - Classic can't start while a reply runs; live calls start beside it (2026-10-18, #767).
 - The chat's voice button does what the user picks: Live call, Voice message or Dictation, for all profiles or per profile (2026-10-22, #1134).
+- A start that was stopped, or that a newer start replaced, changes nothing when its checks answer late, in every voice mode; a CarPlay start waiting for Hermes stops quietly when the voice mode changes, and the next tap starts the new mode (2026-10-24, #1223).
 
 **Open gaps**
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
 ## Ending a call and what gets saved
 
@@ -1058,6 +1062,30 @@ by Hermes through the notifier (its result note) · the phone sync status line
 
 **Checked:** 2026-10-24, at #1190.
 
+## Microphone audio on a slow connection
+
+How a live call's microphone audio goes out when the connection stops
+taking it: in order, with a bounded backlog, so a stalled socket doesn't
+pile up audio the model can't use.
+
+**Siblings:** Gemini Live · Grok Live · Local Live · GPT-Live (WebRTC) ·
+Classic's transcription streams · Watch calls (Gemini, Grok, Local Live; GPT-Live over the host's audio bridge)
+
+**Code**
+- The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift`; what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
+- Sessions: `Shared/GeminiLive/GeminiLiveSession.swift`, `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`
+- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions), `ConduitWatch/WatchBridgeCallModel.swift` (sendsInFlightLimit, GPT-Live's bridge socket)
+- Classic: `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/HermesLiveTranscription.swift` (sendChain)
+
+**Rulings**
+- Each connection's frames go out one at a time, in order. Up to 96 capture chunks of audio may wait, about two seconds of the tap's 1,024-frame buffers at 48 kHz (longer on a route that captures at a lower rate); audio past that is dropped as it arrives. Text turns and tool answers always wait their turn: they are a few each turn, so they aren't capped. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
+- GPT-Live's audio on the phone is WebRTC's to pace; on the Watch it goes over the host's audio bridge, already capped at 20 sends in flight. Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
+
+**Open gaps**
+- Text turns and tool answers aren't capped: a socket that stalls without failing or closing keeps them waiting until the session's own timeouts end the connection.
+
+**Checked:** 2026-10-24, #1223.
+
 ## Speech stream failures
 
 What a spoken reply says when its speech stream fails partway: Classic voice
@@ -1336,7 +1364,7 @@ data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-25, #1214 (fork CI #87), at main 8b60c8c and notifier main with notifier #350.
+**Checked:** 2026-10-25, #1214 (fork CI #87), at main 893c104 and notifier main with notifier #350.
 
 ## Steps in a turn
 
