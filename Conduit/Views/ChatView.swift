@@ -585,6 +585,8 @@ struct ChatView: View {
                     isInitialSync: true
                 )
                 scrollEngine.trackMessageVisibility(of: appState.pendingClarifyMessageID)
+                // An unread open that finished before this view was up.
+                takeReplyStartLanding()
                 appState.installChatViewportSnapshotProvider(
                     id: viewportSnapshotProviderID,
                     capture: { [weak engine = scrollEngine] in
@@ -782,7 +784,10 @@ struct ChatView: View {
         content
             .onChange(of: appState.chatScrollRequest) { _, _ in
                 ChatViewportTrace.shared.log("event explicitLatest (send pulse)")
-                requestLatest(animated: false)
+                requestLatest(animated: false, armsReplyHold: true)
+            }
+            .onChange(of: appState.chatReplyStartLandingRequest) { _, _ in
+                takeReplyStartLanding()
             }
             .onChange(of: appState.chatScrollToTopRequest) { _, request in
                 ChatViewportTrace.shared.log("event explicitTop request=\(request)")
@@ -833,10 +838,16 @@ struct ChatView: View {
             }
     }
 
+    private func takeReplyStartLanding() {
+        guard appState.takeChatReplyStartLanding() else { return }
+        ChatViewportTrace.shared.log("event replyStartLanding (unread chat opened)")
+        scrollEngine.replyStartLandingRequested()
+    }
+
     /// Send and the jump-to-latest button. An animated jump gets one final
     /// pin once the animation has had time to land.
-    private func requestLatest(animated: Bool) {
-        scrollEngine.explicitLatestRequested(animated: animated)
+    private func requestLatest(animated: Bool, armsReplyHold: Bool = false) {
+        scrollEngine.explicitLatestRequested(animated: animated, armsReplyHold: armsReplyHold)
         latestAnimationTask?.cancel()
         guard animated else { return }
         latestAnimationTask = Task { @MainActor in
@@ -876,6 +887,7 @@ struct ChatView: View {
         }
         router.proxy = proxy
         router.rebuildTranscript = { transcriptScrollID &+= 1 }
+        scrollEngine.holdsRepliesAtStart = { ChatReplyStartPreference.isOn }
         scrollEngine.liveTailShowing = { [weak appState = appState] in
             guard let appState else { return false }
             let live = appState.liveTurn

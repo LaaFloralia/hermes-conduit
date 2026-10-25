@@ -1386,6 +1386,19 @@ final class AppState: ObservableObject {
     /// inserted the outgoing bubble, even if the user previously browsed up.
     @Published private(set) var chatScrollRequest = 0
     @Published private(set) var chatScrollToTopRequest = 0
+    /// Bumped once an unread chat's open has its transcript in: ChatView
+    /// lands it at the start of its latest reply (#365), taking it once
+    /// (takeChatReplyStartLanding), also when it mounts after the bump.
+    @Published private(set) var chatReplyStartLandingRequest = 0
+    private var chatReplyStartLandingTaken = 0
+
+    /// Whether a landing is owed that ChatView hasn't taken yet; taking it
+    /// clears it.
+    func takeChatReplyStartLanding() -> Bool {
+        guard chatReplyStartLandingTaken != chatReplyStartLandingRequest else { return false }
+        chatReplyStartLandingTaken = chatReplyStartLandingRequest
+        return true
+    }
 
     /// Profile changes and network refreshes are asynchronous. Keep a final
     /// ownership boundary at the published catalog so a stale row can never
@@ -22474,13 +22487,18 @@ final class AppState: ObservableObject {
         // profile explicitly (its canonical row may legitimately surface in
         // the raw catalog as a stray from older server data), so the guard
         // would only misfire here.
+        // A saved chat's row opens by its stored session id.
+        let listedSession = (sessions + cronSessions).first(where: {
+            $0.id == sessionId || $0.alternateIds.contains(sessionId)
+        }) ?? (sessions + cronSessions).first(where: { $0.storedSessionId == sessionId })
         if conversationProfile == nil,
-           let session = (sessions + cronSessions).first(where: {
-               $0.id == sessionId || $0.alternateIds.contains(sessionId)
-           }), !sessionBelongsToProfile(session, profile: activeProfile) {
+           let session = listedSession, !sessionBelongsToProfile(session, profile: activeProfile) {
             errorMessage = AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it.")
             return (.failed, true)
         }
+        // Read before the open marks it read: an unread chat lands at the
+        // start of its latest reply once its transcript is in (#365).
+        let opensUnreadReply = listedSession.map { isSessionUnread($0) } ?? false
         let transitionGeneration: UInt64
         if let viewportTransitionGeneration {
             guard chatViewportTransitionIsCurrent(
@@ -22582,6 +22600,7 @@ final class AppState: ObservableObject {
             // Read before any await: the flags describe the reconcile above.
             return (.failed, reconciliationWasIdentityRejected || reconciliationSessionWasNotFound)
         }
+        if opensUnreadReply { chatReplyStartLandingRequest &+= 1 }
         return (.opened, false)
     }
 
