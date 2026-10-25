@@ -297,4 +297,52 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(queue.pending().isEmpty, "What waits on the phone goes even offline")
         XCTAssertNotNil(stored, "The key stays until the host's copy is deleted")
     }
+
+    // A drain on connect holds the gate only until its deadline, even when
+    // the transport hangs: a Log to Hermes run never waits behind it longer.
+    func testShortcutInboxBoundedPassNeverHoldsTheGatePastItsDeadline() async throws {
+        let gate = ShortcutInboxGate()
+        var entered = false
+        let hanging: ShortcutInboxSender.Request = { _, _, _ in
+            entered = true
+            try await Task.sleep(for: .seconds(30))
+            return [:]
+        }
+        let started = Date()
+        let drain = ShortcutInboxDeadline.bounded(hanging, until: started.addingTimeInterval(0.3))
+        let draining = Task { @MainActor in try await gate.run { try await drain("/inbox/status", "GET", nil) } }
+        while !entered { await Task.yield() }
+        let waited = await gate.run { Date().timeIntervalSince(started) }
+        XCTAssertGreaterThanOrEqual(waited, 0.25, "The run waited for the drain")
+        XCTAssertLessThan(waited, 2, "but only until the drain's deadline")
+        do {
+            _ = try await draining.value
+            XCTFail("A pass past its deadline gives up")
+        } catch {
+            XCTAssertEqual(error as? ShortcutInboxUnavailable, .outOfTime)
+        }
+        do {
+            _ = try await drain("/inbox/ingest", "POST", nil)
+            XCTFail("No request starts after the deadline")
+        } catch {
+            XCTAssertEqual(error as? ShortcutInboxUnavailable, .outOfTime)
+        }
+    }
+
+    // Settings decides whether to show the page from memory, never the disk.
+    func testShortcutInboxLocalStateAnswersFromMemory() {
+        let state = ShortcutInboxLocalState()
+        let scope = ShortcutInboxScope(dashboardID: UUID(), profile: "default")
+        XCTAssertNil(state.hasLocalData(scope), "Unknown until read once, off the drawing path")
+        state.noteKey(false, for: scope.storageID)
+        state.noteQueue([:], now: Date())
+        XCTAssertNil(state.hasLocalData(scope), "An inbox the file never had is unknown until loaded")
+        state.noteQueue([scope.storageID: .init(scope: scope, events: [ShortcutEvent(kind: .other, at: Date(), text: "x")])],
+                        now: Date())
+        XCTAssertEqual(state.hasLocalData(scope), true)
+        state.noteQueue([:], now: Date())
+        XCTAssertEqual(state.hasLocalData(scope), false, "A written queue without it: nothing waits")
+        state.noteKey(true, for: scope.storageID)
+        XCTAssertEqual(state.hasLocalData(scope), true)
+    }
 }

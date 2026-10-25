@@ -1088,6 +1088,8 @@ struct SettingsView: View {
 
 private struct SettingsHome: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// Redraws when an inbox's key or waiting events change (showsShortcutInboxSettings).
+    @ObservedObject private var shortcutInbox = ShortcutInboxLocalState.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: SettingsSnapshot
     @Binding var path: [SettingsDestination]

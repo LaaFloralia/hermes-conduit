@@ -337,6 +337,7 @@ struct ShortcutInboxQueue {
             try JSONEncoder().encode(all).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             var file = url
             try? file.setResourceValues(values)
+            if url == Self.standardURL { ShortcutInboxLocalState.shared.noteQueue(all, now: Date()) }
             return true
         } catch {
             return false
@@ -359,9 +360,78 @@ struct ShortcutInboxKeyStore {
             },
             save: { key in
                 if let data = try? JSONEncoder().encode(key) { KeychainHelper.saveShortcutInboxKey(data, scope: id) }
+                Task { @MainActor in ShortcutInboxLocalState.shared.noteKey(true, for: id) }
             },
-            clear: { KeychainHelper.clearShortcutInboxKey(scope: id) }
+            clear: {
+                KeychainHelper.clearShortcutInboxKey(scope: id)
+                Task { @MainActor in ShortcutInboxLocalState.shared.noteKey(false, for: id) }
+            }
         )
+    }
+}
+
+/// What the Settings home needs to know about each inbox on this phone (a
+/// key, events waiting), kept in memory so drawing Settings never reads the
+/// queue file or the keychain. The queue and key store report their writes
+/// here; an inbox not seen yet this launch is read once, off the drawing
+/// path (``load(_:)``), and the change is published.
+@MainActor
+final class ShortcutInboxLocalState: ObservableObject {
+    static let shared = ShortcutInboxLocalState()
+
+    /// Per ShortcutInboxScope.storageID.
+    @Published private(set) var waiting: [String: Int] = [:]
+    @Published private(set) var keyed: [String: Bool] = [:]
+
+    /// Whether this inbox has a key or waiting events; nil until it's known.
+    func hasLocalData(_ scope: ShortcutInboxScope) -> Bool? {
+        let id = scope.storageID
+        guard let count = waiting[id], let key = keyed[id] else { return nil }
+        return key || count > 0
+    }
+
+    /// Reads one inbox's state from disk and the keychain, unless known.
+    func load(_ scope: ShortcutInboxScope) {
+        let id = scope.storageID
+        if waiting[id] == nil { waiting[id] = ShortcutInboxQueue.standard(scope).pending().count }
+        if keyed[id] == nil { keyed[id] = ShortcutInboxKeyStore.keychain(scope).load() != nil }
+    }
+
+    func noteQueue(_ all: [String: ShortcutInboxQueue.Slot], now: Date) {
+        let oldest = now.addingTimeInterval(-Double(ShortcutInboxQueue.keepDays) * 86_400)
+        var counts = waiting
+        for key in counts.keys where all[key] == nil { counts[key] = 0 }
+        for (id, slot) in all { counts[id] = slot.events.filter { $0.at >= oldest }.count }
+        if counts != waiting { waiting = counts }
+    }
+
+    func noteKey(_ present: Bool, for id: String) {
+        if keyed[id] != present { keyed[id] = present }
+    }
+}
+
+/// Requests that give up at a deadline: each one waits at most until then,
+/// whatever the transport does, and none starts after it. A pass that
+/// holds the gate (ShortcutInboxGate) with these can't keep a Log to Hermes
+/// run waiting longer than its deadline.
+enum ShortcutInboxDeadline {
+    static func bounded(_ request: @escaping ShortcutInboxSender.Request, until deadline: Date) -> ShortcutInboxSender.Request {
+        { path, method, body in
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { throw ShortcutInboxUnavailable.outOfTime }
+            return try await withThrowingTaskGroup(of: [String: Any]?.self) { group in
+                group.addTask { try await request(path, method, body) }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(remaining))
+                    return nil
+                }
+                defer { group.cancelAll() }
+                guard let first = try await group.next(), let answer = first else {
+                    throw ShortcutInboxUnavailable.outOfTime
+                }
+                return answer
+            }
+        }
     }
 }
 

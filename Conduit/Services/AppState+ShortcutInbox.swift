@@ -74,6 +74,8 @@ extension AppState {
     static let shortcutInboxLog = Logger(subsystem: "com.milim.relay", category: "shortcut-inbox")
     /// Sends, key agreement and deletes, one at a time across runs.
     static let shortcutInboxGate = ShortcutInboxGate()
+    /// How long a drain on connect may hold the gate.
+    static let shortcutInboxDrainSeconds: TimeInterval = 10
 
     /// The dashboard and profile in use: an event is logged for them, and
     /// only ever sent to them.
@@ -123,8 +125,13 @@ extension AppState {
     /// Sends what waited for the dashboard and profile in use, once its host
     /// says it keeps events: on every connect, so opening Conduit delivers it.
     func drainShortcutInbox() async {
+        // Known before Settings draws, so drawing never reads the disk.
+        if let scope = shortcutInboxScope { ShortcutInboxLocalState.shared.load(scope) }
+        // Bounded: a Log to Hermes run that starts meanwhile waits at most
+        // this long for the gate, well inside its own half minute.
+        let deadline = Date().addingTimeInterval(Self.shortcutInboxDrainSeconds)
         guard notifierPlugin.reports(Self.shortcutInboxCapability), let scope = shortcutInboxScope,
-              let request = shortcutInboxRequest(for: scope) else { return }
+              let request = shortcutInboxRequest(for: scope, deadline: deadline) else { return }
         let queue = ShortcutInboxQueue.standard(scope)
         guard !queue.pending().isEmpty else { return }
         let sender = ShortcutInboxSender(queue: queue, keys: .keychain(scope), deviceName: UIDevice.current.name)
@@ -157,10 +164,15 @@ extension AppState {
 
     /// The Settings page's entry: shown once the plugin keeps events, or
     /// while this dashboard and profile have events there or waiting here.
+    /// Never reads the disk: an inbox not known yet is read after this
+    /// draw, and the Settings home redraws when it is (it observes
+    /// ShortcutInboxLocalState).
     var showsShortcutInboxSettings: Bool {
         if notifierPlugin.reports(Self.shortcutInboxCapability) { return true }
         guard let scope = shortcutInboxScope else { return false }
-        return ShortcutInboxKeyStore.keychain(scope).load() != nil || !ShortcutInboxQueue.standard(scope).pending().isEmpty
+        if let known = ShortcutInboxLocalState.shared.hasLocalData(scope) { return known }
+        Task { @MainActor in ShortcutInboxLocalState.shared.load(scope) }
+        return false
     }
 
     /// Requests to the plugin's inbox for `scope`, over its dashboard's own
@@ -179,12 +191,16 @@ extension AppState {
                 guard remaining > 0 else { throw ShortcutInboxUnavailable.outOfTime }
                 timeout = min(timeout, remaining)
             }
-            return try await bridge.requestJSON(
-                path: DashboardPath.withProfile(path, profile: scope.profile),
-                method: method,
-                body: body,
-                timeoutMilliseconds: timeout
-            )
+            let send: ShortcutInboxSender.Request = { path, method, body in
+                try await bridge.requestJSON(
+                    path: DashboardPath.withProfile(path, profile: scope.profile),
+                    method: method,
+                    body: body,
+                    timeoutMilliseconds: timeout
+                )
+            }
+            // The transport's own timeout, and the deadline whatever it does.
+            return try await (deadline.map { ShortcutInboxDeadline.bounded(send, until: $0) } ?? send)(path, method, body)
         }
     }
 }
