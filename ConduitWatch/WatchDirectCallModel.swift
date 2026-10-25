@@ -724,6 +724,11 @@ final class WatchDirectCallModel: ObservableObject {
         case .callRefused(_, let reason)?:
             WatchCallLog.shared.note("directRefused", ["reason": reason])
             finish(reason)
+        case .callOnPhone?:
+            // A call from Hermes the iPhone kept on its headset (#1204):
+            // the call screen controls it from here (WatchVoiceCall).
+            WatchCallLog.shared.note("directOnPhone")
+            finish(WatchCallEnd.onPhone)
         default:
             finish(String(localized: "Conduit on the iPhone sent something this Watch app can't read. Update both."))
         }

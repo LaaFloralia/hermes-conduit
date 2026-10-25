@@ -833,6 +833,19 @@ extension AppState {
     }
 
     /// The CallKit call's mute button.
+    /// Whether the microphone of the voice a call from Hermes opened is
+    /// off, by whichever control turned it off (its own Mute, the
+    /// minimised bar, CallKit's): Classic's paused microphone counts. Nil
+    /// while no voice runs.
+    var nativeCallVoiceMuted: Bool? {
+        if isGeminiLiveActive { return geminiLiveController.isMicrophoneMuted }
+        if isGPTLiveActive { return gptLiveController.isMicrophoneMuted }
+        if isGrokLiveActive { return grokLiveController.isMicrophoneMuted }
+        if isLocalLiveActive { return localLiveController.isMicrophoneMuted }
+        if voiceConversationController.hasLiveVoiceSession { return voiceConversationController.isMicrophonePaused }
+        return nil
+    }
+
     func setVoiceMutedForNativeCall(_ muted: Bool) {
         isNativeHermesCallMuted = muted
         // A classic voice still waiting to start its first listen (#558)

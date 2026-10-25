@@ -29,7 +29,7 @@ struct WatchCallView: View {
                     }
                     .tabViewStyle(.verticalPage)
                     .containerBackground(for: .tabView) { WatchBackdrop() }
-                    .navigationTitle(call.callEngine.title)
+                    .navigationTitle(title)
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }
@@ -40,6 +40,11 @@ struct WatchCallView: View {
                     .environmentObject(call)
             }
         }
+    }
+
+    /// The voice's name, or the iPhone's while it has the call.
+    private var title: String {
+        call.phase == .onPhone ? String(localized: "iPhone") : call.callEngine.title
     }
 
     /// Up while a job's request waits for an answer; only Approve or Deny
@@ -181,7 +186,7 @@ struct WatchCallControls: View {
     private var mood: WatchLevelBars.Mood {
         switch call.phase {
         case .idle, .preparing, .connecting, .reconnecting: return .working
-        case .listening: return call.isMuted ? .muted : .listening
+        case .listening, .onPhone: return call.isMuted ? .muted : .listening
         case .speaking: return .speaking
         case .lost, .needsTap: return .attention
         case .ending, .ended: return .done
@@ -209,6 +214,7 @@ struct WatchCallControls: View {
         case .reconnecting: return String(localized: "Reconnecting…")
         case .lost: return String(localized: "Connection lost")
         case .needsTap: return String(localized: "Paused")
+        case .onPhone: return call.isMuted ? String(localized: "Muted") : String(localized: "On your iPhone")
         case .ending, .ended: return String(localized: "Ending…")
         }
     }
@@ -221,6 +227,7 @@ struct WatchCallControls: View {
         case .speaking: return currentLine == nil ? String(localized: "Tap to interrupt") : nil
         case .lost: return String(localized: "Raise your wrist to reconnect")
         case .needsTap: return String(localized: "Tap to continue")
+        case .onPhone: return String(localized: "Talking through your headset")
         default: return nil
         }
     }

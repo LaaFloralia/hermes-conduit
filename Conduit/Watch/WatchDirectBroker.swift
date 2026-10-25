@@ -153,6 +153,15 @@ final class WatchDirectBroker {
 
     func handle(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
         func answer(_ message: WatchVoiceWire.Message) { reply?(WatchVoiceWire.encode(message)) }
+        // A call from Hermes this phone kept on its headset (#1204): the
+        // Watch's call screen controls it, whichever way its start came.
+        if let id = message.watchCallID, let ring = message.watchCallRing, HermesNativeCalls.shared.keepsWatchAnswer(ringID: ring) {
+            answer(.callOnPhone(callID: id))
+            return
+        }
+        // Started on the Watch before this phone could keep it: it's the
+        // Watch's now.
+        if let ring = message.watchCallRing { HermesNativeCalls.shared.startedOnWatch(ringID: ring) }
         switch message {
         case .directStart(let id, let version, let ring):
             guard version == WatchVoiceWire.version else {

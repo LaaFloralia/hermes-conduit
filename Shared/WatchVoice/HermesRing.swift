@@ -432,6 +432,198 @@ enum HermesRingHandoff {
     }
 }
 
+extension WatchVoiceWire.Message {
+    /// The call id a Watch call's start names; nil for any other message.
+    var watchCallID: UInt32? {
+        switch self {
+        case .directStart(let id, _, _), .grokStart(let id, _, _), .localLiveStart(let id, _, _): return id
+        case .bridgeStart(let id, _, _, _): return id
+        default: return nil
+        }
+    }
+
+    /// The call from Hermes a Watch call's start answers.
+    var watchCallRing: String? {
+        switch self {
+        case .directStart(_, _, let ring), .grokStart(_, _, let ring), .localLiveStart(_, _, let ring): return ring
+        case .bridgeStart(_, _, _, let ring): return ring
+        default: return nil
+        }
+    }
+}
+
+/// A call from Hermes answered on the Watch while the iPhone has a headset
+/// on (AirPods, #1204): the iPhone answers its own ring, so the voice plays
+/// on the headset as a phone call's would, and the Watch's call screen keeps
+/// Mute and End. The iPhone's call keeps their link down, so the two share
+/// them through the relay (0.17+, `ring-controls`): each posts its change to
+/// the ring's control and long-polls it for the other's. Only the two flags
+/// go through; the ring's token guards them. A relay restart drops the
+/// ring: every write may adopt it back (`adopt`), and a device whose read
+/// finds it gone writes its state again and reads on.
+enum HermesRingControl {
+    struct State: Equatable {
+        /// The relay's count of changes, which a read waits past.
+        let seq: Int
+        let muted: Bool
+        let ended: Bool
+    }
+
+    enum Read: Equatable {
+        case state(State)
+        /// Nothing new within the wait: ask again.
+        case notYet
+        /// No such ring, or no control route (a relay older than 0.17):
+        /// asking again won't help.
+        case gone
+        /// Busy, or failing for now.
+        case retry
+    }
+
+    /// The longest one read waits at the relay, in seconds.
+    static let readWait = 20
+
+    /// Beside the ring's settle URL.
+    static func url(_ ring: HermesRing) -> URL {
+        ring.url.deletingLastPathComponent().appendingPathComponent("control")
+    }
+
+    /// `muted` nil leaves the mute as it is; an end is only ever set.
+    static func setRequest(_ ring: HermesRing, by device: HermesRingDevice, muted: Bool? = nil, ended: Bool = false) -> URLRequest {
+        var request = URLRequest(url: url(ring), timeoutInterval: 10)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var body: [String: Any] = ["token": ring.token, "by": device.rawValue, "adopt": true]
+        if let muted { body["muted"] = muted }
+        if ended { body["ended"] = true }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    static func readRequest(_ ring: HermesRing, after seq: Int, wait: Int = readWait) -> URLRequest {
+        let wait = max(0, min(wait, readWait))
+        var components = URLComponents(url: url(ring), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "after", value: String(seq)), URLQueryItem(name: "wait", value: String(wait))]
+        var request = URLRequest(url: components?.url ?? url(ring), timeoutInterval: TimeInterval(wait + 10))
+        request.setValue("Bearer \(ring.token)", forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    static func state(_ data: Data) -> State? {
+        guard let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let seq = body["seq"] as? Int, let muted = body["muted"] as? Bool, let ended = body["ended"] as? Bool else { return nil }
+        return State(seq: seq, muted: muted, ended: ended)
+    }
+
+    static func readResult(status: Int, data: Data) -> Read {
+        switch status {
+        // One it can't read is asked again, never taken for a lost ring.
+        case 200: return state(data).map(Read.state) ?? .retry
+        case 204: return .notYet
+        case 400, 401, 404, 405, 409: return .gone
+        default: return .retry
+        }
+    }
+
+    /// Posts a change: the control after it, nil when the relay refused it
+    /// or couldn't be reached in `attempts` tries (2 s apart: a restarting
+    /// relay is back within seconds).
+    static func set(
+        _ ring: HermesRing,
+        by device: HermesRingDevice,
+        muted: Bool? = nil,
+        ended: Bool = false,
+        attempts: Int = 1,
+        retryDelay: UInt64 = 2_000_000_000,
+        send: (URLRequest) async throws -> (Data, Int) = HermesRingHandoff.send
+    ) async -> State? {
+        for attempt in 1...max(1, attempts) {
+            let answer = try? await send(setRequest(ring, by: device, muted: muted, ended: ended))
+            // A 200 it can't read is tried again like a lost one.
+            if let answer, answer.1 == 200, let state = state(answer.0) { return state }
+            // Refused: trying again won't help.
+            if let status = answer?.1, (400..<500).contains(status), status != 429 { return nil }
+            guard attempt < attempts, !Task.isCancelled else { break }
+            try? await Task.sleep(nanoseconds: retryDelay)
+        }
+        return nil
+    }
+
+    /// The control as it stands, without waiting: `.state` (seq 0 and
+    /// unmuted when no one has written it yet), `.gone` when the relay has
+    /// no such ring or no control route, `.retry` when it couldn't be read
+    /// in `attempts` tries.
+    static func current(
+        _ ring: HermesRing,
+        attempts: Int = 3,
+        retryDelay: UInt64 = 1_000_000_000,
+        send: (URLRequest) async throws -> (Data, Int) = HermesRingHandoff.send
+    ) async -> Read {
+        for attempt in 1...max(1, attempts) {
+            let answer = try? await send(readRequest(ring, after: 0, wait: 0))
+            switch answer.map({ readResult(status: $0.1, data: $0.0) }) ?? .retry {
+            case .state(let state): return .state(state)
+            case .notYet: return .state(State(seq: 0, muted: false, ended: false))
+            case .gone: return .gone
+            case .retry:
+                guard attempt < attempts, !Task.isCancelled else { return .retry }
+                try? await Task.sleep(nanoseconds: retryDelay)
+            }
+        }
+        return .retry
+    }
+
+    /// Reads the control past `seq` until it ends, the ring goes, or the
+    /// task is cancelled, handing each change to `changed`. A ring the relay
+    /// lost (a restart) is written again with `rewrite`, this device's state,
+    /// and read from its start: once each time it's lost, and the reads
+    /// stop when it can't be written.
+    static func follow(
+        _ ring: HermesRing,
+        after seq: Int,
+        retryDelay: UInt64 = 2_000_000_000,
+        send: (URLRequest) async throws -> (Data, Int) = HermesRingHandoff.send,
+        rewrite: @MainActor () async -> Bool,
+        changed: @MainActor (State) async -> Void
+    ) async {
+        var seen = seq
+        var rewritten = false
+        let clock = ContinuousClock()
+        while !Task.isCancelled {
+            let read: Read
+            let asked = clock.now
+            do {
+                let (data, status) = try await send(readRequest(ring, after: seen))
+                read = readResult(status: status, data: data)
+            } catch {
+                read = .retry
+            }
+            // Nothing new, at once: something on the way doesn't wait, so
+            // reads pause rather than spin.
+            let early = clock.now - asked < .seconds(1)
+            switch read {
+            case .state(let state):
+                rewritten = false
+                guard state.seq > seen else {
+                    if early { try? await Task.sleep(nanoseconds: retryDelay) }
+                    continue
+                }
+                seen = state.seq
+                await changed(state)
+                if state.ended { return }
+            case .notYet:
+                if early { try? await Task.sleep(nanoseconds: retryDelay) }
+            case .gone:
+                guard !rewritten, await rewrite() else { return }
+                rewritten = true
+                seen = 0
+            case .retry:
+                try? await Task.sleep(nanoseconds: retryDelay)
+            }
+        }
+    }
+}
+
 /// The Watch's handoff key, in the Keychain of the device holding it: the
 /// Watch's own, or on the iPhone the one the Watch sent.
 enum HermesRingHandoffKey {
