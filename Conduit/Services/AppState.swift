@@ -12593,6 +12593,8 @@ final class AppState: ObservableObject {
             KeychainHelper.clearConnection(dashboardID: dashboardID)
             keepUsernameForNextSignIn(dashboardID: dashboardID)
             clearSavedPassword(dashboardID: dashboardID)
+            // Log to Hermes events waiting for it belong to the signed-out user.
+            ShortcutInboxQueue.forgetDashboard(dashboardID)
             // The Cloudflare Access token stays, like the address and the
             // extra headers: it reaches the server, it doesn't sign in.
             // Remove Dashboard deletes it.
@@ -13140,6 +13142,7 @@ final class AppState: ObservableObject {
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
+        ShortcutInboxQueue.forgetDashboard(id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
         // identified WebKit store and the dashboard's native jar (plus
@@ -13201,6 +13204,8 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
+        // Log to Hermes events waiting for it, and its inbox keys.
+        ShortcutInboxQueue.forgetDashboard(id)
         if wasActive {
             showLogin = true
         }
@@ -24243,6 +24248,8 @@ final class AppState: ObservableObject {
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
         Task { await runPhoneSync(reason: .connected) }
+        // Log to Hermes events that waited for this host.
+        Task { await drainShortcutInbox() }
     }
 
     /// The plugin's capabilities answer read at the end of an update: it
@@ -35452,6 +35459,7 @@ enum KeychainHelper {
     private static let customHeadersKey = "hermes-conduit.custom-headers.v1"
     private static let healthSyncKeyAccount = "hermes-conduit.health-sync-key.v1"
     private static let phoneSyncKeyAccount = "hermes-conduit.phone-sync-key.v1"
+    private static let shortcutInboxKeyAccount = "hermes-conduit.shortcut-inbox-key.v1"
     private static let service = "com.milim.conduit"
 
     static func saveConnection(_ conn: HermesConnection) {
@@ -35599,6 +35607,22 @@ enum KeychainHelper {
 
     static func clearPhoneSyncKey() {
         delete(account: phoneSyncKeyAccount)
+    }
+
+    /// The key this phone agreed with one dashboard and profile its Log to
+    /// Hermes Shortcuts action posts to (`scope` is
+    /// ShortcutInboxScope.storageID). Readable after first unlock, as
+    /// above: automations run while the phone is locked.
+    static func saveShortcutInboxKey(_ data: Data, scope: String) {
+        save(data, account: "\(shortcutInboxKeyAccount).\(scope)")
+    }
+
+    static func loadShortcutInboxKey(scope: String) -> Data? {
+        load(account: "\(shortcutInboxKeyAccount).\(scope)")
+    }
+
+    static func clearShortcutInboxKey(scope: String) {
+        delete(account: "\(shortcutInboxKeyAccount).\(scope)")
     }
 
     // MARK: Dashboard registry (multi-server, #148)
