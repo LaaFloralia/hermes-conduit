@@ -267,6 +267,22 @@ enum WatchVoiceWire {
         /// takes three bytes a character), and a long call keeps its end.
         static let maxTextBytes = 40_000
 
+        /// How many of the oldest turns a running call drops so the rest
+        /// fit `bytes`, as the saved call would keep them: a long call
+        /// holds no more on the Watch than it can send. Turns from
+        /// `protected` on (a line still open) stay, whatever their size,
+        /// and so does the newest, which `capped` clips rather than drops.
+        static func overflow(_ turns: [DirectTurn], bytes: Int = maxTextBytes, protected: Int? = nil) -> Int {
+            var total = turns.reduce(0) { $0 + $1.text.utf8.count }
+            let limit = max(0, min(protected ?? turns.count, turns.count - 1))
+            var dropped = 0
+            while total > bytes, dropped < limit {
+                total -= turns[dropped].text.utf8.count
+                dropped += 1
+            }
+            return dropped
+        }
+
         static func capped(_ turns: [DirectTurn], bytes: Int = maxTextBytes) -> [DirectTurn] {
             var kept: [DirectTurn] = []
             var total = 0
@@ -335,7 +351,7 @@ enum WatchVoiceWire {
         case grokStart(callID: UInt32, version: Int, ring: String? = nil)
         /// A Watch call to Local Live wants the grant that opens the host's
         /// audio bridge. Calls from Hermes don't ring a Watch on Local Live.
-        case localLiveStart(callID: UInt32, version: Int)
+        case localLiveStart(callID: UInt32, version: Int, ring: String? = nil)
         /// The Watch's own PushKit token, which calls from Hermes ring on
         /// (designs/hermes-calls-watch.md); nil once it has none. Queued, so
         /// it reaches a sleeping iPhone. `key`: the Watch's handoff key,

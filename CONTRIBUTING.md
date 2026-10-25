@@ -20,13 +20,14 @@ current.
    left open for the maintainer to decide. "No mapped feature" is only for a
    change with no siblings.
 4. Update the entry in the same PR: its siblings, code paths, rulings, the gaps
-   opened or closed, and the Checked line. A feature with siblings and no
-   entry gets one in that PR. A fix that brings a sibling in line with an
+   opened or closed, and the Checked line, which names this PR (CI fails an
+   entry the PR adds or edits whose Checked line doesn't). A feature with
+   siblings and no entry gets one in that PR. A fix that brings a sibling in line with an
    earlier change it missed adds that sibling to the entry, so the next change
    reaches it.
 5. Text that describes a behavior is one of its siblings: Settings captions,
    the briefings and tool results models read, the notifier's tool
-   descriptions, README.md and docs/.
+   descriptions, README.md and docs/. List them in Siblings with the rest.
 
 ## Checks
 
@@ -37,3 +38,11 @@ them before pushing:
     python3 scripts/check-l10n-coverage.py --repo-root .
     python3 scripts/plan-tests.py validate --repo-root . --baseline scripts/test-timings.json
     CONDUIT_CI_SKIP_BASH_WRAPPER_TESTS=1 python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+
+## Review labels
+
+A PR labeled `waiting on contributor` is waiting on its author. Push or comment
+on the PR when you've answered it, and a workflow swaps the label for
+`waiting on Eric`, so the maintainer knows it's his turn again. Putting
+`waiting on contributor` back on takes `waiting on Eric` off. A reply inside a
+review thread doesn't count, so also comment on the PR itself or push.
