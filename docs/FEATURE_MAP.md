@@ -497,7 +497,7 @@ confirmation and README say about restarts
 - Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
 - A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
 
-**Checked:** 2026-10-25, at #1222 (install and update requests wait in the profile config queue); at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
+**Checked:** 2026-10-25, at #1230 (the phone-run install and update requests wait in the profile config queue, the host-run update doesn't); at #1222; at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
 
 ## Notifications
 
@@ -538,7 +538,7 @@ Dashboards and the Profiles sheet)
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 
-**Checked:** 2026-10-24, #1212 (MEDIA tags in pushes, answer cards and the call screen); at #1197, carried in #1217 (encryption keys and padlock; fork CI #82); the registration update race at #1191.
+**Checked:** 2026-10-24, #1212 (MEDIA tags in pushes, answer cards and the call screen); at #1197, carried in #1217 (encryption keys and padlock; fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
 
 ## Pulse
 
@@ -947,24 +947,28 @@ the lists they sit in.
 **Siblings:** installed skills and toolsets (AppState) · the catalog, tool
 counts, backends, MCP servers and plugins (CapabilitiesStore) · the Skills
 and Tools tabs · the bot editor's skills, tools and MCP lists (see Bots:
-create and edit)
+create and edit) · the skill, toolset and catalog skill detail pages · the Kanban
+task composer's skill picker · the Capabilities captions ("Changes apply
+to new sessions."; no other behavior text describes these lists)
 
 **Code**
-- Installed lists and switches: `Conduit/Services/AppState.swift` (loadCapabilities, toggleSkill, toggleToolset, capabilityLoadGeneration), `Conduit/Services/CapabilityToggleWrites.swift`
-- The rest of the page: `Conduit/Services/CapabilitiesStore.swift`
-- Views: `Conduit/Views/CapabilitiesView.swift`, `Conduit/Views/Capabilities/CapabilitySkillsTab.swift`, `Conduit/Views/Capabilities/CapabilityToolsTab.swift`
-- Tests: `ConduitTests/KanbanTests+Capabilities.swift`
+- Installed lists and switches: `Conduit/Services/AppState.swift` (loadCapabilities, toggleSkill, toggleToolset, capabilityLoadGeneration, capabilitiesOwner, currentCapabilitiesOwner, capabilitiesAreCurrent, capabilityRowsAreCurrent, retireCapabilitySnapshot, CapabilitySnapshotOwner, CapabilityDetailScope, CapabilityLoadPolicy), `Conduit/Services/CapabilityToggleWrites.swift`
+- The rest of the page: `Conduit/Services/CapabilitiesStore.swift` (configure, serves)
+- Views: `Conduit/Views/CapabilitiesView.swift`, `Conduit/Views/Capabilities/CapabilitySkillsTab.swift`, `Conduit/Views/Capabilities/CapabilityToolsTab.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanSkillsPickerSheet)
+- Tests: `ConduitTests/KanbanTests+Capabilities.swift`, `ConduitTests/KanbanTests.swift` (CapabilityLoadPolicy)
 
 **Rulings**
 - A list read that started before a switch was flipped commits nothing, in AppState and in CapabilitiesStore alike (#867; AppState's lists at #1191).
 - Switches reach Hermes one after another in the order flipped, since each rewrites one config.yaml. A failed write puts back what Hermes last confirmed only when no newer flip of that switch is on its way, and a flip a newer one replaced reports no failure (#868 follow-up, #1191).
+- The installed lists belong to a dashboard, its bridge and a profile, not a profile name: two dashboards can both have "default". Another dashboard's rows never show, act or seed a picker, a dashboard switch clears them, and Turn All On/Off stops once the list it started from isn't the one showing, and a pushed detail page reads its skill or toolset again once Capabilities points at the new dashboard and profile; a catalog skill's page keeps to the one it was opened for and shows only its name and description after a switch (2026-10-24, #1005, #1219; Eric approved the #1005 fixes).
 - Switches, the store's other config-changing writes and the bot editor's writes wait their turn with every other profile config save (Profile config saves), so a settings GET→PUT can't put a flip back (2026-10-24, #1222).
 
 **Open gaps**
 - AppState's list reads go through a live DashboardTicketBridge with no test seam, so its generation guard has no test.
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
+- The Kanban skill picker says "No skills match." when it withholds another dashboard's skills, the same as a search miss.
 
-**Checked:** 2026-10-24, at #1222.
+**Checked:** 2026-10-24, at #1219 and #1222.
 
 ## Reply progress signals
 
@@ -1092,29 +1096,31 @@ by Hermes through the notifier (its result note) · the phone sync status line
 
 **Checked:** 2026-10-24, at #1190.
 
-## Microphone audio on a slow connection
+## Live-call sends on a slow connection
 
-How a live call's microphone audio goes out when the connection stops
-taking it: in order, with a bounded backlog, so a stalled socket doesn't
-pile up audio the model can't use.
+How a live call's microphone audio, and the text turns and tool answers
+sent beside it, go out when the connection stops taking them: in order,
+with a bounded backlog, so a stalled socket doesn't pile up audio the model
+can't use or hold text without end.
 
 **Siblings:** Gemini Live · Grok Live · Local Live · GPT-Live (WebRTC) ·
 Classic's transcription streams · Watch calls (Gemini, Grok, Local Live; GPT-Live over the host's audio bridge)
 
 **Code**
-- The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift`; what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
+- The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift` (maxQueuedAudio, maxQueuedOther, Backlogged); what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
 - Sessions: `Shared/GeminiLive/GeminiLiveSession.swift`, `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`
-- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions), `ConduitWatch/WatchBridgeCallModel.swift` (sendsInFlightLimit, GPT-Live's bridge socket)
+- Watch: `ConduitWatch/WatchDirectCallModel.swift` (maxSendsInFlight, flushUplink; the same Gemini, Grok and Local Live sessions), `ConduitWatch/WatchBridgeCallModel.swift` (sendsInFlightLimit, eventsInFlightLimit, GPT-Live's bridge socket)
 - Classic: `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/HermesLiveTranscription.swift` (sendChain)
 
 **Rulings**
-- Each connection's frames go out one at a time, in order. Up to 96 capture chunks of audio may wait, about two seconds of the tap's 1,024-frame buffers at 48 kHz (longer on a route that captures at a lower rate); audio past that is dropped as it arrives. Text turns and tool answers always wait their turn: they are a few each turn, so they aren't capped. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
-- GPT-Live's audio on the phone is WebRTC's to pace; on the Watch it goes over the host's audio bridge, already capped at 20 sends in flight. Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
+- Each connection's frames go out one at a time, in order. Up to 96 capture chunks of audio may be outstanding, the one on the socket included: for Gemini about two seconds of the tap's 1,024-frame buffers at 48 kHz (longer on a route that captures at a lower rate), and the same count of Grok's and Local Live's own chunks; audio past that is dropped as it arrives. Frames for a socket the session replaced fail instead of going out, and dropped audio is logged (2026-10-24, #1223).
+- Text turns, context notes and tool answers are never dropped on their own. Up to 32 may be outstanding, the one on the socket included; one more means the socket stopped taking frames, so everything it holds fails and the session reconnects, each frame's failure handler handing its result back as for any failed send (2026-10-25, #1231).
+- GPT-Live's audio on the phone is WebRTC's to pace; on the Watch it goes over the host's audio bridge, already capped at 20 sends in flight. The bridge's text events (Hermes' replies) are capped too: before each reply goes out, 32 events outstanding on the connection means the socket stopped taking them, so the Watch rejoins and the replies not yet sent stay pending for the new connection. A reply's chunks go out together, so one reply can take the count past 32. The check guards growth: a stalled socket with nothing more to send holds what it has, and the bridge's ping watchdog ends it (2026-10-25, #1231). Classic's transcription streams keep a whole utterance, since dropping audio there loses words (2026-10-24, #1223).
 
 **Open gaps**
-- Text turns and tool answers aren't capped: a socket that stalls without failing or closing keeps them waiting until the session's own timeouts end the connection.
+- On the Watch's GPT-Live bridge, a reply already handed to a socket that then drops is lost with it, on any dropped connection and not only a backlogged one: the bridge sends without asking for a confirmation, where the phone's writer hands a failed frame's result back.
 
-**Checked:** 2026-10-24, #1223.
+**Checked:** 2026-10-25, #1231, for the text cap; 2026-10-24, #1223.
 
 ## Speech stream failures
 
@@ -1176,12 +1182,14 @@ the plugin list)
 file either. `profiles.create` (New Bot, Duplicate) writes a new profile's
 first config, which nothing else is saving yet, and Delete Bot
 (`DELETE /api/profiles/{name}`) removes the whole profile, so neither waits. The notifier, the Watch and
-CarPlay don't write a profile's config.
+CarPlay don't write a profile's config, and the host-run plugin update
+(`/self/update`) runs as a job on the host that changes the plugin's files,
+not the config.
 
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-10-24, at #1222.
+**Checked:** 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 
@@ -1201,13 +1209,15 @@ wired into the app, so not needed)
 **Rulings**
 - Recognition is on-device only, and nothing is recorded or kept (#174).
 - A Latin-letter phrase is heard in the app's locale. A phrase in another writing system is heard by a recognizer for a language that writes it, the person's own first (the app's language only when it has an on-device model), up to three languages at once; Settings names the language, or says this iPhone can't hear the phrase (2026-10-24, #1222, from #1004).
+- Phrases in Han, kana, Hangul and Thai match as a run of characters, two at least, since those recognizers don't space words; the matcher reads scripts through WakeSpeechLocale, so the two agree (2026-10-25, #1230).
 - A phrase past the third language isn't heard, and Settings says so beside it. The cap counts every profile's phrases on the dashboard, in the listener's order, so Settings and the listener agree (2026-10-24, #1222 review).
 - After an interruption with no end from iOS, listening resumes only when no phone call is in progress, no other Conduit audio owner has the session and the session activates again (2026-10-24, #1222, from #1004).
 
 **Open gaps**
+- A phrase spelled in Bopomofo or in loose Hangul jamo goes to the right language but can't match: the recognizer writes Han characters and whole Hangul syllables (#1230 review).
 - Han-only phrases on a phone with no Chinese or Japanese language set are heard in Simplified Chinese; a Japanese kanji-only name may be missed.
 
-**Checked:** 2026-10-24, at #1222.
+**Checked:** 2026-10-25, at #1230 (halfwidth Hangul, Jamo extensions, Bopomofo); at #1222.
 
 ## Dictation and voice message length
 
@@ -1401,7 +1411,7 @@ data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-25, #1214 (fork CI #87), at main 7379064 and notifier main with notifier #350.
+**Checked:** 2026-10-25, #1214 (fork CI #87), at main 6e0f32d and notifier main with notifier #350.
 
 ## Steps in a turn
 
@@ -1462,6 +1472,30 @@ workflow table
 - A reply inside a review thread doesn't flip the label, since a fork's review events get a read-only token; the docs tell contributors to comment on the PR or push.
 
 **Checked:** 2026-10-24, at #1216.
+
+## Another saved dashboard's address
+
+When the address typed while editing or repairing one dashboard is already
+saved as another.
+
+**Siblings:** Settings' Edit Connection · Repair's password reconnect
+(Reconnect Now) · Repair's sign-in (browser and native OAuth) · Settings'
+Sign In Again · the two alerts' text (no Settings caption, README or doc
+describes this case)
+
+**Code**
+- Edit Connection: `Conduit/Services/ConnectionSetupApplication.swift` (perform, addressBelongsToDashboard), `Conduit/Views/AuxiliaryViews.swift` (the Settings not applied alert)
+- Repair: `Conduit/Services/AppState.swift` (performConnectionRepair, repairAddressOwner, registerRepairDashboard, repairRegisteredDashboardIDs, beginConnectionRepair, beginSavedConnectionRepair), `Conduit/Services/ConnectionRepair.swift` (ConnectionRepairActivationOutcome), `Conduit/Views/ConnectionSetupView.swift` (beginRepairSignIn, activate, the Already a Saved Dashboard alert)
+- Tests: `ConduitTests/ConnectionRepairTests.swift`
+
+**Rulings**
+- The two never merge: nothing of the other dashboard's (password, Face ID choice, Cloudflare token, sign-in cookies) is written. Edit Connection says so; Repair stops before connecting and offers to switch to it (2026-10-24, #995, #1219, Eric).
+- Repair's sign-in is checked before its sheet registers the address, and a new address a repair registered (by sign-in or password reconnect) stays that repair's own for its next try, until that repair connects or another repair begins (2026-10-24, #1219).
+
+**Open gaps**
+- Settings' Sign In Again only offers the active dashboard's own address, so it never meets this case; it shares Repair's activation and would refuse the same way.
+
+**Checked:** 2026-10-24, at #1219.
 
 ## App Store screenshots and showcase clips
 
