@@ -336988,84 +336988,276 @@
         }
       }
     },
-    "%@ waiting on this iPhone for the next run" : {
+    "%lld waiting on this iPhone for the next run" : {
       "localizations" : {
         "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ warten auf diesem iPhone auf die nächste Ausführung"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Ereignis wartet auf diesem iPhone auf die nächste Ausführung"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Ereignisse warten auf diesem iPhone auf die nächste Ausführung"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld event waiting on this iPhone for the next run"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld events waiting on this iPhone for the next run"
+                }
+              }
+            }
           }
         },
         "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ en espera en este iPhone para la próxima ejecución"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld evento en espera en este iPhone para la próxima ejecución"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld de eventos en espera en este iPhone para la próxima ejecución"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld eventos en espera en este iPhone para la próxima ejecución"
+                }
+              }
+            }
           }
         },
         "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ en attente sur cet iPhone pour la prochaine exécution"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld événement en attente sur cet iPhone pour la prochaine exécution"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld d'événements en attente sur cet iPhone pour la prochaine exécution"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld événements en attente sur cet iPhone pour la prochaine exécution"
+                }
+              }
+            }
           }
         },
         "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ menunggu di iPhone ini untuk eksekusi berikutnya"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld menunggu di iPhone ini untuk eksekusi berikutnya"
+                }
+              }
+            }
           }
         },
         "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ in attesa su questo iPhone per la prossima esecuzione"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld evento in attesa su questo iPhone per la prossima esecuzione"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld di eventi in attesa su questo iPhone per la prossima esecuzione"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld eventi in attesa su questo iPhone per la prossima esecuzione"
+                }
+              }
+            }
           }
         },
         "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@件がこのiPhoneで次の実行を待っています"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld件がこのiPhoneで次の実行を待っています"
+                }
+              }
+            }
           }
         },
         "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@개가 이 iPhone에서 다음 실행을 기다리는 중"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld개가 이 iPhone에서 다음 실행을 기다리는 중"
+                }
+              }
+            }
           }
         },
         "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oczekujące na tym iPhonie na następne uruchomienie: %@"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld zdarzenie czeka na tym iPhonie na następne uruchomienie"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld zdarzenia czekają na tym iPhonie na następne uruchomienie"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld zdarzeń czeka na tym iPhonie na następne uruchomienie"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld zdarzenia czeka na tym iPhonie na następne uruchomienie"
+                }
+              }
+            }
           }
         },
         "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ aguardando neste iPhone pela próxima execução"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld evento aguardando neste iPhone pela próxima execução"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld de eventos aguardando neste iPhone pela próxima execução"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld eventos aguardando neste iPhone pela próxima execução"
+                }
+              }
+            }
           }
         },
         "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ожидают на этом iPhone следующего запуска: %@"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld событие ждёт на этом iPhone следующего запуска"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld события ждут на этом iPhone следующего запуска"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld событий ждут на этом iPhone следующего запуска"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld события ждут на этом iPhone следующего запуска"
+                }
+              }
+            }
           }
         },
         "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu iPhone'da sonraki çalıştırmayı bekleyen: %@"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld olay bu iPhone'da sonraki çalıştırmayı bekliyor"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld olay bu iPhone'da sonraki çalıştırmayı bekliyor"
+                }
+              }
+            }
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 个在此 iPhone 上等待下次运行"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 个在此 iPhone 上等待下次运行"
+                }
+              }
+            }
           }
         },
         "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 個在此 iPhone 上等待下次執行"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld 個在此 iPhone 上等待下次執行"
+                }
+              }
+            }
           }
         }
       }
@@ -338132,6 +338324,446 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的自動化為 Hermes 記錄的內容"
+          }
+        }
+      }
+    },
+    "Update the Conduit plugin on your Hermes host to log events. This one wasn't kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiere das Conduit-Plugin auf deinem Hermes-Host, um Ereignisse zu protokollieren. Dieses wurde nicht behalten."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update the Conduit plugin on your Hermes host to log events. This one wasn't kept."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualiza el plugin de Conduit en tu host de Hermes para registrar eventos. Este no se guardó."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mettez à jour le plugin Conduit sur votre hôte Hermes pour consigner des événements. Celui-ci n'a pas été gardé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perbarui plugin Conduit di host Hermes Anda untuk mencatat peristiwa. Yang ini tidak disimpan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiorna il plugin Conduit sul tuo host Hermes per registrare gli eventi. Questo non è stato tenuto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "イベントを記録するには、HermesホストのConduitプラグインをアップデートしてください。このイベントは保管されませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이벤트를 기록하려면 Hermes 호스트의 Conduit 플러그인을 업데이트하세요. 이 이벤트는 보관되지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaktualizuj wtyczkę Conduit na hoście Hermesa, aby zapisywać zdarzenia. To zdarzenie nie zostało zachowane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atualize o plugin do Conduit no seu host do Hermes para registrar eventos. Este não foi mantido."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обновите плагин Conduit на хосте Hermes, чтобы записывать события. Это событие не сохранено."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Olayları kaydetmek için Hermes sunucunuzdaki Conduit eklentisini güncelleyin. Bu olay tutulmadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请更新 Hermes 主机上的 Conduit 插件以记录事件。此事件未保留。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請更新 Hermes 主機上的 Conduit 外掛程式以記錄事件。此事件未保留。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't reach Hermes, so this wasn't kept. Open Conduit once, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte Hermes nicht erreichen, daher wurde dies nicht behalten. Öffne Conduit einmal und versuche es dann erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit couldn't reach Hermes, so this wasn't kept. Open Conduit once, then try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo conectar con Hermes, así que esto no se guardó. Abre Conduit una vez y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu joindre Hermes, donc ceci n'a pas été gardé. Ouvrez Conduit une fois, puis réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat menjangkau Hermes, jadi ini tidak disimpan. Buka Conduit sekali, lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a raggiungere Hermes, quindi questo non è stato tenuto. Apri Conduit una volta, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitがHermesに接続できなかったため、保管されませんでした。一度Conduitを開いてから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 Hermes에 연결할 수 없어 보관하지 않았습니다. Conduit를 한 번 연 다음 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł połączyć się z Hermesem, więc tego nie zachowano. Otwórz raz Conduit, a potem spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu acessar o Hermes, então isto não foi mantido. Abra o Conduit uma vez e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не удалось связаться с Hermes, поэтому это не сохранено. Откройте Conduit один раз и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit Hermes'e ulaşamadı, bu yüzden bu tutulmadı. Conduit'i bir kez açın, sonra tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法连接 Hermes，因此未保留此事件。请先打开一次 Conduit，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法連線到 Hermes，因此未保留此事件。請先打開一次 Conduit，然後再試一次。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't keep this on the phone. Unlock your iPhone, then try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte dies nicht auf dem Telefon behalten. Entsperre dein iPhone und versuche es dann erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit couldn't keep this on the phone. Unlock your iPhone, then try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo guardar esto en el teléfono. Desbloquea tu iPhone y vuelve a intentarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu garder ceci sur le téléphone. Déverrouillez votre iPhone, puis réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat menyimpan ini di ponsel. Buka kunci iPhone Anda, lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a tenere questo sul telefono. Sblocca l'iPhone, poi riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitはこれをiPhoneに保管できませんでした。iPhoneのロックを解除してから、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 이것을 휴대폰에 보관할 수 없었습니다. iPhone 잠금을 해제한 다음 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł zachować tego w telefonie. Odblokuj iPhone'a, a potem spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu manter isto no telefone. Desbloqueie o iPhone e tente de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не удалось сохранить это на телефоне. Разблокируйте iPhone и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bunu telefonda tutamadı. iPhone'unuzun kilidini açın, sonra tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法将其保存在手机上。请解锁 iPhone，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法將其保留在手機上。請解鎖 iPhone，然後再試一次。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't reach Hermes, so what it keeps wasn't deleted. Try again once you're connected." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte Hermes nicht erreichen, daher wurde nicht gelöscht, was Hermes behält. Versuche es erneut, sobald du verbunden bist."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit couldn't reach Hermes, so what it keeps wasn't deleted. Try again once you're connected."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo conectar con Hermes, así que no se eliminó lo que guarda. Vuelve a intentarlo cuando estés conectado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu joindre Hermes, donc ce qu'il garde n'a pas été supprimé. Réessayez une fois connecté."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat menjangkau Hermes, jadi yang disimpannya tidak dihapus. Coba lagi setelah terhubung."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a raggiungere Hermes, quindi ciò che conserva non è stato eliminato. Riprova quando sei connesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitがHermesに接続できなかったため、Hermesが保管している内容は削除されませんでした。接続してからもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 Hermes에 연결할 수 없어 Hermes가 보관한 내용을 삭제하지 못했습니다. 연결되면 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł połączyć się z Hermesem, więc to, co przechowuje, nie zostało usunięte. Spróbuj ponownie po połączeniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu acessar o Hermes, então o que ele guarda não foi apagado. Tente de novo quando estiver conectado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не удалось связаться с Hermes, поэтому то, что он хранит, не удалено. Повторите попытку после подключения."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit Hermes'e ulaşamadı, bu yüzden Hermes'in tuttukları silinmedi. Bağlandığınızda tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法连接 Hermes，因此其保留的内容未被删除。连接后请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法連線到 Hermes，因此其保留的內容未被刪除。連線後請再試一次。"
+          }
+        }
+      }
+    },
+    "Delete this event" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Ereignis löschen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete this event"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminar este evento"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer cet événement"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus peristiwa ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elimina questo evento"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このイベントを削除"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 이벤트 삭제"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usuń to zdarzenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apagar este evento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить это событие"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu olayı sil"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除此事件"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除此事件"
           }
         }
       }

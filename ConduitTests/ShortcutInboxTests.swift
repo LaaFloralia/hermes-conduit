@@ -57,11 +57,19 @@ extension HermesVoiceGatewayTimeoutTests {
                              "An answer opens only for the request it answers")
     }
 
+    private func shortcutInboxTestQueue(
+        profile: String = "default",
+        dashboardID: UUID = UUID()
+    ) -> (ShortcutInboxQueue, URL) {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ShortcutInboxTests-\(UUID().uuidString)")
+        let url = folder.appendingPathComponent("queue.json")
+        return (ShortcutInboxQueue(url: url, scope: ShortcutInboxScope(dashboardID: dashboardID, profile: profile)), folder)
+    }
+
     func testShortcutInboxSettingsPageReadsAPageAndForgetsALostKey() async throws {
-        let suite = "ShortcutInboxBrowserTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let queue = ShortcutInboxQueue(defaults: defaults)
+        let (queue, folder) = shortcutInboxTestQueue()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let deviceID = try XCTUnwrap(queue.ensureDeviceID())
         var stored: ShortcutInboxCrypto.SessionKey? = ShortcutInboxCrypto.SessionKey(
             kid: String(repeating: "a", count: 32), ingest: Data(repeating: 1, count: 32), answer: Data(repeating: 2, count: 32))
         let keys = ShortcutInboxKeyStore(load: { stored }, save: { stored = $0 }, clear: { stored = nil })
@@ -73,7 +81,7 @@ extension HermesVoiceGatewayTimeoutTests {
             let plain = #"{"request_id":"\#(requestID)","events":[{"id":"e2","kind":"transaction","at":"2026-10-14T09:15:00-04:00","source":"Desjardins","amount":"45,20 $"},{"id":"e1","kind":"bogus"}],"next":[1792000000,"e1"]}"#
             let box = try ChaChaPoly.seal(Data(plain.utf8), using: SymmetricKey(data: Data(repeating: 2, count: 32)),
                                           authenticating: ShortcutInboxCrypto.listAAD(kid: String(repeating: "a", count: 32),
-                                                                                       deviceID: queue.deviceID, requestID: requestID))
+                                                                                       deviceID: deviceID, requestID: requestID))
             return ["nonce": NotificationE2E.base64URL(Data(box.nonce)), "ct": NotificationE2E.base64URL(box.ciphertext + box.tag)]
         }
         XCTAssertEqual(page.entries.map(\.id), ["e2", "e1"])
@@ -106,6 +114,14 @@ extension HermesVoiceGatewayTimeoutTests {
         let event = ShortcutEvent(kind: .message, at: Date(), source: "Bank", title: "Your code is",
                                   text: "991204")
         XCTAssertTrue(ShortcutEventFilter.looksLikeCode(event), "Title and text are read together")
+        XCTAssertTrue(ShortcutEventFilter.looksLikeCode(
+            ShortcutEvent(kind: .other, at: Date(), source: "Your verification code is 482913", text: "Hello")),
+                      "A code in From stays on the phone")
+        XCTAssertTrue(ShortcutEventFilter.looksLikeCode(
+            ShortcutEvent(kind: .transaction, at: Date(), title: "Bank", amount: "Tap to sign in: https://example.com/magic?t=abc")),
+                      "A sign-in link in Amount stays on the phone")
+        XCTAssertFalse(ShortcutEventFilter.looksLikeCode(
+            ShortcutEvent(kind: .transaction, at: Date(), source: "Café Olimpico", amount: "4,50 $")))
     }
 
     func testShortcutEventSendsItsTimeWithThePhonesOffsetAndDropsBlankFields() throws {
@@ -123,17 +139,17 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testShortcutInboxQueueKeepsTheNewestWithinTheHostsDays() throws {
-        let suite = "ShortcutInboxQueueTests.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let queue = ShortcutInboxQueue(defaults: defaults)
+        let (queue, folder) = shortcutInboxTestQueue()
+        defer { try? FileManager.default.removeItem(at: folder) }
         let now = Date()
 
-        XCTAssertTrue(queue.deviceID.hasPrefix("inbox-"))
-        XCTAssertEqual(queue.deviceID, queue.deviceID, "The device id stays the same across runs")
+        XCTAssertNil(queue.knownDeviceID, "No device id before the first event")
+        let deviceID = try XCTUnwrap(queue.ensureDeviceID())
+        XCTAssertTrue(deviceID.hasPrefix("inbox-"))
+        XCTAssertEqual(queue.ensureDeviceID(), deviceID, "The device id stays the same across runs")
 
         let stale = ShortcutEvent(id: "stale", kind: .other, at: now.addingTimeInterval(-31 * 86_400), text: "old")
-        queue.add(stale, now: now)
+        XCTAssertTrue(queue.add(stale, now: now))
         XCTAssertTrue(queue.pending(now: now).isEmpty, "Older than the host keeps: never sent")
 
         for index in 0..<(ShortcutInboxQueue.capacity + 5) {
@@ -147,5 +163,120 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(queue.pending(now: now).count, ShortcutInboxQueue.capacity - 10)
         queue.clear()
         XCTAssertTrue(queue.pending(now: now).isEmpty)
+        XCTAssertEqual(queue.knownDeviceID, deviceID, "Clearing what waits keeps the device id")
+    }
+
+    // Each dashboard and profile has its own waiting events and device id,
+    // and they live in a file left out of backups, not in UserDefaults.
+    func testShortcutInboxQueueKeepsEachProfileApartOutOfBackups() throws {
+        let (home, folder) = shortcutInboxTestQueue(profile: "default")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let work = ShortcutInboxQueue(url: home.url, scope: ShortcutInboxScope(dashboardID: home.scope.dashboardID, profile: "work"))
+        let otherDashboard = ShortcutInboxQueue(url: home.url, scope: ShortcutInboxScope(dashboardID: UUID(), profile: "default"))
+        XCTAssertNotEqual(home.scope.storageID, work.scope.storageID)
+
+        home.add(ShortcutEvent(id: "h1", kind: .message, at: Date(), text: "home"))
+        work.add(ShortcutEvent(id: "w1", kind: .email, at: Date(), text: "work"))
+        XCTAssertEqual(home.pending().map(\.id), ["h1"])
+        XCTAssertEqual(work.pending().map(\.id), ["w1"])
+        XCTAssertTrue(otherDashboard.pending().isEmpty)
+        XCTAssertNotEqual(home.ensureDeviceID(), work.ensureDeviceID())
+
+        work.clear()
+        XCTAssertEqual(home.pending().map(\.id), ["h1"], "Clearing one inbox leaves the others")
+
+        otherDashboard.add(ShortcutEvent(id: "o1", kind: .other, at: Date(), text: "other"))
+        var forgotten: [ShortcutInboxScope] = []
+        ShortcutInboxQueue.forgetDashboard(home.scope.dashboardID, url: home.url) { forgotten.append($0) }
+        XCTAssertTrue(home.pending().isEmpty, "A removed dashboard's waiting events go")
+        XCTAssertNil(home.knownDeviceID)
+        XCTAssertEqual(Set(forgotten), [home.scope, work.scope], "Its profiles' keys go too")
+        XCTAssertEqual(otherDashboard.pending().map(\.id), ["o1"], "Another dashboard's stay")
+
+        let values = try home.url.deletingLastPathComponent().resourceValues(forKeys: [.isExcludedFromBackupKey])
+        XCTAssertEqual(values.isExcludedFromBackup, true)
+        XCTAssertNil(UserDefaults.standard.object(forKey: "conduit.shortcutInbox.pending"))
+    }
+
+    // Two automation runs at once: the second waits for the first, so each
+    // event goes once and only one key is agreed.
+    func testShortcutInboxOverlappingRunsSendEachEventOnceWithOneKey() async throws {
+        let (queue, folder) = shortcutInboxTestQueue()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var stored: ShortcutInboxCrypto.SessionKey?
+        let keys = ShortcutInboxKeyStore(load: { stored }, save: { stored = $0 }, clear: { stored = nil })
+        let host = Curve25519.KeyAgreement.PrivateKey()
+        var hostKid: String?
+        var keyPosts = 0
+        var ingested: [String] = []
+
+        let request: ShortcutInboxSender.Request = { path, _, body in
+            // Every request yields, so unserialized runs would interleave.
+            try await Task.sleep(for: .milliseconds(20))
+            if path.contains("/status") {
+                return ["device": ["kid": hostKid as Any]]
+            }
+            if path.hasSuffix("/key") {
+                keyPosts += 1
+                let devicePublic = try XCTUnwrap(NotificationE2E.base64URLDecoded(try XCTUnwrap(body?["public_key"] as? String)))
+                let kid = ShortcutInboxCrypto.keyID(devicePublic: devicePublic, hostPublic: host.publicKey.rawRepresentation)
+                hostKid = kid
+                return ["host_public_key": NotificationE2E.base64URL(host.publicKey.rawRepresentation), "kid": kid]
+            }
+            let body = try XCTUnwrap(body)
+            let key = try XCTUnwrap(stored)
+            let sealed = try XCTUnwrap(NotificationE2E.base64URLDecoded(try XCTUnwrap(body["ct"] as? String)))
+            let box = try ChaChaPoly.SealedBox(
+                nonce: ChaChaPoly.Nonce(data: try XCTUnwrap(NotificationE2E.base64URLDecoded(try XCTUnwrap(body["nonce"] as? String)))),
+                ciphertext: sealed.dropLast(16), tag: sealed.suffix(16))
+            let plain = try ChaChaPoly.open(box, using: SymmetricKey(data: key.ingest), authenticating: ShortcutInboxCrypto.ingestAAD(
+                kid: key.kid, deviceID: try XCTUnwrap(body["device_id"] as? String), batchID: try XCTUnwrap(body["batch_id"] as? String)))
+            let batch = try XCTUnwrap(JSONSerialization.jsonObject(with: plain) as? [String: Any])
+            ingested += (batch["events"] as? [[String: Any]] ?? []).compactMap { $0["id"] as? String }
+            return ["ok": true]
+        }
+        let gate = ShortcutInboxGate()
+        let sender = ShortcutInboxSender(queue: queue, keys: keys)
+        let runs = ["e1", "e2"].map { id in
+            Task { @MainActor in
+                queue.add(ShortcutEvent(id: id, kind: .other, at: Date(), text: id))
+                return try await gate.run { try await sender.send(request: request) }
+            }
+        }
+        var sent = 0
+        for run in runs { sent += try await run.value }
+        XCTAssertEqual(sent, 2)
+        XCTAssertEqual(ingested.sorted(), ["e1", "e2"], "Each event reaches the host once")
+        XCTAssertEqual(keyPosts, 1, "One key agreement, not one per run")
+        XCTAssertTrue(queue.pending().isEmpty)
+    }
+
+    func testShortcutInboxDeletesClearWaitingCopiesAndReportAMissingHost() async throws {
+        let (queue, folder) = shortcutInboxTestQueue()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        var stored: ShortcutInboxCrypto.SessionKey? = ShortcutInboxCrypto.SessionKey(
+            kid: String(repeating: "a", count: 32), ingest: Data(repeating: 1, count: 32), answer: Data(repeating: 2, count: 32))
+        let keys = ShortcutInboxKeyStore(load: { stored }, save: { stored = $0 }, clear: { stored = nil })
+        let browser = ShortcutInboxBrowser(queue: queue, keys: keys)
+        _ = queue.ensureDeviceID()
+        queue.add(ShortcutEvent(id: "e1", kind: .other, at: Date(), text: "one"))
+        queue.add(ShortcutEvent(id: "e2", kind: .other, at: Date(), text: "two"))
+
+        let deleted = try await browser.delete(["e1"]) { path, _, body in
+            XCTAssertEqual(path, "/api/plugins/conduit_push/inbox/delete")
+            XCTAssertEqual(body?["ids"] as? [String], ["e1"])
+            return ["deleted": 1]
+        }
+        XCTAssertEqual(deleted, 1)
+        XCTAssertEqual(queue.pending().map(\.id), ["e2"], "A deleted event's waiting copy never goes later")
+
+        do {
+            try await browser.deleteAll(request: nil)
+            XCTFail("A delete that can't reach Hermes says so")
+        } catch {
+            XCTAssertEqual(error as? ShortcutInboxUnavailable, .notConnected)
+        }
+        XCTAssertTrue(queue.pending().isEmpty, "What waits on the phone goes even offline")
+        XCTAssertNotNil(stored, "The key stays until the host's copy is deleted")
     }
 }

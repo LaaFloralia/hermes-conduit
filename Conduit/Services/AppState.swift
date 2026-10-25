@@ -13113,6 +13113,8 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
+        // Log to Hermes events waiting for it, and its inbox keys.
+        ShortcutInboxQueue.forgetDashboard(id)
         if wasActive {
             showLogin = true
         }
@@ -24155,6 +24157,8 @@ final class AppState: ObservableObject {
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
         Task { await runPhoneSync(reason: .connected) }
+        // Log to Hermes events that waited for this host.
+        Task { await drainShortcutInbox() }
     }
 
     /// The plugin's capabilities answer read at the end of an update: it
@@ -35470,19 +35474,20 @@ enum KeychainHelper {
         delete(account: phoneSyncKeyAccount)
     }
 
-    /// The key this phone agreed with the profile its Log to Hermes
-    /// Shortcuts action posts to. Readable after first unlock, as above:
-    /// automations run while the phone is locked.
-    static func saveShortcutInboxKey(_ data: Data) {
-        save(data, account: shortcutInboxKeyAccount)
+    /// The key this phone agreed with one dashboard and profile its Log to
+    /// Hermes Shortcuts action posts to (`scope` is
+    /// ShortcutInboxScope.storageID). Readable after first unlock, as
+    /// above: automations run while the phone is locked.
+    static func saveShortcutInboxKey(_ data: Data, scope: String) {
+        save(data, account: "\(shortcutInboxKeyAccount).\(scope)")
     }
 
-    static func loadShortcutInboxKey() -> Data? {
-        load(account: shortcutInboxKeyAccount)
+    static func loadShortcutInboxKey(scope: String) -> Data? {
+        load(account: "\(shortcutInboxKeyAccount).\(scope)")
     }
 
-    static func clearShortcutInboxKey() {
-        delete(account: shortcutInboxKeyAccount)
+    static func clearShortcutInboxKey(scope: String) {
+        delete(account: "\(shortcutInboxKeyAccount).\(scope)")
     }
 
     // MARK: Dashboard registry (multi-server, #148)

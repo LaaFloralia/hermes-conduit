@@ -15,7 +15,9 @@
 //
 //  An event that looks like a sign-in code never leaves the phone, and one
 //  that can't go now waits (at most ShortcutInboxQueue.capacity) for the
-//  next run.
+//  next run or the next connect. Each dashboard and profile has its own
+//  queue, device id and key (ShortcutInboxScope), and one inbox operation
+//  runs at a time (ShortcutInboxGate).
 //
 
 import CryptoKit
@@ -89,8 +91,10 @@ enum ShortcutEventFilter {
         return (found(words) && found(digits)) || found(link)
     }
 
+    /// Every field the action takes: a code or sign-in link in From or
+    /// Amount stays on the phone too.
     static func looksLikeCode(_ event: ShortcutEvent) -> Bool {
-        looksLikeCode(event.title, event.text)
+        looksLikeCode(event.source, event.title, event.text, event.amount)
     }
 }
 
@@ -177,49 +181,139 @@ enum ShortcutInboxCrypto {
     }
 }
 
-/// Events that couldn't go yet, oldest first, kept in UserDefaults until the
-/// next run sends them. Never more than `capacity`, and never older than
-/// the days the host keeps.
+/// The dashboard and profile an event was logged for. Its queue, device id
+/// and key belong to that pair alone, like the other phone data: an event
+/// never goes to another profile's inbox, and agreeing a key with one never
+/// drops what another holds.
+struct ShortcutInboxScope: Codable, Hashable {
+    var dashboardID: UUID
+    var profile: String
+
+    /// A stable name for the queue file's entry and the keychain account.
+    var storageID: String {
+        let digest = SHA256.hash(data: Data("\(dashboardID.uuidString.lowercased())\n\(profile)".utf8))
+        return digest.map { String(format: "%02x", $0) }.joined().prefix(32).description
+    }
+}
+
+/// Events that couldn't go yet, per dashboard and profile, oldest first,
+/// until a later run or connect sends them. Never more than `capacity` per
+/// inbox, and never older than the days the host keeps.
+///
+/// Event content stays out of UserDefaults and backups: one file in
+/// Application Support, excluded from backup and protected until the phone
+/// is first unlocked after a restart. Automations run while the phone is
+/// locked, so complete protection would refuse them; the inbox key's
+/// keychain item has the same after-first-unlock, this-device-only reach.
+@MainActor
 struct ShortcutInboxQueue {
     static let capacity = 50
     static let keepDays = 30
-    private static let eventsKey = "conduit.shortcutInbox.pending"
-    private static let deviceKey = "conduit.shortcutInbox.deviceID"
 
-    let defaults: UserDefaults
-
-    var deviceID: String {
-        if let known = defaults.string(forKey: Self.deviceKey) { return known }
-        let made = "inbox-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(24)
-        defaults.set(made, forKey: Self.deviceKey)
-        return made
+    struct Slot: Codable, Equatable {
+        /// Whose slot this is, so forgetting a dashboard can find its own.
+        var scope: ShortcutInboxScope?
+        var deviceID: String?
+        var events: [ShortcutEvent] = []
     }
+
+    let url: URL
+    let scope: ShortcutInboxScope
+
+    nonisolated static var standardURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("ShortcutInbox", isDirectory: true).appendingPathComponent("queue.json")
+    }
+
+    static func standard(_ scope: ShortcutInboxScope) -> ShortcutInboxQueue {
+        ShortcutInboxQueue(url: standardURL, scope: scope)
+    }
+
+    /// The id this inbox's events go under, made on first use; nil when
+    /// the file can't be written (not unlocked since restart).
+    func ensureDeviceID() -> String? {
+        if let known = knownDeviceID { return known }
+        guard var all = readAll() else { return nil }
+        let made = "inbox-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(24)
+        all[scope.storageID, default: Slot(scope: scope)].deviceID = made
+        return writeAll(all) ? made : nil
+    }
+
+    /// The id this inbox already has; nil before its first event.
+    var knownDeviceID: String? { readAll()?[scope.storageID]?.deviceID }
 
     func pending(now: Date = Date()) -> [ShortcutEvent] {
-        guard let data = defaults.data(forKey: Self.eventsKey),
-              let events = try? JSONDecoder().decode([ShortcutEvent].self, from: data) else { return [] }
         let oldest = now.addingTimeInterval(-Double(Self.keepDays) * 86_400)
-        return events.filter { $0.at >= oldest }
+        return (readAll()?[scope.storageID]?.events ?? []).filter { $0.at >= oldest }
     }
 
-    func add(_ event: ShortcutEvent, now: Date = Date()) {
-        save(Array((pending(now: now) + [event]).suffix(Self.capacity)))
+    /// False when the event couldn't be kept.
+    @discardableResult
+    func add(_ event: ShortcutEvent, now: Date = Date()) -> Bool {
+        guard var all = readAll() else { return false }
+        let kept = Array((pending(now: now) + [event]).suffix(Self.capacity))
+        all[scope.storageID, default: Slot(scope: scope)].events = kept
+        return writeAll(all)
     }
 
     func remove(_ sent: [ShortcutEvent]) {
-        let ids = Set(sent.map(\.id))
-        save(pending().filter { !ids.contains($0.id) })
+        remove(ids: Set(sent.map(\.id)))
     }
 
+    func remove(ids: Set<String>) {
+        guard var all = readAll(), let slot = all[scope.storageID], slot.events.contains(where: { ids.contains($0.id) }) else {
+            return
+        }
+        all[scope.storageID]?.events = pending().filter { !ids.contains($0.id) }
+        writeAll(all)
+    }
+
+    /// Forgets what waits for this inbox; its device id stays.
     func clear() {
-        defaults.removeObject(forKey: Self.eventsKey)
+        guard var all = readAll(), all[scope.storageID]?.events.isEmpty == false else { return }
+        all[scope.storageID]?.events = []
+        writeAll(all)
     }
 
-    private func save(_ events: [ShortcutEvent]) {
-        if events.isEmpty {
-            defaults.removeObject(forKey: Self.eventsKey)
-        } else if let data = try? JSONEncoder().encode(events) {
-            defaults.set(data, forKey: Self.eventsKey)
+    /// Forgets every inbox of a dashboard the user removed: what waits for
+    /// it could never go anywhere now. Their keys go with them.
+    static func forgetDashboard(_ dashboardID: UUID, url: URL = standardURL,
+                                clearKey: (ShortcutInboxScope) -> Void = { ShortcutInboxKeyStore.keychain($0).clear() }) {
+        let any = ShortcutInboxQueue(url: url, scope: ShortcutInboxScope(dashboardID: dashboardID, profile: ""))
+        guard var all = any.readAll() else { return }
+        let gone = all.filter { $0.value.scope?.dashboardID == dashboardID }
+        guard !gone.isEmpty else { return }
+        for (id, slot) in gone {
+            all[id] = nil
+            if let scope = slot.scope { clearKey(scope) }
+        }
+        any.writeAll(all)
+    }
+
+    /// Every inbox's slot; nil when the file is there but can't be read yet.
+    private func readAll() -> [String: Slot]? {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return (try? JSONDecoder().decode([String: Slot].self, from: data)) ?? [:]
+    }
+
+    @discardableResult
+    private func writeAll(_ all: [String: Slot]) -> Bool {
+        do {
+            var folder = url.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [
+                .protectionKey: FileProtectionType.completeUntilFirstUserAuthentication,
+            ])
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? folder.setResourceValues(values)
+            try JSONEncoder().encode(all).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            var file = url
+            try? file.setResourceValues(values)
+            return true
+        } catch {
+            return false
         }
     }
 }
@@ -229,15 +323,53 @@ struct ShortcutInboxKeyStore {
     var save: (ShortcutInboxCrypto.SessionKey) -> Void
     var clear: () -> Void
 
-    static let keychain = ShortcutInboxKeyStore(
-        load: {
-            KeychainHelper.loadShortcutInboxKey().flatMap { try? JSONDecoder().decode(ShortcutInboxCrypto.SessionKey.self, from: $0) }
-        },
-        save: { key in
-            if let data = try? JSONEncoder().encode(key) { KeychainHelper.saveShortcutInboxKey(data) }
-        },
-        clear: { KeychainHelper.clearShortcutInboxKey() }
-    )
+    /// The key this inbox agreed with its profile, one keychain item each.
+    static func keychain(_ scope: ShortcutInboxScope) -> ShortcutInboxKeyStore {
+        let id = scope.storageID
+        return ShortcutInboxKeyStore(
+            load: {
+                KeychainHelper.loadShortcutInboxKey(scope: id)
+                    .flatMap { try? JSONDecoder().decode(ShortcutInboxCrypto.SessionKey.self, from: $0) }
+            },
+            save: { key in
+                if let data = try? JSONEncoder().encode(key) { KeychainHelper.saveShortcutInboxKey(data, scope: id) }
+            },
+            clear: { KeychainHelper.clearShortcutInboxKey(scope: id) }
+        )
+    }
+}
+
+/// One inbox operation at a time: two automation runs at once would both
+/// send what waits, and both agree a first key. A later caller waits for
+/// the one in flight, then reads the queue afresh.
+@MainActor
+final class ShortcutInboxGate {
+    private var busy = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func run<T>(_ operation: () async throws -> T) async rethrows -> T {
+        while busy {
+            await withCheckedContinuation { waiters.append($0) }
+        }
+        busy = true
+        defer {
+            busy = false
+            if !waiters.isEmpty { waiters.removeFirst().resume() }
+        }
+        return try await operation()
+    }
+}
+
+/// What the phone couldn't do itself.
+enum ShortcutInboxUnavailable: Error, Equatable {
+    /// The queue file can't be read or written (not unlocked since restart).
+    case storage
+    /// The run's time is up.
+    case outOfTime
+    /// Another dashboard is in use now.
+    case otherDashboard
+    /// Hermes isn't connected.
+    case notConnected
 }
 
 /// Sends what's waiting, this run's event last, in one sealed batch.
@@ -256,7 +388,7 @@ struct ShortcutInboxSender {
     func send(request: Request) async throws -> Int {
         let events = queue.pending()
         guard !events.isEmpty else { return 0 }
-        let deviceID = queue.deviceID
+        guard let deviceID = queue.ensureDeviceID() else { throw ShortcutInboxUnavailable.storage }
         let batchID = "batch-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(24)
         let batch: [String: Any] = [
             "batch_id": String(batchID),
@@ -324,9 +456,10 @@ struct ShortcutInboxEntry: Identifiable, Equatable {
     }
 }
 
-/// Settings > Shortcuts inbox: reads back what this iPhone logged, sealed
-/// for it alone, and deletes what the user picks. Only this iPhone's own
-/// events: the key is this phone's, and the host answers for its device id.
+/// Settings > Shortcuts inbox: reads back what this iPhone logged for the
+/// dashboard and profile in use, sealed for it alone, and deletes what the
+/// user picks. Only this iPhone's own events: the key is this inbox's, and
+/// the host answers for its device id.
 @MainActor
 struct ShortcutInboxBrowser {
     typealias Request = ShortcutInboxSender.Request
@@ -350,8 +483,7 @@ struct ShortcutInboxBrowser {
     /// never logged anything, or the host no longer has its key (a wipe:
     /// nothing it sent is left there).
     func page(before: Cursor? = nil, request: Request) async throws -> Page {
-        guard let key = keys.load() else { return Page(entries: [], next: nil) }
-        let deviceID = queue.deviceID
+        guard let key = keys.load(), let deviceID = queue.knownDeviceID else { return Page(entries: [], next: nil) }
         let requestID = "list-" + UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(24)
         var body: [String: Any] = ["device_id": deviceID, "kid": key.kid, "request_id": String(requestID),
                                    "limit": pageSize]
@@ -376,19 +508,30 @@ struct ShortcutInboxBrowser {
         return Page(entries: entries, next: next)
     }
 
-    /// Deletes these events from the host; how many it deleted.
+    /// Deletes these events from the host, and any copy still waiting
+    /// here (a send whose answer was lost would bring it back); how many
+    /// the host deleted.
     func delete(_ ids: [String], request: Request) async throws -> Int {
-        guard let key = keys.load(), !ids.isEmpty else { return 0 }
+        guard !ids.isEmpty else { return 0 }
+        queue.remove(ids: Set(ids))
+        guard let key = keys.load(), let deviceID = queue.knownDeviceID else { return 0 }
         let answer = try await request("\(ShortcutInboxSender.base)/delete", "POST",
-                                       ["device_id": queue.deviceID, "kid": key.kid, "ids": ids])
+                                       ["device_id": deviceID, "kid": key.kid, "ids": ids])
         return answer["deleted"] as? Int ?? 0
     }
 
-    /// Deletes everything this iPhone logged, on the host and waiting here,
-    /// and its key: the next Log to Hermes starts over.
-    func deleteAll(request: Request) async throws {
-        _ = try await request("\(ShortcutInboxSender.base)/wipe", "POST", ["device_id": queue.deviceID])
+    /// Deletes everything this iPhone logged for this inbox: what waits
+    /// here at once, then what the host keeps and the key, so the next Log
+    /// to Hermes starts over. Throws when the host couldn't be reached; the
+    /// waiting events are gone either way.
+    func deleteAll(request: Request?) async throws {
         queue.clear()
+        guard let deviceID = queue.knownDeviceID else {
+            keys.clear()
+            return
+        }
+        guard let request else { throw ShortcutInboxUnavailable.notConnected }
+        _ = try await request("\(ShortcutInboxSender.base)/wipe", "POST", ["device_id": deviceID])
         keys.clear()
     }
 }

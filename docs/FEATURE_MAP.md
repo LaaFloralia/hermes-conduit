@@ -1211,8 +1211,8 @@ README and CHANGELOG · the phone features' sealing and 409 handling (Phone
 data sync with the host)
 
 **Code**
-- Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`
-- Queue, filter, sealing and the Settings page's reader: `Conduit/Shortcuts/ShortcutInbox.swift` (ShortcutInboxBrowser); key: `Conduit/Services/AppState.swift` (KeychainHelper shortcutInboxKey)
+- Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`; a removed dashboard's inboxes: `Conduit/Services/AppState.swift` (removeDashboard, ShortcutInboxQueue.forgetDashboard)
+- Queue, filter, sealing, the one-at-a-time gate and the Settings page's reader: `Conduit/Shortcuts/ShortcutInbox.swift` (ShortcutInboxScope, ShortcutInboxQueue, ShortcutInboxGate, ShortcutInboxBrowser); key: `Conduit/Services/AppState.swift` (KeychainHelper shortcutInboxKey, one per dashboard and profile); the drain on connect: `Conduit/Services/AppState.swift` (refreshNotifierPluginStatus) and `Conduit/Services/AppState+ShortcutInbox.swift` (drainShortcutInbox)
 - Settings page: `Conduit/Views/ShortcutInboxSettingsViews.swift`, linked from `Conduit/Views/AuxiliaryViews.swift` (SettingsDestination.shortcutInbox)
 - Notifier, not in backticks until its PR reaches notifier main (the map check reads main): notifier/inbox_store.py (store, list_sealed, delete_events), notifier/inbox_tool.py (tool), `notifier/dashboard/plugin_api.py` (/inbox, _inbox_tell_pulse, ROUTE_CAPABILITIES), notifier/tests/test_inbox.py and notifier/tests/inbox_vector.json (both sides seal against it)
 - Pulse: `notifier/pulse_report.py` (inbox_context, in gather), `notifier/pulse_followup.py` (watch checks, inbox_arrived, check_watches_now), `notifier/pulse.py` (wake, the memory run), `notifier/tests/test_pulse_followup.py`
@@ -1223,7 +1223,13 @@ data sync with the host)
 - With Pulse on, its report reads what was logged since the last one, and the user's watches are checked against new events as they arrive (at most a run every 15 minutes), so a watch is told on arrival, not at the next report (2026-10-24, Eric's review of #1214).
 - A watch asks if it's still wanted after a month, not a week like a promise (2026-10-24).
 - The Settings page shows only this iPhone's own events, read back sealed for it alone under a second key from the same agreement, and deletes one or everything (2026-10-24, Eric's review of #1214).
-- Sign-in codes, one-time passwords and sign-in links never leave the phone, and the host drops them again. The two code filters (ShortcutEventFilter and looks_like_code) change together, with the same test cases (2026-10-24).
+- Sign-in codes, one-time passwords and sign-in links never leave the phone, and the host drops them again. The phone checks every field the action takes (From, Title or Subject, Details, Amount), not just the text. The two code filters (ShortcutEventFilter and looks_like_code) change together, with the same test cases (2026-10-24; every field: Eric's review of #1214, 2026-10-25).
+- An event belongs to the dashboard and profile in use when it was logged: each pair has its own waiting queue, device id and key, like the other phone data, and an event only ever goes to its own profile's inbox, so agreeing a key with one profile never drops what another holds (Eric's review of #1214, 2026-10-25).
+- An event waits on the phone only where the host keeps events (the plugin reports `shortcut-inbox`, or this profile already agreed a key there), so a waiting event always has a Settings page that shows and deletes it; otherwise the action says it wasn't kept. Waiting events go with the next run and whenever Conduit connects (Eric's review of #1214, 2026-10-25).
+- Waiting events never sit in UserDefaults or a backup: one file in Application Support, excluded from backup and protected until first unlock, because automations run while the phone is locked (the key's keychain item has the same reach) (Eric's review of #1214, 2026-10-25).
+- One inbox operation runs at a time (send, first key agreement, read back, delete): two automation runs at once never send an event twice or agree two keys (Eric's review of #1214, 2026-10-25).
+- A delete that can't reach Hermes says so, and deletes only what waits on the phone; deleting an event also drops a waiting copy of it (Eric's review of #1214, 2026-10-25).
+- Removing a saved dashboard drops what waits for its profiles and their inbox keys: those events could never go anywhere (2026-10-25).
 - Events are sealed end to end like the phone features; the host keeps them a fixed 30 days and then deletes them (Eric, 2026-10-24 email on Pulse), at most 5,000 per device, and a new device key drops what the old one sent.
 - Events can match watches and become report candidates, and a card or a watch's message may quote one, but Pulse memory never keeps message bodies or facts about the sender unless the user asks; pulse_memory's instructions say so (Eric, 2026-10-24 email on Pulse).
 - Calls stay opt-in: an explicit watch ("call me if the bank flags fraud") is the confirm a new kind of call needs (Eric, 2026-10-24 email on Pulse).
@@ -1237,7 +1243,7 @@ data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-24, #1214 (fork CI #87), at main f7f4743 and notifier main 7dc52ab with their branches.
+**Checked:** 2026-10-25, #1214 (fork CI #87), at main 41763dc and notifier main with notifier #350.
 
 ## Steps in a turn
 
