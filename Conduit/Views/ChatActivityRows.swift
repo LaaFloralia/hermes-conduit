@@ -628,7 +628,9 @@ private struct ChatStepRowBody: View {
         let visible = group.visibleMembers(showReasoning: showReasoning, showTools: showTools)
         if let position = visible.firstIndex(where: { $0.messageID == message.id }) {
             if visible.count < 2 {
-                if message.role == .tool, explain != nil || summary != nil || lookingBack {
+                // A kept summary shows under whichever step is left showing,
+                // a thought too when Settings > Display hides the tools.
+                if summary != nil || lookingBack || (message.role == .tool && explain != nil) {
                     singleExplained
                 } else {
                     Self.single(message)
@@ -679,7 +681,7 @@ private struct ChatStepRowBody: View {
         }
     }
 
-    /// A lone tool step: its card, then what Hermes said about it, if it
+    /// A lone step: its card, then what Hermes said about its run, if it
     /// was asked (its menu).
     private var singleExplained: some View {
         VStack(alignment: .leading, spacing: 6) {
