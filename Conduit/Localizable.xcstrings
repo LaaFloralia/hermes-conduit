@@ -126761,7 +126761,7 @@
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Açıkken Return gönderir, Shift-Return yeni satır başlatır."
+            "value" : "Açıkken Return ile mesaj gönderilir; Shift-Return ile yeni satır başlatılır."
           }
         },
         "zh-Hans" : {

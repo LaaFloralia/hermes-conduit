@@ -680,6 +680,35 @@ group rooms · the full editor · the notices that say where words went
 
 **Checked:** 2026-10-24, at #1185.
 
+## Composer Return key
+
+The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
+Return sends the composer message and Shift-Return starts a new line. It
+starts on on a Mac and off on iPhone and iPad; the on-screen keyboard's
+Return key always inserts a new line.
+
+**Siblings:** the Keyboard caption ("When on, Return sends and Shift-Return
+starts a new line.", done, #1208) · the toggle's accessibility hint (not
+needed, it already says the setting applies to hardware keyboards only) ·
+the two default footnotes, Mac on and iPhone/iPad off (not needed, each
+states the default for its device) · the hardware-keyboards caption (not
+needed, shown only off a Mac and already says the on-screen Return key is
+unchanged)
+
+**Code**
+- Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
+- Tests: `ConduitTests/ComposerReturnKeyTests.swift`
+
+**Rulings**
+- The caption describes the option, not current behaviour, because the
+  option starts off on iPhone and iPad (2026-10-24, #1208, review of #1190).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-24, at #1208.
+
 ## A chat's last reply
 
 Reading the newest reply in a chat without opening it, from the open chat's
@@ -857,7 +886,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - The bar reports its layout from whichever row appears (onAppear), so on launch or rotation into the stacked bar the list can show its search row for a frame before it moves into the bar.
 
-**Checked:** 2026-10-24, at #1199.
+**Checked:** 2026-10-24, at #1208.
 
 ## Plan card
 
