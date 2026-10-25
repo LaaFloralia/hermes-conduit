@@ -1421,7 +1421,7 @@ features' sealing and 409 handling (Phone data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-25, #1214 (fork CI #87), at main 6e0f32d and notifier main with notifier #350; the privacy policy sibling at #1214, carried in #1232.
+**Checked:** 2026-10-25, #1214 (fork CI #87), at main 6e0f32d and notifier main with notifier #350; the privacy policy sibling added in #1232 (done in notifier #356), which carries #1214.
 
 ## Steps in a turn
 

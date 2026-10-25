@@ -168,7 +168,7 @@ enum ShortcutInboxCrypto {
     static func openAnswer(_ body: [String: Any], key: SessionKey, deviceID: String, requestID: String) throws -> Data {
         guard let nonceText = body["nonce"] as? String, let ctText = body["ct"] as? String,
               let nonceData = NotificationE2E.base64URLDecoded(nonceText),
-              let sealed = NotificationE2E.base64URLDecoded(ctText), sealed.count >= 16 else {
+              nonceData.count == 12, let sealed = NotificationE2E.base64URLDecoded(ctText), sealed.count >= 16 else {
             throw Failure.malformedAnswer
         }
         let box = try ChaChaPoly.SealedBox(nonce: ChaChaPoly.Nonce(data: nonceData), ciphertext: sealed.dropLast(16),
