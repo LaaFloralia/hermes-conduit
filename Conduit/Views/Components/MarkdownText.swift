@@ -2132,10 +2132,22 @@ private struct RemoteMarkdownImage: View {
     let url: String
     let alt: String
     let gatewayMediaDataURL: ((String) async -> String?)?
+    /// Scopes where a `MEDIA:` picture is kept on the phone; without one
+    /// (a surface that sets no resolver) it is fetched each time.
+    @Environment(\.gatewayMediaFiles) private var gatewayMediaFiles
     @State private var gatewayImage: UIImage?
-    @State private var gatewayLoadFailed = false
+    /// The cache key `gatewayImage` was loaded for, so a row kept across a
+    /// dashboard or profile switch never shows the picture it held before.
+    @State private var gatewayImageKey: String?
+    /// The picture whose load failed, so a row handed another picture
+    /// never shows it as unavailable.
+    @State private var gatewayFailedURL: String?
+    private var gatewayLoadFailed: Bool { gatewayFailedURL == url }
     /// A web picture, fetched and decoded within bounds; nil while loading.
     @State private var remoteOutcome: BoundedRemoteImage.Outcome?
+    /// The address `remoteOutcome` is for: a row handed another picture
+    /// never shows the one it held before.
+    @State private var remoteOutcomeURL: String?
     @State private var openingRemote = false
     @State private var openTask: Task<Void, Never>?
 
@@ -2144,6 +2156,32 @@ private struct RemoteMarkdownImage: View {
     private static let remoteMaxPixelSize: CGFloat = 2048
 
     private var isGatewayMedia: Bool { url.hasPrefix("MEDIA:") }
+    private var gatewayCacheKey: String? {
+        isGatewayMedia ? gatewayMediaFiles?.imageCacheKey(forMediaPath: gatewayPath) : nil
+    }
+    /// A web picture's size is remembered under its address.
+    private var remoteSizeKey: String { "web|\(url)" }
+
+    /// A picture still in memory shows on the row's first frame, so a row
+    /// scrolled back into view doesn't grow from its loading line (#1238).
+    private var shownGatewayImage: UIImage? {
+        let key = gatewayCacheKey
+        if let gatewayImage, gatewayImageKey == key { return gatewayImage }
+        return key.flatMap(TranscriptPictureMemory.image(for:))
+    }
+
+    private var shownRemoteOutcome: BoundedRemoteImage.Outcome? {
+        if let remoteOutcome, remoteOutcomeURL == url { return remoteOutcome }
+        guard !isGatewayMedia, let remoteURL = URL(string: url),
+              let cached = BoundedRemoteImage.cachedImage(remoteURL, maxPixelSize: Self.remoteMaxPixelSize) else { return nil }
+        return .image(cached)
+    }
+
+    /// The size the picture will take, when it's known before it loads.
+    private var reservedSize: CGSize? {
+        if let gatewayCacheKey { return TranscriptPictureMemory.size(for: gatewayCacheKey) }
+        return isGatewayMedia ? nil : TranscriptPictureMemory.size(for: remoteSizeKey)
+    }
     private var gatewayPath: String {
         String(url.dropFirst("MEDIA:".count)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -2168,7 +2206,7 @@ private struct RemoteMarkdownImage: View {
             } else if isGatewayMedia {
                 gatewayMediaContent
             } else {
-            switch remoteOutcome {
+            switch shownRemoteOutcome {
             case .image(let image):
                 Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 360).clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     .overlay { if openingRemote { ProgressView() } }
@@ -2179,8 +2217,7 @@ private struct RemoteMarkdownImage: View {
             case .tooLarge:
                 WebFallbackImage(url: url, alt: alt, loadsInPage: false)
             case nil:
-                HStack(spacing: 8) { ProgressView(); Text(alt.isEmpty ? AppLocalization.string("Loading image…") : alt).font(.footnote).foregroundStyle(.secondary) }
-                    .padding(12)
+                loadingLabel
             }
             }
         }
@@ -2190,10 +2227,11 @@ private struct RemoteMarkdownImage: View {
             openTask = nil
             openingRemote = false
         }
-        .task(id: url) {
+        .task(id: "\(url)|\(gatewayCacheKey ?? "")") {
             guard isGatewayMedia else {
                 // A URL that isn't RFC-valid goes to the web view, which
                 // escapes it.
+                remoteOutcomeURL = url
                 guard let remoteURL = URL(string: url) else {
                     remoteOutcome = .unavailable
                     return
@@ -2203,39 +2241,80 @@ private struct RemoteMarkdownImage: View {
                     return
                 }
                 remoteOutcome = nil
+                let started = TranscriptImageCache.generation
                 let outcome = await BoundedRemoteImage.load(remoteURL, maxPixelSize: Self.remoteMaxPixelSize)
                 guard !Task.isCancelled else { return }
+                if case .image(let image) = outcome, started == TranscriptImageCache.generation {
+                    TranscriptPictureMemory.rememberSize(image.size, for: remoteSizeKey)
+                }
                 withAnimation(.easeInOut(duration: 0.2)) { remoteOutcome = outcome }
                 return
             }
             guard gatewayFileKind == nil else { return }
-            gatewayImage = nil
-            gatewayLoadFailed = false
-            guard let gatewayMediaDataURL, !gatewayPath.isEmpty,
-                  let dataURL = await gatewayMediaDataURL(gatewayPath),
-                  !Task.isCancelled,
-                  let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/") else {
-                guard !Task.isCancelled else { return }
-                gatewayLoadFailed = true
+            let cacheKey = gatewayCacheKey
+            if let cacheKey, let kept = TranscriptPictureMemory.image(for: cacheKey) {
+                gatewayImage = kept
+                gatewayImageKey = cacheKey
                 return
             }
-            // Downsampled off the main thread, within the same pixel bound.
+            gatewayImage = nil
+            gatewayImageKey = nil
+            gatewayFailedURL = nil
             let maxPixelSize = Self.remoteMaxPixelSize
-            let decoded = await Task.detached(priority: .userInitiated) {
-                BoundedRemoteImage.decode(data, maxPixelSize: maxPixelSize)
+            // Kept on the phone from an earlier load: no request, and the
+            // read and decode stay off the main thread. After a sign-out
+            // it shows, but isn't remembered.
+            let keptGeneration = TranscriptImageCache.generation
+            if let cacheKey, let kept = await Self.keptGatewayImage(cacheKey, maxPixelSize: maxPixelSize) {
+                guard !Task.isCancelled else { return }
+                if keptGeneration == TranscriptImageCache.generation {
+                    TranscriptPictureMemory.remember(kept, for: cacheKey)
+                }
+                gatewayImage = kept
+                gatewayImageKey = cacheKey
+                return
+            }
+            guard !Task.isCancelled else { return }
+            // Read first: a sign-out during the fetch keeps it off the phone.
+            let generation = TranscriptImageCache.generation
+            guard let gatewayMediaDataURL, !gatewayPath.isEmpty,
+                  let dataURL = await gatewayMediaDataURL(gatewayPath),
+                  !Task.isCancelled else {
+                guard !Task.isCancelled else { return }
+                gatewayFailedURL = url
+                return
+            }
+            // The data URL (up to 16 MB of base64) is decoded, kept and
+            // downsampled off the main thread, within the same pixel bound.
+            let decoded = await Task.detached(priority: .userInitiated) { () -> BoundedRemoteImage.Outcome in
+                guard let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/") else { return .unavailable }
+                let outcome = BoundedRemoteImage.decode(data, maxPixelSize: maxPixelSize)
+                if let cacheKey, case .image = outcome {
+                    TranscriptImageCache.store(
+                        data,
+                        fileExtension: TranscriptImageCache.fileExtension(forDataURL: dataURL),
+                        for: cacheKey,
+                        generation: generation
+                    )
+                }
+                return outcome
             }.value
             guard !Task.isCancelled else { return }
             guard case .image(let image) = decoded else {
-                gatewayLoadFailed = true
+                gatewayFailedURL = url
                 return
             }
+            if let cacheKey, generation == TranscriptImageCache.generation {
+                TranscriptPictureMemory.remember(image, for: cacheKey)
+            }
             gatewayImage = image
+            gatewayImageKey = cacheKey
         }
     }
 
     @ViewBuilder
     private var gatewayMediaContent: some View {
-        if let gatewayImage {
+        if let gatewayImage = shownGatewayImage {
             Image(uiImage: gatewayImage)
                 .resizable()
                 .scaledToFit()
@@ -2255,20 +2334,50 @@ private struct RemoteMarkdownImage: View {
         }
     }
 
+    /// At the picture's own size when that's known, so the row doesn't
+    /// change height when it arrives.
+    @ViewBuilder
     private var loadingLabel: some View {
-        HStack(spacing: 8) {
+        let label = HStack(spacing: 8) {
             ProgressView()
             Text(alt.isEmpty ? AppLocalization.string("Loading image…") : alt)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
-        .padding(12)
+        if let size = reservedSize {
+            Color.primary.opacity(0.05)
+                .aspectRatio(size, contentMode: .fit)
+                .frame(maxHeight: 360)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay { label.padding(12) }
+        } else {
+            label.padding(12)
+        }
+    }
+
+    /// The picture kept on the phone under `key`, read and downsampled off
+    /// the main thread.
+    private static func keptGatewayImage(_ key: String, maxPixelSize: CGFloat) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let file = TranscriptImageCache.cachedFile(for: key, touch: true),
+                  let data = try? Data(contentsOf: file, options: .mappedIfSafe),
+                  case .image(let image) = BoundedRemoteImage.decode(data, maxPixelSize: maxPixelSize) else { return nil }
+            return image
+        }.value
     }
 
     /// The row keeps only the decoded image, not the original bytes (up to
     /// 16 MB each across a whole transcript), so opening re-fetches them.
     private func openGatewayImage() {
-        guard !openingRemote, let gatewayMediaDataURL else { return }
+        guard !openingRemote else { return }
+        // The original kept on the phone, which stays after Hermes sweeps
+        // its copy.
+        if let key = gatewayCacheKey,
+           let kept = TranscriptImageCache.cachedFile(for: key, touch: true),
+           MediaPreviewPresenter.shared.present(fileURL: kept, title: alt.isEmpty ? MarkdownParser.mediaName(gatewayPath) : alt) {
+            return
+        }
+        guard let gatewayMediaDataURL else { return }
         let path = gatewayPath
         openingRemote = true
         openTask = Task {

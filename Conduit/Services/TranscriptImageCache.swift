@@ -64,8 +64,15 @@ enum TranscriptImageCache {
     static func store(dataURL: String, for key: String, in directory: URL = defaultDirectory,
                       generation: Int = TranscriptImageCache.generation) -> URL? {
         guard let data = DataURLLimits.decodeBase64DataURL(dataURL, prefix: "data:image/") else { return nil }
+        return store(data, fileExtension: fileExtension(forDataURL: dataURL), for: key, in: directory, generation: generation)
+    }
+
+    /// Keeps a picture's bytes, already decoded from their data URL, under
+    /// `key`, with the same rules as `store(dataURL:for:)`.
+    @discardableResult
+    static func store(_ data: Data, fileExtension type: String, for key: String, in directory: URL = defaultDirectory,
+                      generation: Int = TranscriptImageCache.generation) -> URL? {
         let stem = fileStem(for: key)
-        let type = fileExtension(forDataURL: dataURL)
         let file = directory.appendingPathComponent("\(stem).\(type)")
         let kept = lock.withLock { () -> Bool in
             guard current == generation else { return false }

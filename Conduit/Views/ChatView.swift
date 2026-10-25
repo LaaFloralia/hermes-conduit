@@ -382,6 +382,9 @@ struct ChatView: View {
         .environment(\.selectableTextDrawsUntilTouched, true)
         // Gateway videos, audio and documents open from a download (#569).
         .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+        // Pictures' sizes from earlier launches, read once off the main
+        // thread, so rows above take their final height (#1238).
+        .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
         .overlay(alignment: .top) {
             if appState.isOpeningNotificationSession {
@@ -1725,28 +1728,17 @@ private struct UserImageAttachmentPreview: View {
     @State private var gatewayImageKey: String?
     @State private var opening = false
     @State private var openTask: Task<Void, Never>?
-    @State private var gatewayLoadFailed = false
+    /// The cache key a load from Hermes failed for.
+    @State private var gatewayFailedKey: String?
     @State private var localPreview: UIImage?
     @State private var localPreviewPath: String?
     @State private var localPreviewFailedPath: String?
-
-    /// Body re-evaluates at streaming frame rate, and re-reading + fully
-    /// decoding the file each time hitches scrolling. Previews are downsampled
-    /// to the display size and shared across rows; NSCache evicts them under
-    /// memory pressure. Cost-bounded so a handful of large photos can't
-    /// exhaust it before then.
-    private static let localImageCache: NSCache<NSString, UIImage> = {
-        let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 64
-        cache.totalCostLimit = 64 * 1024 * 1024
-        return cache
-    }()
 
     /// Cache-only lookup (no decode) so a hit renders on the first frame.
     /// Misses are filled asynchronously — see the `.task` in `body`.
     private var cachedLocalImage: UIImage? {
         guard let key = memoryCacheKey else { return nil }
-        return Self.localImageCache.object(forKey: key as NSString)
+        return TranscriptPictureMemory.previews.object(forKey: key as NSString)
     }
 
     /// The photo's own path when it is on this device, else where a picture
@@ -1765,18 +1757,14 @@ private struct UserImageAttachmentPreview: View {
         return localPreview
     }
 
+    /// True only for a failed load of the *current* picture from Hermes.
+    private var gatewayLoadFailed: Bool {
+        gatewayFailedKey != nil && gatewayFailedKey == gatewayResolver?.imageCacheKey(for: attachment)
+    }
+
     /// True only for a decode failure of the *current* path.
     private var localPreviewFailed: Bool {
         localPreviewFailedPath == localFileURL?.path
-    }
-
-    /// Estimated decoded byte cost for NSCache. `bytesPerRow * height` accounts
-    /// for the row-alignment padding that a naive `width * height * 4` misses.
-    private static func bitmapCost(of image: UIImage) -> Int {
-        if let cg = image.cgImage {
-            return cg.bytesPerRow * cg.height
-        }
-        return Int(image.size.width * image.scale * image.size.height * image.scale) * 4
     }
 
     /// Decodes `url` as a thumbnail sized for the 224pt attachment preview
@@ -1815,12 +1803,12 @@ private struct UserImageAttachmentPreview: View {
             if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
-                loadingPlaceholder
+                placeholder
                     .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                     .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else if localFileURL != nil && !localPreviewFailed {
                 // Local file decoding off-main on a cache miss.
-                loadingPlaceholder
+                placeholder
                     .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                     .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else {
@@ -1843,6 +1831,7 @@ private struct UserImageAttachmentPreview: View {
             // off the MainActor so a large photo can't hitch scrolling.
             if let url = localFileURL {
                 guard currentLocalPreview == nil, cachedLocalImage == nil else { return }
+                let generation = TranscriptImageCache.generation
                 let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
                     Self.downsampledPreview(url: url)
                 }.value
@@ -1851,7 +1840,10 @@ private struct UserImageAttachmentPreview: View {
                     localPreviewFailedPath = url.path
                     return
                 }
-                Self.localImageCache.setObject(image, forKey: url.path as NSString, cost: Self.bitmapCost(of: image))
+                if generation == TranscriptImageCache.generation {
+                    TranscriptPictureMemory.previews.setObject(image, forKey: url.path as NSString, cost: TranscriptPictureMemory.bitmapCost(of: image))
+                    TranscriptPictureMemory.rememberSize(image.size, for: url.path)
+                }
                 localPreview = image
                 localPreviewPath = url.path
                 // A picture from Hermes. The local-file branch returns above,
@@ -1867,11 +1859,18 @@ private struct UserImageAttachmentPreview: View {
                     return
                 }
                 gatewayImage = nil
-                gatewayLoadFailed = false
-                // Kept on the phone from an earlier load (#652).
+                gatewayFailedKey = nil
+                // Kept on the phone from an earlier load (#652). Read
+                // first: after a sign-out it shows, but isn't remembered.
+                let keptGeneration = TranscriptImageCache.generation
                 if let image = await Self.keptPreview(for: cacheKey) {
                     guard !Task.isCancelled else { return }
-                    remember(image, as: cacheKey)
+                    if keptGeneration == TranscriptImageCache.generation {
+                        remember(image, as: cacheKey)
+                    } else {
+                        gatewayImage = image
+                        gatewayImageKey = cacheKey
+                    }
                     return
                 }
                 guard !Task.isCancelled else { return }
@@ -1889,17 +1888,23 @@ private struct UserImageAttachmentPreview: View {
                 }
                 guard !Task.isCancelled else { return }
                 guard let dataURL, let image = await Self.keep(dataURL, as: cacheKey, generation: generation) else {
-                    gatewayLoadFailed = true
+                    gatewayFailedKey = cacheKey
                     return
                 }
                 guard !Task.isCancelled else { return }
-                remember(image, as: cacheKey)
+                if generation == TranscriptImageCache.generation {
+                    remember(image, as: cacheKey)
+                } else {
+                    gatewayImage = image
+                    gatewayImageKey = cacheKey
+                }
             }
         }
     }
 
     private func remember(_ image: UIImage, as key: String) {
-        Self.localImageCache.setObject(image, forKey: key as NSString, cost: Self.bitmapCost(of: image))
+        TranscriptPictureMemory.previews.setObject(image, forKey: key as NSString, cost: TranscriptPictureMemory.bitmapCost(of: image))
+        TranscriptPictureMemory.rememberSize(image.size, for: key)
         gatewayImage = image
         gatewayImageKey = key
     }
@@ -1934,6 +1939,27 @@ private struct UserImageAttachmentPreview: View {
         }.value
     }
 
+    /// The picture's size when it's known before it loads (remembered when
+    /// it last loaded, on this launch or an earlier one). A row scrolled
+    /// back into view then takes its final height at once instead of
+    /// growing from the loading line (#1238).
+    private var reservedSize: CGSize? {
+        memoryCacheKey.flatMap(TranscriptPictureMemory.size(for:))
+    }
+
+    @ViewBuilder private var placeholder: some View {
+        if let size = reservedSize {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.13))
+                .frame(width: 224, height: previewHeight(for: size))
+                .overlay { ProgressView().tint(.white) }
+                .accessibilityElement()
+                .accessibilityLabel(Text("Loading image…"))
+        } else {
+            loadingPlaceholder
+        }
+    }
+
     private var loadingPlaceholder: some View {
         HStack(spacing: 8) {
             ProgressView()
@@ -1961,7 +1987,7 @@ private struct UserImageAttachmentPreview: View {
         Image(uiImage: image)
                 .resizable()
                 .scaledToFill()
-                .frame(width: 224, height: previewHeight(for: image))
+                .frame(width: 224, height: previewHeight(for: image.size))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -2018,9 +2044,9 @@ private struct UserImageAttachmentPreview: View {
         }
     }
 
-    private func previewHeight(for image: UIImage) -> CGFloat {
-        guard image.size.width > 0 else { return 168 }
-        return min(260, max(120, 224 * image.size.height / image.size.width))
+    private func previewHeight(for size: CGSize) -> CGFloat {
+        guard size.width > 0 else { return 168 }
+        return min(260, max(120, 224 * size.height / size.width))
     }
 
 }
