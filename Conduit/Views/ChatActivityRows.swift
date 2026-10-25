@@ -465,7 +465,7 @@ struct ChatStepGroup: Equatable {
     /// The run's first row; it keeps the run's open or closed choice.
     var id: String { members.first?.messageID ?? "" }
 
-    /// Where the run's sentence is kept (ChatStepSummaries).
+    /// Where the run's summary is kept (ChatStepSummaries).
     var summaryKey: String? { ChatStepSummaries.key(toolIDs: members.map(\.toolID)) }
 
     static func isStep(_ message: ChatMessage) -> Bool {

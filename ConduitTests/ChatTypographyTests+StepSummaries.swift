@@ -133,7 +133,7 @@ extension ChatTypographyTests {
         XCTAssertEqual(ChatStepSummaries.explainWords(toolCount: 12), 54)
     }
 
-    func testSentencesAreKeptPerProfileAndTheOldestGoFirst() throws {
+    func testSummariesAreKeptPerProfileAndTheOldestGoFirst() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "StepSummaryTests-\(UUID().uuidString)"))
         XCTAssertFalse(ChatStepSummaries.isEnabled(defaults))
         // Longer runs keep their count unless asked; the limit stays in range.
@@ -156,7 +156,7 @@ extension ChatTypographyTests {
         XCTAssertEqual(both[home]?["k1"], "Again")
         XCTAssertEqual(both["dash.work"]?["k1"], "Elsewhere")
 
-        // Signing a dashboard out forgets its profiles' sentences only.
+        // Signing a dashboard out forgets its profiles' summaries only.
         ChatStepSummaries.save("Other server", for: .init(scope: "dashboard2.default", toolID: "k1"), defaults: defaults)
         ChatStepSummaries.remove(scopePrefix: "dash.", defaults: defaults)
         XCTAssertEqual(ChatStepSummaries.saved(defaults), ["dashboard2.default": ["k1": "Other server"]])

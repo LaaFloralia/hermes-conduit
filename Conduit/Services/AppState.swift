@@ -5549,7 +5549,7 @@ final class AppState: ObservableObject {
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
-        // So do the sentences describing its runs of steps.
+        // So do the summaries describing its runs of steps.
         forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
         leaveSavedChats(dashboardID: dashboardID)
     }
@@ -5585,7 +5585,7 @@ final class AppState: ObservableObject {
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
         TranscriptImageCache.purge()
-        // The sentences describing runs of steps go with the chats.
+        // The summaries describing runs of steps go with the chats.
         forgetStepSummaries(scopePrefix: nil)
         if connection == nil, let copy = offlineChatPresentation {
             // Until this launch's sign-in goes through, the copy is what keeps
