@@ -271,7 +271,9 @@ final class WatchDirectBroker {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
                 return
             }
-            if let refusal = consentRefusal(directProvider == .qwen ? .qwenLive : .geminiLive) {
+            let provider = directProvider
+            let consentMode: LiveVoiceModeName = provider == .qwen ? .qwenLive : .geminiLive
+            if let refusal = consentRefusal(consentMode) {
                 answer(.callRefused(callID: id, reason: refusal))
                 return
             }
@@ -280,10 +282,17 @@ final class WatchDirectBroker {
                 defer { end() }
                 let startedAt = Date()
                 do {
-                    let token = try await self.appState.watchDirectToken(provider: directProvider)
+                    let token = try await self.appState.watchDirectToken(provider: provider)
                     // Minted while the phone switched: not this call's.
                     guard self.onCallsConnection(id) else {
                         answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
+                        return
+                    }
+                    // Ended meanwhile (hung up, or the user took back the
+                    // provider's consent): the token goes nowhere.
+                    if let refusal = self.tokenRefusalAfterMint(id, mode: consentMode) {
+                        answer(.callRefused(callID: id, reason: refusal))
+                        self.link.log.note("watchDirectToken", ["ok": false, "dropped": true, "ms": Self.milliseconds(since: startedAt), "appState": WatchVoiceLink.appStateName])
                         return
                     }
                     answer(.directTokenIssued(callID: id, token: .init(token)))
@@ -333,6 +342,25 @@ final class WatchDirectBroker {
     /// them (#827), or nil. The phone asks on its own sheet meanwhile.
     private func consentRefusal(_ mode: LiveVoiceModeName) -> String? {
         appState.requestLiveVoiceConsentIfMissing(mode).map { VoiceSetupIssue.providerConsentNeeded($0).message }
+    }
+
+    /// Why a token minted for call `id` must not reach the Watch after
+    /// all: the user withdrew `mode`'s consent while the mint was in
+    /// flight, the call is no longer the running one, or its ledger record
+    /// ended. Nil when it may go. Reads consent without asking again.
+    private func tokenRefusalAfterMint(_ id: UInt32, mode: LiveVoiceModeName) -> String? {
+        Self.tokenRefusalAfterMint(
+            id,
+            running: callID,
+            ledgerEnded: ledger.call(id)?.ended,
+            consentMissing: LiveVoiceProviderConsent.missing(mode)
+        )
+    }
+
+    static func tokenRefusalAfterMint(_ id: UInt32, running: UInt32?, ledgerEnded: Bool?, consentMissing: LiveVoiceModeName?) -> String? {
+        if let consentMissing { return VoiceSetupIssue.providerConsentNeeded(consentMissing).message }
+        guard running == id, ledgerEnded != true else { return WatchVoiceStartFailure.ended }
+        return nil
     }
 
     private func prepare(_ id: UInt32, ring: String? = nil, provider: DirectLiveProvider = .gemini) async -> WatchVoiceWire.Message {

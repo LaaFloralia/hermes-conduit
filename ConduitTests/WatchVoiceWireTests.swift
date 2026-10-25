@@ -821,10 +821,40 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(WatchDirectBroker.isRefusedChatTool(DashboardTicketBridgeError.http(status: 400, detail: "The Watch can only be granted web_search, find_chat, read_chat")))
     }
 
-    /// The phone keeps each Watch call's connection, its end and the
-    /// start_job calls it sent across a restart: a transcript arriving
-    /// late is saved where the call happened, and a replayed start_job
-    /// doesn't reach Hermes twice.
+    /// A Qwen call's grant carries qwen_live_token, which the Watch's
+    /// relay client keeps, so a wrist-down reconnect can mint through the
+    /// relay as a Gemini call does.
+    @MainActor
+    func testWatchRelayClientKeepsTheQwenTokenTool() throws {
+        var grant = Self.watchToolGrant
+        grant.tools = ["web_search", "qwen_live_token"]
+        let client = try XCTUnwrap(WatchToolRelayClient(grant))
+        XCTAssertTrue(client.canRun(WatchLiveToken.qwenTool))
+        XCTAssertFalse(client.canRun(WatchLiveToken.tool))
+        XCTAssertFalse(try XCTUnwrap(WatchToolRelayClient(Self.watchToolGrant)).canRun(WatchLiveToken.qwenTool))
+    }
+
+    /// A token minted while the call ended or the user took back the
+    /// provider's consent never reaches the Watch.
+    @MainActor
+    func testWatchDirectTokenIsDroppedWhenTheCallOrConsentWentDuringTheMint() {
+        XCTAssertNil(WatchDirectBroker.tokenRefusalAfterMint(7, running: 7, ledgerEnded: false, consentMissing: nil))
+        XCTAssertNil(WatchDirectBroker.tokenRefusalAfterMint(7, running: 7, ledgerEnded: nil, consentMissing: nil))
+        XCTAssertEqual(
+            WatchDirectBroker.tokenRefusalAfterMint(7, running: 7, ledgerEnded: false, consentMissing: .qwenLive),
+            VoiceSetupIssue.providerConsentNeeded(.qwenLive).message
+        )
+        XCTAssertEqual(
+            WatchDirectBroker.tokenRefusalAfterMint(7, running: 7, ledgerEnded: false, consentMissing: .geminiLive),
+            VoiceSetupIssue.providerConsentNeeded(.geminiLive).message
+        )
+        XCTAssertEqual(WatchDirectBroker.tokenRefusalAfterMint(7, running: nil, ledgerEnded: true, consentMissing: nil), WatchVoiceStartFailure.ended)
+        XCTAssertEqual(WatchDirectBroker.tokenRefusalAfterMint(7, running: 8, ledgerEnded: false, consentMissing: nil), WatchVoiceStartFailure.ended)
+        XCTAssertEqual(WatchDirectBroker.tokenRefusalAfterMint(7, running: 7, ledgerEnded: true, consentMissing: nil), WatchVoiceStartFailure.ended)
+    }
+
+    /// Each call's live mode survives a restart, so a resumed call's
+    /// token comes from its own provider.
     @MainActor
     func testWatchDirectLedgerRestoresQwenAndOtherProviderIdentities() throws {
         let suite = "WatchDirectLedger.Providers.\(UUID().uuidString)"
@@ -848,6 +878,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(legacy.directProvider, .gemini)
     }
 
+    /// The phone keeps each Watch call's connection, its end and the
+    /// start_job calls it sent across a restart: a transcript arriving
+    /// late is saved where the call happened, and a replayed start_job
+    /// doesn't reach Hermes twice.
     @MainActor
     func testWatchDirectCallLedgerKeepsEachCallsConnectionAcrossARestart() throws {
         let suite = "WatchDirectCallLedger.\(UUID().uuidString)"

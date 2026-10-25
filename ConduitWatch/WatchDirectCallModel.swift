@@ -1224,7 +1224,7 @@ final class WatchDirectCallModel: ObservableObject {
         }
     }
 
-    /// The grant can bring a fresh Gemini token through the relay.
+    /// The grant can bring a fresh Gemini or Qwen token through the relay.
     private var canMintThroughRelay: Bool {
         toolRelay?.canRun((engine == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool)) == true
     }
@@ -3788,7 +3788,7 @@ enum WatchDirectError: LocalizedError {
     case unreadable
     case timedOut
     case refused(String)
-    /// The call's grant can't bring a Gemini token through the relay.
+    /// The call's grant can't bring a Gemini or Qwen token through the relay.
     case noRelayToken(DirectLiveProvider)
     case relayToken(String, DirectLiveProvider)
 
