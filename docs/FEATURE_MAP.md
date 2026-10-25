@@ -1372,8 +1372,8 @@ sign-in code filter) · Settings > Shortcuts inbox (read back and delete) ·
 the notifier's inbox store, its sealed routes under /inbox and the
 shortcut-inbox capability · the conduit_inbox tool and its description ·
 Pulse's report and its watches (pulse_report, pulse_followup) · the plugin's
-README and CHANGELOG · the phone features' sealing and 409 handling (Phone
-data sync with the host)
+README and CHANGELOG · the privacy policy (notifier docs/privacy) · the phone
+features' sealing and 409 handling (Phone data sync with the host)
 
 **Code**
 - Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`; a removed dashboard's inboxes: `Conduit/Services/AppState.swift` (removeDashboard, ShortcutInboxQueue.forgetDashboard)
@@ -1381,6 +1381,7 @@ data sync with the host)
 - Settings page: `Conduit/Views/ShortcutInboxSettingsViews.swift`, linked from `Conduit/Views/AuxiliaryViews.swift` (SettingsDestination.shortcutInbox)
 - Notifier, not in backticks until its PR reaches notifier main (the map check reads main): notifier/inbox_store.py (store, list_sealed, delete_events), notifier/inbox_tool.py (tool), `notifier/dashboard/plugin_api.py` (/inbox, _inbox_tell_pulse, ROUTE_CAPABILITIES), notifier/tests/test_inbox.py and notifier/tests/inbox_vector.json (both sides seal against it)
 - Pulse: `notifier/pulse_report.py` (inbox_context, in gather), `notifier/pulse_followup.py` (watch checks, inbox_arrived, check_watches_now), `notifier/pulse.py` (wake, the memory run), `notifier/tests/test_pulse_followup.py`
+- Privacy policy: notifier/docs/privacy/index.html (Optional events from Shortcuts automations)
 - Tests: `ConduitTests/ShortcutInboxTests.swift`
 
 **Rulings**
