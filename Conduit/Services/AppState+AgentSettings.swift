@@ -98,6 +98,21 @@ extension AppState {
             write: { self.setGeminiLiveSearchMode(GeminiLiveSearchMode(rawValue: $0) ?? .automatic) }
         ))
         catalog.append(choiceDescriptor(
+            key: "voice.qwen.search", section: "Qwen Live", title: "Qwen Live lookups",
+            description: "Where Qwen Live searches for quick facts: automatic or hermes (both Hermes' web search; Qwen has no search of its own while it runs tools), or off.",
+            tier: .ask, displayTitle: { AppLocalization.string("Qwen Live lookups") },
+            choices: [(value: "automatic", title: "Automatic"), (value: "hermes", title: "Hermes web search"), (value: "off", title: "Off")],
+            display: { value in
+                switch value {
+                case "hermes": return AppLocalization.string("Hermes")
+                case "off": return AppLocalization.string("Off")
+                default: return AppLocalization.string("Automatic")
+                }
+            },
+            read: { self.qwenLiveSearchMode == .google ? "automatic" : self.qwenLiveSearchMode.rawValue },
+            write: { self.setQwenLiveSearchMode(GeminiLiveSearchMode(rawValue: $0) ?? .automatic) }
+        ))
+        catalog.append(choiceDescriptor(
             key: "voice.gpt.voice", section: "GPT-Live", title: "GPT-Live voice",
             description: "The voice GPT-Live speaks with. default is the host's configured voice (voice.gpt_live in Hermes config, cove unless changed).",
             tier: .small, displayTitle: { AppLocalization.string("GPT-Live voice") },
@@ -106,7 +121,7 @@ extension AppState {
             read: { self.gptLiveVoice ?? "default" },
             write: { self.setGPTLiveVoice($0 == "default" ? nil : $0) }
         ))
-        for (engine, title, company) in [("gemini", "Gemini Live", "Google"), ("gpt", "GPT-Live", "OpenAI"), ("grok", "Grok Live", "xAI")] {
+        for (engine, title, company) in [("gemini", "Gemini Live", "Google"), ("qwen", "Qwen Live", "Alibaba Cloud"), ("gpt", "GPT-Live", "OpenAI"), ("grok", "Grok Live", "xAI")] {
             catalog.append(boolDescriptor(
                 key: "voice.\(engine).memory", section: title, title: "\(title) memory",
                 description: "Gives \(title) what Hermes remembers about the user. This sends that memory to \(company).",
@@ -114,6 +129,7 @@ extension AppState {
                 read: {
                     switch engine {
                     case "gemini": return self.geminiLiveMemoryEnabled
+                    case "qwen": return self.qwenLiveMemoryEnabled
                     case "gpt": return self.gptLiveMemoryEnabled
                     default: return self.grokLiveMemoryEnabled
                     }
@@ -121,6 +137,7 @@ extension AppState {
                 write: { enabled in
                     switch engine {
                     case "gemini": self.setGeminiLiveMemoryEnabled(enabled)
+                    case "qwen": self.setQwenLiveMemoryEnabled(enabled)
                     case "gpt": self.setGPTLiveMemoryEnabled(enabled)
                     default: self.setGrokLiveMemoryEnabled(enabled)
                     }
@@ -133,6 +150,7 @@ extension AppState {
                 read: {
                     switch engine {
                     case "gemini": return self.geminiLivePersonalityEnabled
+                    case "qwen": return self.qwenLivePersonalityEnabled
                     case "gpt": return self.gptLivePersonalityEnabled
                     default: return self.grokLivePersonalityEnabled
                     }
@@ -140,6 +158,7 @@ extension AppState {
                 write: { enabled in
                     switch engine {
                     case "gemini": self.setGeminiLivePersonalityEnabled(enabled)
+                    case "qwen": self.setQwenLivePersonalityEnabled(enabled)
                     case "gpt": self.setGPTLivePersonalityEnabled(enabled)
                     default: self.setGrokLivePersonalityEnabled(enabled)
                     }
@@ -148,7 +167,7 @@ extension AppState {
         }
         catalog.append(boolDescriptor(
             key: "voice.live.save_calls", section: "Live voice", title: "Save live calls",
-            description: "Saves each live voice call (Gemini Live, GPT-Live, Grok Live) to Hermes' chat history. Off means calls aren't kept.",
+            description: "Saves each live voice call (Gemini Live, Qwen Live, GPT-Live, Grok Live, Local Live) to Hermes' chat history. Off means calls aren't kept.",
             tier: .ask, displayTitle: { AppLocalization.string("Save live calls") },
             read: { self.voiceCallSavingEnabled },
             write: { self.setVoiceCallSavingEnabled($0) }
