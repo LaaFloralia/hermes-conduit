@@ -1,7 +1,7 @@
 import XCTest
 @testable import Conduit
 
-/// One sentence for a finished run of steps (ChatStepSummaries): which run
+/// A short paragraph on a finished run of steps (ChatStepSummaries): which run
 /// is described, what the answer becomes, and how sentences are kept.
 extension ChatTypographyTests {
     private func summaryStep(_ id: String, _ name: String = "terminal", running: Bool = false) -> ChatMessage {

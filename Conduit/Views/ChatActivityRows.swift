@@ -699,7 +699,8 @@ private struct ChatStepRowBody: View {
             }
         }
         .chatStepExplainMenu(
-            explain: lookingBack || message.tool?.status == .running ? nil : explain,
+            // Like the run's line: only once the turn is done with it.
+            explain: lookingBack || message.tool?.status == .running || (placement.group.isTrailing && isBusy) ? nil : explain,
             title: summary == nil ? AppLocalization.string("Explain this step") : AppLocalization.string("Explain again")
         )
     }
