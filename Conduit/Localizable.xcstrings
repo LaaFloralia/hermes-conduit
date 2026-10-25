@@ -336355,7 +336355,7 @@
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jelaskan langkah ini"
+            "value" : "Jelaskan langkah-langkah ini"
           }
         },
         "it" : {
@@ -336373,7 +336373,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 단계 설명하기"
+            "value" : "이 단계들 설명하기"
           }
         },
         "pl" : {
@@ -336601,7 +336601,7 @@
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aktif atau tidak, sentuh dan tahan langkah yang dilipat lalu pilih Jelaskan langkah ini."
+            "value" : "Aktif atau tidak, sentuh dan tahan langkah yang dilipat lalu pilih Jelaskan langkah-langkah ini."
           }
         },
         "it" : {
@@ -336619,7 +336619,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "켜져 있든 꺼져 있든, 접힌 단계를 길게 눌러 '이 단계 설명하기'를 선택할 수 있습니다."
+            "value" : "켜져 있든 꺼져 있든, 접힌 단계를 길게 눌러 '이 단계들 설명하기'를 선택할 수 있습니다."
           }
         },
         "pl" : {

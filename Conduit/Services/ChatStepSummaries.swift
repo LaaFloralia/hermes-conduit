@@ -96,7 +96,7 @@ enum ChatStepSummaries {
 
     /// Without them Hermes tells neighbouring turns' steps too.
     private static let questionScope = "Only the calls since the user's last message: earlier turns are context, not part of this story."
-    private static let explainScope = "Tell only these listed calls, nothing that came before or after."
+    private static let explainScope = "Tell only this run, nothing that came before or after."
 
     private static func questionBody(language: String, words: Int) -> String {
         "In \(language), tell the user, looking back, the train of thought that led you through them: "
@@ -124,12 +124,17 @@ enum ChatStepSummaries {
     /// The calls as the question lists them, trimmed: enough to point at
     /// the run and recall it, not to replay it.
     static func explainSteps(_ steps: [ToolActivity]) -> String {
-        steps.prefix(maxExplainedSteps).enumerated().map { index, step in
+        var lines = steps.prefix(maxExplainedSteps).enumerated().map { index, step in
             var line = "\(index + 1). \(step.name)"
             if let input = trimmed(step.input, to: 300) { line += " \(input)" }
             if let output = trimmed(step.output, to: 400) { line += "\n   → \(output)" }
             return line
-        }.joined(separator: "\n")
+        }
+        // A longer run is still the one to tell: say how it went on.
+        if steps.count > maxExplainedSteps {
+            lines.append("…and \(steps.count - maxExplainedSteps) more calls in the same run.")
+        }
+        return lines.joined(separator: "\n")
     }
 
     static let maxExplainedSteps = 16
@@ -165,8 +170,8 @@ enum ChatStepSummaries {
         // say anything.
         if let tell = text.range(of: ", tell the user, looking back", options: .backwards),
            let lead = text.range(of: "In ", options: .backwards, range: text.startIndex..<tell.lowerBound),
-           let words = text.range(of: #"at most \d+ words"#, options: [.regularExpression, .backwards]),
-           let count = Int(text[words].dropFirst(8).prefix(while: \.isNumber)) {
+           let words = text[tell.upperBound...].firstMatch(of: #/at most (\d+) words/#),
+           let count = Int(words.1) {
             let body = questionBody(language: String(text[lead.upperBound..<tell.lowerBound]), words: count)
             if text.hasPrefix(questionHead) { return text == "\(questionHead). \(questionScope) " + body }
             if text.hasPrefix(explainHead + ":\n") { return text.hasSuffix("\n\(explainScope) " + body) }
