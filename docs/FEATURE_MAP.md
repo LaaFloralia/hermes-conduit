@@ -1366,7 +1366,7 @@ data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-25, #1214 (fork CI #87), at main 893c104 and notifier main with notifier #350.
+**Checked:** 2026-10-25, #1214 (fork CI #87), at main 16b6f17 and notifier main with notifier #350.
 
 ## Steps in a turn
 
@@ -1431,11 +1431,12 @@ workflow table
 ## App Store screenshots and showcase clips
 
 What the capture run shows of each screen: the App Store screenshots and
-previews, and the short clips hermesconduit.app shows (kaishi00/hermes-conduit-website#2).
+previews, and the short clips hermesconduit.app (kaishi00/hermes-conduit-website#2)
+and the README's "See it in action" strip show.
 
 **Siblings:** the iPhone and iPad capture · the Watch capture · the call
 fixtures they launch (phone and Watch) · the showcase clips · the App Preview
-cut · scripts/app-store/README.md · the hermesconduit.app pages that show the
+cut · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
 clips (kaishi00/hermes-conduit-website)
 
 **Code**
@@ -1445,6 +1446,7 @@ clips (kaishi00/hermes-conduit-website)
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
 - Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`
 - Text: `scripts/app-store/README.md`
+- README strip: `README.md` ("See it in action"), `docs/media/voice.webp`, `docs/media/watch-speaking.webp`, `docs/media/watch-approval.webp`
 
 **Rulings**
 - A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
@@ -1452,11 +1454,9 @@ clips (kaishi00/hermes-conduit-website)
 - The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
 
 **Open gaps**
-- No clips yet of an incoming Hermes call or of CarPlay; the CarPlay window may need Eric's Mac rather than a hosted runner.
-- A lock-screen approval can't be captured on a simulator; it needs a recording from a phone.
-- The README has no "See it in action" strip of the clips yet (#1193).
+- No clips yet of an incoming Hermes call, of CarPlay or of a lock-screen approval. A simulator can't show any of them (calls ring through CallKit, and the CarPlay window opens only by hand), so they come from recordings on Eric's devices, then go into the README strip and the site (#1193).
 
-**Checked:** 2026-10-25, at #1226.
+**Checked:** 2026-10-25, at #1228.
 
 ## Feature map rules
 
