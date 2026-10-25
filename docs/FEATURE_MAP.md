@@ -1657,6 +1657,33 @@ clips (kaishi00/hermes-conduit-website)
 
 **Checked:** 2026-10-25, at #1228.
 
+## Pictures in messages
+
+How a picture in a transcript loads, and the room its row takes before it
+does.
+
+**Siblings:** chats, project chats and Bot Chat · the saved-chat copy · reply
+pictures in tool results, large documents and HTML previews · call job
+result sheets · group rooms · text that describes it (none today: no
+Settings caption, briefing or doc says how pictures load)
+
+**Code**
+- Attachments: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview)
+- Reply pictures (`MEDIA:` and web): `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage), `Conduit/Views/Components/BoundedRemoteImage.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (imageCacheKey, imageCacheKey(forMediaPath:)), set for job sheets in `Conduit/Views/LiveVoiceCallJobs.swift`
+- Kept and remembered: `Conduit/Services/TranscriptImageCache.swift` (files on the phone), `Conduit/Services/TranscriptPictureMemory.swift` (decoded reply pictures, attachment previews, every picture's size, loaded from ChatView), both forgotten in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, deleteSavedChats)
+- Tests: `ConduitTests/TranscriptInlineImageTests.swift`
+
+**Rulings**
+- A row never changes height when its picture arrives, if the picture has loaded on this phone before: its size is remembered (kept next to the pictures, read once off the main thread) and its placeholder takes it (2026-10-25, #1239, #1238).
+- Reading, decoding and keeping a picture, and its size, stay off the main thread: a body looks pictures and sizes up in memory only (a local photo's existence is still checked there: a stat, never a picture read). A picture kept on the phone is never fetched again (2026-10-25, #1239).
+
+**Open gaps**
+- A picture never loaded on this phone, or kept by a build before #1239 and not shown since, still mounts as a loading line and grows once.
+- Group rooms show no `MEDIA:` pictures: their Markdown has no gateway resolver.
+- Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
+
+**Checked:** 2026-10-25, at #1239.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
