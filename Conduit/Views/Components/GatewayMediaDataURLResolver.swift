@@ -84,6 +84,13 @@ final class GatewayMediaDataURLResolver {
         }
         return nil
     }
+
+    /// Where a reply's `MEDIA:` picture is kept on the phone, scoped like
+    /// a server file attachment.
+    func imageCacheKey(forMediaPath path: String) -> String? {
+        guard currentAppState != nil, !path.isEmpty else { return nil }
+        return TranscriptImageCache.key(dashboard: dashboardID?.uuidString ?? "", profile: profile, path: path)
+    }
 }
 
 /// A gateway `MEDIA:` file fetched for opening.

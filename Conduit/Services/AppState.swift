@@ -5546,6 +5546,7 @@ final class AppState: ObservableObject {
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
         TranscriptImageCache.purge()
+        TranscriptPictureMemory.forgetAll()
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
@@ -5585,6 +5586,7 @@ final class AppState: ObservableObject {
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
         TranscriptImageCache.purge()
+        TranscriptPictureMemory.forgetAll()
         // The summaries describing runs of steps go with the chats.
         forgetStepSummaries(scopePrefix: nil)
         if connection == nil, let copy = offlineChatPresentation {

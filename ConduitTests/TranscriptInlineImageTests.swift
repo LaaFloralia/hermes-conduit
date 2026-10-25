@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -314,6 +315,93 @@ extension MessageNormalizerTests {
             TranscriptImageCache.key(dashboard: "d1", profile: "default", path: "/root/.hermes/images/a.png"),
             TranscriptImageCache.key(dashboard: "d2", profile: "default", path: "/root/.hermes/images/a.png")
         )
+    }
+
+    // MARK: - Picture sizes known before a row loads (#1238)
+
+    @MainActor
+    func testAPicturesSizeIsRememberedSoItsRowNeverGrowsWhenItLoads() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptImageSizes-\(UUID().uuidString).plist")
+        TranscriptPictureMemory.forgetAll(sizesFile: file)
+        defer { TranscriptPictureMemory.forgetAll(sizesFile: file) }
+
+        XCTAssertNil(TranscriptPictureMemory.size(for: "a"))
+        TranscriptPictureMemory.rememberSize(CGSize(width: 30, height: 60), for: "a", savingTo: nil)
+        XCTAssertEqual(TranscriptPictureMemory.size(for: "a"), CGSize(width: 30, height: 60))
+
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 4)).image { _ in }
+        TranscriptPictureMemory.remember(image, for: "b", savingTo: nil)
+        XCTAssertEqual(TranscriptPictureMemory.size(for: "b"), CGSize(width: 8, height: 4))
+        XCTAssertNotNil(TranscriptPictureMemory.image(for: "b"))
+
+        // A size of nothing is never kept; a sign-out forgets them all.
+        TranscriptPictureMemory.rememberSize(.zero, for: "c", savingTo: nil)
+        XCTAssertNil(TranscriptPictureMemory.size(for: "c"))
+        TranscriptPictureMemory.forgetAll(sizesFile: file)
+        XCTAssertNil(TranscriptPictureMemory.image(for: "b"))
+        XCTAssertNil(TranscriptPictureMemory.size(for: "a"))
+    }
+
+    @MainActor
+    func testKeptSizesJoinThisLaunchsWithoutWritingOverThem() async throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptImageSizes-\(UUID().uuidString).plist")
+        let elsewhere = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptImageSizes-\(UUID().uuidString).plist")
+        TranscriptPictureMemory.forgetAll(sizesFile: elsewhere)
+        defer {
+            TranscriptPictureMemory.forgetAll(sizesFile: elsewhere)
+            try? FileManager.default.removeItem(at: file)
+        }
+        TranscriptPictureMemory.writeSizes(["kept": CGSize(width: 10, height: 20), "both": CGSize(width: 1, height: 1)], to: file)
+
+        // Remembered before the read: this launch's size wins.
+        TranscriptPictureMemory.rememberSize(CGSize(width: 5, height: 5), for: "both", savingTo: nil)
+        async let first: Void = TranscriptPictureMemory.loadKeptSizes(from: file)
+        async let second: Void = TranscriptPictureMemory.loadKeptSizes(from: file)
+        _ = await (first, second)
+
+        XCTAssertEqual(TranscriptPictureMemory.size(for: "kept"), CGSize(width: 10, height: 20))
+        XCTAssertEqual(TranscriptPictureMemory.size(for: "both"), CGSize(width: 5, height: 5))
+
+        // A sign-out forgets the read too.
+        TranscriptPictureMemory.forgetAll(sizesFile: elsewhere)
+        XCTAssertNil(TranscriptPictureMemory.size(for: "kept"))
+    }
+
+    func testPictureSizesAreKeptOnThePhoneAcrossLaunches() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptImageSizes-\(UUID().uuidString).plist")
+        defer { try? FileManager.default.removeItem(at: file) }
+        XCTAssertEqual(TranscriptPictureMemory.readSizes(from: file), [:])
+
+        TranscriptPictureMemory.writeSizes(["path|d1|default|/a.png": CGSize(width: 1200, height: 800)], to: file)
+        XCTAssertEqual(TranscriptPictureMemory.readSizes(from: file), ["path|d1|default|/a.png": CGSize(width: 1200, height: 800)])
+
+        // A damaged file reads as no sizes.
+        try Data("not a plist".utf8).write(to: file)
+        XCTAssertEqual(TranscriptPictureMemory.readSizes(from: file), [:])
+    }
+
+    func testAPictureFromAReplyIsKeptFromItsDecodedBytes() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptImageCacheTests-\(UUID().uuidString)", isDirectory: true)
+        defer { TranscriptImageCache.removeAll(in: directory) }
+        let key = TranscriptImageCache.key(dashboard: "d1", profile: "default", path: "/root/.hermes/cache/reply.png")
+        let bytes = try XCTUnwrap(Data(base64Encoded: "iVBORw0KGgo="))
+
+        let stored = try XCTUnwrap(TranscriptImageCache.store(bytes, fileExtension: "png", for: key, in: directory))
+        XCTAssertEqual(TranscriptImageCache.cachedFile(for: key, in: directory), stored)
+        XCTAssertEqual(try Data(contentsOf: stored), bytes)
+        // A sign-out since the load started keeps nothing.
+        XCTAssertNil(TranscriptImageCache.store(
+            bytes,
+            fileExtension: "png",
+            for: key,
+            in: directory,
+            generation: TranscriptImageCache.generation - 1
+        ))
     }
 
     func testAPictureLoadedAcrossASignOutIsNotKept() async throws {
