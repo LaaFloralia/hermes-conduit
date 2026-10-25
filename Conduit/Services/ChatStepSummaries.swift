@@ -36,8 +36,11 @@ enum ChatStepSummaries {
     static let maxStepsRange = 5...100
 
     static func maxSteps(_ defaults: UserDefaults = .standard) -> Int {
-        let value = defaults.object(forKey: maxStepsKey) as? Int ?? defaultMaxSteps
-        return min(max(value, maxStepsRange.lowerBound), maxStepsRange.upperBound)
+        clampedMaxSteps(defaults.object(forKey: maxStepsKey) as? Int ?? defaultMaxSteps)
+    }
+
+    static func clampedMaxSteps(_ value: Int) -> Int {
+        min(max(value, maxStepsRange.lowerBound), maxStepsRange.upperBound)
     }
 
     /// Whether a finished run gets an automatic summary, counted like the

@@ -1919,7 +1919,8 @@ private struct StepSummarySettings: View {
                 .tint(.conduitAccent)
                 .accessibilityHint("Summaries are kept on this device.")
             Stepper(value: $maxSteps, in: ChatStepSummaries.maxStepsRange, step: 5) {
-                Text(AppLocalization.string("Skip runs over \(String(maxSteps)) steps"))
+                // The limit the check uses, should a stored value be out of range.
+                Text(AppLocalization.string("Skip runs over \(String(ChatStepSummaries.clampedMaxSteps(maxSteps))) steps"))
             }
             .disabled(!enabled)
         }

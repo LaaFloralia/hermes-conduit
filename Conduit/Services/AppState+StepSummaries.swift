@@ -125,9 +125,16 @@ extension AppState {
     func forgetStepSummaries(scopePrefix: String?) {
         ChatStepSummaries.remove(scopePrefix: scopePrefix)
         stepSummaries = ChatStepSummaries.saved()
-        stepSummaryTasks = [:]
-        stepSummaryRequested = [:]
-        stepSummaryEarlyAnswers = [:]
+        guard let scopePrefix else {
+            stepSummaryTasks = [:]
+            stepSummaryRequested = [:]
+            stepSummaryEarlyAnswers = [:]
+            return
+        }
+        // Another dashboard signing out leaves this one's questions be.
+        // Early answers carry no scope; unclaimed, they go with their wait.
+        stepSummaryTasks = stepSummaryTasks.filter { !$0.value.scope.hasPrefix(scopePrefix) }
+        stepSummaryRequested = stepSummaryRequested.filter { !$0.key.scope.hasPrefix(scopePrefix) }
     }
 
     private func recordStepSummary(_ text: String, for target: ChatStepSummaries.Run) {
