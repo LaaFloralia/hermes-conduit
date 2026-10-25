@@ -274,7 +274,7 @@ entry)
 - CarPlay: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (prepareWaitingForConnection, establishLiveVoice), `Conduit/CarPlay/CarPlayBrowseTemplates.swift`
 - A start's late answers: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (callEpoch, isStarting; Gemini, Qwen, Grok, Local Live), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (startAttempt), `Conduit/Voice/VoiceConversationController.swift` (operationGeneration), `ConduitWatch/WatchDirectCallModel.swift` (callID)
 - Watch: `ConduitWatch/WatchHomeView.swift`, `ConduitWatch/TalkToHermesIntent.swift`
-- A chat open elsewhere: `Conduit/Services/ChatTakeover.swift` (ChatTakeoverPreference), `Conduit/Services/AppState.swift` (submitComposerForCall, sendCallPromptTakingOver)
+- A chat open elsewhere: its own entry (Chat open elsewhere)
 - How an attached call behaves: `docs/VOICE_BACKGROUND_JOBS.md`
 
 **Rulings**
@@ -289,7 +289,41 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-25, Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; 2026-10-25, Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+
+## Chat open elsewhere
+
+What Conduit does when Hermes refuses a send because something else holds the
+chat (SESSION_NOT_OWNED): Hermes Desktop or a terminal with a claim, or the
+gateway's ledger running other work in it, like another bot's message in a
+Bot Chat.
+
+**Siblings:** the composer's offer and automatic takeover · a call's request
+in the open chat (Classic, Local Live, the live modes) · a call's request off
+screen (CarPlay and Watch calls too) · chats, project chats and Bot Chat ·
+Pulse's own takeover · the plugin's takeover route · the idle claim release ·
+Settings > Chat > Take over automatically and its caption · the plugin's
+update notice
+
+**Code**
+- Offer, owner and sentences: `Conduit/Services/ChatTakeover.swift` (ChatTakeoverState.owner, ChatTakeoverClient, ChatTakeoverOutcome)
+- Flow: `Conduit/Services/AppState.swift` (noteChatOwnedElsewhere, takeOverChat, chatTakeoverProfile, runChatTakeover, noteChatTakeoverOwner, submitComposerForCall, takeOverChatForCall, sendCallPromptTakingOver), shown by `Conduit/Views/Components/ComposerBar.swift`
+- Setting: `Conduit/Views/AuxiliaryViews.swift` (Take over automatically)
+- Plugin: `notifier/chat_takeover.py` (take_over_session, gateway_queue_owner), `notifier/dashboard/plugin_api.py` (/sessions/takeover), `notifier/pulse_host.py` (take_over), `notifier/conduit_claims.py` (idle claim release)
+
+**Rulings**
+- Only another process's claim is dropped, never while it runs a turn; this dashboard's own claims answer same_host (2026-10-02, #304; notifier #33, #101).
+- A call always takes over, whatever the setting, and Take over automatically is on by default (2026-10-21, #1066).
+- A Bot Chat's takeover asks the bot's profile, where its claims and ledger live (2026-10-25, #1261).
+- While the gateway's ledger holds the chat, nothing is dropped: the route answers busy, surface `bot` for another bot's message, and Conduit says the bot is answering another bot and sends once it finishes. Other queued work answers surface `gateway`, which reads as another Hermes window (it's a platform message or a job Hermes runs there), and is waited for the same way (2026-10-25, #1261; notifier #374).
+
+**Open gaps**
+- The offer can't name a bot until the route answers: Hermes' ledger refusal names no owner, so with Take over automatically off the offer reads "another Hermes window" until the tap (#1261).
+- A ledger row Hermes marks `unknown` only clears when it's discarded in Hermes; Conduit waits on it like a busy chat, then says to try again (#1261).
+- Classic shows a generic error when it can't take over (#1066).
+- Desktop isn't told it lost the chat and shows stale history until reopened (needs Hermes, #304).
+
+**Checked:** 2026-10-25, #1261.
 
 ## Ending a call and what gets saved
 

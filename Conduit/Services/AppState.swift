@@ -24731,6 +24731,14 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// The profile whose claims the takeover route reads: a Bot Chat's bot,
+    /// else the workspace. A Bot Chat's claim is in its bot's registry, so
+    /// asking the workspace found nobody holding it, the resend was refused
+    /// again, and the offer never went away.
+    private func chatTakeoverProfile(_ state: ChatTakeoverState) -> String {
+        botScopeProfile(forSessionIDs: Set(state.sessionIDs), workspaceProfile: activeProfile) ?? activeProfile
+    }
+
     /// Asks the host to drop the other app's claim, waiting while it runs a
     /// turn. On success the composer sends its draft again.
     func takeOverChat() {
@@ -24743,18 +24751,21 @@ final class AppState: ObservableObject {
         state.phase = .waiting
         chatTakeover = state
         let client = chatTakeoverClient
-        let profile = activeProfile
+        let profile = chatTakeoverProfile(state)
         let waiting = state
         // Only `client` is held across the awaits; `self` is re-taken weakly
         // just to publish the result.
         chatTakeoverTask = Task { [weak self] in
-            let phase = await Self.runChatTakeover(client: client, state: waiting, profile: profile)
+            let phase = await Self.runChatTakeover(client: client, state: waiting, profile: profile, onOwner: { surface in
+                self?.noteChatTakeoverOwner(surface, sessionID: waiting.sessionID)
+            })
             guard let self else { return }
             // Only the latest takeover clears its own handle.
             if !Task.isCancelled { self.chatTakeoverTask = nil }
             guard let phase, !Task.isCancelled,
                   self.chatTakeover?.sessionID == waiting.sessionID else { return }
             var settled = waiting
+            settled.surface = self.chatTakeover?.surface ?? waiting.surface
             settled.phase = phase
             if phase == .ready {
                 self.chatTakeoverReadyCount &+= 1
@@ -24768,19 +24779,32 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Who the plugin says holds the chat while Conduit waits. Hermes'
+    /// refusal doesn't name another bot's message running in a Bot Chat, so
+    /// the notice says so once the plugin does, instead of "another window".
+    private func noteChatTakeoverOwner(_ surface: String, sessionID: String) {
+        guard var state = chatTakeover, state.sessionID == sessionID, state.phase == .waiting,
+              state.surface != surface else { return }
+        state.surface = surface
+        chatTakeover = state
+    }
+
     /// Polls the takeover route until it settles: while the owner is mid-turn,
     /// and through a few transient failures (bridge not ready, 5xx, network).
-    /// Nil when cancelled.
+    /// `onOwner` hears who holds the chat when a busy answer names it. Nil
+    /// when cancelled.
     static func runChatTakeover(
         client: ChatTakeoverClient,
         state: ChatTakeoverState,
         profile: String,
         pollInterval: Duration = chatTakeoverPollInterval,
         waitLimit: TimeInterval = chatTakeoverWaitLimit,
-        keepWaiting: () -> Bool = { true }
+        keepWaiting: () -> Bool = { true },
+        onOwner: (String) -> Void = { _ in }
     ) async -> ChatTakeoverState.Phase? {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(waitLimit))
+        var state = state
         var transientFailures = 0
         while !Task.isCancelled, keepWaiting() {
             do {
@@ -24789,8 +24813,12 @@ final class AppState: ObservableObject {
                     return .ready
                 case .sameHost:
                     return .heldHere
-                case .busy:
+                case .busy(let surface):
                     transientFailures = 0
+                    if let surface {
+                        state.surface = surface
+                        onOwner(surface)
+                    }
                     guard clock.now < deadline else {
                         return .failed(state.stillReplyingMessage)
                     }
@@ -24875,12 +24903,14 @@ final class AppState: ObservableObject {
         state.phase = .waiting
         chatTakeover = state
         let client = chatTakeoverClient
-        let profile = activeProfile
+        let profile = chatTakeoverProfile(state)
         let waiting = state
         let wait = Task { () -> ChatTakeoverState.Phase? in
             await Self.runChatTakeover(
                 client: client, state: waiting, profile: profile, waitLimit: Self.callChatTakeoverWaitLimit,
-                keepWaiting: stillWanted
+                keepWaiting: stillWanted, onOwner: { [weak self] surface in
+                    self?.noteChatTakeoverOwner(surface, sessionID: waiting.sessionID)
+                }
             )
         }
         // Held as the takeover's task, so dismissing the notice (or a profile
@@ -24893,6 +24923,8 @@ final class AppState: ObservableObject {
         if chatTakeoverTask == handle { chatTakeoverTask = nil }
         // Dismissed, or replaced by another refusal, while it waited.
         guard chatTakeover?.sessionID == state.sessionID, chatTakeover?.phase == .waiting else { return false }
+        // Keeps the owner the plugin named while it waited.
+        state.surface = chatTakeover?.surface ?? state.surface
         guard let phase else {
             // The call moved on: the composer offers the button again.
             state.phase = .offered
@@ -24933,13 +24965,15 @@ final class AppState: ObservableObject {
                 ids.append(id)
             }
             var state = ChatTakeoverState(sessionID: runtimeID, sessionIDs: ids, surface: details.surface, phase: .offered)
-            // What a refusal of the resend says: the other app holds it again.
-            let refusedAgainMessage = state.openElsewhereMessage
             // Nil: the call ended while it waited, so there's no refusal to report.
             guard let phase = await Self.runChatTakeover(
                 client: chatTakeoverClient, state: state, profile: profile ?? activeProfile,
-                waitLimit: Self.callChatTakeoverWaitLimit, keepWaiting: stillWanted
+                waitLimit: Self.callChatTakeoverWaitLimit, keepWaiting: stillWanted,
+                onOwner: { state.surface = $0 }
             ) else { throw CancellationError() }
+            // What a refusal of the resend says: the other app holds it
+            // again, named as the plugin named it during the wait.
+            let refusedAgainMessage = state.openElsewhereMessage
             state.phase = phase
             guard state.phase == .ready else { throw VoiceAudioError.unavailable(state.callRefusalMessage) }
             // Another host now, or a turn the call moved past: nothing to send.
