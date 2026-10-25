@@ -1388,9 +1388,9 @@ features' sealing and 409 handling (Phone data sync with the host)
 - Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`; a removed or signed-out dashboard's inboxes: `Conduit/Services/AppState.swift` (removeDashboard, disconnect, signOutDashboard, ShortcutInboxQueue.forgetDashboard)
 - Queue, filter, sealing, the one-at-a-time gate and the Settings page's reader: `Conduit/Shortcuts/ShortcutInbox.swift` (ShortcutInboxScope, ShortcutInboxQueue, ShortcutInboxGate, ShortcutInboxBrowser); key: `Conduit/Services/AppState.swift` (KeychainHelper shortcutInboxKey, one per dashboard and profile); the drain on connect: `Conduit/Services/AppState.swift` (refreshNotifierPluginStatus) and `Conduit/Services/AppState+ShortcutInbox.swift` (drainShortcutInbox)
 - Settings page: `Conduit/Views/ShortcutInboxSettingsViews.swift`, linked from `Conduit/Views/AuxiliaryViews.swift` (SettingsDestination.shortcutInbox)
-- Notifier, not in backticks until its PR reaches notifier main (the map check reads main): notifier/inbox_store.py (store, list_sealed, delete_events), notifier/inbox_tool.py (tool), `notifier/dashboard/plugin_api.py` (/inbox, _inbox_tell_pulse, ROUTE_CAPABILITIES), notifier/tests/test_inbox.py and notifier/tests/inbox_vector.json (both sides seal against it)
+- Notifier: `notifier/inbox_store.py` (store, list_sealed, delete_events), `notifier/inbox_tool.py` (tool), `notifier/dashboard/plugin_api.py` (/inbox, _inbox_tell_pulse, ROUTE_CAPABILITIES), `notifier/tests/test_inbox.py` and `notifier/tests/inbox_vector.json` (both sides seal against it)
 - Pulse: `notifier/pulse_report.py` (inbox_context, in gather), `notifier/pulse_followup.py` (watch checks, inbox_arrived, check_watches_now), `notifier/pulse.py` (wake, the memory run), `notifier/tests/test_pulse_followup.py`
-- Privacy policy: notifier/docs/privacy/index.html (Optional events from Shortcuts automations)
+- Privacy policy: `notifier/docs/privacy/index.html` (Optional events from Shortcuts automations)
 - Tests: `ConduitTests/ShortcutInboxTests.swift`
 
 **Rulings**
@@ -1419,7 +1419,6 @@ features' sealing and 409 handling (Phone data sync with the host)
 - Pulse reads only the inbox of its own home; with `report_profiles` all, the other profiles' inboxes aren't read.
 - A watch is checked only by a run of the memory thread, so with Pulse memory off no watch is ever checked, on arrival or otherwise.
 - Not on the Watch or in CarPlay: automations run on the iPhone.
-- The notifier paths above go in backticks once the notifier PR is on its main.
 
 **Checked:** 2026-10-25, #1214 (fork CI #87), at main 6e0f32d and notifier main with notifier #350; the privacy policy sibling and sign-out added in #1232 (privacy in notifier #356), which carries #1214.
 
