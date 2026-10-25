@@ -609,12 +609,13 @@ selection menus, and the same actions in the other chat surfaces.
 
 **Siblings:** chats, project chats and Bot Chat (one row view) · group rooms ·
 the selection menu · the long-press menu · VoiceOver labels · pinned replies
+(the bar, and the sheet from the chat and from the Chats list)
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
 - Selection and long-press menus: `Conduit/Views/Components/SelectableTextView.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupMessageCopyButton, GroupMessageQuoteButton, GroupReadAloudButton)
-- Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies)
+- Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Models/PinnedReplies.swift` (overview), `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies), the sheet's Chats-list entry points in `Conduit/Views/SidebarView.swift` and `Conduit/Views/V2/V2ChatsView.swift` (showPinnedReplies)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
 
 **Rulings**
@@ -624,11 +625,12 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - Read Aloud has no estimated follow-along highlight; only exact word timings from Hermes would bring it back (2026-10-19, #923).
 - A quoted reply travels in the message text, since Hermes has no field for hidden context (2026-10-04, #387).
 - Deleting a bot drops its Bot Chat pins under every profile, not only the one in use (#982 follow-up, #1191).
+- The Pinned replies sheet opened from a chat starts on This chat, with All chats a tap away and that chat's section first; the filter shows while this chat and another both have pins, and once shown stays until the sheet closes, so unpinning this chat's last pin leaves This chat empty. Opened from the Chats list it lists every chat by latest pin (2026-10-25, issue 1267, #1269).
 
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
 
-**Checked:** 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-25, the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
