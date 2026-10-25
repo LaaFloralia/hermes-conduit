@@ -1119,6 +1119,8 @@ extension HermesVoiceGatewayTimeoutTests {
         grant.audio = .init(url: "wss://relay.example.test/v1/watch-audio/grant/watch", version: 1, engines: [WatchAudioBridgeWire.localLive])
         let messages: [WatchVoiceWire.Message] = [
             .localLiveStart(callID: 4, version: WatchVoiceWire.version),
+            // A call from Hermes the Watch answered on Local Live.
+            .localLiveStart(callID: 4, version: WatchVoiceWire.version, ring: "ring-1"),
             .localLiveSession(callID: 4, call: .init(grant: grant, greeting: "Hi, I'm listening.", endPhrases: ["bye"])),
             .localLiveSession(callID: 4, call: .init(grant: grant, greeting: nil)),
         ]
@@ -1328,4 +1330,47 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(Int(GrokLiveProtocol.inputSampleRate), 24_000)
         XCTAssertEqual(Int(GrokLiveProtocol.outputSampleRate), 24_000)
     }
+
+    /// #1210: the host counts a job's outcome told once the Watch has it,
+    /// but the Watch says it only at a quiet moment: list_jobs names it
+    /// until then, as the iPhone does.
+    func testWatchListJobsNamesJobsWhoseOutcomeTheWatchHasNotSaid() {
+        let finished = WatchJobAnswer.UnsaidJob(jobID: "b", title: "Check the server", status: "finished")
+        let running = ["ok": "true", "summary": "Book a table is still running.", "job_1": "id=a; title=Book a table; status=running"]
+        let merged = WatchJobAnswer.listing(running, unsaid: [finished])
+        XCTAssertEqual(merged["job_1"], running["job_1"])
+        XCTAssertEqual(merged["job_2"], "id=b; title=Check the server; status=finished")
+        XCTAssertEqual(merged["summary"], "Book a table is still running. Check the server has finished.")
+
+        // The iPhone answers in the app's language.
+        let none = ["summary": "Es laufen keine Hintergrundaufgaben."]
+        let failed = WatchJobAnswer.UnsaidJob(jobID: "c", title: "Send the report", status: "failed")
+        XCTAssertEqual(WatchJobAnswer.listing(none, unsaid: [failed])["summary"], "Send the report failed.")
+
+        // Numbered after the host's highest job, never over one of its own.
+        let gapped = ["summary": "", "job_1": "id=a; title=Book a table; status=running", "job_3": "id=d; title=Tidy up; status=running"]
+        XCTAssertEqual(WatchJobAnswer.listing(gapped, unsaid: [finished])["job_4"], "id=b; title=Check the server; status=finished")
+
+        // Already listed by the host, or an error: left as it is.
+        let listed = ["summary": "Check the server has finished.", "job_1": "id=b; title=Check the server; status=finished"]
+        XCTAssertEqual(WatchJobAnswer.listing(listed, unsaid: [finished]), listed)
+        let error = ["error": "Hermes couldn't run that on the Watch's behalf."]
+        XCTAssertEqual(WatchJobAnswer.listing(error, unsaid: [finished]), error)
+    }
+
+    /// #1210: a job the iPhone runs for a direct Watch call tells the Watch
+    /// which text update carries its outcome, so the Watch keeps it listed
+    /// until said; an older iPhone's answer still decodes.
+    func testDirectToolResultCarriesTheJobsItsTextUpdatesSettle() throws {
+        let news = WatchVoiceWire.DirectNewsJob(text: "[Check the server finished.]", jobID: "b", title: "Check the server", status: "finished")
+        let result = WatchVoiceWire.DirectToolResult(outgoing: [.textWhenIdle(news.text)], runningJobs: 0, newsJobs: [news])
+        let decoded = try JSONDecoder().decode(WatchVoiceWire.DirectToolResult.self, from: JSONEncoder().encode(result))
+        XCTAssertEqual(decoded, result)
+
+        let older = Data(#"{"outgoing":[],"runningJobs":1}"#.utf8)
+        let old = try JSONDecoder().decode(WatchVoiceWire.DirectToolResult.self, from: older)
+        XCTAssertNil(old.newsJobs)
+        XCTAssertEqual(old.runningJobs, 1)
+    }
+
 }

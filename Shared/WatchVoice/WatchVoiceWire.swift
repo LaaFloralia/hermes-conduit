@@ -207,6 +207,19 @@ enum WatchVoiceWire {
         /// started elsewhere count too): the Watch asks again while there
         /// are any.
         var runningJobs: Int
+        /// The settled jobs whose outcome a `textWhenIdle` above says: the
+        /// iPhone counts it told once the Watch has it, so the Watch keeps
+        /// it on list_jobs until the model says it (#1210). Nil from an
+        /// older iPhone app.
+        var newsJobs: [DirectNewsJob]? = nil
+    }
+
+    /// A settled job and the text update that carries its outcome.
+    struct DirectNewsJob: Codable, Equatable {
+        var text: String
+        var jobID: String
+        var title: String
+        var status: String
     }
 
     /// One settled line of a Watch call's transcript.
@@ -269,6 +282,22 @@ enum WatchVoiceWire {
         /// transfer is meant for small payloads (Japanese or Chinese text
         /// takes three bytes a character), and a long call keeps its end.
         static let maxTextBytes = 40_000
+
+        /// How many of the oldest turns a running call drops so the rest
+        /// fit `bytes`, as the saved call would keep them: a long call
+        /// holds no more on the Watch than it can send. Turns from
+        /// `protected` on (a line still open) stay, whatever their size,
+        /// and so does the newest, which `capped` clips rather than drops.
+        static func overflow(_ turns: [DirectTurn], bytes: Int = maxTextBytes, protected: Int? = nil) -> Int {
+            var total = turns.reduce(0) { $0 + $1.text.utf8.count }
+            let limit = max(0, min(protected ?? turns.count, turns.count - 1))
+            var dropped = 0
+            while total > bytes, dropped < limit {
+                total -= turns[dropped].text.utf8.count
+                dropped += 1
+            }
+            return dropped
+        }
 
         static func capped(_ turns: [DirectTurn], bytes: Int = maxTextBytes) -> [DirectTurn] {
             var kept: [DirectTurn] = []
@@ -338,7 +367,7 @@ enum WatchVoiceWire {
         case grokStart(callID: UInt32, version: Int, ring: String? = nil)
         /// A Watch call to Local Live wants the grant that opens the host's
         /// audio bridge. Calls from Hermes don't ring a Watch on Local Live.
-        case localLiveStart(callID: UInt32, version: Int)
+        case localLiveStart(callID: UInt32, version: Int, ring: String? = nil)
         /// The Watch's own PushKit token, which calls from Hermes ring on
         /// (designs/hermes-calls-watch.md); nil once it has none. Queued, so
         /// it reaches a sleeping iPhone. `key`: the Watch's handoff key,
@@ -346,8 +375,11 @@ enum WatchVoiceWire {
         /// the relay (HermesRingHandoff); nil from an older Watch. `engine`:
         /// the voice an answered call starts with (a WatchCallVoices.Voice
         /// raw value), sent again when it changes: the Watch rings only
-        /// while it can start; nil from an older Watch.
-        case callsToken(token: String?, key: String? = nil, engine: String? = nil)
+        /// while it can start; nil from an older Watch. `phoneHeadset`:
+        /// the Watch can leave an answered call on the iPhone's headset
+        /// and control it from its call screen (`callOnPhone`); nil from
+        /// an older Watch, which can't.
+        case callsToken(token: String?, key: String? = nil, engine: String? = nil, phoneHeadset: Bool? = nil)
         // iPhone → Watch
         /// Why the iPhone can't serve the call, as the Watch shows it.
         case callRefused(callID: UInt32, reason: String)
@@ -365,6 +397,11 @@ enum WatchVoiceWire {
         case grokSession(callID: UInt32, session: GrokSession)
         /// The answer to `localLiveStart`; a refusal comes as `callRefused`.
         case localLiveSession(callID: UInt32, call: LocalLiveCall)
+        /// The answer to a start for a call from Hermes answered on the
+        /// Watch while the iPhone has a headset on (#1204): the iPhone
+        /// answered its own ring, so the voice plays on the headset, and
+        /// the Watch's call screen keeps Mute and End (HermesRingControl).
+        case callOnPhone(callID: UInt32)
     }
 
     static func encode(_ message: Message) -> [String: Any] {

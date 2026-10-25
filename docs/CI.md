@@ -17,6 +17,7 @@ per account, waiting for a runner had become the main cost.
 |---|---|---|---|
 | `.github/workflows/ci.yml` | every PR and every push to `main` | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`) that builds once and runs the curated unit smoke classes and the curated UI smoke classes on that build and simulator | yes, through the single `CI Gate` check |
 | `.github/workflows/nightly.yml` | nightly on `main`, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, all with no retry | no; a failed scheduled run emails the owner |
+| `.github/workflows/contributor-label.yml` | a push or PR comment by the author of a PR labeled `waiting on contributor`, and that label being added | swaps the label for `waiting on Eric` (and back); it only edits labels and checks nothing out | no |
 
 **Releases** have no workflow of their own: a release candidate is validated
 by dispatching Nightly on the release ref (Actions > Nightly > Run workflow,
@@ -41,10 +42,13 @@ touching them. The **change's own classes**: `plan-tests.py smoke
 --changed-from HEAD^1` adds every unit class declared or extended in a changed
 `ConduitTests/` file, and `<Stem>Tests` for a changed app file `<Stem>.swift`,
 cheapest first within `changed_budget_s` of baseline time (a class with no
-baseline counts 3 s) and `changed_max_classes`; the rest are named in a
-notice and the step summary.
+baseline counts 3 s) and `changed_max_classes`. What budget is left goes to
+the stem's family, `<Stem><Topic>Tests` (a change to `AppState.swift` or
+`AppState+Composer.swift` reaches `AppStateChatResumeTests`), also cheapest
+first. The rest are named in a notice and the step summary.
 Timing families are never added. Most red nights from 2026-10-19 to 10-22
-were tests a PR had added or edited and never run before merge.
+were tests a PR had added or edited and never run before merge; 2026-10-24's
+was an `AppState.swift` change (#1154) that broke `AppStateChatResumeTests`.
 
 What a PR still does not get is the full unit suite: a unit test outside
 these that a PR breaks fails that night's run on `main`, and whoever merged
@@ -278,7 +282,7 @@ nightly-only families) and `ui` (one job per UI shard).
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape (`check-feature-map.py`; its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and the smoke build's project (`ui-spec`). |
+| `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1`; its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and the smoke build's project (`ui-spec`). |
 | `self-test` | ubuntu | CI-tooling regression suites (planner tests, lane-runner state machine, destination lookup, gate/contract tests) in three groups, concurrent with `smoke`, so the minutes-long bash state-machine suite never delays macOS work nor risks the plan job's timeout. |
 | `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache, builds the app and every test target once while the simulator boots (the compile gate), then runs the curated unit classes (one invocation, no retry) and the curated UI classes (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
@@ -798,7 +802,8 @@ fails destination resolution with an **empty** available-destinations list
 ("Unable to find a device matching the provided destination specifier") and
 every downstream lane is skipped. Before invoking xcodebuild,
 `ci-build-for-testing.sh` now runs `wait_for_destination_device`
-(`ci-lib.sh`): a bounded poll (default 180 s, `DESTINATION_SETTLE_TIMEOUT_S`)
+(`ci-lib.sh`): a bounded poll (default 180 s, `DESTINATION_SETTLE_TIMEOUT_S`,
+read as base 10 and clamped to one day)
 of `simctl list devices available` that absorbs the settlement race and, if
 the pinned device never appears, fails fast with the full device/runtime
 inventory instead of a misleading xcodebuild error. The gate never
@@ -900,7 +905,12 @@ finalizing (writing its xcresult, collecting diagnostics), and the watchdog's
 deadline becomes now + `XCODEBUILD_FINALIZE_GRACE_S` (default 180 s). That
 extends a nearly spent budget, so a completed run is not converted into a
 timeout (run #500) or a truncated result bundle, and shortens a large one, so
-a hung finalize step cannot spend the rest of the batch's budget. A retry
+a hung finalize step cannot spend the rest of the batch's budget. (Like
+every seconds override that reaches shell arithmetic - this one,
+`DESTINATION_SETTLE_TIMEOUT_S`, `BUILD_TIMEOUT_SECS`, and the local gate's
+`GATE_SLEEP_SCALE` and `GATE_TEARDOWN_GRACE_S` - it is read as base 10, so
+`08` means 8 s; a value that is not all digits takes the default, and
+anything above one day is clamped to 86400.) A retry
 iteration (`-retry-tests-on-failure`) prints a new `started` line after a
 failed summary and goes back on the test budget. The verdict still comes
 exclusively from the real exit status - the marker never declares success on

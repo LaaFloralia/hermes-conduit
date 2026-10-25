@@ -93,9 +93,10 @@ final class ChatCardsModel: ObservableObject {
         planRetired = false
     }
 
-    /// `todo_state` from `session.resume`. A plan the loaded transcript
-    /// shows is the newest one (the page is the history's tail), so this
-    /// only stands when it shows none.
+    /// `todo_state` from `session.resume`. A plan the transcript has shown
+    /// is the newest one (the page is the history's tail) and keeps
+    /// outranking it after its rows leave the loaded page, so this only
+    /// stands when the transcript has never shown a plan.
     func applyServerPlan(_ snapshot: AgentPlan?, for chat: ChatCardsChat?) {
         // The resume can land before the chat screen has said which chat
         // is open; it is always the open chat's.
@@ -188,9 +189,14 @@ final class ChatCardsModel: ObservableObject {
             return
         }
         let reopened = previous?.isFinished == true && !next.isFinished
-        if isNew || reopened { announcement &+= 1 }
+        // An announced plan is on screen, even one that arrives finished
+        // after the last one went: it gets its own while.
+        if isNew || reopened {
+            planRetired = false
+            announcement &+= 1
+        }
         if next.isFinished {
-            if previous?.isFinished != true { scheduleFinishedPlanRetire() }
+            if previous?.isFinished != true || isNew { scheduleFinishedPlanRetire() }
         } else {
             planTimer?.cancel()
         }

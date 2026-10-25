@@ -2033,6 +2033,53 @@ final class HermesClient: ObservableObject {
         )
     }
 
+    /// `mcp.catalog` for a profile: Hermes' bundled MCP servers, with the
+    /// keys each needs. Like the `profiles.*` writes, the bot is named in
+    /// `profile`, never taken from the dashboard's own scope.
+    func botMcpCatalog(profile: String) async throws -> [BotMcpCatalogEntry] {
+        let result = try await rpc("mcp.catalog", params: ["profile": profile], scoped: false)
+        return BotMcpSetup.catalog(from: result)
+    }
+
+    /// `mcp.servers.list` for a profile: its servers' auth, secrets redacted.
+    func botMcpServers(profile: String) async throws -> [BotMcpServerSummary] {
+        let result = try await rpc("mcp.servers.list", params: ["profile": profile], scoped: false)
+        return BotMcpSetup.servers(from: result)
+    }
+
+    /// `mcp.servers.add` from a catalog preset.
+    func addBotMcpServer(profile: String, name: String, preset: String) async throws -> AnyCodable {
+        try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc(
+                "mcp.servers.add",
+                params: ["profile": profile, "name": name, "preset": preset],
+                timeout: 60,
+                scoped: false
+            )
+        }
+    }
+
+    /// `mcp.servers.set_api_key`: Hermes keeps the value in the profile's
+    /// .env; the config only references it.
+    func setBotMcpKey(profile: String, name: String, envVar: String, value: String) async throws {
+        _ = try await rpc(
+            "mcp.servers.set_api_key",
+            params: ["profile": profile, "name": name, "env_var": envVar, "value": value],
+            scoped: false
+        )
+    }
+
+    /// `mcp.servers.test`: connect, list tools, disconnect. A cold `npx`
+    /// server can take a while.
+    func testBotMcpServer(profile: String, name: String) async throws -> AnyCodable {
+        try await rpc("mcp.servers.test", params: ["profile": profile, "name": name], timeout: 120, scoped: false)
+    }
+
+    /// `mcp.servers.oauth.<action>` (start, poll, callback, cancel).
+    func botMcpOAuth(_ action: String, params: [String: Any]) async throws -> AnyCodable {
+        try await rpc("mcp.servers.oauth.\(action)", params: params, timeout: 60, scoped: false)
+    }
+
     /// `profiles.describe`: the editor snapshot (description, SOUL.md, the
     /// profile's own model pin, and its skills, toolsets and MCP servers).
     func describeBotProfile(name: String) async throws -> BotProfileDetails {
@@ -2053,7 +2100,10 @@ final class HermesClient: ObservableObject {
     func configureBotModel(name: String, provider: String, model: String, confirmed: Bool) async throws -> AnyCodable {
         var params: [String: Any] = ["name": name, "provider": provider, "model": model]
         if confirmed { params["confirm_expensive_model"] = true }
-        return try await rpc("profiles.configure", params: params, scoped: false)
+        // A profile config write: it waits its turn with Settings' saves.
+        return try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("profiles.configure", params: params, scoped: false)
+        }
     }
 
     /// `profiles.configure`. Sections are independent; the answer's
@@ -2077,7 +2127,9 @@ final class HermesClient: ObservableObject {
         }
         if let description { params["description"] = description }
         if let soul { params["soul"] = soul }
-        return try await rpc("profiles.configure", params: params, scoped: false)
+        return try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("profiles.configure", params: params, scoped: false)
+        }
     }
 
     /// `profiles.get_asset` for the bot's avatar. Nil when it has none.
@@ -2340,7 +2392,10 @@ final class HermesClient: ObservableObject {
     }
 
     func setBusyInputMode(_ mode: BusyInputMode) async throws {
-        _ = try await rpc("config.set", params: ["key": "busy", "value": mode.rawValue])
+        // Saved in the profile config, so it queues with the other saves.
+        _ = try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("config.set", params: ["key": "busy", "value": mode.rawValue])
+        }
     }
 
     /// `inProfile` creates the session in another profile on the same
@@ -2541,7 +2596,8 @@ final class HermesClient: ObservableObject {
     private var gatewayRefusesVoiceTurn = false
 
     /// Set once this gateway refused `prompt.submit`'s `queued` key.
-    private var gatewayRefusesQueued = false
+    /// Internal so tests can stand in for that refusal.
+    var gatewayRefusesQueued = false
 
     /// This gateway is known to refuse Queue.
     var refusesQueuedPrompts: Bool { gatewayRefusesQueued }

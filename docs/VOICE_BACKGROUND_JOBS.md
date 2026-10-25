@@ -99,7 +99,10 @@ reply pending or playing):
   talking after asking, the result tells the model to deal with anything they
   said since (passing it on to Hermes if needed) and then say that Hermes has
   come back on the earlier request. Hanging up returns an unsaid result to
-  the job, as for other notices.
+  the job, as for other notices, and so does a reconnect that replaces the
+  conversation while a result is still on its way (#1223). A quiet result
+  the conversation couldn't take yet waits for the next quiet window instead
+  of being dropped.
 - Gemini Live: a job that finishes while the model is answering something
   else no longer has its result sent on its call straight away (Gemini could
   take it without saying it). The answer waits for the same quiet window; if
@@ -107,6 +110,20 @@ reply pending or playing):
   a text turn. A result whose call is withdrawn goes out as a text update,
   and hanging up returns an unsaid one to the job. Grok Live already reported
   results as text turns sent only while quiet.
+- A result is checked for being said (#1210). A text update with a job's
+  result, the only way Grok Live and Local Live hear one, counts as told once
+  the model has said something since; if it hasn't within 6 seconds, the
+  result goes out once more and then counts as told, never sent a third
+  time. The same goes for Gemini's
+  text updates, GPT-Live's delegation results and job notices, and job news
+  on Apple Watch calls, whether the job runs on the push relay or on the
+  iPhone. A result already sent when the call ends counts as told, as
+  before: it isn't carried into the next call.
+- `list_jobs` (and Classic's job status, GPT-Live's status note and the
+  Watch's job list) names a finished job until its result counts as told: a
+  result waiting for a quiet moment, or sent and not yet said or sent again,
+  keeps the job listed as finished. Before, a job left the list as soon as its result was
+  queued, so a call that never got to say it showed no job and no result.
 
 ## Limits of this phase
 

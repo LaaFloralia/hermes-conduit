@@ -654,7 +654,8 @@ struct SettingsView: View {
                 )
             },
             setListensOnCarPlay: { appState.setWakeListensOnCarPlay($0) },
-            setListensOverOtherAudio: { appState.setWakeListensOverOtherAudio($0) }
+            setListensOverOtherAudio: { appState.setWakeListensOverOtherAudio($0) },
+            listenedPhrases: { appState.wakeListenedPhrases(replacing: $0, forProfile: profile) }
         )
     }
 
@@ -1665,6 +1666,7 @@ struct ChatSettingsDetail: View {
                     ComposerReturnKeySettings()
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
+                    StepSummarySettings()
                     DeviceHapticsSettings()
                 }
             ),
@@ -1790,6 +1792,9 @@ private struct ChatFontStyleSettings: View {
 private struct ComposerReturnKeySettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
+    /// A Mac has no on-screen keyboard to mention, and starts with the
+    /// preference on.
+    private let onMac = ProcessInfo.processInfo.isiOSAppOnMac
 
     var body: some View {
         ConduitSettingsSection(
@@ -1797,15 +1802,20 @@ private struct ComposerReturnKeySettings: View {
             symbol: "keyboard",
             tint: .conduitAura
         ) {
-            Text("Press Return to send. Use Shift-Return for a new line.")
+            Text("When on, Return sends and Shift-Return starts a new line.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-            Text("Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.")
+            Text(ComposerReturnKey.defaultFootnote(onMac: onMac))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if !onMac {
+                Text("Hardware keyboards only. The on-screen keyboard's Return key keeps inserting a new line.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
-                .accessibilityHint("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged.")
+                .accessibilityHint(onMac ? Text(verbatim: "") : Text("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged."))
         }
     }
 }
@@ -1868,6 +1878,31 @@ private struct ChatTakeoverSettings: View {
             Toggle("Take over automatically", isOn: $automatic)
                 .tint(.conduitAccent)
                 .accessibilityHint("Sending in a chat open in Hermes Desktop or a terminal takes it over without asking. Needs the Conduit notifier plugin on your Hermes host.")
+        }
+    }
+}
+
+/// Device-only and off by default: one sentence for a finished run of
+/// steps, asked of Hermes with a hidden /btw (ChatStepSummaries).
+private struct StepSummarySettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatStepSummaries.preferenceKey) private var enabled = ChatStepSummaries.defaultEnabled
+
+    var body: some View {
+        ConduitSettingsSection(
+            title: AppLocalization.string("Step summaries"),
+            symbol: "text.line.first.and.arrowtriangle.forward",
+            tint: .conduitAura
+        ) {
+            Text("When a reply took several steps, Hermes writes one sentence about what they did, shown on the folded steps.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text("Each sentence is one more short request to your model. It reuses the chat's prompt cache and never changes the chat.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Toggle("Describe finished steps", isOn: $enabled)
+                .tint(.conduitAccent)
+                .accessibilityHint("Sentences are kept on this device.")
         }
     }
 }
@@ -2151,6 +2186,32 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
     }
 }
 
+/// A Model page editor's stand-in for its pickers until the catalog has
+/// rows: loading, a failed fetch with Try Again, or a gateway with none.
+private struct ModelCatalogPlaceholder: View {
+    let state: ModelCatalogState
+    let retry: () -> Void
+
+    var body: some View {
+        switch state {
+        case .loading:
+            ProgressView("Loading available models…")
+        case .ready:
+            // Callers show their pickers instead; never a spinner that
+            // can't end.
+            EmptyView()
+        case .failed:
+            Text(AppLocalization.string("Could not load models."))
+                .font(.footnote).foregroundStyle(.secondary)
+            Button(AppLocalization.string("Try Again"), action: retry)
+                .buttonStyle(.settings)
+        case .empty:
+            Text("No models are available from this gateway.")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+    }
+}
+
 private struct ProfileModelSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let load: () async -> ProfileModelDefaults?
@@ -2161,6 +2222,7 @@ private struct ProfileModelSettingsDetail: View {
     @State private var reasoning = "medium"
     @State private var saving = false
     @State private var error: String?
+    @State private var loadFailed = false
 
     private var models: [ModelInfo] { defaults?.providers.first(where: { $0.name == provider })?.models ?? [] }
     /// Keeps a saved model the catalog no longer lists visible instead of
@@ -2185,7 +2247,8 @@ private struct ProfileModelSettingsDetail: View {
             ConduitSettingsSection(title: AppLocalization.string("Default model"), symbol: "cpu", tint: .conduitAccent) {
                 Text("Select a provider first, then one of its available models. These defaults apply to new sessions in this profile.")
                     .font(.footnote).foregroundStyle(.secondary)
-                if let defaults, !defaults.providers.isEmpty {
+                let catalog = ModelCatalogState.of(providers: defaults?.providers, failed: loadFailed)
+                if catalog == .ready, let defaults {
                     ConduitMenuPicker(
                         value: provider,
                         choices: providerChoices(defaults.providers),
@@ -2202,7 +2265,7 @@ private struct ProfileModelSettingsDetail: View {
                     }
                     .disabled(modelChoices.isEmpty)
                 } else {
-                    ProgressView("Loading available models…")
+                    ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
                 }
             }
             ConduitSettingsSection(title: AppLocalization.string("Reasoning"), symbol: "brain.head.profile", tint: .conduitAura) {
@@ -2222,7 +2285,11 @@ private struct ProfileModelSettingsDetail: View {
     }
 
     private func reload() async {
-        guard let loaded = await load() else { return }
+        loadFailed = false
+        guard let loaded = await load() else {
+            loadFailed = true
+            return
+        }
         defaults = loaded
         (provider, model) = loaded.selection
         reasoning = loaded.reasoning
@@ -2264,6 +2331,7 @@ private struct DelegationModelSettings: View {
     @State private var reasoning = "medium"
     @State private var saving = false
     @State private var error: String?
+    @State private var loadFailed = false
     /// An inherited provider offers the chat row's models, since that is the
     /// provider the delegate will run on.
     private var models: [ModelInfo] {
@@ -2289,7 +2357,8 @@ private struct DelegationModelSettings: View {
         ConduitSettingsSection(title: AppLocalization.string("Delegate model"), symbol: "point.3.connected.trianglepath.dotted", tint: .conduitAccent) {
             Text("Leave both selections empty to inherit the chat model. Set a provider and model to route delegate agents separately.")
                 .font(.footnote).foregroundStyle(.secondary)
-            if let defaults, !defaults.providers.isEmpty {
+            let catalog = ModelCatalogState.of(providers: defaults?.providers, failed: loadFailed)
+            if catalog == .ready {
                 ConduitMenuPicker(
                     value: provider,
                     choices: providerChoices,
@@ -2313,7 +2382,9 @@ private struct DelegationModelSettings: View {
                 ) {
                     Text("Delegate reasoning").foregroundStyle(.secondary)
                 }
-            } else { ProgressView("Loading available models…") }
+            } else {
+                ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
+            }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
                 .disabled(saving || defaults == nil).conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).font(.caption).foregroundStyle(.red) }
@@ -2322,10 +2393,13 @@ private struct DelegationModelSettings: View {
     }
 
     private func reload() async {
+        loadFailed = false
         async let modelRequest = loadModels()
         async let settingRequest = loadSettings(["delegation.provider", "delegation.model", "delegation.reasoning_effort"])
         let (loaded, settings) = await (modelRequest, settingRequest)
-        defaults = loaded
+        // A catalog that didn't load says so, with Try Again, instead of
+        // loading forever; a re-load that fails keeps the one it had.
+        if let loaded { defaults = loaded } else { loadFailed = true }
         let configuredProvider = settings["delegation.provider"]?.textValue ?? ""
         let configuredModel = settings["delegation.model"]?.textValue ?? ""
         (provider, model) = loaded?.delegateSelection(provider: configuredProvider, model: configuredModel)
@@ -2565,7 +2639,12 @@ private struct FallbackModelsSettings: View {
             return
         }
         defaults = models
-        entries = loadedEntries
+        // A re-load keeps fallbacks the user is still editing, but what
+        // they compare against is what the host holds now: an edit changed
+        // back to the old list still differs from another client's save.
+        if !loaded || entries == saved {
+            entries = loadedEntries
+        }
         saved = loadedEntries
         loaded = true
     }
@@ -2863,6 +2942,8 @@ struct ProfileConfigSettingsPage: View {
                 .submitLabel(.done)
                 .onSubmit { saveDraft(field, defaultValue: defaultValue) }
                 .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
+                // VoiceOver names the field, not its placeholder.
+                .accessibilityLabel(Text(field.label))
             Button("Save") { saveDraft(field, defaultValue: defaultValue) }
                 .buttonStyle(.settingsPrimary).disabled(savingKey != nil)
                 .accessibilityLabel(Text(AppLocalization.string("Save \(field.label)")))
@@ -2924,6 +3005,9 @@ struct ProfileConfigSettingsPage: View {
     }
 
     private func saveDraft(_ field: ProfileSettingField, defaultValue: String) {
+        // Return in a field while a save is on its way: the buttons are
+        // disabled, and this waits the same way.
+        guard savingKey == nil else { return }
         let raw = drafts[field.key] ?? textValue(field.key, defaultValue: defaultValue)
         switch field.control {
         case .number:
@@ -2965,12 +3049,15 @@ struct ProfileConfigSettingsPage: View {
     }
 
     private func save(_ field: ProfileSettingField, value: ProfileSettingValue) {
+        // One save at a time: an older one failing after a newer one landed
+        // would put back the value from before both.
+        guard savingKey == nil else { return }
         let previous = values[field.key]
         values[field.key] = value
         fieldErrors[field.key] = nil
         if savedKey == field.key { savedKey = nil }
+        savingKey = field.key
         Task {
-            savingKey = field.key
             guard await save(field.key, value) else {
                 values[field.key] = previous
                 fieldErrors[field.key] = AppLocalization.string("Could not save \(field.label).")
@@ -3620,6 +3707,21 @@ private struct NotificationsSettingsDetail: View {
                         ForEach(pairings.thisDashboard) { gateway in
                             gatewayRow(gateway)
                         }
+                        if notifications.canRotateEncryptionKeys(gatewayIDs: pairings.thisDashboard.map(\.id)) {
+                            Button {
+                                notifications.requestEncryptionKeyRotation()
+                                Task { await appState.provisionNotificationEncryptionNow() }
+                            } label: {
+                                Label(AppLocalization.string("Rotate encryption keys"), systemImage: "arrow.triangle.2.circlepath")
+                            }
+                            .font(.footnote)
+                            // A tap while keys are being set up would only
+                            // wait for the next connect.
+                            .disabled(notifications.isProvisioningEncryption)
+                            Text("Conduit gives this dashboard's hosts new keys by itself every 7 days. The old keys still open notifications already on their way for 7 days.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         // One host, one set of commands, however many of its
                         // pairings are behind. The host row above already
                         // offers them when the plugin itself reports it is
@@ -3903,8 +4005,41 @@ private struct NotificationsSettingsDetail: View {
         // #431: whether this pairing's notifications are sealed so the relay
         // can't read them. Keys are set up automatically over the dashboard
         // connection once the host's notifier supports it.
-        if notifications.encryptedGatewayIDs.contains(gateway.id) {
-            Label(AppLocalization.string("End-to-end encrypted"), systemImage: "lock.fill")
+        // The padlock is closed only when the host confirmed it seals with
+        // the key this iPhone holds, and that key isn't long overdue.
+        let assurance = notifications.encryptionAssurance(gatewayID: gateway.id)
+        if notifications.unsavedRotationGatewayIDs.contains(gateway.id) {
+            // A rotation the host took whose new key the Keychain refused:
+            // said as it is, not as a generic mismatch.
+            Label(AppLocalization.string("This host has a new encryption key that Conduit couldn't save on this iPhone, so its notifications show only generic text. Conduit asks for it again the next time it connects to this dashboard."), systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        } else if case .ensured(let createdAt, let rotates, let quantumSafe) = assurance {
+            let date = createdAt.formatted(date: .abbreviated, time: .omitted)
+            // The shield replaces the padlock once the key came from an
+            // ML-KEM rotation: quantum-safe end to end.
+            Label(
+                quantumSafe
+                    ? AppLocalization.string("End-to-end encrypted and quantum-safe, with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days.")
+                    : !rotates
+                        ? AppLocalization.string("End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Update this host's notifier so the key changes every 7 days.")
+                        : NotificationKeyRotation.supportsPQ
+                            ? AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days.")
+                            : AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days; update to iOS 26 to make it quantum-safe."),
+                systemImage: quantumSafe ? "lock.shield.fill" : "lock.fill"
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        } else if case .overdue = assurance {
+            Label(AppLocalization.string("End-to-end encrypted, but the key is overdue for rotation. Open this host's dashboard in Conduit so it can hand over a new one."), systemImage: "lock.open")
+                .font(.footnote)
+                .foregroundStyle(.orange)
+        } else if case .mismatched = assurance {
+            Label(AppLocalization.string("This host's encryption key doesn't match this iPhone's, so its notifications show only generic text. Conduit sets up a new key the next time it connects to this dashboard."), systemImage: "lock.open")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else if case .unconfirmed = assurance {
+            Label(AppLocalization.string("End-to-end encryption is set up on this iPhone. Conduit checks it with the host the next time it connects to this dashboard."), systemImage: "lock.open")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else if NotificationSharedSettings.keysProvisioned, notifications.encryptedGatewayIDs.isEmpty {
@@ -4019,7 +4154,9 @@ struct NotificationSetupCommand: View {
                     .conduitFixedGlyph()
                     .foregroundStyle(.white)
                     .frame(width: 22, height: 22)
-                    .background(Color.conduitAccent, in: Circle())
+                    // The sent-bubble fill: the dark-mode accent is too
+                    // light under white text.
+                    .background(Color.conduitUserBubble, in: Circle())
                 Text(title).font(.subheadline.weight(.semibold))
             }
             Button {

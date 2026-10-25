@@ -13,7 +13,10 @@
 //  stays in the background under the call screen, where its link to the
 //  iPhone is down too, so an answer's start goes to the iPhone with the
 //  relay's stop, and the call's session comes back through the relay
-//  (HermesRingHandoff).
+//  (HermesRingHandoff). With a headset (AirPods) on the iPhone, the iPhone
+//  keeps the call instead, so it plays there as a phone call does, and this
+//  call screen keeps Mute and End through the relay (HermesRingControl,
+//  #1204).
 //
 
 import AVFAudio
@@ -63,6 +66,14 @@ final class HermesWatchCalls: NSObject {
         var answered = false
         var unanswered: Task<Void, Never>?
         var work: Task<Void, Never>?
+        /// The iPhone kept it on its headset (#1204): reads its Mute and
+        /// End, which this call screen shares through the ring's control.
+        var following: Task<Void, Never>?
+        /// The ring's control as last read or posted here, so a change it
+        /// brought isn't posted back.
+        var controlMuted = false
+        /// The iPhone ended it: nothing to tell it.
+        var phoneEnded = false
     }
     /// Calls reported to CallKit and not ended.
     private var calls: [UUID: Call] = [:]
@@ -125,7 +136,7 @@ final class HermesWatchCalls: NSObject {
         let engine = WatchVoiceCall.shared.engine
         guard tokenKnown, !hasSentToken || sentToken != token || sentKey != handoffKey || sentEngine != engine else { return }
         // Not linked yet: sent once the link is up.
-        guard WatchLink.shared.queue(.callsToken(token: token, key: handoffKey.map(WatchToolSeal.base64URL), engine: engine.callVoice.rawValue)) else { return }
+        guard WatchLink.shared.queue(.callsToken(token: token, key: handoffKey.map(WatchToolSeal.base64URL), engine: engine.callVoice.rawValue, phoneHeadset: true)) else { return }
         sentToken = token
         sentKey = handoffKey
         sentEngine = engine
@@ -151,12 +162,10 @@ final class HermesWatchCalls: NSObject {
         // The iPhone's stop came first.
         let settled = ring.map { settledRings[$0.id] != nil } ?? false
         let id = UUID()
-        // Local Live takes no Hermes calls on the Watch; the iPhone rings.
-        let localLive = WatchVoiceCall.shared.engine == .localLive
-        let rings = ring != nil && !late && !busy && !settled && !localLive
+        let rings = ring != nil && !late && !busy && !settled
         let callerName = Self.callerName(userInfo)
         if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName) }
-        WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "localLive": localLive])
+        WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "engine": "\(WatchVoiceCall.shared.engine)"])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
         provider.reportNewIncomingCall(with: id, update: Self.update(callerName: callerName)) { error in
@@ -270,8 +279,8 @@ final class HermesWatchCalls: NSObject {
         // A Watch call the user started meanwhile keeps going, and the
         // iPhone goes on ringing: nothing is settled.
         let engine = WatchVoiceCall.shared.engine
-        guard !WatchVoiceCall.shared.isActive, engine != .localLive else {
-            WatchCallLog.shared.note("hermesCallNotConnected", ["busy": WatchVoiceCall.shared.isActive, "localLive": engine == .localLive])
+        guard !WatchVoiceCall.shared.isActive else {
+            WatchCallLog.shared.note("hermesCallNotConnected", ["busy": true])
             finish(id, reason: .failed)
             return
         }
@@ -304,16 +313,91 @@ final class HermesWatchCalls: NSObject {
     /// The Watch voice call ended (hung up on its screen, or it failed):
     /// so does the CallKit call.
     private func voicePhaseChanged(_ phase: WatchVoiceCall.Phase) {
+        if phase == .onPhone, let id = voiceCall {
+            followPhone(id)
+            return
+        }
         guard let id = voiceCall, case .ended = phase else { return }
         voiceCall = nil
         guard let call = calls.removeValue(forKey: id) else { return }
         call.work?.cancel()
+        leavePhone(call)
         callController.request(CXTransaction(action: CXEndCallAction(call: id))) { [weak self] error in
             guard let error else { return }
             WatchVoiceMain.async {
                 WatchCallLog.shared.note("hermesCallEndFailed", ["error": error.localizedDescription])
                 self?.provider?.reportCall(with: id, endedAt: Date(), reason: .remoteEnded)
             }
+        }
+    }
+
+    // MARK: Kept on the iPhone (#1204)
+
+    /// The iPhone kept the call on its headset: its Mute and End come here.
+    private func followPhone(_ id: UUID) {
+        guard let ring = calls[id]?.ring, calls[id]?.following == nil else { return }
+        WatchCallLog.shared.note("hermesCallOnPhone")
+        calls[id]?.following = Task {
+            await HermesRingControl.follow(ring, after: 0, rewrite: {
+                // The relay restarted: this call's mute again.
+                guard let muted = self.calls[id]?.controlMuted else { return false }
+                return await HermesRingControl.set(ring, by: .watch, muted: muted, attempts: 5) != nil
+            }, changed: { state in
+                self.phoneControlChanged(id, state: state)
+            })
+        }
+    }
+
+    private func phoneControlChanged(_ id: UUID, state: HermesRingControl.State) {
+        guard calls[id] != nil, voiceCall == id else { return }
+        if state.ended {
+            WatchCallLog.shared.note("hermesCallEndedOnPhone")
+            calls[id]?.phoneEnded = true
+            WatchVoiceCall.shared.endOnPhone()
+            return
+        }
+        guard calls[id]?.controlMuted != state.muted else { return }
+        calls[id]?.controlMuted = state.muted
+        WatchVoiceCall.shared.phoneMuted(state.muted)
+        // The call screen's Mute shows it too.
+        callController.request(CXTransaction(action: CXSetMutedCallAction(call: id, muted: state.muted))) { _ in }
+    }
+
+    /// Muted or unmuted here, on the call the iPhone kept: it hears.
+    func phoneCallMuted(_ muted: Bool) {
+        guard let id = voiceCall, calls[id]?.ring != nil else { return }
+        // Tapped before the call screen's phase change reached here.
+        followPhone(id)
+        guard let call = calls[id], call.following != nil, call.controlMuted != muted else { return }
+        calls[id]?.controlMuted = muted
+        WatchCallLog.shared.note("hermesCallMuteToPhone", ["muted": muted])
+        let ring = call.ring
+        Task {
+            // Until it lands, or a newer mute or the call's end takes over.
+            for round in 1...12 {
+                guard self.calls[id]?.controlMuted == muted else { return }
+                if await HermesRingControl.set(ring, by: .watch, muted: muted, attempts: 5) != nil { return }
+                guard round < 12 else { return }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+        }
+    }
+
+    /// The call the iPhone kept ended here: so does the iPhone's.
+    private func leavePhone(_ call: Call) {
+        guard let following = call.following else { return }
+        following.cancel()
+        guard !call.phoneEnded else { return }
+        WatchCallLog.shared.note("hermesCallEndToPhone")
+        let ring = call.ring
+        ProcessInfo.processInfo.performExpiringActivity(withReason: "conduit.hermesCall.endOnPhone") { expired in
+            guard !expired else { return }
+            let finished = DispatchSemaphore(value: 0)
+            Task {
+                _ = await HermesRingControl.set(ring, by: .watch, ended: true, attempts: 5)
+                finished.signal()
+            }
+            _ = finished.wait(timeout: .now() + 12)
         }
     }
 
@@ -343,6 +427,7 @@ final class HermesWatchCalls: NSObject {
         noteSettled(call.ring.id)
         call.unanswered?.cancel()
         call.work?.cancel()
+        leavePhone(call)
         if voiceCall == id { voiceCall = nil }
         provider?.reportCall(with: id, endedAt: Date(), reason: reason)
     }
@@ -356,6 +441,7 @@ final class HermesWatchCalls: NSObject {
         }
         call.unanswered?.cancel()
         call.work?.cancel()
+        leavePhone(call)
         action.fulfill()
         if call.answered {
             WatchCallLog.shared.note("hermesCallHungUp")
@@ -427,6 +513,7 @@ extension HermesWatchCalls: CXProviderDelegate {
             for call in self.calls.values {
                 call.unanswered?.cancel()
                 call.work?.cancel()
+                self.leavePhone(call)
             }
             self.calls = [:]
             self.audioActive = false

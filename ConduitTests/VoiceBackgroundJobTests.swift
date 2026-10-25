@@ -330,6 +330,50 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.showOnScreen(title: eighty + "u", markdown: "pie")?.title, eighty)
     }
 
+    func testACutScreenCardKeepsItsLastLineUnlessItCouldBeHalfAFence() {
+        // A long one-paragraph card is one line under its heading: dropping
+        // the cut line left only the heading.
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("# Router\nThe router restarted at noon and"),
+            "# Router\nThe router restarted at noon and"
+        )
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n``"), "intro", "Half a fence goes")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n~~"), "intro")
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("intro\n```py"), "intro", "A fence's start goes")
+        // Prose opening with inline code isn't a fence.
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("intro\n`endpoint` restarted at noon and"),
+            "intro\n`endpoint` restarted at noon and"
+        )
+        XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("```swift\nlet a = 1\nlet b"), "```swift\nlet a = 1\nlet b\n```")
+    }
+
+    func testACutScreenCardReadsLongFencesAsMarkdownTextDoes() {
+        // A ```` block shows ``` lines as code: they neither close it nor
+        // open another, and its closer is as long as its opener.
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("````md\n```swift\nlet a = 1\n```\nmore"),
+            "````md\n```swift\nlet a = 1\n```\nmore\n````"
+        )
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("````md\n```\n````\nafter"),
+            "````md\n```\n````\nafter",
+            "A fence at least as long closes it"
+        )
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("```\ncode\n``` not a closer\nmore"),
+            "```\ncode\n``` not a closer\nmore\n```",
+            "A fence line with text after it doesn't close"
+        )
+        // However long the fence, its closer still fits the card.
+        let fence = String(repeating: "`", count: 40)
+        let long = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            fence + "\n" + String(repeating: "y\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertLessThanOrEqual(long.count, VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        XCTAssertTrue(long.hasSuffix("\n" + fence))
+    }
+
     func testScreenCardsBelongToTheLiveCallAndSitWhereTheyWereShown() async {
         let (supervisor, _) = makeSupervisor()
         XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call, no screen")
@@ -953,6 +997,29 @@ extension VoiceConversationControllerTests {
         supervisor.returnUndeliveredNotice(jobID: held)
         XCTAssertNotNil(supervisor.takePendingNotice())
         XCTAssertEqual(supervisor.jobs.count, VoiceBackgroundJobSupervisor.maximumSettledJobs)
+    }
+
+    /// #1210: a result taken for a quiet moment hasn't been heard yet, so
+    /// the job lists keep naming the job until the call has said it.
+    func testAJobWhoseOutcomeWaitsToBeSaidStaysListedUntilItIs() async {
+        let (supervisor, _) = makeSupervisor()
+        _ = await supervisor.startJob(instructions: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All green.", reasoning: nil))
+        guard let taken = supervisor.takePendingNoticeForJob(), let title = supervisor.jobs.first?.title else {
+            return XCTFail("no notice")
+        }
+        XCTAssertEqual(supervisor.listedJobs.map(\.id), [taken.jobID])
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("\(title) has finished."))
+
+        // Handed back unsaid, then taken again: still listed.
+        supervisor.returnUndeliveredNotice(jobID: taken.jobID)
+        XCTAssertEqual(supervisor.listedJobs.count, 1)
+        XCTAssertNotNil(supervisor.takePendingNoticeForJob())
+        XCTAssertEqual(supervisor.listedJobs.count, 1)
+
+        supervisor.noticeSent(jobID: taken.jobID)
+        XCTAssertTrue(supervisor.listedJobs.isEmpty)
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running."))
     }
 
     func testResetForgetsJobsAndIgnoresTheirLateEvents() async {
@@ -2318,6 +2385,7 @@ extension VoiceConversationControllerTests {
         let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
         var spokeAt: Date? = requestSpokenAt
         bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { "yes" }
 
         let held = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "book a table for Sam"]))
         guard case .toolResponse("call_1", "start_job", let heldResult, let heldScheduling)? = held.first, held.count == 1 else {
@@ -2362,12 +2430,69 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(fake.created, 1)
     }
 
+    func testGeminiSendRequestGoesOnlyOnTheUsersYes() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.beginLiveCall(asksBeforeSending: true)
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        bridge.lateYesWait = .zero
+        let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
+        var spokeAt: Date? = requestSpokenAt
+        var words = "book a table for Sam"
+        bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { words }
+        func send(_ id: String) async -> [String: String]? {
+            let answer = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: id, name: "send_request", arguments: [:]))
+            guard case .toolResponse(id, "send_request", let result, _)? = answer.first else { return nil }
+            return result
+        }
+
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "book a table for Sam"]))
+        spokeAt = requestSpokenAt.addingTimeInterval(5)
+
+        // Speaking after the ask isn't a yes by itself (#1007).
+        words = "wait"
+        let waitAnswer = await send("call_2")
+        XCTAssertEqual(waitAnswer?["status"], "waiting_for_ok")
+        words = "what time is it there"
+        let asideAnswer = await send("call_3")
+        XCTAssertEqual(asideAnswer?["status"], "waiting_for_ok")
+        XCTAssertEqual(fake.created, 0)
+
+        // A change goes back to the model to restate.
+        words = "no, make it Alex"
+        let changeAnswer = await send("call_4")
+        XCTAssertEqual(changeAnswer?["status"], "changed")
+        let afterChange = await send("call_5")
+        XCTAssertNotNil(afterChange?["error"], "the changed draft is gone")
+        XCTAssertEqual(fake.created, 0)
+
+        // A plain no drops it.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_6", name: "start_job", arguments: ["instructions": "book a table for Alex"]))
+        spokeAt = requestSpokenAt.addingTimeInterval(10)
+        words = "no"
+        let noAnswer = await send("call_7")
+        XCTAssertEqual(noAnswer?["status"], "dropped")
+        XCTAssertEqual(fake.created, 0)
+
+        // A yes with more words sends them along.
+        _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_8", name: "start_job", arguments: ["instructions": "book a table for Alex"]))
+        spokeAt = requestSpokenAt.addingTimeInterval(15)
+        words = "yes, and ask for a window seat"
+        let sent = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_9", name: "send_request", arguments: [:]))
+        XCTAssertTrue(sent.isEmpty, "the call stays open for the job's result")
+        XCTAssertEqual(fake.created, 1)
+        let prompt = try XCTUnwrap(fake.submissions.first?.1)
+        XCTAssertTrue(prompt.contains("book a table for Alex"), prompt)
+        XCTAssertTrue(prompt.contains("window seat"), prompt)
+    }
+
     func testGeminiAskingFirstHoldsTheChatsNextTurnButNeverAFollowUp() async {
         let (supervisor, fake) = makeThreadSupervisor()
         supervisor.beginLiveCall(asksBeforeSending: true)
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)
         var spokeAt: Date?
         bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { "yes" }
 
         let held = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "find flights to Paris"]))
         guard case .toolResponse("call_1", "ask_thread", let result, _)? = held.first else { return XCTFail("\(held)") }
@@ -2400,6 +2525,7 @@ extension VoiceConversationControllerTests {
         let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
         var spokeAt: Date? = requestSpokenAt
         bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { "yes" }
 
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: [
             "request": "also check the test results", "kind": "add",
@@ -2423,6 +2549,7 @@ extension VoiceConversationControllerTests {
         let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
         var spokeAt: Date? = requestSpokenAt
         bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { "yes" }
 
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: [
             "instructions": "also check the test results", "kind": "add",
@@ -2446,6 +2573,7 @@ extension VoiceConversationControllerTests {
         let requestSpokenAt = Date(timeIntervalSince1970: 1_000)
         var spokeAt: Date? = requestSpokenAt
         bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { "yes" }
 
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "ask_thread", arguments: ["request": "make it green"]))
         _ = supervisor.startThreadTurn(request: "check the build")
@@ -2526,6 +2654,7 @@ extension VoiceConversationControllerTests {
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)
         var spokeAt: Date?
         bridge.lastUserSpeechAt = { spokeAt }
+        bridge.lastUserWords = { "yes" }
 
         // A handoff keeps the conversation, and the question with it.
         _ = await bridge.handle(GeminiLiveProtocol.FunctionCall(id: "call_1", name: "start_job", arguments: ["instructions": "check the server"]))
@@ -2687,6 +2816,24 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(text.contains("All good. Uptime 9 days."), text)
         XCTAssertTrue(bridge.answersReadBack("del_2"))
         XCTAssertEqual(fake.created, 1, "a read-back asks Hermes nothing")
+    }
+
+    func testGPTLiveAnswerOnItsWayWhenTheConversationGoesIsPendingAgain() async {
+        let (supervisor, _) = makeSupervisor()
+        supervisor.beginLiveCall()
+        let bridge = GPTLiveDelegationBridge(supervisor: supervisor)
+        _ = await bridge.handleDelegation(id: "del_1", request: "check the server")
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All good.", reasoning: nil))
+        let settled = bridge.pendingUpdates()
+        guard case .delegationReply("del_1", _, .speakable)? = settled.first else { return XCTFail("\(settled)") }
+
+        // The conversation is replaced before the answer goes out, and the
+        // next one reuses the delegation id for other work (#1007).
+        bridge.connectionReplaced()
+        bridge.replyDelivered(delegationID: "del_1")
+        let heard = await supervisor.readBackText()
+        XCTAssertNil(heard, "the old job's answer never reached the user")
+        XCTAssertFalse(bridge.pendingUpdates().isEmpty, "its outcome goes out again")
     }
 
     func testGPTLiveUsersOwnWordsKeepAnUnmarkedReadBackOutOfHermes() async {

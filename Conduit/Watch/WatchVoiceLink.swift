@@ -103,12 +103,14 @@ final class WatchVoiceLink: ObservableObject {
             reply?([:])
         case .directStart, .bridgeStart, .grokStart, .localLiveStart, .directToken, .directTool, .directToolCancel, .directPoll, .directEnd, .directGrant:
             direct.handle(message, reply: reply)
-        case .callsToken(let token, let key, let engine):
+        case .callsToken(let token, let key, let engine, let phoneHeadset):
             // Calls from Hermes ring the Watch too (designs/hermes-calls-watch.md),
             // while its voice can start (WatchCallVoices). Its key opens an
-            // answered call's start (HermesRingHandoff).
+            // answered call's start (HermesRingHandoff). A Watch that can
+            // control a call left on this phone's headset gets one (#1204).
             let keySaved = key.flatMap(WatchToolSeal.data(base64URL:)).map(HermesRingHandoffKey.save)
-            log.note("watchCallsToken", ["token": token != nil, "key": keySaved.map { $0 ? "saved" : "unsaved" } ?? "none", "engine": engine ?? "none"])
+            UserDefaults.standard.set(phoneHeadset == true, forKey: HermesNativeCalls.watchControlsKey)
+            log.note("watchCallsToken", ["token": token != nil, "key": keySaved.map { $0 ? "saved" : "unsaved" } ?? "none", "engine": engine ?? "none", "phoneHeadset": phoneHeadset == true])
             PushNotificationService.shared.updateWatchVoIPToken(token, engine: engine)
             // Not started just for this: the next connect checks.
             AppStateRuntimeRegistry.shared.existing?.watchCallTokenChanged()

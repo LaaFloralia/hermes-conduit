@@ -282,6 +282,21 @@ struct V2ChatsView: View, Equatable {
     @Environment(\.scenePhase) private var scenePhase
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
+    /// The bar is stacked (profiles on their own row): search is a button
+    /// in the controls and opens over the filter row, so the list doesn't
+    /// carry a third row of chrome. The bar only reports its layout once it
+    /// appears, so this starts from the last layout seen (`barStackedKey`),
+    /// and is nil before any: the list leaves its search row out until the
+    /// bar says it's one row, rather than show it for a frame and take it
+    /// away. Read into state like `collapsedSections`; nothing observes the
+    /// key, so it stays out of `updates`.
+    @State private var barStacked = UserDefaults.standard.object(forKey: V2ChatsView.barStackedKey) as? Bool
+    private static let barStackedKey = "conduit.v2.barStacked"
+    /// The magnifier was tapped: the stacked bar shows the field.
+    @State private var barSearchOpen = false
+    /// The tap that opened the field also focuses it, once; coming back
+    /// from a chat leaves the keyboard down.
+    @State private var barSearchFocusPending = false
     /// Hermes' full-text search behind the field, for chats whose messages
     /// match ("In messages").
     @StateObject private var contentSearch = SessionContentSearchModel()
@@ -443,8 +458,11 @@ struct V2ChatsView: View, Equatable {
             .v2ProfileSwitchContent()
         }
         .v2EdgeBar(.top) {
-            V2TopBar(lowerLeading: { filterPill(waitingApprovalCount: waitingApprovalCount) }) { stacked in
-                trailingControls(stacked: stacked, waitingApprovalCount: waitingApprovalCount)
+            V2TopBar(lowerLeading: { stackedLeading(waitingApprovalCount: waitingApprovalCount) }) { stacked in
+                if !(stacked && showsBarSearch) {
+                    trailingControls(stacked: stacked, waitingApprovalCount: waitingApprovalCount)
+                        .onAppear { if !stacked { barUnstacked() } }
+                }
             }
                 .withAllProfilesChip()
                 .withoutScrollEdge()
@@ -581,6 +599,19 @@ struct V2ChatsView: View, Equatable {
     /// (`stacked`) Filter leaves it for the labeled pill on the left.
     private func trailingControls(stacked: Bool, waitingApprovalCount: Int) -> some View {
         V2ControlCapsule {
+            if stacked {
+                Button {
+                    Haptics.selection()
+                    barSearchFocusPending = true
+                    withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = true }
+                } label: {
+                    V2CapsuleIcon(systemImage: "magnifyingglass")
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(AppLocalization.string("Search"))
+                .macTooltip(AppLocalization.string("Search"))
+            }
+
             Button {
                 Haptics.selection()
                 sessionPresentationRaw = showingProjects ? "sessions" : "projects"
@@ -660,8 +691,82 @@ struct V2ChatsView: View, Equatable {
         return sourceRows(nil).filter { appState.sessionLiveStatus($0) == .needsInput }.count
     }
 
+    /// The stacked bar's second row: the filter pill beside the controls,
+    /// or the search field across the row once the magnifier is tapped (or
+    /// a search is running). One container, so its appearing says the bar
+    /// stacked.
+    private func stackedLeading(waitingApprovalCount: Int) -> some View {
+        HStack(spacing: 0) {
+            if showsBarSearch {
+                barSearchField
+                    .transition(.opacity)
+            } else {
+                filterPill(waitingApprovalCount: waitingApprovalCount)
+                    .transition(.opacity)
+            }
+        }
+        // Ahead of the bar's spacer, so the pill or the field takes the
+        // whole row up to the controls instead of sharing it.
+        .layoutPriority(1)
+        // Set by the layout that shows, never on disappearing: a chat
+        // pushed over the list hides both, and the list keeps its rows.
+        .onAppear {
+            setBarStacked(true)
+            // A query brought over from the list's field keeps the field
+            // up while it's edited down to nothing, until Cancel.
+            if !searchText.isEmpty { barSearchOpen = true }
+        }
+    }
+
+    /// The one-row bar took over. A query carries over to the list's
+    /// field; an empty open one doesn't come back on the next stack.
+    private func barUnstacked() {
+        setBarStacked(false)
+        barSearchOpen = false
+    }
+
+    /// A change (rotation, a profile added) fades the list's search row in
+    /// or out with the bar instead of jumping it.
+    private func setBarStacked(_ stacked: Bool) {
+        guard stacked != barStacked else { return }
+        UserDefaults.standard.set(stacked, forKey: Self.barStackedKey)
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barStacked = stacked }
+    }
+
+    /// A query keeps the field up after the keyboard goes away; Cancel
+    /// closes it.
+    private var showsBarSearch: Bool {
+        barSearchOpen || !searchText.isEmpty
+    }
+
+    private var barSearchField: some View {
+        HStack(spacing: 10) {
+            searchCapsule(minHeight: 44)
+                .frame(maxHeight: 44)
+            Button(AppLocalization.string("Cancel")) {
+                searchText = ""
+                searchFocused = false
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = false }
+            }
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(Color.conduitAccent)
+            .buttonStyle(.plain)
+            .frame(minHeight: 44)
+        }
+        .frame(maxWidth: .infinity)
+        .onAppear {
+            // Opened by the magnifier: straight to typing. Not when a
+            // running search moved here or the list came back into view.
+            if barSearchFocusPending {
+                barSearchFocusPending = false
+                searchFocused = true
+            }
+        }
+    }
+
     /// The filter menu's button where the bar stacks: what the list shows,
-    /// by name, so the filters aren't hidden behind an icon.
+    /// by name, so the filters aren't hidden behind an icon. It fills the
+    /// row up to the controls.
     private func filterPill(waitingApprovalCount: Int) -> some View {
         filterMenu(waitingApprovalCount: waitingApprovalCount) {
             HStack(spacing: 6) {
@@ -671,6 +776,7 @@ struct V2ChatsView: View, Equatable {
                 Text(showingProjects ? AppLocalization.string("Projects") : selectionTitles(separator: ", "))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
+                Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -683,7 +789,7 @@ struct V2ChatsView: View, Equatable {
             }
             .foregroundStyle(.primary)
             .padding(.horizontal, 14)
-            .frame(height: 44)
+            .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
             .conduitGlassControl(cornerRadius: 22, interactive: false)
             .contentShape(Capsule())
         }
@@ -1020,10 +1126,12 @@ struct V2ChatsView: View, Equatable {
             isLoadingList: appState.isLoadingChatList
         )
         return List {
-            searchField
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
+            if barStacked == false {
+                searchField
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
+            }
 
             // After the first connection to a dashboard added here.
             if appState.showsFinishSetup && !isSearching {
@@ -1440,7 +1548,7 @@ struct V2ChatsView: View, Equatable {
     /// the keyboard or a scroll puts it away and keeps the search.
     private var searchField: some View {
         HStack(spacing: 10) {
-            searchCapsule
+            searchCapsule(minHeight: 40)
             if searchFocused {
                 Button(AppLocalization.string("Cancel")) {
                     searchText = ""
@@ -1456,7 +1564,7 @@ struct V2ChatsView: View, Equatable {
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: searchFocused)
     }
 
-    private var searchCapsule: some View {
+    private func searchCapsule(minHeight: CGFloat) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.subheadline.weight(.semibold))
@@ -1503,8 +1611,8 @@ struct V2ChatsView: View, Equatable {
         }
         .padding(.leading, 14)
         .padding(.trailing, 6)
-        .frame(minHeight: 40)
-        .conduitGlassSurface(cornerRadius: 20)
+        .frame(minHeight: minHeight)
+        .conduitGlassSurface(cornerRadius: minHeight / 2)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: selection)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
     }
@@ -1607,10 +1715,12 @@ struct V2ChatsView: View, Equatable {
             matches: sessionMatches
         )
         return List {
-            searchField
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
+            if barStacked == false {
+                searchField
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 6, trailing: 16))
+            }
 
             if !pinned.isEmpty {
                 Section {

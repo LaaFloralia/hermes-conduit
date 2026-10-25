@@ -66,6 +66,13 @@ extension MarkdownLargeDocumentTests {
         }
     }
 
+    func testRemoteImage_APastedLinkOfHugeDimensionsIsNotAttached() {
+        // The composer uploads a pasted picture link to the gateway: one
+        // whose header claims 81 megapixels is refused as a markdown image is.
+        XCTAssertNil(PastedRemoteImage.image(from: remoteTestPNGBomb(side: 9_000)))
+        XCTAssertNotNil(PastedRemoteImage.image(from: remoteTestPNG(width: 300, height: 200)))
+    }
+
     func testRemoteImage_APageThatIsNotAPictureIsUnavailable() {
         guard case .unavailable = BoundedRemoteImage.decode(Data("<html><body>Not found</body></html>".utf8), maxPixelSize: 600) else {
             return XCTFail("Not a picture")
@@ -308,5 +315,19 @@ extension MarkdownLargeDocumentTests {
 
         MediaPreviewPresenter.removeDirectory(staged.directory)
         XCTAssertFalse(FileManager.default.fileExists(atPath: staged.directory.path))
+    }
+
+    func testWorkspaceDownload_StagesInItsOwnFolderAndRemovesIt() throws {
+        let first = try WorkspaceDownloads.stage(Data("one".utf8), name: "../notes.md")
+        let second = try WorkspaceDownloads.stage(Data("two".utf8), name: "notes.md")
+        XCTAssertEqual(first.file.lastPathComponent, "notes.md", "One safe file name")
+        XCTAssertEqual(first.directory.deletingLastPathComponent().standardizedFileURL.path, WorkspaceDownloads.root.standardizedFileURL.path)
+        XCTAssertNotEqual(first.directory, second.directory, "Each download has its own folder")
+        XCTAssertEqual(try Data(contentsOf: first.file), Data("one".utf8))
+
+        WorkspaceDownloads.remove(first)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: first.directory.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: second.file.path), "Removing one leaves the others")
+        WorkspaceDownloads.remove(second)
     }
 }

@@ -55,12 +55,6 @@ struct WatchHomeView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                } else if call.engine == .localLive, HermesWatchCalls.ringingBuilt, link.phoneContext?.callsRing == true {
-                    // WatchCallVoices.rings(engine:).
-                    Text("Calls from Hermes ring only your iPhone while the Watch uses Local Live.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
                 }
             }
             .padding(.horizontal, 4)
@@ -195,6 +189,22 @@ struct WatchSettingsView: View {
                 .foregroundStyle(link.isReachable ? .primary : .secondary)
             } footer: {
                 Text("Calls need Conduit on your iPhone to start. Once a call is on, it carries on with your wrist down and your iPhone locked.")
+            }
+            // As the padlock or shield on the iPhone's dashboard row.
+            if let encryption = link.phoneContext?.encryption {
+                Section {
+                    Label {
+                        Text(encryption == .quantumSafe ? String(localized: "Notifications quantum-safe") : String(localized: "Notifications encrypted"))
+                    } icon: {
+                        Image(systemName: encryption == .quantumSafe ? "lock.shield.fill" : "lock.fill")
+                            .foregroundStyle(accent)
+                    }
+                    .font(.footnote)
+                } footer: {
+                    Text(encryption == .quantumSafe
+                        ? String(localized: "Your active dashboard's notifications are end-to-end encrypted and quantum-safe: the relay sees when they arrive, not what they say. Conduit on your iPhone has the details.")
+                        : String(localized: "Your active dashboard's notifications are end-to-end encrypted: the relay sees when they arrive, not what they say. Conduit on your iPhone has the details."))
+                }
             }
             if let version {
                 Section {

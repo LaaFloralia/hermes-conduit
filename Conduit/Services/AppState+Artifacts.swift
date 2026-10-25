@@ -55,10 +55,87 @@ extension AppState {
 
     /// Every id the open chat is known by, for its own Artifacts sheet.
     /// Empty when no chat with a row of its own is open (a room, a new chat).
+    /// A Bot Chat has no row in the workspace's list: it goes by its own ids
+    /// and the roster's registry id and lineage tip for it.
     var activeChatArtifactSessionIDs: [String] {
-        guard let session = activeChatSessionSummary else { return [] }
-        let seeds = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
-        return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
+        if let session = activeChatSessionSummary {
+            let seeds = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
+            return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
+        }
+        guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
+              let sessionID = activeSessionId, !sessionID.isEmpty,
+              let profile = botStoreProfile(forSessionIDs: [sessionID]) ?? reboundBotChatProfile(sessionID)
+        else { return [] }
+        // The open id is the runtime one; its store keeps the durable id,
+        // confirmed under the bot's profile even when the registry hasn't
+        // noted the chat yet (after a relaunch).
+        var ids = chatOwnSessionIDs(for: sessionID)
+        if let durable = ChatScrollIdentityNormalization.sessionID(
+            confirmedDurableSessionID(forRuntime: sessionID, profile: profile)
+        ) {
+            ids.insert(durable)
+        }
+        if let bot = botRoster.first(where: { Self.profilesMatch($0.name, profile) }) {
+            ids.formUnion(Self.botChatIDs(bot))
+        }
+        return ids.sorted()
+    }
+
+    /// The stores an Artifacts list reads. A chat's own list reads the
+    /// chat's store: a Bot Chat is kept in its bot's profile. The Artifacts
+    /// page reads the profile in use (each profile All shows, while it's
+    /// on) and every other bot's Bot Chat.
+    func artifactSources(for scope: ArtifactScope) -> [ArtifactSource] {
+        switch scope {
+        case .chat(let ids):
+            guard let bot = botStoreProfile(forSessionIDs: ids) else {
+                return [ArtifactSource(profile: activeProfile, sessionIDs: ids)]
+            }
+            return [ArtifactSource(profile: bot, sessionIDs: ids, label: botLabel(bot), isBotChat: true)]
+        case .profile:
+            // The profile in use is read even when All leaves it out.
+            var listed = [activeProfile]
+            if isAllProfilesChatsOn {
+                listed += allProfilesIncluded.filter { !Self.profilesMatch($0, activeProfile) }
+            }
+            var sources = listed.map { profile in
+                // A profile read whole that is also a bot's still names its
+                // Bot Chat's rows after the bot.
+                let bot = botRoster.first { Self.profilesMatch($0.name, profile) }
+                return ArtifactSource(profile: profile, sessionIDs: [],
+                                      label: Self.profilesMatch(profile, activeProfile) ? nil : profileDisplayName(profile),
+                                      botChatIDs: bot.map(Self.botChatIDs) ?? [], botLabel: bot?.displayLabel)
+            }
+            // A bot whose whole profile is read already has its chat listed.
+            for bot in botRoster where !listed.contains(where: { Self.profilesMatch($0, bot.name) }) {
+                let ids = Self.botChatIDs(bot)
+                guard !ids.isEmpty else { continue }
+                sources.append(ArtifactSource(profile: bot.name, sessionIDs: ids, label: bot.displayLabel,
+                                              isBotChat: true))
+            }
+            return sources
+        }
+    }
+
+    /// The bot whose Bot Chat a runtime id was rebound to (a shortcut
+    /// reopening a dead runtime records only its durable id).
+    private func reboundBotChatProfile(_ sessionID: String) -> String? {
+        botRoster.first { bot in
+            guard let durable = confirmedDurableSessionID(forRuntime: sessionID, profile: bot.name) else { return false }
+            return Self.botChatIDs(bot).contains(durable)
+        }?.name
+    }
+
+    /// A bot's Bot Chat by its registry id and lineage tip.
+    private static func botChatIDs(_ bot: BotProfile) -> [String] {
+        Set([bot.canonicalSession?.id, bot.canonicalSession?.resolvedID].compactMap { id -> String? in
+            let trimmed = id?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return trimmed.isEmpty ? nil : trimmed
+        }).sorted()
+    }
+
+    private func botLabel(_ profile: String) -> String {
+        botRoster.first(where: { $0.name == profile })?.displayLabel ?? profile
     }
 
     /// Whether the transcript on screen is the chat a reveal waits for.
@@ -71,9 +148,22 @@ extension AppState {
     /// Opens the artifact's chat (unless it's the open one) and scrolls to
     /// the message it came from.
     func showArtifactInChat(_ item: ArtifactItem, chatIsOpen: Bool) {
-        pendingArtifactReveal = ArtifactReveal(messageID: item.messageID, opening: chatIsOpen ? nil : item.sessionID)
+        // Another profile's chat doesn't open during a call (it says so),
+        // so nothing waits to scroll.
+        let refused = !chatIsOpen && item.otherProfile != nil && !item.isBotChat && isVoiceCallInProgress
+        if !refused {
+            pendingArtifactReveal = ArtifactReveal(messageID: item.messageID, opening: chatIsOpen ? nil : item.sessionID)
+        }
         guard !chatIsOpen else { return }
         dismissSidebarDrawer()
-        requestOpenSession(item.sessionID)
+        if item.isBotChat {
+            // A Bot Chat opens the way Bots opens it, under the bot's profile.
+            openLinkedBotChat(item.otherProfile ?? activeProfile)
+        } else if let profile = item.otherProfile {
+            // Another profile's chat opens the way All opens it.
+            openOtherProfileChat(item.sessionID, inProfile: profile)
+        } else {
+            requestOpenSession(item.sessionID)
+        }
     }
 }
