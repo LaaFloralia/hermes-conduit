@@ -119,6 +119,18 @@ extension ChatTypographyTests {
     }
 
     @MainActor
+    func testGuessesForADraftTypedOnMeanwhileWaitBehindTheButton() {
+        let store = PredictiveStore()
+        let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")
+        store.setScreen(anchor)
+        store.draftChanged("Can you delete")
+        store.draftChanged("Can you delete th")
+        store.showDraftGuesses(next: [.init(text: " the share", p: 0.6)], replies: [], for: "Can you delete")
+        XCTAssertTrue(store.isFolded)
+        XCTAssertEqual(store.currentNext.map(\.text), ["e share"])
+    }
+
+    @MainActor
     func testATapOnARowThatJustAppearedIsIgnored() {
         let store = PredictiveStore()
         let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")

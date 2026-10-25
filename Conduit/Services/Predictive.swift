@@ -14,7 +14,7 @@
 //    (Hermes' `display_kind: "hidden"`), at most one per message the user
 //    sends.
 //
-//  The plugin's `POST /predict` (predict.py, plugin 0.78+) answers each one
+//  The plugin's `POST /predict` (predict.py, plugin 0.79+) answers each one
 //  with a fork of the live chat that can't use tools and saves nothing, and
 //  answers only this device: `/btw`'s answers go to every client, and Hermes
 //  Desktop shows them as notes. Conduit measures every duration it sends;
@@ -25,6 +25,8 @@ import Foundation
 
 enum Predictive {
     static let capability = "predict"
+    /// The plugin version that first serves it, named in Settings.
+    static let minimumPlugin = "0.79"
     static let path = "/api/plugins/conduit_push/predict"
 
     // MARK: - Settings (device-only, all off by default)
@@ -300,6 +302,9 @@ final class PredictiveStore: ObservableObject {
         answeredDraft = draft
         draftNext = next
         draftReplies = guesses
+        // Shown while the user is still paused on it; typing on meanwhile
+        // keeps them behind the ✦ button.
+        guard self.draft == draft else { return }
         isFolded = false
         shownAt = Date()
     }
@@ -385,6 +390,9 @@ struct PredictiveComposerRequest: Equatable {
     /// The draft the guess was offered for: an insert into a draft that
     /// has changed since does nothing.
     let draft: String
+    /// The chat the guess was offered in: a composer showing another one
+    /// drops it.
+    let draftKey: ComposerDraftKey
 }
 
 /// Follow-up checks for the reply on screen.

@@ -1710,16 +1710,17 @@ route and its README section · the Predictive page's captions
 - Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
 - Settings: `Conduit/Views/PredictiveSettingsView.swift`, listed in `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail)
-- Notifier, from plugin 0.78: predict.py and dashboard/plugin_api.py (`/predict`), tested in tests/test_predict.py (backticked once on notifier main)
+- Notifier, from plugin 0.79: predict.py and dashboard/plugin_api.py (`/predict`), tested in tests/test_predict.py (backticked once on notifier main)
 - Tests: `ConduitTests/ChatTypographyTests+Predictive.swift`
 
 **Rulings**
-- All three are off by default, device-only, and need the plugin's `predict` capability (0.78+); without it the page says so and nothing is asked (2026-10-25, Michel, #1242).
+- All three are off by default, device-only, and need the plugin's `predict` capability (0.79+); without it the page says so and nothing is asked (2026-10-25, Michel, #1242).
 - Guesses come from the plugin's `POST /predict`, a no-tools fork of the live chat that saves nothing, answered only to the asking device, never from `prompt.btw`, whose answers reach every client and show in Desktop (2026-10-25, Michel, #1242).
 - One row of capsules, best first, with no percentages: tap sends, long-press edits; taps in its first 0.4 s are ignored. Continuations are phrase chips, not ghost text (2026-10-25, Michel, #1242).
 - Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #1242).
 - Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #1242).
 - A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #1242).
+- Hide for this chat also stops a follow-up check already asked, and leaving the chat drops a follow-up's hold and its tag. A tapped guess goes only into the chat it was offered in (2026-10-25, #1242).
 
 **Open gaps**
 - Group rooms get no row: with several people and bots, "your next message" is unclear.

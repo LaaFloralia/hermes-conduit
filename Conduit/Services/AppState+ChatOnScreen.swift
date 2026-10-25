@@ -63,7 +63,8 @@ extension AppState {
         // A turn Hermes took on its own (Predictive follow-ups) is watched
         // by someone sitting still: it holds too.
         if let current = chatOnScreenClaim,
-           InteractionIdleState.shared.usedWithin(ChatOnScreen.engagedWindow) || predictiveFollowUpTurn != nil {
+           InteractionIdleState.shared.usedWithin(ChatOnScreen.engagedWindow)
+            || (predictiveFollowUpTurn != nil && predictiveFollowUpTurn?.sessionID == activeSessionId) {
             sendChatOnScreen(current, holdSeconds: ChatOnScreen.holdSeconds(renewingEvery: interval))
             holding = true
         } else if holding {

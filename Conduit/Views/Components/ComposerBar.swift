@@ -1973,7 +1973,11 @@ struct ComposerBar: View, Equatable {
     private func applyPredictiveRequest(_ request: PredictiveComposerRequest?) {
         guard let request else { return }
         appState.consumePredictiveComposerRequest(request.id)
-        guard appState.composerIsEnabled else { return }
+        guard appState.composerIsEnabled,
+              Self.shouldApplyPrefill(
+                  for: request.draftKey, loaded: loadedDraftKey,
+                  identity: appState.activeChatScrollSessionIdentity
+              ) else { return }
         appState.noteComposerUserEdit()
         switch request.action {
         case .insert:

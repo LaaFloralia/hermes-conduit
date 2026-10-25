@@ -2317,7 +2317,9 @@ final class AppState: ObservableObject {
     var predictiveFollowUp = PredictiveFollowUpState()
     var predictiveFollowUpTask: Task<Void, Never>?
     /// The hidden turn sent for Hermes to follow up, until it settles.
-    var predictiveFollowUpTurn: (sessionID: String, why: String)?
+    /// `after` is the chat's last row when it was sent: only a reply
+    /// after it is the follow-up's.
+    var predictiveFollowUpTurn: (sessionID: String, why: String, after: String?)?
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
@@ -10048,7 +10050,12 @@ final class AppState: ObservableObject {
     /// A guess from the suggestion row for the composer to send, edit or
     /// insert (Predictive.swift).
     func requestPredictiveComposer(_ action: PredictiveComposerRequest.Action, text: String) {
-        predictiveComposerRequest = PredictiveComposerRequest(action: action, text: text, draft: predictive.draft)
+        // The row's guesses are for the reply it shows, in the open chat.
+        guard let shown = predictive.screen, shown.sessionID == activeSessionId else { return }
+        predictiveComposerRequest = PredictiveComposerRequest(
+            action: action, text: text, draft: predictive.draft,
+            draftKey: ComposerBar.composerDraftKey(for: shown.sessionID, profile: activeProfile)
+        )
     }
 
     /// The composer took the guess.

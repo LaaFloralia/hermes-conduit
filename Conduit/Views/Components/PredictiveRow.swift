@@ -47,7 +47,6 @@ struct PredictiveRow: View {
                 moreMenu
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 4)
         }
         .frame(minHeight: 44)
         .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
@@ -73,7 +72,9 @@ struct PredictiveRow: View {
         .frame(maxWidth: 300, alignment: .leading)
         .background(Capsule().fill(Color.conduitAura.opacity(isFirst ? 0.2 : 0.1)))
         .overlay(Capsule().strokeBorder(Color.conduitAura.opacity(isFirst ? 0.6 : 0.35), lineWidth: 1))
-        .contentShape(Capsule())
+        // A 44 pt target around the smaller capsule.
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .onTapGesture { send(guess.text) }
         .onLongPressGesture(minimumDuration: 0.4) { edit(guess.text) }
         .accessibilityElement(children: .combine)
@@ -95,6 +96,7 @@ struct PredictiveRow: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(Color.conduitAura.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
             )
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
             .onTapGesture { insert(guess.text) }
             .accessibilityElement(children: .combine)

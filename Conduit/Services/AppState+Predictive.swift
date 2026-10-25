@@ -34,6 +34,11 @@ extension AppState {
     /// (updateChatOnScreen): the row follows what is on screen, and a new
     /// reply is asked about.
     func updatePredictiveScreen() {
+        // Left the chat Hermes was following up in: its reply is no
+        // longer watched, so it neither holds pushes nor gets the tag.
+        if let turn = predictiveFollowUpTurn, turn.sessionID != activeSessionId {
+            predictiveFollowUpTurn = nil
+        }
         let anchor = predictiveAnchor
         let previous = predictive.screen
         predictive.setScreen(anchor)
@@ -50,7 +55,9 @@ extension AppState {
     func predictiveTurnSettled(sessionId: String) {
         if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
             predictiveFollowUpTurn = nil
-            if let reply = messages.last(where: { $0.role == .assistant }) {
+            // Only a reply the turn wrote: a [SILENT] one leaves no row, and
+            // a system notice isn't Hermes following up.
+            if let reply = messages.last, reply.role == .assistant, reply.id != turn.after {
                 predictive.noteFollowUp(messageID: reply.id, why: turn.why)
                 objectWillChange.send()
             }
@@ -226,8 +233,10 @@ extension AppState {
             language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.turnWait
         )
         let answer = await askPredictive(body, profile: activeProfile, wait: Predictive.turnWait)
-        // Still the same reply on screen, nobody writing, nothing started.
-        guard predictiveAnchor == anchor, predictiveFollowUp.anchor == anchor,
+        // Still the same reply on screen, nobody writing, nothing started,
+        // the switch still on and the chat not hidden meanwhile.
+        guard !Task.isCancelled, predictiveAnchor == anchor, predictiveFollowUp.anchor == anchor,
+              Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(anchor.sessionID),
               predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard let answer else {
             // A failed check isn't retried for this reply.
@@ -238,7 +247,11 @@ extension AppState {
         if decision.takeTurn, let nudge = decision.nudge {
             predictiveFollowUp.spentOn = predictiveUserMessageKey(anchor.sessionID)
             predictiveFollowUp.stopped = true
-            await sendPredictiveFollowUp(nudge, why: decision.why, sessionID: anchor.sessionID)
+            // Its own task: the turn starting stops the follow-up clock,
+            // and that must not cancel the send it started.
+            Task { [weak self] in
+                await self?.sendPredictiveFollowUp(nudge, why: decision.why, sessionID: anchor.sessionID)
+            }
         } else if let again = decision.askAgain, predictiveFollowUp.checks < Predictive.maximumChecks {
             predictiveFollowUp.nextCheck = Date().addingTimeInterval(TimeInterval(again))
             startPredictiveFollowUpClock(for: anchor)
@@ -250,8 +263,9 @@ extension AppState {
     /// The hidden turn: Hermes sees it, the chat doesn't show it, and its
     /// reply wears "Hermes followed up".
     private func sendPredictiveFollowUp(_ nudge: String, why: String, sessionID: String) async {
-        guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning else { return }
-        predictiveFollowUpTurn = (sessionID, why)
+        guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning,
+              Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(sessionID) else { return }
+        predictiveFollowUpTurn = (sessionID, why, messages.last?.id)
         predictive.clear()
         do {
             let outcome = try await client.sendPrompt(sessionID, text: nudge, hidden: true)

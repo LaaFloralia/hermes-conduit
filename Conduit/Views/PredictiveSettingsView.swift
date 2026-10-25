@@ -67,7 +67,7 @@ struct PredictiveSettingsPage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !appState.predictiveIsServed {
                     Label {
-                        Text("Needs a newer Conduit plugin on your Hermes host (0.78 or later).")
+                        Text("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later).")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }
@@ -156,16 +156,17 @@ struct PredictiveSettingsPage: View {
             ) {
                 Text("Predictions use").foregroundStyle(.secondary)
             }
-            if let fast = status?.fastModel {
-                Text("Fast model on your host: \(fast).")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+            // Said once the host has answered; until then, nothing.
             if let status {
+                if let fast = status.fastModel {
+                    Text("Fast model on your host: \(fast).")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 SettingsMetricRow(label: AppLocalization.string("Predictions today"), value: String(status.today))
             }
         }
