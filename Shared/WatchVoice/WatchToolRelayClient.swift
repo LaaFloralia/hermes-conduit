@@ -78,7 +78,7 @@ final class WatchToolRelayClient {
         tools = Set(grant.tools).intersection(
             WatchToolAnswer.tools
                 .union(jobs ? WatchJobAnswer.tools.union(WatchJobAnswer.calls).union([WatchJobAnswer.interruptJob]) : [])
-                .union([WatchLiveToken.tool])
+                .union([WatchLiveToken.tool, WatchLiveToken.qwenTool])
         )
         expiresAt = grant.expiresAt
         maxJobs = jobs ? max(0, grant.maxJobs ?? 0) : 0

@@ -4,8 +4,8 @@
 //
 //  Foreground wake phrase (#174). A detected phrase only enqueues a
 //  PendingVoiceIntent for its profile; openVoiceConversation then picks the
-//  profile's voice engine (Gemini Live, GPT Live, Grok Live or classic)
-//  exactly as it does for Siri.
+//  profile's voice engine (Gemini Live, Qwen Live, GPT Live, Grok Live,
+//  Local Live or classic) exactly as it does for Siri.
 //
 
 import AVFAudio
@@ -69,7 +69,7 @@ extension AppState {
 
     private var isVoiceIdleForWake: Bool {
         !showVoiceSheet
-            && !showGeminiLiveSheet
+            && !showQwenLiveSheet && !showGeminiLiveSheet
             && !showGPTLiveSheet
             && !showGrokLiveSheet
             && !showLocalLiveSheet

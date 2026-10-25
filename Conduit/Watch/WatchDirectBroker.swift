@@ -117,6 +117,7 @@ final class WatchDirectBroker {
     /// the iPhone out of reach. False once the host refused it (a plugin
     /// before 0.8).
     private var grantLiveToken = false
+    private var directProvider: DirectLiveProvider = .gemini
     private var grantMaxJobs = 0
     private var grantJobOptions: [String: String] = [:]
     /// The names the call's jobs may give the user's profiles.
@@ -163,12 +164,13 @@ final class WatchDirectBroker {
         // Watch's now.
         if let ring = message.watchCallRing { HermesNativeCalls.shared.startedOnWatch(ringID: ring) }
         switch message {
-        case .directStart(let id, let version, let ring):
+        case .directStart(let id, let version, let ring, let requestedProvider):
             guard version == WatchVoiceWire.version else {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.versionMismatch))
                 return
             }
-            if let refusal = consentRefusal(.geminiLive) {
+            let provider = requestedProvider ?? .gemini
+            if let refusal = consentRefusal(provider == .qwen ? .qwenLive : .geminiLive) {
                 answer(.callRefused(callID: id, reason: refusal))
                 return
             }
@@ -179,7 +181,7 @@ final class WatchDirectBroker {
             if let preparing, preparing.callID == id {
                 task = preparing.task
             } else {
-                task = Task { await self.prepare(id, ring: ring) }
+                task = Task { await self.prepare(id, ring: ring, provider: provider) }
                 preparing = (id, task)
             }
             Task {
@@ -263,22 +265,34 @@ final class WatchDirectBroker {
                 answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
                 return
             }
-            // The Watch's own Gemini session gets no credential without the
-            // user's OK either.
-            if let refusal = consentRefusal(.geminiLive) {
+            // Restore the provider before checking consent or minting a token.
+            adoptIfKnown(id)
+            guard callID == id else {
+                answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
+                return
+            }
+            let provider = directProvider
+            let consentMode: LiveVoiceModeName = provider == .qwen ? .qwenLive : .geminiLive
+            if let refusal = consentRefusal(consentMode) {
                 answer(.callRefused(callID: id, reason: refusal))
                 return
             }
-            adoptIfKnown(id)
             let end = Self.beginBackgroundTask("conduit.watchDirect.token")
             Task {
                 defer { end() }
                 let startedAt = Date()
                 do {
-                    let token = try await self.appState.watchDirectToken()
+                    let token = try await self.appState.watchDirectToken(provider: provider)
                     // Minted while the phone switched: not this call's.
                     guard self.onCallsConnection(id) else {
                         answer(.callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged))
+                        return
+                    }
+                    // Ended meanwhile (hung up, or the user took back the
+                    // provider's consent): the token goes nowhere.
+                    if let refusal = self.tokenRefusalAfterMint(id, mode: consentMode) {
+                        answer(.callRefused(callID: id, reason: refusal))
+                        self.link.log.note("watchDirectToken", ["ok": false, "dropped": true, "ms": Self.milliseconds(since: startedAt), "appState": WatchVoiceLink.appStateName])
                         return
                     }
                     answer(.directTokenIssued(callID: id, token: .init(token)))
@@ -330,11 +344,30 @@ final class WatchDirectBroker {
         appState.requestLiveVoiceConsentIfMissing(mode).map { VoiceSetupIssue.providerConsentNeeded($0).message }
     }
 
-    private func prepare(_ id: UInt32, ring: String? = nil) async -> WatchVoiceWire.Message {
+    /// Why a token minted for call `id` must not reach the Watch after
+    /// all: the user withdrew `mode`'s consent while the mint was in
+    /// flight, the call is no longer the running one, or its ledger record
+    /// ended. Nil when it may go. Reads consent without asking again.
+    private func tokenRefusalAfterMint(_ id: UInt32, mode: LiveVoiceModeName) -> String? {
+        Self.tokenRefusalAfterMint(
+            id,
+            running: callID,
+            ledgerEnded: ledger.call(id)?.ended,
+            consentMissing: LiveVoiceProviderConsent.missing(mode)
+        )
+    }
+
+    static func tokenRefusalAfterMint(_ id: UInt32, running: UInt32?, ledgerEnded: Bool?, consentMissing: LiveVoiceModeName?) -> String? {
+        if let consentMissing { return VoiceSetupIssue.providerConsentNeeded(consentMissing).message }
+        guard running == id, ledgerEnded != true else { return WatchVoiceStartFailure.ended }
+        return nil
+    }
+
+    private func prepare(_ id: UInt32, ring: String? = nil, provider: DirectLiveProvider = .gemini) async -> WatchVoiceWire.Message {
         let appState = self.appState
         if let active = callID, active != id { endCall() }
         callID = id
-        callMode = .geminiLive
+        callMode = provider == .qwen ? .qwenLive : .geminiLive
         bridge = nil
         lateOutgoing = []
         hostTools = []
@@ -347,6 +380,7 @@ final class WatchDirectBroker {
         // CarPlay call.
         appState.setWatchVoiceCallActive(true)
         appState.voiceBackgroundJobSupervisor.readsRepliesWhenSettling = true
+        directProvider = provider
         let startedAt = Date()
         link.log.note("watchDirectStart", [
             "callID": Int(id),
@@ -356,13 +390,13 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         do {
-            let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
+            let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             // Only the lookups and job tools the call declares, jobs only
             // as the user allows; the call goes on without a grant when the
             // host can't give one.
@@ -415,7 +449,7 @@ final class WatchDirectBroker {
                 chosen = (built, attempt)
                 functions = declared
                 hostTools = tools
-                hostToolsMode = .geminiLive
+                hostToolsMode = provider == .qwen ? .qwenLive : .geminiLive
                 break
             }
             guard let picked = chosen else {
@@ -492,7 +526,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             // GPT-Live delegates its lookups and chats to the Watch, which
             // runs them all through the grant.
             grantTools = grantable([WatchToolAnswer.webSearch] + WatchToolAnswer.chatTools.sorted())
@@ -609,7 +643,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             let declared = plan.functions.map(\.name)
             grantTools = grantable(declared.filter { WatchToolAnswer.tools.contains($0) })
             grantAnswerSessions = plan.answerSessions
@@ -739,7 +773,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             connection = plan.connection
-            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls)
+            ledger.begin(id, connection: plan.connection, saveCalls: plan.saveCalls, mode: callMode)
             grantTools = grantable([WatchToolAnswer.webSearch])
             // The user's words answer the call from Hermes on the host.
             grantAnswerSessions = plan.answerSessions
@@ -1228,7 +1262,7 @@ final class WatchDirectBroker {
         let dashboard = appState.watchDirectConnection.dashboard
         do {
             var grant = try await grantClient.grant(
-                tools: grantTools + (withJobs ? grantJobTools : []) + (liveToken ? [WatchLiveToken.tool] : []),
+                tools: grantTools + (withJobs ? grantJobTools : []) + (liveToken ? [directProvider == .qwen ? WatchLiveToken.qwenTool : WatchLiveToken.tool] : []),
                 profile: profile,
                 maxJobs: withJobs ? grantMaxJobs : nil,
                 jobOptions: withJobs ? grantJobOptions : [:],
@@ -1294,6 +1328,10 @@ final class WatchDirectBroker {
     private func renewGrant(_ id: UInt32, carryJobsFrom: String?) async -> WatchVoiceWire.Message {
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }
         adoptIfKnown(id)
+        if let mode = callMode, let refusal = consentRefusal(mode) {
+            endCall()
+            return .callRefused(callID: id, reason: refusal)
+        }
         guard id == callID, let profile = connection?.profile, !grantTools.isEmpty || !grantJobTools.isEmpty || grantLiveToken else {
             return .callRefused(callID: id, reason: AppLocalization.string("This call has no Watch lookups to renew."))
         }
@@ -1317,6 +1355,8 @@ final class WatchDirectBroker {
     private func adoptIfKnown(_ id: UInt32) {
         guard callID == nil, let known = ledger.call(id), !known.ended else { return }
         callID = id
+        callMode = known.liveMode
+        directProvider = known.directProvider
         connection = known.connection
         if let scope = known.grant {
             grantTools = scope.tools
@@ -1612,6 +1652,12 @@ struct WatchDirectCallLedger {
         let id: UInt32
         let connection: WatchDirectConnection
         let saveCalls: Bool
+        /// Missing in ledgers written before providers had separate identities.
+        var mode: String? = nil
+        var liveMode: LiveVoiceModeName? {
+            LiveVoiceModeName.all.first { $0.storageID == mode }
+        }
+        var directProvider: DirectLiveProvider { liveMode == .qwenLive ? .qwen : .gemini }
         var ended = false
         var jobs: [String] = []
         /// What its grants cover, so it can renew them after a restart.
@@ -1681,9 +1727,9 @@ struct WatchDirectCallLedger {
         call(id)?.jobs.contains(toolID) == true
     }
 
-    mutating func begin(_ id: UInt32, connection: WatchDirectConnection, saveCalls: Bool) {
+    mutating func begin(_ id: UInt32, connection: WatchDirectConnection, saveCalls: Bool, mode: LiveVoiceModeName? = nil) {
         calls.removeAll { $0.id == id }
-        calls.append(Call(id: id, connection: connection, saveCalls: saveCalls))
+        calls.append(Call(id: id, connection: connection, saveCalls: saveCalls, mode: mode?.storageID))
         if calls.count > Self.callLimit { calls.removeFirst(calls.count - Self.callLimit) }
         store()
     }

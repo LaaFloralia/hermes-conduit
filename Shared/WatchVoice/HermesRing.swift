@@ -340,7 +340,7 @@ enum HermesRingHandoff {
         guard let data = try? open(sealed, root: key, direction: .start, ringID: ringID),
               let message = try? JSONDecoder().decode(WatchVoiceWire.Message.self, from: data) else { return nil }
         switch message {
-        case .directStart(_, _, let ring) where ring == ringID: return message
+        case .directStart(_, _, let ring, _) where ring == ringID: return message
         case .grokStart(_, _, let ring) where ring == ringID: return message
         case .bridgeStart(_, _, _, let ring) where ring == ringID: return message
         case .localLiveStart(_, _, let ring) where ring == ringID: return message
@@ -436,7 +436,7 @@ extension WatchVoiceWire.Message {
     /// The call id a Watch call's start names; nil for any other message.
     var watchCallID: UInt32? {
         switch self {
-        case .directStart(let id, _, _), .grokStart(let id, _, _), .localLiveStart(let id, _, _): return id
+        case .directStart(let id, _, _, _), .grokStart(let id, _, _), .localLiveStart(let id, _, _): return id
         case .bridgeStart(let id, _, _, _): return id
         default: return nil
         }
@@ -445,7 +445,7 @@ extension WatchVoiceWire.Message {
     /// The call from Hermes a Watch call's start answers.
     var watchCallRing: String? {
         switch self {
-        case .directStart(_, _, let ring), .grokStart(_, _, let ring), .localLiveStart(_, _, let ring): return ring
+        case .directStart(_, _, let ring, _), .grokStart(_, _, let ring), .localLiveStart(_, _, let ring): return ring
         case .bridgeStart(_, _, _, let ring): return ring
         default: return nil
         }
