@@ -640,6 +640,8 @@ private struct ChatStepRowBody: View {
                 // Open while the turn is still adding steps, so each one shows
                 // as it happens; one line once it is done.
                 let live = group.isTrailing && isBusy
+                // Not over a step still marked running, hidden ones included.
+                let offersExplain = !live && !group.members.contains(where: \.running)
                 let expanded = disclosure.isGroupExpanded(group.id, default: live || expandToolsByDefault)
                 let isFirst = position == 0
                 let isLast = position == visible.count - 1
@@ -652,7 +654,7 @@ private struct ChatStepRowBody: View {
                                 expanded: true,
                                 summary: summary,
                                 lookingBack: lookingBack,
-                                explain: live ? nil : explain,
+                                explain: offersExplain ? explain : nil,
                                 toggle: { toggle(group, to: false) }
                             )
                         }
@@ -673,7 +675,7 @@ private struct ChatStepRowBody: View {
                         expanded: false,
                         summary: summary,
                         lookingBack: lookingBack,
-                        explain: live ? nil : explain,
+                        explain: offersExplain ? explain : nil,
                         toggle: { toggle(group, to: true) }
                     )
                     .chatStepCard()
@@ -826,8 +828,9 @@ private struct ChatStepGroupHeader: View {
         .buttonStyle(.plain)
         .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
         .chatStepExplainMenu(
-            // Not over a step still marked running: Hermes isn't done with it.
-            explain: (lookingBack || members.contains(where: \.running)) ? nil : explain,
+            // The caller leaves explain out over a step still marked running,
+            // hidden ones included: Hermes isn't done with them.
+            explain: lookingBack ? nil : explain,
             title: summary == nil ? AppLocalization.string("Explain these steps") : AppLocalization.string("Explain again")
         )
     }
