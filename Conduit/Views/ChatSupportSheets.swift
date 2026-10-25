@@ -282,7 +282,8 @@ struct WorkspaceBrowserSheet: View {
 private struct WorkspaceFilePreviewSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
-    @State private var downloadURL: URL?
+    @State private var download: WorkspaceDownload?
+    @State private var downloadTask: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -317,17 +318,20 @@ private struct WorkspaceFilePreviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    if let downloadURL {
-                        ShareLink(item: downloadURL, preview: SharePreview(appState.workspaceSelectedFile?.name ?? AppLocalization.string("Workspace file"))) {
+                    if let download {
+                        ShareLink(item: download.file, preview: SharePreview(appState.workspaceSelectedFile?.name ?? AppLocalization.string("Workspace file"))) {
                             Label("Save to Files", systemImage: "square.and.arrow.up")
                         }
                     } else {
-                        Button { download() } label: { Image(systemName: "arrow.down.circle") }
+                        Button { prepareDownload() } label: { Image(systemName: "arrow.down.circle") }
                             .accessibilityLabel("Prepare file for download")
                     }
                 }
             }
         }
+        // The prepared copy lives as long as this preview of this file.
+        .onChange(of: appState.workspaceSelectedFile?.path) { _, _ in discardDownload() }
+        .onDisappear { discardDownload() }
     }
 
     private func fileMetadata(_ preview: WorkspaceFilePreview) -> some View {
@@ -338,9 +342,25 @@ private struct WorkspaceFilePreviewSheet: View {
         }
     }
 
-    private func download() {
-        guard let entry = appState.workspaceSelectedFile else { return }
-        Task { downloadURL = await appState.workspaceDownloadURL(for: entry) }
+    private func prepareDownload() {
+        guard let entry = appState.workspaceSelectedFile, downloadTask == nil else { return }
+        downloadTask = Task {
+            let prepared = await appState.workspaceDownload(for: entry)
+            // Closed, or another file, while it was being prepared.
+            guard !Task.isCancelled, appState.workspaceSelectedFile?.path == entry.path else {
+                WorkspaceDownloads.remove(prepared)
+                return
+            }
+            downloadTask = nil
+            download = prepared
+        }
+    }
+
+    private func discardDownload() {
+        downloadTask?.cancel()
+        downloadTask = nil
+        WorkspaceDownloads.remove(download)
+        download = nil
     }
 }
 

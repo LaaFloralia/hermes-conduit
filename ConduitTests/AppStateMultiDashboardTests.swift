@@ -1502,6 +1502,24 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.map(\.dashboard), [mac])
     }
 
+    /// A checkpoint with nothing new since the last writes nothing, so a
+    /// quiet call doesn't rewrite the outbox every 15 seconds (#1002).
+    func testAQuietCallCheckpointLeavesTheOutboxAlone() throws {
+        let (appState, _, _) = heldSwitchFixture()
+        appState.beginVoiceCallRecordingForTesting(engine: .geminiLive, turns: [
+            VoiceConversationTranscriptEntry(speaker: .user, text: "Add milk to the list"),
+        ])
+        appState.checkpointVoiceCallForTesting()
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.first?.request.turns.count, 1)
+
+        defaults.removeObject(forKey: VoiceTranscriptOutbox.storageKey)
+        appState.checkpointVoiceCallForTesting()
+        XCTAssertNil(defaults.data(forKey: VoiceTranscriptOutbox.storageKey), "Nothing new, nothing written")
+
+        appState.checkpointVoiceCallForTesting(adding: [VoiceConversationTranscriptEntry(speaker: .assistant, text: "Added.")])
+        XCTAssertEqual(VoiceTranscriptOutbox.load(from: defaults).entries.first?.request.turns.count, 2, "A new turn is written")
+    }
+
     /// A call's jobs are tagged one request at a time; a switch while one
     /// is in flight stops the rest instead of sending them to the next
     /// dashboard's profile of the same name.

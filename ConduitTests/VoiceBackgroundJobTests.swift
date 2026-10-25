@@ -348,6 +348,32 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceBackgroundJobSupervisor.closingCutFence("```swift\nlet a = 1\nlet b"), "```swift\nlet a = 1\nlet b\n```")
     }
 
+    func testACutScreenCardReadsLongFencesAsMarkdownTextDoes() {
+        // A ```` block shows ``` lines as code: they neither close it nor
+        // open another, and its closer is as long as its opener.
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("````md\n```swift\nlet a = 1\n```\nmore"),
+            "````md\n```swift\nlet a = 1\n```\nmore\n````"
+        )
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("````md\n```\n````\nafter"),
+            "````md\n```\n````\nafter",
+            "A fence at least as long closes it"
+        )
+        XCTAssertEqual(
+            VoiceBackgroundJobSupervisor.closingCutFence("```\ncode\n``` not a closer\nmore"),
+            "```\ncode\n``` not a closer\nmore\n```",
+            "A fence line with text after it doesn't close"
+        )
+        // However long the fence, its closer still fits the card.
+        let fence = String(repeating: "`", count: 40)
+        let long = VoiceBackgroundJobSupervisor.clippedScreenMarkdown(
+            fence + "\n" + String(repeating: "y\n", count: VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        )
+        XCTAssertLessThanOrEqual(long.count, VoiceBackgroundJobSupervisor.maximumScreenCardCharacters)
+        XCTAssertTrue(long.hasSuffix("\n" + fence))
+    }
+
     func testScreenCardsBelongToTheLiveCallAndSitWhereTheyWereShown() async {
         let (supervisor, _) = makeSupervisor()
         XCTAssertNil(supervisor.showOnScreen(title: "Chart", markdown: "pie"), "No call, no screen")

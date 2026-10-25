@@ -1212,13 +1212,25 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// is closed with a matching fence, so the rest doesn't render as code.
     static func clippedScreenMarkdown(_ markdown: String) -> String {
         guard markdown.count > maximumScreenCardCharacters else { return markdown }
-        // Room for a closing fence, so the card stays within the limit.
-        return closingCutFence(String(markdown.prefix(maximumScreenCardCharacters - 16)))
+        return fenceClosedPrefix(within: maximumScreenCardCharacters, length: \.count) { String(markdown.prefix($0)) }
+    }
+
+    /// The longest `prefix` whose `closingCutFence` is within `limit`, as
+    /// `length` counts. The cut leaves room for a three-mark fence; a longer
+    /// one left open takes its room from the cut, however long it is.
+    static func fenceClosedPrefix(within limit: Int, length: (String) -> Int, prefix: (Int) -> String) -> String {
+        var room = max(0, limit - 16)
+        while true {
+            let clipped = closingCutFence(prefix(room))
+            let over = length(clipped) - limit
+            guard over > 0, room > 0 else { return clipped }
+            room = max(0, room - over)
+        }
     }
 
     /// `cut`, the start of longer markdown, with its last line dropped when
     /// it may be half a fence and a code fence it leaves open closed. Never
-    /// longer than `cut` plus a newline and a three-character fence.
+    /// longer than `cut` plus a newline and the open fence's marks.
     static func closingCutFence(_ cut: String) -> String {
         var lines = cut.components(separatedBy: "\n")
         // A last line cut mid-way may be half a fence; drop it then, and
@@ -1231,21 +1243,20 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let marks = last.prefix { $0 == mark }.count
             if marks >= 3 || marks == last.count { lines.removeLast() }
         }
-        // Read fences as MarkdownText does: a line starting ``` or ~~~
-        // opens one, and the next line starting the same way closes it.
-        var openFence: String?
+        // Read fences as MarkdownText does: only a line of the same mark,
+        // at least as long, closes one, so a ````markdown block can show
+        // ``` lines inside, and its closer is just as long.
+        var openFence: MarkdownFence?
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if let fence = openFence {
-                if trimmed.hasPrefix(fence) { openFence = nil }
-            } else if trimmed.hasPrefix("```") {
-                openFence = "```"
-            } else if trimmed.hasPrefix("~~~") {
-                openFence = "~~~"
+                if fence.closes(trimmed) { openFence = nil }
+            } else {
+                openFence = MarkdownFence.opening(trimmed)
             }
         }
         let clipped = lines.joined(separator: "\n")
-        return openFence.map { clipped + "\n" + $0 } ?? clipped
+        return openFence.map { clipped + "\n" + String(repeating: $0.character, count: $0.length) } ?? clipped
     }
 
     private var currentCallAnchor: VoiceJobCallAnchor? {
