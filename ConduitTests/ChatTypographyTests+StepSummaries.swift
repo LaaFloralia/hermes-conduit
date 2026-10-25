@@ -1,8 +1,9 @@
 import XCTest
 @testable import Conduit
 
-/// A short paragraph on a finished run of steps (ChatStepSummaries): which run
-/// is described, what the answer becomes, and how sentences are kept.
+/// A short summary of a finished run of steps (ChatStepSummaries): which
+/// run is described, the questions, what the answer becomes, and how
+/// summaries are kept.
 extension ChatTypographyTests {
     private func summaryStep(_ id: String, _ name: String = "terminal", running: Bool = false) -> ChatMessage {
         ChatMessage(
