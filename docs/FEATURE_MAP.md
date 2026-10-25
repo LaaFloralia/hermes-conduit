@@ -519,7 +519,7 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
 
 **Rulings**
-- A reply's row is React, Copy, Read aloud and ⋯ (Quote, Branch, Pin reply); no more icons of their own under messages (2026-10-23, #1156).
+- A reply's row is React, Copy, Read aloud and ⋯ (Quote, Branch, Pin reply, and Show thinking when the run above it has thinking Settings hides, see Steps in a turn); no more icons of their own under messages (2026-10-23, #1156; 2026-10-25, #PRNUM).
 - Pin lives in the long-press and selection menus, not the row: Pin for a passage, Pin reply for the whole reply (2026-10-20, #982 and #1097; 2026-10-23, #1156).
 - Double-tap and long-press on text stay text selection; reactions come from React or a reaction chip (2026-10-07, #437).
 - Read Aloud has no estimated follow-along highlight; only exact word timings from Hermes would bring it back (2026-10-19, #923).
@@ -529,7 +529,7 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
 
-**Checked:** 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-25, the ⋯'s Show thinking at #PRNUM; pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -1495,15 +1495,17 @@ once it is done.
 offline copy) · the collapsed run of steps ("7 steps · 12s") · the working
 line ("Home · Searching the web") · the Live Activity's tool line · the
 notifier's twin category list · Settings > Display's step switches (they show, hide and open rows; their words follow the row) ·
-the run's summary, its Explain these steps menu (and a lone step's Explain this step), and its switch, step limit and captions in Settings > Chat · /btw
+the run's summary, its Explain these steps menu (and a lone step's Explain this step), and its switch, step limit and captions in Settings > Chat · /btw ·
+Show thinking in the run's menu and in its reply's ⋯, and Settings > Display's Show reasoning caption that names it
 
 **Code**
 - Rows and words: `Conduit/Views/ChatActivityRows.swift` (ChatStepStyle, ChatStepLabel, ChatStepSubject, ChatStepGroupHeader, ChatWorkingLine), `Conduit/Views/ChatView.swift` (ToolCard, SettledToolCardContent)
 - Hermes' tools catalog: `Conduit/Models/ToolCatalog.swift`, toolset names shared with Settings > Capabilities in `Conduit/Models/CapabilityCatalogModels.swift` (CapabilityToolsetOrdering.label), `Conduit/Services/AppState.swift` (loadToolCatalogIfNeeded), `Conduit/Views/ChatRowState.swift` (toolCatalog)
 - Tool Search wrapper: `Conduit/Models/ToolSearchBridge.swift`
+- Show thinking: `Conduit/Views/ChatActivityRows.swift` (ChatThinkingReveal, chatStepMenu), `Conduit/Views/ChatRowDisclosure.swift` (showsThinking, willShowThinking), `Conduit/Services/ChatScrollState.swift` (stepsAbove), `Conduit/Views/ChatView.swift` (AssistantMessageMoreMenuWithThinking, ThinkingCard), `Conduit/Views/OfflineChatTranscriptView.swift`
 - Run summaries: `Conduit/Services/ChatStepSummaries.swift`, `Conduit/Services/AppState+StepSummaries.swift`, `Conduit/Views/AuxiliaryViews.swift` (StepSummarySettings), `Conduit/Views/ChatRowState.swift` (stepSummariesAsked, canExplainStepRuns), sent with `Conduit/Services/HermesClient.swift` (startSideAgent)
 - Tool categories: `Shared/Widgets/HermesTurnActivity.swift`, and its twin, `notifier/live_activity.py` (`tool_category`)
-- Tests: `ConduitTests/ChatTypographyTests+StepRows.swift`, `ConduitTests/ChatTypographyTests+StepSummaries.swift`
+- Tests: `ConduitTests/ChatTypographyTests+StepRows.swift`, `ConduitTests/ChatTypographyTests+StepSummaries.swift`, `ConduitTests/ChatScrollEngineTests.swift` (Show thinking)
 
 **Rulings**
 - A step Conduit has words for keeps them, translated ("Searched the web"). Any other step is named: an MCP or connector tool by its app with the action as its subject line (a Tool Search batch: its apps' names with the connector icon, then every action it ran), else by the toolset Hermes' catalog (`/api/tools/toolsets`) puts it in, else by its own name made readable. "Used a tool" is only for a call with no name. Names are shown as Hermes writes them (2026-10-24, #1201).
@@ -1513,6 +1515,7 @@ the run's summary, its Explain these steps menu (and a lone step's Explain this 
 - The folded run shows every step's icon and the count on its first line (an ellipsis when they don't fit) and the summary under them, uncut; opened, the summary stays at the top of the card, under the count (2026-10-25, #1233).
 - Touching and holding a finished run whose first tool call has an id of its own, switch on or off, offers Explain these steps (Explain again over a summary), and a lone tool step offers Explain this step once its turn is done, its answer under the step's card (under a lone thought instead when Settings > Display hides the tools, which then carries the menu). An answer to a question that was forgotten or asked again since is only taken from the stream. Its question lists the run's calls with their arguments and the start of their results (the first 30, then how many more followed), since /btw only sees up to the last reply and, once the chat's agent is gone, only a digest of tool names, and asks for a somewhat longer paragraph about that run alone. Its answer is kept like the others, so the switch only turns automatic summaries on and off and kept summaries always show (2026-10-25, #1233).
 - Summaries are kept per dashboard and profile, by the run's first tool call, so only a run whose call ids are its own is described (not ids numbered per turn, like `functions.web_search:0`). Questions unanswered after two minutes are forgotten (the run's menu can ask again), and so is an answer that comes later; that run keeps the count. The kept summaries describe chats, so they go with a dashboard's saved chats (sign-out, removal, a new interactive sign-in) and with Delete Saved Chats. In Conduit an answer never shows as a /btw note, late, replayed or asked by another device, and the user's own /btw is never taken for one (only the exact questions are, today's or 2.2.1's) (2026-10-24, #1202; #1233).
+- While Settings > Display's Show reasoning is off, a finished run with thinking offers Show thinking in its menu (touch and hold), and a reply right under such a run offers it in its ⋯ (the only way in when the tools are hidden too). It shows that run's thoughts, the run and the thoughts opened, until Hide thinking or another conversation; nothing is saved or asked of Hermes, since the history already carries each reply's reasoning. The profile-wide switch stays as it is, and the steps a summary counts stay the ones Settings shows (Michel, 2026-10-25, #PRNUM).
 - History: #1202 (2.2.1) asked for one sentence of at most 15 words, only for runs of 3 or more tool calls, and switching off hid the kept sentences. Michel found the sentence listed tools and was cut after two lines, and asked for the story of intentions, the uncut layout and Explain on demand (2026-10-25, #1233).
 
 **Open gaps**
@@ -1525,8 +1528,9 @@ the run's summary, its Explain these steps menu (and a lone step's Explain this 
 - Runs from a provider that numbers its tool call ids per turn (`functions.web_search:0`) get no summary and no Explain menu; keying them would need the chat's durable id.
 - The Live Activity, fed by the app and by the notifier's `tool_category` twin, says "Using a tool" for a step the chat row and working line name.
 - An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
+- Show thinking has nothing to show for a model that returns no reasoning text (hidden or summarized only), and a thought in the middle of a turn, above an interim reply, is reached from that reply's ⋯, not the last one's.
 
-**Checked:** 2026-10-25, at #1233, carried in #1236 (an old question's answer never lands on a newer one; a run summarized on its own must fold on screen, Explain needs no fold; nothing offers Explain over a step still marked running; a lone step's Explain waits for the turn to end; a kept summary shows under a lone thought when the tools are hidden).
+**Checked:** 2026-10-25, at #PRNUM (Show thinking for one run while Settings hides thinking), after #1233, carried in #1236.
 
 ## Code fences in messages
 

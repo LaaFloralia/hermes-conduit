@@ -342,7 +342,7 @@ private struct LegacySettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            displayToggle(.reasoning, title: AppLocalization.string("Show reasoning"), detail: AppLocalization.string("Include available agent reasoning in replies."))
+            displayToggle(.reasoning, title: AppLocalization.string("Show reasoning"), detail: AppLocalization.string("Include available agent reasoning in replies. When off, a reply's ⋯ menu can still show it."))
             displayToggle(.toolProgress, title: AppLocalization.string("Show tool activity"), detail: AppLocalization.string("Show tool calls and their progress in chat."))
             displayToggle(.expandTools, title: AppLocalization.string("Keep tool cards expanded"), detail: AppLocalization.string("Open completed tool details by default."))
 

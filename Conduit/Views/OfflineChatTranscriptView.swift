@@ -117,7 +117,8 @@ private struct OfflineChatRows: View {
             MessageBubble(
                 message: row.message,
                 gatewayResolver: appState.gatewayMediaResolver,
-                step: row.step
+                step: row.step,
+                stepsAbove: row.stepsAbove
             )
             .equatable()
         }

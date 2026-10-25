@@ -123,6 +123,33 @@ extension ChatTypographyTests {
         XCTAssertNil(cache.targets[4].step)
     }
 
+    /// A reply knows the run right above it when that run has thinking,
+    /// so its ⋯ can offer Show thinking while Settings hides it.
+    func testAReplyKnowsTheThinkingAboveIt() {
+        let user = ChatMessage(id: "u", role: .user, content: "Hi", timestamp: "now")
+        let thinking = ChatMessage(id: "r", role: .reasoning, content: "Look it up", timestamp: "now")
+        let search = ChatMessage(
+            id: "t", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "t", name: "web_search", input: nil, output: nil, status: .complete)
+        )
+        let answer = ChatMessage(id: "a", role: .assistant, content: "Done", timestamp: "now")
+        let later = ChatMessage(id: "u2", role: .user, content: "Thanks", timestamp: "now")
+
+        var cache = ChatMessageScrollTargetCache()
+        cache.update(for: [user, thinking, search, answer, later])
+        XCTAssertEqual(cache.targets[3].stepsAbove?.members.map(\.messageID), ["r", "t"])
+        XCTAssertEqual(cache.targets.map { $0.stepsAbove != nil }, [false, false, false, true, false])
+
+        // Tools alone: nothing to show.
+        cache.update(for: [user, search, answer])
+        XCTAssertNil(cache.targets[2].stepsAbove)
+
+        // A live turn's reply landing after its run picks the run up.
+        cache.update(for: [user, thinking])
+        cache.update(for: [user, thinking, answer])
+        XCTAssertEqual(cache.targets[2].stepsAbove?.id, "r")
+    }
+
     func testStepTimesReadAsShortDurations() {
         XCTAssertNil(ChatStepTiming.text(nil))
         XCTAssertNil(ChatStepTiming.text(0.4))

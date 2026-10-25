@@ -388,6 +388,43 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertTrue(disclosure.isExpanded("0-tool-0", default: true), "defaults apply there")
     }
 
+    /// Show thinking (a run's menu or its reply's ⋯) draws that run's
+    /// hidden thoughts, open, for this conversation only; Hide folds them
+    /// away again.
+    func testShowThinkingRevealsOneRunWhileSettingsHideIt() {
+        let disclosure = ChatRowDisclosure()
+        var current = identity("a")
+        disclosure.currentConversation = { current }
+        var preferences = ProfileDisplayPreferences()
+        preferences.showReasoning = false
+        let thinking = ChatMessage(id: "r", role: .reasoning, content: "Look it up", timestamp: "now")
+        let search = ChatMessage(
+            id: "t", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "t", name: "web_search", input: nil, output: nil, status: .complete)
+        )
+        let group = ChatStepGroup(members: [ChatStepGroupMember(thinking), ChatStepGroupMember(search)], isTrailing: false)
+        let thought = ChatStepPlacement(group: group, index: 0)
+        let tool = ChatStepPlacement(group: group, index: 1)
+        func draws(_ placement: ChatStepPlacement, _ id: String) -> Bool {
+            placement.drawsRow(messageID: id, preferences: preferences, isBusy: false, disclosure: disclosure)
+        }
+        XCTAssertFalse(draws(thought, "r"), "Settings hides the thought")
+        XCTAssertTrue(draws(tool, "t"))
+
+        disclosure.willShowThinking(in: group, true)
+        XCTAssertTrue(disclosure.showsThinking(in: "r"))
+        XCTAssertTrue(draws(thought, "r"))
+        XCTAssertTrue(draws(tool, "t"), "the run opens, so its other rows draw too")
+        XCTAssertTrue(disclosure.isExpanded("r", default: false), "the thought opens on its text")
+
+        disclosure.willShowThinking(in: group, false)
+        XCTAssertFalse(draws(thought, "r"))
+
+        disclosure.willShowThinking(in: group, true)
+        current = identity("b")
+        XCTAssertFalse(disclosure.showsThinking(in: "r"), "another conversation starts hidden")
+    }
+
     func testClosingARowAtTheBottomLeavesNoEmptySpace() {
         let (engine, surface) = makeEngine()
         engine.userWillToggleRow()

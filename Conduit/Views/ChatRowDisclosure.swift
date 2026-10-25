@@ -59,7 +59,30 @@ final class ChatRowDisclosure {
         groupToggles.revision &+= 1
     }
 
+    /// Thinking the reader asked to see in one run while Settings > Display
+    /// hides it (ChatThinkingReveal).
+    func showsThinking(in groupID: String) -> Bool {
+        followConversation()
+        return states[Self.thinkingKey(groupID)] ?? false
+    }
+
+    /// Showing it opens the run and its thoughts too, so what appears is
+    /// the thinking itself, not one more folded line.
+    func willShowThinking(in group: ChatStepGroup, _ shown: Bool) {
+        engine?.userWillToggleRow()
+        followConversation()
+        states[Self.thinkingKey(group.id)] = shown
+        if shown {
+            states[Self.groupKey(group.id)] = true
+            for member in group.members where member.isThinking {
+                states[member.messageID] = true
+            }
+        }
+        groupToggles.revision &+= 1
+    }
+
     private static func groupKey(_ id: String) -> String { "steps:" + id }
+    private static func thinkingKey(_ id: String) -> String { "thinking:" + id }
 
     private func followConversation() {
         let current = currentConversation()

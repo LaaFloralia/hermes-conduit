@@ -103673,88 +103673,6 @@
         }
       }
     },
-    "Include available agent reasoning in replies." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verfügbares Reasoning des Agenten in Antworten einbeziehen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Incluir el razonamiento disponible del agente en las respuestas."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inclure le raisonnement disponible de l'agent dans les réponses."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sertakan penalaran agen yang tersedia dalam balasan."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Includi il ragionamento disponibile dell'agente nelle risposte."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "利用可能な場合、エージェントの推論を返信に含めます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "사용 가능한 에이전트 추론을 답장에 포함해요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dołączaj dostępne rozumowanie agenta do odpowiedzi."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Incluir o raciocínio disponível do agente nas respostas."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Добавлять в ответы доступные рассуждения агента."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mevcut ajan akıl yürütmesini yanıtlara ekle."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在回复中包含可用的智能体思考内容。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在回覆中包含可用的代理程式推理內容。"
-          }
-        }
-      }
-    },
     "Include response text in notifications" : {
       "localizations" : {
         "de" : {
@@ -342338,6 +342256,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "略過超過 %@ 個步驟的過程"
+          }
+        }
+      }
+    },
+    "Hide thinking" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denkprozess ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar pensamiento"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masquer la réflexion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sembunyikan pemikiran"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nascondi pensiero"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考を隠す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생각 숨기기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ukryj myślenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar pensamento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скрыть размышления"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Düşünmeyi gizle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏思考"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏思考過程"
+          }
+        }
+      }
+    },
+    "Include available agent reasoning in replies. When off, a reply's ⋯ menu can still show it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbares Reasoning des Agenten in Antworten einbeziehen. Wenn aus, kann das ⋯-Menü einer Antwort es trotzdem zeigen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incluir el razonamiento disponible del agente en las respuestas. Si está desactivado, el menú ⋯ de una respuesta aún puede mostrarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inclure le raisonnement disponible de l'agent dans les réponses. Désactivé, le menu ⋯ d'une réponse peut quand même l'afficher."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sertakan penalaran agen yang tersedia dalam balasan. Jika mati, menu ⋯ pada balasan tetap bisa menampilkannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Includi il ragionamento disponibile dell'agente nelle risposte. Se disattivato, il menu ⋯ di una risposta può comunque mostrarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "利用可能な場合、エージェントの推論を返信に含めます。オフでも、返信の⋯メニューから表示できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용 가능한 에이전트 추론을 답장에 포함해요. 꺼져 있어도 답장의 ⋯ 메뉴에서 볼 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dołączaj dostępne rozumowanie agenta do odpowiedzi. Gdy wyłączone, menu ⋯ odpowiedzi nadal może je pokazać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incluir o raciocínio disponível do agente nas respostas. Desativado, o menu ⋯ de uma resposta ainda pode mostrá-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавлять в ответы доступные рассуждения агента. Если выключено, их всё равно можно показать в меню ⋯ ответа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mevcut ajan akıl yürütmesini yanıtlara ekle. Kapalıyken de bir yanıtın ⋯ menüsü bunu gösterebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在回复中包含可用的智能体思考内容。关闭时，仍可通过回复的⋯菜单查看。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在回覆中包含可用的代理程式推理內容。關閉時，仍可透過回覆的⋯選單查看。"
           }
         }
       }
