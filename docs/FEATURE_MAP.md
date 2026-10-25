@@ -806,6 +806,35 @@ New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 
 **Checked:** 2026-10-24, at #1191.
 
+## Composer Return key
+
+The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
+Return sends the composer message and Shift-Return starts a new line. It
+starts on on a Mac and off on iPhone and iPad; the on-screen keyboard's
+Return key always inserts a new line.
+
+**Siblings:** the Keyboard caption ("When on, Return sends and Shift-Return
+starts a new line.", done, #1208) · the toggle's accessibility hint (not
+needed, it already says the setting applies to hardware keyboards only) ·
+the two default footnotes, Mac on and iPhone/iPad off (not needed, each
+states the default for its device) · the hardware-keyboards caption (not
+needed, shown only off a Mac and already says the on-screen Return key is
+unchanged)
+
+**Code**
+- Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
+- Tests: `ConduitTests/ComposerReturnKeyTests.swift`
+
+**Rulings**
+- The caption describes the option, not current behaviour, because the
+  option starts off on iPhone and iPad (2026-10-24, #1208, review of #1190).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-24, at #1208, carried in #1229.
+
 ## A chat's last reply
 
 Reading the newest reply in a chat without opening it, from the open chat's
@@ -1104,13 +1133,13 @@ speech-server transcription stream (listening, not speaking)
 - Keepalive: `Conduit/Voice/VoiceSocketKeepalive.swift`
 
 **Rulings**
-- A dead connection is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." and "Lost the connection to your speech server." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190).
+- A dead Hermes speech stream is reported as a lost connection, not a timeout: "Lost the connection to Hermes speech." "Timed out" is only for a live stream that went quiet after some audio (2026-10-24, from #980's review, #1190). The speech-server speech stream can't tell yet (Open gaps); listening on a speech server says "Lost the connection to your speech server." when a send fails or the server closes early.
 - Before any audio, a Hermes stream that drops or goes quiet tries the one-shot fallback instead of failing.
 
 **Open gaps**
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
-**Checked:** 2026-10-24, at #1190.
+**Checked:** 2026-10-24, at #1208, carried in #1229.
 
 ## Profile config saves
 
@@ -1216,6 +1245,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
 - Controls and search: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls, stackedLeading, barUnstacked, setBarStacked, filterPill, barSearchField, searchField, searchCapsule)
+- Message match row ("In messages"): `Conduit/Views/V2/V2SessionRow.swift` (V2ContentMatchRow: two lines of matching text, four at accessibility text sizes)
 
 **Rulings**
 - The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
@@ -1226,7 +1256,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-24, at #1206.
+**Checked:** 2026-10-24, at #1206; the match row at #1208, carried in #1229.
 
 ## Plan card
 
@@ -1248,14 +1278,14 @@ reading of the line and its new-plan announcement
 
 **Rulings**
 - Docked at the bottom above the composer, a line that announces a new plan without opening over the chat; the artifact card was dropped (2026-10-23, #1135, Eric).
-- An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, salvage of the #1135 review).
-- The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, salvage of the #1135 review).
+- An announced plan is on screen: a new plan, even one that arrives finished after the last one went, clears the hidden state and gets its own 60 s (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
+- The line and the card cap Dynamic Type at accessibility1; the sheet, a scrolling list, takes every size (2026-10-24, #1188, merged by Eric; salvage of the #1135 review).
 
 **Open gaps**
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
 
-**Checked:** 2026-10-24, at #1188.
+**Checked:** 2026-10-24, at #1208, carried in #1229.
 
 ## White text on the accent
 
@@ -1268,20 +1298,23 @@ to 4.5:1 under white in both modes.
 cards · the numbered or symbol marker on a rich card's place rows · the
 step numbers of the notification setup commands · the Gemini Live setup
 step number · marks picked by `markColor(on:)` (text selection on a sent
-bubble, the accent swatch check)
+bubble, the accent swatch check) · the primary buttons (the sign-in flow's
+Continue and Sign in, Settings' Save and Apply), white only in light mode
 
 **Code**
 - Fill: `Conduit/Theme.swift` (conduitUserBubble, ConduitAccentChoice.markColor)
 - Surfaces: `Conduit/Cards/RichInfoCardViews.swift` (RichOptionColumn, RichStepTimer), `Conduit/Cards/RichCardViews.swift` (the place row marker), `Conduit/Views/AuxiliaryViews.swift` (NotificationSetupCommand), `Conduit/Views/LiveVoiceSetupSheet.swift` (the Gemini step)
+- Primary buttons: `Conduit/Views/Login/LoginScreens.swift` (LoginPrimaryButton), `Conduit/Views/AuxiliaryViews.swift` (SettingsButtonLabel)
 - Tests: `ConduitTests/AccentContrastTests.swift`
 
 **Rulings**
 - White text on a solid fill uses the sent-bubble colour, not the accent; a mark whose colour is computed takes whichever of black and white contrasts more with its fill (2026-10-24, #1188, salvage of the #955 review).
+- The primary buttons need no change: their white label is light mode only, where the accent is the sent-bubble colour, and dark mode draws a black label (2026-10-24, #1208, Eric).
 
 **Open gaps**
-- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge) aren't checked against a custom accent.
+- Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule, the primary buttons' dark-mode label) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge, a rich card's prominent action in `Conduit/Cards/RichMediaCardViews.swift`) aren't checked against a custom accent.
 
-**Checked:** 2026-10-24, at #1188.
+**Checked:** 2026-10-24, at #1208, carried in #1229.
 
 ## Phone data sync with the host
 
@@ -1367,7 +1400,7 @@ data sync with the host)
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 - The notifier paths above go in backticks once the notifier PR is on its main.
 
-**Checked:** 2026-10-25, #1214 (fork CI #87), at main 16b6f17 and notifier main with notifier #350.
+**Checked:** 2026-10-25, #1214 (fork CI #87), at main 7379064 and notifier main with notifier #350.
 
 ## Steps in a turn
 
