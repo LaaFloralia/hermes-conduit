@@ -2304,6 +2304,25 @@ final class AppState: ObservableObject {
     var stepSummaryEarlyAnswers: [String: String] = [:]
     /// Runs asked about and not answered yet, with when they were asked.
     @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    /// The suggestion row's guesses (AppState+Predictive.swift).
+    let predictive = PredictiveStore()
+    /// What the row asks the composer to do: send, edit or insert a guess.
+    @Published private(set) var predictiveComposerRequest: PredictiveComposerRequest?
+    /// The reply suggested replies were last asked for (asked once each).
+    var predictiveRepliesAsked: PredictiveStore.Anchor?
+    /// The draft last asked about, and the wait for the next pause.
+    var predictiveDraftAsked: String?
+    var predictivePauseTask: Task<Void, Never>?
+    /// The follow-up checks for the reply on screen, and the next one.
+    var predictiveFollowUp = PredictiveFollowUpState()
+    var predictiveFollowUpTask: Task<Void, Never>?
+    /// The hidden turn sent for Hermes to follow up, until it settles.
+    var predictiveFollowUpTurn: (sessionID: String, why: String)?
+    /// When the last reply settled here, so a follow-up check can say how
+    /// long ago without reading timestamps.
+    var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
+    /// Test seam: answers `POST /predict` in place of the dashboard.
+    var predictiveSender: (([String: Any]) async throws -> [String: Any])?
     /// Whose catalog `toolCatalog` is (dashboard and profile), and the
     /// catalogs Hermes already sent this run, or is sending now.
     private var toolCatalogOwner: String?
@@ -10022,6 +10041,18 @@ final class AppState: ObservableObject {
             text: message.content
         )
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
+    }
+
+    /// A guess from the suggestion row for the composer to send, edit or
+    /// insert (Predictive.swift).
+    func requestPredictiveComposer(_ action: PredictiveComposerRequest.Action, text: String) {
+        predictiveComposerRequest = PredictiveComposerRequest(action: action, text: text, draft: predictive.draft)
+    }
+
+    /// The composer took the guess.
+    func consumePredictiveComposerRequest(_ id: UUID) {
+        guard predictiveComposerRequest?.id == id else { return }
+        predictiveComposerRequest = nil
     }
 
     /// Puts `text` in the open chat's composer, replacing the draft, and
@@ -35563,6 +35594,8 @@ final class AppState: ObservableObject {
         setRunning(false)
         // The turn has settled, its reply in place.
         requestStepSummaryIfWanted(sessionId: sessionId)
+        // Suggested replies and the follow-up clock for the new reply.
+        predictiveTurnSettled(sessionId: sessionId)
         // Cancel any pending coalesced flush and write immediately — the
         // turn is complete so all messages are in their final state. One
         // write covering the stream's session id too; this used to write the

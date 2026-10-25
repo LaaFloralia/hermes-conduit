@@ -1677,6 +1677,7 @@ struct ChatSettingsDetail: View {
                     AttachmentLimitSettings()
                     ChatTakeoverSettings()
                     StepSummarySettings()
+                    PredictiveSettingsSection()
                     DeviceHapticsSettings()
                 }
             ),

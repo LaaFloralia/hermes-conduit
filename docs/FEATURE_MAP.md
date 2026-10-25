@@ -1657,6 +1657,46 @@ clips (kaishi00/hermes-conduit-website)
 
 **Checked:** 2026-10-25, at #1228.
 
+## Predictions
+
+Settings > Chat > Predictive: Hermes guesses the user's next move in the
+open chat. Suggested replies after a reply, guesses for a paused draft, and
+a turn Hermes takes on its own while the chat sits on screen.
+
+**Siblings:** chats, project chats and Bot Chat (one row above the composer) ·
+group rooms · the Apple Watch · voice modes and CarPlay · Hermes Desktop and
+the TUI on the same chat · the reply push while the chat is on screen · step
+summaries' /btw · the composer's draft and Send · the plugin's `/predict`
+route and its README section · the Predictive page's captions
+
+**Code**
+- Model and store: `Conduit/Services/Predictive.swift` (Predictive, PredictiveStore, PredictiveComposerRequest, PredictiveFollowUpState)
+- Asking and the follow-up clock: `Conduit/Services/AppState+Predictive.swift`, fed by `Conduit/Services/AppState+ChatOnScreen.swift` (updateChatOnScreen) and the settled turn in `Conduit/Services/AppState.swift`
+- The hidden turn: `Conduit/Services/HermesClient.swift` (sendPrompt, `hidden`)
+- Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
+- Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
+- Settings: `Conduit/Views/PredictiveSettingsView.swift`, listed in `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail)
+- Notifier, from plugin 0.73: predict.py and dashboard/plugin_api.py (`/predict`), tested in tests/test_predict.py (backticked once on notifier main)
+- Tests: `ConduitTests/ChatTypographyTests+Predictive.swift`
+
+**Rulings**
+- All three are off by default, device-only, and need the plugin's `predict` capability (0.73+); without it the page says so and nothing is asked (2026-10-25, Michel, #PR).
+- Guesses come from the plugin's `POST /predict`, a no-tools fork of the live chat that saves nothing, answered only to the asking device, never from `prompt.btw`, whose answers reach every client and show in Desktop (2026-10-25, Michel, #PR).
+- One row of capsules, best first, with no percentages: tap sends, long-press edits; taps in its first 0.4 s are ignored. Continuations are phrase chips, not ghost text (2026-10-25, Michel, #PR).
+- Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #PR).
+- Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #PR).
+- A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #PR).
+
+**Open gaps**
+- Group rooms get no row: with several people and bots, "your next message" is unclear.
+- The Apple Watch has no suggested replies yet, where typing is hardest.
+- Voice modes and CarPlay get none, by design: calls take turns their own way, and chips while driving distract.
+- "Hermes followed up" is kept in memory for this run: after a relaunch or a new copy of the chat from the host, the reply shows without it.
+- Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
+- The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
+
+**Checked:** 2026-10-25, at #PR.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

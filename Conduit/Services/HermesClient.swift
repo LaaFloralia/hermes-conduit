@@ -2562,13 +2562,16 @@ final class HermesClient: ObservableObject {
         text: String,
         surface: String? = nil,
         voiceTurn: Bool = false,
-        queued: Bool = false
+        queued: Bool = false,
+        hidden: Bool = false
     ) async throws -> PromptSubmissionOutcome {
         var params: [String: Any] = [
             "session_id": sessionId,
             "text": text
         ]
         if let surface { params["surface"] = surface }
+        // Seen by the model, never shown as the user's (Predictive follow-ups).
+        if hidden { params["display_kind"] = "hidden" }
         let marksVoiceTurn = voiceTurn && !gatewayRefusesVoiceTurn
         if marksVoiceTurn { params["voice_turn"] = true }
         if queued {

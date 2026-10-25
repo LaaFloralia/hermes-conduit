@@ -48,6 +48,8 @@ struct ChatRowState: Equatable {
     var stepSummariesAsked: Set<String> = []
     /// A run's menu can ask Hermes to explain it.
     var canExplainStepRuns = false
+    /// Replies Hermes wrote on its own, with why (Predictive follow-ups).
+    var followUpReasons: [String: String] = [:]
 
     init() {}
 
@@ -79,6 +81,7 @@ struct ChatRowState: Equatable {
         stepSummaries = appState.stepSummaries[scope] ?? [:]
         stepSummariesAsked = Set(appState.stepSummaryRequested.keys.lazy.filter { $0.scope == scope }.map(\.toolID))
         canExplainStepRuns = appState.client != nil && !(appState.activeSessionId ?? "").isEmpty && !isOffline
+        followUpReasons = appState.predictive.followUpReasons
     }
 
     /// `AppState.canReact(to:)`, from these values alone.
