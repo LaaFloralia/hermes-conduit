@@ -14,7 +14,7 @@
 //    (Hermes' `display_kind: "hidden"`), at most one per message the user
 //    sends.
 //
-//  The plugin's `POST /predict` (predict.py, plugin 0.73+) answers each one
+//  The plugin's `POST /predict` (predict.py, plugin 0.77+) answers each one
 //  with a fork of the live chat that can't use tools and saves nothing, and
 //  answers only this device: `/btw`'s answers go to every client, and Hermes
 //  Desktop shows them as notes. Conduit measures every duration it sends;

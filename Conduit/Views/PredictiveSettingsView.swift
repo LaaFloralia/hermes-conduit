@@ -67,7 +67,7 @@ struct PredictiveSettingsPage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !appState.predictiveIsServed {
                     Label {
-                        Text("Needs a newer Conduit plugin on your Hermes host (0.73 or later).")
+                        Text("Needs a newer Conduit plugin on your Hermes host (0.77 or later).")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }

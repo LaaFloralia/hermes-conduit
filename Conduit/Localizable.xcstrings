@@ -343654,84 +343654,84 @@
         }
       }
     },
-    "Needs a newer Conduit plugin on your Hermes host (0.73 or later)." : {
+    "Needs a newer Conduit plugin on your Hermes host (0.77 or later)." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Erfordert ein neueres Conduit-Plug-in auf deinem Hermes-Host (0.73 oder neuer)."
+            "value" : "Erfordert ein neueres Conduit-Plug-in auf deinem Hermes-Host (0.77 oder neuer)."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Necesita un plugin de Conduit más reciente en tu host de Hermes (0.73 o posterior)."
+            "value" : "Necesita un plugin de Conduit más reciente en tu host de Hermes (0.77 o posterior)."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nécessite un module Conduit plus récent sur votre hôte Hermes (0.73 ou ultérieur)."
+            "value" : "Nécessite un module Conduit plus récent sur votre hôte Hermes (0.77 ou ultérieur)."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Memerlukan plugin Conduit yang lebih baru di host Hermes Anda (0.73 atau lebih baru)."
+            "value" : "Memerlukan plugin Conduit yang lebih baru di host Hermes Anda (0.77 atau lebih baru)."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Richiede un plugin Conduit più recente sul tuo host Hermes (0.73 o successivo)."
+            "value" : "Richiede un plugin Conduit più recente sul tuo host Hermes (0.77 o successivo)."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermesホストに新しいConduitプラグイン(0.73以降)が必要です。"
+            "value" : "Hermesホストに新しいConduitプラグイン(0.77以降)が必要です。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes 호스트에 최신 Conduit 플러그인(0.73 이상)이 필요합니다."
+            "value" : "Hermes 호스트에 최신 Conduit 플러그인(0.77 이상)이 필요합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wymaga nowszej wtyczki Conduit na hoście Hermes (0.73 lub nowszej)."
+            "value" : "Wymaga nowszej wtyczki Conduit na hoście Hermes (0.77 lub nowszej)."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Requer um plugin do Conduit mais recente no seu host do Hermes (0.73 ou posterior)."
+            "value" : "Requer um plugin do Conduit mais recente no seu host do Hermes (0.77 ou posterior)."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Нужен более новый плагин Conduit на хосте Hermes (0.73 или новее)."
+            "value" : "Нужен более новый плагин Conduit на хосте Hermes (0.77 или новее)."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes ana makinenizde daha yeni bir Conduit eklentisi gerekir (0.73 veya üstü)."
+            "value" : "Hermes ana makinenizde daha yeni bir Conduit eklentisi gerekir (0.77 veya üstü)."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "需要在 Hermes 主机上安装较新的 Conduit 插件（0.73 或更高版本）。"
+            "value" : "需要在 Hermes 主机上安装较新的 Conduit 插件（0.77 或更高版本）。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "需要在 Hermes 主機上安裝較新的 Conduit 外掛（0.73 或更新版本）。"
+            "value" : "需要在 Hermes 主機上安裝較新的 Conduit 外掛（0.77 或更新版本）。"
           }
         }
       }
