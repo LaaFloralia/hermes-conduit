@@ -518,7 +518,7 @@ final class GeminiLiveConversationController: ObservableObject {
             guard status.isAvailable else {
                 initialWidgetCaptureAuthorization = nil
                 hostIssue = LiveVoiceHostIssue(status)
-                phase = .failed(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.unavailable(reason: nil).userFacingReason(for: provider)!)
+                phase = .failed(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
                 return
             }
         } catch {

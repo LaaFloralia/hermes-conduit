@@ -2345,7 +2345,11 @@ final class AppState: ObservableObject {
     @Published var showGeminiLiveSheet = false
     @Published var showQwenLiveSheet = false
 
-    var isQwenLiveEnabled: Bool { loadVoiceProfilePreferences(profile: activeProfile).qwenLiveEnabled }
+    /// Gemini wins when a merged blob has both on, as configuredLiveVoiceEngine reads it.
+    var isQwenLiveEnabled: Bool {
+        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        return preferences.qwenLiveEnabled && !preferences.geminiLiveEnabled
+    }
     /// A live mode whose provider still needs the user's OK after a call
     /// the phone wasn't showing (CarPlay, the Watch) stopped on it (#827):
     /// the phone asks on its own sheet.
@@ -8680,15 +8684,13 @@ final class AppState: ObservableObject {
         pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
         // A call started from a chat goes back to that chat.
         let thread = voiceCallChatLinks.latest(forCall: sessionID, profile: profile)?.thread
+        // The same precedence as every other route (configuredLiveVoiceEngine).
         let started: Bool
-        if isQwenLiveEnabled {
-            started = openQwenLiveConversation(attachingTo: thread)
-        } else if isGeminiLiveEnabled {
-            started = openGeminiLiveConversation(attachingTo: thread)
-        } else if isGrokLiveEnabled {
-            started = openGrokLiveConversation(attachingTo: thread)
-        } else {
-            started = openGPTLiveConversation(attachingTo: thread)
+        switch configuredLiveVoiceEngine(profile: profile) {
+        case .qwenLive: started = openQwenLiveConversation(attachingTo: thread)
+        case .geminiLive: started = openGeminiLiveConversation(attachingTo: thread)
+        case .grokLive: started = openGrokLiveConversation(attachingTo: thread)
+        case .gptLive, .localLive, nil: started = openGPTLiveConversation(attachingTo: thread)
         }
         // Starting the call took it; a call already running didn't, and a
         // later unrelated call must not.
@@ -34643,7 +34645,7 @@ final class AppState: ObservableObject {
         let status = try await tokens.availability()
         noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable)
         guard status.isAvailable else {
-            throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.unavailable(reason: nil).userFacingReason(for: provider)!)
+            throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
         }
         let search = await searchLookup
         let memory = await memoryLookup
@@ -35331,6 +35333,10 @@ final class AppState: ObservableObject {
     /// during a call (the sync holds them back until it ends). The rest of
     /// Voice catches up as on a profile switch.
     func adoptSyncedVoicePreferences(_ preferences: VoiceProfilePreferences) {
+        var preferences = preferences
+        // Blobs merged across devices can carry both direct providers on;
+        // Gemini wins, as configuredLiveVoiceEngine reads them.
+        if preferences.geminiLiveEnabled { preferences.qwenLiveEnabled = false }
         objectWillChange.send()
         saveVoiceProfilePreferences(preferences, profile: activeProfile)
         voiceConversationController.setProfilePreferences(preferences)

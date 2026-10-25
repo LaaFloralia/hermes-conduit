@@ -29,6 +29,14 @@ enum GeminiLiveAvailability: Equatable {
     /// fallback: when Gemini Live cannot run, the user is told why.
     var userFacingReason: String? { userFacingReason(for: .gemini) }
 
+    /// The provider's plain "not available" line: what a start that has
+    /// no more specific reason says.
+    static func notAvailable(for provider: DirectLiveProvider) -> String {
+        provider == .qwen
+            ? AppLocalization.string("Qwen Live is not available on this Hermes server.")
+            : AppLocalization.string("Gemini Live is not available on this Hermes server.")
+    }
+
     func userFacingReason(for provider: DirectLiveProvider) -> String? {
         if provider == .qwen {
             switch self {
@@ -37,7 +45,7 @@ enum GeminiLiveAvailability: Equatable {
             case .unavailable(let reason):
                 if reason == "no_api_key" { return AppLocalization.string("Add a DashScope API key on your Hermes server.") }
                 if let reason, !reason.isEmpty { return AppLocalization.string("Qwen Live is not available on this Hermes server: \(reason)") }
-                return AppLocalization.string("Qwen Live is not available on this Hermes server.")
+                return Self.notAvailable(for: provider)
             }
         }
         switch self {
@@ -50,7 +58,7 @@ enum GeminiLiveAvailability: Equatable {
                 }
                 return AppLocalization.string("Gemini Live is not available on this Hermes server: \(reason)")
             }
-            return AppLocalization.string("Gemini Live is not available on this Hermes server.")
+            return Self.notAvailable(for: provider)
         case .pluginMissing:
             return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
         }
