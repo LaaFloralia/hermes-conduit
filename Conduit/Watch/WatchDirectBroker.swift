@@ -153,6 +153,15 @@ final class WatchDirectBroker {
 
     func handle(_ message: WatchVoiceWire.Message, reply: (([String: Any]) -> Void)?) {
         func answer(_ message: WatchVoiceWire.Message) { reply?(WatchVoiceWire.encode(message)) }
+        // A call from Hermes this phone kept on its headset (#1204): the
+        // Watch's call screen controls it, whichever way its start came.
+        if let id = message.watchCallID, let ring = message.watchCallRing, HermesNativeCalls.shared.keepsWatchAnswer(ringID: ring) {
+            answer(.callOnPhone(callID: id))
+            return
+        }
+        // Started on the Watch before this phone could keep it: it's the
+        // Watch's now.
+        if let ring = message.watchCallRing { HermesNativeCalls.shared.startedOnWatch(ringID: ring) }
         switch message {
         case .directStart(let id, let version, let ring):
             guard version == WatchVoiceWire.version else {
@@ -1097,19 +1106,27 @@ final class WatchDirectBroker {
         let late = bridge === self.bridge ? lateOutgoing : []
         if bridge === self.bridge { lateOutgoing = [] }
         let items = late + outgoing
+        let supervisor = appState.voiceBackgroundJobSupervisor
+        var newsJobs: [WatchVoiceWire.DirectNewsJob] = []
         for item in items {
             switch item {
             case .toolResponse(_, _, let result, _):
                 bridge.outcomeSent(jobID: GeminiLiveConversationController.jobID(of: result))
             case .textWhenIdle(let text):
-                bridge.textUpdateDelivered(jobID: bridge.textUpdateSending(text))
+                let jobID = bridge.textUpdateSending(text)
+                // The Watch lists a settled job until its model says it.
+                if let jobID, let job = supervisor.jobs.first(where: { $0.id == jobID }), !job.status.isActive {
+                    newsJobs.append(.init(text: text, jobID: jobID.uuidString, title: job.title, status: GeminiLiveToolBridge.statusName(job.status)))
+                }
+                bridge.textUpdateDelivered(jobID: jobID)
             case .contextWhenIdle, .endConversation:
                 break
             }
         }
         return WatchVoiceWire.DirectToolResult(
             outgoing: items.map { Self.wire($0) },
-            runningJobs: appState.voiceBackgroundJobSupervisor.activeJobCount
+            runningJobs: supervisor.activeJobCount,
+            newsJobs: newsJobs.isEmpty ? nil : newsJobs
         )
     }
 
@@ -1756,6 +1773,7 @@ final class WatchCallJobSupervisor: GeminiLiveJobSupervising {
     }
 
     func statusSummary() -> String { base.statusSummary() }
+    var listedJobs: [VoiceBackgroundJob] { base.listedJobs }
     func cancelAll() async -> String { await base.cancelAll() }
     func cancel(jobID: UUID) async -> String? { await base.cancel(jobID: jobID) }
     func markOutcomeDelivered(jobID: UUID) { base.markOutcomeDelivered(jobID: jobID) }

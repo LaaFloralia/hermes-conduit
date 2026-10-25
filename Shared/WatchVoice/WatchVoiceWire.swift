@@ -204,6 +204,19 @@ enum WatchVoiceWire {
         /// started elsewhere count too): the Watch asks again while there
         /// are any.
         var runningJobs: Int
+        /// The settled jobs whose outcome a `textWhenIdle` above says: the
+        /// iPhone counts it told once the Watch has it, so the Watch keeps
+        /// it on list_jobs until the model says it (#1210). Nil from an
+        /// older iPhone app.
+        var newsJobs: [DirectNewsJob]? = nil
+    }
+
+    /// A settled job and the text update that carries its outcome.
+    struct DirectNewsJob: Codable, Equatable {
+        var text: String
+        var jobID: String
+        var title: String
+        var status: String
     }
 
     /// One settled line of a Watch call's transcript.
@@ -359,8 +372,11 @@ enum WatchVoiceWire {
         /// the relay (HermesRingHandoff); nil from an older Watch. `engine`:
         /// the voice an answered call starts with (a WatchCallVoices.Voice
         /// raw value), sent again when it changes: the Watch rings only
-        /// while it can start; nil from an older Watch.
-        case callsToken(token: String?, key: String? = nil, engine: String? = nil)
+        /// while it can start; nil from an older Watch. `phoneHeadset`:
+        /// the Watch can leave an answered call on the iPhone's headset
+        /// and control it from its call screen (`callOnPhone`); nil from
+        /// an older Watch, which can't.
+        case callsToken(token: String?, key: String? = nil, engine: String? = nil, phoneHeadset: Bool? = nil)
         // iPhone → Watch
         /// Why the iPhone can't serve the call, as the Watch shows it.
         case callRefused(callID: UInt32, reason: String)
@@ -378,6 +394,11 @@ enum WatchVoiceWire {
         case grokSession(callID: UInt32, session: GrokSession)
         /// The answer to `localLiveStart`; a refusal comes as `callRefused`.
         case localLiveSession(callID: UInt32, call: LocalLiveCall)
+        /// The answer to a start for a call from Hermes answered on the
+        /// Watch while the iPhone has a headset on (#1204): the iPhone
+        /// answered its own ring, so the voice plays on the headset, and
+        /// the Watch's call screen keeps Mute and End (HermesRingControl).
+        case callOnPhone(callID: UInt32)
     }
 
     static func encode(_ message: Message) -> [String: Any] {

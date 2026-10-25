@@ -22,10 +22,13 @@ enum WatchCallEnd {
     /// The call's grant has no audio streams left (the host refused one, or
     /// the Watch used them all): only a new call gets more.
     static let streamsSpent = String(localized: "This call can't reconnect to Hermes again. Start the call again.")
+    /// A call from Hermes the iPhone kept on its headset (#1204): the
+    /// model's part is over, and the call goes on as `onPhone`.
+    static let onPhone = "kept on the iPhone's headset"
 
     static func isNormal(_ reason: String?) -> Bool {
         guard let reason else { return true }
-        return reason == byUser || reason == goodbye
+        return reason == byUser || reason == goodbye || reason == onPhone
     }
 }
 
@@ -96,6 +99,10 @@ final class WatchVoiceCall: ObservableObject {
         case lost
         /// Siri or an alarm took the microphone: a tap brings it back.
         case needsTap
+        /// A call from Hermes answered here that the iPhone kept, since a
+        /// headset (AirPods) was on there (#1204): its voice plays there,
+        /// and Mute and End here control it (HermesWatchCalls).
+        case onPhone
         case ending
         case ended(String?)
     }
@@ -141,6 +148,8 @@ final class WatchVoiceCall: ObservableObject {
     /// The ended call's summary was dismissed: its model's end is old news
     /// until the next call starts.
     private var summaryDismissed = false
+    /// The call went on as `onPhone`: what the model shows is old news.
+    private var onPhone = false
     /// The model's previous call when a new one was started, until the
     /// model begins the new one: until then, what it shows is old news.
     private var previousModelCall: UInt32?
@@ -187,6 +196,8 @@ final class WatchVoiceCall: ObservableObject {
         endedAt = nil
         caption = nil
         transcript = []
+        isMuted = false
+        onPhone = false
         phase = .preparing
         previousModelCall = modelCallID
         switch callEngine {
@@ -209,6 +220,10 @@ final class WatchVoiceCall: ObservableObject {
     }
 
     func end() {
+        guard phase != .onPhone else {
+            endOnPhone()
+            return
+        }
         switch callEngine {
         case .geminiLive, .grokLive, .localLive: direct.end()
         case .gptLive: bridge.end()
@@ -218,6 +233,7 @@ final class WatchVoiceCall: ObservableObject {
     /// Stops the voice while it speaks; brings the microphone back after
     /// Siri or an alarm.
     func tap() {
+        guard phase != .onPhone else { return }
         switch callEngine {
         case .geminiLive, .grokLive, .localLive: direct.tapOrb()
         case .gptLive: bridge.tapOrb()
@@ -225,10 +241,29 @@ final class WatchVoiceCall: ObservableObject {
     }
 
     func toggleMute() {
+        guard phase != .onPhone else {
+            isMuted.toggle()
+            HermesWatchCalls.shared.phoneCallMuted(isMuted)
+            return
+        }
         switch callEngine {
         case .geminiLive, .grokLive, .localLive: direct.toggleMute()
         case .gptLive: bridge.toggleMute()
         }
+    }
+
+    /// The iPhone muted or unmuted the call it kept.
+    func phoneMuted(_ muted: Bool) {
+        guard phase == .onPhone else { return }
+        isMuted = muted
+    }
+
+    /// The call the iPhone kept is over, ended here or there.
+    func endOnPhone() {
+        guard phase == .onPhone else { return }
+        endedAt = Date()
+        WKInterfaceDevice.current().play(.stop)
+        phase = .ended(nil)
     }
 
     /// Answers the approval the card showed, never one queued behind it.
@@ -389,7 +424,8 @@ final class WatchVoiceCall: ObservableObject {
     }
 
     private func refresh() {
-        guard !summaryDismissed, !isScreenshotFixture else { return }
+        // The model's part of a call the iPhone kept is over.
+        guard !summaryDismissed, !isScreenshotFixture, !onPhone else { return }
         let next: Phase
         switch callEngine {
         case .geminiLive, .grokLive, .localLive: next = Self.phase(direct.phase)
@@ -416,6 +452,17 @@ final class WatchVoiceCall: ObservableObject {
             isMuted = bridge.isMuted
             jobsRunning = bridge.relayJobsRunning
             pendingApproval = bridge.pendingApproval
+        }
+        if case .ended(.some(WatchCallEnd.onPhone)) = next {
+            onPhone = true
+            caption = nil
+            transcript = []
+            isMuted = false
+            jobsRunning = 0
+            liveSince = Date()
+            WKInterfaceDevice.current().play(.start)
+            phase = .onPhone
+            return
         }
         if liveSince == nil, next == .listening || next == .speaking {
             liveSince = Date()
