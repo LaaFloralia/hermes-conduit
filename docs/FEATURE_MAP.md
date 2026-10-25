@@ -826,7 +826,7 @@ unchanged)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-24, at #1208.
+**Checked:** 2026-10-24, at #1208, carried in #1229.
 
 ## A chat's last reply
 
@@ -1107,7 +1107,7 @@ speech-server transcription stream (listening, not speaking)
 **Open gaps**
 - The speech-server speech stream has no keepalive, so a dead path there shows as "Your speech server stopped speaking." after its idle timeout.
 
-**Checked:** 2026-10-24, at #1208.
+**Checked:** 2026-10-24, at #1208, carried in #1229.
 
 ## Chats top bar and search
 
@@ -1132,7 +1132,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-24, at #1206; the match row at #1208.
+**Checked:** 2026-10-24, at #1206; the match row at #1208, carried in #1229.
 
 ## Plan card
 
@@ -1161,7 +1161,7 @@ reading of the line and its new-plan announcement
 - The new-plan announcement reads the line's label ("Tasks, 0 of 4 done, now: ..."), with no word saying the plan is new or reopened.
 - Two announcements within 450 ms race on the pulse (#1135 review).
 
-**Checked:** 2026-10-24, at #1208.
+**Checked:** 2026-10-24, at #1208, carried in #1229.
 
 ## White text on the accent
 
@@ -1190,7 +1190,7 @@ Continue and Sign in, Settings' Save and Apply), white only in light mode
 **Open gaps**
 - Dark glyphs on the accent (the voice and new-chat buttons, the voice message send button, the chats list capsule, the primary buttons' dark-mode label) and background-coloured text on it (the confirm panel, the sidebar button, the profile camera badge, a rich card's prominent action in `Conduit/Cards/RichMediaCardViews.swift`) aren't checked against a custom accent.
 
-**Checked:** 2026-10-24, at #1208.
+**Checked:** 2026-10-24, at #1208, carried in #1229.
 
 ## Phone data sync with the host
 
