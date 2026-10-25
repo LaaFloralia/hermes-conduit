@@ -4264,6 +4264,9 @@ final class AppState: ObservableObject {
             recorder.screen(card)
             self.checkpointVoiceCall(recorder)
         }
+        supervisor.onCallChatAdopted = { [weak self] thread in
+            self?.keepVoiceCallWithAdoptedChat(thread)
+        }
         supervisor.onThreadTurnStarted = { [weak self] job, thread in
             guard let self, let recorder = self.voiceCallRecorder else { return }
             self.captureVoiceCall()
@@ -5994,6 +5997,47 @@ final class AppState: ObservableObject {
         guard merged.count != messages.count else { return }
         messages = merged
         cacheMessagePresentation()
+    }
+
+    /// An unattached call took its first job's chat as its own (#1250): the
+    /// call is kept with that chat, as one started there is, so the chat
+    /// gets its call marker and Resume Call goes back to it. The chat is the
+    /// call's now, not one of its jobs. Called again once the chat's stored
+    /// id turns up.
+    private func keepVoiceCallWithAdoptedChat(_ thread: VoiceThreadTarget) {
+        let ids = [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 }.filter { !$0.isEmpty }
+        if var remembered = voiceJobSessionIDsByProfile[activeProfile], remembered.contains(where: { ids.contains($0) }) {
+            remembered.removeAll { ids.contains($0) }
+            voiceJobSessionIDsByProfile[activeProfile] = remembered
+            persistVoiceJobSessions()
+        }
+        guard let recorder = voiceCallRecorder else { return }
+        captureVoiceCall()
+        // Its line in the saved call says where the request went now.
+        if let job = voiceBackgroundJobSupervisor.jobs.first(where: { $0.id == voiceBackgroundJobSupervisor.callChatJobID }) {
+            let line = Self.voiceThreadTurnNote(job, thread: thread)
+            for sessionID in [job.storedSessionID, job.runtimeSessionID, nil] {
+                recorder.replaceNote(Self.voiceJobStartedNote(title: job.title, sessionID: sessionID), with: line)
+            }
+            // Once the chat's stored id is learned, the line links to it.
+            var earlier = thread
+            earlier.storedSessionID = nil
+            let runtimeLine = Self.voiceThreadTurnNote(job, thread: earlier)
+            if runtimeLine != line { recorder.replaceNote(runtimeLine, with: line) }
+        }
+        recorder.jobSessionIDs.removeAll { ids.contains($0) }
+        let key = voiceHistoryKey(profile: recorder.profile)
+        for id in ids { voiceSessionTagsByKey[key]?[id] = nil }
+        if voiceCallAttachment?.callID == recorder.callID {
+            voiceCallAttachment?.thread = thread
+        } else {
+            voiceCallAttachment = VoiceCallAttachment(
+                thread: thread, callID: recorder.callID,
+                startedAt: voiceBackgroundJobSupervisor.liveCallStartedAt ?? Date(),
+                resumed: recorder.sessionID != nil
+            )
+        }
+        checkpointVoiceCall(recorder)
     }
 
     /// The chat's durable id: a chat new at the call's start may only have
