@@ -3506,7 +3506,8 @@ final class AppState: ObservableObject {
                     search: search,
                     memory: memory,
                     personality: self?.grokLivePersonality,
-                    answerLength: self?.liveVoiceStyle.answerLength ?? .standard
+                    answerLength: self?.liveVoiceStyle.answerLength ?? .standard,
+                    acknowledgesOnceStarted: true
                 )
                 instructions += GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                 instructions += self?.liveVoiceResumeContext?.instructionBlock ?? ""
@@ -3734,7 +3735,8 @@ final class AppState: ObservableObject {
         let supervisor = voiceBackgroundJobSupervisor
         var instructions: String = GeminiLiveConversationController.instructions(
             search: localLiveWebLookUps ? .hermes : .none,
-            answerLength: liveVoiceStyle.answerLength
+            answerLength: liveVoiceStyle.answerLength,
+            acknowledgesOnceStarted: true
         )
         instructions += LocalLiveProtocol.agentInstructions
         instructions += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
@@ -6813,7 +6815,8 @@ final class AppState: ObservableObject {
                 search: grokLiveSearchSource,
                 memory: grokLiveMemoryEnabled ? placeholderMemory : nil,
                 personality: grokLivePersonalityEnabled ? placeholderPersona : nil,
-                answerLength: style.answerLength
+                answerLength: style.answerLength,
+                acknowledgesOnceStarted: true
             ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
         } else if isQwenLiveEnabled {
             mode = "Qwen Live"
@@ -34887,7 +34890,8 @@ final class AppState: ObservableObject {
                 personality: personality,
                 answerLength: style.answerLength,
                 asksFirst: false,
-                onWatch: true
+                onWatch: true,
+                acknowledgesOnceStarted: true
             ) + GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                 + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "") + style.instructions,
             functions: GeminiLiveToolBridge.watchDeclarations(

@@ -222,6 +222,40 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 
 **Checked:** 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
+## Acknowledging work handed to Hermes
+
+What a live model says when it hands a request to Hermes, so the user knows
+it heard without hearing the same line every time.
+
+**Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live agent ·
+Watch calls · CarPlay · calls from Hermes · the web lookup heads-up · the
+instructions preview in Voice settings · Classic (not needed: Hermes speaks
+for itself) · Local Live, Hermes turns (not needed: Hermes' reply is the
+turn) · the notifier (no acknowledgement text there) · Settings captions,
+README and docs (none today: nothing describes the wording)
+
+**Code**
+- The shared rule: `Shared/GeminiLive/LiveVoiceAcknowledgement.swift`; Grok and Local Live's job-claim rule (no acknowledgement text): `Shared/GrokLive/GrokLiveProtocol.swift` (jobClaimInstructions)
+- Gemini, Qwen and the Watch: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (instructions, acknowledgementPrompt for a quiet start_job); Grok and Local Live build the same instructions with acknowledgesOnceStarted
+- The Voice settings preview shows the instructions as sent: `Conduit/Services/AppState.swift` (liveVoiceInstructionsPreview)
+- Where each call builds them, phone, CarPlay and Watch: `Conduit/Services/AppState.swift` (localLiveAgentSetup, prepareWatchDirectCall, prepareWatchGrokCall)
+- GPT-Live, phone and Watch: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefingRules; claimsToSendToHermes, which takes an acknowledgement-only turn with no delegation as a send)
+- Local Live agent: `Shared/LocalLive/LocalLiveProtocol.swift` (agentInstructions)
+- Conduit's own tools need none: `Conduit/Voice/VoiceHostTools.swift`
+- Web lookups: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (lookupAnswerNote)
+
+**Rulings**
+- Each handoff gets a word or a few, in the model's own words and different each time; Hermes is named at most once on a call, or when the user asks who's doing it; telling the user what it's about to do counts as the acknowledgement (2026-10-25, #1251).
+- Gemini and Qwen (phone and Watch) say it before start_job; Grok and Local Live (phone and Watch) only once start_job returns started; GPT-Live before the delegation (2026-10-25, #1251).
+- GPT-Live's send-claim fallback counts a turn that is only an acknowledgement ("On it.", "One moment, checking.") as well as one naming Hermes, so fewer mentions don't let an undelegated request drop; "Sure." or "Okay." alone never counts. A bare "On it." with no delegation is taken as a send on purpose: the model only says it for work (2026-10-25, #1251).
+- A web lookup's heads-up is said once, varied, and the answer opens without it (2026-10-05, #404).
+- Conduit's own tools answer fast and need no acknowledgement (on main by 2026-10-22, b41f56c).
+
+**Open gaps**
+- GPT-Live's send-claim fallback reads English phrases only: an acknowledgement in other words or another language, with no delegation, can still go unsent until the user asks again; and a short reply made only of acknowledgement words ("Let me look.") counts as a send even when the model meant to answer itself (#1251).
+
+**Checked:** 2026-10-25, at #1251.
+
 ## Starting a call
 
 Every way a call starts, and which chat it joins.
