@@ -339013,6 +339013,94 @@
           }
         }
       }
+    },
+    "This event is older than the 30 days Hermes keeps, so it wasn't logged." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Ereignis ist älter als die 30 Tage, die Hermes behält, daher wurde es nicht protokolliert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This event is older than the 30 days Hermes keeps, so it wasn't logged."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este evento es anterior a los 30 días que guarda Hermes, así que no se registró."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet événement date de plus de 30 jours, la durée que garde Hermes, donc il n'a pas été consigné."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Peristiwa ini lebih lama dari 30 hari yang disimpan Hermes, jadi tidak dicatat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo evento è più vecchio dei 30 giorni che Hermes conserva, quindi non è stato registrato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このイベントはHermesが保管する30日より古いため、記録されませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 이벤트는 Hermes가 보관하는 30일보다 오래되어 기록되지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To zdarzenie jest starsze niż 30 dni, które przechowuje Hermes, więc nie zostało zapisane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este evento é mais antigo que os 30 dias que o Hermes guarda, então não foi registrado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это событие старше 30 дней, которые хранит Hermes, поэтому оно не записано."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu olay Hermes'in tuttuğu 30 günden eski olduğu için kaydedilmedi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此事件早于 Hermes 保留的 30 天，因此未记录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此事件早於 Hermes 保留的 30 天，因此未記錄。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

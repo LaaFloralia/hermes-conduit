@@ -45,6 +45,11 @@ struct ShortcutLogError: LocalizedError, Equatable {
         ShortcutLogError(message: AppLocalization.string("Conduit couldn't reach Hermes, so this wasn't kept. Open Conduit once, then try again."))
     }
 
+    /// Not kept: dated before the days the host keeps.
+    static var tooOld: ShortcutLogError {
+        ShortcutLogError(message: AppLocalization.string("This event is older than the 30 days Hermes keeps, so it wasn't logged."))
+    }
+
     /// Not kept: the phone couldn't store it (not unlocked since restart).
     static var notStored: ShortcutLogError {
         ShortcutLogError(message: AppLocalization.string("Conduit couldn't keep this on the phone. Unlock your iPhone, then try again."))
@@ -78,6 +83,9 @@ extension AppState {
 
     func logShortcutEvent(_ event: ShortcutEvent, deadline: Date) async throws -> ShortcutLogOutcome {
         guard event.carriesSomething else { throw ShortcutLogError.empty }
+        guard event.at >= Date().addingTimeInterval(-Double(ShortcutInboxQueue.keepDays) * 86_400) else {
+            throw ShortcutLogError.tooOld
+        }
         if ShortcutEventFilter.looksLikeCode(event) { return .skippedCode }
         // Right after a cold launch in the background the dashboard
         // connection takes a moment.
