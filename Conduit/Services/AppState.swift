@@ -12569,6 +12569,8 @@ final class AppState: ObservableObject {
             KeychainHelper.clearConnection(dashboardID: dashboardID)
             keepUsernameForNextSignIn(dashboardID: dashboardID)
             clearSavedPassword(dashboardID: dashboardID)
+            // Log to Hermes events waiting for it belong to the signed-out user.
+            ShortcutInboxQueue.forgetDashboard(dashboardID)
             // The Cloudflare Access token stays, like the address and the
             // extra headers: it reaches the server, it doesn't sign in.
             // Remove Dashboard deletes it.
@@ -13116,6 +13118,7 @@ final class AppState: ObservableObject {
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
+        ShortcutInboxQueue.forgetDashboard(id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
         // identified WebKit store and the dashboard's native jar (plus
