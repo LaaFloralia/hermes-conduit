@@ -1680,12 +1680,12 @@ route and its README section · the Predictive page's captions
 - Tests: `ConduitTests/ChatTypographyTests+Predictive.swift`
 
 **Rulings**
-- All three are off by default, device-only, and need the plugin's `predict` capability (0.77+); without it the page says so and nothing is asked (2026-10-25, Michel, #90).
-- Guesses come from the plugin's `POST /predict`, a no-tools fork of the live chat that saves nothing, answered only to the asking device, never from `prompt.btw`, whose answers reach every client and show in Desktop (2026-10-25, Michel, #90).
-- One row of capsules, best first, with no percentages: tap sends, long-press edits; taps in its first 0.4 s are ignored. Continuations are phrase chips, not ghost text (2026-10-25, Michel, #90).
-- Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #90).
-- Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #90).
-- A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #90).
+- All three are off by default, device-only, and need the plugin's `predict` capability (0.77+); without it the page says so and nothing is asked (2026-10-25, Michel, #1242).
+- Guesses come from the plugin's `POST /predict`, a no-tools fork of the live chat that saves nothing, answered only to the asking device, never from `prompt.btw`, whose answers reach every client and show in Desktop (2026-10-25, Michel, #1242).
+- One row of capsules, best first, with no percentages: tap sends, long-press edits; taps in its first 0.4 s are ignored. Continuations are phrase chips, not ghost text (2026-10-25, Michel, #1242).
+- Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #1242).
+- Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #1242).
+- A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #1242).
 
 **Open gaps**
 - Group rooms get no row: with several people and bots, "your next message" is unclear.
@@ -1695,7 +1695,7 @@ route and its README section · the Predictive page's captions
 - Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
 - The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
 
-**Checked:** 2026-10-25, at #90.
+**Checked:** 2026-10-25, at #1242.
 
 ## Feature map rules
 
