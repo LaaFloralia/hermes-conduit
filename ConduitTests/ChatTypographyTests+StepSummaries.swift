@@ -116,7 +116,7 @@ extension ChatTypographyTests {
         XCTAssertEqual(ChatStepSummaries.explainWords(toolCount: 12), 54)
     }
 
-    func testSentencesAreKeptPerProfileAndTheOldestGoFirst() throws {
+    func testSummariesAreKeptPerProfileAndTheOldestGoFirst() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "StepSummaryTests-\(UUID().uuidString)"))
         XCTAssertFalse(ChatStepSummaries.isEnabled(defaults))
         // Longer runs keep their count unless asked; the limit stays in range.

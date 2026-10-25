@@ -12,8 +12,8 @@ import Foundation
 
 extension AppState {
     /// Once a turn has settled (its reply in the transcript, nothing
-    /// running): asks for its last run's sentence when the user wants
-    /// them, the run is long enough and it hasn't been asked about.
+    /// running): asks for a summary of its last run when summaries are on,
+    /// the run folds within the step limit and it hasn't been asked about.
     func requestStepSummaryIfWanted(sessionId: String) {
         reapStepSummaryQuestions()
         guard ChatStepSummaries.isEnabled(), !sessionId.isEmpty, !isBusy, let client,
@@ -119,7 +119,7 @@ extension AppState {
         stepSummaryTasks = stepSummaryTasks.filter { stepSummaryRequested[$0.value] != nil }
     }
 
-    /// The sentences describe chats, so they leave with a dashboard's saved
+    /// The summaries describe chats, so they leave with a dashboard's saved
     /// chats (sign-out, removal), with any question still waiting.
     func forgetStepSummaries(scopePrefix: String?) {
         ChatStepSummaries.remove(scopePrefix: scopePrefix)

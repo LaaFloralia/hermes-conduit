@@ -341768,88 +341768,6 @@
         }
       }
     },
-    "On or off, you can touch and hold any folded steps and choose Explain these steps." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ob ein oder aus: Halte gefaltete Schritte gedrückt und wähle „Diese Schritte erklären“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esté activado o no, mantén pulsados unos pasos plegados y elige Explicar estos pasos."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Activé ou non, touchez longuement des étapes repliées et choisissez Expliquer ces étapes."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktif atau tidak, sentuh dan tahan langkah yang dilipat lalu pilih Jelaskan langkah-langkah ini."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Attivo o no, tieni premuti dei passaggi compressi e scegli Spiega questi passaggi."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "オンでもオフでも、折りたたまれたステップを長押しして「これらのステップを説明」を選べます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "켜져 있든 꺼져 있든, 접힌 단계를 길게 눌러 '이 단계들 설명하기'를 선택할 수 있습니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Niezależnie od ustawienia przytrzymaj zwinięte kroki i wybierz Wyjaśnij te kroki."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ligado ou não, toque e segure etapas recolhidas e escolha Explicar estas etapas."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Включено или нет, нажмите и удерживайте свёрнутые шаги и выберите «Объяснить эти шаги»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Açık ya da kapalı, katlanmış adımlara dokunup basılı tutun ve Bu adımları açıkla'yı seçin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无论开关与否，都可以长按折叠的步骤并选择“解释这些步骤”。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "無論開關與否，都可以長按收合的步驟並選擇「解釋這些步驟」。"
-          }
-        }
-      }
-    },
     "Each summary is one more short request to your model. It reuses the chat's prompt cache and never changes the chat." : {
       "localizations" : {
         "de" : {
@@ -342338,6 +342256,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "解釋此步驟"
+          }
+        }
+      }
+    },
+    "On or off, touch and hold a folded run and choose Explain these steps; a lone tool step offers Explain this step." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ob ein oder aus: Halte einen gefalteten Lauf gedrückt und wähle „Diese Schritte erklären“; ein einzelner Tool-Schritt bietet „Diesen Schritt erklären“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esté activado o no, mantén pulsada una serie plegada y elige Explicar estos pasos; un paso de herramienta suelto ofrece Explicar este paso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activé ou non, touchez longuement une série repliée et choisissez Expliquer ces étapes ; une étape d'outil seule propose Expliquer cette étape."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktif atau tidak, sentuh dan tahan rangkaian yang dilipat lalu pilih Jelaskan langkah-langkah ini; satu langkah alat menawarkan Jelaskan langkah ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attivo o no, tieni premuta una serie compressa e scegli Spiega questi passaggi; un singolo passaggio di uno strumento offre Spiega questo passaggio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンでもオフでも、折りたたまれた実行を長押しして「これらのステップを説明」を選べます。単独のツールステップには「このステップを説明」があります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켜져 있든 꺼져 있든, 접힌 실행을 길게 눌러 '이 단계들 설명하기'를 선택하세요. 단일 도구 단계에서는 '이 단계 설명하기'를 사용할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niezależnie od ustawienia przytrzymaj zwiniętą serię i wybierz Wyjaśnij te kroki; pojedynczy krok narzędzia oferuje Wyjaśnij ten krok."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ligado ou não, toque e segure uma sequência recolhida e escolha Explicar estas etapas; uma etapa de ferramenta isolada oferece Explicar esta etapa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Включено или нет, нажмите и удерживайте свёрнутую серию и выберите «Объяснить эти шаги»; у отдельного шага инструмента есть «Объяснить этот шаг»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Açık ya da kapalı, katlanmış bir diziye dokunup basılı tutun ve Bu adımları açıkla'yı seçin; tek bir araç adımı Bu adımı açıkla sunar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无论开关与否，长按折叠的过程即可选择“解释这些步骤”；单个工具步骤提供“解释此步骤”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無論開關與否，長按收合的過程即可選擇「解釋這些步驟」；單一工具步驟提供「解釋此步驟」。"
           }
         }
       }
