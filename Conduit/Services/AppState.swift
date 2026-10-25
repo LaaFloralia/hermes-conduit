@@ -2501,7 +2501,7 @@ final class AppState: ObservableObject {
     }
 
     /// The prebuilt voice Qwen Live speaks with on this profile; nil is
-    /// Gemini's default voice.
+    /// Qwen's default voice.
     var qwenLiveVoice: String? {
         loadVoiceProfilePreferences(profile: activeProfile).qwenLiveVoice
     }

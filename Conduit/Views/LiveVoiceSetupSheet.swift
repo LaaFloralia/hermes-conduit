@@ -102,7 +102,8 @@ struct LiveVoiceSetupSheet: View {
                         .conduitFixedGlyph()
                         .foregroundStyle(.white)
                         .frame(width: 22, height: 22)
-                        .background(Color.conduitAccent, in: Circle())
+                        // As the Gemini step: white on the sent-bubble fill.
+                        .background(Color.conduitUserBubble, in: Circle())
                     Text(AppLocalization.string("Add a Qwen API key"))
                         .font(.subheadline.weight(.semibold))
                 }
