@@ -40,6 +40,19 @@ enum ChatStepSummaries {
         return min(max(value, maxStepsRange.lowerBound), maxStepsRange.upperBound)
     }
 
+    /// Whether a finished run gets an automatic summary, counted like the
+    /// folded line's "N steps": the steps Settings > Display shows, enough
+    /// to fold and no more than the limit.
+    static func isAsked(
+        _ run: [ChatMessage],
+        showingTools: Bool,
+        showingReasoning: Bool,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+        let shown = run.filter { $0.role == .tool ? showingTools : showingReasoning }.count
+        return (minimumSteps...maxSteps(defaults)).contains(shown)
+    }
+
     /// How long a question is remembered unanswered.
     static let answerWait: TimeInterval = 120
 

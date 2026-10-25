@@ -18,10 +18,11 @@ extension AppState {
         reapStepSummaryQuestions()
         guard ChatStepSummaries.isEnabled(), !sessionId.isEmpty, !isBusy, let client,
               let run = ChatStepSummaries.lastRun(in: messages),
-              // Counted like the folded line's "N steps": the steps it shows,
-              // enough to fold and no more than the limit.
-              case let shown = run.filter({ $0.role == .tool ? displayPreferences.showToolProgress : displayPreferences.showReasoning }).count,
-              (ChatStepSummaries.minimumSteps...ChatStepSummaries.maxSteps()).contains(shown),
+              ChatStepSummaries.isAsked(
+                  run,
+                  showingTools: displayPreferences.showToolProgress,
+                  showingReasoning: displayPreferences.showReasoning
+              ),
               let toolID = ChatStepSummaries.key(toolIDs: run.map { $0.tool?.id }) else { return }
         let target = ChatStepSummaries.Run(scope: toolCatalogKey, toolID: toolID)
         guard stepSummaries[target.scope]?[toolID] == nil, stepSummaryRequested[target] == nil else { return }

@@ -34,6 +34,23 @@ extension ChatTypographyTests {
         XCTAssertNil(ChatStepSummaries.lastRun(in: [user, summaryStep("r1"), summaryStep("r2"), summaryStep("r3", running: true)]))
     }
 
+    func testOnlyARunThatFoldsOnScreenIsAskedAbout() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "StepSummaryTests-\(UUID().uuidString)"))
+        let thinking = ChatMessage(id: "t", role: .reasoning, content: "Hmm", timestamp: "2026-10-24T09:00:10Z")
+        let run = [thinking, summaryStep("c1"), summaryStep("c2")]
+        XCTAssertTrue(ChatStepSummaries.isAsked(run, showingTools: true, showingReasoning: true, defaults: defaults))
+        // Thinking hidden, two tool steps still fold; tools hidden, one
+        // thought doesn't; both hidden, nothing shows.
+        XCTAssertTrue(ChatStepSummaries.isAsked(run, showingTools: true, showingReasoning: false, defaults: defaults))
+        XCTAssertFalse(ChatStepSummaries.isAsked(run, showingTools: false, showingReasoning: true, defaults: defaults))
+        XCTAssertFalse(ChatStepSummaries.isAsked(run, showingTools: false, showingReasoning: false, defaults: defaults))
+        // Over the limit in Settings: skipped.
+        defaults.set(5, forKey: ChatStepSummaries.maxStepsKey)
+        let long = (1...6).map { summaryStep("l\($0)") }
+        XCTAssertFalse(ChatStepSummaries.isAsked(long, showingTools: true, showingReasoning: true, defaults: defaults))
+        XCTAssertTrue(ChatStepSummaries.isAsked(Array(long.prefix(5)), showingTools: true, showingReasoning: true, defaults: defaults))
+    }
+
     func testARunIsKeyedOnlyByAnIdOfItsOwn() {
         XCTAssertEqual(ChatStepSummaries.key(toolIDs: [nil, " ", "call_8fK2mQx9LpZ"]), "call_8fK2mQx9LpZ")
         XCTAssertEqual(ChatStepSummaries.key(toolIDs: ["toolu_01AbCdEfGhIj"]), "toolu_01AbCdEfGhIj")
