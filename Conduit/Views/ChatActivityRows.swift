@@ -506,7 +506,8 @@ struct ChatStepPlacement: Equatable {
         isBusy: Bool,
         disclosure: ChatRowDisclosure
     ) -> Bool {
-        let showReasoning = preferences.showReasoning || disclosure.showsThinking(in: group.id)
+        let showReasoning = preferences.showReasoning
+            || (preferences.offersShowThinking && disclosure.showsThinking(in: group.id))
         let visible = group.visibleMembers(showReasoning: showReasoning, showTools: preferences.showToolProgress)
         guard let position = visible.firstIndex(where: { $0.messageID == messageID }) else { return false }
         guard visible.count >= 2, position > 0 else { return true }
@@ -605,6 +606,7 @@ struct ChatStepRow: View {
                 disclosure: disclosure,
                 toggles: disclosure.groupToggles,
                 profileShowsReasoning: preferences.showReasoning,
+                offersShowThinking: preferences.offersShowThinking,
                 showTools: preferences.showToolProgress,
                 expandToolsByDefault: preferences.expandToolsByDefault,
                 isBusy: rowState.isBusy,
@@ -625,8 +627,10 @@ private struct ChatStepRowBody: View {
     let placement: ChatStepPlacement
     let disclosure: ChatRowDisclosure
     @ObservedObject var toggles: ChatStepGroupToggles
-    /// Settings > Display; a run's menu can show its thinking anyway.
+    /// Settings > Chat's Thinking is Show.
     let profileShowsReasoning: Bool
+    /// It is On request: a run's menu can show its thinking anyway.
+    let offersShowThinking: Bool
     let showTools: Bool
     let expandToolsByDefault: Bool
     let isBusy: Bool
@@ -648,14 +652,14 @@ private struct ChatStepRowBody: View {
 
     /// The reader asked to see this run's thinking (its menu or its reply's).
     private var thinkingShown: Bool {
-        disclosure.showsThinking(in: placement.group.id)
+        offersShowThinking && disclosure.showsThinking(in: placement.group.id)
     }
 
-    /// Show thinking or Hide thinking, while Settings > Display hides it
-    /// and the turn is done with the run.
+    /// Show thinking or Hide thinking, while Settings > Chat's Thinking is
+    /// On request and the turn is done with the run.
     private var thinkingReveal: ChatThinkingReveal? {
         let group = placement.group
-        guard !profileShowsReasoning, group.hasThinking, !(group.isTrailing && isBusy) else { return nil }
+        guard offersShowThinking, group.hasThinking, !(group.isTrailing && isBusy) else { return nil }
         return ChatThinkingReveal(group: group, disclosure: disclosure)
     }
 
@@ -960,10 +964,10 @@ struct ChatStepLookingBack: View {
     }
 }
 
-/// Show thinking in a run's menu and its reply's ⋯ while Settings >
-/// Display hides thinking: that run's thoughts, open, for as long as the
-/// chat is on screen (Hide thinking folds them away again). Nothing is
-/// saved and nothing is asked of Hermes: the rows are already loaded.
+/// Show thinking in a run's menu and its reply's ⋯ while Settings > Chat's
+/// Thinking is On request: that run's thoughts, open, for as long as the
+/// chat is on screen (Hide thinking puts the run back as it was). Nothing
+/// is saved and nothing is asked of Hermes: the rows are already loaded.
 struct ChatThinkingReveal {
     let shown: Bool
     let toggle: () -> Void

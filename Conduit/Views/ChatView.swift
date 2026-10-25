@@ -1192,8 +1192,7 @@ struct MessageBubble: View, Equatable {
                     AssistantBubble(
                         message: message,
                         readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver,
-                        stepsAbove: stepsAbove
+                        gatewayResolver: gatewayResolver
                     )
                 }
             } else {
@@ -2338,7 +2337,7 @@ struct AssistantMessageActions: View {
 
 /// The ⋯ at the end of a reply's row (#1147): Quote, Branch and Pin reply,
 /// so the row keeps a few icons while each action stays a tap away, and
-/// Show thinking while Settings > Display hides it.
+/// Show thinking while Settings > Chat's Thinking is On request.
 struct AssistantMessageMoreMenu: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
@@ -2405,8 +2404,8 @@ struct AssistantMessageMoreMenu: View {
     }
 }
 
-/// A reply's ⋯ when the run above it has thinking Settings > Display
-/// hides: it follows the runs' toggles, so the item reads Hide thinking
+/// A reply's ⋯ when the run above it has thinking that Settings > Chat's
+/// Thinking keeps for On request: it follows the runs' toggles, so the item reads Hide thinking
 /// once that thinking shows, whichever menu showed it.
 private struct AssistantMessageMoreMenuWithThinking: View {
     let message: ChatMessage
@@ -2547,7 +2546,7 @@ struct AssistantBubble: View {
                     ReadAloudButton(message: message, controller: readAloudController)
                 }
 
-                if let run = stepsAbove, let disclosure, !rowState.displayPreferences.showReasoning {
+                if let run = stepsAbove, let disclosure, rowState.displayPreferences.offersShowThinking {
                     AssistantMessageMoreMenuWithThinking(
                         message: message,
                         run: run,
@@ -2921,7 +2920,7 @@ struct SettledThinkingCardContent: View, Equatable {
 struct ThinkingCard: View {
     let message: ChatMessage
     var grouped = false
-    /// Its run's Show thinking, with Settings > Display hiding thinking.
+    /// Its run's Show thinking, with Settings > Chat's Thinking On request.
     var shownAnyway = false
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions

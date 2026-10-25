@@ -419,10 +419,44 @@ final class ChatScrollEngineTests: XCTestCase {
 
         disclosure.willShowThinking(in: group, false)
         XCTAssertFalse(draws(thought, "r"))
+        XCTAssertFalse(disclosure.isGroupExpanded("r", default: false), "the run folds back as it was")
+        XCTAssertFalse(disclosure.isExpanded("r", default: false), "and so does the thought")
 
+        // A run the reader had open stays open after Hide thinking.
+        disclosure.willToggleGroup("r", to: true)
         disclosure.willShowThinking(in: group, true)
+        disclosure.willShowThinking(in: group, false)
+        XCTAssertTrue(disclosure.isGroupExpanded("r", default: false))
+        XCTAssertFalse(disclosure.isExpanded("r", default: false))
+
+        // Thinking set to Off: no run shows its thinking, asked for or not.
+        disclosure.willShowThinking(in: group, true)
+        preferences.thinkingOnRequest = false
+        XCTAssertFalse(preferences.offersShowThinking)
+        XCTAssertFalse(draws(thought, "r"))
+        preferences.thinkingOnRequest = true
+
         current = identity("b")
         XCTAssertFalse(disclosure.showsThinking(in: "r"), "another conversation starts hidden")
+    }
+
+    /// Settings > Chat's Thinking: Show is Hermes' own switch, Conduit's key
+    /// tells On request from Off, and an install with the switch off keeps
+    /// its Show thinking menus.
+    func testThinkingChoiceReadsAndWritesTwoConfigValues() {
+        XCTAssertEqual(ReasoningDisplayMode(display: [:]), .show)
+        XCTAssertEqual(ReasoningDisplayMode(display: ["show_reasoning": true, "conduit_thinking_on_request": false]), .show)
+        XCTAssertEqual(ReasoningDisplayMode(display: ["show_reasoning": false]), .onRequest, "off before the choice maps to On request")
+        XCTAssertEqual(ReasoningDisplayMode(display: ["show_reasoning": false, "conduit_thinking_on_request": false]), .off)
+
+        for mode in ReasoningDisplayMode.allCases {
+            var display: [String: Any] = ["show_reasoning": true, "conduit_thinking_on_request": false]
+            mode.write(into: &display)
+            XCTAssertEqual(ReasoningDisplayMode(display: display), mode)
+        }
+        var display: [String: Any] = ["conduit_thinking_on_request": false]
+        ReasoningDisplayMode.show.write(into: &display)
+        XCTAssertEqual(display["conduit_thinking_on_request"] as? Bool, false, "Show leaves Conduit's key alone")
     }
 
     func testClosingARowAtTheBottomLeavesNoEmptySpace() {

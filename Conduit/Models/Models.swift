@@ -1183,6 +1183,10 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
 /// source of truth after a profile switch or reconnect.
 struct ProfileDisplayPreferences: Equatable {
     var showReasoning = true
+    /// `display.conduit_thinking_on_request` isn't false: with thinking
+    /// hidden, a run's menu and its reply's ⋯ still offer Show thinking
+    /// (ReasoningDisplayMode).
+    var thinkingOnRequest = true
     var showToolProgress = true
     var expandToolsByDefault = false
     /// `display.memory_notifications` isn't "off": the self-improvement
@@ -1196,6 +1200,47 @@ struct ProfileDisplayPreferences: Equatable {
         if let bool = value as? Bool { return bool }
         guard let string = value as? String else { return true }
         return string.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "off"
+    }
+
+    var reasoningMode: ReasoningDisplayMode {
+        ReasoningDisplayMode(showReasoning: showReasoning, onRequest: thinkingOnRequest)
+    }
+
+    /// Thinking is hidden and Show thinking is offered.
+    var offersShowThinking: Bool { reasoningMode == .onRequest }
+}
+
+/// The Thinking choice in Settings > Chat. Hermes' own `display.show_reasoning`
+/// stays a switch other clients read too, so Show is that switch on, and
+/// Conduit's `display.conduit_thinking_on_request` tells On request from Off
+/// while it is off. Unset reads as On request, so an install that had the
+/// switch off keeps its Show thinking menus.
+enum ReasoningDisplayMode: String, CaseIterable {
+    case show
+    case onRequest = "on_request"
+    case off
+
+    /// The settings row's own key: no config value of that name is kept.
+    static let settingKey = "conduit.reasoning_display"
+    static let onRequestConfigKey = "conduit_thinking_on_request"
+
+    init(showReasoning: Bool, onRequest: Bool) {
+        self = showReasoning ? .show : (onRequest ? .onRequest : .off)
+    }
+
+    /// Read from the profile's `display` block, Hermes' defaults applied.
+    init(display: [String: Any]) {
+        self.init(
+            showReasoning: display["show_reasoning"] as? Bool ?? true,
+            onRequest: display[Self.onRequestConfigKey] as? Bool ?? true
+        )
+    }
+
+    /// Written into the `display` block. Show leaves Conduit's own key as
+    /// it is, so turning Show off again goes back to the last of the two.
+    func write(into display: inout [String: Any]) {
+        display["show_reasoning"] = self == .show
+        if self != .show { display[Self.onRequestConfigKey] = self == .onRequest }
     }
 }
 

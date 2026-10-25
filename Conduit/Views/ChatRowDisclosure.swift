@@ -29,6 +29,8 @@ final class ChatRowDisclosure {
     var currentConversation: @MainActor () -> ChatScrollSessionIdentity = { .none }
     private var conversation = ChatScrollSessionIdentity.none
     private var states: [String: Bool] = [:]
+    /// What Show thinking changed, per run, so Hide thinking puts it back.
+    private var beforeThinking: [String: [String: Bool?]] = [:]
 
     func isExpanded(_ id: String, default defaultValue: Bool) -> Bool {
         followConversation()
@@ -59,24 +61,32 @@ final class ChatRowDisclosure {
         groupToggles.revision &+= 1
     }
 
-    /// Thinking the reader asked to see in one run while Settings > Display
-    /// hides it (ChatThinkingReveal).
+    /// Thinking the reader asked to see in one run while Settings > Chat's
+    /// Thinking is On request (ChatThinkingReveal).
     func showsThinking(in groupID: String) -> Bool {
         followConversation()
         return states[Self.thinkingKey(groupID)] ?? false
     }
 
     /// Showing it opens the run and its thoughts too, so what appears is
-    /// the thinking itself, not one more folded line.
+    /// the thinking itself, not one more folded line; hiding it puts them
+    /// back as they were.
     func willShowThinking(in group: ChatStepGroup, _ shown: Bool) {
         engine?.userWillToggleRow()
         followConversation()
-        states[Self.thinkingKey(group.id)] = shown
+        let flag = Self.thinkingKey(group.id)
         if shown {
-            states[Self.groupKey(group.id)] = true
-            for member in group.members where member.isThinking {
-                states[member.messageID] = true
+            if states[flag] != true {
+                let opened = [Self.groupKey(group.id)] + group.members.filter(\.isThinking).map(\.messageID)
+                beforeThinking[group.id] = Dictionary(uniqueKeysWithValues: opened.map { ($0, states[$0]) })
+                for key in opened { states[key] = true }
             }
+            states[flag] = true
+        } else {
+            for (key, value) in beforeThinking.removeValue(forKey: group.id) ?? [:] {
+                states[key] = value
+            }
+            states[flag] = false
         }
         groupToggles.revision &+= 1
     }
@@ -91,6 +101,7 @@ final class ChatRowDisclosure {
                 && conversation.equivalentSessionIDs.isDisjoint(with: current.equivalentSessionIDs))
         if switched {
             states.removeAll()
+            beforeThinking.removeAll()
         }
         conversation = current
     }

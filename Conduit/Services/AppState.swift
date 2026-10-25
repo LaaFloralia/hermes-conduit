@@ -30872,8 +30872,10 @@ final class AppState: ObservableObject {
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
             profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
+            let reasoning = ReasoningDisplayMode(display: display)
             displayPreferences = ProfileDisplayPreferences(
-                showReasoning: display["show_reasoning"] as? Bool ?? true,
+                showReasoning: reasoning == .show,
+                thinkingOnRequest: reasoning != .off,
                 showToolProgress: display["tool_progress"] as? String != "off",
                 expandToolsByDefault: display["expand_tools"] as? Bool ?? false,
                 showReviews: ProfileDisplayPreferences.showsReviews(display["memory_notifications"])
@@ -30901,8 +30903,13 @@ final class AppState: ObservableObject {
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
-            return Dictionary(uniqueKeysWithValues: keys.compactMap { key in
-                profileSettingValue(in: config, key: key).map { (key, $0) }
+            return Dictionary(uniqueKeysWithValues: keys.compactMap { key -> (String, ProfileSettingValue)? in
+                if key == ReasoningDisplayMode.settingKey {
+                    // Worked out from two config values (ReasoningDisplayMode).
+                    let display = config["display"] as? [String: Any] ?? [:]
+                    return (key, .text(ReasoningDisplayMode(display: display).rawValue))
+                }
+                return profileSettingValue(in: config, key: key).map { (key, $0) }
             })
         } catch {
             // A read that fails after a dashboard or profile switch belongs to
@@ -31133,14 +31140,27 @@ final class AppState: ObservableObject {
                 guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
                 return true
             }
+            let reasoning = key == ReasoningDisplayMode.settingKey ? value.textValue.flatMap(ReasoningDisplayMode.init(rawValue:)) : nil
+            if key == ReasoningDisplayMode.settingKey, reasoning == nil { return false }
             try await updateProfileConfig(profile: profile) { [weak self] config in
-                self?.setProfileSettingValue(value, in: &config, key: key)
+                if let reasoning {
+                    var display = config["display"] as? [String: Any] ?? [:]
+                    reasoning.write(into: &display)
+                    config["display"] = display
+                } else {
+                    self?.setProfileSettingValue(value, in: &config, key: key)
+                }
             }
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
+            }
+            if let reasoning {
+                // Thinking in the chat on screen follows at once.
+                displayPreferences.showReasoning = reasoning == .show
+                displayPreferences.thinkingOnRequest = reasoning != .off
             }
             if key == "display.memory_notifications" {
                 // Rows already in the chat hide or come back with it.
