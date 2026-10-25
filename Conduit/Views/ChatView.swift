@@ -1140,7 +1140,12 @@ struct MessageBubble: View, Equatable {
                 // A teammate bot's delivery is an event in the chat, not
                 // something the user said (Desktop's agent message note).
                 VStack(spacing: 4) {
-                    TeammateMessageNote(inbound: inbound, roster: appState.botRoster, appState: appState)
+                    TeammateMessageNote(
+                        inbound: inbound,
+                        roster: appState.botRoster,
+                        appState: appState,
+                        disclosureID: message.id
+                    )
                     // The agent can react to it like any user turn.
                     if !message.reactions.isEmpty {
                         MessageReactionChips(
@@ -1169,7 +1174,8 @@ struct MessageBubble: View, Equatable {
                 // The bot answering a teammate, not the user: folded, as on
                 // Desktop ("Replied to Atlas", the reply a tap away).
                 TeammateReplyNote(
-                    name: BotTeammateMessages.displayName(for: sender, in: appState.botRoster)
+                    name: BotTeammateMessages.displayName(for: sender, in: appState.botRoster),
+                    disclosureID: message.id
                 ) {
                     AssistantBubble(
                         message: message,
@@ -1309,13 +1315,19 @@ struct TeammateMessageNote: View {
     @State private var name: String
     /// Loads the face; held, not observed, like the rows' AppState.
     let appState: AppState
-    @State private var expanded = false
+    /// The row's key in `disclosure`, so a rebuilt row stays open.
+    let disclosureID: String
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// Nil until tapped here: a rebuilt row takes what the reader chose
+    /// from `disclosure`.
+    @State private var tapped: Bool?
     @State private var image: UIImage?
     @ScaledMetric(relativeTo: .footnote) private var faceSize: CGFloat = 18
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(inbound: BotTeammateMessages.Inbound, roster: [BotProfile], appState: AppState) {
+    init(inbound: BotTeammateMessages.Inbound, roster: [BotProfile], appState: AppState, disclosureID: String) {
         self.inbound = inbound
+        self.disclosureID = disclosureID
         let bot = Self.resolve(inbound, in: roster)
         _bot = State(initialValue: bot)
         _name = State(initialValue: bot?.displayLabel ?? inbound.sender)
@@ -1323,11 +1335,20 @@ struct TeammateMessageNote: View {
         _image = State(initialValue: bot.flatMap { appState.botAvatarImage(for: $0) })
     }
 
+    private var expanded: Bool {
+        tapped ?? disclosure?.isExpanded(disclosureID, default: false) ?? false
+    }
+
     var body: some View {
         VStack(spacing: 6) {
             Button {
                 Haptics.selection()
-                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { expanded.toggle() }
+                let opens = !expanded
+                // Tells the scroll engine first, as every row that opens
+                // does: following the running turn would pin the growing
+                // row's bottom instead of keeping it where it was tapped.
+                disclosure?.willToggle(disclosureID, to: opens)
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { tapped = opens }
             } label: {
                 HStack(spacing: 6) {
                     BotAvatarView(
@@ -1405,15 +1426,25 @@ struct TeammateMessageNote: View {
 /// (Desktop's inter-agent reply notice). Tap shows the reply as usual.
 struct TeammateReplyNote<Reply: View>: View {
     let name: String
+    /// The row's key in `disclosure`, so a rebuilt row stays open.
+    let disclosureID: String
     @ViewBuilder let reply: () -> Reply
-    @State private var expanded = false
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// Nil until tapped here (see TeammateMessageNote).
+    @State private var tapped: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var expanded: Bool {
+        tapped ?? disclosure?.isExpanded(disclosureID, default: false) ?? false
+    }
 
     var body: some View {
         VStack(spacing: 6) {
             Button {
                 Haptics.selection()
-                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { expanded.toggle() }
+                let opens = !expanded
+                disclosure?.willToggle(disclosureID, to: opens)
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { tapped = opens }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrowshape.turn.up.right")
@@ -3133,7 +3164,8 @@ private struct SettledToolCardContent: View, Equatable {
                             body: reply
                         ),
                         roster: appState.botRoster,
-                        appState: appState
+                        appState: appState,
+                        disclosureID: message.id + "#teammate-reply"
                     )
                     .padding(.bottom, 8)
                 }
