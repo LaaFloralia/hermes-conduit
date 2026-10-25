@@ -338410,7 +338410,7 @@
         }
       }
     },
-    "What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they go after 30 days." : {
+    "What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they're deleted after 30 days." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {

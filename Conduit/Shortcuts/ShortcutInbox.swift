@@ -22,6 +22,7 @@
 
 import CryptoKit
 import Foundation
+import OSLog
 
 /// One run of an automation, as the inbox stores it.
 struct ShortcutEvent: Codable, Equatable {
@@ -38,15 +39,23 @@ struct ShortcutEvent: Codable, Equatable {
     var text: String?
     var amount: String?
 
+    /// What inbox_store.py keeps of each field (MAX_SOURCE_CHARS and the
+    /// rest), counted in Unicode scalars as Python counts characters. Cut
+    /// here, so a long email never makes a batch the host's size cap refuses.
+    static let maxSource = 120
+    static let maxTitle = 200
+    static let maxText = 4_000
+    static let maxAmount = 40
+
     init(id: String = UUID().uuidString, kind: Kind, at: Date, source: String? = nil, title: String? = nil,
          text: String? = nil, amount: String? = nil) {
         self.id = id
         self.kind = kind
         self.at = at
-        self.source = Self.cleaned(source)
-        self.title = Self.cleaned(title)
-        self.text = Self.cleaned(text)
-        self.amount = Self.cleaned(amount)
+        self.source = Self.cleaned(source, limit: Self.maxSource)
+        self.title = Self.cleaned(title, limit: Self.maxTitle)
+        self.text = Self.cleaned(text, limit: Self.maxText)
+        self.amount = Self.cleaned(amount, limit: Self.maxAmount)
     }
 
     var carriesSomething: Bool { [source, title, text, amount].contains { $0 != nil } }
@@ -65,8 +74,11 @@ struct ShortcutEvent: Codable, Equatable {
         return item
     }
 
-    private static func cleaned(_ value: String?) -> String? {
-        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    private static func cleaned(_ value: String?, limit: Int) -> String? {
+        var trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.unicodeScalars.count > limit {
+            trimmed = String(String.UnicodeScalarView(trimmed.unicodeScalars.prefix(limit)))
+        }
         return trimmed.isEmpty ? nil : trimmed
     }
 }
@@ -252,6 +264,8 @@ struct ShortcutInboxQueue {
     @discardableResult
     func add(_ event: ShortcutEvent, now: Date = Date()) -> Bool {
         guard var all = readAll() else { return false }
+        // Older than the host keeps: it would never go, so it isn't kept.
+        guard event.at >= now.addingTimeInterval(-Double(Self.keepDays) * 86_400) else { return true }
         let kept = Array((pending(now: now) + [event]).suffix(Self.capacity))
         all[scope.storageID, default: Slot(scope: scope)].events = kept
         return writeAll(all)
@@ -295,8 +309,20 @@ struct ShortcutInboxQueue {
     private func readAll() -> [String: Slot]? {
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
         guard let data = try? Data(contentsOf: url) else { return nil }
-        return (try? JSONDecoder().decode([String: Slot].self, from: data)) ?? [:]
+        do {
+            return try JSONDecoder().decode([String: Slot].self, from: data)
+        } catch {
+            // Never silently: the unreadable file is set aside for a look,
+            // and the queue starts over.
+            Self.log.error("Shortcut inbox queue unreadable, set aside: \(String(describing: error), privacy: .public)")
+            let aside = url.deletingPathExtension().appendingPathExtension("unreadable.json")
+            try? FileManager.default.removeItem(at: aside)
+            try? FileManager.default.moveItem(at: url, to: aside)
+            return [:]
+        }
     }
+
+    private static let log = Logger(subsystem: "com.milim.relay", category: "shortcut-inbox")
 
     @discardableResult
     private func writeAll(_ all: [String: Slot]) -> Bool {

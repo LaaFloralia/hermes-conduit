@@ -136,6 +136,24 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(json["amount"] as? String, "4,50 $")
         XCTAssertNil(json["title"])
         XCTAssertNil(json["text"])
+
+        // Cut to what the host keeps, in Unicode scalars as Python counts.
+        let long = ShortcutEvent(kind: .email, at: Date(), title: String(repeating: "é", count: 300),
+                                 text: String(repeating: "👍🏽", count: 3_000))
+        XCTAssertEqual(long.title?.unicodeScalars.count, ShortcutEvent.maxTitle)
+        XCTAssertEqual(long.text?.unicodeScalars.count, ShortcutEvent.maxText)
+    }
+
+    func testShortcutInboxSetsAnUnreadableQueueAside() throws {
+        let (queue, folder) = shortcutInboxTestQueue()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: queue.url)
+        XCTAssertTrue(queue.pending().isEmpty)
+        XCTAssertTrue(queue.add(ShortcutEvent(id: "e1", kind: .other, at: Date(), text: "one")))
+        XCTAssertEqual(queue.pending().map(\.id), ["e1"])
+        let aside = folder.appendingPathComponent("queue.unreadable.json")
+        XCTAssertEqual(try Data(contentsOf: aside), Data("not json".utf8), "Kept for a look, never silently lost")
     }
 
     func testShortcutInboxQueueKeepsTheNewestWithinTheHostsDays() throws {
@@ -150,7 +168,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         let stale = ShortcutEvent(id: "stale", kind: .other, at: now.addingTimeInterval(-31 * 86_400), text: "old")
         XCTAssertTrue(queue.add(stale, now: now))
-        XCTAssertTrue(queue.pending(now: now).isEmpty, "Older than the host keeps: never sent")
+        XCTAssertTrue(queue.pending(now: .distantPast).isEmpty, "Older than the host keeps: never kept")
 
         for index in 0..<(ShortcutInboxQueue.capacity + 5) {
             queue.add(ShortcutEvent(id: "e\(index)", kind: .other, at: now, text: "\(index)"), now: now)

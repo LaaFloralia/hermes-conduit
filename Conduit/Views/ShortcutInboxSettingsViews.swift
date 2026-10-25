@@ -25,7 +25,7 @@ struct ShortcutInboxSettingsPage: View {
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Shortcuts inbox"), symbol: "tray.full", tint: .indigo) {
-                Text(AppLocalization.string("What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they go after 30 days."))
+                Text(AppLocalization.string("What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they're deleted after 30 days."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if waitingCount > 0 {
