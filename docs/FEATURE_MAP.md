@@ -1490,7 +1490,7 @@ once it is done.
 offline copy) · the collapsed run of steps ("7 steps · 12s") · the working
 line ("Home · Searching the web") · the Live Activity's tool line · the
 notifier's twin category list · Settings > Display's step switches (they show, hide and open rows; their words follow the row) ·
-the run's summary, its Explain these steps menu (and a lone step's Explain this step), and its switch, step limit and captions in Settings > Chat · /btw
+the run's summary, its Explain these steps menu (and a lone tool step's Explain this step), and its switch, step limit and captions in Settings > Chat · /btw
 
 **Code**
 - Rows and words: `Conduit/Views/ChatActivityRows.swift` (ChatStepStyle, ChatStepLabel, ChatStepSubject, ChatStepGroupHeader, ChatWorkingLine), `Conduit/Views/ChatView.swift` (ToolCard, SettledToolCardContent)
