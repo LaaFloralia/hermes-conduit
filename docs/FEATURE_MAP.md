@@ -1462,7 +1462,7 @@ the run's summary, its Explain these steps menu (and a lone step's Explain this 
 - The Live Activity, fed by the app and by the notifier's `tool_category` twin, says "Using a tool" for a step the chat row and working line name.
 - An older Hermes' single-underscore MCP names (`mcp_server_tool`) can't be split into app and action; they read "Used a connector".
 
-**Checked:** 2026-10-25, at #1233, carried in #CARRYPR (a run asked about must fold on screen; a lone step's Explain waits for the turn to end).
+**Checked:** 2026-10-25, at #1233, carried in #1236 (a run asked about must fold on screen; a lone step's Explain waits for the turn to end).
 
 ## Code fences in messages
 
