@@ -1346,9 +1346,9 @@ final class WatchDirectCallModel: ObservableObject {
     /// answered on it, so their answers go out as text updates instead.
     private func connectionReplaced() {
         WatchCallLog.shared.note("directConnectionReplaced", ["openCalls": toolsInFlight.count])
-        // xAI has no resumption: the new session is told the conversation
-        // once it's ready, as after a rejoin.
-        if engine == .grok, rejoinStartedAt == nil {
+        // xAI and Qwen have no resumption: the new session is told the
+        // conversation once it's ready, as after a rejoin.
+        if engine == .grok || engine == .qwen, rejoinStartedAt == nil {
             rejoinStartedAt = now
             rejoinWristDown = !link.isReachable
             rejoinCause = .broke
