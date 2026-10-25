@@ -2291,7 +2291,7 @@ final class AppState: ObservableObject {
     @Published var toolsets: [CapabilityToolset] = []
     /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
     @Published private(set) var toolCatalog = ToolCatalog()
-    /// One sentence per finished run of steps: by dashboard and profile
+    /// A short summary per finished run of steps: by dashboard and profile
     /// (`toolCatalogKey`), then by the run's first tool call
     /// (AppState+StepSummaries.swift).
     @Published var stepSummaries: [String: [String: String]] = ChatStepSummaries.saved()
@@ -2303,7 +2303,7 @@ final class AppState: ObservableObject {
     /// once no question is waiting for its id.
     var stepSummaryEarlyAnswers: [String: String] = [:]
     /// Runs asked about and not answered yet, with when they were asked.
-    var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
     /// Whose catalog `toolCatalog` is (dashboard and profile), and the
     /// catalogs Hermes already sent this run, or is sending now.
     private var toolCatalogOwner: String?
@@ -5549,7 +5549,7 @@ final class AppState: ObservableObject {
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
-        // So do the sentences describing its runs of steps.
+        // So do the summaries describing its runs of steps.
         forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
         leaveSavedChats(dashboardID: dashboardID)
     }
@@ -5585,7 +5585,7 @@ final class AppState: ObservableObject {
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
         TranscriptImageCache.purge()
-        // The sentences describing runs of steps go with the chats.
+        // The summaries describing runs of steps go with the chats.
         forgetStepSummaries(scopePrefix: nil)
         if connection == nil, let copy = offlineChatPresentation {
             // Until this launch's sign-in goes through, the copy is what keeps
