@@ -1880,7 +1880,7 @@ private struct StepSummarySettings: View {
             symbol: "text.line.first.and.arrowtriangle.forward",
             tint: .conduitAura
         ) {
-            Text("When a reply took several steps, Hermes looks back on them in a few lines: what it looked for and what it found, shown under the folded steps.")
+            Text("When a reply took several steps, Hermes looks back on them in a short paragraph: what it set out to do and why each step came next, shown under the folded steps.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Text("Each summary is one more short request to your model. It reuses the chat's prompt cache and never changes the chat.")

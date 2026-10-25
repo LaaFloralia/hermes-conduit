@@ -700,7 +700,7 @@ private struct ChatStepRowBody: View {
         }
         .chatStepExplainMenu(
             // Like the run's line: only once the turn is done with it.
-            explain: lookingBack || message.tool?.status == .running || (placement.group.isTrailing && isBusy) ? nil : explain,
+            explain: (lookingBack || message.tool?.status == .running || (placement.group.isTrailing && isBusy)) ? nil : explain,
             title: summary == nil ? AppLocalization.string("Explain this step") : AppLocalization.string("Explain again")
         )
     }
@@ -759,9 +759,10 @@ private struct ChatStepGroupHeader: View {
     /// an ellipsis.
     private var stepIcons: some View {
         let looks = members.prefix(Self.maxStepIcons).map(Self.look)
-        // Each count tried in turn, all of them first when they can all show.
+        // Each count tried in turn, the most first: all of them when the
+        // run is short enough, else the cap with an ellipsis.
         let most = min(members.count, Self.maxStepIcons)
-        let fits = (members.count == most ? [most] : []) + Array(stride(from: most - 1, through: 1, by: -1))
+        let fits = Array(stride(from: most, through: 1, by: -1))
         return ViewThatFits(in: .horizontal) {
             ForEach(fits, id: \.self) { shown in
                 HStack(spacing: 4) {

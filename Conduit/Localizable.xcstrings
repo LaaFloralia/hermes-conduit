@@ -339348,84 +339348,84 @@
         }
       }
     },
-    "When a reply took several steps, Hermes looks back on them in a few lines: what it looked for and what it found, shown under the folded steps." : {
+    "When a reply took several steps, Hermes looks back on them in a short paragraph: what it set out to do and why each step came next, shown under the folded steps." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn eine Antwort mehrere Schritte brauchte, blickt Hermes in ein paar Zeilen darauf zurück: wonach es gesucht und was es gefunden hat. Sie stehen unter den eingeklappten Schritten."
+            "value" : "Wenn eine Antwort mehrere Schritte brauchte, blickt Hermes in einem kurzen Absatz darauf zurück: was es vorhatte und warum ein Schritt zum nächsten führte. Er steht unter den eingeklappten Schritten."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cuando una respuesta necesitó varios pasos, Hermes los repasa en unas pocas líneas: qué buscó y qué encontró, debajo de los pasos plegados."
+            "value" : "Cuando una respuesta necesitó varios pasos, Hermes los repasa en un párrafo breve: qué se propuso y por qué vino cada paso, debajo de los pasos plegados."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quand une réponse a pris plusieurs étapes, Hermes y revient en quelques lignes : ce qu’il cherchait et ce qu’il a trouvé, affichées sous les étapes repliées."
+            "value" : "Quand une réponse a pris plusieurs étapes, Hermes y revient en un court paragraphe : ce qu’il voulait faire et pourquoi chaque étape a suivi, affiché sous les étapes repliées."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saat sebuah balasan memakai beberapa langkah, Hermes meninjaunya dalam beberapa baris: apa yang dicari dan apa yang ditemukan, ditampilkan di bawah langkah yang dilipat."
+            "value" : "Saat sebuah balasan memakai beberapa langkah, Hermes meninjaunya dalam satu paragraf singkat: apa yang hendak dilakukan dan mengapa tiap langkah menyusul, ditampilkan di bawah langkah yang dilipat."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando una risposta ha richiesto più passaggi, Hermes li ripercorre in poche righe: cosa cercava e cosa ha trovato, mostrate sotto i passaggi compressi."
+            "value" : "Quando una risposta ha richiesto più passaggi, Hermes li ripercorre in un breve paragrafo: cosa voleva fare e perché è venuto ogni passaggio, mostrato sotto i passaggi compressi."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "返信に複数のステップがかかったとき、Hermes が数行で振り返ります。何を探し、何が分かったかを、折りたたんだステップの下に表示します。"
+            "value" : "返信に複数のステップがかかったとき、Hermes が短い段落で振り返ります。何をしようとし、なぜ次のステップに進んだかを、折りたたんだステップの下に表示します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "답변에 여러 단계가 걸렸을 때 Hermes가 몇 줄로 돌아봅니다. 무엇을 찾았고 무엇을 알아냈는지 접힌 단계 아래에 표시합니다."
+            "value" : "답변에 여러 단계가 걸렸을 때 Hermes가 짧은 단락으로 돌아봅니다. 무엇을 하려 했고 왜 각 단계로 넘어갔는지 접힌 단계 아래에 표시합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gdy odpowiedź wymagała kilku kroków, Hermes podsumowuje je w kilku wierszach: czego szukał i co znalazł. Widać je pod zwiniętymi krokami."
+            "value" : "Gdy odpowiedź wymagała kilku kroków, Hermes wraca do nich w krótkim akapicie: co zamierzał zrobić i dlaczego przyszedł każdy kolejny krok. Widać go pod zwiniętymi krokami."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quando uma resposta levou várias etapas, o Hermes as revisita em poucas linhas: o que procurou e o que encontrou, mostradas abaixo das etapas recolhidas."
+            "value" : "Quando uma resposta levou várias etapas, o Hermes as revisita em um parágrafo curto: o que pretendia fazer e por que cada etapa veio em seguida, mostrado abaixo das etapas recolhidas."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Когда ответ занял несколько шагов, Hermes подводит итог в нескольких строках: что искал и что нашёл. Они показываются под свёрнутыми шагами."
+            "value" : "Когда ответ занял несколько шагов, Hermes оглядывается на них в коротком абзаце: что он собирался сделать и почему пришёл к каждому следующему шагу. Абзац показывается под свёрнутыми шагами."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir yanıt birkaç adım sürdüğünde Hermes bunlara birkaç satırla geri bakar: ne aradığını ve ne bulduğunu katlanmış adımların altında gösterir."
+            "value" : "Bir yanıt birkaç adım sürdüğünde Hermes bunlara kısa bir paragrafla geri bakar: ne yapmaya çalıştığını ve her adıma neden geçtiğini katlanmış adımların altında gösterir."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当一条回复用了多个步骤时，Hermes 会用几行回顾：它在找什么、找到了什么，显示在折叠的步骤下方。"
+            "value" : "当一条回复用了多个步骤时，Hermes 会用一小段话回顾：它打算做什么、为什么走到下一步，显示在折叠的步骤下方。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "當一則回覆用了多個步驟時，Hermes 會用幾行回顧：它在找什麼、找到了什麼，顯示在收合的步驟下方。"
+            "value" : "當一則回覆用了多個步驟時，Hermes 會用一小段話回顧：它打算做什麼、為什麼走到下一步，顯示在收合的步驟下方。"
           }
         }
       }
