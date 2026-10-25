@@ -2,8 +2,9 @@
 //  AppState+LiveVoiceConsent.swift
 //  Conduit
 //
-//  Asks once per provider before Gemini Live, GPT-Live or Grok Live send
-//  the user's voice to Google, OpenAI or xAI (#827, App Review 5.1.2(i)).
+//  Asks once per provider before Gemini Live, Qwen Live, GPT-Live or Grok
+//  Live send the user's voice to Google, Alibaba Cloud, OpenAI or xAI
+//  (#827, App Review 5.1.2(i)).
 //  The live controllers check before every call; the call screen asks when
 //  the phone shows the call, and the phone's own sheet asks after a CarPlay
 //  or Watch call stopped on it.
@@ -37,6 +38,7 @@ extension AppState {
         }
         switch mode {
         case .geminiLive: if isGeminiLiveActive { closeGeminiLiveConversation() }
+        case .qwenLive: if isQwenLiveActive { closeQwenLiveConversation() }
         case .gptLive: if isGPTLiveActive { closeGPTLiveConversation() }
         case .grokLive: if isGrokLiveActive { closeGrokLiveConversation() }
         case .localLive: break
@@ -47,6 +49,7 @@ extension AppState {
     func isLiveVoiceSheetShown(_ mode: LiveVoiceModeName) -> Bool {
         switch mode {
         case .geminiLive: return showGeminiLiveSheet
+        case .qwenLive: return showQwenLiveSheet
         case .gptLive: return showGPTLiveSheet
         case .grokLive: return showGrokLiveSheet
         case .localLive: return showLocalLiveSheet

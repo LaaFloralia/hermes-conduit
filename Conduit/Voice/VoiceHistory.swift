@@ -2,8 +2,8 @@
 //  VoiceHistory.swift
 //  Conduit
 //
-//  Saved live voice calls. Gemini Live and GPT-Live never run a Hermes
-//  turn, so nothing on the host records them. The conduit_push plugin
+//  Saved live voice calls. Gemini Live, Qwen Live and GPT-Live never run
+//  a Hermes turn, so nothing on the host records them. The conduit_push plugin
 //  writes a call's settled turns straight into the profile's session store
 //  as an ordinary session row (no agent turn), and a resumed call appends
 //  to the same row. A call attached to a chat is part of that chat (#556):
@@ -24,7 +24,7 @@ private let voiceHistoryLogger = Logger(subsystem: "com.milim.relay", category: 
 /// Conduit's label for a session voice started, kept on the Hermes host.
 struct VoiceSessionTag: Equatable, Codable {
     enum Kind: String, Equatable, Codable {
-        /// A saved Gemini Live or GPT-Live call.
+        /// A saved live call (Gemini Live, Qwen Live, GPT-Live, Grok Live).
         case call
         /// A chat classic Voice started fresh.
         case classic
@@ -54,6 +54,7 @@ struct VoiceSessionTag: Equatable, Codable {
 
 enum VoiceCallEngine: String, Equatable, Codable {
     case geminiLive = "gemini-live"
+    case qwenLive = "qwen-live"
     case gptLive = "gpt-live"
     case grokLive = "grok-live"
     case localLive = "local-live"
@@ -63,6 +64,7 @@ extension VoiceCallEngine {
     /// A Watch call's engine as the host's audio bridge names it.
     static func watchBridge(_ engine: String) -> VoiceCallEngine? {
         switch engine {
+        case "qwen-live": return .qwenLive
         case WatchAudioBridgeWire.gptLive: return .gptLive
         case WatchAudioBridgeWire.grok: return .grokLive
         case WatchAudioBridgeWire.localLive: return .localLive

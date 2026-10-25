@@ -160,11 +160,12 @@ extension AppState {
             return
         }
         async let gemini = watchCallVoiceCheck(.geminiLive)
+        async let qwen = watchCallVoiceCheck(.qwenLive)
         async let gpt = watchCallVoiceCheck(.gptLive)
         async let grok = watchCallVoiceCheck(.grokLive)
         async let localLive = watchCallVoiceCheck(.localLive)
         let checks: [(WatchCallVoices.Voice, Bool?)] = [
-            (.geminiLive, await gemini), (.gptLive, await gpt), (.grokLive, await grok), (.localLive, await localLive),
+            (.geminiLive, await gemini), (.qwenLive, await qwen), (.gptLive, await gpt), (.grokLive, await grok), (.localLive, await localLive),
         ]
         // Another server or profile by now: these say nothing about it.
         guard scope == hermesCallsKey(profile: activeProfile) else { return }
@@ -208,6 +209,7 @@ extension AppState {
     private func watchCallVoiceCheck(_ voice: WatchCallVoices.Voice) async -> Bool? {
         switch voice {
         case .geminiLive: return (try? await geminiLiveTokenClient.availability())?.isAvailable
+        case .qwenLive: return (try? await qwenLiveTokenClient.availability())?.isAvailable
         // The Watch's GPT-Live is the subscription's, whatever the phone uses.
         case .gptLive: return (try? await gptLiveClient.availability(billing: .subscription))?.isAvailable
         case .grokLive: return (try? await grokLiveClient.availability())?.isAvailable
@@ -282,6 +284,7 @@ extension AppState {
     nonisolated static func watchVoiceCapabilities(_ voice: WatchCallVoices.Voice) -> [String] {
         switch voice {
         case .geminiLive: return ["gemini-live"]
+        case .qwenLive: return ["qwen-live"]
         case .gptLive: return ["gpt-live", "watch-audio"]
         case .grokLive: return ["grok-live", "watch-audio"]
         case .localLive: return ["local-live", "watch-audio", "watch-local-live"]
@@ -788,7 +791,7 @@ extension AppState {
 
     /// What the call trace says of voice: which surfaces are up and running.
     var hermesCallVoiceTraceSummary: String {
-        let liveSheet = showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
+        let liveSheet = showQwenLiveSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
         return "voice sheet: \(showVoiceSheet), live sheet: \(liveSheet), live call: \(isLiveVoiceCallActive), "
             + "classic session: \(voiceConversationController.hasLiveVoiceSession), app on screen: \(isSceneActive)"
     }
@@ -838,6 +841,7 @@ extension AppState {
     /// minimised bar, CallKit's): Classic's paused microphone counts. Nil
     /// while no voice runs.
     var nativeCallVoiceMuted: Bool? {
+        if isQwenLiveActive { return qwenLiveController.isMicrophoneMuted }
         if isGeminiLiveActive { return geminiLiveController.isMicrophoneMuted }
         if isGPTLiveActive { return gptLiveController.isMicrophoneMuted }
         if isGrokLiveActive { return grokLiveController.isMicrophoneMuted }
@@ -853,7 +857,9 @@ extension AppState {
         // session is prepared yet; `openVoiceConversation` reads the mute
         // for a voice that opens after it.
         if muted { voiceSheetShouldAutoListen = false }
-        if isGeminiLiveActive {
+        if isQwenLiveActive {
+            qwenLiveController.setMicrophoneMuted(muted)
+        } else if isGeminiLiveActive {
             geminiLiveController.setMicrophoneMuted(muted)
         } else if isGPTLiveActive {
             gptLiveController.setMicrophoneMuted(muted)

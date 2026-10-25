@@ -703,7 +703,7 @@ private struct ChatStepRowBody: View {
         }
         .chatStepExplainMenu(
             // Like the run's line: only once the turn is done with it.
-            explain: (lookingBack || message.tool?.status == .running || (placement.group.isTrailing && isBusy)) ? nil : explain,
+            explain: (lookingBack || placement.group.members.contains(where: \.running) || (placement.group.isTrailing && isBusy)) ? nil : explain,
             title: summary == nil ? AppLocalization.string("Explain this step") : AppLocalization.string("Explain again")
         )
     }
@@ -826,7 +826,8 @@ private struct ChatStepGroupHeader: View {
         .buttonStyle(.plain)
         .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
         .chatStepExplainMenu(
-            explain: lookingBack ? nil : explain,
+            // Not over a step still marked running: Hermes isn't done with it.
+            explain: (lookingBack || members.contains(where: \.running)) ? nil : explain,
             title: summary == nil ? AppLocalization.string("Explain these steps") : AppLocalization.string("Explain again")
         )
     }
