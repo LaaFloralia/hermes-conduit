@@ -1102,11 +1102,12 @@ background · a failed sync's retry · the backoff itself
 - A reconnect that skips the backoff needs a usable network path: without one no attempt can work, and the path coming back reconnects at once anyway. A drop mid-reply and someone waiting by voice both check it (#1060; #846 follow-up, #1191).
 - The network path changing reconnects at once without reading the path: it runs before the path monitor holds the new one, so a check there would stall recovery for the whole backoff (#1191).
 - Someone waiting by voice skips the backoff but keeps its count, so one request after another against a gateway that is down doesn't reset it (#1060).
+- The path change's ping of an open socket waits while a large frame (a picture) is still being written: its pings can't be answered in time and would close a working socket. A path that really died fails the write (2026-10-25, #1268).
 
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-10-24, at #1191.
+**Checked:** 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Dashboard sign-in redirects
 
@@ -1268,6 +1269,37 @@ message · the group room composer · the Settings caption for the limit
 - The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
 
 **Checked:** 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+
+## Sending files in a chat
+
+How a message's pictures and files go up to Hermes before the prompt, and
+how long a large one may take on a slow link.
+
+**Siblings:** the chat composer (picker, drop, camera, paste) · the share
+extension · Ask Hermes About Screen · a recorded voice message · Bot Chat and
+project chats (the same send) · the group room composer (its own upload) ·
+the socket's keepalive, the network path change's probe and the foreground
+connection check · Settings captions, briefings, the notifier's tool text and
+README (none describes upload size or timing) · the notifier (the upload is
+Hermes' own RPC)
+
+**Code**
+- The send: `Conduit/Services/AppState.swift` (sendMessage: image.attach_bytes, file.attach when Hermes refuses the image, file.attach for every other file)
+- Resizing a picture: `Conduit/Services/PictureUpload.swift`, `Conduit/Services/AppState.swift` (AttachmentHelper.pictureForHermes)
+- Budgets and the socket: `Conduit/Services/HermesClient.swift` (uploadTimeout, attachImage, attachFile, requestsBeingWritten, keepaliveQuietTimeLeft, probe, healthCheck)
+- Group rooms: `Conduit/Services/GroupRoomFiles.swift` (timeoutMilliseconds)
+- Tests: `ConduitTests/HermesClientTests.swift`, `ConduitTests/ComposerAttachmentPolicyTests.swift`
+
+**Rulings**
+- A picture sent as an image whose long edge is over 2048 px goes as a 2048 px JPEG (quality 0.85), upright, with a .jpg name, or a 2048 px PNG when some of its pixels are see-through (an alpha channel alone still goes as a JPEG); one that size or smaller, an animated one, or one the JPEG wouldn't make smaller goes as it is. The chat shows the picture as picked. Files sent as files are never changed (Eric, 2026-10-25, #1268, for #1265: a full-size photo on a slow link outlasted Hermes' own socket ping and dropped the connection).
+- An upload's budget is two minutes, or about 1 s for every 64 KB it carries (about 0.5 Mbit/s) if that is longer, for a picture and a file alike; a group room's upload allows the same rate, with its own three-minute floor (2026-10-25, #1265 report: 3 to 4 MB photos failed now and then under the 30 s every request had).
+- While a frame of 256 KB or more is still being written (a cancelled request's too), the keepalive, the network path change's probe and the foreground check don't ping: a ping queued behind it can't be answered in time and would drop a working socket. The request's own budget answers for the socket, and once it ends the pings come back; a cancelled request's frame counts until the socket finishes or fails the write, two minutes at most (2026-10-25, #1265 report).
+
+**Open gaps**
+- Files go up one after another as base64 over the chat socket; nothing shows how far an upload has got.
+- The foreground check skipped behind an upload counts as passed, so a chat resumed then finds a dead socket only when that upload's budget ends or its write fails.
+
+**Checked:** 2026-10-25, at #1268.
 
 ## Phone change errors
 

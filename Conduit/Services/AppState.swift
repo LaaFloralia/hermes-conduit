@@ -25194,11 +25194,13 @@ final class AppState: ObservableObject {
                 if let upload = chatResumeLifecycleOperations.uploadAttachment {
                     fileReference = try await upload(client, sessionId, attachment)
                 } else if attachment.kind == .image {
-                    let base64 = await AttachmentHelper.toBase64(attachment)
+                    // A large photo goes resized (#1265).
+                    let picture = await AttachmentHelper.pictureForHermes(attachment)
+                    let base64 = picture?.base64 ?? ""
                     guard isCurrentComposerSubmission(submissionContext) else { throw CancellationError() }
-                    guard !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
+                    guard let picture, !base64.isEmpty else { throw AttachmentError.unreadableFile(attachment.name) }
                     do {
-                        let stagedPath = try await attachImage(client, sessionId, base64, attachment.name)
+                        let stagedPath = try await attachImage(client, sessionId, base64, picture.filename)
                         if queued, let stagedPath { stagedImagePaths.append(stagedPath) }
                         fileReference = nil
                     } catch let error as RpcError where Self.isImageAttachRefusal(error) {
@@ -25210,8 +25212,8 @@ final class AppState: ObservableObject {
                         fileReference = try await attachFile(
                             client,
                             sessionId,
-                            AttachmentHelper.dataUrl(base64: base64, for: attachment),
-                            attachment.name
+                            AttachmentHelper.dataUrl(base64: base64, mimeType: picture.mimeType),
+                            picture.filename
                         )
                     }
                 } else {
@@ -36346,8 +36348,27 @@ enum AttachmentHelper {
     }
 
     static func dataUrl(base64: String, for attachment: Attachment) -> String {
-        let mimeType = attachment.mimeType.flatMap { $0.isEmpty ? nil : $0 } ?? "application/octet-stream"
+        dataUrl(base64: base64, mimeType: attachment.mimeType)
+    }
+
+    static func dataUrl(base64: String, mimeType: String?) -> String {
+        let mimeType = mimeType.flatMap { $0.isEmpty ? nil : $0 } ?? "application/octet-stream"
         return "data:\(mimeType);base64,\(base64)"
+    }
+
+    /// A picture as a message sends it to Hermes: resized when it is larger
+    /// than a model takes (`PictureUpload`), else as it is. Nil when the
+    /// file can't be read. Off the main actor: decoding a photo is slow.
+    typealias PictureForHermes = (base64: String, filename: String, mimeType: String?)
+
+    static func pictureForHermes(_ attachment: Attachment) async -> PictureForHermes? {
+        await Task.detached(priority: .userInitiated) { () -> PictureForHermes? in
+            guard let data = AttachmentHelper.data(for: attachment) else { return nil }
+            if let resized = PictureUpload.resized(data, filename: attachment.name) {
+                return (resized.data.base64EncodedString(), resized.filename, resized.mimeType)
+            }
+            return (data.base64EncodedString(), attachment.name, attachment.mimeType)
+        }.value
     }
 
     private static func data(for attachment: Attachment) -> Data? {
