@@ -142,9 +142,26 @@ enum ChatStepSummaries {
 
     private static func trimmed(_ text: String?, to limit: Int) -> String? {
         guard let text else { return nil }
-        let flat = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard !flat.isEmpty else { return nil }
-        return flat.count > limit ? String(flat.prefix(limit)) + "…" : flat
+        // Whitespace runs become one space, walking only as far as the
+        // excerpt needs: a tool's result can run to megabytes.
+        var flat = ""
+        var count = 0
+        var space = false
+        for character in text {
+            if character.isWhitespace {
+                space = count > 0
+                continue
+            }
+            if count + (space ? 1 : 0) >= limit { return flat + "…" }
+            if space {
+                flat.append(" ")
+                count += 1
+                space = false
+            }
+            flat.append(character)
+            count += 1
+        }
+        return flat.isEmpty ? nil : flat
     }
 
     /// An explanation runs longer than the folded summary: half again,
