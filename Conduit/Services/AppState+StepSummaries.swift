@@ -18,8 +18,9 @@ extension AppState {
         reapStepSummaryQuestions()
         guard ChatStepSummaries.isEnabled(), !sessionId.isEmpty, !isBusy, let client,
               let run = ChatStepSummaries.lastRun(in: messages),
-              // Counted like the folded line's "N steps".
-              run.count <= ChatStepSummaries.maxSteps(),
+              // Counted like the folded line's "N steps": the steps it shows.
+              run.filter({ $0.role == .tool ? displayPreferences.showToolProgress : displayPreferences.showReasoning }).count
+                  <= ChatStepSummaries.maxSteps(),
               let toolID = ChatStepSummaries.key(toolIDs: run.map { $0.tool?.id }) else { return }
         let target = ChatStepSummaries.Run(scope: toolCatalogKey, toolID: toolID)
         guard stepSummaries[target.scope]?[toolID] == nil, stepSummaryRequested[target] == nil else { return }
@@ -51,7 +52,16 @@ extension AppState {
     }
 
     private func askStepSummary(_ question: String, for target: ChatStepSummaries.Run, sessionId: String, client: HermesClient) {
-        stepSummaryRequested[target] = Date()
+        let asked = Date()
+        stepSummaryRequested[target] = asked
+        // Unanswered by then, the run stops "looking back" and its menu
+        // can ask again, without waiting for another turn to settle.
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(ChatStepSummaries.answerWait))
+            guard let self, stepSummaryRequested[target] == asked else { return }
+            stepSummaryRequested[target] = nil
+            stepSummaryTasks = stepSummaryTasks.filter { $0.value != target }
+        }
         stepSummaryUnclaimed += 1
         Task { [weak self] in
             // A gateway without prompt.btw just leaves "7 steps".

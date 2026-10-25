@@ -1,16 +1,17 @@
 import Foundation
 
 /// A short train of thought for a finished turn's run of steps, under its
-/// icons on the collapsed line: what Hermes was after and what each step
-/// turned up, about one line per tool call. Opt-in (Settings > Chat). Once a turn ends with a
-/// long enough run, Conduit asks Hermes a hidden `/btw`: Hermes answers it
-/// from a copy of the live conversation that reuses the prompt cache and
-/// can't call tools or change the chat (`agent/side_question.py`), so the
-/// question costs the cached prefix and some 150 tokens. The summary is
-/// kept on this device, by dashboard and profile and the run's first tool
-/// call; turning the switch off hides the kept ones. Only a run whose tool
-/// calls have ids of their own is described: an id a provider numbers per
-/// turn (`functions.web_search:0`) comes back in other turns and chats.
+/// icons on the collapsed line: what Hermes set out to do and why each step
+/// came next, about half a line per tool call. Automatic when switched on
+/// (Settings > Chat), or asked from a run's menu (Explain these steps).
+/// Conduit asks Hermes a hidden `/btw`: Hermes answers it from a copy of
+/// the live conversation that reuses the prompt cache and can't call tools
+/// or change the chat (`agent/side_question.py`), so the question costs the
+/// cached prefix and some 150 tokens. The summary is kept on this device,
+/// by dashboard and profile and the run's first tool call, and always
+/// shows. Only a run whose tool calls have ids of their own is described:
+/// an id a provider numbers per turn (`functions.web_search:0`) comes back
+/// in other turns and chats.
 enum ChatStepSummaries {
     /// Device-only, off by default: each summary is one more model call.
     static let preferenceKey = "conduit.describeStepRuns"
@@ -137,7 +138,7 @@ enum ChatStepSummaries {
         return lines.joined(separator: "\n")
     }
 
-    static let maxExplainedSteps = 16
+    static let maxExplainedSteps = 30
 
     private static func trimmed(_ text: String?, to limit: Int) -> String? {
         guard let text else { return nil }

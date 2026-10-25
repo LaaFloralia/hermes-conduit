@@ -2291,7 +2291,7 @@ final class AppState: ObservableObject {
     @Published var toolsets: [CapabilityToolset] = []
     /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
     @Published private(set) var toolCatalog = ToolCatalog()
-    /// One sentence per finished run of steps: by dashboard and profile
+    /// A short summary per finished run of steps: by dashboard and profile
     /// (`toolCatalogKey`), then by the run's first tool call
     /// (AppState+StepSummaries.swift).
     @Published var stepSummaries: [String: [String: String]] = ChatStepSummaries.saved()

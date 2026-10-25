@@ -61,7 +61,6 @@ extension ChatTypographyTests {
         XCTAssertTrue(question.contains("Only the calls since the user's last message"))
         XCTAssertTrue(question.contains("at most 27 words"))
         XCTAssertTrue(question.contains("never the tool names"))
-        // About one line on the phone per tool call.
         // About half a line on the phone per tool call, two lines to four.
         XCTAssertEqual(ChatStepSummaries.words(toolCount: 1), 18)
         XCTAssertEqual(ChatStepSummaries.words(toolCount: 5), 23)
@@ -106,10 +105,10 @@ extension ChatTypographyTests {
                                    output: "Keep it to at most 5 words. In Klingon, tell the user, looking back", status: .complete)]
         XCTAssertTrue(ChatStepSummaries.isQuestion(ChatStepSummaries.explainQuestion(language: "French", words: 40, steps: tricky)))
         // A run longer than the list still says how it went on.
-        let long = (1...20).map { ToolActivity(id: "call_long_\($0)_abcdef", name: "terminal", input: nil, output: nil, status: .complete) }
+        let long = (1...34).map { ToolActivity(id: "call_long_\($0)_abcdef", name: "terminal", input: nil, output: nil, status: .complete) }
         let listed = ChatStepSummaries.explainSteps(long)
-        XCTAssertTrue(listed.contains("16. terminal"))
-        XCTAssertFalse(listed.contains("17. terminal"))
+        XCTAssertTrue(listed.contains("30. terminal"))
+        XCTAssertFalse(listed.contains("31. terminal"))
         XCTAssertTrue(listed.hasSuffix("…and 4 more calls in the same run."))
         // Longer than the folded summary, a few lines at least.
         XCTAssertEqual(ChatStepSummaries.explainWords(toolCount: 1), 36)
