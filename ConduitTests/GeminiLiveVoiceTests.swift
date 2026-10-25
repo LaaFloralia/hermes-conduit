@@ -554,6 +554,38 @@ extension VoiceConversationControllerTests {
         session.stop()
     }
 
+    /// A socket that stops taking frames while text keeps coming is given
+    /// up on: what it held fails, so each result is handed back, and the
+    /// session reconnects instead of queueing forever.
+    func testGeminiLiveSocketThatStopsTakingTextReconnects() async throws {
+        let tokens = FakeGeminiLiveTokens()
+        let (session, sockets) = makeGeminiSession(tokens: tokens)
+        session.start()
+        await settle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["setupComplete": [String: Any]()])
+        await settle(until: { session.state == .ready })
+
+        first.holdsNextSend = true
+        var failed = 0
+        session.send(.textTurn("on the socket"), onSent: nil, onFailure: { failed += 1 })
+        await settle(until: { first.isHoldingSend })
+        // The bound counts the frame on the socket too.
+        for index in 0..<(LiveVoiceSocketWriter.defaultMaxQueuedOther - 1) {
+            session.send(.textTurn("waiting \(index)"), onSent: nil, onFailure: { failed += 1 })
+        }
+        XCTAssertEqual(failed, 0, "within the bound, text waits")
+        XCTAssertEqual(session.state, .ready)
+
+        session.send(.textTurn("one too many"), onSent: nil, onFailure: { failed += 1 })
+        XCTAssertEqual(failed, LiveVoiceSocketWriter.defaultMaxQueuedOther, "every waiting frame and the new one failed")
+        XCTAssertNotEqual(session.state, .ready, "the stalled connection is given up")
+        await settle(until: { sockets().count == 2 })
+        XCTAssertEqual(sockets().count, 2, "the session reconnects")
+        first.releaseSend()
+        session.stop()
+    }
+
     func testGeminiLiveConnectionLostDuringAHandoffIsTakenOverByTheHandoffConnection() async throws {
         let tokens = FakeGeminiLiveTokens()
         let (session, sockets) = makeGeminiSession(tokens: tokens)
@@ -3421,6 +3453,37 @@ extension HermesVoiceGatewayTimeoutTests {
         socket.release()
         await settle(until: { outcomes.count == 2 })
         XCTAssertEqual(socket.sent, ["a1", "a2"])
+    }
+
+    func testLiveVoiceSocketWriterGivesUpOnASocketThatStoppedTakingText() async {
+        let socket = StallingLiveSocket()
+        let writer = LiveVoiceSocketWriter(socket: socket, maxQueuedAudio: 2, maxQueuedOther: 2)
+        var errors: [String: Error] = [:]
+        var order: [String] = []
+        func note(_ name: String) -> @MainActor (Error?) -> Void {
+            { error in
+                order.append(name)
+                if let error { errors[name] = error }
+            }
+        }
+
+        XCTAssertTrue(writer.enqueue(["t1"], isAudio: false, done: note("t1")))
+        await settle(until: { socket.isStalled })
+        XCTAssertTrue(writer.enqueue(["a1"], isAudio: true, done: note("a1")))
+        XCTAssertTrue(writer.enqueue(["t2"], isAudio: false, done: note("t2")))
+        XCTAssertTrue(order.isEmpty, "text within the bound queues")
+
+        XCTAssertTrue(writer.enqueue(["t3"], isAudio: false, done: note("t3")), "text is never dropped on its own")
+        XCTAssertEqual(order, ["a1", "t2", "t3"], "everything held fails, oldest first, the new frame last")
+        for name in ["a1", "t2", "t3"] {
+            XCTAssertTrue(errors[name] is LiveVoiceSocketWriter.Backlogged, name)
+        }
+        writer.enqueue(["late"], isAudio: false, done: note("late"))
+        XCTAssertTrue(errors["late"] is CancellationError, "the writer is closed")
+
+        socket.release()
+        await settle(until: { order.contains("t1") })
+        XCTAssertEqual(socket.sent, ["t1"], "only the frame already on the socket went out")
     }
 
     func testClosedLiveVoiceSocketWriterFailsWhatItStillHeld() async {
