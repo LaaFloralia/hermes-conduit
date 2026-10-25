@@ -25,6 +25,7 @@ struct NotifierPluginStatus: Equatable {
         "memory",
         "web-search",
         "gemini-live",
+        "qwen-live",
         "gpt-live",
         "grok-live",
         "e2e-notifications",
