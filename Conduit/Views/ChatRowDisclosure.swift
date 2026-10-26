@@ -78,7 +78,7 @@ final class ChatRowDisclosure {
         if shown {
             if states[flag] != true {
                 let opened = [Self.groupKey(group.id)] + group.members.filter(\.isThinking).map(\.messageID)
-                beforeThinking[group.id] = Dictionary(uniqueKeysWithValues: opened.map { ($0, states[$0]) })
+                beforeThinking[group.id] = Dictionary(opened.map { ($0, states[$0]) }, uniquingKeysWith: { first, _ in first })
                 for key in opened { states[key] = true }
             }
             states[flag] = true
