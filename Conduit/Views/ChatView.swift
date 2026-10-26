@@ -1204,7 +1204,8 @@ struct MessageBubble: View, Equatable {
                     AssistantBubble(
                         message: message,
                         readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver
+                        gatewayResolver: gatewayResolver,
+                        stepsAbove: stepsAbove
                     )
                 }
             } else {
