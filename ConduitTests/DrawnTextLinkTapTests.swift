@@ -10,7 +10,7 @@ final class DrawnTextLinkTapTests: XCTestCase {
     @MainActor
     func testTheTouchThatMountsTheTextViewFindsTheLink() throws {
         let text = NSMutableAttributedString(string: "Sources: quebec.ca — Fever in children")
-        text.addAttribute(.link, value: URL(string: "https://www.quebec.ca/en/health/fever")!,
+        text.addAttribute(.link, value: try XCTUnwrap(URL(string: "https://www.quebec.ca/en/health/fever")),
                           range: (text.string as NSString).range(of: "quebec.ca — Fever in children"))
         let view = SelectableTextView(
             attributedText: text,
@@ -32,7 +32,9 @@ final class DrawnTextLinkTapTests: XCTestCase {
 
         XCTAssertFalse(textView.layer.needsLayout(), "the touch is routed to a laid-out text view")
         XCTAssertEqual(textView.frame, host.bounds)
-        let linkStart = (textView.text as NSString).range(of: "quebec.ca").location
+        let linkRange = (textView.text as NSString).range(of: "quebec.ca")
+        XCTAssertNotEqual(linkRange.location, NSNotFound)
+        let linkStart = linkRange.location
         let start = try XCTUnwrap(textView.position(from: textView.beginningOfDocument, offset: linkStart + 2))
         let caret = textView.caretRect(for: start)
         let tapped = try XCTUnwrap(textView.closestPosition(to: CGPoint(x: caret.midX, y: caret.midY)))

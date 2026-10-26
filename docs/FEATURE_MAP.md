@@ -1011,7 +1011,9 @@ A tap on a link in a reply opens it, the first time, wherever the reply is
 drawn until a touch mounts its text view.
 
 **Siblings:** chats, project chats and Bot Chat (one chat view) · group rooms ·
-VoiceOver and Switch Control (text view always mounted) · long-press Open Link
+VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
+Keyboard Access (the text view mounts when they ask for the reply's elements, a
+layout pass ahead of their first activation) · long-press Open Link
 
 **Code**
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest, mountTextViewForTouch)
@@ -1023,7 +1025,7 @@ VoiceOver and Switch Control (text view always mounted) · long-press Open Link
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-26, at #1303.
+**Checked:** 2026-10-26, at #1303, carried with Voice Control and Full Keyboard Access in Siblings.
 
 ## Markdown lists in messages
 
