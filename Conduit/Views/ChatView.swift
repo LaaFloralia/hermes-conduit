@@ -413,7 +413,7 @@ struct ChatView: View {
         // The rows show AppState through this, not by observing it.
         .chatRows()
         .sheet(isPresented: $showsPinnedReplies) {
-            PinnedRepliesSheet()
+            PinnedRepliesSheet(fromOpenChat: true)
                 .environmentObject(appState)
         }
         .pinnedReplyLabelEditor($labelingPin) { pin, label in

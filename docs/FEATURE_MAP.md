@@ -11,8 +11,10 @@ In the PR, say for each sibling whether it's done, not needed (and why), or
 left as a gap, and update the entry in the same PR. Nobody tends the map
 separately: a feature with siblings and no entry gets one in the PR that
 changes it, and a fix that brings a sibling in line with a change it missed
-adds that sibling to the entry. [CONTRIBUTING.md](../CONTRIBUTING.md) has the
-rules.
+adds that sibling to the entry. A refactor that changes no behavior and no
+user-facing or model-facing text has no siblings and needs no new entry; if it
+moves code an entry's Code lists, it updates those paths and the Checked line.
+[CONTRIBUTING.md](../CONTRIBUTING.md) has the rules.
 
 An entry holds the current state only; history stays in the PRs it cites.
 Keep each to about a screen, and split one that grows past that. Every entry
@@ -609,12 +611,13 @@ selection menus, and the same actions in the other chat surfaces.
 
 **Siblings:** chats, project chats and Bot Chat (one row view) · group rooms ·
 the selection menu · the long-press menu · VoiceOver labels · pinned replies
+(the bar, and the sheet from the chat and from the Chats list)
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
 - Selection and long-press menus: `Conduit/Views/Components/SelectableTextView.swift`
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupMessageCopyButton, GroupMessageQuoteButton, GroupReadAloudButton)
-- Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies)
+- Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Models/PinnedReplies.swift` (overview), `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies), the sheet's Chats-list entry points in `Conduit/Views/SidebarView.swift` and `Conduit/Views/V2/V2ChatsView.swift` (showPinnedReplies)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
 
 **Rulings**
@@ -624,11 +627,12 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - Read Aloud has no estimated follow-along highlight; only exact word timings from Hermes would bring it back (2026-10-19, #923).
 - A quoted reply travels in the message text, since Hermes has no field for hidden context (2026-10-04, #387).
 - Deleting a bot drops its Bot Chat pins under every profile, not only the one in use (#982 follow-up, #1191).
+- The Pinned replies sheet opened from a chat starts on This chat, with All chats a tap away and that chat's section first; the filter shows while this chat and another both have pins, and once shown stays until the sheet closes, so unpinning this chat's last pin leaves This chat empty. Opened from the Chats list it lists every chat by latest pin (2026-10-25, issue 1267, #1269).
 
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
 
-**Checked:** 2026-10-25, the ⋯'s Show thinking at #1243; pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-25, the ⋯'s Show thinking at #1243; the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -789,13 +793,14 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - The profile in use is always read, even when All leaves it out.
 - A Bot Chat has no row in the workspace's chat list, so its ⋯ menu finds its ids from the chat itself (with the durable id Hermes confirmed under the bot's profile, so a relaunch or a reopened runtime still finds it) and the roster's registry id and lineage tip (2026-10-24, #1218, Eric's report: the item was greyed out).
 - A picture image generation made is listed: the host reads `image_generate`'s result, a saved file as a written image and a hosted one as an image link (2026-10-24, #1218 with notifier #353, plugin 0.71.1, Eric's report: a bot's generated pictures were missing).
+- A Bot Chat is listed though Hermes keeps it hidden: the host reads a chat asked for by id whether hidden or not, and a profile's whole list takes its hidden "Bot Chat" session and the sessions continuing it, while other hidden chats (a group room member's turns) stay out (2026-10-25, #1272 with notifier #376, plugin 0.78.1, Eric's report: a bot's pictures were still missing from both lists).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-10-24, #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-10-25, #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Bots: create and edit
 
@@ -1100,11 +1105,12 @@ background · a failed sync's retry · the backoff itself
 - A reconnect that skips the backoff needs a usable network path: without one no attempt can work, and the path coming back reconnects at once anyway. A drop mid-reply and someone waiting by voice both check it (#1060; #846 follow-up, #1191).
 - The network path changing reconnects at once without reading the path: it runs before the path monitor holds the new one, so a check there would stall recovery for the whole backoff (#1191).
 - Someone waiting by voice skips the backoff but keeps its count, so one request after another against a gateway that is down doesn't reset it (#1060).
+- The path change's ping of an open socket waits while a large frame (a picture) is still being written: its pings can't be answered in time and would close a working socket. A path that really died fails the write (2026-10-25, #1268).
 
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-10-24, at #1191.
+**Checked:** 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Dashboard sign-in redirects
 
@@ -1266,6 +1272,37 @@ message · the group room composer · the Settings caption for the limit
 - The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
 
 **Checked:** 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+
+## Sending files in a chat
+
+How a message's pictures and files go up to Hermes before the prompt, and
+how long a large one may take on a slow link.
+
+**Siblings:** the chat composer (picker, drop, camera, paste) · the share
+extension · Ask Hermes About Screen · a recorded voice message · Bot Chat and
+project chats (the same send) · the group room composer (its own upload) ·
+the socket's keepalive, the network path change's probe and the foreground
+connection check · Settings captions, briefings, the notifier's tool text and
+README (none describes upload size or timing) · the notifier (the upload is
+Hermes' own RPC)
+
+**Code**
+- The send: `Conduit/Services/AppState.swift` (sendMessage: image.attach_bytes, file.attach when Hermes refuses the image, file.attach for every other file)
+- Resizing a picture: `Conduit/Services/PictureUpload.swift`, `Conduit/Services/AppState.swift` (AttachmentHelper.pictureForHermes)
+- Budgets and the socket: `Conduit/Services/HermesClient.swift` (uploadTimeout, attachImage, attachFile, requestsBeingWritten, keepaliveQuietTimeLeft, probe, healthCheck)
+- Group rooms: `Conduit/Services/GroupRoomFiles.swift` (timeoutMilliseconds)
+- Tests: `ConduitTests/HermesClientTests.swift`, `ConduitTests/ComposerAttachmentPolicyTests.swift`
+
+**Rulings**
+- A picture sent as an image whose long edge is over 2048 px goes as a 2048 px JPEG (quality 0.85), upright, with a .jpg name, or a 2048 px PNG when some of its pixels are see-through (an alpha channel alone still goes as a JPEG); one that size or smaller, an animated one, or one the JPEG wouldn't make smaller goes as it is. The chat shows the picture as picked. Files sent as files are never changed (Eric, 2026-10-25, #1268, for #1265: a full-size photo on a slow link outlasted Hermes' own socket ping and dropped the connection).
+- An upload's budget is two minutes, or about 1 s for every 64 KB it carries (about 0.5 Mbit/s) if that is longer, for a picture and a file alike; a group room's upload allows the same rate, with its own three-minute floor (2026-10-25, #1265 report: 3 to 4 MB photos failed now and then under the 30 s every request had).
+- While a frame of 256 KB or more is still being written (a cancelled request's too), the keepalive, the network path change's probe and the foreground check don't ping: a ping queued behind it can't be answered in time and would drop a working socket. The request's own budget answers for the socket, and once it ends the pings come back; a cancelled request's frame counts until the socket finishes or fails the write, two minutes at most (2026-10-25, #1265 report).
+
+**Open gaps**
+- Files go up one after another as base64 over the chat socket; nothing shows how far an upload has got.
+- The foreground check skipped behind an upload counts as passed, so a chat resumed then finds a dead socket only when that upload's budget ends or its write fails.
+
+**Checked:** 2026-10-25, at #1268.
 
 ## Phone change errors
 
@@ -1870,6 +1907,36 @@ model-facing text (none describe the glow)
 
 **Checked:** 2026-10-25, #1263.
 
+## Settings rows a toggle reveals
+
+Rows, captions and fields that appear under a Settings switch when it turns
+on, and go when it turns off. They slide in and out on the app's motion
+curve rather than popping in one frame.
+
+**Siblings:** Calls from Hermes · Location (talking and background layers) ·
+Health (detailed readings per category, and sharing turned on from its
+consent sheet) · Phone (Reminders read only, attendee email addresses, and
+sharing turned on from its consent sheet) · Voice: Enable voice on this device (the setup
+checklist and tests), Hands-free on your speech server (its speech server
+section), the wake phrase · Live call style's greeting · Sync across devices ·
+Cloudflare Access's service token · a connector's Turned on (Capabilities) ·
+text that describes it (none: no caption or doc mentions the motion) ·
+not needed: the live voice modes' Use switches, which Voice never shows (its
+mode picker shows a mode's section only once that mode is picked)
+
+**Code**
+- Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
+- A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/VoiceSettingsView.swift` (setVoice, localHandsFreeSection, WakePhraseSettingsSection.save), `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
+- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage), `Conduit/Views/HealthSettingsViews.swift` and `Conduit/Views/PhoneSettingsViews.swift` (sharing turned on from the consent sheet)
+
+**Rulings**
+- Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (proposed in #1246, 2026-10-25).
+
+**Open gaps**
+- A row revealed by something other than a switch (a picker or a host answer) isn't covered here.
+
+**Checked:** 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
@@ -1894,12 +1961,13 @@ point at the map and its check
 - The notifier's reviewers can't read this map, so a notifier PR names its entry, or the hermes-conduit PR that adds or updates it (2026-10-24, #1178).
 - An entry a PR adds or edits names that PR on its Checked line, and CI fails one that doesn't; a commit is only for an entry seeded from main. A carry PR names both, like "#1188, carried in #1200". The PR template asks for a Siblings line for every sibling the entry lists, Settings and model-facing text included (2026-10-24, #1209, Eric).
 - On a PR into `pulse` that merges main, an entry main changed between where `pulse` last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into `pulse` doesn't name the merge on every entry main changed. A `pulse` PR that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries).
+- A refactor that changes no behavior and no user-facing or model-facing text (moving code, or changing how state is stored or observed) has no siblings: its PR says "No mapped feature" and adds no new entry, and reviewers don't ask for one. If it moves code an entry's Code lists, it updates those paths and the Checked line (2026-10-25, #1271, Eric; reviewer prompts and notifier copies in #1273 and notifier #377).
 
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
-- A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
+- A PR that changes a mapped feature's behavior without touching its entry isn't caught by CI; a reviewer flags it (minor). A refactor that changes no behavior is exempt unless it moves a listed path.
 - On a merge of main into `pulse`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping `pulse`'s edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
 - If GitHub can't say whether a PR into `pulse` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-10-25, #1248.
+**Checked:** 2026-10-25, #1273.
