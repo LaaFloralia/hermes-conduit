@@ -180,6 +180,29 @@ extension ChatTypographyTests {
         XCTAssertNil(state.predictiveFollowUpTurn)
     }
 
+    /// A turn ending while the hidden prompt is still on its way is the one
+    /// ahead: it isn't tagged, and the follow-up isn't counted as queued
+    /// behind another.
+    @MainActor
+    func testATurnEndingWhileTheFollowUpIsSentIsTheTurnAhead() {
+        let defaults = makeScratchDefaults("PredictiveSendingTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpSending = true
+
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Another client's reply.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "the turn ahead isn't Hermes following up")
+        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
+        XCTAssertTrue(state.predictiveFollowUpAheadEnded)
+    }
+
     @MainActor
     func testLeavingTheChatForTheSidebarDropsAFollowUpsTag() {
         let defaults = makeScratchDefaults("PredictiveSidebarTests")

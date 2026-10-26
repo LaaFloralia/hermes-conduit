@@ -2339,6 +2339,12 @@ final class AppState: ObservableObject {
     /// The hidden turn was queued behind a turn already running (another
     /// client's): the next turn to end is that one, not the follow-up.
     var predictiveFollowUpQueued = false
+    /// The hidden prompt is on its way and Hermes hasn't said how it took
+    /// it: a turn ending meanwhile is the one ahead, not the follow-up.
+    var predictiveFollowUpSending = false
+    /// A turn ended while the hidden prompt was on its way: when it comes
+    /// back queued, it was queued behind that one.
+    var predictiveFollowUpAheadEnded = false
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
@@ -10127,6 +10133,8 @@ final class AppState: ObservableObject {
         predictiveFollowUp = PredictiveFollowUpState()
         predictiveFollowUpTurn = nil
         predictiveFollowUpQueued = false
+        predictiveFollowUpSending = false
+        predictiveFollowUpAheadEnded = false
         predictiveReplyEnded = nil
         predictiveComposerRequest = nil
         predictive.forgetAll()

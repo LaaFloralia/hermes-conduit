@@ -2002,7 +2002,7 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 
 **Code**
 - Model and store: `Conduit/Services/Predictive.swift` (Predictive, PredictiveStore, PredictiveComposerRequest, PredictiveFollowUpState)
-- Asking and the follow-up clock: `Conduit/Services/AppState+Predictive.swift`, fed by `Conduit/Services/AppState+ChatOnScreen.swift` (updateChatOnScreen) and the settled, failed or interrupted turn in `Conduit/Services/AppState.swift`; cleared when the open dashboard signs out or is removed by forgetPredictiveState in `Conduit/Services/AppState.swift` (wipeOfflineChatCache; predictiveGeneration drops answers asked before it)
+- Asking and the follow-up clock: `Conduit/Services/AppState+Predictive.swift`, fed by `Conduit/Services/AppState+ChatOnScreen.swift` (updateChatOnScreen) and the settled, failed or interrupted turn in `Conduit/Services/AppState.swift`; cleared when the open dashboard signs out, is removed or connects to a different server by forgetPredictiveState in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, prepareChatResumeForConnection; predictiveGeneration drops answers asked before it)
 - The hidden turn: `Conduit/Services/HermesClient.swift` (sendPrompt, `hidden`; a gateway refusing `display_kind` is remembered and gets no more follow-ups)
 - Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
@@ -2020,12 +2020,12 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 - A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #1242).
 - Hide for this chat also stops a follow-up check already asked, and leaving the chat (another chat, the sidebar, a room, Conduit in the background) drops a follow-up's hold and its tag. A tapped guess goes only into the chat it was offered in (2026-10-25, #1242).
 - A turn that ends in a system notice, fails or is interrupted tags nothing and doesn't restart the reply's idle time; a follow-up that never reached Hermes doesn't spend the user's message. A switch turned off takes its chips with it (2026-10-26, Eric, #1242).
-- Signing out of or removing the open dashboard forgets every guess, the draft they read, hidden follow-ups and checks still waiting, and drops answers still on their way; Delete Saved Chats leaves them, as it leaves the chat in use. A follow-up Hermes queued keeps its tag and hold, since it runs as its own turn, and the turn it waited behind (another client's) gets neither; only one steered or redirected into a running turn loses them (2026-10-26, #1281).
+- Signing out of or removing the open dashboard, or its connection reaching a different server, forgets every guess, the draft they read, hidden follow-ups and checks still waiting, and drops answers still on their way; Delete Saved Chats leaves them, as it leaves the chat in use. A follow-up Hermes queued keeps its tag and hold, since it runs as its own turn, and the turn it waited behind (another client's) gets neither, even when that turn ends before Hermes says the prompt was queued; only one steered or redirected into a running turn loses them (2026-10-26, #1281).
 
 **Open gaps**
 - Group rooms get no row: with several people and bots, "your next message" is unclear.
 - The Apple Watch has no suggested replies yet, where typing is hardest.
-- Voice modes and CarPlay get none, by design: calls take turns their own way, and chips while driving distract.
+- Voice modes and CarPlay get none, by design: calls take turns their own way, and chips while driving distract. With Voice open, no draft is asked about and no follow-up is sent.
 - "Hermes followed up" is kept in memory for this run: after a relaunch or a new copy of the chat from the host, the reply shows without it.
 - Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
 - The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
