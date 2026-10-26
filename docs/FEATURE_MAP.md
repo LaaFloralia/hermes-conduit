@@ -993,12 +993,12 @@ VoiceOver and Switch Control (text view always mounted) · long-press Open Link
 - Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched)
 
 **Rulings**
-- The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, f24544a).
+- The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-26, at f24544a.
+**Checked:** 2026-10-26, at #1303.
 
 ## Markdown lists in messages
 
