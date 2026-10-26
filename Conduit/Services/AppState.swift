@@ -2360,6 +2360,9 @@ final class AppState: ObservableObject {
     /// Row ids of messages other clients sent while the follow-up waits;
     /// a reply ending before one is read can't be told apart.
     var predictiveFollowUpUnreadMessages: Set<Int> = []
+    /// Bumped by each follow-up sent and each stop: a send that returns
+    /// after either leaves the follow-up waiting now as it is.
+    var predictiveFollowUpSend = 0
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?

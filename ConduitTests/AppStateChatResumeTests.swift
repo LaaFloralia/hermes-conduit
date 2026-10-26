@@ -5667,8 +5667,10 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.predictiveFollowUpSending = true
         harness.appState.predictiveFollowUpAheadEnded = true
         harness.appState.predictiveFollowUpUnreadMessages = [7]
+        let send = harness.appState.predictiveFollowUpSend
 
         XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
+        XCTAssertNotEqual(harness.appState.predictiveFollowUpSend, send, "a send still on its way is not applied")
         XCTAssertFalse(harness.appState.predictiveFollowUpSending)
         XCTAssertFalse(harness.appState.predictiveFollowUpAheadEnded)
         XCTAssertTrue(harness.appState.predictiveFollowUpUnreadMessages.isEmpty)

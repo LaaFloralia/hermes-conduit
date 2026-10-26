@@ -138,6 +138,7 @@ extension AppState {
         predictiveFollowUpTurnsAhead = 0
         predictiveFollowUpQueuedAt = nil
         predictiveFollowUpUnreadMessages = []
+        predictiveFollowUpSend &+= 1
     }
 
     /// Another client sent a message in the chat Hermes is following up
@@ -397,6 +398,8 @@ extension AppState {
         predictiveFollowUpTurnsAhead = 0
         predictiveFollowUpQueuedAt = nil
         predictiveFollowUpUnreadMessages = []
+        predictiveFollowUpSend &+= 1
+        let send = predictiveFollowUpSend
         let sentAt = Date()
         predictiveFollowUpSending = true
         predictiveFollowUpAheadEnded = false
@@ -406,20 +409,21 @@ extension AppState {
         predictiveRepliesAsked = nil
         do {
             let outcome = try await client.sendPrompt(sessionID, text: nudge, hidden: true)
-            // Forgotten meanwhile (sign-out): nothing of it is kept.
-            guard predictiveGeneration == generation else { return }
+            // Forgotten meanwhile (sign-out), or stopped waiting (a
+            // reconnect) with maybe another follow-up sent since: nothing
+            // of it is kept.
+            guard predictiveGeneration == generation, predictiveFollowUpSend == send else { return }
             predictiveFollowUpSending = false
             // A turn running meanwhile took it in: there's no reply of its
             // own to mark. A queued one runs as its own next turn.
             if outcome == .steered || outcome == .redirected { predictiveFollowUpTurn = nil }
             // Queued behind a turn that already ended on the way: the next
             // turn to end is Hermes'.
-            // Stopped waiting meanwhile (a reconnect): nothing is queued here.
             let queued = outcome == .queued && predictiveFollowUpTurn != nil
             predictiveFollowUpQueued = queued && !predictiveFollowUpAheadEnded
             predictiveFollowUpQueuedAt = queued ? sentAt : nil
         } catch {
-            guard predictiveGeneration == generation else { return }
+            guard predictiveGeneration == generation, predictiveFollowUpSend == send else { return }
             predictiveFollowUpSending = false
             // Nothing reached Hermes (a gateway without hidden prompts stops
             // the checks for good): the user's message keeps its follow-up.
