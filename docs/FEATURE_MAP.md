@@ -1735,7 +1735,45 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-26, at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); 2026-10-24, at #1206; the match row at #1208, carried in #1229.
+**Checked:** 2026-10-26, #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
+
+## Project chats in Chats
+
+Which of a project's chats the Chats list shows: Settings > Appearance >
+Project chats (Off, Recent, All) and Filter ▸ Projects, which leaves the
+projects you untick out.
+
+**Siblings:** the Chats list with no filter · the status, Starred and source
+filters (they look through project chats too) · search and "In messages" ·
+the project's own page · pinned chats · All profiles · the iPad and Mac list
+(same view) · the empty list · Sync across devices · the Settings caption ·
+the chat pickers that read the same catalog (CarPlay's chat list, the Home
+Screen widget's and the Share extension's pickers, the home voice button's
+Recent menu) · the Archived sheet · README.md
+
+**Code**
+- Setting, its default and hidden projects: `Conduit/Models/ChatListSections.swift` (ProjectChatsInChats, deviceDefaultKey, settleDefault, HiddenChatProjects)
+- Old installs keep Off: `Conduit/Services/AppState.swift` (init, after the dashboard registry loads)
+- List and menu: `Conduit/Views/V2/V2ChatsView.swift` (mainListShows, uncachedFilterRows, projectsFilterMenu, projectToggle, hiddenProjectCount, shownHiddenProjectCount, hidesEverything, selectionTitles, searchCapsule)
+- Project of a row: `Conduit/Services/AppState.swift` (knownProjectID: the chats the project tree previews)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (Project chats section)
+- Sync: `Conduit/Services/AppState+SyncedPreferences.swift` (app.project_chats, hiddenChatProjectsSlot as app.hidden_chat_projects)
+
+**Rulings**
+- Recent is the default for a new install; a phone signed in before the change keeps Off, set once at launch from its saved dashboards or connection (a launch that can't read the dashboard registry, on a locked phone, leaves it to a later one), and a choice already made stays (2026-10-26, #1317, Eric). That default is the device's own (`deviceDefaultKey`), never the synced choice, so it can't overwrite a choice made on another device; a synced choice wins over it.
+- Filter ▸ Projects is a multi-select with every project ticked to start, Home's chats standing in for the ones in no project ("Not in a project" without a Home). It narrows every filter, is kept per profile, and All doesn't clear it; the gold chip names it ("2 projects hidden") and its × shows every project again (2026-10-26, #1317, Eric picked a menu over a switch on each project).
+- A pinned chat stays listed whatever is hidden, and a search looks through every chat, a hidden project's too, as it does with the setting at Off (#708).
+- A hidden project's chat that waits for approval leaves the list like its other chats, but the filter's amber dot and its spoken count still count it, so the wait is never silent (2026-10-26, #1322).
+- When hidden projects are what empty the list, under any filter, the empty list says so and points to Filter > Projects instead of the filter's own wording (2026-10-26, #1322).
+- Filter ▸ Projects is offered once the profile has a project besides Home; with Home alone it would only hide every chat. On the Projects page, which lists every project, the bar's chip and filled icon leave hidden projects out (2026-10-26, #1322).
+- Filter ▸ Projects isn't offered in All profiles, where projects belong to one profile; the Settings switch still applies there to the projects of the profile in use, as before (2026-10-26, #1322).
+- The chat pickers (CarPlay's chat list, the widget's and Share extension's pickers, the home voice button's Recent menu) and the Archived sheet follow neither: each picks a chat to talk to or restore from every chat, and never hid project chats (2026-10-26, #1322).
+
+**Open gaps**
+- Until the profile's projects load, nothing is hidden: every chat would read as one in no project.
+- A row's project comes from the chats the project tree previews, so a project chat beyond its preview counts as in no project: it shows with the setting at Off, and hides with "Not in a project".
+
+**Checked:** 2026-10-26, #1322.
 
 ## Plan card
 
