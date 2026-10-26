@@ -68,6 +68,17 @@ extension AppState {
             predictiveFollowUpQueued = false
             if predictiveFollowUpSending { predictiveFollowUpAheadEnded = true }
             predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
+        } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
+                  Self.aMessageWasSent(after: turn.after, in: messages) {
+            // A message someone sent (another client's, queued ahead of the
+            // hidden prompt) wrote this reply, not Hermes on its own: the
+            // follow-up's turn is still to come, up to a few turns on.
+            predictiveFollowUpTurnsAhead += 1
+            if predictiveFollowUpTurnsAhead > Self.predictiveFollowUpMaximumTurnsAhead {
+                predictiveFollowUpTurn = nil
+            } else {
+                predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
+            }
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
             predictiveFollowUpTurn = nil
             // Only a reply the turn wrote: a [SILENT] one leaves no row, and
@@ -82,6 +93,17 @@ extension AppState {
             predictiveReplyEnded = (anchor, Date())
         }
         updatePredictiveScreen(fresh: isReply)
+    }
+
+    /// Turns someone else's message can run ahead of a queued follow-up
+    /// before Conduit stops waiting for its reply.
+    static let predictiveFollowUpMaximumTurnsAhead = 3
+
+    /// A message a person sent sits after `after`: the turn that just ended
+    /// answered it. The hidden prompt leaves no row.
+    static func aMessageWasSent(after id: String?, in messages: [ChatMessage]) -> Bool {
+        let start = id.flatMap { id in messages.lastIndex(where: { $0.id == id }) }.map { $0 + 1 } ?? 0
+        return messages[start...].contains { $0.role == .user }
     }
 
     /// A turn failed or was interrupted: a follow-up it carried is over,
@@ -322,6 +344,7 @@ extension AppState {
             return
         }
         predictiveFollowUpTurn = (sessionID, why, messages.last?.id)
+        predictiveFollowUpTurnsAhead = 0
         predictiveFollowUpSending = true
         predictiveFollowUpAheadEnded = false
         predictive.clear()

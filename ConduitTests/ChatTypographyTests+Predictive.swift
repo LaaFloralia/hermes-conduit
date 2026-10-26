@@ -222,6 +222,57 @@ extension ChatTypographyTests {
         XCTAssertTrue(state.predictiveFollowUpAheadEnded)
     }
 
+    /// A reply to a message someone sent, queued ahead of the hidden
+    /// prompt, isn't Hermes following up: the tag waits for the reply after.
+    @MainActor
+    func testAQueuedFollowUpTwoTurnsBehindTagsItsOwnReply() {
+        let defaults = makeScratchDefaults("PredictiveTwoAheadTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Working on it.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueued = true
+
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Done.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "And the other one?", timestamp: "now"))
+        state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "That too.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "a reply to someone's message isn't a follow-up")
+        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a3")
+
+        state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
+        XCTAssertNil(state.predictiveFollowUpTurn)
+    }
+
+    /// A follow-up whose reply was never seen to end stops waiting after a
+    /// few turns of other messages.
+    @MainActor
+    func testAFollowUpStopsWaitingAfterAFewTurnsOfOtherMessages() {
+        let defaults = makeScratchDefaults("PredictiveTurnsAheadTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a0", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
+        for turn in 1...(AppState.predictiveFollowUpMaximumTurnsAhead + 1) {
+            state.messages.append(ChatMessage(id: "u\(turn)", role: .user, content: "Next?", timestamp: "now"))
+            state.messages.append(ChatMessage(id: "a\(turn)", role: .assistant, content: "Sure.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+        }
+        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+    }
+
     @MainActor
     func testLeavingTheChatForTheSidebarDropsAFollowUpsTag() {
         let defaults = makeScratchDefaults("PredictiveSidebarTests")
