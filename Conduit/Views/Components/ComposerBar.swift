@@ -449,12 +449,17 @@ struct ComposerBar: View, Equatable {
                     isProgrammaticDraftRestore: isProgrammaticDraftRestore
                 )
             }
+            // The suggestion row folds while typing and asks once it pauses.
+            appState.predictiveDraftChanged(newValue)
         }
         .onChange(of: updates.inputs.prefillToken) { _, _ in
             applyPendingPrefill()
         }
         .onChange(of: updates.inputs.quoteRequest) { _, request in
             applyQuoteRequest(request)
+        }
+        .onChange(of: updates.inputs.predictiveRequest) { _, request in
+            applyPredictiveRequest(request)
         }
         .onChange(of: updates.inputs.focusRequest) { _, request in
             applyFocusRequest(request)
@@ -1963,6 +1968,34 @@ struct ComposerBar: View, Equatable {
     /// a `>` quote with the cursor below it; a reply's Quote button attaches
     /// the whole reply as the "Replying to…" chip. Either way the composer
     /// takes focus for the reply.
+    /// A guess from the suggestion row: sent as if typed, put in to edit,
+    /// or put after the draft it continues (Predictive.swift).
+    private func applyPredictiveRequest(_ request: PredictiveComposerRequest?) {
+        guard let request else { return }
+        appState.consumePredictiveComposerRequest(request.id)
+        // Left for another chat before it applied: dropped.
+        guard appState.composerIsEnabled, request.sessionID == appState.activeSessionId,
+              Self.shouldApplyPrefill(
+                  for: request.draftKey, loaded: loadedDraftKey,
+                  identity: appState.activeChatScrollSessionIdentity
+              ) else { return }
+        appState.noteComposerUserEdit()
+        switch request.action {
+        case .insert:
+            // The draft moved on since the guess was offered.
+            guard text == request.draft else { return }
+            replaceComposerText(Predictive.inserting(request.text, into: text), cursorAtEnd: true)
+            Task { @MainActor in isFocused = true }
+        case .edit:
+            replaceComposerText(request.text, cursorAtEnd: true)
+            Task { @MainActor in isFocused = true }
+        case .send:
+            // Sent in place of the draft, through the same path as Send.
+            replaceComposerText(request.text, cursorAtEnd: true)
+            submit()
+        }
+    }
+
     private func applyQuoteRequest(_ request: ComposerQuoteRequest?) {
         guard let request else { return }
         appState.consumeComposerQuoteRequest(request.id)

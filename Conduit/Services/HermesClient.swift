@@ -2609,13 +2609,19 @@ final class HermesClient: ObservableObject {
         text: String,
         surface: String? = nil,
         voiceTurn: Bool = false,
-        queued: Bool = false
+        queued: Bool = false,
+        hidden: Bool = false
     ) async throws -> PromptSubmissionOutcome {
         var params: [String: Any] = [
             "session_id": sessionId,
             "text": text
         ]
         if let surface { params["surface"] = surface }
+        // Seen by the model, never shown as the user's (Predictive follow-ups).
+        if hidden {
+            guard !gatewayRefusesHiddenPrompts else { throw HiddenPromptUnsupportedError() }
+            params["display_kind"] = "hidden"
+        }
         let marksVoiceTurn = voiceTurn && !gatewayRefusesVoiceTurn
         if marksVoiceTurn { params["voice_turn"] = true }
         if queued {
@@ -2632,6 +2638,11 @@ final class HermesClient: ObservableObject {
         } catch let error as RpcError where queued && error.refusesUnknownParam("queued") {
             gatewayRefusesQueued = true
             throw QueueUnsupportedError()
+        } catch let error as RpcError where hidden && error.refusesUnknownParam("display_kind") {
+            // Never resent without it: that would show Conduit's nudge as
+            // the user's own message.
+            gatewayRefusesHiddenPrompts = true
+            throw HiddenPromptUnsupportedError()
         }
         return PromptSubmissionOutcome(
             gatewayStatus: result.objectValue?["status"]?.stringValue
@@ -2648,6 +2659,14 @@ final class HermesClient: ObservableObject {
 
     /// This gateway is known to refuse Queue.
     var refusesQueuedPrompts: Bool { gatewayRefusesQueued }
+
+    /// Set once this gateway refused `prompt.submit`'s `display_kind`, so
+    /// Predictive follow-ups stop asking on it. Internal so tests can stand
+    /// in for that refusal.
+    var gatewayRefusesHiddenPrompts = false
+
+    /// A hidden prompt on a Hermes without `display_kind`.
+    struct HiddenPromptUnsupportedError: Error {}
 
     /// Queue on a Hermes without `prompt.submit`'s `queued` key.
     struct QueueUnsupportedError: LocalizedError {

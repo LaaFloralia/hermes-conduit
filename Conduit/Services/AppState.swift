@@ -2322,6 +2322,39 @@ final class AppState: ObservableObject {
     var stepSummaryEarlyAnswers: [String: String] = [:]
     /// Runs asked about and not answered yet, with when they were asked.
     @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    /// The suggestion row's guesses (AppState+Predictive.swift).
+    let predictive = PredictiveStore()
+    /// What the row asks the composer to do: send, edit or insert a guess.
+    @Published private(set) var predictiveComposerRequest: PredictiveComposerRequest?
+    /// The reply suggested replies were last asked for (asked once each).
+    var predictiveRepliesAsked: PredictiveStore.Anchor?
+    /// The draft last asked about, and the wait for the next pause.
+    var predictiveDraftAsked: (sessionID: String, draft: String)?
+    var predictivePauseTask: Task<Void, Never>?
+    /// The follow-up checks for the reply on screen, and the next one.
+    var predictiveFollowUp = PredictiveFollowUpState()
+    var predictiveFollowUpTask: Task<Void, Never>?
+    /// The hidden turn sent for Hermes to follow up, until it settles.
+    /// `after` is the chat's last row when it was sent: only a reply
+    /// after it is the follow-up's.
+    var predictiveFollowUpTurn: (sessionID: String, why: String, after: String?)?
+    /// Advanced by forgetPredictiveState: an answer asked before it is
+    /// dropped, whatever is on screen when it comes.
+    var predictiveGeneration = 0
+    /// The hidden turn was queued behind a turn already running (another
+    /// client's): the next turn to end is that one, not the follow-up.
+    var predictiveFollowUpQueued = false
+    /// The hidden prompt is on its way and Hermes hasn't said how it took
+    /// it: a turn ending meanwhile is the one ahead, not the follow-up.
+    var predictiveFollowUpSending = false
+    /// A turn ended while the hidden prompt was on its way: when it comes
+    /// back queued, it was queued behind that one.
+    var predictiveFollowUpAheadEnded = false
+    /// When the last reply settled here, so a follow-up check can say how
+    /// long ago without reading timestamps.
+    var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
+    /// Test seam: answers `POST /predict` in place of the dashboard.
+    var predictiveSender: (([String: Any]) async throws -> [String: Any])?
     /// Whose catalog `toolCatalog` is (dashboard and profile), and the
     /// catalogs Hermes already sent this run, or is sending now.
     private var toolCatalogOwner: String?
@@ -5566,6 +5599,9 @@ final class AppState: ObservableObject {
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
         // So do the summaries describing its runs of steps.
         forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
+        // And the open dashboard's predictions: guesses, the draft they
+        // read, hidden follow-ups and the checks still waiting.
+        if dashboardID == nil || dashboardID == activeDashboardID { forgetPredictiveState() }
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -10074,6 +10110,43 @@ final class AppState: ObservableObject {
         composerQuoteRequest = ComposerQuoteRequest(content: .reply(reference))
     }
 
+    /// A guess from the suggestion row for the composer to send, edit or
+    /// insert (Predictive.swift).
+    func requestPredictiveComposer(_ action: PredictiveComposerRequest.Action, text: String) {
+        // The row's guesses are for the reply it shows, in the open chat.
+        guard let shown = predictive.screen, shown.sessionID == activeSessionId else { return }
+        predictiveComposerRequest = PredictiveComposerRequest(
+            action: action, text: text, draft: predictive.draft, sessionID: shown.sessionID,
+            draftKey: ComposerBar.composerDraftKey(for: shown.sessionID, profile: activeProfile)
+        )
+    }
+
+    /// The composer took the guess.
+    func consumePredictiveComposerRequest(_ id: UUID) {
+        guard predictiveComposerRequest?.id == id else { return }
+        predictiveComposerRequest = nil
+    }
+
+    /// Sign-out or removal of the open dashboard: nothing Predictive knew
+    /// of its chats stays for the next account.
+    func forgetPredictiveState() {
+        predictiveGeneration &+= 1
+        predictivePauseTask?.cancel()
+        predictivePauseTask = nil
+        predictiveFollowUpTask?.cancel()
+        predictiveFollowUpTask = nil
+        predictiveRepliesAsked = nil
+        predictiveDraftAsked = nil
+        predictiveFollowUp = PredictiveFollowUpState()
+        predictiveFollowUpTurn = nil
+        predictiveFollowUpQueued = false
+        predictiveFollowUpSending = false
+        predictiveFollowUpAheadEnded = false
+        predictiveReplyEnded = nil
+        predictiveComposerRequest = nil
+        predictive.forgetAll()
+    }
+
     /// Puts `text` in the open chat's composer, replacing the draft, and
     /// focuses it.
     func prefillComposer(_ text: String) {
@@ -10377,6 +10450,8 @@ final class AppState: ObservableObject {
         profileHermesNames = [:]
         refreshSiriProfileShortcuts()
         clearSessionPresentationCache()
+        // Guesses name sessions, and a new server's ids can repeat the old one's.
+        forgetPredictiveState()
         // Saved chats are kept apart per dashboard and stay for the next
         // visit there: only removing the dashboard, signing out of it or
         // Settings' Delete Saved Chats wipes them. What of them is in memory
@@ -32034,6 +32109,8 @@ final class AppState: ObservableObject {
             clearStreamingText()
             errorMessage = message
             setRunning(false)
+            // A follow-up that failed wrote nothing to tag.
+            predictiveTurnEnded(sessionId: streamSessionId)
             notifyVoiceAssistant(.failed(sessionID: streamSessionId, message: message))
 
         case .messageInterrupted:
@@ -32041,6 +32118,7 @@ final class AppState: ObservableObject {
             resetReasoningTurn()
             clearStreamingText()
             setRunning(false)
+            predictiveTurnEnded(sessionId: streamSessionId)
             notifyVoiceAssistant(.interrupted(sessionID: streamSessionId))
 
         case .sessionBusy(_, let busy):
@@ -35739,6 +35817,9 @@ final class AppState: ObservableObject {
         setRunning(false)
         // The turn has settled, its reply in place.
         requestStepSummaryIfWanted(sessionId: sessionId)
+        // Suggested replies and the follow-up clock for the new reply; a
+        // system notice merged into the last row isn't one.
+        predictiveTurnSettled(sessionId: sessionId, isReply: systemNotice == nil)
         // Cancel any pending coalesced flush and write immediately — the
         // turn is complete so all messages are in their final state. One
         // write covering the stream's session id too; this used to write the

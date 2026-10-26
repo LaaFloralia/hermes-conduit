@@ -704,7 +704,7 @@ Saved Dashboards and the Profiles sheet, and in the Watch's Settings)
 - Notifications follow the App Language: the extension builds the words from the event's title_label and session_title (2026-10-23, #1158, notifier #326).
 - Pushes are titled with the Hermes session title (2026-10-12, notifier #93 and #94).
 - No push shows a host path: replies (Bot Chat and Pulse included), background tasks, failed turns, questions, approvals, calls, updates and phone changes show each MEDIA tag as 📎 and the file's name, or its type when the name is only a hash, in the plain and the sealed copy alike, and so do the answer card and the call screen that come with them; a reply's fenced code stays as written (2026-10-24, Eric's review, #1212, notifier #348).
-- A reply's push stays quiet while its chat is on screen and in use (2026-10-22, #1132, notifier #301).
+- A reply's push stays quiet while its chat is on screen and in use (2026-10-22, #1132, notifier #301), and while a Predictive follow-up Hermes took in that chat runs, even with nobody touching the phone (2026-10-26, #1281).
 - A Pulse morning brief's push says only the brief's first line, cut to 200 characters; the lines under it are for its card (2026-10-25, notifier #357).
 - A push from a Bot Chat opens the Bot Chat (2026-10-16, #654), and a call from one opens the bot (2026-10-16, #630).
 - A push from a Bot Chat names its bot as the Bots list does: its Bot Mode title, else its display name, else its profile id, never "default" for a named bot. Every push carries that name as `profile_name` (sealed with the content), which calls and the relay's plain copy use (2026-10-25, Eric's report, #1257, notifier #372).
@@ -721,7 +721,7 @@ Saved Dashboards and the Profiles sheet, and in the Watch's Settings)
 - "Notify me when" choices are one set per iPhone, not per dashboard: the relay keeps one set per installation (#395).
 - A registration update landing after a relay move is dropped rather than written onto the new registration (#865 follow-up, #1191); the move itself has no test seam (it registers through URLSession.shared).
 
-**Checked:** 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
+**Checked:** 2026-10-26, #1281 (a Predictive follow-up holds its chat's push); 2026-10-25, #1257 (a Bot Chat's push names its bot; `profile_name` for calls, the relay's plain copy and the Live Activity; notifier #372); the morning brief's push at notifier #357, carried in #1237; 2026-10-24, at #1213 (inline rotation, the shield and the Watch's row and footer; a pairing rotates at most once per run, a Rotate tap during a rotation joins it, and a verified key the Keychain refused stays pending and is shown as such; fork CI #85); #1212 (MEDIA tags in pushes, answer cards and the call screen); keys and padlock at #1197, carried in #1217 (fork CI #82); the registration update race at #1191; its relay registration error log redacted (bare hosts) at #1219.
 
 ## Pulse
 
@@ -1868,7 +1868,7 @@ pictures load)
 - Group rooms show no `MEDIA:` pictures: their Markdown has no gateway resolver.
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
-**Checked:** 2026-10-26, at #1270.
+**Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## Cards drawn in web pages
 
@@ -1905,7 +1905,7 @@ today: no Settings caption, briefing or doc says how these cards draw)
 - Past 2,000 remembered heights the memo starts again (no LRU), so cards grow once more until each is measured again; the picture sizes have the same limit at 4,000 (see Pictures in messages).
 - The saved-chat copy, job sheets and group rooms have no scroll engine, so their cards grow where they are, and above a reader scrolled back move what they read; group rooms draw diagrams and formulas this way, and show no HTML previews (no gateway resolver). Group rooms follow with their own scroll code, so bringing the gate there means moving them onto the chat's engine, a change of its own (see Pictures in messages).
 
-**Checked:** 2026-10-26, at #1270.
+**Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## Self-improvement updates
 
@@ -1976,6 +1976,7 @@ sharing turned on from its consent sheet) · Voice: Enable voice on this device 
 checklist and tests), Hands-free on your speech server (its speech server
 section), the wake phrase · Live call style's greeting · Sync across devices ·
 Cloudflare Access's service token · a connector's Turned on (Capabilities) ·
+Predictive (how many, the pause, the first follow-up check) ·
 text that describes it (none: no caption or doc mentions the motion) ·
 not needed: the live voice modes' Use switches, which Voice never shows (its
 mode picker shows a mode's section only once that mode is picked)
@@ -1983,7 +1984,7 @@ mode picker shows a mode's section only once that mode is picked)
 **Code**
 - Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
 - A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/VoiceSettingsView.swift` (setVoice, localHandsFreeSection, WakePhraseSettingsSection.save), `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
-- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage), `Conduit/Views/HealthSettingsViews.swift` and `Conduit/Views/PhoneSettingsViews.swift` (sharing turned on from the consent sheet)
+- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage), `Conduit/Views/PredictiveSettingsView.swift` (PredictiveSettingsPage), `Conduit/Views/HealthSettingsViews.swift` and `Conduit/Views/PhoneSettingsViews.swift` (sharing turned on from the consent sheet)
 
 **Rulings**
 - Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (proposed in #1246, 2026-10-25).
@@ -1991,7 +1992,52 @@ mode picker shows a mode's section only once that mode is picked)
 **Open gaps**
 - A row revealed by something other than a switch (a picker or a host answer) isn't covered here.
 
-**Checked:** 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+**Checked:** 2026-10-26, at #1281 (carrying #1242): Predictive's switches reveal their pickers on the page-wide ease. Earlier 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+
+## Predictions
+
+Settings > Chat > Predictive: Hermes guesses the user's next move in the
+open chat. Suggested replies after a reply, guesses for a paused draft, and
+a turn Hermes takes on its own while the chat sits on screen.
+
+**Siblings:** chats, project chats and Bot Chat (one row above the composer) ·
+group rooms · the Apple Watch · voice modes and CarPlay · Hermes Desktop and
+the TUI on the same chat · the reply push while the chat is on screen · step
+summaries' /btw · the composer's draft and Send · the plugin's `/predict`
+route, its README section and the CHANGELOG · the Predictive page's captions
+
+**Code**
+- Model and store: `Conduit/Services/Predictive.swift` (Predictive, PredictiveStore, PredictiveComposerRequest, PredictiveFollowUpState)
+- Asking and the follow-up clock: `Conduit/Services/AppState+Predictive.swift`, fed by `Conduit/Services/AppState+ChatOnScreen.swift` (updateChatOnScreen) and the settled, failed or interrupted turn in `Conduit/Services/AppState.swift`; cleared when the open dashboard signs out, is removed or connects to a different server by forgetPredictiveState in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, prepareChatResumeForConnection; predictiveGeneration drops answers asked before it)
+- The hidden turn: `Conduit/Services/HermesClient.swift` (sendPrompt, `hidden`; a gateway refusing `display_kind` is remembered and gets no more follow-ups)
+- Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
+- Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
+- Settings: `Conduit/Views/PredictiveSettingsView.swift`, listed in `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail)
+- Notifier, from plugin 0.80: `notifier/predict.py` and `notifier/dashboard/plugin_api.py` (`/predict`), tested in `notifier/tests/test_predict.py`; `notifier/README.md`, `notifier/CHANGELOG.md`
+- Tests: `ConduitTests/ChatTypographyTests+Predictive.swift`
+
+**Rulings**
+- All three are off by default, device-only, and need the plugin's `predict` capability (0.80+); without it the page says so and nothing is asked (2026-10-25, Michel, #1242).
+- Guesses come from the plugin's `POST /predict`, a no-tools fork of the live chat that saves nothing, answered only to the asking device, never from `prompt.btw`, whose answers reach every client and show in Desktop (2026-10-25, Michel, #1242).
+- One row of capsules, best first, with no percentages: tap sends, long-press edits; taps in its first 0.4 s are ignored. Continuations are phrase chips, not ghost text (2026-10-25, Michel, #1242).
+- Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #1242).
+- Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #1242).
+- On screen means not covered by the sidebar or a room, with Conduit in front. A paused draft's question and a follow-up's hidden turn check it again just before they are sent (2026-10-26, #1281).
+- A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #1242).
+- Hide for this chat also stops a follow-up check already asked, and leaving the chat (another chat, the sidebar, a room, Conduit in the background) drops a follow-up's hold and its tag. A tapped guess goes only into the chat it was offered in (2026-10-25, #1242).
+- A turn that ends in a system notice, fails or is interrupted tags nothing and doesn't restart the reply's idle time, and a notice merged into the last row is no reply to guess at; a follow-up that never reached Hermes doesn't spend the user's message and is checked again (within the 4 checks), unless the gateway takes no hidden prompts. A follow-up that leaves no reply of its own asks for the reply's guesses again. A switch turned off takes its chips with it (2026-10-26, Eric, #1242).
+- Signing out of or removing the open dashboard, or its connection reaching a different server, forgets every guess, the draft they read, hidden follow-ups and checks still waiting, and drops answers still on their way; Delete Saved Chats leaves them, as it leaves the chat in use. A follow-up Hermes queued keeps its tag and hold, since it runs as its own turn, and the turn it waited behind (another client's) gets neither, even when that turn ends before Hermes says the prompt was queued; only one steered or redirected into a running turn loses them (2026-10-26, #1281).
+
+**Open gaps**
+- Group rooms get no row: with several people and bots, "your next message" is unclear.
+- The Apple Watch has no suggested replies yet, where typing is hardest.
+- Voice modes and CarPlay get none, by design: calls take turns their own way, and chips while driving distract. With Voice open, no draft is asked about and no follow-up is sent.
+- Hide for this chat lasts until Conduit is relaunched; the chat then gets predictions again.
+- "Hermes followed up" is kept in memory for this run: after a relaunch or a new copy of the chat from the host, the reply shows without it.
+- Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
+- The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
+
+**Checked:** 2026-10-26, at #1281 (carrying #1242).
 
 ## Linked Rooms
 

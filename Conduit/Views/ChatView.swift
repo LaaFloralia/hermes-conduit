@@ -280,6 +280,8 @@ struct ChatView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
             planDock
+            // Predictive guesses (off unless turned on in Settings > Chat).
+            PredictiveRow(store: appState.predictive, appState: appState)
             // Composer + control bar. Equatable: it redraws for what it
             // shows, not for every redraw of this view.
             ComposerBar(appState: appState).equatable()
@@ -1193,6 +1195,17 @@ struct MessageBubble: View, Equatable {
                         message: message,
                         readAloudController: appState.messageReadAloudController,
                         gatewayResolver: gatewayResolver
+                    )
+                }
+            } else if let why = rowState.followUpReasons[message.id] {
+                // A reply Hermes wrote on its own (Predictive follow-ups).
+                VStack(alignment: .leading, spacing: 4) {
+                    PredictiveFollowUpTag(why: why)
+                    AssistantBubble(
+                        message: message,
+                        readAloudController: appState.messageReadAloudController,
+                        gatewayResolver: gatewayResolver,
+                        stepsAbove: stepsAbove
                     )
                 }
             } else {
