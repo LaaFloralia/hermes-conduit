@@ -1759,12 +1759,31 @@ private struct UserImageAttachmentPreview: View {
     @State private var localPreview: UIImage?
     @State private var localPreviewPath: String?
     @State private var localPreviewFailedPath: String?
+    /// The chat's scroll engine, which says when a picture that will grow
+    /// its row shows (#1238).
+    @Environment(\.chatRowDisclosure) private var disclosure
+    /// The row's frame, and the picture waiting to show in it.
+    @StateObject private var arrival = ChatRowArrival()
 
     /// Cache-only lookup (no decode) so a hit renders on the first frame.
     /// Misses are filled asynchronously — see the `.task` in `body`.
     private var cachedLocalImage: UIImage? {
         guard let key = memoryCacheKey else { return nil }
         return TranscriptPictureMemory.previews.object(forKey: key as NSString)
+    }
+
+    /// A cache hit as the row shows it: on its first frame, or where the
+    /// row has its height already. A row laid out with its loading line
+    /// (another row of the same picture decoded it since) takes it
+    /// through the task, which asks the scroll engine (#1238).
+    private var shownCachedImage: UIImage? {
+        guard let cached = cachedLocalImage, arrival.holds(previewHeight(for: cached.size)) else { return nil }
+        return cached
+    }
+
+    /// Which picture the row loads.
+    private var loadIdentity: String {
+        "\(attachment.uri)|\(inlineImageIdentity)|\(gatewayResolver?.imageCacheKey(for: attachment) ?? "")"
     }
 
     /// The photo's own path when it is on this device, else where a picture
@@ -1826,7 +1845,7 @@ private struct UserImageAttachmentPreview: View {
 
     var body: some View {
         Group {
-            if let image = cachedLocalImage ?? currentLocalPreview ?? currentGatewayImage {
+            if let image = shownCachedImage ?? currentLocalPreview ?? currentGatewayImage {
                 imagePreview(image)
             } else if loadsFromHermes && localFileURL == nil && !gatewayLoadFailed {
                 placeholder
@@ -1851,27 +1870,52 @@ private struct UserImageAttachmentPreview: View {
                 .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             }
         }
-        .task(id: "\(attachment.uri)|\(inlineImageIdentity)|\(gatewayResolver?.imageCacheKey(for: attachment) ?? "")") {
-            // Local file: cache hits are already shown by `body` on the first
-            // frame via `cachedLocalImage`, so only misses reach here. Decode
-            // off the MainActor so a large photo can't hitch scrolling.
+        .chatRowFrame(arrival)
+        // A picture still waiting to show is dropped with the row; the task
+        // loads it again when the row is back.
+        .onDisappear { arrival.rowDisappeared() }
+        // Handed another picture: whatever still waits was the last one's.
+        .onChange(of: loadIdentity) { arrival.rowDisappeared() }
+        .task(id: loadIdentity) {
+            // Local file: cache hits show in `body` on the first frame via
+            // `shownCachedImage`, and one decoded since by another row of
+            // it arrives here. Misses decode off the MainActor so a large
+            // photo can't hitch scrolling.
             if let url = localFileURL {
-                guard currentLocalPreview == nil, cachedLocalImage == nil else { return }
+                guard currentLocalPreview == nil, shownCachedImage == nil else { return }
+                if let cached = cachedLocalImage {
+                    let path = url.path
+                    arrival.arrive(rowHeight: previewHeight(for: cached.size), engine: disclosure?.engine) {
+                        localPreview = cached
+                        localPreviewPath = path
+                    }
+                    return
+                }
                 let generation = TranscriptImageCache.generation
                 let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
                     Self.downsampledPreview(url: url)
                 }.value
                 guard !Task.isCancelled else { return }
                 guard let image else {
-                    localPreviewFailedPath = url.path
+                    let path = url.path
+                    // Its label shows already when the task restarts as
+                    // the row comes back.
+                    if localPreviewFailedPath != path {
+                        placeFailure { localPreviewFailedPath = path }
+                    }
                     return
                 }
-                if generation == TranscriptImageCache.generation {
-                    TranscriptPictureMemory.previews.setObject(image, forKey: url.path as NSString, cost: TranscriptPictureMemory.bitmapCost(of: image))
-                    TranscriptPictureMemory.rememberSize(image.size, for: url.path)
+                // Shows once the reader's scrolling allows, kept and its
+                // size remembered then: either would resize the loading
+                // line on its own first.
+                arrival.arrive(rowHeight: previewHeight(for: image.size), engine: disclosure?.engine) {
+                    if generation == TranscriptImageCache.generation {
+                        TranscriptPictureMemory.previews.setObject(image, forKey: url.path as NSString, cost: TranscriptPictureMemory.bitmapCost(of: image))
+                        TranscriptPictureMemory.rememberSize(image.size, for: url.path)
+                    }
+                    localPreview = image
+                    localPreviewPath = url.path
                 }
-                localPreview = image
-                localPreviewPath = url.path
                 // A picture from Hermes. The local-file branch returns above,
                 // so a local URI never reaches here — which also removes the
                 // old `localImage == nil` check that decoded local files on
@@ -1879,24 +1923,20 @@ private struct UserImageAttachmentPreview: View {
             } else if loadsFromHermes, let gatewayResolver,
                       let cacheKey = gatewayResolver.imageCacheKey(for: attachment) {
                 // Held by the view too, so the picture stays when the
-                // shared cache evicts it while this row is on screen.
+                // shared cache evicts it while this row is on screen; one
+                // decoded since by another row of it arrives like a load.
                 if let cached = cachedLocalImage {
-                    remember(cached, as: cacheKey)
+                    place(cached, as: cacheKey, generation: TranscriptImageCache.generation)
                     return
                 }
+                // One that failed keeps its label while it loads again.
                 gatewayImage = nil
-                gatewayFailedKey = nil
                 // Kept on the phone from an earlier load (#652). Read
                 // first: after a sign-out it shows, but isn't remembered.
                 let keptGeneration = TranscriptImageCache.generation
                 if let image = await Self.keptPreview(for: cacheKey) {
                     guard !Task.isCancelled else { return }
-                    if keptGeneration == TranscriptImageCache.generation {
-                        remember(image, as: cacheKey)
-                    } else {
-                        gatewayImage = image
-                        gatewayImageKey = cacheKey
-                    }
+                    place(image, as: cacheKey, generation: keptGeneration)
                     return
                 }
                 guard !Task.isCancelled else { return }
@@ -1914,16 +1954,35 @@ private struct UserImageAttachmentPreview: View {
                 }
                 guard !Task.isCancelled else { return }
                 guard let dataURL, let image = await Self.keep(dataURL, as: cacheKey, generation: generation) else {
-                    gatewayFailedKey = cacheKey
+                    if gatewayFailedKey != cacheKey {
+                        placeFailure { gatewayFailedKey = cacheKey }
+                    }
                     return
                 }
                 guard !Task.isCancelled else { return }
-                if generation == TranscriptImageCache.generation {
-                    remember(image, as: cacheKey)
-                } else {
-                    gatewayImage = image
-                    gatewayImageKey = cacheKey
-                }
+                place(image, as: cacheKey, generation: generation)
+            }
+        }
+    }
+
+    /// A picture that won't load gives its place to the label once the
+    /// reader's scrolling allows (ChatRowArrival), a height only the
+    /// label's layout tells.
+    private func placeFailure(_ mark: @escaping () -> Void) {
+        arrival.arrive(rowHeight: nil, engine: disclosure?.engine, show: mark)
+    }
+
+    /// Puts a picture from Hermes in the row once the reader's scrolling
+    /// allows (ChatRowArrival), remembering it then: remembered first,
+    /// its size would resize the loading line on its own. After a sign-out
+    /// it shows, but isn't remembered.
+    private func place(_ image: UIImage, as key: String, generation: Int) {
+        arrival.arrive(rowHeight: previewHeight(for: image.size), engine: disclosure?.engine) {
+            if generation == TranscriptImageCache.generation {
+                remember(image, as: key)
+            } else {
+                gatewayImage = image
+                gatewayImageKey = key
             }
         }
     }
@@ -1973,8 +2032,12 @@ private struct UserImageAttachmentPreview: View {
         memoryCacheKey.flatMap(TranscriptPictureMemory.size(for:))
     }
 
+    /// At the reserved size when it was known as the row was first laid
+    /// out: one remembered after (another row of the same picture, or a
+    /// cold launch's kept sizes loading) would resize the loading line on
+    /// its own.
     @ViewBuilder private var placeholder: some View {
-        if let size = reservedSize {
+        if let size = reservedSize, arrival.holds(previewHeight(for: size)) {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color.white.opacity(0.13))
                 .frame(width: 224, height: previewHeight(for: size))
