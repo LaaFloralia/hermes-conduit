@@ -1818,6 +1818,30 @@ workflow table
 
 **Checked:** 2026-10-24, at #1216.
 
+## Settings connection page
+
+The page with the server, Reconnect, Restart Gateway, Cloudflare Access,
+custom headers and sign out, and the places that send people to it.
+
+**Siblings:** the V2 Settings row (Connection, first under the profile name)
+and the page title · the legacy Settings sheet (Gateway, under Connection) ·
+the chat's Gateway sheet · README.md (Cloudflare Access) · the notifier's
+support page · the website's setup page (setup/index.html in
+hermes-conduit-website)
+
+**Code**
+- Rows and page: `Conduit/Views/AuxiliaryViews.swift` (v2Sections, SettingsHome, GatewaySettingsDetail and its title)
+- Chat's sheet: `Conduit/Views/ChatSupportSheets.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
+- Docs: `README.md`, `notifier/docs/support/index.html`
+
+**Rulings**
+- The page takes its row's name: Connection in V2's Settings, Gateway in the legacy sheet. Docs and support text say Settings > Connection (2026-10-26, #1298).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-26, at #1298.
+
 ## Another saved dashboard's address
 
 When the address typed while editing or repairing one dashboard is already
