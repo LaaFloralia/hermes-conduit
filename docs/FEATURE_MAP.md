@@ -22,9 +22,10 @@ has Siblings, Code, Rulings, Open gaps and a Checked line (the date of the
 last check against the code, and the PR that checked it; an entry seeded from
 main may name a commit). `scripts/check-feature-map.py` runs in CI: it checks
 that shape, that every path in backticks exists, and that an entry a PR adds
-or edits names that PR on its Checked line (on a PR into `pulse` that merges
-main, one main changed since `pulse` last took it that matches main's copy came
-in with main). A path that starts with notifier/ is in
+or edits names that PR on its Checked line (on a PR into `pulse` or
+`linked-rooms` that merges main, one main changed since that branch last took
+it that matches main's copy came in with main). A path that starts with
+notifier/ is in
 [hermes-conduit-notifier](https://github.com/kaishi00/hermes-conduit-notifier),
 checked against its main.
 
@@ -2227,35 +2228,42 @@ Group rooms with agents that belong to other people. Each agent runs on its
 owner's Hermes, with its owner's model and keys and its owner's rules for the
 room, and the hosts reach each other through the rooms mailbox. It's being
 built: the notifier side is on its main, and the app side comes in the
-`linked-rooms` branch's PRs, so none of it is in the app yet.
+`linked-rooms` branch's PRs, so none of it is in the app on main yet.
 
-**Siblings:** the room screen and room info (members from other
-installations, their route status, your agents' choices for the room) · New
-Group Chat with linked people · Settings > People (host setup, Links) · the
-Chats list (rooms hosted by others, and deleting one that ended) · the
-notifier's owner rules for room turns (tools, the framing, the reply scrub,
-past-chat search), with their routes and the `hermes conduit-push rooms`
-commands · the room memory guard · the room planner · a member cut off by its
-host · disbanding a room (the home's own agents' hidden chats for it) and a
-guest's `rooms forget` · the rooms mailbox (rooms.milim.dev) · rooms of only
-your own agents (unchanged, except that disbanding one now deletes its hidden
-chats) · past-chat search in every chat (it no longer finds those rooms) ·
-approvals for your agents in rooms hosted elsewhere · text that describes it:
-the notifier README's "Rooms with other people's agents", "A member cut off
-from a room" and "Disbanding a room ends its hidden chats", the framing and
-block messages models read, Disband's warning, Settings captions
+**Siblings:** the room screen and Group Info in both shells (members from
+other installations, their route status and pictures, your agents' choices for
+the room) · New Group Chat with linked people · Settings > People (host setup,
+Links) · the Chats list (rooms hosted by others, and deleting one that ended)
+· the notifier's owner rules for room turns (tools, the framing, the reply
+scrub, past-chat search), with their routes and the
+`hermes conduit-push rooms` commands · the room memory guard · the room
+planner and the room driver's wakeups · a member cut off by its host ·
+disbanding a room (the home's own agents' hidden chats for it) and a guest's
+`rooms forget` · the rooms mailbox (rooms.milim.dev) · Links between
+installations (invites, the four words, unlinking), with their routes and the
+`hermes conduit-push links` commands · rooms of only your own agents
+(unchanged, except that disbanding one now deletes its hidden chats) ·
+past-chat search in every chat (it no longer finds those rooms) · approvals
+for your agents in rooms hosted elsewhere · text that describes it: the
+notifier README's "Rooms with other people's agents", "A member cut off from a
+room", "Disbanding a room ends its hidden chats", "Linking with someone" and
+"Group rooms between turns", the framing and block messages models read,
+Disband's warning, Group Info and the choices page's captions, Settings
+captions
 
 **Code**
 - Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set), `notifier/README.md` (Rooms with other people's agents)
-- Memory guard and planner: `notifier/room_memory.py`, `notifier/room_planner.py`
+- Memory guard, planner and wakeups: `notifier/room_memory.py`, `notifier/room_planner.py`, `notifier/room_wakeups.py` (a room's pass that ends doesn't keep every room's pass going), `notifier/README.md` (Group rooms between turns)
 - Cut-off members and disband cleanup: `notifier/room_cutoff.py` (MemberCutOff, read before Hermes sets a turn up), `notifier/room_cleanup.py` (the disband guard, the load sweep, forget_room), `notifier/dashboard/plugin_api.py` (DELETE /rooms/sessions, capability room-forget; it installs both guards where the dashboard drives rooms), `notifier/cli.py` (rooms forget), `notifier/README.md` (A member cut off from a room, Disbanding a room ends its hidden chats)
 - Mailbox: `notifier/mailbox/src/server.mjs`, `notifier/mailbox/README.md` (protocol v1, self-hosting), `notifier/mailbox/deploy/compose.yaml`
-- App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Views/GroupChatView.swift` (and Disband's warning), `Conduit/Views/V2/V2ConversationScreen.swift` (Disband's warning in V2), `Conduit/Services/HermesClient.swift` (groups.*)
-- App, on the `linked-rooms` branch only, so not in backticks: none yet. Each of the branch's PRs names here the app paths it adds
-- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/mailbox/test/server.e2e.test.mjs`
+- Links: `notifier/room_links.py` (invites, the accept and its confirm, unlinking, the inbox loop, links.json), `notifier/room_identity.py` (an installation's keys and its four words), `notifier/bip39_english.txt`, `notifier/room_envelope.py` (sealed, signed envelopes), `notifier/room_mailbox.py` (the mailbox client), `notifier/dashboard/plugin_api.py` (/rooms/identity, /rooms/links, capability room-links), `notifier/cli.py` (links invite, preview, accept, list, remove, cancel), `notifier/README.md` (Linking with someone)
+- App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Services/AppState.swift` (activeRoomResponder, groupMemberBot), `Conduit/Views/GroupChatView.swift` (and Disband's warning), `Conduit/Views/V2/V2ConversationScreen.swift` (Disband's warning in V2), `Conduit/Services/HermesClient.swift` (groups.*)
+- App, on the `linked-rooms` branch only, so not in backticks: Conduit/Services/RoomChoices.swift (RoomChoices, RoomChoicesClient, canSetRoomChoices), Conduit/Views/GroupRoomInfoView.swift (GroupRoomInfoSheet, RoomAgentChoicesView), ConduitTests/GroupChatModelsTests+LinkedRooms.swift; in the files above, GroupPeerRoute, GroupMemberActivity, responderState, liveMember, rosterBot and GroupRoomDisband (GroupChatModels.swift), roomResponderCache and activeRoomResponderState (AppState.swift), and Group Info in both room menus. Each of the branch's PRs names here the app paths it adds
+- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/tests/test_room_identity.py`, `notifier/tests/test_room_envelope.py`, `notifier/tests/test_room_mailbox.py`, `notifier/tests/test_room_links.py`, `notifier/tests/test_room_wakeups.py`, `notifier/mailbox/test/server.e2e.test.mjs`
 
 **Rulings**
 - The app side stays off main: Linked Rooms PRs target `linked-rooms`, which reaches main only once Eric has seen it all work, like `pulse`. The notifier side is on its main, hidden until Conduit shows it (2026-10-23, Eric).
+- Main reaches `linked-rooms` by a merge commit, never a squash, as it reaches `pulse`, so the next merge of main doesn't re-stitch old conflicts (2026-10-26, #1287; Pulse's ruling from #1186).
 - Memory stays on in rooms. Instead, past-chat search is off unless chosen, nothing from a room turn is saved to memory, skills or a memory provider, the agent is told who's asking, and what it shares follows its owner's choice for the room. A provider's automatic recall stays on, like MEMORY.md (2026-10-22, Eric; notifier #305).
 - Each owner's rules run on their own host, whichever host the room lives on. A room's choices default to Talk only, ask first, no past-chat search, joins in and 40 turns a day. Memory and skill writes, delegation, messaging, scheduled jobs, running code and Conduit's calls and settings are never allowed, the background review's included (2026-10-25, notifier #379).
 - The rules hold through Hermes' tool hooks, which see a call only when it carries the room session's id. A tool that calls other tools without it (`execute_code`) is never allowed, and a profile whose tools run outside the hooks (the Codex app-server runtime) can't take part in a room with other people's agents (2026-10-25, notifier #379).
@@ -2266,19 +2274,25 @@ block messages models read, Disband's warning, Settings captions
 - Disbanding a room deletes the home's own agents' hidden chats for it, with their earlier history and their helpers' chats, in every room, rooms of only your own agents too. Agents on other people's Hermes keep theirs, and their owners delete them later with `hermes conduit-push rooms forget` or the route the Chats list calls, which refuses a room still going on that host (2026-10-26, Eric; notifier #384).
 - Every link goes through the mailbox, on one LAN too. The shared one is rooms.milim.dev, a service of its own beside push.milim.dev (2026-10-22, Eric).
 - An agent runs on its owner's host with its owner's model and keys, so each owner pays for their own (2026-10-22, Eric).
+- Links are an installation's, not a profile's: each Hermes home has one identity, whose four words the other person compares, and the links routes take no profile. An invite (a link, or its QR code) is good for one accept within 24 hours. The inviter's Hermes confirms it, and the acceptor's then uses the mailbox that signed confirm names, not the invite's. Unlinking ends a Link at once on that side, and on the other when it next reads its mailbox. A Hermes keeps up to 50 Links and 10 waiting invites, each invite holding a place for its Link (2026-10-26, notifier #390).
+- Who's live in a room: the gateway's live turns where it reports them (`member_activity`, Hermes c73cbcc4), a running or stopping turn before a queued one, as Hermes Desktop reads them, and a status this build doesn't know is skipped; else the log, as before. A live member on another Hermes whose route says its Hermes refused the room reads "<name> is cut off", and one whose Hermes couldn't be reached reads "<name> can't be reached", in the header and where its reply would land, until its turn runs, whether the turn names it by member id or, having none, by profile. Hermes keeps routes in memory, so one not tried since its room service started reads as responding (2026-10-26, #1289).
+- Disband's warning in a room with a member from another installation says the room ends for everyone, your agents' sessions for it are deleted, and agents on other people's Hermes keep theirs. Rooms of only your own agents keep the old text, which holds since notifier #384 (2026-10-26, #1289).
+- Group Info, from the room menu in both shells, lists each member as your agent or on another Hermes, with its route's trouble. In a room with a member from another installation, each of your agents opens its choices for the room when the plugin reports room-rules, which stays out of usedCapabilities, so an older plugin gets no update notice. The choices page offers Talk only and Look things up, and shows Use my data or Custom, with its tools, only while one is the choice; how an agent takes part and its turns a day stay off it until the room bridge holds agents to them. Each change sends only that choice, one at a time from the tap, so an older answer can't land over a newer change; the page shows what the plugin answers, refuses an answer that isn't ok or names another room, and requests stay with the dashboard they were made for. The note's footer says it holds up to 1,000 characters, where typing stops (2026-10-26, #1289).
+- A member on another Hermes never takes one of your bots' names, pictures or colors, whatever its profile is called there (2026-10-26, #1289).
 
 **Open gaps**
-- The app shows none of it yet: the room screen and room info (with the choices, set until then with `hermes conduit-push rooms set`), New Group Chat with linked people, Settings > People and the Chats list come in the `linked-rooms` branch's PRs, with their Settings captions.
-- How an agent takes part and its turns a day are kept, not enforced, until the room bridge.
+- On main the app shows none of it. The `linked-rooms` branch has the room screen and Group Info with your agents' choices; New Group Chat with linked people, Settings > People and the Chats list come in its later PRs, with their Settings captions. Until Settings > People, Links are made with `hermes conduit-push links`. Choices for a room hosted elsewhere are set with `hermes conduit-push rooms set` until the room shows in the app.
+- How an agent takes part and its turns a day are kept, not enforced, until the room bridge, and the choices page leaves them out until then.
 - Use my data has no room-safe data tools yet (free/busy comes first).
 - A memory provider's automatic recall can't be skipped in a room without a Hermes change (written up for Hermes).
-- Disband's warning says every member's session ends. That holds for rooms of your own agents; in a room with other people's agents theirs stay on their hosts, and the warning changes with the room screen in the `linked-rooms` branch.
-- A cut-off member shows only as a failed turn (reason code unknown: Hermes has none for it) until the room screen reads its route status, and deleting an ended room hosted elsewhere from the Chats list comes with the `linked-rooms` branch's Chats list.
+- On main, Disband's warning says every member's session ends, which holds for rooms of your own agents; the `linked-rooms` branch's says that in a room with other people's agents theirs stay on their hosts.
+- On main a cut-off member shows only as a failed turn (reason code unknown: Hermes has none for it); the `linked-rooms` branch's room screen reads its route status. Deleting an ended room hosted elsewhere from the Chats list comes with the branch's Chats list.
 - Approvals for your agents in rooms hosted elsewhere don't reach you.
 - A profile on the Codex app-server runtime isn't refused yet: until joining refuses it, keep it out of rooms with other people's agents (the notifier README says so).
 - Agents that aren't Hermes (an A2A member) are left out.
+- An acceptor's Hermes that stays off for more than 7 days while its confirm waits at the mailbox leaves the inviter's side linked until its owner unlinks it (the notifier README says so).
 
-**Checked:** 2026-10-26, #1284, with notifier #384.
+**Checked:** 2026-10-26, #1314, with notifier #387, #390 and #396.
 
 ## Kanban workers' transcripts
 
@@ -2336,7 +2350,7 @@ point at the map and its check
 - Rules: `CONTRIBUTING.md`, `docs/FEATURE_MAP.md` (the intro and the sibling sets), `.github/pull_request_template.md` (Siblings)
 - Reviewers: `.github/workflows/opencode-review.yml` (the Connected features focus area)
 - Notifier: `notifier/CONTRIBUTING.md`, `notifier/.github/pull_request_template.md`, `notifier/.github/workflows/opencode-review.yml`
-- Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits; on a PR into `pulse` that merges main, main's maps where the PR and its base meet main tell which entries came from main), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist; a PR into `pulse` runs `pulse`'s copy, whose trigger lists `pulse`), its PR number, base map and main's maps pinned by `scripts/tests/test_ci_workflow_contract.py`
+- Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits; on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main tell which entries came from main), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist; a PR into `pulse` or `linked-rooms` runs that branch's copy, whose trigger lists it), its PR number, base map and main's maps pinned by `scripts/tests/test_ci_workflow_contract.py`
 - Pointers: `README.md` (Architecture), `docs/CI.md` (the plan job under Jobs)
 
 **Rulings**
@@ -2345,14 +2359,14 @@ point at the map and its check
 - CONTRIBUTING.md holds the full rules. The intro, the PR templates and the reviewer prompts each carry the part their reader needs, so a rule change starts in CONTRIBUTING.md and then reaches each copy (2026-10-24, #1178).
 - The notifier's reviewers can't read this map, so a notifier PR names its entry, or the hermes-conduit PR that adds or updates it (2026-10-24, #1178).
 - An entry a PR adds or edits names that PR on its Checked line, and CI fails one that doesn't; a commit is only for an entry seeded from main. A carry PR names both, like "#1188, carried in #1200". The PR template asks for a Siblings line for every sibling the entry lists, Settings and model-facing text included (2026-10-24, #1209, Eric).
-- On a PR into `pulse` that merges main, an entry main changed between where `pulse` last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into `pulse` doesn't name the merge on every entry main changed. A `pulse` PR that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries).
+- On a PR into `pulse` or `linked-rooms` that merges main, an entry main changed between where that branch last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into the branch doesn't name the merge on every entry main changed. A PR into either that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries). `linked-rooms` gets the pass as `pulse` does, since Eric asked for the Linked Rooms app side on a branch like `pulse` (2026-10-26, #1287).
 - A refactor that changes no behavior and no user-facing or model-facing text (moving code, or changing how state is stored or observed) has no siblings: its PR says "No mapped feature" and adds no new entry, and reviewers don't ask for one. If it moves code an entry's Code lists, it updates those paths and the Checked line (2026-10-25, #1271, Eric; reviewer prompts and notifier copies in #1273 and notifier #377).
 
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's behavior without touching its entry isn't caught by CI; a reviewer flags it (minor). A refactor that changes no behavior is exempt unless it moves a listed path.
-- On a merge of main into `pulse`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping `pulse`'s edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
-- If GitHub can't say whether a PR into `pulse` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
+- On a merge of main into `pulse` or `linked-rooms`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping the branch's edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
+- If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-10-25, #1273.
+**Checked:** 2026-10-26, #1314.
