@@ -85,8 +85,10 @@ extension AppState {
                 predictiveFollowUpTurn = nil
             }
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
-                  predictiveFollowUpUnreadMessages.contains(where: { row in !messages.contains { $0.rowId == row } }) {
-            // Someone sent a message elsewhere that the chat hasn't read yet:
+                  predictiveFollowUpUnreadMessages.contains(where: { row in !messages.contains { $0.rowId == row } })
+                    || turn.after.map({ id in !messages.contains { $0.id == id } }) == true {
+            // Someone sent a message elsewhere that the chat hasn't read yet,
+            // or the row the follow-up was sent after is gone (a reload):
             // whose reply this is can't be told, so nothing is tagged.
             predictiveFollowUpTurn = nil
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {

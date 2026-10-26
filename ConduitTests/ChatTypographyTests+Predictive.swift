@@ -307,7 +307,7 @@ extension ChatTypographyTests {
     }
 
     /// A row the follow-up was sent after that's gone from the chat (a
-    /// reload) proves nothing about who wrote the reply.
+    /// reload) proves nothing about who wrote the reply, so it's not tagged.
     @MainActor
     func testAMissingStartingRowFindsNoMessageAhead() {
         let queuedAt = Date()
@@ -318,6 +318,22 @@ extension ChatTypographyTests {
         XCTAssertEqual(AppState.messagesSentAhead(after: "gone", before: queuedAt, in: messages), 0)
         XCTAssertEqual(AppState.messagesSentAhead(after: nil, before: queuedAt, in: messages), 1)
         XCTAssertEqual(AppState.messagesSentAhead(after: "u1", before: queuedAt, in: messages), 0)
+
+        // Nor does the reply after it get the tag.
+        let defaults = makeScratchDefaults("PredictiveMissingRowTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = messages
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "gone")
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        XCTAssertNil(state.predictiveFollowUpTurn)
     }
 
     /// Two messages queued ahead whose rows land together, before either
