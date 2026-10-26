@@ -1374,11 +1374,12 @@ final class SelectableTextViewHostView: UIView {
 
     /// Assistive technology gets the text view, whose links are targets:
     /// Voice Control and Full Keyboard Access can't be detected, so a drawn
-    /// host mounts its text view when one asks for its elements.
+    /// host mounts its text view, laid out as for a touch, when one asks for
+    /// its elements.
     override var accessibilityElements: [Any]? {
         get {
             guard canvas != nil else { return super.accessibilityElements }
-            return [mountedTextView]
+            return [mountTextViewForTouch()]
         }
         set { super.accessibilityElements = newValue }
     }
