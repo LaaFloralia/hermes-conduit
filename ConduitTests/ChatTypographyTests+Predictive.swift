@@ -431,6 +431,27 @@ extension ChatTypographyTests {
         XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
     }
 
+    /// Someone else sending the same words as this device's last message,
+    /// already stored under its own row: still someone else's.
+    @MainActor
+    func testTheSameWordsSentElsewhereAreStillSomeoneElses() {
+        let defaults = makeScratchDefaults("PredictiveSameWordsTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = [
+            ChatMessage(id: "u1", role: .user, content: "Thanks!", timestamp: "now", rowId: 41),
+            ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now"),
+        ]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = Date()
+        state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "Thanks!", origin: nil))
+        XCTAssertEqual(state.predictiveFollowUpUnreadMessages, [42])
+    }
+
     /// A message queued ahead of the follow-up whose turn fails: the
     /// follow-up still runs, and its reply is tagged.
     @MainActor

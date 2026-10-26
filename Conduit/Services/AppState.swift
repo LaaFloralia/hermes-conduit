@@ -20176,13 +20176,15 @@ final class AppState: ObservableObject {
     /// Hermes announced a user message in a chat (`user.message`). Every
     /// client of the chat hears it, this one's own sends included: one
     /// arriving with a turn running here, already shown here by its row id,
-    /// or matching the latest user message here is this device's (so is
-    /// the same text resent elsewhere; its stored count still reads it).
+    /// or matching the latest user message here while that one has no row
+    /// id yet is this device's (so is the same text resent elsewhere; its
+    /// stored count still reads it).
     private func noteUserMessageElsewhere(sessionId: String, rowId: Int?, text: String) {
-        let latestHere = messages.last(where: { $0.role == .user })?.content ?? ""
+        let latestHere = messages.last(where: { $0.role == .user })
         let elsewhere = eventBelongsToActiveSession(sessionId)
             && (rowId.map({ id in !messages.contains(where: { $0.rowId == id }) }) ?? true)
-            && OpenChatSync.squashed(latestHere) != OpenChatSync.squashed(text)
+            && (rowId != nil && latestHere?.rowId != nil
+                || OpenChatSync.squashed(latestHere?.content ?? "") != OpenChatSync.squashed(text))
         // A follow-up waiting in this chat: whatever turn is running here.
         if elsewhere, let activeSessionId {
             notePredictiveFollowUpMessageElsewhere(sessionId: activeSessionId, rowId: rowId)
