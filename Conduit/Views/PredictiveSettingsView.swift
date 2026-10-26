@@ -57,6 +57,7 @@ struct PredictiveSettingsPage: View {
     @AppStorage(Predictive.followUpDelayKey) private var followUpDelay = Predictive.defaultFollowUpDelay
     @AppStorage(Predictive.modelKey) private var model = Predictive.Model.fast.rawValue
     @State private var status: Predictive.HostStatus?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -83,6 +84,11 @@ struct PredictiveSettingsPage: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
         }
+        // Each switch's pickers slide in on the page-wide ease (Settings rows
+        // a toggle reveals).
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: replies)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: pause)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: followUp)
         .navigationTitle("Predictive")
         // Again once the plugin's capabilities arrive.
         .task(id: appState.predictiveIsServed) { status = await appState.loadPredictiveHostStatus() }

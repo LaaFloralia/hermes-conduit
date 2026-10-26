@@ -11,8 +11,10 @@ In the PR, say for each sibling whether it's done, not needed (and why), or
 left as a gap, and update the entry in the same PR. Nobody tends the map
 separately: a feature with siblings and no entry gets one in the PR that
 changes it, and a fix that brings a sibling in line with a change it missed
-adds that sibling to the entry. [CONTRIBUTING.md](../CONTRIBUTING.md) has the
-rules.
+adds that sibling to the entry. A refactor that changes no behavior and no
+user-facing or model-facing text has no siblings and needs no new entry; if it
+moves code an entry's Code lists, it updates those paths and the Checked line.
+[CONTRIBUTING.md](../CONTRIBUTING.md) has the rules.
 
 An entry holds the current state only; history stays in the PRs it cites.
 Keep each to about a screen, and split one that grows past that. Every entry
@@ -791,13 +793,14 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 - The profile in use is always read, even when All leaves it out.
 - A Bot Chat has no row in the workspace's chat list, so its ⋯ menu finds its ids from the chat itself (with the durable id Hermes confirmed under the bot's profile, so a relaunch or a reopened runtime still finds it) and the roster's registry id and lineage tip (2026-10-24, #1218, Eric's report: the item was greyed out).
 - A picture image generation made is listed: the host reads `image_generate`'s result, a saved file as a written image and a hosted one as an image link (2026-10-24, #1218 with notifier #353, plugin 0.71.1, Eric's report: a bot's generated pictures were missing).
+- A Bot Chat is listed though Hermes keeps it hidden: the host reads a chat asked for by id whether hidden or not, and a profile's whole list takes its hidden "Bot Chat" session and the sessions continuing it, while other hidden chats (a group room member's turns) stay out (2026-10-25, #1272 with notifier #376, plugin 0.78.1, Eric's report: a bot's pictures were still missing from both lists).
 - One host path is one artifact across stores: profiles share the host's files, so a file two stores list shows once, at its newest mention.
 - A file still opening is dropped when the list moves to another server or profile, and only the latest open clears the spinner. Every reload, including one on a dashboard without artifacts, outdates the request before it (2026-10-24, from #895's review, #1191).
 
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-10-24, #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-10-25, #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Bots: create and edit
 
@@ -1899,6 +1902,37 @@ model-facing text (none describe the glow)
 
 **Checked:** 2026-10-25, #1263.
 
+## Settings rows a toggle reveals
+
+Rows, captions and fields that appear under a Settings switch when it turns
+on, and go when it turns off. They slide in and out on the app's motion
+curve rather than popping in one frame.
+
+**Siblings:** Calls from Hermes · Location (talking and background layers) ·
+Health (detailed readings per category, and sharing turned on from its
+consent sheet) · Phone (Reminders read only, attendee email addresses, and
+sharing turned on from its consent sheet) · Voice: Enable voice on this device (the setup
+checklist and tests), Hands-free on your speech server (its speech server
+section), the wake phrase · Live call style's greeting · Sync across devices ·
+Cloudflare Access's service token · a connector's Turned on (Capabilities) ·
+Predictive (how many, the pause, the first follow-up check) ·
+text that describes it (none: no caption or doc mentions the motion) ·
+not needed: the live voice modes' Use switches, which Voice never shows (its
+mode picker shows a mode's section only once that mode is picked)
+
+**Code**
+- Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
+- A switch that sets state at once animates its own setter: `Conduit/Views/HermesCallSettingsViews.swift` (change), `Conduit/Views/HealthSettingsViews.swift` (categoryBinding), `Conduit/Views/PhoneSettingsViews.swift` (binding), `Conduit/Views/VoiceSettingsView.swift` (setVoice, localHandsFreeSection, WakePhraseSettingsSection.save), `Conduit/Views/LiveVoiceStyleViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail, Cloudflare Access)
+- A switch whose state lands later (a consent sheet, the host's answer) animates on the value, page-wide: `Conduit/Views/LocationSettingsViews.swift` (LocationSettingsPage), `Conduit/Views/SyncedPreferencesViews.swift` (also the switch easing back after a failed host check), `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift` (ConnectorDetailPage), `Conduit/Views/PredictiveSettingsView.swift` (PredictiveSettingsPage), `Conduit/Views/HealthSettingsViews.swift` and `Conduit/Views/PhoneSettingsViews.swift` (sharing turned on from the consent sheet)
+
+**Rulings**
+- Revealed rows animate with `ConduitMotion.ease`, which is the settle fade under Reduce Motion. Use withAnimation in the setter, or `.animation(_:value:)` on the whole page, never on one section alone: an animation scoped to a section grows its card while the sections below jump (proposed in #1246, 2026-10-25).
+
+**Open gaps**
+- A row revealed by something other than a switch (a picker or a host answer) isn't covered here.
+
+**Checked:** 2026-10-26, at #1242: Predictive's switches reveal their pickers on the page-wide ease. Earlier 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+
 ## Predictions
 
 Settings > Chat > Predictive: Hermes guesses the user's next move in the
@@ -1965,12 +1999,13 @@ point at the map and its check
 - The notifier's reviewers can't read this map, so a notifier PR names its entry, or the hermes-conduit PR that adds or updates it (2026-10-24, #1178).
 - An entry a PR adds or edits names that PR on its Checked line, and CI fails one that doesn't; a commit is only for an entry seeded from main. A carry PR names both, like "#1188, carried in #1200". The PR template asks for a Siblings line for every sibling the entry lists, Settings and model-facing text included (2026-10-24, #1209, Eric).
 - On a PR into `pulse` that merges main, an entry main changed between where `pulse` last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into `pulse` doesn't name the merge on every entry main changed. A `pulse` PR that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries).
+- A refactor that changes no behavior and no user-facing or model-facing text (moving code, or changing how state is stored or observed) has no siblings: its PR says "No mapped feature" and adds no new entry, and reviewers don't ask for one. If it moves code an entry's Code lists, it updates those paths and the Checked line (2026-10-25, #1271, Eric; reviewer prompts and notifier copies in #1273 and notifier #377).
 
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
-- A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
+- A PR that changes a mapped feature's behavior without touching its entry isn't caught by CI; a reviewer flags it (minor). A refactor that changes no behavior is exempt unless it moves a listed path.
 - On a merge of main into `pulse`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping `pulse`'s edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
 - If GitHub can't say whether a PR into `pulse` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-10-25, #1248.
+**Checked:** 2026-10-25, #1273.
