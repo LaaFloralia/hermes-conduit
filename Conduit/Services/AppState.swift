@@ -31253,7 +31253,6 @@ final class AppState: ObservableObject {
             try await updateProfileConfig(profile: profile) { config in
                 var display = config["display"] as? [String: Any] ?? [:]
                 switch key {
-                case .reasoning: display["show_reasoning"] = enabled
                 case .toolProgress: display["tool_progress"] = enabled ? "on" : "off"
                 case .expandTools: display["expand_tools"] = enabled
                 }
@@ -31273,7 +31272,6 @@ final class AppState: ObservableObject {
 
     private func applyDisplayPreference(_ key: DisplayPreferenceKey, enabled: Bool) {
         switch key {
-        case .reasoning: displayPreferences.showReasoning = enabled
         case .toolProgress: displayPreferences.showToolProgress = enabled
         case .expandTools: displayPreferences.expandToolsByDefault = enabled
         }

@@ -667,6 +667,10 @@ private struct ChatStepRowBody: View {
         let group = placement.group
         let thinkingShown = self.thinkingShown
         let visible = group.visibleMembers(showReasoning: profileShowsReasoning || thinkingShown, showTools: showTools)
+        // The count stays the steps Settings shows, thoughts shown on
+        // request aside (as a summary counts them).
+        let settingsVisible = thinkingShown ? group.visibleMembers(showReasoning: profileShowsReasoning, showTools: showTools) : visible
+        let counted = settingsVisible.isEmpty ? visible : settingsVisible
         if let position = visible.firstIndex(where: { $0.messageID == message.id }) {
             if visible.count < 2 {
                 // Whichever step is left showing carries the run's summary
@@ -697,6 +701,7 @@ private struct ChatStepRowBody: View {
                                 lookingBack: lookingBack,
                                 explain: offersExplain ? explain : nil,
                                 thinking: thinkingReveal,
+                                counted: counted,
                                 toggle: { toggle(group, to: false) }
                             )
                         }
@@ -719,6 +724,7 @@ private struct ChatStepRowBody: View {
                         lookingBack: lookingBack,
                         explain: offersExplain ? explain : nil,
                         thinking: thinkingReveal,
+                        counted: counted,
                         toggle: { toggle(group, to: true) }
                     )
                     .chatStepCard()
@@ -776,6 +782,9 @@ private struct ChatStepGroupHeader: View {
     var explain: (() -> Void)?
     /// Shows or hides the run's thinking (the run's menu).
     var thinking: ChatThinkingReveal?
+    /// The steps its count and time are of: `members` but for thoughts
+    /// shown on request.
+    var counted: [ChatStepGroupMember]?
     let toggle: () -> Void
     @ObservedObject private var appLanguage = AppLanguageStore.shared
 
@@ -836,8 +845,9 @@ private struct ChatStepGroupHeader: View {
     /// The run's count and, once it is done, its time (a running turn's
     /// time is on the working line): shown, then spoken.
     private var title: (shown: String, spoken: String) {
-        let count = AppLocalization.string("\(members.count) steps")
-        let span = isLive ? nil : ChatStepTiming.span(of: members)
+        let counted = self.counted ?? members
+        let count = AppLocalization.string("\(counted.count) steps")
+        let span = isLive ? nil : ChatStepTiming.span(of: counted)
         guard let time = ChatStepTiming.text(span),
               let spoken = ChatStepTiming.spokenText(span) else { return (count, count) }
         return ("\(count) · \(time)", "\(count), \(spoken)")

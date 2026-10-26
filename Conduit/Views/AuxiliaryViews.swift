@@ -343,7 +343,6 @@ private struct LegacySettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            displayToggle(.reasoning, title: AppLocalization.string("Show reasoning"), detail: AppLocalization.string("Include available agent reasoning in replies."))
             displayToggle(.toolProgress, title: AppLocalization.string("Show tool activity"), detail: AppLocalization.string("Show tool calls and their progress in chat."))
             displayToggle(.expandTools, title: AppLocalization.string("Keep tool cards expanded"), detail: AppLocalization.string("Open completed tool details by default."))
 
@@ -448,7 +447,6 @@ private struct LegacySettingsView: View {
 
     private func displayValue(for key: DisplayPreferenceKey) -> Bool {
         switch key {
-        case .reasoning: return displayPreferences.showReasoning
         case .toolProgress: return displayPreferences.showToolProgress
         case .expandTools: return displayPreferences.expandToolsByDefault
         }
@@ -472,7 +470,6 @@ private struct LegacySettingsView: View {
 
     private func setDisplayValue(_ key: DisplayPreferenceKey, enabled: Bool) {
         switch key {
-        case .reasoning: displayPreferences.showReasoning = enabled
         case .toolProgress: displayPreferences.showToolProgress = enabled
         case .expandTools: displayPreferences.expandToolsByDefault = enabled
         }

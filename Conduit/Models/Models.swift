@@ -1245,7 +1245,6 @@ enum ReasoningDisplayMode: String, CaseIterable {
 }
 
 enum DisplayPreferenceKey: CaseIterable, Identifiable {
-    case reasoning
     case toolProgress
     case expandTools
 
