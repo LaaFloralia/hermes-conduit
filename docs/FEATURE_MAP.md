@@ -1862,7 +1862,7 @@ pictures load)
 - Group rooms show no `MEDIA:` pictures: their Markdown has no gateway resolver.
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
-**Checked:** 2026-10-26, at #1270.
+**Checked:** 2026-10-26, #1281 (wipeOfflineChatCache also forgets Predictive's state); at #1270.
 
 ## Cards drawn in web pages
 
