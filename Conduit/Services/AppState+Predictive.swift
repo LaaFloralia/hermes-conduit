@@ -37,9 +37,11 @@ extension AppState {
     /// opened or back in front), so the idle time starts over. A turn that
     /// ended without a reply of its own returns to the reply it left.
     func updatePredictiveScreen(fresh: Bool = true) {
-        // Left the chat Hermes was following up in: its reply is no
+        // Left the chat Hermes was following up in (another chat, the
+        // sidebar, a room, Conduit in the background): its reply is no
         // longer watched, so it neither holds pushes nor gets the tag.
-        if let turn = predictiveFollowUpTurn, turn.sessionID != activeSessionId {
+        if let turn = predictiveFollowUpTurn,
+           turn.sessionID != activeSessionId || !isSceneActive || showSidebar || activeRoomSurface != nil {
             predictiveFollowUpTurn = nil
         }
         let anchor = predictiveAnchor
@@ -105,9 +107,10 @@ extension AppState {
             language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.repliesWait
         )
         let profile = activeProfile
+        let generation = predictiveGeneration
         Task { [weak self] in
             guard let answer = await self?.askPredictive(body, profile: profile, wait: Predictive.repliesWait),
-                  let self, self.predictiveAnchor == anchor else { return }
+                  let self, self.predictiveGeneration == generation, self.predictiveAnchor == anchor else { return }
             let guesses = Array(Predictive.guesses(answer["replies"]).prefix(count))
             guard !guesses.isEmpty else { return }
             self.predictive.showReplies(guesses, for: anchor)
@@ -175,11 +178,12 @@ extension AppState {
         )
         let profile = activeProfile
         let asked = Date()
+        let generation = predictiveGeneration
         // Not cancelled by more typing: an answer for the start of the draft
         // still offers the rest of a continuation the user is typing.
         Task { [weak self] in
             guard let answer = await self?.askPredictive(body, profile: profile, wait: Predictive.draftWait),
-                  let self, self.activeSessionId == sessionID,
+                  let self, self.predictiveGeneration == generation, self.activeSessionId == sessionID,
                   Date().timeIntervalSince(asked) <= Predictive.draftWait + 1 else { return }
             self.predictive.showDraftGuesses(
                 next: Predictive.guesses(answer["next"]),
@@ -245,10 +249,11 @@ extension AppState {
             kind: .turn, sessionID: anchor.sessionID, count: 1, facts: facts,
             language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.turnWait
         )
+        let generation = predictiveGeneration
         let answer = await askPredictive(body, profile: activeProfile, wait: Predictive.turnWait)
         // Still the same reply on screen, nobody writing, nothing started,
         // the switch still on and the chat not hidden meanwhile.
-        guard !Task.isCancelled, predictiveAnchor == anchor, predictiveFollowUp.anchor == anchor,
+        guard !Task.isCancelled, predictiveGeneration == generation, predictiveAnchor == anchor, predictiveFollowUp.anchor == anchor,
               Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(anchor.sessionID),
               predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         guard let answer else {
@@ -263,7 +268,7 @@ extension AppState {
             // Its own task: the turn starting stops the follow-up clock,
             // and that must not cancel the send it started.
             Task { [weak self] in
-                await self?.sendPredictiveFollowUp(nudge, why: decision.why, sessionID: anchor.sessionID)
+                await self?.sendPredictiveFollowUp(nudge, why: decision.why, sessionID: anchor.sessionID, generation: generation)
             }
         } else if let again = decision.askAgain, predictiveFollowUp.checks < Predictive.maximumChecks {
             predictiveFollowUp.nextCheck = Date().addingTimeInterval(TimeInterval(again))
@@ -275,7 +280,8 @@ extension AppState {
 
     /// The hidden turn: Hermes sees it, the chat doesn't show it, and its
     /// reply wears "Hermes followed up".
-    private func sendPredictiveFollowUp(_ nudge: String, why: String, sessionID: String) async {
+    private func sendPredictiveFollowUp(_ nudge: String, why: String, sessionID: String, generation: Int) async {
+        guard predictiveGeneration == generation else { return }
         guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning,
               Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(sessionID) else {
             // Not sent: the user's message keeps its follow-up.
@@ -286,10 +292,13 @@ extension AppState {
         predictive.clear()
         do {
             let outcome = try await client.sendPrompt(sessionID, text: nudge, hidden: true)
+            // Forgotten meanwhile (sign-out): nothing of it is kept.
+            guard predictiveGeneration == generation else { return }
             // A turn running meanwhile took it in: there's no reply of its
             // own to mark. A queued one runs as its own next turn.
             if outcome == .steered || outcome == .redirected { predictiveFollowUpTurn = nil }
         } catch {
+            guard predictiveGeneration == generation else { return }
             // Nothing reached Hermes (a gateway without hidden prompts stops
             // the checks for good): the user's message keeps its follow-up.
             predictiveFollowUpTurn = nil

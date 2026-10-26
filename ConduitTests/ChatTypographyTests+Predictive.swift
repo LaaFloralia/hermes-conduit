@@ -156,6 +156,22 @@ extension ChatTypographyTests {
     }
 
     @MainActor
+    func testLeavingTheChatForTheSidebarDropsAFollowUpsTag() {
+        let defaults = makeScratchDefaults("PredictiveSidebarTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+        state.updatePredictiveScreen()
+        XCTAssertNotNil(state.predictiveFollowUpTurn, "still on screen")
+        state.showSidebar = true
+        XCTAssertNil(state.predictiveFollowUpTurn)
+    }
+
+    @MainActor
     func testSigningOutForgetsWhatPredictiveKnewOfTheChats() {
         let defaults = makeScratchDefaults("PredictiveSignOutTests")
         let state = AppState(
@@ -176,8 +192,11 @@ extension ChatTypographyTests {
         state.predictiveReplyEnded = (anchor, Date())
         let pause = Task<Void, Never> { try? await Task.sleep(nanoseconds: 60_000_000_000) }
         state.predictivePauseTask = pause
+        let generation = state.predictiveGeneration
 
         state.forgetPredictiveState()
+
+        XCTAssertNotEqual(state.predictiveGeneration, generation, "answers asked before are dropped")
 
         XCTAssertFalse(state.predictive.isShowing)
         XCTAssertEqual(state.predictive.draft, "")

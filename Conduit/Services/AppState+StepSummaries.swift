@@ -129,8 +129,6 @@ extension AppState {
             stepSummaryTasks = [:]
             stepSummaryRequested = [:]
             stepSummaryEarlyAnswers = [:]
-            // Predictions describe chats too.
-            forgetPredictiveState()
             return
         }
         // Another dashboard signing out leaves this one's questions be.

@@ -2333,6 +2333,9 @@ final class AppState: ObservableObject {
     /// `after` is the chat's last row when it was sent: only a reply
     /// after it is the follow-up's.
     var predictiveFollowUpTurn: (sessionID: String, why: String, after: String?)?
+    /// Advanced by forgetPredictiveState: an answer asked before it is
+    /// dropped, whatever is on screen when it comes.
+    var predictiveGeneration = 0
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
@@ -10130,6 +10133,7 @@ final class AppState: ObservableObject {
     /// Sign-out or removal of the open dashboard: nothing Predictive knew
     /// of its chats stays for the next account.
     func forgetPredictiveState() {
+        predictiveGeneration &+= 1
         predictivePauseTask?.cancel()
         predictivePauseTask = nil
         predictiveFollowUpTask?.cancel()
