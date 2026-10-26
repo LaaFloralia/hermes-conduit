@@ -1172,7 +1172,8 @@ needed, it already says the setting applies to hardware keyboards only) ·
 the two default footnotes, Mac on and iPhone/iPad off (not needed, each
 states the default for its device) · the hardware-keyboards caption (not
 needed, shown only off a Mac and already says the on-screen Return key is
-unchanged)
+unchanged) · a running dictation (done, #1315: Return stops it; the
+Keyboard caption is unchanged, as it describes the option)
 
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
@@ -1182,11 +1183,15 @@ unchanged)
 **Rulings**
 - The caption describes the option, not current behaviour, because the
   option starts off on iPhone and iPad (2026-10-24, #1208, review of #1190).
+- While dictating, Return does what the Stop in Send's place does: stops
+  the dictation, or calls off one still coming up, and sends nothing. The
+  next Return, once the words are in and Send is back, sends (2026-10-26,
+  #1315, see Send while dictating).
 
 **Open gaps**
-- None known.
+- Group rooms' composer and the full editor don't take the option: Return there always starts a new line, which ends a running dictation as typing does, keeping its words (found in #1315 review).
 
-**Checked:** 2026-10-24, at #1208, carried in #1229.
+**Checked:** 2026-10-26, at #1315.
 
 ## A chat's last reply
 
@@ -1641,6 +1646,41 @@ Classic voice utterances
 - Dictation stopping at the limit says nothing; the words are in the draft.
 
 **Checked:** 2026-10-24, at #1222.
+
+## Send while dictating
+
+What the composer offers while a dictation runs: a wide Stop in Send's
+place until the words are in the draft, so they're read over before they
+go. Talking and sending in one go is Voice message's or Voice's job.
+
+**Siblings:** chat composer (chats, project chats, Bot Chat; done) · group
+rooms (done) · the full editor, both composers' (done, it shows the same
+Stop) · the hardware Return key with Return sends on (done in chats' inline field, it stops the
+dictation; the full editor and group rooms don't take the option, see Composer Return key's gap) · the big voice button set to Dictation (done, its second
+tap does what the Stop does, a settle included) · Voice
+message's hold to record, let go to send (not changed, it's the one-tap
+path) · docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · strings (not
+needed, Stop, Cancel, Transcribing and the dictation labels are already
+translated) · Watch and CarPlay (not needed, no composer dictation) · the
+notifier (not needed, dictation is app-side)
+
+**Code**
+- Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
+- The Stop: `Conduit/Views/Components/ComposerDictationStopButton.swift`
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive)
+- Tests: `ConduitTests/DictationEngineTests.swift`, `ConduitTests/AppStateVoiceCapabilityTests.swift`
+
+**Rulings**
+- Send isn't offered while dictating, from the tap that starts it until its last words are in (a Hermes upload included). A wide Stop holds its place and the small mic steps aside; Send comes back with the words in the draft. Send doesn't stop and send in one tap (Eric, 2026-10-26, #1309, #1315).
+- The Stop takes the whole slot, so a running reply's Stop, Steer or Queue comes back after the dictation too (2026-10-26, #1315).
+- Once stopped, the Stop shows Transcribing (an Apple engine finalizing, or Hermes) and waits out a 3.5 second grace, so a tap can't cut off its final words. That outlasts either Apple engine's whole settle, so only Hermes ever offers Done: past the grace it reads Done and ends the dictation there, keeping the draft's words, so a slow host never holds Send back. A Hermes dictation none of whose words are in yet waits throughout; once its first words land it settles like any engine's, and typing ends it (2026-10-26, #1315 review).
+
+**Open gaps**
+- A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message.
+- Not yet checked on a device: the Stop's width and the swap in the controls row and the full editor, with long translations and large text.
+
+**Checked:** 2026-10-26, at #1315.
 
 ## Chats top bar and search
 
