@@ -145,6 +145,8 @@ extension AppState {
         predictivePauseTask?.cancel()
         predictivePauseTask = nil
         let isEmpty = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // An emptied composer starts a new draft, asked about afresh.
+        if isEmpty { predictiveDraftAsked = nil }
         if !isEmpty || !wasEmpty {
             // Writing is the opposite of sitting idle: the clock starts over
             // once the composer is empty again.
@@ -160,8 +162,11 @@ extension AppState {
         let delay = Predictive.pauseDelay()
         predictivePauseTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            // Still on, shown and on screen: a draft is never asked about
+            // once the switch is off, the chat hidden or covered.
             guard let self, self.predictive.draft == text, self.activeSessionId == sessionID,
-                  !self.isBusy else { return }
+                  !self.isBusy, Predictive.pauseEnabled(), !self.predictive.hiddenSessions.contains(sessionID),
+                  self.isSceneActive, !self.showSidebar, self.activeRoomSurface == nil else { return }
             self.askAboutDraft(text, sessionID: sessionID)
         }
     }

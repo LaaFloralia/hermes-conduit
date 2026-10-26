@@ -343577,7 +343577,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nach einer Antwort die Nachrichten, die du am wahrscheinlichsten als Nächstes sendest, die beste zuerst. Tippe auf eine, um sie zu senden; halte sie gedrückt, um sie vorher zu bearbeiten."
+            "value" : "Nach einer Antwort die Nachrichten, die du am wahrscheinlichsten als Nächstes sendest, die besten zuerst. Tippe auf eine, um sie zu senden; halte sie gedrückt, um sie vorher zu bearbeiten."
           }
         },
         "es" : {
@@ -343619,7 +343619,7 @@
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Po odpowiedzi wiadomości, które najpewniej wyślesz jako następne, najlepsza najpierw. Stuknij, aby wysłać; przytrzymaj, aby najpierw edytować."
+            "value" : "Po odpowiedzi wiadomości, które najpewniej wyślesz jako następne, najlepsze najpierw. Stuknij, aby wysłać; przytrzymaj, aby najpierw edytować."
           }
         },
         "pt-BR" : {

@@ -1952,11 +1952,11 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 - Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
 - Settings: `Conduit/Views/PredictiveSettingsView.swift`, listed in `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail)
-- Notifier, from plugin 0.79: predict.py and dashboard/plugin_api.py (`/predict`), tested in tests/test_predict.py (backticked once on notifier main); `notifier/README.md`, `notifier/CHANGELOG.md`
+- Notifier, from plugin 0.80: `notifier/predict.py` and `notifier/dashboard/plugin_api.py` (`/predict`), tested in `notifier/tests/test_predict.py`; `notifier/README.md`, `notifier/CHANGELOG.md`
 - Tests: `ConduitTests/ChatTypographyTests+Predictive.swift`
 
 **Rulings**
-- All three are off by default, device-only, and need the plugin's `predict` capability (0.79+); without it the page says so and nothing is asked (2026-10-25, Michel, #1242).
+- All three are off by default, device-only, and need the plugin's `predict` capability (0.80+); without it the page says so and nothing is asked (2026-10-25, Michel, #1242).
 - Guesses come from the plugin's `POST /predict`, a no-tools fork of the live chat that saves nothing, answered only to the asking device, never from `prompt.btw`, whose answers reach every client and show in Desktop (2026-10-25, Michel, #1242).
 - One row of capsules, best first, with no percentages: tap sends, long-press edits; taps in its first 0.4 s are ignored. Continuations are phrase chips, not ghost text (2026-10-25, Michel, #1242).
 - Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #1242).
@@ -1974,7 +1974,7 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 - Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
 - The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
 
-**Checked:** 2026-10-26, at #1281.
+**Checked:** 2026-10-26, at #1281 (carrying #1242).
 
 ## Feature map rules
 

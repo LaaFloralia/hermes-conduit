@@ -14,7 +14,7 @@
 //    (Hermes' `display_kind: "hidden"`), at most one per message the user
 //    sends.
 //
-//  The plugin's `POST /predict` (predict.py, plugin 0.79+) answers each one
+//  The plugin's `POST /predict` (predict.py, plugin 0.80+) answers each one
 //  with a fork of the live chat that can't use tools and saves nothing, and
 //  answers only this device: `/btw`'s answers go to every client, and Hermes
 //  Desktop shows them as notes. Conduit measures every duration it sends;
@@ -26,7 +26,7 @@ import Foundation
 enum Predictive {
     static let capability = "predict"
     /// The plugin version that first serves it, named in Settings.
-    static let minimumPlugin = "0.79"
+    static let minimumPlugin = "0.80"
     static let path = "/api/plugins/conduit_push/predict"
 
     // MARK: - Settings (device-only, all off by default)
@@ -182,7 +182,10 @@ enum Predictive {
             let p = (item["p"] as? NSNumber)?.doubleValue ?? 0.5
             return Guess(text: text, p: min(1, max(0, p)))
         }
-        return found.sorted { $0.p > $1.p }
+        // Ties keep the host's order.
+        return found.enumerated()
+            .sorted { $0.element.p != $1.element.p ? $0.element.p > $1.element.p : $0.offset < $1.offset }
+            .map(\.element)
     }
 
     static func turnAnswer(_ answer: [String: Any]) -> TurnAnswer {
