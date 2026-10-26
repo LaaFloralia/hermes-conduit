@@ -131,6 +131,43 @@ extension ChatTypographyTests {
     }
 
     @MainActor
+    func testAFollowUpThatFailedOrWasInterruptedEnds() {
+        let events: [StreamEvent] = [
+            .messageError(sessionId: "s1", message: "gateway exploded"),
+            .messageInterrupted(sessionId: "s1"),
+        ]
+        for event in events {
+            let defaults = makeScratchDefaults("PredictiveFollowUpTests")
+            let state = AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            )
+            state.sessions = [SessionSummary(
+                id: "s1", alternateIds: [], title: "s1", model: "Hermes", updatedLabel: "now",
+                profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+            )]
+            state.activeSessionId = "s1"
+            state.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+            state.handleStreamEvent(event)
+            XCTAssertNil(state.predictiveFollowUpTurn, "\(event)")
+            XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        }
+    }
+
+    @MainActor
+    func testRefreshedChipsAreGuardedAgain() {
+        let store = PredictiveStore()
+        let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")
+        store.setScreen(anchor)
+        store.showReplies([.init(text: "Thanks!", p: 0.8)], for: anchor)
+        let later = Date().addingTimeInterval(Predictive.tapGuard + 0.1)
+        XCTAssertFalse(store.tapIsGuarded(now: later))
+        store.showReplies([.init(text: "Do it", p: 0.7)], for: anchor)
+        XCTAssertTrue(store.tapIsGuarded())
+    }
+
+    @MainActor
     func testATapOnARowThatJustAppearedIsIgnored() {
         let store = PredictiveStore()
         let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")

@@ -14,11 +14,14 @@ struct PredictiveRow: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject var store: PredictiveStore
     let appState: AppState
+    // A switch turned off takes its chips with it.
+    @AppStorage(Predictive.repliesKey) private var repliesOn = false
+    @AppStorage(Predictive.pauseKey) private var pauseOn = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
-            if store.isShowing {
+            if store.isShowing, !visibleNext.isEmpty || !visibleReplies.isEmpty {
                 if store.isFolded {
                     foldedButton
                 } else {
@@ -30,11 +33,19 @@ struct PredictiveRow: View {
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: store.isFolded)
     }
 
+    private var visibleNext: [Predictive.Guess] { pauseOn ? store.currentNext : [] }
+
+    /// Whole messages: a reply's suggestions, or a paused draft's.
+    private var visibleReplies: [Predictive.Guess] {
+        let forDraft = !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return (forDraft ? pauseOn : repliesOn) ? store.currentReplies : []
+    }
+
     private var row: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                let next = store.currentNext
-                let replies = store.currentReplies
+                let next = visibleNext
+                let replies = visibleReplies
                 ForEach(next, id: \.self) { guess in
                     continuationChip(guess)
                 }
@@ -140,6 +151,8 @@ struct PredictiveRow: View {
                     .foregroundStyle(Color.conduitAura)
                     .frame(width: 44, height: 32)
                     .background(Capsule().fill(Color.conduitAura.opacity(0.12)))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Show suggestions"))

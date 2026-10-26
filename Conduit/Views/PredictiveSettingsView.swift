@@ -84,7 +84,8 @@ struct PredictiveSettingsPage: View {
             .padding(.vertical, 20)
         }
         .navigationTitle("Predictive")
-        .task { status = await appState.loadPredictiveHostStatus() }
+        // Again once the plugin's capabilities arrive.
+        .task(id: appState.predictiveIsServed) { status = await appState.loadPredictiveHostStatus() }
     }
 
     private var repliesSection: some View {

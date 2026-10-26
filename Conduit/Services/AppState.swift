@@ -2324,7 +2324,7 @@ final class AppState: ObservableObject {
     /// The reply suggested replies were last asked for (asked once each).
     var predictiveRepliesAsked: PredictiveStore.Anchor?
     /// The draft last asked about, and the wait for the next pause.
-    var predictiveDraftAsked: String?
+    var predictiveDraftAsked: (sessionID: String, draft: String)?
     var predictivePauseTask: Task<Void, Never>?
     /// The follow-up checks for the reply on screen, and the next one.
     var predictiveFollowUp = PredictiveFollowUpState()
@@ -10113,7 +10113,7 @@ final class AppState: ObservableObject {
         // The row's guesses are for the reply it shows, in the open chat.
         guard let shown = predictive.screen, shown.sessionID == activeSessionId else { return }
         predictiveComposerRequest = PredictiveComposerRequest(
-            action: action, text: text, draft: predictive.draft,
+            action: action, text: text, draft: predictive.draft, sessionID: shown.sessionID,
             draftKey: ComposerBar.composerDraftKey(for: shown.sessionID, profile: activeProfile)
         )
     }
@@ -32007,6 +32007,8 @@ final class AppState: ObservableObject {
             clearStreamingText()
             errorMessage = message
             setRunning(false)
+            // A follow-up that failed wrote nothing to tag.
+            predictiveTurnEnded(sessionId: streamSessionId)
             notifyVoiceAssistant(.failed(sessionID: streamSessionId, message: message))
 
         case .messageInterrupted:
@@ -32014,6 +32016,7 @@ final class AppState: ObservableObject {
             resetReasoningTurn()
             clearStreamingText()
             setRunning(false)
+            predictiveTurnEnded(sessionId: streamSessionId)
             notifyVoiceAssistant(.interrupted(sessionID: streamSessionId))
 
         case .sessionBusy(_, let busy):
@@ -35712,8 +35715,9 @@ final class AppState: ObservableObject {
         setRunning(false)
         // The turn has settled, its reply in place.
         requestStepSummaryIfWanted(sessionId: sessionId)
-        // Suggested replies and the follow-up clock for the new reply.
-        predictiveTurnSettled(sessionId: sessionId)
+        // Suggested replies and the follow-up clock for the new reply; a
+        // system notice merged into the last row isn't one.
+        predictiveTurnSettled(sessionId: sessionId, isReply: systemNotice == nil)
         // Cancel any pending coalesced flush and write immediately — the
         // turn is complete so all messages are in their final state. One
         // write covering the stream's session id too; this used to write the

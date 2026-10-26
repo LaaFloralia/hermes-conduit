@@ -1973,7 +1973,8 @@ struct ComposerBar: View, Equatable {
     private func applyPredictiveRequest(_ request: PredictiveComposerRequest?) {
         guard let request else { return }
         appState.consumePredictiveComposerRequest(request.id)
-        guard appState.composerIsEnabled,
+        // Left for another chat before it applied: dropped.
+        guard appState.composerIsEnabled, request.sessionID == appState.activeSessionId,
               Self.shouldApplyPrefill(
                   for: request.draftKey, loaded: loadedDraftKey,
                   identity: appState.activeChatScrollSessionIdentity

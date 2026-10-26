@@ -263,7 +263,9 @@ final class PredictiveStore: ObservableObject {
     @Published private(set) var followUpReasons: [String: String] = [:]
 
     func showReplies(_ guesses: [Predictive.Guess], for anchor: Anchor) {
-        if replies.isEmpty || self.anchor != anchor { shownAt = Date() }
+        // New chips, new guard: a finger already on its way to the old
+        // ones doesn't land on these.
+        if replies != guesses || self.anchor != anchor { shownAt = Date() }
         self.anchor = anchor
         replies = guesses
         isFolded = false
@@ -392,6 +394,7 @@ struct PredictiveComposerRequest: Equatable {
     let draft: String
     /// The chat the guess was offered in: a composer showing another one
     /// drops it.
+    let sessionID: String
     let draftKey: ComposerDraftKey
 }
 

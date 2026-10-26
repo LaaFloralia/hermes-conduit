@@ -33,7 +33,10 @@ extension AppState {
     /// On each change of the open chat, the scene and the turn
     /// (updateChatOnScreen): the row follows what is on screen, and a new
     /// reply is asked about.
-    func updatePredictiveScreen() {
+    /// `fresh`: the screen changed for the user (a new reply, the chat
+    /// opened or back in front), so the idle time starts over. A turn that
+    /// ended without a reply of its own returns to the reply it left.
+    func updatePredictiveScreen(fresh: Bool = true) {
         // Left the chat Hermes was following up in: its reply is no
         // longer watched, so it neither holds pushes nor gets the tag.
         if let turn = predictiveFollowUpTurn, turn.sessionID != activeSessionId {
@@ -46,26 +49,35 @@ extension AppState {
         stopPredictiveFollowUpClock()
         guard let anchor else { return }
         // Back on screen: the idle time counts from now.
-        predictiveFollowUp.idleSince = Date()
+        if fresh || predictiveFollowUp.anchor != anchor { predictiveFollowUp.idleSince = Date() }
         requestPredictedReplies(for: anchor)
         startPredictiveFollowUpClock(for: anchor)
     }
 
-    /// A turn settled with its reply in place.
-    func predictiveTurnSettled(sessionId: String) {
+    /// A turn settled. `isReply`: it ended in a reply of its own, not a
+    /// system notice merged into the last row.
+    func predictiveTurnSettled(sessionId: String, isReply: Bool = true) {
         if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
             predictiveFollowUpTurn = nil
             // Only a reply the turn wrote: a [SILENT] one leaves no row, and
             // a system notice isn't Hermes following up.
-            if let reply = messages.last, reply.role == .assistant, reply.id != turn.after {
+            if isReply, let reply = messages.last, reply.role == .assistant, reply.id != turn.after {
                 predictive.noteFollowUp(messageID: reply.id, why: turn.why)
                 objectWillChange.send()
             }
         }
-        if let anchor = predictiveAnchor, anchor.sessionID == sessionId {
+        // The reply on screen ended now only when this turn wrote it.
+        if isReply, let anchor = predictiveAnchor, anchor.sessionID == sessionId {
             predictiveReplyEnded = (anchor, Date())
         }
-        updatePredictiveScreen()
+        updatePredictiveScreen(fresh: isReply)
+    }
+
+    /// A turn failed or was interrupted: a follow-up it carried is over,
+    /// with nothing to tag.
+    func predictiveTurnEnded(sessionId: String) {
+        if predictiveFollowUpTurn?.sessionID == sessionId { predictiveFollowUpTurn = nil }
+        updatePredictiveScreen(fresh: false)
     }
 
     // MARK: - Asking
@@ -139,8 +151,8 @@ extension AppState {
         }
         guard Predictive.pauseEnabled(), predictiveIsServed, !isEmpty, !text.hasPrefix("/"),
               text.trimmingCharacters(in: .whitespacesAndNewlines).count >= Predictive.minimumDraftCharacters,
-              text != predictiveDraftAsked,
               let sessionID = activeSessionId, !sessionID.isEmpty,
+              predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != text,
               !predictive.hiddenSessions.contains(sessionID), !isBusy, !turnState.isRunning else { return }
         let delay = Predictive.pauseDelay()
         predictivePauseTask = Task { [weak self] in
@@ -154,8 +166,9 @@ extension AppState {
     /// Asks about `draft` once. The answer counts while it comes within
     /// the wait and the draft still starts with what was asked.
     private func askAboutDraft(_ draft: String, sessionID: String) {
-        guard predictiveDraftAsked != draft else { return }
-        predictiveDraftAsked = draft
+        // Asked once per draft in each chat.
+        guard predictiveDraftAsked?.sessionID != sessionID || predictiveDraftAsked?.draft != draft else { return }
+        predictiveDraftAsked = (sessionID, draft)
         let body = Predictive.body(
             kind: .draft, sessionID: sessionID, count: Predictive.replyCount(), draft: draft,
             language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.draftWait
@@ -182,7 +195,7 @@ extension AppState {
     /// switch is on and Hermes hasn't spent its follow-up on the user's
     /// last message.
     func startPredictiveFollowUpClock(for anchor: PredictiveStore.Anchor) {
-        guard Predictive.followUpEnabled(), predictiveIsServed,
+        guard Predictive.followUpEnabled(), predictiveIsServed, client?.gatewayRefusesHiddenPrompts != true,
               !predictive.hiddenSessions.contains(anchor.sessionID),
               predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if predictiveFollowUp.anchor != anchor {
@@ -264,7 +277,11 @@ extension AppState {
     /// reply wears "Hermes followed up".
     private func sendPredictiveFollowUp(_ nudge: String, why: String, sessionID: String) async {
         guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning,
-              Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(sessionID) else { return }
+              Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(sessionID) else {
+            // Not sent: the user's message keeps its follow-up.
+            predictiveFollowUp.spentOn = nil
+            return
+        }
         predictiveFollowUpTurn = (sessionID, why, messages.last?.id)
         predictive.clear()
         do {
@@ -273,7 +290,10 @@ extension AppState {
             // its own to mark.
             if outcome != .accepted { predictiveFollowUpTurn = nil }
         } catch {
+            // Nothing reached Hermes (a gateway without hidden prompts stops
+            // the checks for good): the user's message keeps its follow-up.
             predictiveFollowUpTurn = nil
+            predictiveFollowUp.spentOn = nil
         }
         // Its reply lands while the user watches: no push for it.
         updateChatOnScreen()

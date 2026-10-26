@@ -343507,7 +343507,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ajoute ces mots à votre message."
+            "value" : "Ajoutez ces mots à votre message."
           }
         },
         "id" : {
@@ -345065,7 +345065,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Envoie ce message. Utilisez l'action Modifier pour le changer d'abord."
+            "value" : "Envoyez ce message. Utilisez l'action Modifier pour le changer d'abord."
           }
         },
         "id" : {
