@@ -700,7 +700,7 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
 
-**Checked:** 2026-10-26, #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -1006,6 +1006,29 @@ the bot's SOUL messaging section · README.md's bots line
 - None known.
 
 **Checked:** 2026-10-25, at #1259.
+
+## Links in messages
+
+A tap on a link in a reply opens it, the first time, wherever the reply is
+drawn until a touch mounts its text view.
+
+**Siblings:** chats, project chats and Bot Chat (one chat view) · group rooms ·
+VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
+Keyboard Access (the text view mounts and lays out when they ask for the
+reply's elements) · long-press Open Link
+
+**Code**
+- Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
+- Test: `ConduitTests/DrawnTextLinkTapTests.swift`
+- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched)
+
+**Rulings**
+- The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-26, #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 

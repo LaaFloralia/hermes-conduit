@@ -1374,11 +1374,12 @@ final class SelectableTextViewHostView: UIView {
 
     /// Assistive technology gets the text view, whose links are targets:
     /// Voice Control and Full Keyboard Access can't be detected, so a drawn
-    /// host mounts its text view when one asks for its elements.
+    /// host mounts its text view, laid out as for a touch, when one asks for
+    /// its elements.
     override var accessibilityElements: [Any]? {
         get {
             guard canvas != nil else { return super.accessibilityElements }
-            return [mountedTextView]
+            return [mountTextViewForTouch()]
         }
         set { super.accessibilityElements = newValue }
     }
@@ -1386,14 +1387,27 @@ final class SelectableTextViewHostView: UIView {
     /// A touch gets the real text view, mounted in place of the drawing as
     /// the touch begins: links, selection, menus and drags then behave
     /// exactly as they always have. Scrolling stays cheap, as the finger is
-    /// still.
+    /// still. The new text view is laid out before the touch is routed:
+    /// mounted but not laid out, it let the tap that mounted it go by
+    /// without opening the link under the finger, so a link in an answer
+    /// opened only on a second tap.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if textView == nil, canvas != nil, event?.type == .touches,
            isUserInteractionEnabled, !isHidden, alpha > 0.01,
            self.point(inside: point, with: event) {
-            mountTextView()
+            mountTextViewForTouch()
         }
         return super.hitTest(point, with: event)
+    }
+
+    /// Mounts the text view for a touch that is starting, laid out so the
+    /// touch finds the link or the text under it.
+    @discardableResult
+    func mountTextViewForTouch() -> UITextView {
+        let mounted = mountTextView()
+        layoutIfNeeded()
+        mounted.layoutIfNeeded()
+        return mounted
     }
 
     @discardableResult
