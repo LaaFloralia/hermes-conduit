@@ -450,7 +450,8 @@ struct ChatView: View {
                     MessageBubble(
                         message: target.message,
                         gatewayResolver: appState.gatewayMediaResolver,
-                        step: target.step
+                        step: target.step,
+                        stepsAbove: target.stepsAbove
                     )
                         .equatable()
                         .id(target.id)
@@ -1127,9 +1128,13 @@ struct MessageBubble: View, Equatable {
     /// A thinking or tool row's place in its turn's run of steps, which
     /// draws as one card. Nil outside the chat transcript.
     var step: ChatStepPlacement? = nil
+    /// On a reply, the run of steps above it when it has thinking (the
+    /// reply's Show thinking). Nil outside the chat transcript.
+    var stepsAbove: ChatStepGroup? = nil
 
     nonisolated static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message && lhs.gatewayResolver === rhs.gatewayResolver && lhs.step == rhs.step
+            && lhs.stepsAbove == rhs.stepsAbove
     }
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
@@ -1194,7 +1199,8 @@ struct MessageBubble: View, Equatable {
                 AssistantBubble(
                     message: message,
                     readAloudController: appState.messageReadAloudController,
-                    gatewayResolver: gatewayResolver
+                    gatewayResolver: gatewayResolver,
+                    stepsAbove: stepsAbove
                 )
             }
         case .reasoning:
@@ -2393,10 +2399,13 @@ struct AssistantMessageActions: View {
 }
 
 /// The ⋯ at the end of a reply's row (#1147): Quote, Branch and Pin reply,
-/// so the row keeps a few icons while each action stays a tap away.
+/// so the row keeps a few icons while each action stays a tap away, and
+/// Show thinking while Settings > Chat's Thinking is On request.
 struct AssistantMessageMoreMenu: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
+    /// The thinking right above the reply (ChatThinkingReveal).
+    var thinking: ChatThinkingReveal? = nil
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
@@ -2439,6 +2448,12 @@ struct AssistantMessageMoreMenu: View {
                 }
                 .disabled(!hasText)
             }
+
+            if let thinking {
+                Button(action: thinking.toggle) {
+                    Label(thinking.title, systemImage: ChatStepStyle.thinking.symbol)
+                }
+            }
         } label: {
             Image(systemName: "ellipsis")
                 .font(.subheadline.weight(.semibold))
@@ -2449,6 +2464,23 @@ struct AssistantMessageMoreMenu: View {
         .foregroundStyle(.secondary)
         .accessibilityLabel(AppLocalization.string("More"))
         .accessibilityIdentifier("chat.replyMoreMenu")
+    }
+}
+
+/// A reply's ⋯ when the run above it has thinking that Settings > Chat's
+/// Thinking keeps for On request: it follows the runs' toggles, so the item reads Hide thinking
+/// once that thinking shows, whichever menu showed it.
+private struct AssistantMessageMoreMenuWithThinking: View {
+    let message: ChatMessage
+    let run: ChatStepGroup
+    let disclosure: ChatRowDisclosure
+    @ObservedObject var toggles: ChatStepGroupToggles
+
+    var body: some View {
+        AssistantMessageMoreMenu(
+            message: message,
+            thinking: ChatThinkingReveal(group: run, disclosure: disclosure)
+        )
     }
 }
 
@@ -2522,8 +2554,11 @@ struct AssistantBubble: View {
     /// read-aloud state transition. Only ReadAloudButton observes it.
     let readAloudController: MessageReadAloudController
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// The run of steps above the reply, when it has thinking.
+    var stepsAbove: ChatStepGroup? = nil
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
+    @Environment(\.chatRowDisclosure) private var disclosure
     /// Acted on, not observed: what a row shows comes from `rowState`.
     private var appState: AppState { rowActions.required }
     @Environment(\.sizeCategory) private var sizeCategory
@@ -2574,7 +2609,16 @@ struct AssistantBubble: View {
                     ReadAloudButton(message: message, controller: readAloudController)
                 }
 
-                AssistantMessageMoreMenu(message: message)
+                if let run = stepsAbove, let disclosure, rowState.displayPreferences.offersShowThinking {
+                    AssistantMessageMoreMenuWithThinking(
+                        message: message,
+                        run: run,
+                        disclosure: disclosure,
+                        toggles: disclosure.groupToggles
+                    )
+                } else {
+                    AssistantMessageMoreMenu(message: message)
+                }
             }
             .padding(.top, 2)
             // Fixed 34 pt buttons: larger glyphs would overlap each other.
@@ -2939,6 +2983,8 @@ struct SettledThinkingCardContent: View, Equatable {
 struct ThinkingCard: View {
     let message: ChatMessage
     var grouped = false
+    /// Its run's Show thinking, with Settings > Chat's Thinking On request.
+    var shownAnyway = false
     @Environment(\.chatRowState) private var rowState
     @Environment(\.chatRowActions) private var rowActions
     /// Acted on, not observed: what a row shows comes from `rowState`.
@@ -2947,7 +2993,7 @@ struct ThinkingCard: View {
     @Environment(\.chatTextSize) private var chatTextSize
 
     var body: some View {
-        if rowState.displayPreferences.showReasoning, !message.content.isEmpty {
+        if rowState.displayPreferences.showReasoning || shownAnyway, !message.content.isEmpty {
             SettledThinkingCardContent(
                 message: message,
                 sizeCategory: sizeCategory,

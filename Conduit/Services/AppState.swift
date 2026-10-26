@@ -680,6 +680,7 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
                 composerNotice = nil
+                restoreDisplayPreferences()
                 dismissChatTakeover()
                 agentSettings.leave(scope: agentSettingsScope)
                 presentedScreens.leave()
@@ -1347,7 +1348,11 @@ final class AppState: ObservableObject {
     }
     private var persistedOrderingFrontier = PersistedOrderingFrontier()
     @Published private(set) var busyInputMode: BusyInputMode = .steer
-    @Published private(set) var displayPreferences = ProfileDisplayPreferences()
+    @Published private(set) var displayPreferences = ProfileDisplayPreferences() {
+        // Kept on the device too, so the saved chats draw as Settings says
+        // before the host answers (offline from launch).
+        didSet { if displayPreferences != oldValue { rememberDisplayPreferences() } }
+    }
     /// The profile's `timezone` config value ("" = the server's local time)
     /// and the profile it was read for. Hermes runs cron schedules in it.
     @Published private(set) var profileTimeZoneSetting: (profile: String, value: String)?
@@ -6168,6 +6173,8 @@ final class AppState: ObservableObject {
         activeProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
         if activeProfile.isEmpty { activeProfile = "default" }
+        displayPreferences = storedDisplayPreferences(dashboardID: initialDashboardID, profile: activeProfile)
+            ?? ProfileDisplayPreferences()
         // The global key is what cold launch opens (the resume state and
         // tests key off it). Mirror it into the active dashboard's entry so
         // the two can never disagree after launch; this also seeds the entry
@@ -11947,6 +11954,34 @@ final class AppState: ObservableObject {
         profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
         profileGlowPicks = profileAppearanceStore.loadGlowColors(dashboardID: dashboardID)
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
+        restoreDisplayPreferences()
+    }
+
+    private static let displayPreferencesByProfileKey = "profileDisplayPreferencesByDashboard"
+
+    private static func displayPreferencesKey(dashboardID: UUID?, profile: String) -> String {
+        "\(dashboardPreferenceBucket(dashboardID)).\(profile)"
+    }
+
+    /// The preferences last read or set for this dashboard's profile.
+    private func storedDisplayPreferences(dashboardID: UUID?, profile: String) -> ProfileDisplayPreferences? {
+        let stored = defaults.dictionary(forKey: Self.displayPreferencesByProfileKey) as? [String: Data] ?? [:]
+        guard let data = stored[Self.displayPreferencesKey(dashboardID: dashboardID, profile: profile)] else { return nil }
+        return try? JSONDecoder().decode(ProfileDisplayPreferences.self, from: data)
+    }
+
+    private func rememberDisplayPreferences() {
+        guard let data = try? JSONEncoder().encode(displayPreferences) else { return }
+        var stored = defaults.dictionary(forKey: Self.displayPreferencesByProfileKey) as? [String: Data] ?? [:]
+        stored[Self.displayPreferencesKey(dashboardID: activeDashboardID, profile: activeProfile)] = data
+        defaults.set(stored, forKey: Self.displayPreferencesByProfileKey)
+    }
+
+    /// Another dashboard or profile: its last known preferences until its
+    /// config is read, Hermes' defaults for one never read here.
+    private func restoreDisplayPreferences() {
+        displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: activeProfile)
+            ?? ProfileDisplayPreferences()
     }
 
     /// One-time move of the pre-scoping global profile order and model
@@ -30843,17 +30878,26 @@ final class AppState: ObservableObject {
         return string.isEmpty ? nil : string
     }
 
+    /// Counts display saves that landed, so a config read sent before one
+    /// doesn't put the older choice back.
+    private var displayPreferencesWriteRevision = 0
+
     private func loadProfileDisplayPreferences() async {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
+        let revision = displayPreferencesWriteRevision
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
             profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
+            // A display save that landed while this read was out is newer.
+            guard revision == displayPreferencesWriteRevision else { return }
+            let reasoning = ReasoningDisplayMode(display: display)
             displayPreferences = ProfileDisplayPreferences(
-                showReasoning: display["show_reasoning"] as? Bool ?? true,
+                showReasoning: reasoning == .show,
+                thinkingOnRequest: reasoning != .off,
                 showToolProgress: display["tool_progress"] as? String != "off",
                 expandToolsByDefault: display["expand_tools"] as? Bool ?? false,
                 showReviews: ProfileDisplayPreferences.showsReviews(display["memory_notifications"])
@@ -30863,7 +30907,10 @@ final class AppState: ObservableObject {
             // reset the next dashboard's preferences for a profile of the
             // same name.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
-            displayPreferences = ProfileDisplayPreferences()
+            // Unread (offline, say): what this profile last said, not
+            // Hermes' defaults, so thinking set to Off stays off.
+            displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: profile)
+                ?? ProfileDisplayPreferences()
             profileTimeZoneSetting = nil
         }
     }
@@ -30876,21 +30923,41 @@ final class AppState: ObservableObject {
 
     func loadProfileSettings(keys: [String]) async -> [String: ProfileSettingValue] {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { return [:] }
+        guard let owner = currentDashboardRuntimeOwner() else { return keptDisplaySettings(keys: keys) }
         let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
-            return Dictionary(uniqueKeysWithValues: keys.compactMap { key in
-                profileSettingValue(in: config, key: key).map { (key, $0) }
+            return Dictionary(uniqueKeysWithValues: keys.compactMap { key -> (String, ProfileSettingValue)? in
+                if key == ReasoningDisplayMode.settingKey {
+                    // Worked out from two config values (ReasoningDisplayMode).
+                    let display = config["display"] as? [String: Any] ?? [:]
+                    return (key, .text(ReasoningDisplayMode(display: display).rawValue))
+                }
+                return profileSettingValue(in: config, key: key).map { (key, $0) }
             })
         } catch {
             // A read that fails after a dashboard or profile switch belongs to
             // the settings page that was left; the one on screen has no error.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
-            return [:]
+            return keptDisplaySettings(keys: keys)
         }
+    }
+
+    /// Unread, the display rows show what the chats follow meanwhile: the
+    /// settings last read, kept on the phone. Self-improvement updates
+    /// keeps only whether they show, so it reads Never show or Hermes'
+    /// default.
+    private func keptDisplaySettings(keys: [String]) -> [String: ProfileSettingValue] {
+        let kept = displayPreferences
+        var values: [String: ProfileSettingValue] = [
+            ReasoningDisplayMode.settingKey: .text(kept.reasoningMode.rawValue),
+            "display.tool_progress": .text(kept.showToolProgress ? "all" : "off"),
+            "display.expand_tools": .bool(kept.expandToolsByDefault),
+        ]
+        if !kept.showReviews { values["display.memory_notifications"] = .text("off") }
+        return values.filter { keys.contains($0.key) }
     }
 
     func loadProfileConfigOptions() async -> ProfileConfigOptions {
@@ -31113,18 +31180,39 @@ final class AppState: ObservableObject {
                 guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
                 return true
             }
+            let reasoning = key == ReasoningDisplayMode.settingKey ? value.textValue.flatMap(ReasoningDisplayMode.init(rawValue:)) : nil
+            if key == ReasoningDisplayMode.settingKey, reasoning == nil { return false }
             try await updateProfileConfig(profile: profile) { [weak self] config in
-                self?.setProfileSettingValue(value, in: &config, key: key)
+                if let reasoning {
+                    var display = config["display"] as? [String: Any] ?? [:]
+                    reasoning.write(into: &display)
+                    config["display"] = display
+                } else {
+                    self?.setProfileSettingValue(value, in: &config, key: key)
+                }
             }
+            if reasoning != nil || key.hasPrefix("display.") { displayPreferencesWriteRevision &+= 1 }
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
             if key == ProfileTimeZone.configKey, let zone = value.textValue {
                 profileTimeZoneSetting = (profile, zone)
             }
+            if let reasoning {
+                // Thinking in the chat on screen follows at once.
+                displayPreferences.showReasoning = reasoning == .show
+                displayPreferences.thinkingOnRequest = reasoning != .off
+            }
             if key == "display.memory_notifications" {
                 // Rows already in the chat hide or come back with it.
                 displayPreferences.showReviews = ProfileDisplayPreferences.showsReviews(value.textValue)
+            }
+            if key == "display.tool_progress" {
+                // The kept choice follows the save, so the offline copy does too.
+                displayPreferences.showToolProgress = value.textValue != "off"
+            }
+            if key == "display.expand_tools", let expand = value.boolValue {
+                displayPreferences.expandToolsByDefault = expand
             }
             if key == "approvals.mode", let mode = value.textValue?.lowercased() {
                 // Mirror the saved profile mode immediately and re-resolve the
@@ -31211,12 +31299,12 @@ final class AppState: ObservableObject {
             try await updateProfileConfig(profile: profile) { config in
                 var display = config["display"] as? [String: Any] ?? [:]
                 switch key {
-                case .reasoning: display["show_reasoning"] = enabled
                 case .toolProgress: display["tool_progress"] = enabled ? "on" : "off"
                 case .expandTools: display["expand_tools"] = enabled
                 }
                 config["display"] = display
             }
+            displayPreferencesWriteRevision &+= 1
             return true
         } catch {
             // After a dashboard switch the preferences on screen are the next
@@ -31231,7 +31319,6 @@ final class AppState: ObservableObject {
 
     private func applyDisplayPreference(_ key: DisplayPreferenceKey, enabled: Bool) {
         switch key {
-        case .reasoning: displayPreferences.showReasoning = enabled
         case .toolProgress: displayPreferences.showToolProgress = enabled
         case .expandTools: displayPreferences.expandToolsByDefault = enabled
         }

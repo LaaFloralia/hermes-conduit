@@ -343,7 +343,6 @@ private struct LegacySettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            displayToggle(.reasoning, title: AppLocalization.string("Show reasoning"), detail: AppLocalization.string("Include available agent reasoning in replies."))
             displayToggle(.toolProgress, title: AppLocalization.string("Show tool activity"), detail: AppLocalization.string("Show tool calls and their progress in chat."))
             displayToggle(.expandTools, title: AppLocalization.string("Keep tool cards expanded"), detail: AppLocalization.string("Open completed tool details by default."))
 
@@ -448,7 +447,6 @@ private struct LegacySettingsView: View {
 
     private func displayValue(for key: DisplayPreferenceKey) -> Bool {
         switch key {
-        case .reasoning: return displayPreferences.showReasoning
         case .toolProgress: return displayPreferences.showToolProgress
         case .expandTools: return displayPreferences.expandToolsByDefault
         }
@@ -472,7 +470,6 @@ private struct LegacySettingsView: View {
 
     private func setDisplayValue(_ key: DisplayPreferenceKey, enabled: Bool) {
         switch key {
-        case .reasoning: displayPreferences.showReasoning = enabled
         case .toolProgress: displayPreferences.showToolProgress = enabled
         case .expandTools: displayPreferences.expandToolsByDefault = enabled
         }
@@ -1691,7 +1688,7 @@ struct ChatSettingsDetail: View {
     static var fields: [ProfileSettingField] { [
         .init(key: "display.personality", label: AppLocalization.string("Personality"), help: AppLocalization.string("Default response style for new conversations."), control: .options([], defaultValue: "")),
         .init(key: ProfileTimeZone.configKey, label: AppLocalization.string("Timezone"), help: AppLocalization.string("Used for dates, reminders, and scheduled work."), control: .timeZone),
-        .init(key: "display.show_reasoning", label: AppLocalization.string("Show thinking"), help: AppLocalization.string("Show collapsible thinking blocks when provided."), control: .toggle(defaultValue: true)),
+        .init(key: ReasoningDisplayMode.settingKey, label: AppLocalization.string("Thinking"), help: AppLocalization.string("Show puts Hermes' thinking in every chat. On request hides it, with Show thinking in a run's menu and a reply's ⋯. Off hides it everywhere."), control: .labeledOptions([(value: ReasoningDisplayMode.show.rawValue, label: AppLocalization.string("Show in every chat")), (value: ReasoningDisplayMode.onRequest.rawValue, label: AppLocalization.string("On request")), (value: ReasoningDisplayMode.off.rawValue, label: AppLocalization.string("Off"))], defaultValue: ReasoningDisplayMode.show.rawValue)),
         .init(key: "display.tool_progress", label: AppLocalization.string("Tool cards"), help: AppLocalization.string("Show tool calls and expandable details in conversations."), control: .textToggle(onValue: "all", offValue: "off", defaultValue: true)),
         .init(key: "display.expand_tools", label: AppLocalization.string("Keep tool cards expanded"), help: AppLocalization.string("Keep completed tool details open by default."), control: .toggle(defaultValue: false)),
         .init(key: "display.memory_notifications", label: AppLocalization.string("Self-improvement updates"), help: AppLocalization.string("Choose whether Conduit follows Hermes, always shows, or never shows maintenance updates."), control: .labeledOptions([(value: "default", label: AppLocalization.string("Use Hermes default")), (value: "on", label: AppLocalization.string("Always show")), (value: "off", label: AppLocalization.string("Never show"))], defaultValue: "default")),
