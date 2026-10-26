@@ -674,7 +674,7 @@ private struct ChatStepRowBody: View {
         if let position = visible.firstIndex(where: { $0.messageID == message.id }) {
             if visible.count < 2 {
                 // Whichever step is left showing carries the run's summary
-                // and menu, a thought too when Settings > Display hides the
+                // and menu, a thought too when Settings > Chat hides the
                 // tools (a run with no tool call has no Explain).
                 if summary != nil || lookingBack || explain != nil || thinkingReveal != nil {
                     singleExplained(thinkingShown: thinkingShown)
