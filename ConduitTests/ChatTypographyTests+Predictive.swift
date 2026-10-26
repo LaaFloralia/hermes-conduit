@@ -246,7 +246,8 @@ extension ChatTypographyTests {
         state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "That too.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "a reply to someone's message isn't a follow-up")
-        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a3")
+        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
+        XCTAssertEqual(state.predictiveFollowUpTurnsAhead, 1)
 
         state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
@@ -314,9 +315,37 @@ extension ChatTypographyTests {
             ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-60))),
             ChatMessage(id: "a1", role: .assistant, content: "Hello.", timestamp: "now"),
         ]
-        XCTAssertFalse(AppState.aMessageWasSent(after: "gone", before: queuedAt, in: messages))
-        XCTAssertTrue(AppState.aMessageWasSent(after: nil, before: queuedAt, in: messages))
-        XCTAssertFalse(AppState.aMessageWasSent(after: "u1", before: queuedAt, in: messages))
+        XCTAssertEqual(AppState.messagesSentAhead(after: "gone", before: queuedAt, in: messages), 0)
+        XCTAssertEqual(AppState.messagesSentAhead(after: nil, before: queuedAt, in: messages), 1)
+        XCTAssertEqual(AppState.messagesSentAhead(after: "u1", before: queuedAt, in: messages), 0)
+    }
+
+    /// Two messages queued ahead whose rows land together, before either
+    /// reply: both replies are theirs, and the one after is Hermes'.
+    @MainActor
+    func testTwoMessagesQueuedAheadAreBothCountedOff() {
+        let defaults = makeScratchDefaults("PredictiveTwoRowsAheadTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let queuedAt = Date()
+        let before = Self.isoTimestamp(queuedAt.addingTimeInterval(-5))
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "First?", timestamp: before))
+        state.messages.append(ChatMessage(id: "u2", role: .user, content: "Second?", timestamp: before))
+        for reply in ["a2", "a3"] {
+            state.messages.append(ChatMessage(id: reply, role: .assistant, content: "Sure.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+        }
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
     }
 
     private static func isoTimestamp(_ date: Date) -> String {

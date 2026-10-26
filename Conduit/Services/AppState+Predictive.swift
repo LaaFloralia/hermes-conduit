@@ -70,16 +70,16 @@ extension AppState {
             predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
                   let queuedAt = predictiveFollowUpQueuedAt,
-                  Self.aMessageWasSent(after: turn.after, before: queuedAt, in: messages) {
+                  Self.messagesSentAhead(after: turn.after, before: queuedAt, in: messages) > predictiveFollowUpTurnsAhead {
             // A message someone sent before the hidden prompt was queued
             // (another client's, ahead of it) wrote this reply, not Hermes on
             // its own: the follow-up's turn is still to come, up to a few
-            // turns on. One sent later runs after the follow-up.
+            // turns on. One sent later runs after the follow-up. `after`
+            // stays put: each such message's reply is counted off once, in
+            // whatever order its row and the replies arrived.
             predictiveFollowUpTurnsAhead += 1
             if predictiveFollowUpTurnsAhead > Self.predictiveFollowUpMaximumTurnsAhead {
                 predictiveFollowUpTurn = nil
-            } else {
-                predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
             }
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
             predictiveFollowUpTurn = nil
@@ -101,19 +101,19 @@ extension AppState {
     /// before Conduit stops waiting for its reply.
     static let predictiveFollowUpMaximumTurnsAhead = 3
 
-    /// A message a person sent before `queuedAt` sits after `after`: the
-    /// turn that just ended answered it. The hidden prompt leaves no row.
-    /// A row `after` no longer names (the chat reloaded) proves nothing.
-    static func aMessageWasSent(after id: String?, before queuedAt: Date, in messages: [ChatMessage]) -> Bool {
+    /// Messages people sent before `queuedAt` that sit after `after`: each
+    /// runs ahead of the hidden prompt, which leaves no row. A row `after`
+    /// no longer names (the chat reloaded) proves nothing.
+    static func messagesSentAhead(after id: String?, before queuedAt: Date, in messages: [ChatMessage]) -> Int {
         var start = 0
         if let id {
-            guard let index = messages.lastIndex(where: { $0.id == id }) else { return false }
+            guard let index = messages.lastIndex(where: { $0.id == id }) else { return 0 }
             start = index + 1
         }
-        return messages[start...].contains { message in
+        return messages[start...].filter { message in
             guard message.role == .user, let sent = MessageTimestampFormatter.date(from: message.timestamp) else { return false }
             return sent <= queuedAt
-        }
+        }.count
     }
 
     /// Stops watching for the follow-up's reply: nothing is tagged or held.
