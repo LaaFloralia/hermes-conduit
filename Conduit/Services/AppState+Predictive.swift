@@ -145,6 +145,8 @@ extension AppState {
     func hidePredictionsInOpenChat() {
         guard let sessionID = activeSessionId else { return }
         predictive.hide(sessionID: sessionID)
+        predictivePauseTask?.cancel()
+        predictivePauseTask = nil
         stopPredictiveFollowUpClock()
     }
 

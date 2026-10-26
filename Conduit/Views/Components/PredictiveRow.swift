@@ -132,7 +132,7 @@ struct PredictiveRow: View {
             Image(systemName: "ellipsis")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 36, height: 44)
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(Text("More suggestion options"))
