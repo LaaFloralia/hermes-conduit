@@ -20176,16 +20176,16 @@ final class AppState: ObservableObject {
     /// or matching the latest user message here is this device's (so is
     /// the same text resent elsewhere; its stored count still reads it).
     private func noteUserMessageElsewhere(sessionId: String, rowId: Int?, text: String) {
-        if eventBelongsToActiveSession(sessionId), let activeSessionId {
+        let latestHere = messages.last(where: { $0.role == .user })?.content ?? ""
+        let elsewhere = eventBelongsToActiveSession(sessionId)
+            && (rowId.map({ id in !messages.contains(where: { $0.rowId == id }) }) ?? true)
+            && OpenChatSync.squashed(latestHere) != OpenChatSync.squashed(text)
+        // A follow-up waiting in this chat: whatever turn is running here.
+        if elsewhere, let activeSessionId {
             notePredictiveFollowUpMessageElsewhere(sessionId: activeSessionId, rowId: rowId)
         }
-        if eventBelongsToActiveSession(sessionId), !turnState.isRunning,
-           openChatSync.sessionID == activeSessionId,
-           rowId.map({ id in !messages.contains(where: { $0.rowId == id }) }) ?? true {
-            let latestHere = messages.last(where: { $0.role == .user })?.content ?? ""
-            if OpenChatSync.squashed(latestHere) != OpenChatSync.squashed(text) {
-                openChatSync.noteUserMessageElsewhere()
-            }
+        if elsewhere, !turnState.isRunning, openChatSync.sessionID == activeSessionId {
+            openChatSync.noteUserMessageElsewhere()
         }
         noteCatalogChanged()
     }

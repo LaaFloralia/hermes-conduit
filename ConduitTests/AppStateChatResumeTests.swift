@@ -5664,8 +5664,14 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.predictiveFollowUpQueued = true
         harness.appState.predictiveFollowUpTurnsAhead = 2
         harness.appState.predictiveFollowUpQueuedAt = Date()
+        harness.appState.predictiveFollowUpSending = true
+        harness.appState.predictiveFollowUpAheadEnded = true
+        harness.appState.predictiveFollowUpUnreadMessages = [7]
 
         XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
+        XCTAssertFalse(harness.appState.predictiveFollowUpSending)
+        XCTAssertFalse(harness.appState.predictiveFollowUpAheadEnded)
+        XCTAssertTrue(harness.appState.predictiveFollowUpUnreadMessages.isEmpty)
         XCTAssertNil(harness.appState.predictiveFollowUpTurn)
         XCTAssertFalse(harness.appState.predictiveFollowUpQueued)
         XCTAssertEqual(harness.appState.predictiveFollowUpTurnsAhead, 0)

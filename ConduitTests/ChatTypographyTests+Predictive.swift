@@ -407,6 +407,30 @@ extension ChatTypographyTests {
         XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
     }
 
+    /// This device's own message, announced back to it, isn't someone
+    /// else's: the follow-up's reply is still tagged.
+    @MainActor
+    func testThisDevicesOwnMessageAnnouncedBackKeepsTheTag() {
+        let defaults = makeScratchDefaults("PredictiveOwnEchoTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let sentAt = Date()
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = sentAt
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "Also, the list?",
+                                          timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2))))
+        state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "Also, the list?", origin: nil))
+        XCTAssertTrue(state.predictiveFollowUpUnreadMessages.isEmpty)
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
+    }
+
     private static func isoTimestamp(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
     }
