@@ -1005,6 +1005,26 @@ the bot's SOUL messaging section · README.md's bots line
 
 **Checked:** 2026-10-25, at #1259.
 
+## Links in messages
+
+A tap on a link in a reply opens it, the first time, wherever the reply is
+drawn until a touch mounts its text view.
+
+**Siblings:** chats, project chats and Bot Chat (one chat view) · group rooms ·
+VoiceOver and Switch Control (text view always mounted) · long-press Open Link
+
+**Code**
+- Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest, mountTextViewForTouch)
+- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched)
+
+**Rulings**
+- The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-26, at #1303.
+
 ## Markdown lists in messages
 
 How a reply's lists read: numbering, loose lists, and the same list in every
