@@ -243,16 +243,31 @@ extension AppState {
         }
     }
 
-    /// The open chat's approval and question cards still waiting on the
-    /// user (or on their answer reaching Hermes), for the Classic voice
-    /// screen that covers the chat.
+    /// The open chat's approval, question and input cards still waiting on
+    /// the user (or on their answer reaching Hermes), for the Classic voice
+    /// screen and the call screen that cover the chat. An input card (a
+    /// password, login or code) is only shown there, never asked for by
+    /// voice: what the user types must not be spoken or heard.
     var openChatWaitingCards: [ChatMessage] {
         guard turnState.isRunning else { return [] }
         let approvals = openChatWaitingApprovals
         let questions = openChatWaitingQuestions
+        let inputs = openChatWaitingInputs
         // In the chat's order: Hermes asks one at a time.
         return messages.filter { message in
             approvals.contains { $0.id == message.id } || questions.contains { $0.id == message.id }
+                || inputs.contains { $0.id == message.id }
+        }
+    }
+
+    /// The open chat's input cards still waiting on the user (or on their
+    /// answer reaching Hermes).
+    var openChatWaitingInputs: [ChatMessage] {
+        guard turnState.isRunning, let sessionId = activeSessionId, !sessionId.isEmpty else { return [] }
+        let open = chatOwnSessionIDs(for: sessionId)
+        return messages.filter { message in
+            guard let prompt = message.inputPrompt else { return false }
+            return (prompt.isAnswerable || prompt.status == .submitting) && open.contains(prompt.sessionId)
         }
     }
 

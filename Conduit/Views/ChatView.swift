@@ -542,7 +542,7 @@ struct ChatView: View {
             ChatJumpControls(
                 chrome: scrollEngine.chrome,
                 pendingClarifyMessageID: appState.pendingClarifyMessageID,
-                pendingIsApproval: appState.pendingDecisionIsApproval,
+                pendingKind: appState.pendingDecisionKind,
                 jumpToQuestion: { id in scrollEngine.explicitMessageRequested(id: id) },
                 jumpToLatest: { requestLatest(animated: true) },
                 followingChanged: {
@@ -971,17 +971,41 @@ private final class ChatScrollEventRouter {
     }
 }
 
-/// The jump-to-latest and go-to-your-question button. It observes the
+/// The jump-to-latest and go-to-what-Hermes-waits-on button. It observes the
 /// engine's chrome on its own, so leaving the latest message, or the button
 /// appearing and going, re-renders this button and not the transcript.
 private struct ChatJumpControls: View {
     @ObservedObject var chrome: ChatScrollChrome
     let pendingClarifyMessageID: String?
-    /// The waiting card is an approval: the button says so.
-    let pendingIsApproval: Bool
+    /// What the waiting card is: the button says so.
+    let pendingKind: PendingDecisionKind
     let jumpToQuestion: @MainActor (String) -> Void
     let jumpToLatest: @MainActor () -> Void
     let followingChanged: @MainActor () -> Void
+
+    private var jumpIcon: String {
+        switch pendingKind {
+        case .question: return "questionmark.bubble"
+        case .approval: return "checkmark.shield"
+        case .input: return "key"
+        }
+    }
+
+    private var jumpTitle: String {
+        switch pendingKind {
+        case .question: return AppLocalization.string("Go to your question")
+        case .approval: return AppLocalization.string("Go to the approval")
+        case .input: return AppLocalization.string("Go to the request")
+        }
+    }
+
+    private var jumpAccessibilityLabel: String {
+        switch pendingKind {
+        case .question: return AppLocalization.string("Go to the question that needs your answer")
+        case .approval: return AppLocalization.string("Go to the approval")
+        case .input: return AppLocalization.string("Go to the request that needs your input")
+        }
+    }
 
     var body: some View {
         let inputs = chrome.inputs
@@ -1008,8 +1032,8 @@ private struct ChatJumpControls: View {
                 } label: {
                     if hasPendingClarify {
                         HStack(spacing: 7) {
-                            Image(systemName: pendingIsApproval ? "checkmark.shield" : "questionmark.bubble")
-                            Text(pendingIsApproval ? AppLocalization.string("Go to the approval") : AppLocalization.string("Go to your question"))
+                            Image(systemName: jumpIcon)
+                            Text(jumpTitle)
                                 .lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -1029,11 +1053,11 @@ private struct ChatJumpControls: View {
                 )
                 .accessibilityLabel(
                     hasPendingClarify
-                        ? (pendingIsApproval ? AppLocalization.string("Go to the approval") : AppLocalization.string("Go to the question that needs your answer"))
+                        ? jumpAccessibilityLabel
                         : AppLocalization.string("Scroll to latest message")
                 )
                 .modifier(OptionalAccessibilityHint(
-                    hint: hasPendingClarify && !pendingIsApproval
+                    hint: hasPendingClarify && pendingKind == .question
                         ? AppLocalization.string("Scrolls to the pending question in the conversation")
                         : nil
                 ))
@@ -4263,9 +4287,10 @@ struct ApprovalCard: View {
     }
 }
 
-/// Masked single-value prompt (sudo password, secret, password-manager
-/// unlock). The typed value lives only in this view's state: it is handed to
-/// AppState once on submit and cleared, never stored on the message.
+/// Private-input prompt: a sudo password, a secret, a password-manager
+/// unlock, a website's login or its one-time code. What the user types lives
+/// only in this view's state: it is handed to AppState once on submit and
+/// cleared, never stored on the message.
 struct InputPromptCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
@@ -4277,6 +4302,9 @@ struct InputPromptCard: View {
     /// it if the row scrolls far away: retyping is the accepted cost of the
     /// value never outliving this card.
     @State private var value = ""
+    /// vault.save_login: the account's email or username (the password is
+    /// `value`). View state only, like `value`.
+    @State private var identifier = ""
     @FocusState private var fieldFocused: Bool
 
     var body: some View {
@@ -4306,6 +4334,13 @@ struct InputPromptCard: View {
                     MessageTimestampLabel(timestamp: message.timestamp, tone: .supporting)
                 }
 
+                if let note = explanation(for: prompt) {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 if let detail = detail(for: prompt), !detail.isEmpty {
                     SelectableTextView(
                         text: detail,
@@ -4333,32 +4368,20 @@ struct InputPromptCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 case .pending, .submitting, .error:
-                    // No .textContentType(.password): it would offer to save
-                    // a sudo or password-manager master password to the
-                    // system keychain.
-                    SecureField(placeholder(for: prompt.kind), text: $value)
-                        .accessibilityHint(AppLocalization.string("Send gives Hermes this value. Skip lets it continue without one."))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .focused($fieldFocused)
-                        .submitLabel(.send)
-                        .onSubmit { submit(prompt) }
-                        .padding(10)
-                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .disabled(!prompt.isAnswerable)
+                    fields(for: prompt)
 
                     HStack(spacing: 8) {
                         Button {
                             submit(prompt)
                         } label: {
-                            Label(AppLocalization.string("Send"), systemImage: "paperplane.fill")
+                            Label(sendTitle(for: prompt.kind), systemImage: "paperplane.fill")
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(!prompt.isAnswerable || !hasValue)
+                        .disabled(!prompt.isAnswerable || answer(for: prompt) == nil)
 
                         Spacer(minLength: 0)
 
-                        Button(AppLocalization.string("Skip")) {
+                        Button(skipTitle(for: prompt.kind)) {
                             skip(prompt)
                         }
                         .buttonStyle(.bordered)
@@ -4379,17 +4402,91 @@ struct InputPromptCard: View {
                 // Drop the typed value once the request is settled either
                 // way. A failed send (.error) keeps it so the user can retry
                 // without retyping; it never leaves this view's state.
-                if status == .submitted || status == .skipped || status == .expired { value = "" }
+                if status == .submitted || status == .skipped || status == .expired {
+                    value = ""
+                    identifier = ""
+                }
             }
         }
     }
 
+    @ViewBuilder
+    private func fields(for prompt: InputPromptActivity) -> some View {
+        switch prompt.kind {
+        case .vaultSaveLogin:
+            // No .username / .password content types: once the card
+            // settles, iOS would offer to save the site's login to the
+            // keychain under Conduit's own domain.
+            TextField(AppLocalization.string("Email or username"), text: $identifier)
+                .privacySensitive()
+                .accessibilityHint(AppLocalization.string("Save & sign in gives Hermes this login for the site. The model never sees the password."))
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.next)
+                .onSubmit { fieldFocused = true }
+                .inputPromptField()
+                .disabled(!prompt.isAnswerable)
+            SecureField(placeholder(for: prompt.kind), text: $value)
+                .accessibilityHint(AppLocalization.string("Save & sign in gives Hermes this login for the site. The model never sees the password."))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($fieldFocused)
+                .submitLabel(.send)
+                .onSubmit { submit(prompt) }
+                .inputPromptField()
+                .disabled(!prompt.isAnswerable)
+        case .vaultCode:
+            // Shown as typed, like Hermes Desktop: a short code is not worth
+            // masking and a typo must be visible. .oneTimeCode offers the
+            // code a text message or email just brought; letters come first
+            // because an email's code can have them.
+            TextField(placeholder(for: prompt.kind), text: $value)
+                .accessibilityHint(AppLocalization.string("Enter code has Hermes type it into the page. The model never sees it."))
+                .privacySensitive()
+                .textContentType(.oneTimeCode)
+                .keyboardType(.asciiCapable)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($fieldFocused)
+                .submitLabel(.send)
+                .onSubmit { submit(prompt) }
+                .inputPromptField()
+                .disabled(!prompt.isAnswerable)
+        case .sudo, .secret, .vaultUnlock:
+            // No .textContentType(.password): it would offer to save
+            // a sudo or password-manager master password to the
+            // system keychain.
+            SecureField(placeholder(for: prompt.kind), text: $value)
+                .accessibilityHint(AppLocalization.string("Send gives Hermes this value. Skip lets it continue without one."))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($fieldFocused)
+                .submitLabel(.send)
+                .onSubmit { submit(prompt) }
+                .inputPromptField()
+                .disabled(!prompt.isAnswerable)
+        }
+    }
+
     private func submit(_ prompt: InputPromptActivity) {
-        guard prompt.isAnswerable, hasValue else { return }
-        // Sent untrimmed: a password may legitimately contain spaces.
-        let answer = value
+        guard prompt.isAnswerable, let answer = answer(for: prompt) else { return }
         fieldFocused = false
         Task { await appState.respondToInputPrompt(messageId: message.id, value: answer) }
+    }
+
+    /// What Send gives Hermes, or nil while there is nothing to send.
+    private func answer(for prompt: InputPromptActivity) -> String? {
+        switch prompt.kind {
+        case .vaultSaveLogin:
+            return InputPromptActivity.loginAnswer(identifier: identifier, password: value)
+        case .vaultCode:
+            let code = InputPromptActivity.codeAnswer(value)
+            return code.isEmpty ? nil : code
+        case .sudo, .secret, .vaultUnlock:
+            // Sent untrimmed: a password may legitimately contain spaces.
+            return hasValue ? value : nil
+        }
     }
 
     /// Whitespace alone is not an answer (Hermes would store it as the
@@ -4403,6 +4500,7 @@ struct InputPromptCard: View {
     private func skip(_ prompt: InputPromptActivity) {
         guard prompt.isAnswerable else { return }
         value = ""
+        identifier = ""
         fieldFocused = false
         Task { await appState.respondToInputPrompt(messageId: message.id, value: nil) }
     }
@@ -4411,7 +4509,20 @@ struct InputPromptCard: View {
         switch prompt.kind {
         case .sudo: return prompt.command
         case .secret: return prompt.envVar
-        case .vaultUnlock: return nil
+        case .vaultUnlock, .vaultCode: return nil
+        // The exact origin, so the user sees which site gets the login.
+        case .vaultSaveLogin: return prompt.origin
+        }
+    }
+
+    private func explanation(for prompt: InputPromptActivity) -> String? {
+        switch prompt.kind {
+        case .vaultSaveLogin:
+            return AppLocalization.string("Hermes reached this sign-in page and has no login for it. It's saved encrypted where Hermes runs and filled into the page; the model never sees the password.")
+        case .vaultCode:
+            return AppLocalization.string("The site is asking for a one-time code from a text message, email or authenticator app. Hermes types it into the page; the model never sees it.")
+        case .sudo, .secret, .vaultUnlock:
+            return nil
         }
     }
 
@@ -4420,6 +4531,8 @@ struct InputPromptCard: View {
         case .sudo: return "lock.shield"
         case .secret: return "key"
         case .vaultUnlock: return "lock.rectangle.stack"
+        case .vaultSaveLogin: return "person.badge.key"
+        case .vaultCode: return "number"
         }
     }
 
@@ -4428,6 +4541,24 @@ struct InputPromptCard: View {
         case .sudo: return AppLocalization.string("sudo password")
         case .secret: return AppLocalization.string("Secret value")
         case .vaultUnlock: return AppLocalization.string("Master password")
+        case .vaultSaveLogin: return AppLocalization.string("Password")
+        // Not "Code": some languages read that key as program code.
+        case .vaultCode: return AppLocalization.string("Verification code")
+        }
+    }
+
+    private func sendTitle(for kind: InputPromptActivity.Kind) -> String {
+        switch kind {
+        case .vaultSaveLogin: return AppLocalization.string("Save & sign in")
+        case .vaultCode: return AppLocalization.string("Enter code")
+        case .sudo, .secret, .vaultUnlock: return AppLocalization.string("Send")
+        }
+    }
+
+    private func skipTitle(for kind: InputPromptActivity.Kind) -> String {
+        switch kind {
+        case .vaultSaveLogin: return AppLocalization.string("Don't save")
+        case .sudo, .secret, .vaultUnlock, .vaultCode: return AppLocalization.string("Skip")
         }
     }
 
@@ -4449,6 +4580,14 @@ struct InputPromptCard: View {
         case .skipped: return .secondary
         case .expired, .error: return .red
         }
+    }
+}
+
+private extension View {
+    /// The input card's field well.
+    func inputPromptField() -> some View {
+        padding(10)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

@@ -403,6 +403,21 @@ final class ClarifyBatchStateTests: XCTestCase {
                            timestamp: "1", inputPrompt: prompt)
     }
 
+    func testInputPromptFromAnotherProfileNeverSends() async throws {
+        let (appState, _) = makeAppState()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        var message = try inputPromptMessage(status: .pending)
+        message.inputPrompt?.profile = appState.activeProfile + "-before-switch"
+        appState.messages = [message]
+        let sentBefore = socket.sentTexts.count
+
+        await appState.respondToInputPrompt(messageId: message.id, value: "hunter2")
+
+        XCTAssertEqual(appState.messages.first?.inputPrompt?.status, .expired)
+        XCTAssertEqual(socket.sentTexts.count, sentBefore, "A card shown before a profile switch never sends its answer")
+    }
+
     func testPendingInputPromptCountsAsAPendingDecision() throws {
         XCTAssertTrue(AppState.hasPendingDecision(in: [try inputPromptMessage(status: .pending)]),
                       "An answerable sudo card keeps an omitted `running` reading as active")

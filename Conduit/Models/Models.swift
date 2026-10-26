@@ -20,8 +20,9 @@ enum MessageRole: String, Codable, Equatable {
     case tool
     case clarify
     case approval
-    /// A masked single-value prompt from a Hermes server→client request:
-    /// sudo password, skill/setup secret, or password-manager unlock.
+    /// A private-input prompt from a Hermes server→client request: sudo
+    /// password, skill/setup secret, password-manager unlock, a website's
+    /// login or its one-time code.
     case inputPrompt
 }
 
@@ -513,9 +514,11 @@ struct ApprovalActivity: Codable, Equatable {
     }
 }
 
-/// One masked single-value prompt Hermes asks through a server→client
-/// request (`tui_gateway/contracts/server_requests.py`): `sudo`, `secret`
-/// or `vault.unlock_prompt`, each answered with `{value}` ('' = skip).
+/// One private-input prompt Hermes asks through a server→client request
+/// (`tui_gateway/contracts/server_requests.py`): `sudo`, `secret`,
+/// `vault.unlock_prompt`, `vault.save_login` (a website's login, answered
+/// as JSON `{identifier, password}`) or `vault.code` (a website's one-time
+/// code), each answered with `{value}` ('' = skip).
 ///
 /// Deliberately NOT Codable: the card is live-only (a resume re-announces
 /// it from `open_requests`), so it can never reach the presentation or
@@ -526,6 +529,8 @@ struct InputPromptActivity: Equatable {
         case sudo
         case secret
         case vaultUnlock = "vault.unlock_prompt"
+        case vaultSaveLogin = "vault.save_login"
+        case vaultCode = "vault.code"
     }
 
     enum Status: Equatable {
@@ -548,11 +553,21 @@ struct InputPromptActivity: Equatable {
     var prompt: String = ""
     /// vault.unlock_prompt: the password manager's name.
     var displayName: String = ""
+    /// vault.save_login: the sign-in page's origin (`https://host`), which
+    /// the login is saved for.
+    var origin: String = ""
+    /// vault.save_login and vault.code: the site, by host.
+    var site: String = ""
     var status: Status = .pending
     var error: String?
+    /// The profile whose chat showed the card (AppState sets it), so an
+    /// answer typed after a profile switch never goes out on the new
+    /// profile's connection. Empty until shown.
+    var profile: String = ""
 
     /// Parses a server request (live frame or `open_requests` entry).
-    /// Returns nil for any other method or a request without a session.
+    /// Returns nil for any other method, a request without a session, or
+    /// a login request without the origin it is saved for.
     static func from(requestId: String, method: String, params: [String: AnyCodable]) -> InputPromptActivity? {
         guard let kind = Kind(rawValue: method), !requestId.isEmpty else { return nil }
         let sessionId = params["session_id"]?.stringValue?
@@ -570,12 +585,21 @@ struct InputPromptActivity: Equatable {
             activity.prompt = text("prompt")
         case .vaultUnlock:
             activity.displayName = text("display_name").isEmpty ? text("backend") : text("display_name")
+        case .vaultSaveLogin:
+            // A login is bound to the origin it is saved for; without one
+            // the card could not say which site gets it. The title names
+            // the origin's own host, so it can never name another site.
+            activity.origin = text("origin")
+            guard !activity.origin.isEmpty else { return nil }
+            activity.site = URL(string: activity.origin)?.host ?? activity.origin
+        case .vaultCode:
+            activity.site = text("site")
         }
         return activity
     }
 
-    /// Every sudo / secret / vault-unlock entry of a resume's
-    /// `open_requests`, oldest first as the gateway lists them.
+    /// Every input-prompt entry of a resume's `open_requests`, oldest first
+    /// as the gateway lists them.
     static func pending(inOpenRequests openRequests: AnyCodable?) -> [InputPromptActivity] {
         (openRequests?.arrayValue ?? []).compactMap { entry in
             guard let object = entry.objectValue,
@@ -596,7 +620,34 @@ struct InputPromptActivity: Equatable {
             return displayName.isEmpty
                 ? AppLocalization.string("Unlock your password manager")
                 : AppLocalization.string("Unlock \(displayName)")
+        case .vaultSaveLogin:
+            return AppLocalization.string("Save your \(site) login?")
+        case .vaultCode:
+            return site.isEmpty
+                ? AppLocalization.string("Verification code")
+                : AppLocalization.string("Verification code for \(site)")
         }
+    }
+
+    /// The `vault.save_login` answer: the JSON Hermes hands to its vault
+    /// store. Nil when either part is missing, which is not an answer
+    /// (Hermes reads that as declined). A password of spaces alone is
+    /// missing too, as on the other cards; one containing spaces goes as
+    /// typed.
+    static func loginAnswer(identifier: String, password: String) -> String? {
+        let identifier = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !identifier.isEmpty, !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let data = try? JSONSerialization.data(
+                  withJSONObject: ["identifier": identifier, "password": password],
+                  options: [.sortedKeys]
+              ) else { return nil }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// The `vault.code` answer: the code as typed, without the spaces and
+    /// dashes a site groups it with ("123 456"), as Hermes types it.
+    static func codeAnswer(_ typed: String) -> String {
+        typed.filter { !$0.isWhitespace && $0 != "-" }
     }
 
     var isAnswerable: Bool { status == .pending || status == .error }
