@@ -1952,7 +1952,7 @@ route and its README section · the Predictive page's captions
 - Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
 - Settings: `Conduit/Views/PredictiveSettingsView.swift`, listed in `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail)
-- Notifier, from plugin 0.79: predict.py and dashboard/plugin_api.py (`/predict`), tested in tests/test_predict.py (backticked once on notifier main)
+- Notifier, from plugin 0.79: `notifier/predict.py` and `notifier/dashboard/plugin_api.py` (`/predict`), tested in `notifier/tests/test_predict.py`
 - Tests: `ConduitTests/ChatTypographyTests+Predictive.swift`
 
 **Rulings**
@@ -1962,8 +1962,8 @@ route and its README section · the Predictive page's captions
 - Suggested replies are asked once per reply, when it settles on screen or its chat is opened. A draft is asked about after the chosen pause, once per draft, and its answer counts for 4 s; typing folds the row to a ✦ button (2026-10-25, #1242).
 - Hermes follows up only while the chat is on screen, settled and unwritten: first check after the chosen wait, then when Hermes asks (held to 30 s–15 min), at most 4 checks per reply, and at most one hidden turn per message the user sends. Conduit measures every duration and sends it (2026-10-25, Michel, #1242).
 - A follow-up's reply holds the chat on screen for pushes even when nobody touched the phone in the last two minutes (2026-10-25, #1242).
-- Hide for this chat also stops a follow-up check already asked, and leaving the chat drops a follow-up's hold and its tag. A tapped guess goes only into the chat it was offered in (2026-10-25, #1242).
-- A turn that ends in a system notice, fails or is interrupted tags nothing and doesn't restart the reply's idle time; a follow-up that never reached Hermes doesn't spend the user's message. A switch turned off takes its chips with it (2026-10-26, Eric, #1242).
+- Hide for this chat also stops a follow-up check already asked and a pause's wait, and leaving the chat drops a follow-up's hold and its tag. A tapped guess goes only into the chat it was offered in (2026-10-25, #1242).
+- A turn that ends in a system notice, fails or is interrupted tags nothing and doesn't restart the reply's idle time; a follow-up that never reached Hermes doesn't spend the user's message. A switch turned off takes its chips with it. Signing out of the open dashboard, removing it or deleting saved chats forgets every guess, tag and wait; a queued follow-up keeps its tag (2026-10-26, Eric, #1242).
 
 **Open gaps**
 - Group rooms get no row: with several people and bots, "your next message" is unclear.

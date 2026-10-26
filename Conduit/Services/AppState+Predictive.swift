@@ -129,7 +129,26 @@ extension AppState {
     func hidePredictionsInOpenChat() {
         guard let sessionID = activeSessionId else { return }
         predictive.hide(sessionID: sessionID)
+        predictivePauseTask?.cancel()
+        predictivePauseTask = nil
         stopPredictiveFollowUpClock()
+    }
+
+    /// Everything Predictive knows about chats, gone with them (a
+    /// dashboard's sign-out or removal, Delete saved chats): the row, the
+    /// tags and hidden chats, what was asked, and the waits under way.
+    func forgetPredictiveState() {
+        predictivePauseTask?.cancel()
+        predictivePauseTask = nil
+        stopPredictiveFollowUpClock()
+        predictive.clear()
+        predictive.forgetFollowUps()
+        predictiveRepliesAsked = nil
+        predictiveDraftAsked = nil
+        predictiveFollowUp = PredictiveFollowUpState()
+        predictiveFollowUpTurn = nil
+        predictiveReplyEnded = nil
+        clearPredictiveComposerRequest()
     }
 
     // MARK: - While I pause
@@ -233,7 +252,7 @@ extension AppState {
         predictiveFollowUp.checks += 1
         let now = Date()
         let ended = predictiveReplyEnded.flatMap { $0.anchor == anchor ? $0.at : nil }
-            ?? messages.last.flatMap { Predictive.date(fromTimestamp: $0.timestamp) }
+            ?? messages.last.flatMap { MessageTimestampFormatter.date(from: $0.timestamp) }
             ?? predictiveFollowUp.idleSince
         let facts = Predictive.TurnFacts(
             lastReplySeconds: Int(now.timeIntervalSince(ended)),
@@ -287,8 +306,9 @@ extension AppState {
         do {
             let outcome = try await client.sendPrompt(sessionID, text: nudge, hidden: true)
             // A turn that started meanwhile took it in: there's no reply of
-            // its own to mark.
-            if outcome != .accepted { predictiveFollowUpTurn = nil }
+            // its own to mark. Queued, it runs as the next turn and keeps
+            // its tag and hold.
+            if outcome == .steered || outcome == .redirected { predictiveFollowUpTurn = nil }
         } catch {
             // Nothing reached Hermes (a gateway without hidden prompts stops
             // the checks for good): the user's message keeps its follow-up.

@@ -74,11 +74,9 @@ extension ChatTypographyTests {
     }
 
     func testTheLocalTimeNamesTheDayInEnglish() throws {
-        let date = try XCTUnwrap(Predictive.date(fromTimestamp: "2026-10-25T13:14:00Z"))
+        let date = try XCTUnwrap(MessageTimestampFormatter.date(from: "2026-10-25T13:14:00Z"))
         let toronto = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
         XCTAssertEqual(Predictive.localTime(date, timeZone: toronto), "Sunday 09:14")
-        XCTAssertNotNil(Predictive.date(fromTimestamp: "2026-10-25T13:14:00.250Z"))
-        XCTAssertNil(Predictive.date(fromTimestamp: "yesterday"))
     }
 
     @MainActor
@@ -153,6 +151,34 @@ extension ChatTypographyTests {
             XCTAssertNil(state.predictiveFollowUpTurn, "\(event)")
             XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
         }
+    }
+
+    @MainActor
+    func testForgettingTheChatsForgetsEveryGuess() {
+        let defaults = makeScratchDefaults("PredictiveForgetTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")
+        state.predictive.setScreen(anchor)
+        state.predictive.showReplies([.init(text: "Thanks!", p: 0.8)], for: anchor)
+        state.predictive.draftChanged("Can you")
+        state.predictive.hide(sessionID: "s2")
+        state.predictive.noteFollowUp(messageID: "a0", why: "Worth a check.")
+        state.predictiveRepliesAsked = anchor
+        state.predictiveDraftAsked = ("s1", "Can you")
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+        state.forgetPredictiveState()
+        XCTAssertFalse(state.predictive.isShowing)
+        XCTAssertEqual(state.predictive.draft, "")
+        XCTAssertTrue(state.predictive.hiddenSessions.isEmpty)
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        XCTAssertNil(state.predictiveRepliesAsked)
+        XCTAssertNil(state.predictiveDraftAsked)
+        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertNil(state.predictiveComposerRequest)
     }
 
     @MainActor

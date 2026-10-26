@@ -5591,6 +5591,8 @@ final class AppState: ObservableObject {
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
         // So do the summaries describing its runs of steps.
         forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
+        // And the guesses about the open dashboard's chats.
+        if dashboardID == nil || dashboardID == activeDashboardID { forgetPredictiveState() }
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -10116,6 +10118,10 @@ final class AppState: ObservableObject {
             action: action, text: text, draft: predictive.draft, sessionID: shown.sessionID,
             draftKey: ComposerBar.composerDraftKey(for: shown.sessionID, profile: activeProfile)
         )
+    }
+
+    func clearPredictiveComposerRequest() {
+        predictiveComposerRequest = nil
     }
 
     /// The composer took the guess.

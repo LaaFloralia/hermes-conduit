@@ -223,14 +223,6 @@ enum Predictive {
         formatter.dateFormat = "EEEE HH:mm"
         return formatter.string(from: date)
     }
-
-    /// When a message's timestamp says it was written, if it says.
-    static func date(fromTimestamp timestamp: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        if let date = formatter.date(from: timestamp) { return date }
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: timestamp)
-    }
 }
 
 /// What the suggestion row above the composer shows. Kept apart from
@@ -336,6 +328,7 @@ final class PredictiveStore: ObservableObject {
         screen = nil
         replies = []
         anchor = nil
+        draft = ""
         answeredDraft = nil
         draftNext = []
         draftReplies = []
