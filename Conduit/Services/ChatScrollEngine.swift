@@ -1058,8 +1058,8 @@ final class ChatScrollEngine: ObservableObject {
             // The user's message is laid out (the reply is short, or barely
             // longer than the screen): the hold's own stop.
             let target = surface.clampedOffsetY(hold)
+            // Left armed, as in pin.
             if surface.maxOffsetY - target > Self.nearBottomTolerance {
-                replyHoldArmed = false
                 setMode(.browsing)
                 emit(.persistSnapshot(renderedSessionKey))
             }
@@ -1361,10 +1361,13 @@ final class ChatScrollEngine: ObservableObject {
                 // the bottom pin of an earlier pass left off or just past
                 // it, never above. Within the near-bottom distance this is
                 // still following; past it, the reader is left browsing
-                // there and later growth never moves the offset.
+                // there and later growth never moves the offset. The hold
+                // stays armed: the max can be a newly appended row's
+                // estimate, and when its measured height shrinks the content
+                // under the stop, SwiftUI clamps the offset to the bottom and
+                // following resumes, to stop here again as the reply grows.
                 target = hold
                 if surface.maxOffsetY - hold > Self.nearBottomTolerance {
-                    replyHoldArmed = false
                     setMode(.browsing)
                     emit(.persistSnapshot(renderedSessionKey))
                 }
