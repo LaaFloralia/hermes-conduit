@@ -2336,6 +2336,9 @@ final class AppState: ObservableObject {
     /// Advanced by forgetPredictiveState: an answer asked before it is
     /// dropped, whatever is on screen when it comes.
     var predictiveGeneration = 0
+    /// The hidden turn was queued behind a turn already running (another
+    /// client's): the next turn to end is that one, not the follow-up.
+    var predictiveFollowUpQueued = false
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
@@ -10142,6 +10145,7 @@ final class AppState: ObservableObject {
         predictiveDraftAsked = nil
         predictiveFollowUp = PredictiveFollowUpState()
         predictiveFollowUpTurn = nil
+        predictiveFollowUpQueued = false
         predictiveReplyEnded = nil
         predictiveComposerRequest = nil
         predictive.forgetAll()

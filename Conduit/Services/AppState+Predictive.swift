@@ -43,6 +43,7 @@ extension AppState {
         if let turn = predictiveFollowUpTurn,
            turn.sessionID != activeSessionId || !isSceneActive || showSidebar || activeRoomSurface != nil {
             predictiveFollowUpTurn = nil
+            predictiveFollowUpQueued = false
         }
         let anchor = predictiveAnchor
         let previous = predictive.screen
@@ -59,7 +60,11 @@ extension AppState {
     /// A turn settled. `isReply`: it ended in a reply of its own, not a
     /// system notice merged into the last row.
     func predictiveTurnSettled(sessionId: String, isReply: Bool = true) {
-        if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
+        if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId, predictiveFollowUpQueued {
+            // The turn the follow-up waited behind: the next one is Hermes'.
+            predictiveFollowUpQueued = false
+            predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
+        } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
             predictiveFollowUpTurn = nil
             // Only a reply the turn wrote: a [SILENT] one leaves no row, and
             // a system notice isn't Hermes following up.
@@ -78,7 +83,15 @@ extension AppState {
     /// A turn failed or was interrupted: a follow-up it carried is over,
     /// with nothing to tag.
     func predictiveTurnEnded(sessionId: String) {
-        if predictiveFollowUpTurn?.sessionID == sessionId { predictiveFollowUpTurn = nil }
+        if predictiveFollowUpTurn?.sessionID == sessionId {
+            // The turn ahead of a queued follow-up ending leaves the follow-up to run.
+            if predictiveFollowUpQueued {
+                predictiveFollowUpQueued = false
+                predictiveFollowUpTurn?.after = messages.last?.id
+            } else {
+                predictiveFollowUpTurn = nil
+            }
+        }
         updatePredictiveScreen(fresh: false)
     }
 
@@ -165,8 +178,9 @@ extension AppState {
             // Still on, shown and on screen: a draft is never asked about
             // once the switch is off, the chat hidden or covered.
             guard let self, self.predictive.draft == text, self.activeSessionId == sessionID,
-                  !self.isBusy, Predictive.pauseEnabled(), !self.predictive.hiddenSessions.contains(sessionID),
-                  self.isSceneActive, !self.showSidebar, self.activeRoomSurface == nil else { return }
+                  !self.isBusy, !self.turnState.isRunning, Predictive.pauseEnabled(), self.predictiveIsServed,
+                  !self.predictive.hiddenSessions.contains(sessionID), self.isSceneActive, !self.showSidebar,
+                  self.activeRoomSurface == nil, self.composerChatOnScreen == .live(sessionID) else { return }
             self.askAboutDraft(text, sessionID: sessionID)
         }
     }
@@ -287,7 +301,9 @@ extension AppState {
     /// reply wears "Hermes followed up".
     private func sendPredictiveFollowUp(_ nudge: String, why: String, sessionID: String, generation: Int) async {
         guard predictiveGeneration == generation else { return }
+        // Still watched: the chat on screen, not covered, Conduit in front.
         guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning,
+              isSceneActive, !showSidebar, activeRoomSurface == nil, composerChatOnScreen == .live(sessionID),
               Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(sessionID) else {
             // Not sent: the user's message keeps its follow-up.
             predictiveFollowUp.spentOn = nil
@@ -302,6 +318,7 @@ extension AppState {
             // A turn running meanwhile took it in: there's no reply of its
             // own to mark. A queued one runs as its own next turn.
             if outcome == .steered || outcome == .redirected { predictiveFollowUpTurn = nil }
+            predictiveFollowUpQueued = outcome == .queued
         } catch {
             guard predictiveGeneration == generation else { return }
             // Nothing reached Hermes (a gateway without hidden prompts stops

@@ -156,6 +156,31 @@ extension ChatTypographyTests {
     }
 
     @MainActor
+    func testAQueuedFollowUpTagsItsOwnReplyNotTheTurnAhead() {
+        let defaults = makeScratchDefaults("PredictiveQueuedTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueued = true
+
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Another client's reply.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "the turn ahead isn't Hermes following up")
+        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
+        XCTAssertFalse(state.predictiveFollowUpQueued)
+
+        state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a3"], "Worth a check.")
+        XCTAssertNil(state.predictiveFollowUpTurn)
+    }
+
+    @MainActor
     func testLeavingTheChatForTheSidebarDropsAFollowUpsTag() {
         let defaults = makeScratchDefaults("PredictiveSidebarTests")
         let state = AppState(
