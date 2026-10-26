@@ -30938,7 +30938,7 @@ final class AppState: ObservableObject {
 
     func loadProfileSettings(keys: [String]) async -> [String: ProfileSettingValue] {
         let profile = activeProfile
-        guard let owner = currentDashboardRuntimeOwner() else { return [:] }
+        guard let owner = currentDashboardRuntimeOwner() else { return keptDisplaySettings(keys: keys) }
         let dashboardTicketBridge = owner.bridge
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
@@ -30956,11 +30956,23 @@ final class AppState: ObservableObject {
             // the settings page that was left; the one on screen has no error.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
-            // Thinking shows what the chats follow meanwhile: the setting
-            // last read, kept on the phone.
-            guard keys.contains(ReasoningDisplayMode.settingKey) else { return [:] }
-            return [ReasoningDisplayMode.settingKey: .text(displayPreferences.reasoningMode.rawValue)]
+            return keptDisplaySettings(keys: keys)
         }
+    }
+
+    /// Unread, the display rows show what the chats follow meanwhile: the
+    /// settings last read, kept on the phone. Self-improvement updates
+    /// keeps only whether they show, so it reads Never show or Hermes'
+    /// default.
+    private func keptDisplaySettings(keys: [String]) -> [String: ProfileSettingValue] {
+        let kept = displayPreferences
+        var values: [String: ProfileSettingValue] = [
+            ReasoningDisplayMode.settingKey: .text(kept.reasoningMode.rawValue),
+            "display.tool_progress": .text(kept.showToolProgress ? "all" : "off"),
+            "display.expand_tools": .bool(kept.expandToolsByDefault),
+        ]
+        if !kept.showReviews { values["display.memory_notifications"] = .text("off") }
+        return values.filter { keys.contains($0.key) }
     }
 
     func loadProfileConfigOptions() async -> ProfileConfigOptions {

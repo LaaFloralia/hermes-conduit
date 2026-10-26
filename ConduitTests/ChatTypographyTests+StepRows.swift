@@ -325,4 +325,29 @@ extension ChatTypographyTests {
         XCTAssertEqual(state.displayPreferences.reasoningMode, .off)
         XCTAssertFalse(state.displayPreferences.showToolProgress)
     }
+
+    /// Unread, Settings > Chat's display rows show the kept settings the
+    /// chats follow, not Hermes' defaults.
+    @MainActor
+    func testChatSettingsShowTheKeptDisplaySettingsUnread() async {
+        let defaults = makeScratchDefaults("DisplayPreferencesSettingsTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.displayPreferences = ProfileDisplayPreferences(
+            showReasoning: false, thinkingOnRequest: false, showToolProgress: false,
+            expandToolsByDefault: true, showReviews: false
+        )
+        let settings = await state.loadProfileSettings(keys: [
+            ReasoningDisplayMode.settingKey, "display.tool_progress", "display.expand_tools",
+            "display.memory_notifications", "display.skin",
+        ])
+        XCTAssertEqual(settings[ReasoningDisplayMode.settingKey], .text("off"))
+        XCTAssertEqual(settings["display.tool_progress"], .text("off"))
+        XCTAssertEqual(settings["display.expand_tools"], .bool(true))
+        XCTAssertEqual(settings["display.memory_notifications"], .text("off"))
+        XCTAssertNil(settings["display.skin"])
+    }
 }
