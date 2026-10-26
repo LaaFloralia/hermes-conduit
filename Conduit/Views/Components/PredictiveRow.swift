@@ -46,13 +46,13 @@ struct PredictiveRow: View {
             HStack(spacing: 8) {
                 let next = visibleNext
                 let replies = visibleReplies
-                ForEach(next, id: \.self) { guess in
+                ForEach(Array(next.enumerated()), id: \.offset) { _, guess in
                     continuationChip(guess)
                 }
                 if !next.isEmpty, !replies.isEmpty {
                     Divider().frame(height: 22)
                 }
-                ForEach(Array(replies.enumerated()), id: \.element) { index, guess in
+                ForEach(Array(replies.enumerated()), id: \.offset) { index, guess in
                     replyChip(guess, isFirst: index == 0)
                 }
                 moreMenu

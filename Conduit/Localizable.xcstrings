@@ -343917,7 +343917,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Relance de Hermes"
+            "value" : "Relance d'Hermes"
           }
         },
         "id" : {
@@ -343999,7 +343999,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Relances de Hermes"
+            "value" : "Relances d'Hermes"
           }
         },
         "id" : {
@@ -345803,7 +345803,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quand une conversation est à l'écran et que vous n'écrivez pas, on demande de temps en temps à Hermes s'il a quelque chose d'utile à ajouter. Au plus une relance par message envoyé, marquée « Relance de Hermes »."
+            "value" : "Quand une conversation est à l'écran et que vous n'écrivez pas, on demande de temps en temps à Hermes s'il a quelque chose d'utile à ajouter. Au plus une relance par message envoyé, marquée « Relance d'Hermes »."
           }
         },
         "id" : {
