@@ -1200,6 +1200,32 @@ background · a failed sync's retry · the backoff itself
 
 **Checked:** 2026-10-25, at #1268; 2026-10-24, at #1191.
 
+## Native sign-in browser
+
+The browser a native (PKCE) dashboard sign-in opens in, and the Private
+sign-in page switch that makes it start fresh.
+
+**Siblings:** the login screen (with the switch under Advanced) · Connection
+Setup's Repair sign-in (same sheet, reads the same switch) · Settings and
+Watch captions (none describe this browser) · the bot MCP sign-in browser
+(separate, unchanged)
+
+**Code**
+- Browser and switch: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController)
+- Switch and caption: `Conduit/Views/Login/LoginScreens.swift` (advancedCard, advancedFields)
+- Repair: `Conduit/Views/ConnectionSetupView.swift` (repairSignInSheet)
+- Bot MCP sign-in, its own browser: `Conduit/Views/BotCapabilitiesView.swift` (BotMcpBrowserView)
+
+**Rulings**
+- A native sign-in opens in an ASWebAuthenticationSession, not ephemeral by default, so the identity provider's session and passkeys carry over between sign-ins. Hermes accepts only a loopback redirect, so the code still arrives through the loopback listener and Conduit closes the browser itself (2026-10-26, 1fc4e08).
+- Private sign-in page makes that session ephemeral, so every sign-in shows the provider's full page (a login code as well as the passkey), for a re-authentication page that offers only the passkey or for switching accounts (2026-10-26, 1fc4e08).
+
+**Open gaps**
+- The switch is only on the login screen; Repair reads it but can't change it.
+- Whether the session shares MobileSafari's own sign-in depends on iOS; in simulator testing with Pocket ID it kept only its own session.
+
+**Checked:** 2026-10-26, at 1fc4e08.
+
 ## Dashboard sign-in redirects
 
 When an auth proxy in front of the dashboard (an oauth2-proxy-style edge,
