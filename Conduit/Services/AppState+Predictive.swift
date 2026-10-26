@@ -69,10 +69,12 @@ extension AppState {
             if predictiveFollowUpSending { predictiveFollowUpAheadEnded = true }
             predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
-                  Self.aMessageWasSent(after: turn.after, in: messages) {
-            // A message someone sent (another client's, queued ahead of the
-            // hidden prompt) wrote this reply, not Hermes on its own: the
-            // follow-up's turn is still to come, up to a few turns on.
+                  let queuedAt = predictiveFollowUpQueuedAt,
+                  Self.aMessageWasSent(after: turn.after, before: queuedAt, in: messages) {
+            // A message someone sent before the hidden prompt was queued
+            // (another client's, ahead of it) wrote this reply, not Hermes on
+            // its own: the follow-up's turn is still to come, up to a few
+            // turns on. One sent later runs after the follow-up.
             predictiveFollowUpTurnsAhead += 1
             if predictiveFollowUpTurnsAhead > Self.predictiveFollowUpMaximumTurnsAhead {
                 predictiveFollowUpTurn = nil
@@ -99,11 +101,29 @@ extension AppState {
     /// before Conduit stops waiting for its reply.
     static let predictiveFollowUpMaximumTurnsAhead = 3
 
-    /// A message a person sent sits after `after`: the turn that just ended
-    /// answered it. The hidden prompt leaves no row.
-    static func aMessageWasSent(after id: String?, in messages: [ChatMessage]) -> Bool {
-        let start = id.flatMap { id in messages.lastIndex(where: { $0.id == id }) }.map { $0 + 1 } ?? 0
-        return messages[start...].contains { $0.role == .user }
+    /// A message a person sent before `queuedAt` sits after `after`: the
+    /// turn that just ended answered it. The hidden prompt leaves no row.
+    /// A row `after` no longer names (the chat reloaded) proves nothing.
+    static func aMessageWasSent(after id: String?, before queuedAt: Date, in messages: [ChatMessage]) -> Bool {
+        var start = 0
+        if let id {
+            guard let index = messages.lastIndex(where: { $0.id == id }) else { return false }
+            start = index + 1
+        }
+        return messages[start...].contains { message in
+            guard message.role == .user, let sent = MessageTimestampFormatter.date(from: message.timestamp) else { return false }
+            return sent <= queuedAt
+        }
+    }
+
+    /// Stops watching for the follow-up's reply: nothing is tagged or held.
+    func stopWaitingForPredictiveFollowUp() {
+        predictiveFollowUpTurn = nil
+        predictiveFollowUpQueued = false
+        predictiveFollowUpSending = false
+        predictiveFollowUpAheadEnded = false
+        predictiveFollowUpTurnsAhead = 0
+        predictiveFollowUpQueuedAt = nil
     }
 
     /// A turn failed or was interrupted: a follow-up it carried is over,
@@ -345,6 +365,8 @@ extension AppState {
         }
         predictiveFollowUpTurn = (sessionID, why, messages.last?.id)
         predictiveFollowUpTurnsAhead = 0
+        predictiveFollowUpQueuedAt = nil
+        let sentAt = Date()
         predictiveFollowUpSending = true
         predictiveFollowUpAheadEnded = false
         predictive.clear()
@@ -361,7 +383,10 @@ extension AppState {
             if outcome == .steered || outcome == .redirected { predictiveFollowUpTurn = nil }
             // Queued behind a turn that already ended on the way: the next
             // turn to end is Hermes'.
-            predictiveFollowUpQueued = outcome == .queued && !predictiveFollowUpAheadEnded
+            // Stopped waiting meanwhile (a reconnect): nothing is queued here.
+            let queued = outcome == .queued && predictiveFollowUpTurn != nil
+            predictiveFollowUpQueued = queued && !predictiveFollowUpAheadEnded
+            predictiveFollowUpQueuedAt = queued ? sentAt : nil
         } catch {
             guard predictiveGeneration == generation else { return }
             predictiveFollowUpSending = false

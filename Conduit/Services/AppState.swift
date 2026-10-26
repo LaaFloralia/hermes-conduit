@@ -2353,6 +2353,9 @@ final class AppState: ObservableObject {
     /// Turns other messages ran after the hidden prompt was sent, so a
     /// reply Conduit never sees end is stopped waiting for.
     var predictiveFollowUpTurnsAhead = 0
+    /// When the hidden prompt was sent, if Hermes queued it: only a message
+    /// sent before then can run ahead of it.
+    var predictiveFollowUpQueuedAt: Date?
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
@@ -10141,11 +10144,7 @@ final class AppState: ObservableObject {
         predictiveRepliesAsked = nil
         predictiveDraftAsked = nil
         predictiveFollowUp = PredictiveFollowUpState()
-        predictiveFollowUpTurn = nil
-        predictiveFollowUpQueued = false
-        predictiveFollowUpSending = false
-        predictiveFollowUpAheadEnded = false
-        predictiveFollowUpTurnsAhead = 0
+        stopWaitingForPredictiveFollowUp()
         predictiveReplyEnded = nil
         predictiveComposerRequest = nil
         predictive.forgetAll()
@@ -10405,8 +10404,7 @@ final class AppState: ObservableObject {
         defaults.set(identity, forKey: Self.chatResumeServerIdentityKey)
         // A follow-up's turn may have ended while disconnected: its reply
         // isn't watched for across a reconnect, so none is tagged wrongly.
-        predictiveFollowUpTurn = nil
-        predictiveFollowUpQueued = false
+        stopWaitingForPredictiveFollowUp()
         guard let previousIdentity, previousIdentity != identity else { return false }
 
         retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)

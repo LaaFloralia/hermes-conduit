@@ -233,13 +233,16 @@ extension ChatTypographyTests {
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         state.activeSessionId = "s1"
+        let queuedAt = Date()
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Working on it.", timestamp: "now")]
         state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
         state.predictiveFollowUpQueued = true
+        state.predictiveFollowUpQueuedAt = queuedAt
 
         state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Done.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
-        state.messages.append(ChatMessage(id: "u1", role: .user, content: "And the other one?", timestamp: "now"))
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "And the other one?",
+                                          timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5))))
         state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "That too.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "a reply to someone's message isn't a follow-up")
@@ -262,15 +265,62 @@ extension ChatTypographyTests {
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         state.activeSessionId = "s1"
+        let queuedAt = Date()
         state.messages = [ChatMessage(id: "a0", role: .assistant, content: "Done.", timestamp: "now")]
         state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
+        state.predictiveFollowUpQueuedAt = queuedAt
         for turn in 1...(AppState.predictiveFollowUpMaximumTurnsAhead + 1) {
-            state.messages.append(ChatMessage(id: "u\(turn)", role: .user, content: "Next?", timestamp: "now"))
+            state.messages.append(ChatMessage(id: "u\(turn)", role: .user, content: "Next?",
+                                              timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-10))))
             state.messages.append(ChatMessage(id: "a\(turn)", role: .assistant, content: "Sure.", timestamp: "now"))
             state.predictiveTurnSettled(sessionId: "s1")
         }
         XCTAssertNil(state.predictiveFollowUpTurn)
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+    }
+
+    /// A message sent after the hidden prompt runs after it: the reply
+    /// that ends first is still Hermes following up.
+    @MainActor
+    func testAMessageSentAfterTheFollowUpDoesNotMoveItsTag() {
+        for queued in [false, true] {
+            let defaults = makeScratchDefaults("PredictiveSentAfterTests\(queued)")
+            let state = AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            )
+            let sentAt = Date()
+            state.activeSessionId = "s1"
+            state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+            state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+            // Queued behind a turn that has since ended, or run at once.
+            state.predictiveFollowUpQueuedAt = queued ? sentAt : nil
+            state.messages.append(ChatMessage(id: "u1", role: .user, content: "Also, the list?",
+                                              timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2))))
+            state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+            XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.", "queued: \(queued)")
+            XCTAssertNil(state.predictiveFollowUpTurn)
+        }
+    }
+
+    /// A row the follow-up was sent after that's gone from the chat (a
+    /// reload) proves nothing about who wrote the reply.
+    @MainActor
+    func testAMissingStartingRowFindsNoMessageAhead() {
+        let queuedAt = Date()
+        let messages = [
+            ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-60))),
+            ChatMessage(id: "a1", role: .assistant, content: "Hello.", timestamp: "now"),
+        ]
+        XCTAssertFalse(AppState.aMessageWasSent(after: "gone", before: queuedAt, in: messages))
+        XCTAssertTrue(AppState.aMessageWasSent(after: nil, before: queuedAt, in: messages))
+        XCTAssertFalse(AppState.aMessageWasSent(after: "u1", before: queuedAt, in: messages))
+    }
+
+    private static func isoTimestamp(_ date: Date) -> String {
+        ISO8601DateFormatter().string(from: date)
     }
 
     @MainActor
