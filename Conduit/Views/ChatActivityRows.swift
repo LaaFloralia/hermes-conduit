@@ -807,11 +807,15 @@ private struct ChatStepGroupHeader: View {
         return Look(symbol: style.symbol, tint: style.tint)
     }
 
+    /// The steps the discs draw: the ones counted, so the folded line
+    /// shows the steps its count names.
+    private var drawnMembers: [ChatStepGroupMember] { counted ?? members }
+
     /// One disc per kind of step, in order of first use.
     private var icons: [Look] {
         var seen = Set<String>()
         var result: [Look] = []
-        for member in members {
+        for member in drawnMembers {
             let look = Self.look(member)
             if seen.insert(look.symbol).inserted { result.append(look) }
             if result.count == Self.maxIcons { break }
@@ -824,6 +828,7 @@ private struct ChatStepGroupHeader: View {
     /// Over a summary: one disc per step, in order, as many as fit, then
     /// an ellipsis.
     private var stepIcons: some View {
+        let members = drawnMembers
         let looks = members.prefix(Self.maxStepIcons).map(Self.look)
         // Each count tried in turn, the most first: all of them when the
         // run is short enough, else the cap with an ellipsis.
