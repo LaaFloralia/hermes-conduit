@@ -487,6 +487,15 @@ struct ChatStepGroup: Equatable {
         members.filter { $0.isThinking ? showReasoning : showTools }
     }
 
+    /// The steps a run's header counts: the ones Settings shows, thoughts
+    /// shown on request aside (as a summary counts them), or the thoughts
+    /// shown when Settings shows none of its steps.
+    func countedMembers(showReasoning: Bool, thinkingShown: Bool, showTools: Bool) -> [ChatStepGroupMember] {
+        let settingsVisible = visibleMembers(showReasoning: showReasoning, showTools: showTools)
+        guard thinkingShown, settingsVisible.isEmpty else { return settingsVisible }
+        return visibleMembers(showReasoning: true, showTools: showTools)
+    }
+
     var hasThinking: Bool { members.contains(where: \.isThinking) }
 }
 
@@ -667,10 +676,7 @@ private struct ChatStepRowBody: View {
         let group = placement.group
         let thinkingShown = self.thinkingShown
         let visible = group.visibleMembers(showReasoning: profileShowsReasoning || thinkingShown, showTools: showTools)
-        // The count stays the steps Settings shows, thoughts shown on
-        // request aside (as a summary counts them).
-        let settingsVisible = thinkingShown ? group.visibleMembers(showReasoning: profileShowsReasoning, showTools: showTools) : visible
-        let counted = settingsVisible.isEmpty ? visible : settingsVisible
+        let counted = group.countedMembers(showReasoning: profileShowsReasoning, thinkingShown: thinkingShown, showTools: showTools)
         if let position = visible.firstIndex(where: { $0.messageID == message.id }) {
             if visible.count < 2 {
                 // Whichever step is left showing carries the run's summary

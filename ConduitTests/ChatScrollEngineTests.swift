@@ -440,6 +440,23 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertFalse(disclosure.showsThinking(in: "r"), "another conversation starts hidden")
     }
 
+    /// A revealed run counts the steps Settings shows, or its thoughts when
+    /// Settings shows none of them, never "0 steps".
+    func testARevealedRunCountsTheStepsItShows() {
+        let thinking = ChatMessage(id: "r", role: .reasoning, content: "Look it up", timestamp: "now")
+        let search = ChatMessage(
+            id: "t", role: .tool, content: "", timestamp: "now",
+            tool: ToolActivity(id: "t", name: "web_search", input: nil, output: nil, status: .complete)
+        )
+        let group = ChatStepGroup(members: [ChatStepGroupMember(thinking), ChatStepGroupMember(search)], isTrailing: false)
+        func counted(showTools: Bool) -> [String] {
+            group.countedMembers(showReasoning: false, thinkingShown: true, showTools: showTools).map(\.messageID)
+        }
+        XCTAssertEqual(counted(showTools: true), ["t"], "the tools Settings shows, the revealed thought aside")
+        XCTAssertEqual(counted(showTools: false), ["r"], "with no tools shown, the revealed thought")
+        XCTAssertEqual(group.countedMembers(showReasoning: false, thinkingShown: false, showTools: true).map(\.messageID), ["t"])
+    }
+
     /// Settings > Chat's Thinking: Show is Hermes' own switch, Conduit's key
     /// tells On request from Off, and an install with the switch off keeps
     /// its Show thinking menus.

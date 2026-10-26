@@ -30956,7 +30956,10 @@ final class AppState: ObservableObject {
             // the settings page that was left; the one on screen has no error.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
-            return [:]
+            // Thinking shows what the chats follow meanwhile: the setting
+            // last read, kept on the phone.
+            guard keys.contains(ReasoningDisplayMode.settingKey) else { return [:] }
+            return [ReasoningDisplayMode.settingKey: .text(displayPreferences.reasoningMode.rawValue)]
         }
     }
 
