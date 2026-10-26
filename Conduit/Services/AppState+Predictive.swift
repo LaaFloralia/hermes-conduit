@@ -157,6 +157,14 @@ extension AppState {
                 predictiveFollowUpQueued = false
                 if predictiveFollowUpSending { predictiveFollowUpAheadEnded = true }
                 predictiveFollowUpTurn?.after = messages.last?.id
+            } else if let turn = predictiveFollowUpTurn, let queuedAt = predictiveFollowUpQueuedAt,
+                      Self.messagesSentAhead(after: turn.after, before: queuedAt, noted: predictiveFollowUpUnreadMessages,
+                                             in: messages) > predictiveFollowUpTurnsAhead {
+                // A message queued ahead of it failed: the follow-up still runs.
+                predictiveFollowUpTurnsAhead += 1
+                if predictiveFollowUpTurnsAhead > Self.predictiveFollowUpMaximumTurnsAhead {
+                    predictiveFollowUpTurn = nil
+                }
             } else {
                 predictiveFollowUpTurn = nil
             }

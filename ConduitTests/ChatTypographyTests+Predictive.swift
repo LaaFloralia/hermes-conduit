@@ -431,6 +431,30 @@ extension ChatTypographyTests {
         XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
     }
 
+    /// A message queued ahead of the follow-up whose turn fails: the
+    /// follow-up still runs, and its reply is tagged.
+    @MainActor
+    func testAFailedTurnQueuedAheadKeepsTheFollowUp() {
+        let defaults = makeScratchDefaults("PredictiveAheadFailedTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let queuedAt = Date()
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "First?",
+                                          timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5))))
+        state.predictiveTurnEnded(sessionId: "s1")
+        XCTAssertNotNil(state.predictiveFollowUpTurn)
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
+    }
+
     private static func isoTimestamp(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
     }
