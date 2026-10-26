@@ -326,7 +326,7 @@ README and docs (none today: nothing describes the wording)
 Every way a call starts, and which chat it joins.
 
 **Siblings:** the chat's voice button (chats, project chats, Bot Chat) · the
-top bar's call button · Home's main button · the sidebar's New voice call ·
+top bar's call button · Home's main button (its own entry, Voice beside the tabs) · the sidebar's New voice call ·
 Siri, Shortcuts and the Action button · the wake phrase · widgets · CarPlay ·
 the Apple Watch · Resume Call · group rooms · a call from Hermes (its own
 entry)
@@ -357,7 +357,36 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+
+## Voice beside the tabs
+
+The gold button beside the tab bar, and where voice goes when it is swapped
+for New chat, on a phone and on a split iPad or Mac window.
+
+**Siblings:** the round button (Voice, or New chat by Settings > Appearance >
+Main button) · voice in the Chats top bar and a project page's toolbar when
+swapped · the chat's own voice button (Starting a call) · a minimised call's
+way back · the iPad split layout, with the list shown or hidden (#1164) ·
+Tasks and Settings on a wide window · Bots and Bot Chat · group rooms · the
+Main button caption
+
+**Code**
+- Round button and bar: `Conduit/Views/V2/V2Shell.swift` (voiceButton, tabs, splitColumns' hostsSettings, V2SplitLayout.hasChatVoiceBeside, V2SplitLayout.tabBarUnderList, V2SplitLayout.settingsBesideList, V2MainButtonPreference)
+- Swapped voice: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls), `Conduit/Views/V2/V2ProjectPage.swift` (toolbar)
+- Caption: `Conduit/Views/AuxiliaryViews.swift` (Main button)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift`
+
+**Rulings**
+- Swapped, the round button starts a new chat and voice moves to the top bar; a minimised call turns it back into voice (2026-10-17, #707).
+- Split, a chat beside the list that shows its own voice button takes voice: the round voice button, and the swapped top bar and project page voice, step aside while it shows; New chat stays. A group room has none, so the list keeps its voice beside one (Eric, 2026-10-26, #1319).
+- The round button's touch-and-hold Recent menu goes with it while a chat is beside the list; the chat's own button offers a call or dictation, not Recent, so closing the chat brings the menu back (2026-10-26, #1319).
+- Split, Settings opens in the chat's column with the Chats list kept beside it, and the bar stays under the list; a chat tapped there opens in Chats. Tasks and a list shown alone have no list column and center the bar under the screen, at the list column's width (Eric, 2026-10-26, #1319; replaces #1169's bar kept at the leading edge).
+
+**Open gaps**
+- Recent isn't reachable beside a chat on a split window (see Rulings).
+
+**Checked:** 2026-10-26, at #1319.
 
 ## Chat open elsewhere
 
@@ -1706,7 +1735,7 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-24, at #1206; the match row at #1208, carried in #1229.
+**Checked:** 2026-10-26, at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); 2026-10-24, at #1206; the match row at #1208, carried in #1229.
 
 ## Plan card
 
