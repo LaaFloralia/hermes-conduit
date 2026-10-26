@@ -4390,7 +4390,7 @@ final class AppState: ObservableObject {
     /// never hot-start the microphone when SwiftUI recreates the sheet's
     /// view identity. Lifecycle suspension and every destructive Voice
     /// boundary disarm it.
-    internal(set) var voiceSheetShouldAutoListen = false
+    var voiceSheetShouldAutoListen = false
 
     func consumeVoiceSheetAutoListen() -> Bool {
         guard voiceSheetShouldAutoListen else { return false }
@@ -4429,7 +4429,7 @@ final class AppState: ObservableObject {
     /// user's mute, while a Close arriving after a profile flip (the sheet's
     /// deferred `onDismiss`) must not write the outgoing profile's mute into
     /// the now-active profile's blob.
-    internal(set) var voiceControllerSessionProfile: String?
+    var voiceControllerSessionProfile: String?
 
     // MARK: - Wake phrase (#174)
 
@@ -5140,16 +5140,7 @@ final class AppState: ObservableObject {
     /// presentation cache's queued disk writes have landed. Main actor only:
     /// both callbacks that end the task arrive on the main queue.
     private func holdBackgroundTaskUntilPresentationCacheWritesLand() {
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(
-            withName: "conduit.sessionPresentationCache.flush",
-            expirationHandler: end
-        )
+        let end = BackgroundTaskHold.begin("conduit.sessionPresentationCache.flush")
         sessionPresentationCache.notifyWhenPendingWritesLand(end)
     }
 
@@ -6745,7 +6736,7 @@ final class AppState: ObservableObject {
     @Published var isNativeHermesCallActive = false
     /// That call was answered here (not only ringing): see
     /// `isNativeCallVoiceSurfaceActive`.
-    @Published internal(set) var isNativeHermesCallAnswered = false
+    @Published var isNativeHermesCallAnswered = false
     /// Whether Conduit's phone screen is up, for a classic call's restart
     /// after an interruption (#1145). Test seam.
     var hermesCallPhoneOnScreen: @MainActor () -> Bool = { PhoneScenePresence.isInForeground }
@@ -6753,7 +6744,7 @@ final class AppState: ObservableObject {
     var hermesCallVoiceRunning: @MainActor () -> Bool = { HermesNativeCalls.shared.isCallVoiceRunning }
     /// The call's CallKit mute: a classic voice the call opens while muted
     /// doesn't start listening on its own.
-    internal(set) var isNativeHermesCallMuted = false
+    var isNativeHermesCallMuted = false
     /// A profile's call settings on the host (AppState+HermesCalls), for
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
@@ -7371,17 +7362,7 @@ final class AppState: ObservableObject {
     /// Main actor only: the expiration handler and the closing save's
     /// `defer` both run on the main queue, so the one-shot `end` never races.
     func beginVoiceTranscriptBackgroundTask(named name: String = "conduit.voiceTranscript.save") -> () -> Void {
-        var taskID = UIBackgroundTaskIdentifier.invalid
-        let end = {
-            guard taskID != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(taskID)
-            taskID = .invalid
-        }
-        taskID = UIApplication.shared.beginBackgroundTask(
-            withName: name,
-            expirationHandler: end
-        )
-        return end
+        BackgroundTaskHold.begin(name)
     }
 
     /// Recounts the active dashboard and profile's queued calls. A running
@@ -11561,7 +11542,7 @@ final class AppState: ObservableObject {
 
     /// Internal so the saved-dashboard migration can normalize the legacy
     /// identity key the same way the runtime boundary does.
-    static func normalizedChatResumeServerIdentity(_ baseURL: String) -> String? {
+    nonisolated static func normalizedChatResumeServerIdentity(_ baseURL: String) -> String? {
         guard let normalized = try? ConnectionURLPolicy.normalizedBaseURL(baseURL),
               var components = URLComponents(string: normalized),
               let scheme = components.scheme?.lowercased(),
@@ -22318,12 +22299,6 @@ final class AppState: ObservableObject {
         profileOwnershipVerdict(for: profile)
     }
 
-    /// The persisted selection for a workspace, so a test can pin that the
-    /// conversation's KIND — not just its id — survived restoration.
-    func storedSessionReferenceForTesting(_ profile: String) -> SessionReference? {
-        chatResumeCoordinator.lastSession(for: profile)
-    }
-
     func adoptActiveSessionForWidgetTesting(_ sessionID: String) {
         setActiveSessionState(id: sessionID)
     }
@@ -23862,6 +23837,9 @@ final class AppState: ObservableObject {
         })
     }
 
+    /// Most callers only need the sync; the returned context is for the ones
+    /// that send again from where the submission recovered.
+    @discardableResult
     private func recoverComposerSubmission(
         using context: ComposerSubmissionContext
     ) async -> ComposerSubmissionContext? {
