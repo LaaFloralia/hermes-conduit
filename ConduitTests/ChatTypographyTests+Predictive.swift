@@ -348,6 +348,35 @@ extension ChatTypographyTests {
         XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
     }
 
+    /// A message another client sent that the chat hasn't read yet: the
+    /// reply ending next may be its, so nothing is tagged. Once its row is
+    /// read and runs after the follow-up, the follow-up's reply is tagged.
+    @MainActor
+    func testAMessageSentElsewhereAndNotYetReadStopsTheTag() {
+        for read in [false, true] {
+            let defaults = makeScratchDefaults("PredictiveElsewhereTests\(read)")
+            let state = AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            )
+            let sentAt = Date()
+            state.activeSessionId = "s1"
+            state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+            state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+            state.predictiveFollowUpQueuedAt = sentAt
+            state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "From the desktop", origin: nil))
+            if read {
+                state.messages.append(ChatMessage(id: "u1", role: .user, content: "From the desktop",
+                                                  timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2)), rowId: 42))
+            }
+            state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
+            state.predictiveTurnSettled(sessionId: "s1")
+            XCTAssertEqual(state.predictive.followUpReasons["a2"], read ? "Worth a check." : nil, "read: \(read)")
+            XCTAssertNil(state.predictiveFollowUpTurn)
+        }
+    }
+
     private static func isoTimestamp(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
     }

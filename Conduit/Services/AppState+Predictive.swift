@@ -77,10 +77,17 @@ extension AppState {
             // turns on. One sent later runs after the follow-up. `after`
             // stays put: each such message's reply is counted off once, in
             // whatever order its row and the replies arrived.
+            // A turn that ends in a notice counts too: it answered their
+            // message, not the hidden prompt.
             predictiveFollowUpTurnsAhead += 1
             if predictiveFollowUpTurnsAhead > Self.predictiveFollowUpMaximumTurnsAhead {
                 predictiveFollowUpTurn = nil
             }
+        } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
+                  predictiveFollowUpUnreadMessages.contains(where: { row in !messages.contains { $0.rowId == row } }) {
+            // Someone sent a message elsewhere that the chat hasn't read yet:
+            // whose reply this is can't be told, so nothing is tagged.
+            predictiveFollowUpTurn = nil
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId {
             predictiveFollowUpTurn = nil
             // Only a reply the turn wrote: a [SILENT] one leaves no row, and
@@ -124,6 +131,15 @@ extension AppState {
         predictiveFollowUpAheadEnded = false
         predictiveFollowUpTurnsAhead = 0
         predictiveFollowUpQueuedAt = nil
+        predictiveFollowUpUnreadMessages = []
+    }
+
+    /// Another client sent a message in the chat Hermes is following up
+    /// in: until its row is read, a reply ending may be its.
+    func notePredictiveFollowUpMessageElsewhere(sessionId: String, rowId: Int?) {
+        guard predictiveFollowUpTurn?.sessionID == sessionId else { return }
+        // No row id: never found, so the follow-up's tag stops for good.
+        predictiveFollowUpUnreadMessages.insert(rowId ?? -1)
     }
 
     /// A turn failed or was interrupted: a follow-up it carried is over,
@@ -366,6 +382,7 @@ extension AppState {
         predictiveFollowUpTurn = (sessionID, why, messages.last?.id)
         predictiveFollowUpTurnsAhead = 0
         predictiveFollowUpQueuedAt = nil
+        predictiveFollowUpUnreadMessages = []
         let sentAt = Date()
         predictiveFollowUpSending = true
         predictiveFollowUpAheadEnded = false

@@ -2356,6 +2356,9 @@ final class AppState: ObservableObject {
     /// When the hidden prompt was sent, if Hermes queued it: only a message
     /// sent before then can run ahead of it.
     var predictiveFollowUpQueuedAt: Date?
+    /// Row ids of messages other clients sent while the follow-up waits;
+    /// a reply ending before one is read can't be told apart.
+    var predictiveFollowUpUnreadMessages: Set<Int> = []
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
@@ -17617,6 +17620,8 @@ final class AppState: ObservableObject {
               Self.uiTestFailedConnectionStub() == nil else { return }
         #endif
         guard let savedConnection = connection else { return }
+        // As on every connect: a follow-up's turn may have ended unseen.
+        stopWaitingForPredictiveFollowUp()
         // The renewal's ownership is captured BEFORE any await: the renewed
         // ticket belongs to exactly this dashboard and this switch
         // generation. After the mint (or the silent re-auth), the fences
@@ -20170,6 +20175,9 @@ final class AppState: ObservableObject {
     /// or matching the latest user message here is this device's (so is
     /// the same text resent elsewhere; its stored count still reads it).
     private func noteUserMessageElsewhere(sessionId: String, rowId: Int?, text: String) {
+        if eventBelongsToActiveSession(sessionId), let activeSessionId {
+            notePredictiveFollowUpMessageElsewhere(sessionId: activeSessionId, rowId: rowId)
+        }
         if eventBelongsToActiveSession(sessionId), !turnState.isRunning,
            openChatSync.sessionID == activeSessionId,
            rowId.map({ id in !messages.contains(where: { $0.rowId == id }) }) ?? true {
