@@ -199,6 +199,31 @@ extension ChatTypographyTests {
         XCTAssertNil(state.predictiveAnchor)
     }
 
+    /// While a follow-up waits its turn in a chat, no second one is
+    /// checked for there: it would restart the count of messages ahead.
+    @MainActor
+    func testNoSecondFollowUpIsCheckedWhileOneWaits() throws {
+        UserDefaults.standard.set(true, forKey: Predictive.followUpKey)
+        defer { UserDefaults.standard.removeObject(forKey: Predictive.followUpKey) }
+        let defaults = makeScratchDefaults("PredictiveSecondFollowUpTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        let anchor = try XCTUnwrap(state.predictiveAnchor)
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
+        state.startPredictiveFollowUpClock(for: anchor)
+        XCTAssertNil(state.predictiveFollowUpTask)
+        state.predictiveFollowUpTurn = nil
+        state.startPredictiveFollowUpClock(for: anchor)
+        XCTAssertNotNil(state.predictiveFollowUpTask, "the clock runs once nothing waits")
+        state.stopPredictiveFollowUpClock()
+    }
+
     /// A turn ending while the hidden prompt is still on its way is the one
     /// ahead: it isn't tagged, and the follow-up isn't counted as queued
     /// behind another.

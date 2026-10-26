@@ -311,7 +311,10 @@ extension AppState {
             predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, spentOn: spent)
         }
         guard !predictiveFollowUp.stopped, predictiveFollowUp.checks < Predictive.maximumChecks,
-              predictiveFollowUp.spentOn != predictiveUserMessageKey(anchor.sessionID) else { return }
+              predictiveFollowUp.spentOn != predictiveUserMessageKey(anchor.sessionID),
+              // A follow-up still waiting its turn here: another can't be
+              // told from it.
+              predictiveFollowUpTurn?.sessionID != anchor.sessionID else { return }
         let due = predictiveFollowUp.nextCheck
             ?? predictiveFollowUp.idleSince.addingTimeInterval(TimeInterval(Predictive.followUpDelay()))
         predictiveFollowUpTask?.cancel()
@@ -385,7 +388,9 @@ extension AppState {
     /// The hidden turn: Hermes sees it, the chat doesn't show it, and its
     /// reply wears "Hermes followed up".
     private func sendPredictiveFollowUp(_ nudge: String, why: String, sessionID: String, generation: Int) async {
-        guard predictiveGeneration == generation else { return }
+        // One follow-up waiting in this chat at a time: a second would
+        // restart the count of messages queued ahead of the first.
+        guard predictiveGeneration == generation, predictiveFollowUpTurn?.sessionID != sessionID else { return }
         // Still watched: the chat on screen, not covered, Conduit in front.
         guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning,
               isSceneActive, !showSidebar, activeRoomSurface == nil, composerChatOnScreen == .live(sessionID),
