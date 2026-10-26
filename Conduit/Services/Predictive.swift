@@ -226,10 +226,8 @@ enum Predictive {
 
     /// When a message's timestamp says it was written, if it says.
     static func date(fromTimestamp timestamp: String) -> Date? {
-        let formatter = ISO8601DateFormatter()
-        if let date = formatter.date(from: timestamp) { return date }
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.date(from: timestamp)
+        // The chat's own reading: ISO dates and epoch seconds alike.
+        MessageTimestampFormatter.date(from: timestamp)
     }
 }
 
@@ -353,6 +351,13 @@ final class PredictiveStore: ObservableObject {
     func forgetFollowUps() {
         followUpReasons = [:]
         hiddenSessions = []
+    }
+
+    /// Sign-out: the guesses, the draft they read and the follow-ups.
+    func forgetAll() {
+        clear()
+        forgetFollowUps()
+        draft = ""
     }
 
     /// Whether a tap now would be on a row that only just appeared.

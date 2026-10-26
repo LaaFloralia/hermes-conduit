@@ -156,6 +156,43 @@ extension ChatTypographyTests {
     }
 
     @MainActor
+    func testSigningOutForgetsWhatPredictiveKnewOfTheChats() {
+        let defaults = makeScratchDefaults("PredictiveSignOutTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")
+        state.predictive.setScreen(anchor)
+        state.predictive.showReplies([.init(text: "Thanks!", p: 0.8)], for: anchor)
+        state.predictive.draftChanged("Can you delete")
+        state.predictive.noteFollowUp(messageID: "a1", why: "Worth a check.")
+        state.predictive.hide(sessionID: "s2")
+        state.predictiveRepliesAsked = anchor
+        state.predictiveDraftAsked = ("s1", "Can you delete")
+        state.predictiveFollowUp.anchor = anchor
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+        state.predictiveReplyEnded = (anchor, Date())
+        let pause = Task<Void, Never> { try? await Task.sleep(nanoseconds: 60_000_000_000) }
+        state.predictivePauseTask = pause
+
+        state.forgetPredictiveState()
+
+        XCTAssertFalse(state.predictive.isShowing)
+        XCTAssertEqual(state.predictive.draft, "")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        XCTAssertTrue(state.predictive.hiddenSessions.isEmpty)
+        XCTAssertNil(state.predictiveRepliesAsked)
+        XCTAssertNil(state.predictiveDraftAsked)
+        XCTAssertNil(state.predictiveFollowUp.anchor)
+        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertNil(state.predictiveReplyEnded)
+        XCTAssertNil(state.predictivePauseTask)
+        XCTAssertTrue(pause.isCancelled)
+    }
+
+    @MainActor
     func testRefreshedChipsAreGuardedAgain() {
         let store = PredictiveStore()
         let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")

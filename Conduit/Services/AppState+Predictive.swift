@@ -286,9 +286,9 @@ extension AppState {
         predictive.clear()
         do {
             let outcome = try await client.sendPrompt(sessionID, text: nudge, hidden: true)
-            // A turn that started meanwhile took it in: there's no reply of
-            // its own to mark.
-            if outcome != .accepted { predictiveFollowUpTurn = nil }
+            // A turn running meanwhile took it in: there's no reply of its
+            // own to mark. A queued one runs as its own next turn.
+            if outcome == .steered || outcome == .redirected { predictiveFollowUpTurn = nil }
         } catch {
             // Nothing reached Hermes (a gateway without hidden prompts stops
             // the checks for good): the user's message keeps its follow-up.

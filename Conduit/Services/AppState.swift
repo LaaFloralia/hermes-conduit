@@ -5591,6 +5591,9 @@ final class AppState: ObservableObject {
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
         // So do the summaries describing its runs of steps.
         forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
+        // And the open dashboard's predictions: guesses, the draft they
+        // read, hidden follow-ups and the checks still waiting.
+        if dashboardID == nil || dashboardID == activeDashboardID { forgetPredictiveState() }
         leaveSavedChats(dashboardID: dashboardID)
     }
 
@@ -10122,6 +10125,22 @@ final class AppState: ObservableObject {
     func consumePredictiveComposerRequest(_ id: UUID) {
         guard predictiveComposerRequest?.id == id else { return }
         predictiveComposerRequest = nil
+    }
+
+    /// Sign-out or removal of the open dashboard: nothing Predictive knew
+    /// of its chats stays for the next account.
+    func forgetPredictiveState() {
+        predictivePauseTask?.cancel()
+        predictivePauseTask = nil
+        predictiveFollowUpTask?.cancel()
+        predictiveFollowUpTask = nil
+        predictiveRepliesAsked = nil
+        predictiveDraftAsked = nil
+        predictiveFollowUp = PredictiveFollowUpState()
+        predictiveFollowUpTurn = nil
+        predictiveReplyEnded = nil
+        predictiveComposerRequest = nil
+        predictive.forgetAll()
     }
 
     /// Puts `text` in the open chat's composer, replacing the draft, and
