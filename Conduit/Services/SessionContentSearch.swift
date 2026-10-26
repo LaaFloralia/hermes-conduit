@@ -221,7 +221,12 @@ enum SessionContentSearch {
 
     static func path(query: String, profile: String) -> String {
         let encoded = DashboardPath.encodedQueryComponent(query) ?? ""
-        return DashboardPath.withProfile("\(path)?q=\(encoded)&limit=\(resultLimit)", profile: profile)
+        // Kanban workers' transcripts can't open as chats (see
+        // SessionSource.hermesKanbanSource), so they aren't results.
+        return DashboardPath.withProfile(
+            "\(path)?q=\(encoded)&limit=\(resultLimit)&exclude_sources=\(SessionSource.hermesKanbanSource)",
+            profile: profile
+        )
     }
 
     /// A Hermes older than the route: it doesn't know the path or the method.

@@ -4739,6 +4739,11 @@ final class AppState: ObservableObject {
     /// that its requested session no longer exists. Callers use this to
     /// retire a saved automatic-return target instead of retrying it forever.
     private var reconciliationSessionWasNotFound = false
+    /// Set when the resume RPC refused a Kanban worker's transcript (4132).
+    /// Hermes never reopens one as a chat, so it also counts as not found:
+    /// a saved automatic-return target is retired and a notification isn't
+    /// retried. This flag keeps its own message from being reworded.
+    private var reconciliationWasKanbanWorker = false
     /// Catalog rows `session.resume` answered 4007 for during an automatic
     /// resume, per dashboard and profile, for this app run. The catalog can
     /// keep listing a conversation the gateway no longer resumes; without
@@ -7885,7 +7890,10 @@ final class AppState: ObservableObject {
             let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
                 // A failed resume says "session not found"; the link's own
                 // words say what's missing. Other refusals keep their text.
-                guard let self, self.errorMessage == nil || self.reconciliationSessionWasNotFound else { return }
+                guard let self,
+                      self.errorMessage == nil
+                        || (self.reconciliationSessionWasNotFound && !self.reconciliationWasKanbanWorker)
+                else { return }
                 self.errorMessage = unavailable
             }.value
             // From outside a chat (a Live Activity, another app) the chat
@@ -15192,7 +15200,9 @@ final class AppState: ObservableObject {
         requiredViewportTransitionGeneration: UInt64?,
         historySourceUnavailable: Bool
     ) async -> Bool {
+        // A Kanban worker is refused under any of its ids.
         guard reconciliationSessionWasNotFound,
+              !reconciliationWasKanbanWorker,
               let storedID = row.storedSessionId,
               !storedID.isEmpty,
               storedID != row.id,
@@ -15538,6 +15548,7 @@ final class AppState: ObservableObject {
         durablePersistedRowIDs = []
         reconciliationWasIdentityRejected = false
         reconciliationSessionWasNotFound = false
+        reconciliationWasKanbanWorker = false
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         // The resume RPC can overlap a user-initiated config.set. Capture the
@@ -16116,6 +16127,12 @@ final class AppState: ObservableObject {
                 // bounded current-Hermes page with one enormous row (which
                 // must not claim the backend lacks pagination).
                 errorMessage = UserFacingError.message(for: error)
+            case let rpcError as RpcError where rpcError.code == 4132:
+                // A Kanban worker's transcript: Hermes lets only the board
+                // run it. Lists leave these out; a link can still reach one.
+                reconciliationWasKanbanWorker = true
+                reconciliationSessionWasNotFound = true
+                errorMessage = AppLocalization.string("This chat is a Kanban task's worker, so only the board can run it. Open the task on the Kanban board and check its Worker Log.")
             default:
                 errorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
@@ -29377,20 +29394,20 @@ final class AppState: ObservableObject {
 
     private func profileSessionsPath(_ profile: String, offset: Int = 0) -> String {
         DashboardPath.withExplicitProfile(
-            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=exclude&order=recent&exclude_sources=cron",
+            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=exclude&order=recent&exclude_sources=\(SessionSource.chatListExcludedSources)",
             profile: profile
         )
     }
 
     private func archivedSessionsPath(_ profile: String, offset: Int = 0) -> String {
         DashboardPath.withExplicitProfile(
-            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=only&order=recent&exclude_sources=cron",
+            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=only&order=recent&exclude_sources=\(SessionSource.chatListExcludedSources)",
             profile: profile
         )
     }
 
-    /// Fetch cron sessions separately. The main profileSessionsPath uses
-    /// exclude_sources=cron, so cron sessions never appear in the normal
+    /// Fetch cron sessions separately. The main profileSessionsPath excludes
+    /// cron (and Kanban workers), so cron sessions never appear in the normal
     /// dashboard query. This dedicated path uses source=cron to populate
     /// the cron tab in the sidebar.
     private func dashboardCronSessions(

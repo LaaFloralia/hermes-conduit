@@ -37,6 +37,11 @@ extension SidebarLayoutTests {
         XCTAssertTrue(AllProfilesChats.isAvailable(profiles: ["default", "atlas"]))
     }
 
+    func testAllProfilesLeavesCronRunsAndKanbanWorkersOut() {
+        // A Kanban worker's transcript can't open as a chat (Hermes 4132).
+        XCTAssertTrue(AllProfilesChats.sessionsPath.contains("&exclude_sources=cron,kanban&"))
+    }
+
     func testAllProfilesMergesOwnListWithOtherProfilesNewestFirst() {
         let own = [allRow("d-new", profile: "default", at: 500), allRow("d-old", profile: "default", at: 100)]
         let combined = [

@@ -3778,10 +3778,11 @@ enum MessageNormalizer {
         let repoPath = isHome ? nil : firstNonEmptyString(
             object["repos"]?.arrayValue?.compactMap { $0.objectValue?["path"]?.stringValue }.map(AnyCodable.string) ?? []
         )
+        let previewSessions = normalizeSessions(.array(previews), profile: profile)
         let count = object["session_count"]?.intValue
             ?? object["sessionCount"]?.intValue
             ?? object["session_count"]?.stringValue.flatMap(Int.init)
-            ?? previews.count
+            ?? previewSessions.count
         return ProjectSummary(
             id: id,
             title: title,
@@ -3793,7 +3794,7 @@ enum MessageNormalizer {
             isHome: isHome,
             isAuto: isAuto,
             sessionCount: count,
-            previewSessions: normalizeSessions(.array(previews), profile: profile)
+            previewSessions: previewSessions
         )
     }
 
@@ -3845,7 +3846,13 @@ enum MessageNormalizer {
             records = []
         }
 
-        return records.enumerated().map { index, item in
+        // Kanban workers' transcripts aren't chats (SessionSource.hermesKanbanSource):
+        // every list built here leaves them out, whatever the server filtered
+        // (the `session.list` fallback, project lanes and previews included).
+        let chats = records.filter {
+            $0.objectValue?["source"]?.stringValue?.lowercased() != SessionSource.hermesKanbanSource
+        }
+        return chats.enumerated().map { index, item in
             let obj = item.objectValue ?? [:]
             let runtimeSessionId = obj["session_id"]?.stringValue
             let id = runtimeSessionId ?? obj["id"]?.stringValue ?? String(index)

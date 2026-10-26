@@ -82,9 +82,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(VoiceChatFinder.fallbackWords("GPU"), [], "a single word was already tried")
         XCTAssertEqual(
             VoiceChatFinder.path(query: "GPU setup", profile: "work"),
-            "/api/sessions/search?q=GPU%20setup&limit=\(VoiceChatFinder.resultLimit)&profile=work"
+            "/api/sessions/search?q=GPU%20setup&limit=\(VoiceChatFinder.resultLimit)&exclude_sources=kanban&profile=work"
         )
-        XCTAssertEqual(VoiceChatFinder.path(query: "x", profile: "default"), "/api/sessions/search?q=x&limit=\(VoiceChatFinder.resultLimit)")
+        XCTAssertEqual(VoiceChatFinder.path(query: "x", profile: "default"), "/api/sessions/search?q=x&limit=\(VoiceChatFinder.resultLimit)&exclude_sources=kanban")
     }
 
     func testTitleFallbackFindsListedChatsNewestFirst() {

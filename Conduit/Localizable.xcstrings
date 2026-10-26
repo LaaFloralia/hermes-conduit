@@ -1,6 +1,88 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "This chat is a Kanban task's worker, so only the board can run it. Open the task on the Kanban board and check its Worker Log." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat ist der Worker einer Kanban-Aufgabe, daher kann nur das Board ihn ausführen. Öffne die Aufgabe auf dem Kanban-Board und sieh dir ihr Worker-Log an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat es el ejecutor de una tarea de Kanban, así que solo el tablero puede ejecutarlo. Abre la tarea en el tablero Kanban y consulta su Registro del ejecutor."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette discussion est le worker d'une tâche Kanban : seul le tableau peut l'exécuter. Ouvrez la tâche sur le tableau Kanban et consultez son Journal du worker."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat ini adalah worker tugas Kanban, jadi hanya papan yang dapat menjalankannya. Buka tugasnya di papan Kanban dan periksa Log Worker-nya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa chat è il worker di un'attività Kanban, quindi solo la bacheca può eseguirla. Apri l'attività sulla bacheca Kanban e controlla il suo Registro del worker."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットはカンバンタスクのワーカーなので、ボードだけが実行できます。カンバンボードでタスクを開き、ワーカーログを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 채팅은 Kanban 작업의 워커이므로 보드에서만 실행할 수 있습니다. Kanban 보드에서 작업을 열고 워커 로그를 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten czat to proces roboczy zadania Kanban, więc może go uruchamiać tylko tablica. Otwórz zadanie na tablicy Kanban i sprawdź jego Dziennik procesu roboczego."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat é o executor de uma tarefa do Kanban, então só o quadro pode executá-lo. Abra a tarefa no quadro Kanban e veja o Log do Executor."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот чат — обработчик задачи Kanban, поэтому запускать его может только доска. Откройте задачу на доске Kanban и посмотрите её Журнал обработчика."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sohbet bir Kanban görevinin çalışanı, bu yüzden onu yalnızca pano çalıştırabilir. Görevi Kanban panosunda açıp Çalışan Günlüğü'ne bakın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此聊天是看板任务的工作进程，只有看板可以运行它。请在看板上打开该任务并查看其工作日志。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此聊天是 Kanban 任務的執行者，只有看板能執行它。請在 Kanban 看板上開啟該任務並查看其執行者記錄。"
+          }
+        }
+      }
+    },
     "Other Hermes profiles on %@ that are paired with this iPhone can read it too. You can turn this off in Settings > Location." : {
       "localizations" : {
         "de" : {
