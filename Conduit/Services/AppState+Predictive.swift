@@ -123,7 +123,8 @@ extension AppState {
         let generation = predictiveGeneration
         Task { [weak self] in
             guard let answer = await self?.askPredictive(body, profile: profile, wait: Predictive.repliesWait),
-                  let self, self.predictiveGeneration == generation, self.predictiveAnchor == anchor else { return }
+                  let self, self.predictiveGeneration == generation, Predictive.repliesEnabled(),
+                  self.predictiveAnchor == anchor else { return }
             let guesses = Array(Predictive.guesses(answer["replies"]).prefix(count))
             guard !guesses.isEmpty else { return }
             self.predictive.showReplies(guesses, for: anchor)
