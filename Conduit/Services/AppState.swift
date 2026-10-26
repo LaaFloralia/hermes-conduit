@@ -2350,8 +2350,9 @@ final class AppState: ObservableObject {
     /// A turn ended while the hidden prompt was on its way: when it comes
     /// back queued, it was queued behind that one.
     var predictiveFollowUpAheadEnded = false
-    /// Turns other messages ran after the hidden prompt was sent, so a
-    /// reply Conduit never sees end is stopped waiting for.
+    /// Turns of messages sent before the hidden prompt was queued that
+    /// ran ahead of it, so a reply Conduit never sees end is stopped
+    /// waiting for.
     var predictiveFollowUpTurnsAhead = 0
     /// When the hidden prompt was sent, if Hermes queued it: only a message
     /// sent before then can run ahead of it.

@@ -377,6 +377,36 @@ extension ChatTypographyTests {
         }
     }
 
+    /// A message another client queued ahead of the follow-up, read in
+    /// before the turn the follow-up waited behind ended: its reply still
+    /// isn't tagged, and the one after is.
+    @MainActor
+    func testAMessageReadInBeforeTheTurnAheadEndsIsStillCountedOff() {
+        let defaults = makeScratchDefaults("PredictiveReadEarlyTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let queuedAt = Date()
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Working on it.", timestamp: "now")]
+        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.predictiveFollowUpQueued = true
+        state.predictiveFollowUpQueuedAt = queuedAt
+        state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 7, text: "And the other one?", origin: nil))
+        state.messages.append(ChatMessage(id: "u1", role: .user, content: "And the other one?",
+                                          timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5)), rowId: 7))
+        state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Done.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "That too.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
+        state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
+        state.predictiveTurnSettled(sessionId: "s1")
+        XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
+    }
+
     private static func isoTimestamp(_ date: Date) -> String {
         ISO8601DateFormatter().string(from: date)
     }

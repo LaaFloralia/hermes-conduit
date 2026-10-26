@@ -70,7 +70,8 @@ extension AppState {
             predictiveFollowUpTurn = (sessionId, turn.why, messages.last?.id)
         } else if let turn = predictiveFollowUpTurn, turn.sessionID == sessionId,
                   let queuedAt = predictiveFollowUpQueuedAt,
-                  Self.messagesSentAhead(after: turn.after, before: queuedAt, in: messages) > predictiveFollowUpTurnsAhead {
+                  Self.messagesSentAhead(after: turn.after, before: queuedAt, noted: predictiveFollowUpUnreadMessages,
+                                         in: messages) > predictiveFollowUpTurnsAhead {
             // A message someone sent before the hidden prompt was queued
             // (another client's, ahead of it) wrote this reply, not Hermes on
             // its own: the follow-up's turn is still to come, up to a few
@@ -108,17 +109,22 @@ extension AppState {
     /// before Conduit stops waiting for its reply.
     static let predictiveFollowUpMaximumTurnsAhead = 3
 
-    /// Messages people sent before `queuedAt` that sit after `after`: each
-    /// runs ahead of the hidden prompt, which leaves no row. A row `after`
-    /// no longer names (the chat reloaded) proves nothing.
-    static func messagesSentAhead(after id: String?, before queuedAt: Date, in messages: [ChatMessage]) -> Int {
+    /// Messages people sent before `queuedAt` that sit after `after`, or
+    /// that another client sent while the follow-up waited (`noted` row
+    /// ids, read in before the turn it waited behind ended): each runs
+    /// ahead of the hidden prompt, which leaves no row. A row `after` no
+    /// longer names (the chat reloaded) proves nothing.
+    static func messagesSentAhead(after id: String?, before queuedAt: Date, noted: Set<Int> = [],
+                                  in messages: [ChatMessage]) -> Int {
         var start = 0
         if let id {
-            guard let index = messages.lastIndex(where: { $0.id == id }) else { return 0 }
-            start = index + 1
+            start = messages.lastIndex(where: { $0.id == id }).map { $0 + 1 } ?? messages.count
         }
-        return messages[start...].filter { message in
-            guard message.role == .user, let sent = MessageTimestampFormatter.date(from: message.timestamp) else { return false }
+        return messages.indices.filter { index in
+            let message = messages[index]
+            guard index >= start || message.rowId.map(noted.contains) == true,
+                  message.role == .user,
+                  let sent = MessageTimestampFormatter.date(from: message.timestamp) else { return false }
             return sent <= queuedAt
         }.count
     }
