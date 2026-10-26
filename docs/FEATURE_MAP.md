@@ -2376,6 +2376,39 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 
 **Checked:** 2026-10-26, #1305 (with the Share extension's picker).
 
+## Readable width on wide windows
+
+How wide a screen's content runs on an iPad, a Mac or a landscape phone,
+where a phone layout would otherwise run the whole window.
+
+**Siblings:** chat surfaces (chats, project chats, Bot Chat and group rooms
+share the chat screen, so its column) · the chat beside the list and with the
+list hidden · the drawer shell's chat (Appearance, V2 off, with or without
+the persistent sidebar) · Settings' pages · a Chats or Bots list shown alone ·
+the call screens (Classic, live calls, live voice consent) · the sign-in
+screens (their own column) · cards and pictures whose kept heights depend on
+the column's width (see Cards drawn in web pages) · text: no Settings caption
+or doc gives a width
+
+**Code**
+- Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:), chatMax, chatShare)
+- Chat column: `Conduit/Views/V2/V2ConversationScreen.swift` (readableContentWidth(scaling:)), and the drawer shell's in `Conduit/Views/RootView.swift` (chatNavigationContent)
+- List shown alone: `Conduit/Views/V2/V2Shell.swift` (ReadableWidth.list)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ReadableWidth.settings)
+- Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
+- Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap)
+
+**Rulings**
+- Widths follow the window, not the device (2026-10-19, #949).
+- A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
+- Settings (720 pt), a list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
+
+**Open gaps**
+- Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
+
+**Checked:** 2026-10-26, #1320.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
