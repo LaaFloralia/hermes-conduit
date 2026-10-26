@@ -346277,6 +346277,170 @@
           }
         }
       }
+    },
+    "This notification opens in the other workspace when the call ends." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Mitteilung öffnet sich im anderen Arbeitsbereich, sobald der Anruf endet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta notificación se abrirá en el otro espacio de trabajo cuando termine la llamada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette notification s’ouvrira dans l’autre espace de travail à la fin de l’appel."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemberitahuan ini akan terbuka di ruang kerja lain saat panggilan berakhir."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa notifica si aprirà nell’altro spazio di lavoro al termine della chiamata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この通知は、通話が終了すると別のワークスペースで開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 알림은 통화가 끝나면 다른 작업 공간에서 열립니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To powiadomienie otworzy się w innym obszarze roboczym po zakończeniu połączenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta notificação será aberta no outro espaço de trabalho quando a chamada terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это уведомление откроется в другой рабочей области, когда звонок завершится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu bildirim, arama bittiğinde diğer çalışma alanında açılacak."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话结束后，这条通知会在另一个工作区中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話結束後，這則通知會在另一個工作區中開啟。"
+          }
+        }
+      }
+    },
+    "This notification opens in the other profile when the call ends." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Mitteilung öffnet sich im anderen Profil, sobald der Anruf endet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta notificación se abrirá en el otro perfil cuando termine la llamada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette notification s’ouvrira dans l’autre profil à la fin de l’appel."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemberitahuan ini akan terbuka di profil lain saat panggilan berakhir."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa notifica si aprirà nell’altro profilo al termine della chiamata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この通知は、通話が終了すると別のプロファイルで開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 알림은 통화가 끝나면 다른 프로필에서 열립니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To powiadomienie otworzy się w innym profilu po zakończeniu połączenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta notificação será aberta no outro perfil quando a chamada terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это уведомление откроется в другом профиле, когда звонок завершится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu bildirim, arama bittiğinde diğer profilde açılacak."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话结束后，这条通知会在另一个档案中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話結束後，這則通知會在另一個設定檔中開啟。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

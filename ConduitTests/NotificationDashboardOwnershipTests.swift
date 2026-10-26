@@ -263,6 +263,99 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertEqual(outcome, .retry)
         XCTAssertNil(appState.errorMessage)
     }
+
+    /// A notification from another saved dashboard tapped during a call
+    /// stays on the dashboard in use: the switch would end the call, so the
+    /// tap waits for the call to end, and says so over the screen (the
+    /// composer's error line doesn't show during a call). A tapped
+    /// notification is gone, unlike a chat link, which says to end the call
+    /// first.
+    func testPushFromAnotherDashboardDuringACallOpensWhenItEnds() async {
+        let savedA = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "VPS", normalizedURL: "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.isNativeHermesCallActive = true
+
+        let outcome = await appState.openNotificationTargetOutcome(decisionTarget(dashboardID: dashboardB))
+
+        XCTAssertEqual(outcome, .afterCall, "the route opens it once the call ends")
+        XCTAssertEqual(appState.activeDashboardID, dashboardA)
+        XCTAssertEqual(
+            appState.pinSyncNotice?.message,
+            AppLocalization.string("This notification opens in the other workspace when the call ends.")
+        )
+        XCTAssertNil(appState.errorMessage, "nothing stale for the composer to show later")
+    }
+
+    /// A tap waiting for a call opens once there's no call and Conduit is on
+    /// screen: not during a launch that never reached the screen (a waiting
+    /// tap is restored at every launch, a background one too), and not
+    /// while Conduit is away.
+    func testCallWaitEndsOnlyWithNoCallAndConduitOnScreen() {
+        let saved = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [saved]))
+        XCTAssertFalse(appState.callWaitCanEnd, "launched, never on screen")
+        appState.handleScenePhase(.active)
+        XCTAssertTrue(appState.callWaitCanEnd)
+        appState.isNativeHermesCallActive = true
+        XCTAssertFalse(appState.callWaitCanEnd, "a call")
+        appState.isNativeHermesCallActive = false
+        appState.handleScenePhase(.background)
+        XCTAssertFalse(appState.callWaitCanEnd, "away")
+    }
+
+    /// With V2 off the drawer shell draws no notice: a refusal is on its
+    /// error line, as before, and goes once the call is over, so the tap's
+    /// switch, which locks the composer and shows the line, doesn't say it.
+    func testWithoutV2ARefusalLeavesTheErrorLineOnceTheCallIsOver() {
+        let saved = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [saved]))
+        let refusal = AppLocalization.string("End the call to open a chat in another profile.")
+
+        appState.showCallRefusal(refusal, drawsNotices: false)
+        XCTAssertEqual(appState.errorMessage, refusal)
+        XCTAssertNil(appState.pinSyncNotice)
+        appState.clearCallRefusal()
+        XCTAssertNil(appState.errorMessage)
+
+        // An error said since stays.
+        appState.showCallRefusal(refusal, drawsNotices: false)
+        appState.errorMessage = "Something else"
+        appState.clearCallRefusal()
+        XCTAssertEqual(appState.errorMessage, "Something else")
+
+        // V2 says it in the notice and leaves the error line alone.
+        appState.errorMessage = nil
+        appState.showCallRefusal(refusal, drawsNotices: true)
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.pinSyncNotice?.message, refusal)
+        appState.clearCallRefusal()
+        XCTAssertEqual(appState.pinSyncNotice?.message, refusal)
+    }
+
+    /// A call from Hermes on another saved dashboard still switches to open
+    /// its own chat while its call runs: answering it leaves any other call.
+    func testCallFromHermesOnAnotherDashboardStillSwitchesDuringItsCall() async {
+        let savedA = SavedDashboard(id: dashboardA, label: "Mac", normalizedURL: "https://mac.tailnet.ts.net")
+        let savedB = SavedDashboard(id: dashboardB, label: "VPS", normalizedURL: "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
+        appState.isNativeHermesCallActive = true
+        let target = ConduitNotificationTarget(
+            profile: "default",
+            sessionId: "runtime-1",
+            dashboardID: dashboardB,
+            type: HermesCallRequest.type,
+            call: HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["runtime-1"])
+        )
+
+        _ = await appState.openNotificationTargetOutcome(target)
+
+        XCTAssertEqual(appState.activeDashboardID, dashboardB, "the switch went ahead")
+        XCTAssertEqual(
+            appState.errorMessage,
+            AppLocalization.string("Could not connect to that dashboard to open this notification.")
+        )
+    }
 }
 
 // MARK: - Relay gateway discriminator (decision routing)
