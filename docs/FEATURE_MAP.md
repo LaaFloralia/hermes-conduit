@@ -2032,6 +2032,7 @@ route, its README section and the CHANGELOG · the Predictive page's captions
 - Group rooms get no row: with several people and bots, "your next message" is unclear.
 - The Apple Watch has no suggested replies yet, where typing is hardest.
 - Voice modes and CarPlay get none, by design: calls take turns their own way, and chips while driving distract. With Voice open, no draft is asked about and no follow-up is sent.
+- Hide for this chat lasts until Conduit is relaunched; the chat then gets predictions again.
 - "Hermes followed up" is kept in memory for this run: after a relaunch or a new copy of the chat from the host, the reply shows without it.
 - Step summaries still use `prompt.btw`, so Desktop keeps showing their notes; moving them to `/predict` is left for its own change.
 - The fast model is the profile's `auxiliary.conduit_predict` on the host; Conduit can't set it.
