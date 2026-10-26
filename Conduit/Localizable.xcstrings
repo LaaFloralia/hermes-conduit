@@ -103673,88 +103673,6 @@
         }
       }
     },
-    "Include available agent reasoning in replies." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verfügbares Reasoning des Agenten in Antworten einbeziehen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Incluir el razonamiento disponible del agente en las respuestas."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Inclure le raisonnement disponible de l'agent dans les réponses."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sertakan penalaran agen yang tersedia dalam balasan."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Includi il ragionamento disponibile dell'agente nelle risposte."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "利用可能な場合、エージェントの推論を返信に含めます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "사용 가능한 에이전트 추론을 답장에 포함해요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dołączaj dostępne rozumowanie agenta do odpowiedzi."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Incluir o raciocínio disponível do agente nas respostas."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Добавлять в ответы доступные рассуждения агента."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mevcut ajan akıl yürütmesini yanıtlara ekle."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在回复中包含可用的智能体思考内容。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "在回覆中包含可用的代理程式推理內容。"
-          }
-        }
-      }
-    },
     "Include response text in notifications" : {
       "localizations" : {
         "de" : {
@@ -142946,88 +142864,6 @@
         }
       }
     },
-    "Show collapsible thinking blocks when provided." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einklappbare Denkblöcke anzeigen, wenn vorhanden."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar bloques de pensamiento contraíbles cuando estén disponibles."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Afficher les blocs de réflexion repliables lorsqu'ils sont fournis."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tampilkan blok pemikiran yang dapat diciutkan jika tersedia."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostra i blocchi di pensiero comprimibili quando disponibili."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "思考ブロックがある場合、折りたたみ可能な形で表示します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "제공되는 경우 접을 수 있는 생각 블록을 보여 줘요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pokazuj zwijane bloki myślenia, gdy są dostępne."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar blocos de raciocínio recolhíveis quando fornecidos."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Показывать сворачиваемые блоки размышлений, если они есть."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sağlandığında daraltılabilir düşünme bloklarını göster."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有思考内容时显示可折叠的思考块。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有提供時，顯示可收合的思考區塊。"
-          }
-        }
-      }
-    },
     "Show current session status" : {
       "localizations" : {
         "de" : {
@@ -143352,88 +143188,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示預覽"
-          }
-        }
-      }
-    },
-    "Show reasoning" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reasoning anzeigen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar razonamiento"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Afficher le raisonnement"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tampilkan penalaran"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostra ragionamento"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "推論を表示"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "추론 보기"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pokazuj rozumowanie"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostrar raciocínio"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Показывать рассуждения"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Akıl yürütmeyi göster"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示思考"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "顯示推理"
           }
         }
       }
@@ -343240,6 +342994,334 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此聊天中沒有釘選"
+          }
+        }
+      }
+    },
+    "Hide thinking" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Denkprozess ausblenden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar pensamiento"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masquer la réflexion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sembunyikan pemikiran"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nascondi pensiero"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "思考を隠す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "생각 숨기기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ukryj myślenie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ocultar pensamento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Скрыть размышления"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Düşünmeyi gizle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐藏思考"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱藏思考過程"
+          }
+        }
+      }
+    },
+    "Show in every chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In jedem Chat zeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar en cada chat"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher dans chaque discussion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan di setiap obrolan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra in ogni chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてのチャットで表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모든 채팅에서 보기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokazuj w każdym czacie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar em todas as conversas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показывать во всех чатах"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her sohbette göster"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在每个聊天中显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在每個聊天中顯示"
+          }
+        }
+      }
+    },
+    "On request" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf Anfrage"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A petición"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sur demande"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat diminta"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su richiesta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "必要なときだけ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "요청할 때만"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na żądanie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sob demanda"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "По запросу"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İstendiğinde"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按需显示"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "需要時顯示"
+          }
+        }
+      }
+    },
+    "Show puts Hermes' thinking in every chat. On request hides it, with Show thinking in a run's menu and a reply's ⋯. Off hides it everywhere." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„In jedem Chat zeigen“ zeigt das Denken von Hermes in jedem Chat. „Auf Anfrage“ blendet es aus, mit „Denkprozess anzeigen“ im Menü eines Durchlaufs und im ⋯ einer Antwort. „Aus“ blendet es überall aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Mostrar en cada chat» muestra el pensamiento de Hermes en todos los chats. «A petición» lo oculta, con «Mostrar pensamiento» en el menú de una serie de pasos y en el ⋯ de una respuesta. «Desactivado» lo oculta en todas partes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "« Afficher dans chaque discussion » montre la réflexion de Hermes partout. « Sur demande » la masque, avec « Afficher la réflexion » dans le menu d'une série d'étapes et le ⋯ d'une réponse. « Désactivé » la masque partout."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"Tampilkan di setiap obrolan\" menampilkan pemikiran Hermes di setiap obrolan. \"Saat diminta\" menyembunyikannya, dengan \"Tampilkan pemikiran\" di menu rangkaian langkah dan ⋯ balasan. \"Mati\" menyembunyikannya di mana saja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Mostra in ogni chat» mostra il pensiero di Hermes in tutte le chat. «Su richiesta» lo nasconde, con «Mostra pensiero» nel menu di una serie di passaggi e nel ⋯ di una risposta. «Disattivato» lo nasconde ovunque."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「すべてのチャットで表示」はHermesの思考をすべてのチャットに表示します。「必要なときだけ」は非表示にし、ステップの一連のメニューと返信の⋯に「思考を表示」を出します。「オフ」はどこにも表示しません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "'모든 채팅에서 보기'는 Hermes의 생각을 모든 채팅에 보여줘요. '요청할 때만'은 숨기고, 단계 묶음의 메뉴와 답장의 ⋯에 '생각 보기'를 둬요. '끔'은 어디에서도 보여주지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Pokazuj w każdym czacie” pokazuje myślenie Hermesa we wszystkich czatach. „Na żądanie” je ukrywa, z „Pokaż myślenie” w menu serii kroków i w ⋯ odpowiedzi. „Wyłączone” ukrywa je wszędzie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"Mostrar em todas as conversas\" mostra o raciocínio do Hermes em todas as conversas. \"Sob demanda\" o oculta, com \"Mostrar pensamento\" no menu de uma série de etapas e no ⋯ de uma resposta. \"Desativado\" o oculta em todo lugar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Показывать во всех чатах» показывает размышления Hermes в каждом чате. «По запросу» скрывает их, оставляя «Показывать размышления» в меню серии шагов и в ⋯ ответа. «Выкл.» скрывает их везде."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"Her sohbette göster\", Hermes'in düşünmesini her sohbette gösterir. \"İstendiğinde\" onu gizler; bir adım dizisinin menüsünde ve bir yanıtın ⋯ menüsünde \"Düşünmeyi göster\" kalır. \"Kapalı\" her yerde gizler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“在每个聊天中显示”会在所有聊天中显示 Hermes 的思考。“按需显示”会隐藏它，并在步骤组的菜单和回复的⋯中提供“显示思考”。“关闭”则在任何地方都隐藏。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「在每個聊天中顯示」會在所有聊天中顯示 Hermes 的思考過程。「需要時顯示」會隱藏它，並在步驟組的選單和回覆的⋯中提供「顯示思考過程」。「關閉」則在任何地方都隱藏。"
           }
         }
       }
