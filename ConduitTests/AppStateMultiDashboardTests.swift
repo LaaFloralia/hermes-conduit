@@ -1317,6 +1317,19 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.errorMessage)
     }
 
+    /// Tool cards saved off is the kept choice at once, so the open chat and
+    /// its offline copy draw without them before the config is read again.
+    func testSavingToolCardsKeepsTheNewChoice() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let save = Task { await appState.setProfileSetting("display.tool_progress", value: .text("off")) }
+        try await held.answer(["display": [String: Any]()])   // the config read
+        try await held.answer()                                  // the write
+        let saved = await save.value
+
+        XCTAssertTrue(saved)
+        XCTAssertFalse(appState.displayPreferences.showToolProgress)
+    }
+
     /// A settings save queued behind one that outlives a switch is never
     /// sent to the dashboard switched to, which has its own profile of the
     /// same name.

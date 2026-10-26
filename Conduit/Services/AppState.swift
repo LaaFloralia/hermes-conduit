@@ -31207,6 +31207,13 @@ final class AppState: ObservableObject {
                 // Rows already in the chat hide or come back with it.
                 displayPreferences.showReviews = ProfileDisplayPreferences.showsReviews(value.textValue)
             }
+            if key == "display.tool_progress" {
+                // The kept choice follows the save, so the offline copy does too.
+                displayPreferences.showToolProgress = value.textValue != "off"
+            }
+            if key == "display.expand_tools", let expand = value.boolValue {
+                displayPreferences.expandToolsByDefault = expand
+            }
             if key == "approvals.mode", let mode = value.textValue?.lowercased() {
                 // Mirror the saved profile mode immediately and re-resolve the
                 // effective indicator state through the same precedence
