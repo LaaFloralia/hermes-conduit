@@ -343,6 +343,11 @@ struct ConduitApp: App {
             }
             // A draft shared from another app while Conduit is on screen.
             .task { SharedDraftStagedObserver.start() }
+            // Pictures' sizes and cards' heights from earlier launches, read
+            // once off the main thread as the app opens, so the rows of a
+            // chat it restores take their final height when they mount
+            // (#1238). ChatView asks too; a read under way is joined.
+            .task { await TranscriptPictureMemory.loadKeptSizes() }
             .task { await PushNotificationService.shared.refresh() }
             // Siri learns the cached profile names for its profile phrases.
             .task { SiriProfileShortcuts.refresh() }

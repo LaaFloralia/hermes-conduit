@@ -87,6 +87,7 @@ the host answers with the user's words (`_local_live_call_answer`).
 - Resume jump: `Conduit/Services/ChatResumeCoordinator.swift` (pendingClarifyMessageID), `Conduit/Views/ChatView.swift` ("Go to your question", "Go to the approval")
 - Settings text: `Conduit/Views/GeminiLiveViews.swift`
 - Notifier: `notifier/events.py` (the push), `notifier/clarify_loop.py` (a call's answer wins), `notifier/calls_store.py` (the waiting copy, map_answer), `notifier/calls.py` (follow_approval), `notifier/__init__.py` (the approval hook), `notifier/dashboard/plugin_api.py` (/calls/waiting, answer_call, _local_live_call_answer), `notifier/phone_tool.py` (the wording models read)
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (the Watch broker's grant answers keep Conduit running through it)
 
 **Rulings**
 - A spoken answer counts only when exactly one item is waiting, and for an approval it can only approve once or deny; a question takes a choice or the user's own words (2026-10-20, #991; questions answered by voice too, Eric 2026-10-24, #1194).
@@ -105,7 +106,7 @@ the host answers with the user's words (`_local_live_call_answer`).
 **Open gaps**
 - Group rooms: the card's failure line shows the error text raw, while the chat card reveals hidden characters in its error and expiry text (#951 follow-up).
 
-**Checked:** 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Voice follow-ups
 
@@ -176,6 +177,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 - Job lists (list_jobs, Classic's status, GPT-Live's status note): `Conduit/Voice/VoiceBackgroundJobs.swift` (listedJobs), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (listResult); the Watch's: `Shared/WatchVoice/WatchJobRelay.swift` (listing), `ConduitWatch/WatchDirectCallModel.swift` (apply, for the iPhone's answer), `Conduit/Watch/WatchDirectBroker.swift` (listedJobs; result, for the jobs the iPhone runs), `Shared/WatchVoice/WatchVoiceWire.swift` (DirectToolResult.newsJobs), `notifier/dashboard/plugin_api.py` (_WatchJobs.list)
 - Watch: `Shared/WatchVoice/WatchJobRelay.swift` (notice), `ConduitWatch/WatchDirectCallModel.swift` (checkNewsSpoken, answer, lostAnswerText), `ConduitWatch/WatchBridgeCallModel.swift` (checkNewsSpoken), `Conduit/Watch/WatchDirectBroker.swift` (lateAnswers, jobRefusal)
 - Notifier (Watch relay jobs): `notifier/dashboard/plugin_api.py`
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (the Watch broker's tool and poll answers)
 
 **Rulings**
 - A result never talks over the user: it waits for a quiet moment, and the model answers what the user just said first (2026-10-04, #381).
@@ -189,7 +191,7 @@ the saved transcript's job cards · `docs/VOICE_BACKGROUND_JOBS.md`
 **Open gaps**
 - GPT-Live's model can't put a card on the call screen: Gemini, Grok and Local Live agent have `show_on_screen`, GPT-Live has no marker for it. Cards Hermes shows still appear (#366).
 
-**Checked:** 2026-10-25, at #1252, for the request whose chat an unattached call took; Qwen in the siblings, at #1182, carried in #1235; at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
+**Checked:** 2026-10-26, #1247 (the Watch broker's tool and poll answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for the request whose chat an unattached call took; Qwen in the siblings, at #1182, carried in #1235; at #1224: a result counts as told once the model says something after it or once it has gone out twice (one resend, GPT-Live and Watch included), and a job stays on the job lists until then (#1210), a direct Watch call's iPhone-run jobs included; one already sent when the call ends counts as told, never carried into the next call. Earlier at #1223, for GPT-Live's replies that couldn't go out; at #1221, for the Watch's late refusals and answers lost to a reconnect; at 78f21da; at #1191; at #1220: a cut screen card reads fences as "Code fences in messages" says.
 
 ## Tools and consent in calls
 
@@ -209,6 +211,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Consent for reads, per mode: `Conduit/Views/HealthSettingsViews.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
 - Watch: `Conduit/Watch/WatchDirectBroker.swift` (directToken: consent checked again once the token is minted), `Conduit/Watch/WatchToolGrantClient.swift`, `Shared/WatchVoice/WatchToolRelay.swift`
 - Notifier: `notifier/phone_tool.py`, `notifier/health_tool.py`, `notifier/location_tool.py`, `notifier/maps_tool.py`, `notifier/conduit_first.py`, `notifier/dashboard/plugin_api.py` (/voice-tools), `notifier/relay/src/watch-tools.mjs`
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (the Watch broker's directToken and tool answers)
 
 **Rulings**
 - Live calls do phone actions on the device rather than handing them to Hermes (2026-10-20, #991).
@@ -223,7 +226,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Watch GPT-Live and Local Live calls have no phone tools, and the Watch doesn't announce Hermes' phone changes (#994).
 - Classic finds and reads old chats through Hermes' session_search but can't open one in Conduit (#535).
 
-**Checked:** 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
+**Checked:** 2026-10-26, #1247 (the Watch broker's token and tool answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
 ## Acknowledging work handed to Hermes
 
@@ -279,6 +282,7 @@ entry)
 - Watch: `ConduitWatch/WatchHomeView.swift`, `ConduitWatch/TalkToHermesIntent.swift`
 - A chat open elsewhere: its own entry (Chat open elsewhere)
 - How an attached call behaves: `docs/VOICE_BACKGROUND_JOBS.md`
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (the Watch broker's start answers, direct, bridge, Grok and Local Live)
 
 **Rulings**
 - A live call started from a chat joins that chat for the whole call, and its requests become the chat's turns (2026-10-02, #312). An empty chat counts as a chat (2026-10-16, #679).
@@ -294,7 +298,7 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
 ## Chat open elsewhere
 
@@ -344,6 +348,7 @@ Hermes · Resume Call · memory at call end (notifier)
 - The call's card in its chat: `Conduit/Views/VoiceChatCallTranscriptSheet.swift`
 - Watch: `Conduit/Watch/WatchDirectBroker.swift`, `ConduitWatch/WatchDirectCallModel.swift` (trimTranscript), `ConduitWatch/WatchBridgeCallModel.swift` (trimTranscript), `Shared/WatchVoice/WatchVoiceWire.swift` (DirectTranscript)
 - Notifier: `notifier/dashboard/plugin_api.py` (/voice/sessions, /voice/chat-calls, /voice/archive), `notifier/voice_archive.py`
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (`AppState.beginVoiceTranscriptBackgroundTask`, the Watch broker's revoke and late revoke)
 
 **Rulings**
 - A call's turns go to the host only when the call ends; saving mid-call stalled Gemini (2026-10-01, #281).
@@ -358,7 +363,7 @@ Hermes · Resume Call · memory at call end (notifier)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
+**Checked:** 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
 
 ## The Watch call log
 
@@ -400,6 +405,7 @@ it starts GPT-Live without one · the notifier README's Watch audio section
 - iPhone: `Conduit/Watch/WatchSettingsSection.swift` (Set up, the runtime's state), `Conduit/Watch/WatchToolGrantClient.swift` (prepareAudio, audioStatus)
 - Watch calls: `Conduit/Watch/WatchDirectBroker.swift` (prepareRuntime, the "takes a few minutes" refusal), `Shared/WatchVoice/WatchVoiceWire.swift` (AudioBridge.engines)
 - Text: `notifier/README.md` (Watch audio)
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (the Watch broker's bridge start)
 
 **Rulings**
 - The plugin never installs into Hermes' own Python: it makes its own environment, with venv and pip from the Python Hermes runs, else uv. A Hermes Python that already has both aiortc and av is used as it is, with Hermes' import path.
@@ -409,7 +415,7 @@ it starts GPT-Live without one · the notifier README's Watch audio section
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-25, at #1254.
+**Checked:** 2026-10-26, #1247 (the Watch broker's bridge start keeps Conduit running through BackgroundTaskHold); 2026-10-25, at #1254.
 
 ## Calls from Hermes
 
@@ -432,6 +438,7 @@ Pulse (it may call only once the user opts in)
 - Answered on the Watch, kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, keepFromWatch, startedOnWatch, watchControlChanged, muteOnWatch, inAppMuteChanged, endOnWatch), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `Shared/WatchVoice/HermesRing.swift` (HermesRingControl), `ConduitWatch/WatchVoiceCall.swift` (onPhone), `ConduitWatch/WatchCallView.swift`, `ConduitWatch/WatchDirectCallModel.swift` and `ConduitWatch/WatchBridgeCallModel.swift` (callOnPhone), `Shared/WatchVoice/WatchVoiceWire.swift` (callOnPhone, callsToken's phoneHeadset), `Conduit/Watch/WatchDirectBroker.swift` (handle: a kept call's start gets callOnPhone), `Conduit/Watch/WatchVoiceLink.swift` (callsToken: phoneHeadset), `notifier/relay/src/rings.mjs` (setControl, readControl, adopt)
 - Settings: `Conduit/Views/HermesCallSettingsViews.swift`
 - Notifier: `notifier/call_tool.py`, `notifier/calls.py`, `notifier/calls_store.py`, `notifier/call_watches.py`, `notifier/skills/calling-the-user/SKILL.md`, `notifier/relay/src/rings.mjs`
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (HermesNativeCalls' settleRing, startWatchCall, keepFromWatch, muteOnWatch, endOnWatch)
 
 **Rulings**
 - Answering is the only tap: the call opens its chat and starts talking by itself (2026-10-10, #508).
@@ -447,7 +454,7 @@ Pulse (it may call only once the user opts in)
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - The first push after install, before the first status read, can still switch dashboards, and missed-call outcomes are keyed by the pushed dashboard id (#1096).
 
-**Checked:** 2026-10-25, #1257 (the caller's name from `profile_name` on the phone, the Watch and the missed call); Qwen among the modes that answer, and its mute on a call kept on the iPhone's headset (nativeCallVoiceMuted), at #1182, carried in #1235; 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
+**Checked:** 2026-10-26, #1247 (the ring's settle and a Watch answer's start, keep, mute and end keep Conduit running through BackgroundTaskHold); 2026-10-25, #1257 (the caller's name from `profile_name` on the phone, the Watch and the missed call); Qwen among the modes that answer, and its mute on a call kept on the iPhone's headset (nativeCallVoiceMuted), at #1182, carried in #1235; 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
 
 ## Audio route, Speaker and mute
 
@@ -466,6 +473,7 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
 - A Watch answer kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, muteOnWatch, inAppMuteChanged), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `ConduitWatch/HermesWatchCalls.swift` (phoneCallMuted)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (HermesNativeCalls' muteOnWatch)
 
 **Rulings**
 - During a call from Hermes, CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148).
@@ -478,7 +486,7 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
@@ -536,6 +544,7 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
 - Saved-call preferences/identity: `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceHistory.swift`
 - Watch transport and diagnostics: `ConduitWatch/WatchGeminiSocket.swift`
 - Watch capability compatibility tests: `ConduitTests/HermesCallsTests.swift` (legacy plugins, Qwen-only and concurrent providers)
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (the Watch broker's directToken)
 
 **Rulings**
 - Gemini and Qwen are independent picker entries, concurrently configurable on
@@ -570,7 +579,7 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
   `Conduit/Services/AppState+ScreenQuestion.swift` (ScreenQuestionVoiceRouting.liveEngines)
   lists GPT-Live, Gemini and Grok only, until Qwen is device-tested there.
 
-**Checked:** 2026-10-25, voice.qwen.* and save_calls naming Qwen, the Watch's qwen_live_token, a token minted after consent was withdrawn, provider precedence and the screen-question gap, at #1182, carried in #1235; 2026-10-24, #1182: independent provider routes and regression tests.
+**Checked:** 2026-10-26, #1247 (the Watch broker's token answers keep Conduit running through BackgroundTaskHold); 2026-10-25, voice.qwen.* and save_calls naming Qwen, the Watch's qwen_live_token, a token minted after consent was withdrawn, provider precedence and the screen-question gap, at #1182, carried in #1235; 2026-10-24, #1182: independent provider routes and regression tests.
 
 ## Texting someone for the user
 
@@ -1058,7 +1067,7 @@ Settings > Chat's Long replies switch and captions (shared by Sync across
 devices)
 
 **Code**
-- Chats: `Conduit/Services/ChatScrollEngine.swift` (pin, replyHoldOffset, replyStartLandingRequested, landAtReplyStartIfPending, ChatReplyStartPreference), `Conduit/Views/ChatScrollSurfaceLocator.swift`, `Conduit/Views/ChatView.swift` (jumpToLatest, the send pulse arming the hold, the unread landing observer)
+- Chats: `Conduit/Services/ChatScrollEngine.swift` (pin, replyHoldOffset, replyStartLandingRequested, landAtReplyStartIfPending, ChatReplyStartPreference; the same engine moves a browsing reader's offset in the pass that lands a prepend or a card's growth above them, see Cards drawn in web pages), `Conduit/Views/ChatScrollSurfaceLocator.swift`, `Conduit/Views/ChatView.swift` (jumpToLatest, the send pulse arming the hold, the unread landing observer)
 - Unread open: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, chatReplyStartLandingRequest, takeChatReplyStartLanding)
 - Group rooms: `Conduit/Views/GroupRoomScrollFollow.swift` (GroupRoomFollow, replyStart, GroupRoomScrollLocator), `Conduit/Views/GroupChatView.swift` (isFollowingLatest, landAtTop, jumpToLatestButton)
 - Delegate tail sheet (its own follow state and Latest button): `Conduit/Views/ChatSupportSheets.swift` (DelegateAgentTailSheet)
@@ -1084,7 +1093,7 @@ devices)
 - A chat restored on launch (Continue where you left off) keeps its saved place, unread or not.
 - A group room that opens empty scrolls its first events to the end: that batch is usually the room's history arriving, which should open at its newest row, so only events after a row already seen land at a member message's start.
 
-**Checked:** 2026-10-25, at #1256.
+**Checked:** 2026-10-25, at #1270.
 
 ## Reconnecting to Hermes
 
@@ -1139,7 +1148,7 @@ signed-in check
 - The background session's redirect rule and the login screen's signed-in check compare origins strictly, without the http to https allowance: such a redirect comes back as the response (and is judged by isSignIn there), and the login screen with a dashboard saved on http behind a TLS edge hasn't been checked.
 - The hidden page doesn't follow that upgrade either: its navigation policy cancels an http to https move to an ordinary page as a failed load (no longer as sign-in), so a dashboard behind a TLS-forcing edge must be saved on https. Following it would take the page's landing and script-message checks and the socket off the saved origin, so it was left as is (#1191 review).
 
-**Checked:** 2026-10-24, at #1191.
+**Checked:** 2026-10-26, #1247 (the hidden page's deinit removes its script handler on the main actor); 2026-10-24, at #1191.
 
 ## Skill and tool switches
 
@@ -1579,6 +1588,7 @@ inbox (the same 409 codes)
 - Voice reads: `Conduit/Services/AppState+VoiceHostTools.swift`, `Conduit/Phone/PhoneVoiceTools.swift`
 - Notifier: `notifier/phone_store.py`, `notifier/health_store.py`, `notifier/location_store.py`, `notifier/dashboard/plugin_api.py` (_store_refusal)
 - Tests: `ConduitTests/PhoneSyncTests.swift`, `ConduitTests/HealthSyncTests.swift`, `ConduitTests/LocationSharingTests.swift`
+- Background time: `Conduit/Services/BackgroundTaskHold.swift` (LocationSharingController's fix and send work)
 
 **Rulings**
 - Only a 409 that says the host lost this phone's key (`unknown_key`, `bad_seal`) clears the key and sets up again; any other 409 keeps it (2026-10-19, #906; 2026-10-20, #1025).
@@ -1590,7 +1600,7 @@ inbox (the same 409 codes)
 - A locate answered from the push extension drops its fix on any failed post, a 409 `schema` included, and shows no pause: it is a one-shot answer, and the app shares its own fix next time.
 - A voice read that meets a 409 `schema` tells the model only that the read failed, not that the plugin needs an update.
 
-**Checked:** 2026-10-24, at main e9d9592; the Shortcuts inbox added as a sibling in #1214 (fork CI #87), carried in #1232.
+**Checked:** 2026-10-26, #1247 (location sharing's fix and send work keep Conduit running through BackgroundTaskHold); 2026-10-24, at main e9d9592; the Shortcuts inbox added as a sibling in #1214 (fork CI #87), carried in #1232.
 
 ## Shortcuts inbox (Log to Hermes)
 
@@ -1832,25 +1842,70 @@ does.
 
 **Siblings:** chats, project chats and Bot Chat · the saved-chat copy · reply
 pictures in tool results, large documents and HTML previews · call job
-result sheets · group rooms · text that describes it (none today: no
-Settings caption, briefing or doc says how pictures load)
+result sheets · group rooms · the cards drawn in web pages, which share the
+memo and the scroll engine's gate (see Cards drawn in web pages) · text that
+describes it (none today: no Settings caption, briefing or doc says how
+pictures load)
 
 **Code**
 - Attachments: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview)
-- Reply pictures (`MEDIA:` and web): `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage), `Conduit/Views/Components/BoundedRemoteImage.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (imageCacheKey, imageCacheKey(forMediaPath:)), set for job sheets in `Conduit/Views/LiveVoiceCallJobs.swift`
-- Kept and remembered: `Conduit/Services/TranscriptImageCache.swift` (files on the phone), `Conduit/Services/TranscriptPictureMemory.swift` (decoded reply pictures, attachment previews, every picture's size, loaded from ChatView), both forgotten in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, deleteSavedChats)
+- Reply pictures (`MEDIA:` and web): `Conduit/Views/Components/MarkdownText.swift` (RemoteMarkdownImage, WebFallbackImage), `Conduit/Views/Components/BoundedRemoteImage.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (imageCacheKey, imageCacheKey(forMediaPath:)), set for job sheets in `Conduit/Views/LiveVoiceCallJobs.swift`
+- Kept and remembered: `Conduit/Services/TranscriptImageCache.swift` (files on the phone), `Conduit/Services/TranscriptPictureMemory.swift` (decoded reply pictures, attachment previews, every picture's size and the card heights, loaded as the app opens from `Conduit/ConduitApp.swift` and again asked for by ChatView), both forgotten in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, deleteSavedChats)
+- A picture's arrival, or its failure: `Conduit/Views/Components/ChatCardHeight.swift` (ChatRowArrival, chatRowFrame), `Conduit/Services/ChatScrollEngine.swift` (cardMeasured, cardFrameChanged, takeCardShifts, cardShiftSettled), reached through `Conduit/Views/ChatRowDisclosure.swift` (engine)
 - Tests: `ConduitTests/TranscriptInlineImageTests.swift`
 
 **Rulings**
 - A row never changes height when its picture arrives, if the picture has loaded on this phone before: its size is remembered (kept next to the pictures, read once off the main thread) and its placeholder takes it (2026-10-25, #1239, #1238).
 - Reading, decoding and keeping a picture, and its size, stay off the main thread: a body looks pictures and sizes up in memory only (a local photo's existence is still checked there: a stat, never a picture read). A picture kept on the phone is never fetched again (2026-10-25, #1239).
+- A picture with no remembered size arrives the way a card takes its height: its row keeps the loading line while the reader scrolls, and once at rest, a row above the viewport grows in the same layout pass that moves the offset by the growth (ChatScrollEngine.cardMeasured). The picture and its size are remembered only as it shows, never before: a remembered size would resize the loading line on its own. A picture still waiting when its row leaves the screen is dropped and loads again when the row is back, and one whose row has moved on to another picture never shows there. Whether the row grows is its own frame against the picture's height in it, not whether a size is remembered: a row laid out with its loading line before a cold launch's kept sizes loaded still waits like any growth. In a chat a web picture lands without its fade, since the move needs the growth in one pass (2026-10-25, #1270, #1238).
+- A picture that won't load (unavailable, too large, or a web picture its page can't show either) gives its place to its label or fallback the same way: at rest, and above the reader made good by what the label's layout took. The web fallback's page measuring the picture goes the same way, and a row loading again a picture that failed keeps its label meanwhile (2026-10-26, #1270).
+- What memory already holds for a row (its picture, decoded, or the picture's size) shows without asking only on the row's first frame, or where the row has that height already: a row laid out with its loading line before another row of the same picture showed it, or before a cold launch's kept sizes loaded, keeps that line and takes the picture through its arrival, so nothing remembered resizes a row on its own. A web picture already decoded shows on the first frame too, its size remembered or not (2026-10-26, #1270).
+- Outside the chat's scroll engine (the saved copy, job sheets and group rooms, whose web pictures load through the same view) a picture, or the label of one that won't load, takes its height as soon as it arrives, as before: nothing there moves the offset for a row above the reader (2026-10-26, #1270).
 
 **Open gaps**
-- A picture never loaded on this phone, or kept by a build before #1239 and not shown since, still mounts as a loading line and grows once.
+- A picture never loaded on this phone, or kept by a build before #1239 and not shown since, or whose row was laid out before a cold launch's kept sizes loaded, still grows its row once, at rest: above the reader the offset moves with it, on screen it grows below what they look at, unanimated. Its height follows the row's width, so the memo can't reserve it before it loads, and only a read on the main thread before the first frame, which the ruling above keeps off it, would have the kept sizes in time.
+- Group rooms have no scroll engine: their transcript follows with its own scroll code and keeps its place by row id (see Following the latest message). So a web picture never loaded on this phone grows its row where it is, and above a reader scrolled back it moves what they read, as chats did before #1270. Bringing the gate there means moving group rooms onto the chat's engine, a change of its own. The saved copy and job sheets have no engine either and grow their rows the same way.
 - Group rooms show no `MEDIA:` pictures: their Markdown has no gateway resolver.
 - Past 4,000 remembered sizes the memo starts again (no LRU), so pictures grow once more until each loads again.
 
-**Checked:** 2026-10-25, at #1239.
+**Checked:** 2026-10-26, at #1270.
+
+## Cards drawn in web pages
+
+How an HTML preview (`::preview{file=…}`), a Mermaid diagram or a LaTeX
+formula draws in a message, and the room its row takes before its page
+reports its height.
+
+**Siblings:** chats, project chats and Bot Chat (the scroll engine's rows) ·
+the saved-chat copy · call job result sheets · group rooms · the full-screen
+sheets (the same page, interactive) · pictures in messages (the same memo
+and the same gate, see Pictures in messages) · text that describes it (none
+today: no Settings caption, briefing or doc says how these cards draw)
+
+**Code**
+- HTML previews: `Conduit/Views/Components/HTMLPreviewBlock.swift` (HTMLPreviewBlock, heightKey, HTMLPreviewPage.placeholderHeight)
+- Diagrams and formulas: `Conduit/Views/Components/MarkupBlock.swift` (MarkupBlock, heightKey(for:), placeholderHeight(for:))
+- The room a card holds, and when it takes its height: `Conduit/Views/Components/ChatCardHeight.swift` (ChatCardHeight, cardStackFrame; ChatRowArrival for pictures, and for the file card or "Couldn't draw" taking a failing card's place), `Conduit/Services/ChatScrollEngine.swift` (cardMeasured, cardFrameChanged, takeCardShifts, cardShiftSettled, scrollRestDelay, cardGrowthDeadline), reached through `Conduit/Views/ChatRowDisclosure.swift` (engine)
+- Heights kept across launches: `Conduit/Services/TranscriptPictureMemory.swift` (height, rememberHeight, with the picture sizes), forgotten in `Conduit/Services/AppState.swift` (wipeOfflineChatCache, deleteSavedChats)
+- Built from Markdown: `Conduit/Views/Components/MarkdownText.swift` (htmlPreview, math and mermaid blocks)
+- Tests: `ConduitTests/ChatScrollEngineTests.swift` (Cards taking their measured height), `ConduitTests/TranscriptInlineImageTests.swift`, `ConduitTests/MarkupBlockTests.swift`, `ConduitTests/MarkdownLargeDocumentTests+HTMLPreview.swift`
+
+**Rulings**
+- A card holds one height from its first frame until its page has measured itself: the height it measured on this phone before (kept with the picture sizes; a preview by its file on the connected Hermes, a diagram or formula by kind, text size and source), else a placeholder (280 pt for a preview, 180 for a diagram, 56 for a formula). Loading the file, the page drawing and a redraw (theme, text size, Try again) all happen inside that room (2026-10-25, #1270, #1238).
+- A card measured while the reader scrolls (a finger down, or a fling) keeps its room until the scrolling has rested, 0.1 s after the last tick: an offset write would stop a fling, and a finger owns the offset. At rest, a card whose top is above the viewport announces its growth, and the layout pass that lands it moves the offset by the same, inside the pass, so nothing the reader looks at moves; a card on screen grows below what they look at. Following and the hold of a landed page of earlier messages keep the reader still on their own, so those cards take their heights at once; while the page is still loading nothing holds yet, and once its hold has lapsed nothing holds any more, so cards announce as usual then; a growth still waiting when the page lands goes to its hold (2026-10-25, #1270, #1238; a lapsed hold, 2026-10-26). In the background, where the engine leaves the offset alone, a card or picture measured keeps its room until the app is back, and then takes its height the same way (2026-10-26, #1270).
+- Outside the chat's scroll engine (job sheets, the saved copy, group rooms) a card takes its height as soon as its page reports, as before, and so does a picture (see Pictures in messages).
+- A growth has landed when the card's own frame has changed: a reply streaming in below the reader grows the content too, and never passes for a card above them. The offset moves by the card's own change (for a picture it can differ a little from its estimate), whatever grows or shrinks below the reader in the same pass, at the first report that shows it. The pass can report the card's frame before or after the content size, and nothing tells an end not reported yet from the pass's, so the move goes as far as the content's end as it stands and owes the rest, which the pass's content size lands once it makes the room; the move's own write never relatches following, since that end may be stale. After the pass, a reader the move left within 40 pt of the end follows again, and what no room came for is dropped: rows below shrank under the reader by as much, so the end is as far as anything keeps them, and they follow it. A shrink is bounded by the top alone, and one landing in the same pass takes back what a growth owes. A card that reports again before its growth lands keeps one shift, from its height before the first, so the growth counts once, and a card or picture measured twice while the reader scrolls waits once, with its latest height. A drag, or a jump to the top or to a message, drops a growth still waiting: it was owed to the place the reader left (2026-10-25, #1270; the end as it stands, 2026-10-26).
+- A page that fails gives its place the same way: the file card (a preview whose file can't be read or drawn) or "Couldn't draw" (a diagram or formula) waits for the reader's scrolling to rest and, above them, moves the offset by what its layout took, since only its layout knows its height. A preview showing its file card keeps it while the file is read again, and the card comes back the same way once it reads; a surface with no way to read the file shows the file card from the first frame (2026-10-26, #1270).
+- When the chat closes, cards and pictures still waiting for a rest take their heights then: one kept with the view (a pushed screen, then back) never waits for a rest that doesn't come. A session switch forgets them, since their rows go with the session (2026-10-25, #1270).
+
+**Open gaps**
+- A card never measured on this phone still grows once, at rest; the first scroll up through a chat from another device lands its cards one rest at a time.
+- On a cold launch, a card laid out before the kept heights have loaded (read off the main thread as the app opens) holds its placeholder and grows once, at rest, like one never measured. Taking the kept height later would still be a growth, so only a read on the main thread before the first frame would save it.
+- A kept height is for the width and text size it was measured at: an iPad whose chat column changed width, or a formula after a text size change, takes the kept height and then its new one, announced like any growth.
+- Past 2,000 remembered heights the memo starts again (no LRU), so cards grow once more until each is measured again; the picture sizes have the same limit at 4,000 (see Pictures in messages).
+- The saved-chat copy, job sheets and group rooms have no scroll engine, so their cards grow where they are, and above a reader scrolled back move what they read; group rooms draw diagrams and formulas this way, and show no HTML previews (no gateway resolver). Group rooms follow with their own scroll code, so bringing the gate there means moving them onto the chat's engine, a change of its own (see Pictures in messages).
+
+**Checked:** 2026-10-26, at #1270.
 
 ## Self-improvement updates
 
@@ -1937,6 +1992,57 @@ mode picker shows a mode's section only once that mode is picked)
 - A row revealed by something other than a switch (a picker or a host answer) isn't covered here.
 
 **Checked:** 2026-10-25, at #1274: Health and Phone's consent-sheet turn-on animate; the live voice Use switches are not needed (never shown). Earlier at #1246 (fork CI #92): Eric's review added Enable voice and Hands-free; a connector's Turned on and Sync's failed check added from the bot reviews.
+
+## Linked Rooms
+
+Group rooms with agents that belong to other people. Each agent runs on its
+owner's Hermes, with its owner's model and keys and its owner's rules for the
+room, and the hosts reach each other through the rooms mailbox. It's being
+built: the notifier side is on its main, and the app side comes in the
+`linked-rooms` branch's PRs, so none of it is in the app yet.
+
+**Siblings:** the room screen and room info (members from other
+installations, their route status, your agents' choices for the room) · New
+Group Chat with linked people · Settings > People (host setup, Links) · the
+Chats list (rooms hosted by others) · the notifier's owner rules for room
+turns (tools, the framing, the reply scrub, past-chat search), with their
+routes and the `hermes conduit-push rooms` commands · the room memory guard ·
+the room planner · the rooms mailbox (rooms.milim.dev) · rooms of only your
+own agents (unchanged) · past-chat search in every chat (it no longer finds
+those rooms) · approvals for your agents in rooms hosted elsewhere · text
+that describes it: the notifier README's "Rooms with other people's agents",
+the framing and block messages models read, Settings captions
+
+**Code**
+- Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set), `notifier/README.md` (Rooms with other people's agents)
+- Memory guard and planner: `notifier/room_memory.py`, `notifier/room_planner.py`
+- Mailbox: `notifier/mailbox/src/server.mjs`, `notifier/mailbox/README.md` (protocol v1, self-hosting), `notifier/mailbox/deploy/compose.yaml`
+- App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Views/GroupChatView.swift`, `Conduit/Services/HermesClient.swift` (groups.*)
+- App, on the `linked-rooms` branch only, so not in backticks: none yet. Each of the branch's PRs names here the app paths it adds
+- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/mailbox/test/server.e2e.test.mjs`
+
+**Rulings**
+- The app side stays off main: Linked Rooms PRs target `linked-rooms`, which reaches main only once Eric has seen it all work, like `pulse`. The notifier side is on its main, hidden until Conduit shows it (2026-10-23, Eric).
+- Memory stays on in rooms. Instead, past-chat search is off unless chosen, nothing from a room turn is saved to memory, skills or a memory provider, the agent is told who's asking, and what it shares follows its owner's choice for the room. A provider's automatic recall stays on, like MEMORY.md (2026-10-22, Eric; notifier #305).
+- Each owner's rules run on their own host, whichever host the room lives on. A room's choices default to Talk only, ask first, no past-chat search, joins in and 40 turns a day. Memory and skill writes, delegation, messaging, scheduled jobs, running code and Conduit's calls and settings are never allowed, the background review's included (2026-10-25, notifier #379).
+- The rules hold through Hermes' tool hooks, which see a call only when it carries the room session's id. A tool that calls other tools without it (`execute_code`) is never allowed, and a profile whose tools run outside the hooks (the Codex app-server runtime) can't take part in a room with other people's agents (2026-10-25, notifier #379).
+- A room whose store or choices can't be read, or aren't of a shape Hermes or the plugin writes, or a room session Hermes hasn't titled yet, gets no tools that turn; a room's broken choices get Talk only, never the defaults. A session store that can't be read blocks each tool call it can't check, in any chat, until it can be read; a turn on Hermes' room platform still gets the framing and the scrub. A room in no store runs as Hermes alone would (its tools and its search hits), with a warning in the log, and a disbanded room keeps its rules (2026-10-26, notifier #379).
+- The rules follow a room's sessions: a compaction's continuation (Hermes moves the title to it) and a delegated child keep the room, whatever title Hermes gives the child, and the memory guard follows them the same way; a branch is its own conversation; past-chat search checks every hit, whatever source Hermes gives it. Tool Search's bridge works whenever anything is allowed, since Hermes runs the hooks on the tool it reaches, and a `tool_call` the hooks see whole is checked by every tool it names (2026-10-26, notifier #379).
+- Rooms of only your own agents behave exactly as before: the rules apply once a room seats a member from another installation (2026-10-25, notifier #379).
+- Every link goes through the mailbox, on one LAN too. The shared one is rooms.milim.dev, a service of its own beside push.milim.dev (2026-10-22, Eric).
+- An agent runs on its owner's host with its owner's model and keys, so each owner pays for their own (2026-10-22, Eric).
+
+**Open gaps**
+- The app shows none of it yet: the room screen and room info (with the choices, set until then with `hermes conduit-push rooms set`), New Group Chat with linked people, Settings > People and the Chats list come in the `linked-rooms` branch's PRs, with their Settings captions.
+- How an agent takes part and its turns a day are kept, not enforced, until the room bridge.
+- Use my data has no room-safe data tools yet (free/busy comes first).
+- A memory provider's automatic recall can't be skipped in a room without a Hermes change (written up for Hermes).
+- A member cut off by its host keeps the room's turn retrying, and disbanding leaves the hidden chats behind.
+- Approvals for your agents in rooms hosted elsewhere don't reach you.
+- A profile on the Codex app-server runtime isn't refused yet: until joining refuses it, keep it out of rooms with other people's agents (the notifier README says so).
+- Agents that aren't Hermes (an A2A member) are left out.
+
+**Checked:** 2026-10-26, #1276, with notifier #379.
 
 ## Feature map rules
 
