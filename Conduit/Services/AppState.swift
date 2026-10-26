@@ -680,6 +680,7 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
                 composerNotice = nil
+                restoreDisplayPreferences()
                 dismissChatTakeover()
                 agentSettings.leave(scope: agentSettingsScope)
                 presentedScreens.leave()
@@ -1347,7 +1348,11 @@ final class AppState: ObservableObject {
     }
     private var persistedOrderingFrontier = PersistedOrderingFrontier()
     @Published private(set) var busyInputMode: BusyInputMode = .steer
-    @Published private(set) var displayPreferences = ProfileDisplayPreferences()
+    @Published private(set) var displayPreferences = ProfileDisplayPreferences() {
+        // Kept on the device too, so the saved chats draw as Settings says
+        // before the host answers (offline from launch).
+        didSet { if displayPreferences != oldValue { rememberDisplayPreferences() } }
+    }
     /// The profile's `timezone` config value ("" = the server's local time)
     /// and the profile it was read for. Hermes runs cron schedules in it.
     @Published private(set) var profileTimeZoneSetting: (profile: String, value: String)?
@@ -6177,6 +6182,8 @@ final class AppState: ObservableObject {
         activeProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
         if activeProfile.isEmpty { activeProfile = "default" }
+        displayPreferences = storedDisplayPreferences(dashboardID: initialDashboardID, profile: activeProfile)
+            ?? ProfileDisplayPreferences()
         // The global key is what cold launch opens (the resume state and
         // tests key off it). Mirror it into the active dashboard's entry so
         // the two can never disagree after launch; this also seeds the entry
@@ -11966,6 +11973,34 @@ final class AppState: ObservableObject {
         profileAvatarURLs = profileAppearanceStore.loadAvatarURLs(dashboardID: dashboardID)
         profileGlowPicks = profileAppearanceStore.loadGlowColors(dashboardID: dashboardID)
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
+        restoreDisplayPreferences()
+    }
+
+    private static let displayPreferencesByProfileKey = "profileDisplayPreferencesByDashboard"
+
+    private static func displayPreferencesKey(dashboardID: UUID?, profile: String) -> String {
+        "\(dashboardPreferenceBucket(dashboardID)).\(profile)"
+    }
+
+    /// The preferences last read or set for this dashboard's profile.
+    private func storedDisplayPreferences(dashboardID: UUID?, profile: String) -> ProfileDisplayPreferences? {
+        let stored = defaults.dictionary(forKey: Self.displayPreferencesByProfileKey) as? [String: Data] ?? [:]
+        guard let data = stored[Self.displayPreferencesKey(dashboardID: dashboardID, profile: profile)] else { return nil }
+        return try? JSONDecoder().decode(ProfileDisplayPreferences.self, from: data)
+    }
+
+    private func rememberDisplayPreferences() {
+        guard let data = try? JSONEncoder().encode(displayPreferences) else { return }
+        var stored = defaults.dictionary(forKey: Self.displayPreferencesByProfileKey) as? [String: Data] ?? [:]
+        stored[Self.displayPreferencesKey(dashboardID: activeDashboardID, profile: activeProfile)] = data
+        defaults.set(stored, forKey: Self.displayPreferencesByProfileKey)
+    }
+
+    /// Another dashboard or profile: its last known preferences until its
+    /// config is read, Hermes' defaults for one never read here.
+    private func restoreDisplayPreferences() {
+        displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: activeProfile)
+            ?? ProfileDisplayPreferences()
     }
 
     /// One-time move of the pre-scoping global profile order and model
@@ -30887,7 +30922,10 @@ final class AppState: ObservableObject {
             // reset the next dashboard's preferences for a profile of the
             // same name.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
-            displayPreferences = ProfileDisplayPreferences()
+            // Unread (offline, say): what this profile last said, not
+            // Hermes' defaults, so thinking set to Off stays off.
+            displayPreferences = storedDisplayPreferences(dashboardID: activeDashboardID, profile: profile)
+                ?? ProfileDisplayPreferences()
             profileTimeZoneSetting = nil
         }
     }

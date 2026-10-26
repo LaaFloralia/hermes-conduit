@@ -305,3 +305,24 @@ extension ChatTypographyTests {
         XCTAssertTrue(ToolCatalog.saved(key: "d.other", defaults: defaults).isEmpty)
     }
 }
+
+extension ChatTypographyTests {
+    /// Offline from launch the saved chats draw as Settings last said, not
+    /// as Hermes' defaults: thinking set to Off stays off.
+    @MainActor
+    func testTheLastDisplayPreferencesHoldBeforeTheConfigIsRead() throws {
+        let defaults = makeScratchDefaults("DisplayPreferencesCacheTests")
+        var off = ProfileDisplayPreferences()
+        off.showReasoning = false
+        off.thinkingOnRequest = false
+        off.showToolProgress = false
+        defaults.set(["unscoped.default": try JSONEncoder().encode(off)], forKey: "profileDisplayPreferencesByDashboard")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        XCTAssertEqual(state.displayPreferences.reasoningMode, .off)
+        XCTAssertFalse(state.displayPreferences.showToolProgress)
+    }
+}

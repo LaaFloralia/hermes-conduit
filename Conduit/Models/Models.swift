@@ -1181,7 +1181,7 @@ enum BusyInputMode: String, CaseIterable, Codable, Identifiable {
 /// Display preferences are owned by the active Hermes profile, not this
 /// device. Keeping them together ensures chat and Settings render the same
 /// source of truth after a profile switch or reconnect.
-struct ProfileDisplayPreferences: Equatable {
+struct ProfileDisplayPreferences: Equatable, Codable {
     var showReasoning = true
     /// `display.conduit_thinking_on_request` isn't false: with thinking
     /// hidden, a run's menu and its reply's ⋯ still offer Show thinking
