@@ -313,14 +313,19 @@ extension AppState {
         guard let client, activeSessionId == sessionID, !isBusy, !turnState.isRunning,
               isSceneActive, !showSidebar, activeRoomSurface == nil, composerChatOnScreen == .live(sessionID),
               !isVoiceInUse, Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(sessionID) else {
-            // Not sent: the user's message keeps its follow-up.
+            // Not sent: the user's message keeps its follow-up, checked
+            // again when the chat is back on screen.
             predictiveFollowUp.spentOn = nil
+            predictiveFollowUp.stopped = false
             return
         }
         predictiveFollowUpTurn = (sessionID, why, messages.last?.id)
         predictiveFollowUpSending = true
         predictiveFollowUpAheadEnded = false
         predictive.clear()
+        // A follow-up that leaves no reply of its own ([SILENT], steered)
+        // brings the same reply back: its guesses are asked for again.
+        predictiveRepliesAsked = nil
         do {
             let outcome = try await client.sendPrompt(sessionID, text: nudge, hidden: true)
             // Forgotten meanwhile (sign-out): nothing of it is kept.
@@ -339,6 +344,8 @@ extension AppState {
             // the checks for good): the user's message keeps its follow-up.
             predictiveFollowUpTurn = nil
             predictiveFollowUp.spentOn = nil
+            // Checked again later, unless the gateway takes no hidden prompts.
+            predictiveFollowUp.stopped = client.gatewayRefusesHiddenPrompts
         }
         // Its reply lands while the user watches: no push for it.
         updateChatOnScreen()
