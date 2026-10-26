@@ -20175,10 +20175,10 @@ final class AppState: ObservableObject {
 
     /// Hermes announced a user message in a chat (`user.message`). Every
     /// client of the chat hears it, this one's own sends included: one
-    /// arriving with a turn running here, already shown here by its row id,
-    /// or matching the latest user message here while that one has no row
-    /// id yet is this device's (so is the same text resent elsewhere; its
-    /// stored count still reads it).
+    /// already shown here by its row id, or matching the latest user
+    /// message here while that one has no row id yet, is this device's
+    /// (so is the same text resent elsewhere then; its stored count still
+    /// reads it).
     private func noteUserMessageElsewhere(sessionId: String, rowId: Int?, text: String) {
         let latestHere = messages.last(where: { $0.role == .user })
         let elsewhere = eventBelongsToActiveSession(sessionId)
