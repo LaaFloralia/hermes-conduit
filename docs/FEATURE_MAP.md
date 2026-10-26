@@ -1020,12 +1020,12 @@ layout pass ahead of their first activation) · long-press Open Link
 - Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched)
 
 **Rulings**
-- The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303).
+- The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-10-26, at #1303, carried with Voice Control and Full Keyboard Access in Siblings.
+**Checked:** 2026-10-26, #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
