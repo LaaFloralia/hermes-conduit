@@ -48351,88 +48351,6 @@
         }
       }
     },
-    "This chat never resets — compacting instead. Bot chats are one continuous conversation; for a throwaway session with this bot, use Sessions mode." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieser Chat wird nie zurückgesetzt – stattdessen wird komprimiert. Bot-Chats sind eine durchgehende Unterhaltung; für eine Wegwerf-Sitzung mit diesem Bot nutze den Modus „Sitzungen“."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este chat nunca se reinicia: se compacta en su lugar. Los chats de bot son una única conversación continua; para una sesión desechable con este bot, usa el modo Sesiones."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cette discussion n'est jamais réinitialisée : elle est compactée à la place. Les discussions de bot forment une seule conversation continue ; pour une session jetable avec ce bot, utilisez le mode Sessions."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Obrolan ini tidak pernah direset — dipadatkan sebagai gantinya. Obrolan bot adalah satu percakapan berkelanjutan; untuk sesi sekali pakai dengan bot ini, gunakan mode Sesi."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Questa chat non si azzera mai: viene compattata. Le chat dei bot sono un'unica conversazione continua; per una sessione usa e getta con questo bot, usa la modalità Sessioni."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "このチャットはリセットされないため、代わりに圧縮します。ボットとのチャットは1つの連続した会話です。このボットと使い捨てのセッションを行うには、「セッション」モードを使用してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 채팅은 초기화되지 않으므로 대신 압축해요. 봇 채팅은 하나로 이어지는 대화예요. 이 봇과 일회용 세션을 하려면 ‘세션’ 모드를 사용하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ten czat nigdy się nie resetuje — zamiast tego zostanie skompresowany. Czaty z botami to jedna ciągła rozmowa; aby mieć jednorazową sesję z tym botem, użyj trybu Sesje."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Este chat nunca é redefinido — compactando em vez disso. Chats de bot são uma conversa contínua; para uma sessão descartável com este bot, use o modo Sessões."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Этот чат никогда не сбрасывается — вместо этого он сжимается. Чат с ботом — это один непрерывный разговор; для одноразового сеанса с этим ботом используйте режим «Сеансы»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu sohbet asla sıfırlanmaz — bunun yerine sıkıştırılıyor. Bot sohbetleri tek ve kesintisiz bir konuşmadır; bu botla geçici bir oturum için Oturumlar modunu kullanın."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此对话永不重置——改为压缩。Bot 对话是一条连续的对话；如需与该 Bot 的临时会话，请使用“会话”模式。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此聊天永遠不會重設，因此改為壓縮。機器人聊天是一段連續的對話；若要與此機器人進行用完即丟的工作階段，請使用「工作階段」模式。"
-          }
-        }
-      }
-    },
     "This bot chat never resets. Remove the attachments to compact it instead." : {
       "localizations" : {
         "de" : {
@@ -347586,6 +347504,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "通話結束後，這則通知會在另一個設定檔中開啟。"
+          }
+        }
+      }
+    },
+    "Bot chats never reset, so this one is compacted instead: Hermes carries on from a summary with fresh context, and keeps its memory and skills. For a separate chat, start one in Chats." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bot-Chats werden nie zurückgesetzt, deshalb wird dieser stattdessen komprimiert: Hermes macht mit einer Zusammenfassung und frischem Kontext weiter und behält sein Gedächtnis und seine Skills. Für einen separaten Chat starte einen in „Chats“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los chats de bot nunca se reinician, así que este se compacta en su lugar: Hermes continúa desde un resumen con contexto nuevo y conserva su memoria y sus habilidades. Para un chat aparte, inicia uno en Chats."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les discussions de bot ne sont jamais réinitialisées, celle-ci est donc compactée à la place : Hermes reprend à partir d'un résumé avec un contexte neuf, et garde sa mémoire et ses compétences. Pour une discussion à part, lancez-en une dans Discussions."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan bot tidak pernah direset, jadi obrolan ini dipadatkan sebagai gantinya: Hermes melanjutkan dari ringkasan dengan konteks baru, dan tetap menyimpan memori serta keterampilannya. Untuk obrolan terpisah, mulai satu di Obrolan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chat dei bot non si azzerano mai, quindi questa viene compattata: Hermes riparte da un riepilogo con un contesto nuovo e conserva memoria e skill. Per una chat separata, avviane una in Chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットとのチャットはリセットされないため、代わりに圧縮します。Hermesは要約から新しいコンテキストで続け、メモリとスキルはそのまま残ります。別のチャットにするには、「チャット」で新しく始めてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 채팅은 초기화되지 않으므로 대신 압축해요. Hermes는 요약에서 새 컨텍스트로 이어 가며 메모리와 스킬은 그대로 유지해요. 별도의 채팅을 하려면 ‘채팅’에서 새로 시작하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czaty z botami nigdy się nie resetują, więc ten zostaje skompresowany: Hermes kontynuuje od podsumowania ze świeżym kontekstem i zachowuje swoją pamięć oraz umiejętności. Aby mieć osobny czat, rozpocznij go w Czatach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chats de bot nunca são redefinidos, então este é compactado: o Hermes continua a partir de um resumo com contexto novo e mantém sua memória e suas habilidades. Para um chat separado, comece um em Chats."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чаты с ботами никогда не сбрасываются, поэтому этот чат сжимается: Hermes продолжает с краткого содержания со свежим контекстом и сохраняет свою память и навыки. Для отдельного чата начните новый в разделе «Чаты»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bot sohbetleri asla sıfırlanmaz, bu yüzden bu sohbet sıkıştırılıyor: Hermes yeni bir bağlamla bir özetten devam eder, belleğini ve becerilerini korur. Ayrı bir sohbet için Sohbetler'de yeni bir tane başlatın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bot 对话永不重置，因此改为压缩：Hermes 会基于摘要以全新的上下文继续，并保留其记忆和技能。如需单独的对话，请在“聊天”中新建一个。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "機器人聊天永遠不會重設，因此改為壓縮：Hermes 會根據摘要以全新的脈絡繼續，並保留其記憶與技能。若要另開聊天，請在「聊天」中新增一個。"
           }
         }
       }

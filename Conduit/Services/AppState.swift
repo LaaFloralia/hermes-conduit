@@ -10573,27 +10573,31 @@ final class AppState: ObservableObject {
         return activeProfile
     }
 
-    /// Upstream's canonical-forever-chat guard: `/new` or `/reset` inside a
-    /// bot's canonical chat would fork the relationship into a scratch
-    /// session — the one thing Bot Mode promises never happens. Returns
-    /// "/compact" (fresh working context, SAME conversation) ONLY when the
-    /// active session is positively that bot's canonical chat by ROSTER
-    /// evidence (the canonical registry names it, or names the lineage tip a
-    /// compaction moved it to). No roster evidence, no reroute — upstream's
-    /// `isCanonicalChatOnScreen` fails closed identically, and ordinary
+    /// Upstream's canonical-forever-chat guard: `/new`, `/reset` or
+    /// `/clear` inside a bot's canonical chat would fork the relationship
+    /// into a scratch session — the one thing Bot Mode promises never
+    /// happens. True ONLY
+    /// when the active session is positively a bot's canonical chat (see
+    /// `activeChatIsCanonicalBotChat`), whatever follows the command (`/new
+    /// A title` is still a reset). No evidence, no reroute: ordinary
     /// sessions keep full `/new` freedom.
-    private func canonicalForeverChatRerouteText(for text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ["/new", "/reset", "/clear"].contains(trimmed) else { return nil }
-        guard let sessionId = activeSessionId else { return nil }
-        guard let bot = botOwnership.bot(owningAny: [sessionId]) else { return nil }
-        let canonicalIDs = [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        return BotMentions.foreverChatRerouteText(
-            for: text,
-            isCanonicalBotChat: canonicalIDs.contains(sessionId)
-        )
+    private func isCanonicalForeverChatReset(_ text: String) -> Bool {
+        guard let command = Self.parseSlashCommand(text),
+              ["new", "reset", "clear"].contains(command.name) else { return false }
+        return activeChatIsCanonicalBotChat
+    }
+
+    /// Whether the open chat is a bot's canonical chat, by positive
+    /// evidence: this process registered one of its ids when it opened the
+    /// Bot Chat (the registry only ever holds canonical chats and the
+    /// runtimes resuming them), or the roster's canonical id is one of the
+    /// chat's own ids. A resume runs a Bot Chat under a fresh runtime id the
+    /// roster never names, so the roster alone missed every reopened Bot
+    /// Chat and `/new` forked it into a workspace chat (#1307).
+    private var activeChatIsCanonicalBotChat: Bool {
+        guard let sessionId = activeSessionId else { return false }
+        let ids = chatOwnSessionIDs(for: sessionId).union([sessionId])
+        return botOwnership.botProfileName(owningAny: ids) != nil
     }
 
     /// The composer's @mention middleware, shared by every routing path (a
@@ -24152,7 +24156,7 @@ final class AppState: ObservableObject {
         }
         // The canonical-chat `/new` reroute is a compaction, which carries no
         // attachments; refuse rather than submit a literal `/compact` turn.
-        if !attachments.isEmpty, canonicalForeverChatRerouteText(for: text) != nil {
+        if !attachments.isEmpty, isCanonicalForeverChatReset(text) {
             errorMessage = AppLocalization.string(
                 "This bot chat never resets. Remove the attachments to compact it instead."
             )
@@ -25614,8 +25618,8 @@ final class AppState: ObservableObject {
                     acceptedSessionIDs: submissionSessionIDs,
                     baseline: submissionBaseline,
                     // Exactly what prompt.submit sent (a mention annotation
-                    // or the forever-chat reroute changes it, staged files'
-                    // references lead it); the check projects it the way
+                    // changes it, staged files' references lead it); the
+                    // check projects it the way
                     // the persisted user row is shown.
                     submittedText: promptText,
                     submissionContext: submissionContext
@@ -26525,11 +26529,11 @@ final class AppState: ObservableObject {
             // attachment-free slash commands arrive HERE, never through
             // sendMessage's reroute, so a bot's canonical chat compacts
             // instead of forking into a scratch session.
-            if canonicalForeverChatRerouteText(for: text) != nil {
+            if isCanonicalForeverChatReset(text) {
                 cancelChatResumeRestoration()
                 appendSlashOutput(
                     AppLocalization.string(
-                        "This chat never resets — compacting instead. Bot chats are one continuous conversation; for a throwaway session with this bot, use Sessions mode."
+                        "Bot chats never reset, so this one is compacted instead: Hermes carries on from a summary with fresh context, and keeps its memory and skills. For a separate chat, start one in Chats."
                     ),
                     context: submissionContext
                 )

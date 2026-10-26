@@ -1130,6 +1130,34 @@ New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 
 **Checked:** 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
+## /new in a Bot Chat
+
+`/new` (and `/reset`, `/clear`) starts a new chat, except in a bot's one
+chat, which never forks: there it compacts the same chat instead, so the
+bot starts from a summary with fresh context and the user stays in Bots.
+
+**Siblings:** the composer's `/new` in chats and project chats (starts a new
+chat) · Bot Chat (compacts) · a Bot Chat `/new` with attachments (refused,
+the draft kept) · group rooms (no slash commands) · the notice the compaction
+shows (says the chat compacts and keeps its memory and skills) · the `/help`
+text and the slash suggestions' "Start a new conversation" (the general
+command, still right outside Bot Chats) · "A new chat that something waits
+on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
+
+**Code**
+- The guard: `Conduit/Services/AppState.swift` (activeChatIsCanonicalBotChat, isCanonicalForeverChatReset, executeSlashCommand's new/reset/clear case, the attachment refusal in performComposerSubmission)
+- Tests: `ConduitTests/AppStateSessionCompressTests.swift`
+
+**Rulings**
+- A Bot Chat is one continuous conversation: `/new` there compacts it, whatever follows the command, and never opens a chat in Chats. Saved memory and skills stay (upstream Bot Mode's forever chat; 2026-10-26, #1310, issue #1307).
+- The chat is a Bot Chat by positive evidence only: one of the chat's own ids is one this process registered when it opened the Bot Chat (a reopened one runs under a fresh runtime id), or the roster's canonical id. Without either, `/new` starts a new chat.
+- With attachments, `/new` in a Bot Chat (title or not) is refused and the draft kept: a compaction carries no attachments, and the text is never sent to the bot.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-26, #1310.
+
 ## Composer Return key
 
 The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
