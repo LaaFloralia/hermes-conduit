@@ -30878,15 +30878,22 @@ final class AppState: ObservableObject {
         return string.isEmpty ? nil : string
     }
 
+    /// Counts display saves that landed, so a config read sent before one
+    /// doesn't put the older choice back.
+    private var displayPreferencesWriteRevision = 0
+
     private func loadProfileDisplayPreferences() async {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return }
         let dashboardTicketBridge = owner.bridge
+        let revision = displayPreferencesWriteRevision
         do {
             let config = try await dashboardTicketBridge.requestJSON(path: dashboardPath("/api/config", profile: profile))
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return }
             let display = config["display"] as? [String: Any] ?? [:]
             profileTimeZoneSetting = (profile, config[ProfileTimeZone.configKey] as? String ?? "")
+            // A display save that landed while this read was out is newer.
+            guard revision == displayPreferencesWriteRevision else { return }
             let reasoning = ReasoningDisplayMode(display: display)
             displayPreferences = ProfileDisplayPreferences(
                 showReasoning: reasoning == .show,
@@ -31184,6 +31191,7 @@ final class AppState: ObservableObject {
                     self?.setProfileSettingValue(value, in: &config, key: key)
                 }
             }
+            if reasoning != nil || key.hasPrefix("display.") { displayPreferencesWriteRevision &+= 1 }
             // The write landed on its own profile; what's mirrored on screen
             // must still be that dashboard's and profile's.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return true }
@@ -31289,6 +31297,7 @@ final class AppState: ObservableObject {
                 }
                 config["display"] = display
             }
+            displayPreferencesWriteRevision &+= 1
             return true
         } catch {
             // After a dashboard switch the preferences on screen are the next
