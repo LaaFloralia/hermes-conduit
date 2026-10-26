@@ -1217,14 +1217,14 @@ Watch captions (none describe this browser) · the bot MCP sign-in browser
 - Bot MCP sign-in, its own browser: `Conduit/Views/BotCapabilitiesView.swift` (BotMcpBrowserView)
 
 **Rulings**
-- A native sign-in opens in an ASWebAuthenticationSession, not ephemeral by default, so the identity provider's session and passkeys carry over between sign-ins. Hermes accepts only a loopback redirect, so the code still arrives through the loopback listener and Conduit closes the browser itself (2026-10-26, 1fc4e08).
-- Private sign-in page makes that session ephemeral, so every sign-in shows the provider's full page (a login code as well as the passkey), for a re-authentication page that offers only the passkey or for switching accounts (2026-10-26, 1fc4e08).
+- A native sign-in opens in an ASWebAuthenticationSession, not ephemeral by default, so the identity provider's session and passkeys carry over between sign-ins. Hermes accepts only a loopback redirect, so the code still arrives through the loopback listener and Conduit closes the browser itself (2026-10-26, #1329).
+- Private sign-in page makes that session ephemeral, so every sign-in shows the provider's full page (a login code as well as the passkey), for a re-authentication page that offers only the passkey or for switching accounts (2026-10-26, #1329).
 
 **Open gaps**
 - The switch is only on the login screen; Repair reads it but can't change it.
 - Whether the session shares MobileSafari's own sign-in depends on iOS; in simulator testing with Pocket ID it kept only its own session.
 
-**Checked:** 2026-10-26, at 1fc4e08.
+**Checked:** 2026-10-26, at #1329.
 
 ## Dashboard sign-in redirects
 
