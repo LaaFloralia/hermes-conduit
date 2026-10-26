@@ -26,7 +26,9 @@ extension AppState {
               composerChatOnScreen == .live(sessionID),
               !isBusy, !turnState.isRunning, !isVoiceInUse,
               let last = messages.last, last.role == .assistant,
-              last.content.contains(where: { !$0.isWhitespace }) else { return nil }
+              last.content.contains(where: { !$0.isWhitespace }),
+              // A system notice merged into the last row isn't a reply to answer.
+              MessageNormalizer.systemNoticeText(fromText: last.rawContent ?? last.content) == nil else { return nil }
         return PredictiveStore.Anchor(sessionID: sessionID, messageID: last.id)
     }
 

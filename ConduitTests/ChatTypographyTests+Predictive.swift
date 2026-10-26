@@ -180,6 +180,25 @@ extension ChatTypographyTests {
         XCTAssertNil(state.predictiveFollowUpTurn)
     }
 
+    /// A system notice merged into the last row anchors no guesses and no
+    /// follow-up clock.
+    @MainActor
+    func testASystemNoticeInTheLastRowIsNotAnAnchor() {
+        let defaults = makeScratchDefaults("PredictiveNoticeTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        XCTAssertEqual(state.predictiveAnchor?.messageID, "a1", "a reply anchors")
+        state.messages[0].content = "Context compacted."
+        state.messages[0].rawContent = "[System: Context compacted.]"
+        XCTAssertNil(state.predictiveAnchor)
+    }
+
     /// A turn ending while the hidden prompt is still on its way is the one
     /// ahead: it isn't tagged, and the follow-up isn't counted as queued
     /// behind another.
