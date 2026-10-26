@@ -11,8 +11,10 @@ In the PR, say for each sibling whether it's done, not needed (and why), or
 left as a gap, and update the entry in the same PR. Nobody tends the map
 separately: a feature with siblings and no entry gets one in the PR that
 changes it, and a fix that brings a sibling in line with a change it missed
-adds that sibling to the entry. [CONTRIBUTING.md](../CONTRIBUTING.md) has the
-rules.
+adds that sibling to the entry. A refactor that changes no behavior and no
+user-facing or model-facing text has no siblings and needs no new entry; if it
+moves code an entry's Code lists, it updates those paths and the Checked line.
+[CONTRIBUTING.md](../CONTRIBUTING.md) has the rules.
 
 An entry holds the current state only; history stays in the PRs it cites.
 Keep each to about a screen, and split one that grows past that. Every entry
@@ -1954,12 +1956,13 @@ point at the map and its check
 - The notifier's reviewers can't read this map, so a notifier PR names its entry, or the hermes-conduit PR that adds or updates it (2026-10-24, #1178).
 - An entry a PR adds or edits names that PR on its Checked line, and CI fails one that doesn't; a commit is only for an entry seeded from main. A carry PR names both, like "#1188, carried in #1200". The PR template asks for a Siblings line for every sibling the entry lists, Settings and model-facing text included (2026-10-24, #1209, Eric).
 - On a PR into `pulse` that merges main, an entry main changed between where `pulse` last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into `pulse` doesn't name the merge on every entry main changed. A `pulse` PR that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries).
+- A refactor that changes no behavior and no user-facing or model-facing text (moving code, or changing how state is stored or observed) has no siblings: its PR says "No mapped feature" and adds no new entry, and reviewers don't ask for one. If it moves code an entry's Code lists, it updates those paths and the Checked line (2026-10-25, #1271, Eric; reviewer prompts and notifier copies in #1273 and notifier #377).
 
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
-- A PR that changes a mapped feature's code without touching its entry isn't caught by CI; a reviewer flags it (minor).
+- A PR that changes a mapped feature's behavior without touching its entry isn't caught by CI; a reviewer flags it (minor). A refactor that changes no behavior is exempt unless it moves a listed path.
 - On a merge of main into `pulse`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping `pulse`'s edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
 - If GitHub can't say whether a PR into `pulse` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-10-25, #1248.
+**Checked:** 2026-10-25, #1273.

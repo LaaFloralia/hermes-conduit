@@ -18,7 +18,10 @@ current.
    record their decision in the entry, with the date and the PR.
 3. In the PR, fill in Siblings: each one done, not needed (and why), or a gap
    left open for the maintainer to decide. "No mapped feature" is only for a
-   change with no siblings.
+   change with no siblings. A refactor that changes no behavior and no
+   user-facing or model-facing text (moving code, or changing how state is
+   stored or observed) has none and needs no new entry; if it moves code an
+   entry's Code lists, it updates those paths and that entry's Checked line.
 4. Update the entry in the same PR: its siblings, code paths, rulings, the gaps
    opened or closed, and the Checked line, which names this PR (CI fails an
    entry the PR adds or edits whose Checked line doesn't; on a PR into
