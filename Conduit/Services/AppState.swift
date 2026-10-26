@@ -22272,13 +22272,26 @@ final class AppState: ObservableObject {
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
         noteBotChatSession(created.sessionId, profile: bot.name, label: bot.displayLabel)
-        if let stored = created.storedSessionId {
-            noteBotChatSession(stored, profile: bot.name, label: bot.displayLabel)
+        // The open resumes the STORED id, as Desktop's does: Hermes finds a
+        // chat by its stored key (the live session it just made, or the row
+        // the title wrote) and answers 4007 for a runtime id. Opening the
+        // runtime id failed the open, so a new bot's first message went to
+        // a chat Conduit never had open, and it was gone on the way back.
+        // A create that named no stored id is found by its title instead,
+        // which just landed: the lookup gives the row to open.
+        guard let storedID = created.storedSessionId else {
+            return await adoptWinningBotChat(
+                bot,
+                client: client,
+                epoch: epoch,
+                presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                viewportTransitionGeneration: viewportTransitionGeneration
+            )
         }
         return await openCanonicalBotChat(
             bot,
-            registryID: created.storedSessionId ?? created.sessionId,
-            resumeID: created.sessionId,
+            registryID: storedID,
+            resumeID: storedID,
             epoch: epoch,
             client: client,
             presentationMigrationSessionIDs: presentationMigrationSessionIDs,
@@ -22290,7 +22303,8 @@ final class AppState: ObservableObject {
     /// miss and the eager title. Re-consult the registry; adopt the winner.
     /// Our abandoned lazy session holds zero messages and the gateway prunes
     /// it. If the winner cannot be confirmed, fail closed — never open our
-    /// untitled stray, never mint again.
+    /// untitled stray, never mint again. A create that named no stored id
+    /// comes here too, after its own title landed: the winner is our chat.
     private func adoptWinningBotChat(
         _ bot: BotProfile,
         client: HermesClient,
