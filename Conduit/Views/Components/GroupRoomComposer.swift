@@ -267,7 +267,8 @@ struct GroupRoomComposer: View {
         }
         UndeliveredDictationNotice(
             inbox: dictationClips,
-            identity: appState.dictationClipIdentity,
+            identity: dictationClipIdentity,
+            delivering: appState.dictationClipsOnTheirWay,
             onRetry: retryDictationClip
         )
         // The session surface's error banner lives inside ChatView, which
@@ -778,6 +779,16 @@ struct GroupRoomComposer: View {
                 composerError = UserFacingError.message(for: error)
             }
         }
+    }
+
+    /// Where this room's dictations keep their recordings: none in a room
+    /// that takes no messages (disbanded, or a host without room sends),
+    /// so it offers nothing to retry. A send in flight or a pending
+    /// message only holds Send; the draft still takes words.
+    private var dictationClipIdentity: String? {
+        guard surface?.room.isDisbanded == false,
+              appState.groupCapabilities?.supports("groups.send") == true else { return nil }
+        return appState.dictationClipIdentity
     }
 
     /// Retry on a dictation whose words never came: one more upload of

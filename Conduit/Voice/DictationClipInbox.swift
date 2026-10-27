@@ -129,7 +129,14 @@ final class DictationClipInbox: ObservableObject {
     ) async throws -> String {
         guard !owned.contains(clip.id), retrying.insert(clip.id).inserted else { throw CancellationError() }
         defer { retrying.remove(clip.id) }
-        let pcm16 = try await onDisk { store in Result { try store.audio(for: clip) } }.value.get()
+        let pcm16: Data
+        do {
+            pcm16 = try await onDisk { store in Result { try store.audio(for: clip) } }.value.get()
+        } catch CocoaError.fileReadNoSuchFile, CocoaError.fileNoSuchFile {
+            // Its audio is gone: nothing left to retry, so the row goes too.
+            delivered(clip.id)
+            throw CocoaError(.fileReadNoSuchFile)
+        }
         do {
             let words = try await transcribe(.dictation(pcm16: pcm16, sampleRate: clip.sampleRate))
             if words.isEmpty { delivered(clip.id) }

@@ -134,6 +134,27 @@ final class DictationClipInboxTests: XCTestCase {
         XCTAssertTrue(DictationClipStore(directory: directory).clips().isEmpty)
     }
 
+    func testARetryWhoseAudioIsGoneDropsTheRow() async throws {
+        let inbox = makeInbox()
+        let clip = try await keepRecording(in: inbox)
+        inbox.release(clip.id)
+        try FileManager.default.removeItem(at: directory.appendingPathComponent(clip.id.uuidString).appendingPathExtension("pcm"))
+        var uploads = 0
+
+        do {
+            _ = try await inbox.retry(clip) { _ in
+                uploads += 1
+                return "never"
+            }
+            XCTFail("Expected the missing audio to fail the Retry")
+        } catch {}
+        await inbox.filesWritten()
+
+        XCTAssertEqual(uploads, 0)
+        XCTAssertTrue(inbox.offered(for: Self.identity).isEmpty, "Nothing left to retry")
+        XCTAssertTrue(DictationClipStore(directory: directory).clips().isEmpty)
+    }
+
     func testARecordingItsDictationStillOwnsIsNotRetried() async throws {
         let inbox = makeInbox()
         let clip = try await keepRecording(in: inbox)

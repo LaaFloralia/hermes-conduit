@@ -2006,7 +2006,7 @@ dictation)
 - The recording is on disk (Application Support, out of backups) before the upload starts, and goes once its words reach the draft; a long recording Hermes answers empty for is kept too (2026-10-27, #1380).
 - An upload that fails on the connection or a busy host is tried again after 5, 15, 30 and 60 seconds while the Stop reads Transcribing; a sign-in, a 4xx or Hermes' own error isn't (2026-10-27, #1380). The settle watchdog (the longest single upload plus 10 seconds) isn't stretched to cover every retry: it still bounds how long Send waits, and a dictation it ends keeps its recording for Retry (2026-10-27, #1385).
 - A recording whose words never came is offered above the chat composer and the group room composer for its own host and profile, with Retry (one upload; the words go into the draft that was on screen) and Delete (asks first). One kept from a dictation still listening when it ended counts when 2 seconds or longer (2026-10-27, #1380).
-- A Retry's words go to the draft on screen when it was tapped, even if another chat or room opened meanwhile. A chat's is named by its durable id, so a chat whose runtime id is reused elsewhere never gets them; a room's by the dashboard and room (2026-10-27, #1385).
+- A Retry's words go to the draft on screen when it was tapped, even if another chat or room opened meanwhile. A chat's is named by its durable id, so a chat whose runtime id is reused elsewhere never gets them; a room's by the dashboard and room. A disbanded room, or a host without room sends, offers none; a room send in flight doesn't hide the row, since the draft still takes words (2026-10-27, #1385).
 - Kept recordings go after two weeks, and past twenty the oldest go (2026-10-27, #1380).
 
 **Open gaps**
