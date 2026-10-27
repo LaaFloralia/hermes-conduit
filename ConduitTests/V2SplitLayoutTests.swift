@@ -49,6 +49,32 @@ extension SidebarLayoutTests {
         XCTAssertFalse(V2SplitLayout.hasChatVoiceBeside(split: false, path: [.conversation], inRoom: false))
     }
 
+    func testV2SplitListMarksWhatShowsBesideIt() {
+        // #1363: the chat beside the list, or a group room in its place
+        // (the open chat stays set under a room, so its row isn't marked).
+        XCTAssertEqual(V2SplitLayout.openBeside(chatBeside: true, roomID: nil), .chat)
+        XCTAssertEqual(V2SplitLayout.openBeside(chatBeside: true, roomID: "r1"), .room("r1"))
+        // The placeholder, or Settings in the chat's column.
+        XCTAssertEqual(V2SplitLayout.openBeside(chatBeside: false, roomID: nil), .nothing)
+        XCTAssertEqual(V2SplitLayout.openBeside(chatBeside: false, roomID: "r1"), .nothing)
+
+        // Beside the list, only the open chat's row is highlighted.
+        XCTAssertEqual(V2RowSelection.chat(isActive: true, beside: .chat), .open)
+        XCTAssertEqual(V2RowSelection.chat(isActive: false, beside: .chat), .none)
+        XCTAssertEqual(V2RowSelection.chat(isActive: true, beside: .room("r1")), .none)
+        XCTAssertEqual(V2RowSelection.chat(isActive: true, beside: .nothing), .none)
+        XCTAssertEqual(V2RowSelection.room("r1", beside: .room("r1")), .open)
+        XCTAssertEqual(V2RowSelection.room("r2", beside: .room("r1")), .none)
+        XCTAssertEqual(V2RowSelection.room("r1", beside: .chat), .none)
+        // One column (a phone, or the list hidden) keeps the faint shade
+        // Chats rows always had, and a bot's row keeps none.
+        XCTAssertEqual(V2RowSelection.chat(isActive: true, beside: nil), .faint)
+        XCTAssertEqual(V2RowSelection.chat(isActive: false, beside: nil), .none)
+        XCTAssertEqual(V2RowSelection.chat(isActive: true, beside: nil, faintAlone: false), .none)
+        XCTAssertEqual(V2RowSelection.chat(isActive: true, beside: .chat, faintAlone: false), .open)
+        XCTAssertEqual(V2RowSelection.room("r1", beside: nil), .none)
+    }
+
     func testV2TabBarSitsUnderTheListColumnOnly() {
         XCTAssertTrue(V2SplitLayout.tabBarUnderList(split: true, tab: .chats))
         XCTAssertTrue(V2SplitLayout.tabBarUnderList(split: true, tab: .bots))

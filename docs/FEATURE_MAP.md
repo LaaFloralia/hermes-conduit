@@ -421,6 +421,37 @@ Main button caption
 
 **Checked:** 2026-10-26, at #1319.
 
+## The open chat in the list beside it
+
+How the list marks the conversation open beside it on a split iPad or Mac
+window, so nobody has to match the chat's title to a row (#1363).
+
+**Siblings:** Chats rows (top-level, a nest's job rows, message-search
+matches, All's rows from another profile) · a project page's rows · the
+Bots list's bot rows (their Bot Chat) and group room rows · Desktop group
+chats (a sheet, never beside the list, so nothing to mark) · Settings in the
+chat's column and the empty placeholder (nothing marked) · the list hidden,
+and a phone (one column) · the drawer shell's persistent sidebar (V2 off) ·
+the unread dot and the Running and Approve signals on the same rows · text:
+no Settings caption or doc describes it
+
+**Code**
+- What shows beside the list: `Conduit/Views/V2/V2Shell.swift` (V2OpenBeside, the v2OpenBeside environment set in tabs(), V2SplitLayout.openBeside, V2RowSelection, V2OpenRowHighlight, v2RowSelection, v2SelectedTrait)
+- Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionRow, V2ContentMatchRow), `Conduit/Views/V2/V2ChatsView.swift` (V2ChatsRow's selection, contentSearchRow), `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/BotRosterView.swift` (BotRosterRow, GroupRosterRow, rosterListRow)
+- Drawer shell: `Conduit/Views/SidebarView.swift` (SessionRow's isSelected)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testV2SplitListMarksWhatShowsBesideIt)
+
+**Rulings**
+- Split, the row of what shows beside the list gets a rounded accent tint with a fine accent edge, as the persistent sidebar marks its open chat, and VoiceOver says Selected. A shape behind the row, so it reads apart from the gold unread dot and the Running spinner on it (2026-10-27, #1371).
+- Only on a split window: a phone and a wide window with the list hidden keep their one-column look, the Chats and project rows' faint shade included (Eric, 2026-10-27, #1371: for larger screens with the sidebar).
+- A group room takes the chat's place without changing the open chat, so beside a room only the room's row is marked; with Settings or the placeholder in the chat's column nothing is (2026-10-27, #1371).
+- Another profile's row in All is never the open chat, whatever its id (2026-10-27, #1371).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-27, added at #1371.
+
 ## Chat open elsewhere
 
 What Conduit does when Hermes refuses a send because something else holds the

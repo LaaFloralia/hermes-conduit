@@ -15,6 +15,7 @@ struct V2ProjectPage: View {
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
+    @Environment(\.v2OpenBeside) private var openBeside
     let project: ProjectSummary
     @State private var detail: ProjectSessionDetail?
     @State private var isLoading = true
@@ -291,13 +292,14 @@ struct V2ProjectPage: View {
                     isUnread: appState.isSessionUnread(session),
                     isPinned: appState.isSessionPinned(session),
                     isStarred: appState.isSessionStarred(session),
-                    isSelected: session.id == appState.activeSessionId,
+                    selection: .chat(isActive: session.id == appState.activeSessionId, beside: openBeside),
                     leadingGlyph: true
                 )
             }
         }
         .buttonStyle(.plain)
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .v2SelectedTrait(.chat(isActive: session.id == appState.activeSessionId, beside: openBeside))
     }
 
     // MARK: - Actions

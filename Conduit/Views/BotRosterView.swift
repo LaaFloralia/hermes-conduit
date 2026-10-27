@@ -495,6 +495,7 @@ struct BotRosterView: View {
 struct GroupRosterRow: View {
     let room: GroupRoom
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2OpenBeside) private var openBeside
 
     var body: some View {
         Button {
@@ -507,10 +508,11 @@ struct GroupRosterRow: View {
             }
         }
         .buttonStyle(.plain)
-        .rosterListRow()
+        .rosterListRow(selection: .room(room.roomID, beside: openBeside))
         .accessibilityLabel(Text(room.name))
         .accessibilityValue(Text(subtitleText))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+        .v2SelectedTrait(.room(room.roomID, beside: openBeside))
     }
 
     private var subtitleText: String {
@@ -534,6 +536,7 @@ private struct BotRosterRow: View {
     let canStartGroup: Bool
     let actions: Actions
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2OpenBeside) private var openBeside
 
     /// What the row's menu and swipe actions do (Desktop's row menu).
     struct Actions {
@@ -586,13 +589,14 @@ private struct BotRosterRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(Color.clear)
+        .listRowBackground(Color.clear.v2RowSelection(selection))
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .overlay(alignment: .bottom) { V2RowDivider(leadingInset: 48) }
         .accessibilityLabel(Text(bot.displayLabel))
         .accessibilityValue(Text(accessibilityValue))
         .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
+        .v2SelectedTrait(selection)
         .contextMenu {
             Button(action: actions.newChat) {
                 Label(AppLocalization.string("New Chat"), systemImage: "square.and.pencil")
@@ -662,6 +666,12 @@ private struct BotRosterRow: View {
     @ViewBuilder
     private var subtitleText: some View {
         Text(subtitleString)
+    }
+
+    /// Beside its open Bot Chat on a split window. A bot's row had no
+    /// shade in one column, and keeps none.
+    private var selection: V2RowSelection {
+        .chat(isActive: appState.activeBotChatProfile == bot.name, beside: openBeside, faintAlone: false)
     }
 
     /// The latest preview, else the description, else the canonical chat's
@@ -809,9 +819,9 @@ struct RosterGlyphRow: View {
 extension View {
     /// A Bots list row's chrome: no system background or separator, 16 pt
     /// side insets, and the row's hairline from the text column.
-    func rosterListRow(divider: Bool = true) -> some View {
+    func rosterListRow(divider: Bool = true, selection: V2RowSelection = .none) -> some View {
         self
-            .listRowBackground(Color.clear)
+            .listRowBackground(Color.clear.v2RowSelection(selection))
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .overlay(alignment: .bottom) {
