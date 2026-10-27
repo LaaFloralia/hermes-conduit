@@ -25,6 +25,9 @@ struct ComposerRestoreRequest: Equatable, Identifiable {
     /// The shared draft they come from (#812): it leaves the share inbox
     /// once they're in the composer, so a draft is never only in memory.
     var sharedDraftID: UUID? = nil
+    /// The kept dictation recording a Retry transcribed: deleted once its
+    /// words are in the composer, the same way.
+    var dictationClipID: UUID? = nil
 }
 
 /// The chat the composer types into right now.
@@ -199,6 +202,7 @@ extension AppState {
         let request = composerRestoreRequests.remove(at: index)
         if let pending = request.pending { removePendingComposerSendFile(pending) }
         if let sharedDraftID = request.sharedDraftID { sharedDraftReachedComposer(sharedDraftID) }
+        if let dictationClipID = request.dictationClipID { DictationClipInbox.shared.delivered(dictationClipID) }
     }
 
     func dismissComposerNotice() {
