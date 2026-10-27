@@ -30,6 +30,17 @@ struct ComposerRestoreRequest: Equatable, Identifiable {
     var dictationClipID: UUID? = nil
 }
 
+/// A send checking Hermes before its message shows, and the chat it's in.
+struct ComposerSendCheck: Equatable, Identifiable {
+    let id = UUID()
+    let sessionID: String?
+    let viewportTransitionGeneration: UInt64
+    /// Starting the chat from the empty canvas.
+    let startsChat: Bool
+    /// The chat an earlier New Chat opened, when this check began.
+    let earlierNewChat: String?
+}
+
 /// The chat the composer types into right now.
 enum ComposerChatOnScreen: Equatable {
     case none
@@ -196,6 +207,38 @@ extension AppState {
         composerRestoreRequests.append(restoreRequest(for: pending, key: durableComposerDraftKeyOnScreen, focuses: true))
     }
 
+    /// A send that didn't go: its words go back into the draft they were
+    /// typed in. Through here rather than the composer that sent them,
+    /// which may have gone (the chat left while the send was on its way)
+    /// and would take them with it; whichever composer is on screen puts
+    /// them in its field, or in their chat's stored draft (#1401).
+    /// `stoppedQuietly`: the send stopped without an error to say so (its
+    /// chat was left before its message showed), so a notice says where
+    /// the words went.
+    func returnFailedComposerSubmission(
+        _ draft: ComposerDraft,
+        key: ComposerDraftKey,
+        dashboardID: UUID,
+        title: String,
+        stoppedQuietly: Bool
+    ) {
+        composerRestoreRequests.append(ComposerRestoreRequest(
+            dashboardID: dashboardID,
+            key: key,
+            draft: draft,
+            focuses: false,
+            pending: nil
+        ))
+        // Another dashboard or profile on screen: its composer's notices
+        // are about its own chats.
+        guard stoppedQuietly, dashboardID == activeDashboardID, key.profile == activeProfile else { return }
+        let named = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? AppLocalization.string("New chat") : title
+        composerNotice = composerDraftKeysAreSameChat(key, durableComposerDraftKeyOnScreen)
+            ? AppLocalization.string("Your message wasn't sent. It's back in the composer.")
+            : AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.")
+    }
+
     /// The composer put the words back: the waiting message's file goes too.
     func consumeComposerRestoreRequest(_ id: UUID) {
         guard let index = composerRestoreRequests.firstIndex(where: { $0.id == id }) else { return }
@@ -269,14 +312,24 @@ extension AppState {
                 self.removePendingComposerSendFile(pending)
                 return
             }
-            self.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)
+            self.restoreFailedPendingComposerSend(
+                pending,
+                submittedDraftKey: key,
+                mayHaveGone: self.takeComposerSubmissionOfUnknownDelivery(context)
+            )
         }
     }
 
     /// A submission can fail after sign-out or dashboard removal. Those
     /// account boundaries wipe its file; a late failure must not put the
     /// previous account's words back into a later login's draft.
-    func restoreFailedPendingComposerSend(_ pending: PendingComposerSend, submittedDraftKey: ComposerDraftKey) {
+    /// `mayHaveGone`: its reply was lost after its chat was left, so Hermes
+    /// may have it; its words come back without a "wasn't sent" notice.
+    func restoreFailedPendingComposerSend(
+        _ pending: PendingComposerSend,
+        submittedDraftKey: ComposerDraftKey,
+        mayHaveGone: Bool = false
+    ) {
         guard pendingComposerSendFiles(dashboardID: pending.dashboardID).contains(where: { $0.id == pending.id }),
               !composerRestoreRequests.contains(where: { $0.pending?.id == pending.id }) else { return }
         let onScreen = isOnScreen(pending)
@@ -290,7 +343,7 @@ extension AppState {
                 focuses: false
             )
         )
-        if !onScreen, pending.dashboardID == activeDashboardID, pending.profile == activeProfile {
+        if !onScreen, !mayHaveGone, pending.dashboardID == activeDashboardID, pending.profile == activeProfile {
             composerNotice = pendingComposerSendNotice(for: pending, onScreen: onScreen, chatIsGone: chatIsGone)
         }
     }
@@ -380,6 +433,7 @@ extension AppState {
     /// drafts, leave memory with it. The message's file stays unless the
     /// dashboard's saved chats are wiped, so the next visit puts it back.
     func leaveComposerSends(dashboardID: UUID?) {
+        forgetComposerSubmissionsOfUnknownDelivery()
         if let pending = pendingComposerSend, dashboardID == nil || pending.dashboardID == dashboardID {
             pendingComposerSend = nil
             cancelPendingComposerSendRecheck()
