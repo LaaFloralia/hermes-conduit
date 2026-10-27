@@ -32373,6 +32373,7 @@ final class AppState: ObservableObject {
             resetReasoningSegment()
             sealInterimCommentary(text, alreadyStreamed: alreadyStreamed)
             setRunning(true)
+            notifyVoiceAssistant(.interim(sessionID: streamSessionId, text: text, alreadyStreamed: alreadyStreamed))
 
         case .reasoningDelta(_, let text):
             finalizePendingStreamingCompletion()
@@ -32388,7 +32389,7 @@ final class AppState: ObservableObject {
                 reasoning: reasoning,
                 alreadyShown: alreadyShown
             )
-            notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content))
+            notifyVoiceAssistant(.completed(sessionID: streamSessionId, content: content, alreadyShown: alreadyShown))
 
         case .messageReaction(_, let rowId, let reactions, let role):
             applyAgentReaction(rowId: rowId, reactions: reactions, role: role)
