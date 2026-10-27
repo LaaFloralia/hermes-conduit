@@ -1980,6 +1980,33 @@ Recent menu) · the Archived sheet · README.md
 
 **Checked:** 2026-10-26, #1328.
 
+## Deleting from a list row
+
+A row's swipe Delete in the lists that ask before deleting: the chat, the
+project or the bot goes only once the confirmation is answered.
+
+**Siblings:** the Chats list's rows and a project page's rows (V2) · the
+Projects view's rows · the drawer shell's sidebar (chats, projects, a
+project's chats sheet) · the Bots list · Tasks' scheduled jobs · each row's
+context menu Delete · pinned replies' Unpin (acts at once, no confirmation) ·
+the iPad and Mac list beside the open chat (same views) · text: no Settings
+caption or doc describes it
+
+**Code**
+- V2 rows: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions, projectRow's swipe actions, the Delete alerts)
+- Drawer shell: `Conduit/Views/SidebarView.swift` (SessionList's chat and project rows, ProjectSessionsSheet)
+- Bots: `Conduit/Views/BotRosterView.swift` (BotRosterRow, the Delete Bot dialog)
+- Scheduled jobs: `Conduit/Views/V2/V2TasksView.swift`
+- Pins: `Conduit/Views/PinnedReplyViews.swift`
+
+**Rulings**
+- A swipe Delete that asks first is a plain button tinted red, never the destructive role: SwiftUI takes a destructive swipe button's row out as it's tapped, so the row was gone before the answer, came back on Cancel, and on a Mac the whole list could go blank once the data caught up (2026-10-27, #1372, issue #1364). A swipe action that acts at once (Unpin) and context menu items keep the destructive role.
+
+**Open gaps**
+- Not checked on a device: whether the report's blank list came from the swipe or the context menu Delete.
+
+**Checked:** 2026-10-27, #1372.
+
 ## Plan card
 
 The agent's plan ("Tasks", from Hermes's `todo` tool) docked above the

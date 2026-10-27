@@ -651,9 +651,12 @@ private struct BotRosterRow: View {
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canManage {
                 if canDelete {
-                    Button(role: .destructive, action: actions.delete) {
+                    // Not a destructive role: that removes the row before the
+                    // confirmation is answered, and on a Mac it can blank the list (#1364).
+                    Button(action: actions.delete) {
                         Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
                     }
+                    .tint(.red)
                 }
                 Button(action: actions.edit) {
                     Label(AppLocalization.string("Edit Bot"), systemImage: "pencil")
