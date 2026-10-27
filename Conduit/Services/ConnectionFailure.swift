@@ -42,6 +42,9 @@ enum ConnectionFailure: Equatable {
     case loginRequired
     case cloudflareTokenRejected
     case sessionTicketFailure
+    /// The native sign-in's page (ASWebAuthenticationSession) failed or
+    /// didn't start. Not a cancellation: the user didn't close it.
+    case signInPageFailed
 
     // Server-side responses.
     case dashboardUnavailable
@@ -76,6 +79,9 @@ enum ConnectionFailureClassifier {
         }
         if let bridgeError = error as? DashboardTicketBridgeError {
             return classify(bridgeError)
+        }
+        if let nativeError = error as? NativeOAuthError {
+            return classify(nativeError)
         }
         if error is DashboardSignInError {
             // Discovery answered, but with no sign-in Conduit can use.
@@ -130,6 +136,22 @@ enum ConnectionFailureClassifier {
             return classifyHTTPStatus(status, stage: .ticketMint)
         case .notReady, .answeredAfterSwitch, .requestFailed, .oversizedResponse:
             return .unexpectedServerResponse
+        }
+    }
+
+    /// Native (PKCE) sign-in failures, so Repair's Sign In to Reconnect and
+    /// Settings' Sign In Again name them as the login screen does. Its
+    /// requests are discovery-like: a 401/403 is never bad credentials.
+    static func classify(_ nativeError: NativeOAuthError) -> ConnectionFailure {
+        switch nativeError {
+        case .browserFailed:
+            return .signInPageFailed
+        case .requestFailed(let status):
+            return classifyHTTPStatus(status, stage: .providerDiscovery)
+        case .invalidURL, .callbackMalformed, .stateMismatch, .tokenResponseMalformed:
+            return .unexpectedServerResponse
+        case .randomGenerationFailed, .listenerFailed, .callbackRejected, .tokenStorageFailed, .timedOut:
+            return .unknown
         }
     }
 
@@ -306,6 +328,7 @@ extension ConnectionFailure {
         case .loginRequired: return AppLocalization.string("Sign-in required")
         case .cloudflareTokenRejected: return AppLocalization.string("Cloudflare rejected the service token")
         case .sessionTicketFailure: return AppLocalization.string("Could not start the session")
+        case .signInPageFailed: return AppLocalization.string("Sign-in page didn’t open")
         case .dashboardUnavailable: return AppLocalization.string("Dashboard unavailable")
         case .unexpectedServerResponse: return AppLocalization.string("Unexpected response")
         case .unknown: return AppLocalization.string("Couldn’t connect")
@@ -342,6 +365,8 @@ extension ConnectionFailure {
             return AppLocalization.string("Cloudflare Access did not accept the configured service token. Verify the Client ID / Secret and that the token is allowed by a Service Auth policy for this Access application, or turn off \"Use Cloudflare Access service token\" to sign in interactively.")
         case .sessionTicketFailure:
             return AppLocalization.string("Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again.")
+        case .signInPageFailed:
+            return AppLocalization.string("The sign-in page couldn’t open. Please try again.")
         case .dashboardUnavailable:
             return AppLocalization.string("The dashboard is reachable but reported a server error. It may be restarting or unhealthy — try again in a moment.")
         case .unexpectedServerResponse:
@@ -362,6 +387,7 @@ extension ConnectionFailure {
         case .authenticationRejected: return .credentials
         case .rateLimited: return nil
         case .loginRequired: return nil
+        case .signInPageFailed: return nil
         case .cloudflareTokenRejected: return .cloudflare
         case .sessionTicketFailure, .dashboardUnavailable, .unexpectedServerResponse: return .dashboard
         case .unknown: return nil

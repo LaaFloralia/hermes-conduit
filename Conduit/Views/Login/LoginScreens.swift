@@ -187,7 +187,7 @@ struct LoginAddressStep: View {
                 LoginRowLabel(
                     icon: "slider.horizontal.3",
                     title: AppLocalization.string("Advanced"),
-                    detail: AppLocalization.string("Cloudflare Access token, extra headers"),
+                    detail: AppLocalization.string("Private sign-in, Cloudflare Access token, extra headers"),
                     accessory: flow.showsAdvanced ? .expanded : .collapsed
                 )
             }
@@ -244,6 +244,7 @@ struct LoginAddressStep: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            PrivateSignInPageToggle(identifier: "\(prefix).private-sign-in")
             Button {
                 focusedField = nil
                 flow.extraHeadersRequest = LoginExtraHeadersRequest(
@@ -565,6 +566,14 @@ struct LoginDashboardsScreen: View {
         appState.savedDashboardRegistry.dashboards
     }
 
+    /// A row that signs in without a saved password can open its sign-in
+    /// page, natively when the dashboard's discovery says so on the tap, so
+    /// the Private sign-in page switch shows under the list. A list of
+    /// password dashboards alone never opens one.
+    private var mayOpenSignInPage: Bool {
+        signIns.values.contains { $0 == .session || $0 == .signInNeeded }
+    }
+
     private var content: some View {
         VStack(spacing: 22) {
             Spacer(minLength: 28)
@@ -584,6 +593,11 @@ struct LoginDashboardsScreen: View {
                     }
                 }
                 .settingsCard()
+            }
+            if mayOpenSignInPage {
+                PrivateSignInPageToggle(identifier: "login.dashboards.private-sign-in")
+                    .padding(16)
+                    .settingsCard()
             }
             Button {
                 Haptics.selection()
@@ -866,19 +880,55 @@ struct LoginSwitchRow: View {
 
     var body: some View {
         Toggle(isOn: $isOn) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: title)
-                    .font(.callout.weight(.semibold))
-                Text(verbatim: detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            LoginSwitchLabel(title: title, detail: detail)
         }
         .tint(.conduitAccent)
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
         .frame(minHeight: 60)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+/// A login switch's title with its caption below, one label for VoiceOver.
+struct LoginSwitchLabel: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: title)
+                .font(.callout.weight(.semibold))
+            Text(verbatim: detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// The Private sign-in page switch with the caption for its current
+/// setting, inside the switch's label so VoiceOver reads them together.
+/// Shared by the sign-in screen's Advanced card, the saved dashboards
+/// screen and the sign-in actions of Connection Setup (Repair's Sign In to
+/// Reconnect, Settings' Sign In Again).
+/// It only matters when a native sign-in opens the sign-in page: a saved
+/// grant signs in without it.
+struct PrivateSignInPageToggle: View {
+    let identifier: String
+    @AppStorage(NativeOAuthBrowserPreference.privateSignInKey)
+    private var privateSignIn = false
+
+    var body: some View {
+        Toggle(isOn: $privateSignIn) {
+            LoginSwitchLabel(
+                title: AppLocalization.string("Private sign-in page"),
+                detail: privateSignIn
+                    ? AppLocalization.string("When the sign-in page opens, it starts fresh and shows every way to sign in, such as a login code.")
+                    : AppLocalization.string("The sign-in page can remember your account. Turn this on if you need another way to sign in, such as a login code.")
+            )
+        }
+        .tint(.conduitAccent)
         .accessibilityIdentifier(identifier)
     }
 }

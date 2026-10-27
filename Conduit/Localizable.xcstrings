@@ -5741,88 +5741,6 @@
         }
       }
     },
-    "Cloudflare Access token, extra headers" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cloudflare-Access-Token, zusätzliche Header"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Token de Cloudflare Access, encabezados adicionales"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jeton Cloudflare Access, en-têtes supplémentaires"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Token Cloudflare Access, header tambahan"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Token Cloudflare Access, intestazioni aggiuntive"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cloudflare Accessトークン、追加ヘッダ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cloudflare Access 토큰, 추가 헤더"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Token Cloudflare Access, dodatkowe nagłówki"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Token do Cloudflare Access, cabeçalhos extras"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Токен Cloudflare Access, доп. заголовки"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cloudflare Access token'ı, ek üstbilgiler"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cloudflare Access 令牌、额外请求头"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cloudflare Access 權杖、額外標頭"
-          }
-        }
-      }
-    },
     "Face ID unlocks the saved sign-in when Conduit opens." : {
       "localizations" : {
         "de" : {
@@ -169510,6 +169428,170 @@
         }
       }
     },
+    "Sign-in page didn’t open" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anmeldeseite wurde nicht geöffnet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La página de inicio de sesión no se abrió"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La page de connexion ne s’est pas ouverte"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halaman masuk tidak terbuka"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La pagina di accesso non si è aperta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインインページが開きませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인 페이지가 열리지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strona logowania się nie otworzyła"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A página de login não abriu"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Страница входа не открылась"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturum açma sayfası açılmadı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录页面未打开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入頁面未開啟"
+          }
+        }
+      }
+    },
+    "The sign-in page couldn’t open. Please try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldeseite konnte nicht geöffnet werden. Bitte versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo abrir la página de inicio de sesión. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La page de connexion n’a pas pu s’ouvrir. Veuillez réessayer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halaman masuk tidak dapat dibuka. Silakan coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile aprire la pagina di accesso. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインインページを開けませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인 페이지를 열 수 없습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się otworzyć strony logowania. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível abrir a página de login. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось открыть страницу входа. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturum açma sayfası açılamadı. Lütfen tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开登录页面。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開啟登入頁面。請再試一次。"
+          }
+        }
+      }
+    },
     "The dashboard returned an invalid sign-in response." : {
       "localizations" : {
         "de" : {
@@ -299290,6 +299372,334 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法寫入裝置報告檔案。"
+          }
+        }
+      }
+    },
+    "Private sign-in, Cloudflare Access token, extra headers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Privates Anmelden, Cloudflare-Access-Token, zusätzliche Header"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicio de sesión privado, Token de Cloudflare Access, encabezados adicionales"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connexion privée, Jeton Cloudflare Access, en-têtes supplémentaires"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masuk privat, Token Cloudflare Access, header tambahan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accesso privato, Token Cloudflare Access, intestazioni aggiuntive"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートサインイン、Cloudflare Accessトークン、追加ヘッダ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 로그인, Cloudflare Access 토큰, 추가 헤더"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prywatne logowanie, Token Cloudflare Access, dodatkowe nagłówki"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Login privado, Token do Cloudflare Access, cabeçalhos extras"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Частный вход, Токен Cloudflare Access, доп. заголовки"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Özel oturum açma, Cloudflare Access token'ı, ek üstbilgiler"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私登录、Cloudflare Access 令牌、额外请求头"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱私登入、Cloudflare Access 權杖、額外標頭"
+          }
+        }
+      }
+    },
+    "Private sign-in page" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Private Anmeldeseite"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página de inicio de sesión privada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Page de connexion privée"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halaman masuk privat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pagina di accesso privata"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プライベートなサインインページ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비공개 로그인 페이지"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prywatna strona logowania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Página de login privada"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Частная страница входа"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Özel oturum açma sayfası"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隐私登录页面"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隱私登入頁面"
+          }
+        }
+      }
+    },
+    "When the sign-in page opens, it starts fresh and shows every way to sign in, such as a login code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn sich die Anmeldeseite öffnet, beginnt sie neu und zeigt alle Anmeldemöglichkeiten, etwa einen Anmeldecode."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando se abre la página de inicio de sesión, empieza de cero y muestra todas las formas de iniciar sesión, como un código de inicio de sesión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand la page de connexion s’ouvre, elle repart de zéro et affiche toutes les façons de se connecter, comme un code de connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat halaman masuk terbuka, halaman itu dimulai dari awal dan menampilkan semua cara masuk, seperti kode masuk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando si apre la pagina di accesso, riparte da zero e mostra tutti i modi per accedere, come un codice di accesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインインページが開くと、最初から始まり、ログインコードなど、サインインのすべての方法が表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인 페이지가 열리면 새로 시작하며 로그인 코드 등 모든 로그인 방법이 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy otworzy się strona logowania, zaczyna od nowa i pokazuje wszystkie sposoby logowania, np. kod logowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando a página de login abre, ela começa do zero e mostra todas as formas de entrar, como um código de login."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда открывается страница входа, она начинается заново и показывает все способы входа, например код входа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturum açma sayfası açıldığında sıfırdan başlar ve giriş kodu gibi tüm oturum açma yollarını gösterir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录页面打开时会重新开始，并显示所有登录方式，例如登录码。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入頁面開啟時會重新開始，並顯示所有登入方式，例如登入碼。"
+          }
+        }
+      }
+    },
+    "The sign-in page can remember your account. Turn this on if you need another way to sign in, such as a login code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldeseite kann sich dein Konto merken. Schalte dies ein, wenn du dich anders anmelden musst, etwa mit einem Anmeldecode."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La página de inicio de sesión puede recordar tu cuenta. Actívalo si necesitas iniciar sesión de otra forma, como con un código de inicio de sesión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La page de connexion peut mémoriser votre compte. Activez ceci s’il vous faut une autre façon de vous connecter, comme un code de connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Halaman masuk dapat mengingat akun Anda. Aktifkan ini jika Anda perlu cara lain untuk masuk, seperti kode masuk."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La pagina di accesso può ricordare il tuo account. Attiva questa opzione se ti serve un altro modo per accedere, come un codice di accesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインインページはアカウントを記憶することがあります。ログインコードなど別の方法でサインインする必要がある場合はオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인 페이지가 계정을 기억할 수 있습니다. 로그인 코드 등 다른 방법으로 로그인해야 하면 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Strona logowania może zapamiętać Twoje konto. Włącz to, jeśli musisz zalogować się inaczej, np. kodem logowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A página de login pode lembrar sua conta. Ative isto se precisar entrar de outra forma, como com um código de login."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Страница входа может запомнить вашу учётную запись. Включите, если нужно войти другим способом, например с кодом входа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturum açma sayfası hesabınızı hatırlayabilir. Giriş kodu gibi başka bir yolla oturum açmanız gerekiyorsa bunu açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登录页面可能会记住你的账户。如果需要以其他方式登录（例如登录码），请打开此项。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "登入頁面可能會記住你的帳號。如果需要以其他方式登入（例如登入碼），請開啟此項。"
           }
         }
       }

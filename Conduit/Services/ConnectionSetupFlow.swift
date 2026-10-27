@@ -242,7 +242,7 @@ struct ConnectionSetupFlow: Equatable {
             return details
         // No strong diagnosis (or none retained): the seeded staged test is
         // the diagnostic.
-        case .loginRequired, .sessionTicketFailure, .unknown, nil:
+        case .loginRequired, .sessionTicketFailure, .signInPageFailed, .unknown, nil:
             return (try? draft.testConfiguration()) != nil
                 ? details + [.connectionTest]
                 : details

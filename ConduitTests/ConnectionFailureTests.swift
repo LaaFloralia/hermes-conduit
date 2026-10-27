@@ -11,6 +11,23 @@ import XCTest
 @testable import Conduit
 
 final class ConnectionFailureTests: XCTestCase {
+    // MARK: - Native sign-in page
+
+    func testNativeSignInBrowserFailureClassifiesAsSignInPageFailed() {
+        let failure = ConnectionFailureClassifier.classify(NativeOAuthError.browserFailed)
+        XCTAssertEqual(failure, .signInPageFailed)
+        XCTAssertEqual(failure.userTitle, "Sign-in page didn’t open")
+        XCTAssertEqual(failure.userMessage, "The sign-in page couldn’t open. Please try again.")
+        XCTAssertNil(failure.helpDestination)
+    }
+
+    func testNativeSignInFailuresNeverClaimBadCredentials() {
+        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 401)), .unexpectedServerResponse)
+        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 503)), .dashboardUnavailable)
+        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.tokenResponseMalformed), .unexpectedServerResponse)
+        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.timedOut), .unknown)
+    }
+
     // MARK: - URL policy failures (real throw path)
 
     func testMalformedURLClassifiesAsInvalidAddressPresentation() {

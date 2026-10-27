@@ -208,7 +208,8 @@ struct ConnectionSetupView: View {
             reconnectNow: { reconnectNow() },
             signInToReconnect: { beginRepairSignIn() },
             enterCredentials: { flow.enterCredentialsForSignInChoice() },
-            testAgain: { testAgainAfterFailedActivation() }
+            testAgain: { testAgainAfterFailedActivation() },
+            showsPrivateSignInSwitch: ConnectionRepairSignIn.mayOpenNativeSignIn(for: flow.testState)
         )
     }
 
@@ -225,7 +226,8 @@ struct ConnectionSetupView: View {
             ),
             isSigningIn: isActivating,
             signInFailure: activationFailure,
-            signInAgain: { beginRepairSignIn() }
+            signInAgain: { beginRepairSignIn() },
+            showsPrivateSignInSwitch: ConnectionRepairSignIn.mayOpenNativeSignIn(for: flow.testState)
         )
     }
 
