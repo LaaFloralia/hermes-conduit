@@ -170,6 +170,10 @@ struct GroupRoomComposer: View {
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
         }
+        // A dictation Retry added words to this room's kept draft.
+        .onChange(of: appState.roomDraftAppends) { _, _ in
+            draft = appState.activeRoomDraft()
+        }
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
         }
@@ -809,11 +813,9 @@ struct GroupRoomComposer: View {
                     composerError = AppLocalization.string("No speech was captured.")
                     return
                 }
-                if let open = appState.activeRoomSurface, open.dashboardID == dashboardID, open.room.roomID == roomID {
-                    draft = ComposerDictation.draft(before: draft, dictated: words)
-                } else {
-                    appState.appendToRoomDraft(words, dashboardID: dashboardID, roomID: roomID)
-                }
+                // Through the room's kept draft: this composer may be gone,
+                // or another one shows the room now.
+                appState.appendToRoomDraft(words, dashboardID: dashboardID, roomID: roomID)
                 dictationClips.delivered(clip.id)
             } catch is CancellationError {
                 return
