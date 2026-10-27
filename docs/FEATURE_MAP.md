@@ -208,7 +208,7 @@ the outcome text each model is told
 **Open gaps**
 - After a steer the model is still told Hermes "changes course now": steer and redirect both end as `.interrupted`, and the text has four copies, in `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`, `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift`, `Shared/WatchVoice/WatchJobRelay.swift` and `Shared/WatchVoice/WatchBridgeDelegation.swift` (#1157).
 
-**Checked:** 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-27, #1390 (Classic: speech over Hermes' acknowledgement steers); 2026-10-25, at #1252, for a call that took its first request's chat; Qwen in the siblings and the table, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Job results during calls
 
@@ -321,12 +321,12 @@ README (none: nothing describes the wording) · docs/VOICE_SETTINGS.md (Classic'
 - GPT-Live's send-claim fallback counts a turn that is only an acknowledgement ("On it.", "One moment, checking.") as well as one naming Hermes, so fewer mentions don't let an undelegated request drop; "Sure." or "Okay." alone never counts. A bare "On it." with no delegation is taken as a send on purpose: the model only says it for work (2026-10-25, #1251).
 - A web lookup's heads-up is said once, varied, and the answer opens without it (2026-10-05, #404).
 - Conduit's own tools answer fast and need no acknowledgement (on main by 2026-10-22, b41f56c).
-- Classic says Hermes' own acknowledgement (`message.interim`) as it arrives, then goes back to thinking: it is not the end of the turn and opens no listening window. Commentary already streamed is said once, and a final reply that only repeats the acknowledgement isn't said again. Cutting the acknowledgement short (talking over it, Interrupt, CarPlay's Stop, a push to talk press) steers the turn instead of cancelling it (Eric 2026-10-27, from #1384, carried in #1389).
+- Classic says Hermes' own acknowledgement (`message.interim`) as it arrives, then goes back to thinking: it is not the end of the turn and opens no listening window. Commentary already streamed is said once, and a final reply that only repeats the acknowledgement isn't said again. Cutting the acknowledgement short (talking over it, Interrupt, CarPlay's Stop, a push to talk press) steers the turn instead of cancelling it (Eric 2026-10-27, from #1384, carried in #1390).
 
 **Open gaps**
 - GPT-Live's send-claim fallback reads English phrases only: an acknowledgement in other words or another language, with no delegation, can still go unsent until the user asks again; and a short reply made only of acknowledgement words ("Let me look.") counts as a send even when the model meant to answer itself (#1251).
 
-**Checked:** 2026-10-27, #1389 (Classic says Hermes' acknowledgements, carried from #1384); 2026-10-25, at #1251.
+**Checked:** 2026-10-27, #1390 (Classic says Hermes' acknowledgements, carried from #1384); 2026-10-25, at #1251.
 
 ## Starting a call
 
@@ -699,7 +699,7 @@ kept on the iPhone's headset (the Watch's Mute and End)
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-27, #1389 (Classic: speech over Hermes' acknowledgement steers); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
@@ -728,7 +728,7 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 - Settings: `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GrokLiveViews.swift`
 
 **Rulings**
-- In Classic, talking over a spoken reply stops it and starts a new turn; speech while Hermes thinks steers it (2026-10-04, #391). Hermes' acknowledgement while it works isn't the reply: talking over it, Interrupt, CarPlay's Stop or a push to talk press stops it and steers the running turn (2026-10-27, #1389).
+- In Classic, talking over a spoken reply stops it and starts a new turn; speech while Hermes thinks steers it (2026-10-04, #391). Hermes' acknowledgement while it works isn't the reply: talking over it, Interrupt, CarPlay's Stop or a push to talk press stops it and steers the running turn (2026-10-27, #1390).
 - Talking over on the speaker is opt-in, "Talk over it on the speaker", off by default, one setting shared by Qwen, Gemini, Grok and Classic, which each mode's caption says (2026-10-03, #351; Classic 2026-10-04, #393; Qwen 2026-10-25, #1182).
 - Push to talk is per profile and off by default. While held no silence timer runs; a press while Hermes speaks interrupts, while it thinks steers. CarPlay and calls from Hermes stay hands-free (2026-10-22, #1106).
 - Interrupt (CarPlay's Stop and the Watch orb too) stops what plays on the device. In Local Live (the phone's Interrupt, CarPlay's Stop and the Watch orb) it also sends the speech server `response.cancel`, which the read-back relay passes on even when no sentence is in progress, so a server that shuts its own microphone while its reply plays listens again; nothing is guessed from the audio, and background jobs go on. Gemini, Grok and Qwen stop only what plays here: their servers hear the user over the reply and keep no gate (2026-10-27, #1331, notifier #404, from #1325).
@@ -737,7 +737,7 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 **Open gaps**
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
-**Checked:** 2026-10-27, #1389 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Qwen direct voice
 
@@ -1648,12 +1648,12 @@ from Hermes: commentary is said, see Acknowledging work handed to Hermes)
 - Classic: `Conduit/Voice/VoiceTypes.swift` (VoiceAssistantEvent), `Conduit/Services/AppState.swift` (interim/completion voice notifications), `Conduit/Voice/VoiceConversationController.swift` (speech-segment boundaries)
 
 **Rulings**
-- Commentary between tool calls is the agent writing, wherever its text is: it releases a compaction claim, shows as writing and moves a call's job along (#912 follow-up, #1191). Classic says it aloud, as Hermes' acknowledgement; nothing else speaks it (Eric 2026-10-27, #1389).
+- Commentary between tool calls is the agent writing, wherever its text is: it releases a compaction claim, shows as writing and moves a call's job along (#912 follow-up, #1191). Classic says it aloud, as Hermes' acknowledgement; nothing else speaks it (Eric 2026-10-27, #1390).
 
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
 
-**Checked:** 2026-10-27, #1389 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-10-27, #1390 (Classic speaks commentary, carried from #1384); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
