@@ -436,6 +436,11 @@ struct V2ChatsView: View, Equatable {
     /// list beside it.
     private var listInView: Bool { appState.showSidebar || shell.isSplit }
 
+    /// The list, or a project's page pushed over it, shows on the selected
+    /// tab: their rows' Running and Needs approval follow the live
+    /// registry. Split, a project's page stays beside the open chat.
+    private var showsLiveRows: Bool { shell.isTabActive && shell.showsChatRows && listInView }
+
     /// Projects belong to one profile, so All shows chats only.
     private var showingProjects: Bool { sessionPresentationRaw == "projects" && !appState.isAllProfilesChatsOn }
 
@@ -581,12 +586,12 @@ struct V2ChatsView: View, Equatable {
             await appState.loadSessionCatalogIfNeeded()
         }
         // Running and Needs approval follow the gateway's live registry
-        // while the list is on screen; a hidden tab or a conversation
-        // pushed over the list stops polling. The poll slows down while
-        // nothing on the list changes (PollCadence). Split, the list stays
-        // on screen beside the open chat.
-        .task(id: "\(appState.activeProfile)|\(isShown)|\(listInView)") {
-            guard isShown, listInView else { return }
+        // while the list or a project's page is on screen; a hidden tab or
+        // a conversation pushed over them stops polling. The poll slows
+        // down while nothing on the list changes (PollCadence). Split, the
+        // list column stays on screen beside the open chat (#1353).
+        .task(id: "\(appState.activeProfile)|\(showsLiveRows)") {
+            guard showsLiveRows else { return }
             await appState.runChatListPolling()
         }
         // All reads every profile's chats on its own, slower poll.

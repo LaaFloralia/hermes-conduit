@@ -49,6 +49,20 @@ extension SidebarLayoutTests {
         XCTAssertFalse(V2SplitLayout.hasChatVoiceBeside(split: false, path: [.conversation], inRoom: false))
     }
 
+    func testV2ListColumnKeepsLiveRowsBesideTheChat() {
+        // #1353: the list, or a project's page, beside a chat still shows
+        // its rows, so their Running keeps following the live registry.
+        let project = ProjectSummary(id: "p1", title: "Trips", isHome: false, sessionCount: 0, previewSessions: [])
+        XCTAssertTrue(V2SplitLayout.showsChatRows(split: true, path: [.conversation]))
+        XCTAssertTrue(V2SplitLayout.showsChatRows(split: true, path: [.project(project), .conversation]))
+        XCTAssertTrue(V2SplitLayout.showsChatRows(split: false, path: [.project(project)]))
+        XCTAssertTrue(V2SplitLayout.showsChatRows(split: false, path: []))
+        // One column, a chat covers the list; Artifacts shows no chat rows.
+        XCTAssertFalse(V2SplitLayout.showsChatRows(split: false, path: [.conversation]))
+        XCTAssertFalse(V2SplitLayout.showsChatRows(split: false, path: [.project(project), .conversation]))
+        XCTAssertFalse(V2SplitLayout.showsChatRows(split: true, path: [.artifacts, .conversation]))
+    }
+
     func testV2SplitListMarksWhatShowsBesideIt() {
         // #1363: the chat beside the list, or a group room in its place
         // (the open chat stays set under a room, so its row isn't marked).

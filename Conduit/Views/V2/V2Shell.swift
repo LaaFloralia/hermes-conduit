@@ -108,6 +108,9 @@ struct V2ShellContext: Equatable {
         var canSplit = false
         /// Split, with a chat open beside this tab's list.
         var hasChatBeside = false
+        /// The tab's list column shows chat rows: its list or a project's
+        /// page is on top (`V2SplitLayout.showsChatRows`).
+        var showsChatRows = true
         /// That chat shows its own voice button (a group room has none),
         /// so the list column leaves voice to it.
         var hasChatVoiceBeside = false
@@ -151,6 +154,11 @@ struct V2ShellContext: Equatable {
     var hasChatBeside: Bool {
         get { values.hasChatBeside }
         set { values.hasChatBeside = newValue }
+    }
+
+    var showsChatRows: Bool {
+        get { values.showsChatRows }
+        set { values.showsChatRows = newValue }
     }
 
     var hasChatVoiceBeside: Bool {
@@ -586,6 +594,7 @@ struct V2Shell: View {
                             $0.isTabActive = isSelected
                             $0.isRootCovered = rootCovered
                             $0.hasChatBeside = chatBeside
+                            $0.showsChatRows = V2SplitLayout.showsChatRows(split: split, path: path(of: tab))
                             $0.hasChatVoiceBeside = chatVoiceBeside
                         }
                         // The opened tab shows at once and the one left
@@ -967,6 +976,16 @@ enum V2SplitLayout {
             withTransaction(transaction) {
                 path.wrappedValue = tabRoutes(listing: routes, keepsConversation: path.wrappedValue.contains(.conversation))
             }
+        }
+    }
+
+    /// Whether the tab's list column shows chat rows: the list, or a
+    /// project's page, on top of its stack. Split, a chat beside the column
+    /// doesn't cover it; one column, the chat covers whatever is under it.
+    static func showsChatRows(split: Bool, path: [V2Route]) -> Bool {
+        switch (split ? listRoutes(path) : path).last {
+        case nil, .project?: return true
+        case .conversation?, .artifacts?: return false
         }
     }
 

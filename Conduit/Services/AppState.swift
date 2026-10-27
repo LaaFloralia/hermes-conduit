@@ -9067,13 +9067,15 @@ final class AppState: ObservableObject {
     /// The open chat's own turn state is authoritative for "working"; the
     /// registry snapshot can lag it by a poll.
     func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
-        // The registry is the profile in use's: another profile's row in
-        // All has no live status.
-        guard !isOtherProfileRow(session) else { return nil }
         // A snapshot from before a disconnect may be long stale.
         let registry = isConnected && liveSessionStatusProfile == activeProfile
             ? liveSessionStatusIndex.status(for: session)
             : nil
+        // The dashboard's registry lists the live chats of every profile it
+        // serves, so another profile's row in All reads it too: a chat left
+        // running for one in another profile keeps its Running (#1353).
+        // Never the open chat, which is the profile in use's.
+        guard !isOtherProfileRow(session) else { return registry }
         if sessionMatchesActiveSession(session) {
             if registry == .needsInput { return .needsInput }
             // Once the open chat's own turn state is known it is fresher
@@ -36790,8 +36792,7 @@ extension AppState {
         return listed
     }
 
-    /// Another profile's row in All: it opens with a switch to its profile
-    /// and has no live status here.
+    /// Another profile's row in All: it opens with a switch to its profile.
     func isOtherProfileRow(_ session: SessionSummary) -> Bool {
         rowProfile(session) != activeProfile
     }

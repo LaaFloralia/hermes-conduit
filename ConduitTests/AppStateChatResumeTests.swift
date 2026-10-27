@@ -4330,6 +4330,32 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(appState.sessionLiveStatus(other))
     }
 
+    func testAnotherProfilesRowInAllFollowsTheRegistry() {
+        // #1353: the dashboard's registry lists every profile's live chats,
+        // so a chat left running for one in another profile keeps Running.
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.profiles = ["default", "work"]
+        let mine = self.session("mine")
+        let theirs = self.session("theirs", profile: "work")
+        appState.sessions = [mine]
+        appState.isConnected = true
+        XCTAssertTrue(appState.isOtherProfileRow(theirs))
+
+        appState.recordActiveListEvidence(
+            [
+                LiveSessionStatus(runtimeSessionId: "rt-theirs", storedSessionId: "theirs", status: "working"),
+                LiveSessionStatus(runtimeSessionId: "rt-mine", storedSessionId: "mine", status: "waiting"),
+            ],
+            profile: appState.activeProfile
+        )
+        XCTAssertEqual(appState.sessionLiveStatus(theirs), .working)
+        XCTAssertEqual(appState.sessionLiveStatus(mine), .needsInput)
+
+        appState.recordActiveListEvidence([], profile: appState.activeProfile)
+        XCTAssertNil(appState.sessionLiveStatus(theirs), "Its turn ended: no Running")
+    }
+
     func testLiveStatusChipsHideWhileTheGatewayLacksActiveList() async {
         // #454: a gateway without session.active_list can't fill the Working
         // and Needs input chips, so they hide rather than show a 0.

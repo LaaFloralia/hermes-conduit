@@ -2858,6 +2858,39 @@ profile, so it already reaches the dashboard)
 
 **Checked:** 2026-10-27, #1360 with notifier #419 (Linked Rooms' drafts and setup); #1344 with notifier #412 (every plugin route checked for the dashboard process's state).
 
+## Running and Needs approval in the chats list
+
+Which listed chats show Running (a turn on Hermes) or Approve (Hermes waits on
+the user), read from the dashboard's live registry (`session.active_list`)
+and, for the open chat, from its own turn.
+
+**Siblings:** the Chats list's rows and nests ("1 running · 1 to approve") ·
+All profiles (another profile's rows) · a project's page (its rows and header
+count) and the Projects view's running counts · the Status filter's Running
+and Needs approval, and the filter's amber dot · iPad and Mac beside the open
+chat (the list or a project's page stays on screen) · the drawer shell's
+sidebar (V1, polls whenever it shows) · the open chat's own Working line ·
+the Lock Screen's Live Activity, settled from the same reads (Reply progress
+signals) · not needed: Bots (a bot's chats live in the bot's own list), CarPlay's
+and the widget's pickers (no status), and no Settings caption or doc names it
+
+**Code**
+- Status: `Conduit/Services/AppState.swift` (sessionLiveStatus, refreshLiveSessionStatuses, recordActiveListEvidence, chatListPollTick), `Conduit/Services/SessionLiveStatusIndex.swift`, `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer)
+- Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionStatus, v2RowStatus), `Conduit/Views/V2/V2ChatsView.swift` (the poll's task, showsLiveRows, nestSummary, V2ProjectRow), `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/SidebarView.swift`
+- What the list column shows: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.showsChatRows)
+- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat)
+
+**Rulings**
+- The open chat's own turn decides its Running once known; Needs approval from the registry outranks it (#454).
+- The dashboard's registry lists every profile's live chats (checked on Hermes 0.22.5, with or without a `profile` param), so another profile's row in All reads it too. A chat left running for one in another profile keeps Running, as one in the same profile does (2026-10-27, #1369, issue #1353).
+- The registry is read while the list or a project's page is on screen. Beside the open chat on a wide window both stay on screen, so the poll keeps running there; one column, a chat pushed over them stops it (2026-10-27, #1369, issue #1353).
+
+**Open gaps**
+- Rows carry no profile, so a running chat in one profile lights a row of another with the same stored id (a profile copied with its chats) while that turn runs.
+- After a send, the registry can read the turn as not started yet, and the next read comes 4 s later: a chat left within those seconds goes without Running until then.
+
+**Checked:** 2026-10-27, #1369.
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays
