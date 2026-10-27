@@ -1521,17 +1521,29 @@ final class PushNotificationService: ObservableObject {
     /// notifications, or on a relay without the route, the activity is only
     /// updated while Conduit runs. Returns the installation whose relay
     /// took the token, the one case the Conduit plugin can update and end
-    /// it by push; nil otherwise.
+    /// it by push; nil otherwise. `startedAgo` is how long ago the activity
+    /// started, so the relay can end it at once when its turn ended before
+    /// this registration came.
     @discardableResult
-    func registerLiveActivity(token: String, sessionIDs: [String]) async -> String? {
+    func registerLiveActivity(token: String, sessionIDs: [String], startedAgo: TimeInterval) async -> String? {
         guard let registration, liveActivitiesUnsupportedInstallation != registration.installationID,
               !sessionIDs.isEmpty else { return nil }
         let routeExists = await sendLiveActivity(
-            LiveActivityRegistration(pushToken: token, sessionIDs: Array(sessionIDs.prefix(6))),
+            LiveActivityRegistration(
+                pushToken: token,
+                sessionIDs: Array(sessionIDs.prefix(6)),
+                startedAgo: Self.liveActivityStartedAgo(startedAgo)
+            ),
             method: "PUT",
             registration: registration
         )
         return routeExists == true ? registration.installationID : nil
+    }
+
+    /// How long ago an activity started, as the relay is told: never
+    /// negative (the clock moved back) and never unreadable.
+    nonisolated static func liveActivityStartedAgo(_ startedAgo: TimeInterval) -> TimeInterval {
+        startedAgo.isFinite ? max(0, startedAgo) : 0
     }
 
     /// The activity ended on the phone: the relay forgets its token.
@@ -2945,10 +2957,12 @@ final class PushNotificationService: ObservableObject {
 private struct LiveActivityRegistration: Encodable {
     let pushToken: String
     let sessionIDs: [String]
+    let startedAgo: TimeInterval
 
     enum CodingKeys: String, CodingKey {
         case pushToken = "push_token"
         case sessionIDs = "session_ids"
+        case startedAgo = "started_ago"
     }
 }
 
