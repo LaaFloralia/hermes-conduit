@@ -11077,12 +11077,13 @@ final class AppState: ObservableObject {
     /// A dictation Retry's words for a room's draft, after what it holds.
     /// The open composer keeps its draft here as it changes, so the words
     /// reach whichever composer shows the room now, or wait for reopen.
-    /// False when the room is gone (disbanded, or off this dashboard's
-    /// list): it can't be reopened, so the caller keeps the recording.
+    /// False when the room can't be confirmed (disbanded, off the room
+    /// list, or on a dashboard no longer active): the caller keeps the
+    /// recording, offered again for a Retry.
     @discardableResult
     func appendToRoomDraft(_ words: String, dashboardID: UUID, roomID: String) -> Bool {
-        if dashboardID == activeDashboardID,
-           !groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) {
+        guard dashboardID == activeDashboardID,
+              groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
             return false
         }
         let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)

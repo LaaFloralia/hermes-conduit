@@ -89,6 +89,6 @@ struct UndeliveredDictationNotice: View {
         .padding(.horizontal, 14)
         .padding(.top, 10)
         .padding(.bottom, 2)
-        .accessibilityIdentifier("composer.undeliveredDictation")
+        .accessibilityIdentifier("composer.undeliveredDictation.\(clip.id.uuidString)")
     }
 }

@@ -132,10 +132,11 @@ final class DictationClipInbox: ObservableObject {
         let pcm16: Data
         do {
             pcm16 = try await onDisk { store in Result { try store.audio(for: clip) } }.value.get()
-        } catch CocoaError.fileReadNoSuchFile {
-            // Its audio is gone: nothing left to retry, so the row goes
-            // too, quietly (Hermes was never asked).
-            delivered(clip.id)
+        } catch {
+            // Hermes was never asked, so this isn't a failed transcription:
+            // it ends quietly. Audio that's gone leaves nothing to retry,
+            // so the row goes too; one that can't be read yet stays.
+            if case CocoaError.fileReadNoSuchFile = error { delivered(clip.id) }
             throw CancellationError()
         }
         do {
@@ -182,11 +183,17 @@ extension AppState {
 
     /// A Retry's words, for the draft on screen when it was tapped: into
     /// the field while that draft is open, otherwise into its stored draft.
-    /// The recording goes once they're there.
+    /// A chat deleted meanwhile can't be reopened, so they go to the draft
+    /// on screen now, as a failed send's words do. The recording goes once
+    /// they're there.
     func restoreRetriedDictation(_ words: String, clipID: UUID, dashboardID: UUID, key: ComposerDraftKey) {
+        let chatIsGone = !key.isNewConversation
+            && dashboardID == activeDashboardID
+            && key.profile == activeProfile
+            && conversationIsGone(sessionIDs: [key.sessionID], dashboardID: dashboardID, profile: key.profile)
         composerRestoreRequests.append(ComposerRestoreRequest(
             dashboardID: dashboardID,
-            key: key,
+            key: chatIsGone ? durableComposerDraftKeyOnScreen : key,
             draft: ComposerDraft(text: words, attachments: []),
             focuses: false,
             pending: nil,
