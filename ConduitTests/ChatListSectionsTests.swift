@@ -179,5 +179,9 @@ extension SessionNestingModelTests {
         XCTAssertTrue(HiddenChatProjects.hides(projectID: nil, pinned: false, hidden: hidden))
         XCTAssertFalse(HiddenChatProjects.hides(projectID: "work", pinned: true, hidden: hidden))
         XCTAssertFalse(HiddenChatProjects.hides(projectID: "music", pinned: false, hidden: hidden))
+        // Needs approval lists a hidden project's wait; nothing else spares it.
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: "work", pinned: false, listedWait: true, hidden: hidden))
+        XCTAssertFalse(HiddenChatProjects.hides(projectID: nil, pinned: false, listedWait: true, hidden: hidden))
+        XCTAssertTrue(HiddenChatProjects.hides(projectID: "work", pinned: false, listedWait: false, hidden: hidden))
     }
 }

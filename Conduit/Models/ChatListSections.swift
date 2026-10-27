@@ -192,7 +192,9 @@ enum HiddenChatProjects {
 
     /// Whether a row in `projectID` (nil: in no project) is left out. A
     /// pinned one stays, since pinning asks for it in Chats.
-    static func hides(projectID: String?, pinned: Bool, hidden: Set<String>) -> Bool {
-        !pinned && hidden.contains(projectID ?? noProject)
+    /// `listedWait` is a wait for approval while Needs approval is on: it
+    /// lists every wait, as the amber dot counts them.
+    static func hides(projectID: String?, pinned: Bool, listedWait: Bool = false, hidden: Set<String>) -> Bool {
+        !pinned && !listedWait && hidden.contains(projectID ?? noProject)
     }
 }

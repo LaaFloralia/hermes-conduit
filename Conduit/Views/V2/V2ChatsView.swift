@@ -1026,14 +1026,27 @@ struct V2ChatsView: View, Equatable {
         return fixed + others.map { V2SessionFilter.source($0) }
     }
 
-    /// The chosen filters' names, or All, and how many projects are hidden.
+    /// The chosen filters' names, or All, and what Filter ▸ Projects
+    /// hides: how many projects, and Home's chats by name, since those are
+    /// in no project.
     private func selectionTitles(separator: String) -> String {
-        let hiddenCount = shownHiddenProjectCount
-        let names = selection.isEmpty && hiddenCount == 0
+        let hidden = showingProjects ? [] : hiddenProjects
+        let names = selection.isEmpty && hidden.isEmpty
             ? [V2SessionFilter.all.title]
             : selection.ordered.map(\.title)
-        return (names + (hiddenCount > 0 ? [AppLocalization.string("\(hiddenCount) projects hidden")] : []))
-            .joined(separator: separator)
+        var parts = names
+        if hidden.contains(HiddenChatProjects.noProject) {
+            if let home = appState.projects.first(where: \.isHome)?.title {
+                parts.append(AppLocalization.string("\(home) hidden"))
+            } else {
+                parts.append(AppLocalization.string("Chats outside projects hidden"))
+            }
+        }
+        let projectCount = hidden.subtracting([HiddenChatProjects.noProject]).count
+        if projectCount > 0 {
+            parts.append(AppLocalization.string("\(projectCount) projects hidden"))
+        }
+        return parts.joined(separator: separator)
     }
 
     /// The chosen filters' names as VoiceOver reads them.
@@ -1089,13 +1102,16 @@ struct V2ChatsView: View, Equatable {
                 hasStatus: hasStatus
             )
         }
-        // A search looks through every chat, a hidden project's too.
+        // A search looks through every chat, a hidden project's too, and
+        // Needs approval lists every wait, as the amber dot counts them.
         let hidden = hidingProjects ? hiddenProjects : []
         guard !searching, !hidden.isEmpty else { return rows }
+        let listsWaits = selection.contains(.needsApproval)
         return rows.filter { session in
             !HiddenChatProjects.hides(
                 projectID: appState.knownProjectID(for: session),
                 pinned: appState.isSessionPinned(session),
+                listedWait: listsWaits && hasStatus(.needsApproval, session),
                 hidden: hidden
             )
         }
@@ -1287,7 +1303,9 @@ struct V2ChatsView: View, Equatable {
             if layout.emptyState && !contentSearch.isSearching {
                 // Only a catalog Hermes answered says "No Sessions": right
                 // after a sign-in the list is empty until its first read
-                // lands, and a failed read says it failed.
+                // lands, and a failed read says it failed. Hidden projects
+                // are worked out once: it walks the catalog again.
+                let hidesEverything = self.hidesEverything
                 SessionListPlaceholderView(
                     placeholder: SessionListPlaceholder.resolve(
                         hasRows: false,
@@ -1300,7 +1318,7 @@ struct V2ChatsView: View, Equatable {
                         ? AppLocalization.string("No chats to show")
                         : selection.emptyStateFilter.emptyTitle,
                     emptyDescription: hidesEverything
-                        ? AppLocalization.string("The chats here are in projects you hid. Tick them again in Filter > Projects.")
+                        ? AppLocalization.string("The chats here are hidden in Filter > Projects. Tick them again to show them.")
                         : isSearching
                             ? AppLocalization.string("Try a different search.")
                             : selection.emptyStateFilter.emptyDescription,

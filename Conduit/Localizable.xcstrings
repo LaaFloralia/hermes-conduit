@@ -347836,88 +347836,6 @@
         }
       }
     },
-    "The chats here are in projects you hid. Tick them again in Filter > Projects." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Chats hier gehören zu Projekten, die du ausgeblendet hast. Setze unter Filter > Projekte wieder ein Häkchen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los chats de aquí están en proyectos que ocultaste. Vuelve a marcarlos en Filtro > Proyectos."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les discussions d’ici sont dans des projets que vous avez masqués. Recochez-les dans Filtre > Projets."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Obrolan di sini ada di proyek yang kamu sembunyikan. Centang lagi di Filter > Proyek."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le chat qui sono in progetti che hai nascosto. Rimetti la spunta in Filtro > Progetti."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ここのチャットは非表示にしたプロジェクトにあります。フィルタ > プロジェクトでもう一度チェックしてください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이곳의 채팅은 숨긴 프로젝트에 있습니다. 필터 > 프로젝트에서 다시 선택하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Czaty z tego miejsca są w ukrytych projektach. Zaznacz je ponownie w Filtr > Projekty."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Os chats daqui estão em projetos que você ocultou. Marque-os de novo em Filtro > Projetos."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Чаты здесь находятся в скрытых вами проектах. Снова отметьте их в «Фильтр > Проекты»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Buradaki sohbetler gizlediğiniz projelerde. Filtre > Projeler’de yeniden işaretleyin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这里的聊天位于你隐藏的项目中。请在“筛选 > 项目”中重新勾选。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "這裡的聊天位於你隱藏的專案中。請在「篩選 > 專案」中重新勾選。"
-          }
-        }
-      }
-    },
     "%lld projects hidden" : {
       "localizations" : {
         "de" : {
@@ -348046,7 +347964,7 @@
               "other" : {
                 "stringUnit" : {
                   "state" : "translated",
-                  "value" : "%lld件のプロジェクトを非表示"
+                  "value" : "%lld件のプロジェクトが非表示"
                 }
               }
             }
@@ -348188,6 +348106,252 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "%@ hidden" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ausgeblendet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ oculto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ masqué"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ disembunyikan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nascosto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@は非表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 숨김"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ukryte"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ oculto"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ скрыто"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ gizli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隐藏%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隱藏%@"
+          }
+        }
+      }
+    },
+    "Chats outside projects hidden" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chats ohne Projekt ausgeblendet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chats sin proyecto ocultos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discussions hors projet masquées"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan tanpa proyek disembunyikan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat senza progetto nascoste"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プロジェクト外のチャットは非表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "프로젝트 밖 채팅 숨김"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czaty poza projektami ukryte"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chats fora de projetos ocultos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чаты вне проектов скрыты"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proje dışı sohbetler gizli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隐藏项目外的聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已隱藏專案外的聊天"
+          }
+        }
+      }
+    },
+    "The chats here are hidden in Filter > Projects. Tick them again to show them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Chats hier sind unter Filter > Projekte ausgeblendet. Setze dort wieder ein Häkchen, um sie anzuzeigen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los chats de aquí están ocultos en Filtro > Proyectos. Vuelve a marcarlos para mostrarlos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les discussions d’ici sont masquées dans Filtre > Projets. Recochez-les pour les afficher."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan di sini disembunyikan di Filter > Proyek. Centang lagi untuk menampilkannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chat qui sono nascoste in Filtro > Progetti. Rimetti la spunta per mostrarle."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここのチャットはフィルタ > プロジェクトで非表示になっています。もう一度チェックすると表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이곳의 채팅은 필터 > 프로젝트에서 숨겨져 있습니다. 다시 선택하면 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czaty z tego miejsca są ukryte w Filtr > Projekty. Zaznacz je ponownie, aby je pokazać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os chats daqui estão ocultos em Filtro > Projetos. Marque-os de novo para mostrá-los."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чаты здесь скрыты в «Фильтр > Проекты». Снова отметьте их, чтобы показать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buradaki sohbetler Filtre > Projeler’de gizli. Göstermek için yeniden işaretleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里的聊天已在“筛选 > 项目”中隐藏。重新勾选即可显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡的聊天已在「篩選 > 專案」中隱藏。重新勾選即可顯示。"
           }
         }
       }
