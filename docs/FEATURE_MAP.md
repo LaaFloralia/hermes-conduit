@@ -1205,26 +1205,32 @@ background · a failed sync's retry · the backoff itself
 The browser a native (PKCE) dashboard sign-in opens in, and the Private
 sign-in page switch that makes it start fresh.
 
-**Siblings:** the login screen (with the switch under Advanced) · Connection
-Setup's Repair sign-in (same sheet, reads the same switch) · Settings and
-Watch captions (none describe this browser) · the bot MCP sign-in browser
-(separate, unchanged)
+**Siblings:** the sign-in screen's Advanced card (Add a dashboard) ·
+Repair's Sign In to Reconnect · Settings' Sign In Again · the saved
+dashboards screen · the switch's captions in 13 languages · the embedded
+browser sign-in (AuthWebView, a different flow) · the bot MCP sign-in
+browser (separate)
 
 **Code**
-- Browser and switch: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController)
-- Switch and caption: `Conduit/Views/Login/LoginScreens.swift` (advancedCard, advancedFields)
-- Repair: `Conduit/Views/ConnectionSetupView.swift` (repairSignInSheet)
+- Browser and setting: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController, NativeOAuthLoginModel.run)
+- The switch: `Conduit/Views/Login/LoginScreens.swift` (PrivateSignInPageToggle, advancedFields)
+- Repair and Sign In Again: `Conduit/Views/ConnectionSetupForm.swift` (repairReviewFooter, settingsSignInAgain), `Conduit/Views/ConnectionSetupView.swift` (repairSignInSheet)
+- Saved dashboards screen: `Conduit/Views/Login/LoginScreens.swift` (LoginDashboardsScreen)
+- Embedded browser sign-in: `Conduit/Views/LoginView.swift` (AuthWebView)
 - Bot MCP sign-in, its own browser: `Conduit/Views/BotCapabilitiesView.swift` (BotMcpBrowserView)
 
 **Rulings**
-- A native sign-in opens in an ASWebAuthenticationSession, not ephemeral by default, so the identity provider's session and passkeys carry over between sign-ins. Hermes accepts only a loopback redirect, so the code still arrives through the loopback listener and Conduit closes the browser itself (2026-10-26, #1329).
-- Private sign-in page makes that session ephemeral, so every sign-in shows the provider's full page (a login code as well as the passkey), for a re-authentication page that offers only the passkey or for switching accounts (2026-10-26, #1329).
+- A native sign-in that opens the sign-in page opens it in an ASWebAuthenticationSession, not ephemeral by default, so the provider's page can remember the account between sign-ins. iOS asks "Conduit wants to use … to sign in" before a non-ephemeral session opens. Hermes accepts only a loopback redirect, so the code still arrives through the loopback listener and Conduit closes the browser itself (2026-10-26, #1329).
+- Private sign-in page makes each new browser session ephemeral, so a sign-in that opens the page shows every way the provider offers (a login code as well as a passkey) and can pick another account. It doesn't skip a saved grant: NativeOAuthLoginModel.run signs in with one without opening the page (2026-10-26, #1329).
+- The switch, with the caption for its setting inside its label, sits wherever a native sign-in can start from Conduit's own screens: the sign-in screen's Advanced card, Repair's Sign In to Reconnect and Settings' Sign In Again (2026-10-27, #1329, Eric).
+- A browser that fails or doesn't start reports "The sign-in page couldn't open" through the sheet's error; only the user closing it is a cancellation, and a closed browser never reopens (#1329).
 
 **Open gaps**
-- The switch is only on the login screen; Repair reads it but can't change it.
+- The saved dashboards screen has no Advanced card, so a returning user changes the switch through Add a dashboard, Repair or Sign In Again.
+- To switch accounts on a dashboard with a saved grant, sign out first; the switch alone keeps the grant.
 - Whether the session shares MobileSafari's own sign-in depends on iOS; in simulator testing with Pocket ID it kept only its own session.
 
-**Checked:** 2026-10-26, at #1329.
+**Checked:** 2026-10-27, at #1329.
 
 ## Dashboard sign-in redirects
 

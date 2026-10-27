@@ -60,6 +60,7 @@ enum NativeOAuthError: LocalizedError, Equatable {
     case tokenResponseMalformed
     case tokenStorageFailed
     case timedOut
+    case browserFailed
     case requestFailed(status: Int)
 
     var errorDescription: String? {
@@ -73,6 +74,7 @@ enum NativeOAuthError: LocalizedError, Equatable {
         case .tokenResponseMalformed: return AppLocalization.string("The dashboard returned invalid authentication tokens.")
         case .tokenStorageFailed: return AppLocalization.string("Could not save this dashboard.")
         case .timedOut: return AppLocalization.string("Sign-in timed out. Please try again.")
+        case .browserFailed: return AppLocalization.string("The sign-in page couldn't open. Please try again.")
         case .requestFailed(let status): return AppLocalization.string("Dashboard sign-in failed (HTTP \(String(status))).")
         }
     }
@@ -1005,6 +1007,9 @@ private struct WebAuthenticationView: UIViewControllerRepresentable {
             nativeOAuthLogger.notice("OAuth stage: user cancelled browser")
             context.coordinator.cancel()
             onCancel()
+        }, onFailure: { error in
+            context.coordinator.cancel()
+            onError(error)
         })
         context.coordinator.start(operation: operation, onSuccess: onSuccess, onError: onError)
         return controller
@@ -1040,12 +1045,17 @@ private struct WebAuthenticationView: UIViewControllerRepresentable {
         private var url: URL?
         private let privateSignIn: Bool
         private let onCancel: () -> Void
+        private let onFailure: (Error) -> Void
         private var session: ASWebAuthenticationSession?
-        private var closedByConduit = false
+        /// Set once the browser has closed for any reason (Conduit closed
+        /// it, the user cancelled, or it failed), so a late update or
+        /// appearance never opens a second one.
+        private var ended = false
 
-        init(privateSignIn: Bool, onCancel: @escaping () -> Void) {
+        init(privateSignIn: Bool, onCancel: @escaping () -> Void, onFailure: @escaping (Error) -> Void) {
             self.privateSignIn = privateSignIn
             self.onCancel = onCancel
+            self.onFailure = onFailure
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -1084,8 +1094,8 @@ private struct WebAuthenticationView: UIViewControllerRepresentable {
         }
 
         func closeBrowser() {
+            ended = true
             guard let session else { return }
-            closedByConduit = true
             session.cancel()
             self.session = nil
         }
@@ -1095,18 +1105,24 @@ private struct WebAuthenticationView: UIViewControllerRepresentable {
         }
 
         private func startSessionIfReady() {
-            guard let url, viewIfLoaded?.window != nil, session == nil, !closedByConduit else { return }
+            guard let url, viewIfLoaded?.window != nil, session == nil, !ended else { return }
             let session = ASWebAuthenticationSession(
                 url: url,
                 callbackURLScheme: Self.unusedCallbackScheme
             ) { [weak self] _, error in
                 DispatchQueue.main.async {
-                    guard let self, !self.closedByConduit else { return }
+                    guard let self, !self.ended else { return }
+                    self.ended = true
                     self.session = nil
                     if let error = error as? ASWebAuthenticationSessionError, error.code == .canceledLogin {
                         self.onCancel()
                     } else if let error {
                         nativeOAuthLogger.error("OAuth stage: browser session failed: \(error.localizedDescription, privacy: .public)")
+                        self.onFailure(NativeOAuthError.browserFailed)
+                    } else {
+                        // Hermes never redirects to the session's callback
+                        // scheme, so an end without an error is the page
+                        // going away: treat it as the user closing it.
                         self.onCancel()
                     }
                 }
@@ -1118,8 +1134,9 @@ private struct WebAuthenticationView: UIViewControllerRepresentable {
                 nativeOAuthLogger.notice("OAuth stage: browser session presented")
             } else {
                 nativeOAuthLogger.error("OAuth stage: browser session did not start")
+                ended = true
                 self.session = nil
-                onCancel()
+                onFailure(NativeOAuthError.browserFailed)
             }
         }
     }

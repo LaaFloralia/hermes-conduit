@@ -35,8 +35,6 @@ struct LoginAddressStep: View {
     /// Set only by the user's Cloudflare switch, so a filled-in token never
     /// scrolls the form away from its top.
     @State private var revealCloudflare = false
-    @AppStorage(NativeOAuthBrowserPreference.privateSignInKey)
-    private var privateSignIn = false
 
     var body: some View {
         // A keyboard-aware scroll view: at compact heights with the keyboard
@@ -246,16 +244,7 @@ struct LoginAddressStep: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Toggle("Private sign-in page", isOn: $privateSignIn)
-                .tint(.conduitAccent)
-                .font(.callout.weight(.semibold))
-                .accessibilityIdentifier("\(prefix).private-sign-in")
-            Text(privateSignIn
-                 ? AppLocalization.string("Each sign-in starts fresh and shows every way the sign-in page offers, such as a login code.")
-                 : AppLocalization.string("Sign-in remembers your account and uses its passkey. Turn this on if you need another way, such as a login code."))
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            PrivateSignInPageToggle(identifier: "\(prefix).private-sign-in")
             Button {
                 focusedField = nil
                 flow.extraHeadersRequest = LoginExtraHeadersRequest(
@@ -891,6 +880,35 @@ struct LoginSwitchRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
         .frame(minHeight: 60)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
+/// The Private sign-in page switch with the caption for its current
+/// setting, inside the switch's label so VoiceOver reads them together.
+/// Shared by the sign-in screen's Advanced card and the sign-in actions of
+/// Connection Setup (Repair's Sign In to Reconnect, Settings' Sign In Again).
+/// It only matters when a native sign-in opens the sign-in page: a saved
+/// grant signs in without it.
+struct PrivateSignInPageToggle: View {
+    let identifier: String
+    @AppStorage(NativeOAuthBrowserPreference.privateSignInKey)
+    private var privateSignIn = false
+
+    var body: some View {
+        Toggle(isOn: $privateSignIn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(AppLocalization.string("Private sign-in page"))
+                    .font(.callout.weight(.semibold))
+                Text(privateSignIn
+                     ? AppLocalization.string("When the sign-in page opens, it starts fresh and shows every way to sign in, such as a login code.")
+                     : AppLocalization.string("The sign-in page can remember your account. Turn this on if you need another way to sign in, such as a login code."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .tint(.conduitAccent)
         .accessibilityIdentifier(identifier)
     }
 }

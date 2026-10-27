@@ -413,6 +413,9 @@ struct ConnectionSetupForm: View {
                         .accessibilityIdentifier("setup.review.sign-in-again-failure")
                 }
             }
+            ConnectionSetupPanel {
+                PrivateSignInPageToggle(identifier: "setup.review.private-sign-in")
+            }
             LoginPrimaryButton(title: AppLocalization.string("Sign In Again")) { review.signInAgain() }
                 .accessibilityIdentifier("setup.review.sign-in-again")
         }
@@ -440,6 +443,9 @@ struct ConnectionSetupForm: View {
                 }
             }
             if repair.isInteractive {
+                ConnectionSetupPanel {
+                    PrivateSignInPageToggle(identifier: "setup.review.private-sign-in")
+                }
                 LoginPrimaryButton(title: AppLocalization.string("Sign In to Reconnect")) { repair.signInToReconnect() }
                     .accessibilityIdentifier("setup.review.sign-in-reconnect")
                 if repair.offersPasswordSignIn {
