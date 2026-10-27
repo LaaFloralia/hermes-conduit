@@ -1566,6 +1566,18 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// A call from Hermes muted in CallKit while its voice opened starts
+    /// with the microphone off (#1378).
+    func testGeminiLiveCallMutedWhileOpeningStartsMuted() async {
+        let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
+        controller.startsMuted = { true }
+        await controller.start()
+        session.becomeReady()
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        XCTAssertFalse(input.running, "the call connects without the microphone")
+        controller.stop()
+    }
+
     func testGeminiLiveNewConversationStartsWithTheMicrophoneOpen() async {
         let (controller, session, input, _, _) = makeGeminiController(clock: Date.init)
         await controller.start()

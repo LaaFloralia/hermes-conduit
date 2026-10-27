@@ -1854,6 +1854,42 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.coordinator.observedVoiceMode, .classic)
     }
 
+    func testLocalLiveIsACarPlayModeAndItsHandsFreeOptionIsListedAsClassic() async {
+        let harness = makeHarness()
+        harness.coordinator.handleConnect(harness.spy)
+
+        harness.coordinator.selectVoiceMode(.localLive)
+        XCTAssertTrue(harness.appState.isLocalLiveEnabled)
+        XCTAssertTrue(harness.appState.isLocalLiveAgent, "picked in the car, as Settings' Local saves it")
+        XCTAssertEqual(harness.coordinator.observedVoiceMode, .localLive)
+        XCTAssertEqual(CarPlayBrowse.modeRows(current: .localLive).filter(\.isSelected).map(\.title), ["Local Live"])
+
+        // Classic's hands-free option on the speech server runs on Local
+        // Live's controller in the car too, and is listed as Classic, as on
+        // the phone.
+        harness.appState.setLocalLiveAgent(false)
+        XCTAssertEqual(CarPlayVoiceMode.current(in: harness.appState), .localLive)
+        XCTAssertEqual(CarPlayVoiceMode.listed(in: harness.appState), .classic)
+        XCTAssertEqual(harness.coordinator.observedVoiceMode, .localLive)
+
+        // Classic is already what the list shows: picking it changes nothing.
+        harness.coordinator.selectVoiceMode(.classic)
+        XCTAssertTrue(harness.appState.isLocalLiveEnabled)
+
+        // Local picked from there moves to agent mode.
+        harness.coordinator.selectVoiceMode(.localLive)
+        XCTAssertTrue(harness.appState.isLocalLiveAgent)
+        XCTAssertEqual(CarPlayVoiceMode.listed(in: harness.appState), .localLive)
+
+        harness.coordinator.selectVoiceMode(.classic)
+        XCTAssertFalse(harness.appState.isLocalLiveEnabled)
+        XCTAssertEqual(harness.coordinator.observedVoiceMode, .classic)
+    }
+
+    func testEachCarPlayModeSavesTheSettingsModeOfTheSameName() {
+        XCTAssertEqual(CarPlayVoiceMode.all.map(\.choice), [.classic, .gemini, .qwen, .gpt, .grok, .local])
+    }
+
     func testSentTurnPlaysTheStatusSoundUnlessTurnedOff() async throws {
         let harness = makeHarness()
         let defaults = makeScratchDefaults("CarPlaySounds")
@@ -2778,6 +2814,38 @@ final class CarPlayVoicePhoneAttachTests: XCTestCase {
                 harness.appState.voiceSheetShouldAutoListen, !muted,
                 muted ? "a call muted before its voice opened keeps the mic off" : "the call's voice listens on its own"
             )
+        }
+    }
+
+    /// #1376: a call from Hermes on Local Live opens Local Live when its
+    /// answer chose a live opening (agent mode: the fast model says why
+    /// Hermes called); otherwise classic voice, which was queued the news.
+    func testHermesCallOnLocalLiveOpensWhatItsAnswerChose() async {
+        for agent in [true, false] {
+            let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+            addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+                defaults.removePersistentDomain(forName: suite)
+            }
+            harness.appState.activeSessionId = "session-S"
+            harness.controller.beginVoiceTurn(sessionID: "session-S")
+            await harness.controller.startListening()
+            harness.appState.setLocalLiveEnabled(true)
+            harness.appState.setLocalLiveAgent(agent)
+            XCTAssertEqual(harness.appState.usesLocalLiveAgent(profile: harness.appState.activeProfile), agent)
+            if harness.appState.usesLocalLiveAgent(profile: harness.appState.activeProfile) {
+                harness.appState.pendingHermesCall = HermesCallOpening(kind: .done, title: "Build", result: "Green")
+            }
+
+            let opened = await harness.appState.openVoiceConversation(
+                PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .hermesCall)
+            )
+
+            XCTAssertTrue(opened)
+            XCTAssertEqual(harness.appState.showLocalLiveSheet, agent)
+            XCTAssertEqual(harness.appState.showVoiceSheet, !agent)
+            harness.appState.closeLocalLiveConversation()
+            harness.appState.closeVoiceConversation()
+            harness.appState.pendingHermesCall = nil
         }
     }
 

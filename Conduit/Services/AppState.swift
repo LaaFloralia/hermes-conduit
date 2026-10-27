@@ -2820,6 +2820,7 @@ final class AppState: ObservableObject {
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt },
             provider: provider
         )
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in
             if qwen { self?.closeQwenLiveConversation() } else { self?.closeGeminiLiveConversation() }
@@ -3306,6 +3307,7 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGPTLiveConversation() }
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         controller.apiCallLimit = { [weak self] in
             guard let self else { return nil }
             return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.activeProfile).gptLiveAPIMaxMinutes)
@@ -3640,6 +3642,7 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGrokLiveConversation() }
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         controller.traceName = "Grok Live"
         return controller
     }()
@@ -3782,6 +3785,12 @@ final class AppState: ObservableObject {
         loadVoiceProfilePreferences(profile: activeProfile).localLiveAgent
     }
 
+    /// The same for `profile`, which a call from Hermes and the voice start
+    /// it asks for both read, so they pick the same voice.
+    func usesLocalLiveAgent(profile: String) -> Bool {
+        loadVoiceProfilePreferences(profile: profile).localLiveAgent
+    }
+
     func setLocalLiveAgent(_ agent: Bool) {
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         guard preferences.localLiveAgent != agent else { return }
@@ -3913,7 +3922,7 @@ final class AppState: ObservableObject {
         isBusy: { [weak self] chat in
             guard let self else { return false }
             if chat.runtimeID == self.activeSessionId { return self.isBusy }
-            guard let client = self.client else { throw HermesError.notConnected }
+            let client = try await self.clientForVoiceRequest()
             let rows = try await client.activeSessions(inProfile: chat.profile)
             return rows.contains { $0.runtimeSessionId == chat.runtimeID && $0.isRunning }
         },
@@ -4047,6 +4056,7 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeLocalLiveConversation() }
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         controller.traceName = "Local Live"
         return controller
     }()
@@ -4082,6 +4092,49 @@ final class AppState: ObservableObject {
             }
         }
         return true
+    }
+
+    /// Starts Local Live for the CarPlay surface. CarPlay presents it, so no
+    /// phone sheet opens; the other voice modes and read aloud stop first,
+    /// as on the phone.
+    func startLocalLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        guard isConnected else { return }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopQwenLiveConversation()
+        stopGeminiLiveConversation()
+        stopGPTLiveConversation()
+        stopGrokLiveConversation()
+        guard !localLiveController.isActive else { return }
+        // A call started from CarPlay's chat list is attached to that chat,
+        // as one started from a chat on the phone is.
+        if let thread {
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        } else {
+            voiceBackgroundJobSupervisor.detachLiveThread()
+        }
+        localLiveTurns.reset()
+        localLiveOwnChat = nil
+        beginVoiceCallRecording(engine: .localLive)
+        await localLiveController.start()
+    }
+
+    /// CarPlay went away. A Local Live call only CarPlay was presenting
+    /// ends; one the phone's sheet or minimised bar shows keeps going.
+    func releaseCarPlayLocalLive() {
+        guard !(isSceneActive && (showLocalLiveSheet || minimisedLiveVoice == .localLive)) else { return }
+        if isLocalLiveActive {
+            closeLocalLiveConversation()
+        } else {
+            // Its work lets go of the call too (#449), and no turn of it
+            // runs on.
+            finishHermesCallbacks(engine: .localLive)
+            if localLiveControllerCreated { localLiveTurns.reset() }
+            localLiveOwnChat = nil
+            if voiceCallRecorder?.engine == .localLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
+        }
     }
 
     func closeLocalLiveConversation() {
@@ -4192,7 +4245,8 @@ final class AppState: ObservableObject {
                 return (created.sessionId, created.storedSessionId)
             },
             setTitle: { [weak self] sessionID, title in
-                try? await self?.client?.setSessionTitle(sessionID, title: title)
+                guard let client = try? await self?.clientForVoiceRequest() else { return }
+                try? await client.setSessionTitle(sessionID, title: title)
             },
             submit: { [weak self] sessionID, text in
                 guard let self else { throw HermesError.notConnected }
@@ -4200,7 +4254,8 @@ final class AppState: ObservableObject {
                 _ = try await client.sendPrompt(sessionID, text: text)
             },
             cancel: { [weak self] sessionID in
-                guard let client = self?.client else { throw HermesError.notConnected }
+                guard let self else { throw HermesError.notConnected }
+                let client = try await self.clientForVoiceRequest()
                 try await client.cancel(sessionID)
             },
             liveSessions: { [weak self] targetProfile in
@@ -6797,6 +6852,11 @@ final class AppState: ObservableObject {
     private var chatCallTranscriptRequest: UUID?
     /// A call Hermes made (#449) that the live call now connecting answers.
     var pendingHermesCall: HermesCallOpening?
+    /// A call from Hermes muted in CallKit before its live voice was
+    /// running: that voice starts muted, as classic voice does (#558).
+    var hermesCallStartsMuted: Bool {
+        (liveHermesCall != nil || pendingHermesCall != nil) && isNativeHermesCallMuted
+    }
     /// Opens the voice of a call answered in CallKit; the CallKit call's
     /// end cancels it.
     var hermesCallOpenTask: Task<Void, Never>?
@@ -8401,7 +8461,8 @@ final class AppState: ObservableObject {
 
     private func liveVoiceThreadIsBusy(_ thread: VoiceThreadTarget) async -> Bool {
         if isOpenChat(thread) { return isBusy }
-        guard let client, let rows = try? await client.activeSessions(inProfile: thread.profile) else { return false }
+        guard let client = try? await clientForVoiceRequest(),
+              let rows = try? await client.activeSessions(inProfile: thread.profile) else { return false }
         return rows.contains { row in
             (thread.owns(sessionID: row.runtimeSessionId) || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
         }
@@ -34702,8 +34763,13 @@ final class AppState: ObservableObject {
             return await resumeVoiceCall(sessionID: callID)
         }
         // A call from Hermes opens with its news, which Local Live has no
-        // model of its own to say: classic voice takes it.
-        if intent.source == .hermesCall, liveEngine == .localLive { liveEngine = nil }
+        // model of its own to say outside agent mode: classic voice takes
+        // it. In agent mode its fast model says it (#1376). The call made
+        // that choice when it was answered: a live opening waits in
+        // pendingHermesCall, and a classic one was queued for classic voice.
+        if intent.source == .hermesCall, liveEngine == .localLive, pendingHermesCall == nil {
+            liveEngine = nil
+        }
         if intent.source == .screenQuestion {
             // The device-test gate: an engine not cleared for screen
             // questions takes them in classic voice.
@@ -35022,10 +35088,64 @@ final class AppState: ObservableObject {
     /// and steers, which go through the composer. True when it waited.
     @discardableResult
     func waitForTransportIfDropped() async -> Bool {
+        await checkQuietTransportOffScreen()
         guard voiceRequestWaitsForTransport else { return false }
         reconnectNowForWaitingVoice("Voice request waiting")
         await awaitTransportForVoiceRequest(timeout: voiceRequestConnectionWait)
         return true
+    }
+
+    /// How long a socket may have been quiet before a request made off
+    /// screen checks it first.
+    static let quietTransportCheckAfter: TimeInterval = PollCadence.keepaliveForeground
+
+    /// The quick check of a quiet connection, or nil when there is nothing
+    /// to check (no open socket, or one that spoke recently). A test seam.
+    var quietTransportLiveness: @MainActor (HermesClient) async -> Bool? = { client in
+        guard client.isConnected, client.quietInterval >= AppState.quietTransportCheckAfter else { return nil }
+        return await client.checkLiveness()
+    }
+
+    private var quietTransportCheckTask: Task<Void, Never>?
+
+    /// A request to Hermes made while Conduit is off screen: in the car, on
+    /// a locked phone, in a Watch call or a call from Hermes. iOS may have
+    /// held Conduit suspended before CarPlay or the call woke it, and a
+    /// socket that died meanwhile still looks open: a GPT-Live call started
+    /// in the car ran (it starts over plain HTTP), but every request it
+    /// handed Hermes waited on the dead socket until it timed out, and the
+    /// call said Hermes wasn't available, while one started on the phone
+    /// worked (#1362). The phone coming on screen pings first and
+    /// reconnects a socket that doesn't answer; so does this, for a socket
+    /// that has been quiet, and the request then waits for the reconnect as
+    /// after any drop. Requests at the same time share one check.
+    func checkQuietTransportOffScreen() async {
+        if let running = quietTransportCheckTask {
+            await running.value
+            return
+        }
+        guard !isSceneActive, isConnected, let client else { return }
+        let check = Task { @MainActor [weak self] in
+            guard let self, await self.quietTransportLiveness(client) == false else { return }
+            self.noteConnectionStep("Connection check before a voice request")
+            // The close reaches handleDisconnect a moment later.
+            await self.awaitConnectionDropped(timeout: .seconds(2))
+        }
+        quietTransportCheckTask = check
+        await check.value
+        quietTransportCheckTask = nil
+    }
+
+    private func awaitConnectionDropped(timeout: Duration) async {
+        guard isConnected else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor in
+                for await connected in self.$isConnected.values where !connected { return }
+            }
+            group.addTask { try? await Task.sleep(for: timeout) }
+            await group.next()
+            group.cancelAll()
+        }
     }
 
     /// A drop is under way that a reconnect from here can repair: the socket
