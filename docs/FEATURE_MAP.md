@@ -294,12 +294,13 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 ## Acknowledging work handed to Hermes
 
 What a live model says when it hands a request to Hermes, so the user knows
-it heard without hearing the same line every time.
+it heard without hearing the same line every time; also Classic's delivery
+of Hermes' own acknowledgements while its turn runs.
 
 **Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live agent ·
 Watch calls · CarPlay · calls from Hermes · the web lookup heads-up · the
-instructions preview in Voice settings · Classic (not needed: Hermes speaks
-for itself) · Local Live, Hermes turns (not needed: Hermes' reply is the
+instructions preview in Voice settings · Classic (Hermes speaks for itself;
+interim speech proposed in #1384) · Local Live, Hermes turns (not needed: Hermes' reply is the
 turn) · the notifier (no acknowledgement text there) · Settings captions,
 README and docs (none today: nothing describes the wording)
 
@@ -312,6 +313,7 @@ README and docs (none today: nothing describes the wording)
 - Local Live agent: `Shared/LocalLive/LocalLiveProtocol.swift` (agentInstructions)
 - Conduit's own tools need none: `Conduit/Voice/VoiceHostTools.swift`
 - Web lookups: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (lookupAnswerNote)
+- Classic, phone and CarPlay: `Conduit/Services/AppState.swift` (notifyVoiceAssistant), `Conduit/Voice/VoiceTypes.swift` (VoiceAssistantEvent), `Conduit/Voice/VoiceConversationController.swift` (receiveAssistantEvent, drainSpeechQueue); candidate regression cases in `ConduitTests/AppStateReasoningStreamTests.swift` and `ConduitTests/VoiceConversationControllerTests.swift`
 
 **Rulings**
 - Each handoff gets a word or a few, in the model's own words and different each time; Hermes is named at most once on a call, or when the user asks who's doing it; telling the user what it's about to do counts as the acknowledgement (2026-10-25, #1251).
@@ -322,8 +324,9 @@ README and docs (none today: nothing describes the wording)
 
 **Open gaps**
 - GPT-Live's send-claim fallback reads English phrases only: an acknowledgement in other words or another language, with no delegation, can still go unsent until the user asks again; and a short reply made only of acknowledgement words ("Let me look.") counts as a send even when the model meant to answer itself (#1251).
+- Draft #1384 proposes that Classic speak unstreamed `message.interim` acknowledgements, flush already-streamed ones without repeating them, and keep the worker turn open until completion. It also preserves final-only recovery and suppresses a matching previewed/reused final. The exception to Reply progress signals' no-speech ruling awaits the maintainer's decision; Swift compilation, XCTest execution and phone/CarPlay playback verification are still pending. Live modes, Watch calls, Local Live's separate turn runner, prompts, Settings captions and README are unchanged.
 
-**Checked:** 2026-10-25, at #1251.
+**Checked:** 2026-10-27, #1384 (Classic candidate source review only; ruling approval and iOS validation pending); 2026-10-25, at #1251.
 
 ## Starting a call
 
@@ -1576,21 +1579,24 @@ and its commentary between tool calls (`message.interim`).
 
 **Siblings:** the compaction spinner's release · the Live Activity's writing
 state · a call's background jobs (follow-up, status, session) · Local Live's
-writing-again · the writing haptic
+writing-again · the writing haptic · Classic speech (phone, CarPlay;
+candidate exception to the no-speech ruling in #1384)
 
 **Code**
 - Events: `Conduit/Services/StreamEventParser.swift`, `Conduit/Services/AppState.swift` (handleStreamEvent, the compaction release)
 - Live Activity: `Conduit/Services/LiveTurnActivities.swift`
 - Calls: `Conduit/Voice/VoiceBackgroundJobs.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift`
 - Haptics: `Conduit/Services/Haptics.swift` (signal)
+- Classic: `Conduit/Voice/VoiceTypes.swift` (VoiceAssistantEvent), `Conduit/Services/AppState.swift` (interim/completion voice notifications), `Conduit/Voice/VoiceConversationController.swift` (speech-segment boundaries)
 
 **Rulings**
 - Commentary between tool calls is the agent writing, wherever its text is: it releases a compaction claim, shows as writing and moves a call's job along, but isn't spoken (#912 follow-up, #1191).
 
 **Open gaps**
 - `Haptics.signal` still plays the writing haptic only for `message.delta`.
+- Draft #1384 proposes a Classic-only speech exception to the existing ruling above, not a change to any other progress consumer: unstreamed commentary is spoken and already-streamed commentary is only sealed, without completing the turn. Maintainer approval, an iOS build, XCTest and physical-device audio checks remain pending; see Acknowledging work handed to Hermes.
 
-**Checked:** 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
+**Checked:** 2026-10-27, #1384 (Classic candidate source review only; existing ruling retained pending maintainer decision); 2026-10-27, #1374 (the Live Activity's registration only; its writing state is unchanged); 2026-10-24, at #1191.
 
 ## Live Activity for a running turn
 
