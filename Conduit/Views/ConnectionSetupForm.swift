@@ -426,7 +426,8 @@ struct ConnectionSetupForm: View {
     /// Round 6: the Repair review's final actions. Reconnect Now requires a
     /// current validated candidate (a consumed one forces a fresh test);
     /// Sign In to Reconnect opens the sign-in the test decided (native
-    /// sign-in in Safari, or the embedded AuthWebView), with the Private
+    /// sign-in in an ASWebAuthenticationSession, or the embedded
+    /// AuthWebView), with the Private
     /// sign-in page switch above it when that can be native; an activation
     /// failure is shown classified with the explicit next step. Never an
     /// automatic retry, never an automatic reconnection.
