@@ -507,8 +507,10 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         case .outputTranscriptDone(let text):
             if readinessResponseOpen { return }
             if !responseHadTranscript { onEvent?(.outputTranscription(text)) }
-        case .inputTranscriptSnapshot(_, let text):
-            // The server sends each utterance's transcript once, when it is done.
+        case .inputTranscriptSnapshot(_, let text, let stage):
+            // The server sends each utterance's transcript once, when it is
+            // done; a draft one marks in progress is replaced by it.
+            guard stage != .draft else { return }
             onEvent?(.inputTranscription(text))
         case .event(let event):
             if readinessResponseEnding, case .turnComplete = event { return }

@@ -226,12 +226,26 @@ enum GrokLiveProtocol {
         /// The function names xAI's session.updated echoes back: which of
         /// the declared tools it took, for the call's trace.
         case acceptedFunctions([String])
-        /// The user's words so far in one input item. xAI sends these as
-        /// cumulative snapshots, sometimes more than once per item, not as
-        /// deltas: the session turns them into the new words only.
-        /// `itemID` is nil when xAI sent none.
-        case inputTranscriptSnapshot(itemID: String?, text: String)
+        /// The user's words in one input item, whole each time, not as
+        /// deltas. xAI sends drafts while the user talks, each rewriting
+        /// the last, then one completed transcript per item; the session
+        /// keeps only the last one. `itemID` is nil when xAI sent none.
+        case inputTranscriptSnapshot(itemID: String?, text: String, stage: InputTranscriptStage)
         case event(GeminiLiveProtocol.ServerEvent)
+    }
+
+    /// How far an input transcript has got, from its event's `status`.
+    enum InputTranscriptStage: Equatable {
+        /// `in_progress`: a draft a later snapshot of the item replaces. A
+        /// draft cut mid-phrase ends in "...", and later drafts rewrite
+        /// earlier words, so one isn't an extension of the last.
+        case draft
+        /// `completed`: the item's final transcript, sent once, before the
+        /// reply's own transcript starts.
+        case completed
+        /// No status: a server that sends each item's transcript once, as
+        /// the Realtime protocol does.
+        case unstated
     }
 
     /// One frame can carry at most one event; unknown types are ignored.
@@ -258,7 +272,13 @@ enum GrokLiveProtocol {
         case "conversation.item.input_audio_transcription.completed":
             guard let text = object["transcript"] as? String, !text.isEmpty else { return [] }
             let itemID = (object["item_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            return [.inputTranscriptSnapshot(itemID: itemID, text: text)]
+            let stage: InputTranscriptStage
+            switch object["status"] as? String {
+            case "in_progress": stage = .draft
+            case "completed": stage = .completed
+            default: stage = .unstated
+            }
+            return [.inputTranscriptSnapshot(itemID: itemID, text: text, stage: stage)]
         case "response.output_audio.delta", "response.audio.delta":
             guard let base64 = object["delta"] as? String, let pcm = Data(base64Encoded: base64), !pcm.isEmpty else { return [] }
             return [.event(.audio(pcm, sampleRate: outputSampleRate))]
@@ -282,20 +302,6 @@ enum GrokLiveProtocol {
         default:
             return []
         }
-    }
-
-    /// What a cumulative input transcript snapshot adds to the item's last
-    /// one, as the delta the shared controller appends; nil when it adds
-    /// nothing. Only a snapshot that extends the last one adds words: an
-    /// appended transcript can't take words back, so a revision of earlier
-    /// words ("send mail" then "send the mail") adds nothing rather than
-    /// repeating them. The session keeps a longer revision as the baseline:
-    /// words a later snapshot adds after it still arrive, but the revised
-    /// words themselves never reach the transcript.
-    static func inputTranscriptDelta(previous: String, snapshot: String) -> String? {
-        guard snapshot != previous, snapshot.hasPrefix(previous) else { return nil }
-        let added = String(snapshot.dropFirst(previous.count))
-        return added.isEmpty ? nil : added
     }
 
     /// `arguments` is a JSON string; Conduit's tools take string values.

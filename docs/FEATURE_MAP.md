@@ -453,6 +453,34 @@ Hermes · Resume Call · memory at call end (notifier)
 
 **Checked:** 2026-10-26, #1247 (the closing transcript save and the Watch broker's revokes keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252, for a call kept with its first request's chat; Qwen joins the shared save path (`qwen-live` history), at #1182, carried in #1235; 2026-10-24, at #1222 (capture cursor); at #1221, for the Watch's transcript tail; at 78f21da; at #1191: a saved screen turn cut at the plugin's limit keeps its last line unless it can be half a fence (#926 review); at #1220: quiet checkpoints, and a saved turn's cut closes a long fence with one as long, within the plugin's limit.
 
+## The user's words in a call's transcript
+
+How each voice mode turns the provider's transcription of what the user said
+into one line per utterance, on screen and in the saved call.
+
+**Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live ·
+Classic (speech server) · Watch calls · CarPlay · a call from Hermes · the
+saved transcript (see Ending a call and what gets saved)
+
+**Code**
+- Gemini and Qwen: `Shared/GeminiLive/GeminiLiveProtocol.swift` (inputTranscription), `Shared/GeminiLive/QwenLiveSocket.swift` (maps Qwen's one completed transcript per item)
+- Grok: `Shared/GrokLive/GrokLiveProtocol.swift` (InputTranscriptStage), `Shared/GrokLive/GrokLiveSession.swift` (pendingInput, finishInput); the phone's calls, CarPlay and calls from Hermes build it in `Conduit/Services/AppState.swift`, and the Watch runs the same session (`ConduitWatch/WatchDirectCallModel.swift`)
+- Local Live: `Shared/LocalLive/LocalLiveSession.swift`, decoding with Grok's protocol
+- GPT-Live: `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` (inputTranscript deltas, the turn assembler)
+- Classic: `Conduit/Voice/SpeechServerTranscription.swift`
+- Shared controller: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (appends each piece to the open user line)
+- Tests: `ConduitTests/GrokLiveVoiceTests.swift`
+
+**Rulings**
+- What the controller gets is appended, never replaced, so a mode hands on either deltas (Gemini, GPT-Live) or each utterance once, whole (Qwen, Grok, Local Live).
+- Grok: xAI sends `conversation.item.input_audio_transcription.completed` several times per item, drafts with `status` `in_progress` that rewrite each other, then one `completed`, before the reply's transcript. Only the completed one is kept; drafts are never appended. An item that never gets one keeps its newest draft when the next item starts, the connection is replaced, or the call ends or fails. A snapshot with no status goes through once per item, as the Realtime protocol sends it; with no item id either, every time. A draft with no item id is replaced by the next snapshot with none (2026-10-27, #1347, for #1324).
+- Local Live drops a snapshot its server marks `in_progress` and keeps the rest (2026-10-27, #1347, for #1324).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-27, #1347.
+
 ## The Watch call log
 
 Timings and connection events from Watch calls, never what was said, kept

@@ -190,8 +190,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(decode(["type": "response.created"]), [.responseStarted])
         XCTAssertEqual(decode(["type": "response.done"]), [.responseDone, .event(.turnComplete)])
         XCTAssertEqual(decode(["type": "input_audio_buffer.speech_started"]), [.event(.interrupted)])
-        XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "item_id": "i1", "transcript": "hi"]), [.inputTranscriptSnapshot(itemID: "i1", text: "hi")])
-        XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "transcript": "hi"]), [.inputTranscriptSnapshot(itemID: nil, text: "hi")])
+        XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "item_id": "i1", "transcript": "hi"]), [.inputTranscriptSnapshot(itemID: "i1", text: "hi", stage: .unstated)])
+        XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "transcript": "hi"]), [.inputTranscriptSnapshot(itemID: nil, text: "hi", stage: .unstated)])
+        XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "item_id": "i1", "status": "in_progress", "transcript": "hi..."]), [.inputTranscriptSnapshot(itemID: "i1", text: "hi...", stage: .draft)])
+        XCTAssertEqual(decode(["type": "conversation.item.input_audio_transcription.completed", "item_id": "i1", "status": "completed", "transcript": "hi there"]), [.inputTranscriptSnapshot(itemID: "i1", text: "hi there", stage: .completed)])
         XCTAssertEqual(decode(["type": "response.output_audio.delta", "delta": Data([9, 9]).base64EncodedString()]), [.event(.audio(Data([9, 9]), sampleRate: 24_000))])
         XCTAssertEqual(decode(["type": "response.output_audio_transcript.delta", "delta": "Hel"]), [.event(.outputTranscription("Hel"))])
         XCTAssertEqual(decode(["type": "response.output_audio_transcript.done", "transcript": "Hello"]), [.outputTranscriptDone("Hello")])
@@ -250,21 +252,6 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(shared.contains("only once it returns started"))
         XCTAssertFalse(shared.contains("first acknowledge it out loud"), "one timing per mode")
         XCTAssertTrue(GrokLiveProtocol.jobClaimInstructions.contains("never speak a tool call"))
-    }
-
-    /// xAI's input transcripts are cumulative snapshots, not deltas: only
-    /// the words a snapshot adds reach the transcript.
-    func testGrokLiveInputTranscriptSnapshotsAddOnlyTheirNewWords() {
-        func delta(_ previous: String, _ snapshot: String) -> String? {
-            GrokLiveProtocol.inputTranscriptDelta(previous: previous, snapshot: snapshot)
-        }
-        XCTAssertEqual(delta("", "Can you check"), "Can you check")
-        XCTAssertEqual(delta("Can you check", "Can you check my email right now?"), " my email right now?")
-        XCTAssertNil(delta("Can you check my email right now?", "Can you check my email right now?"), "a repeated snapshot adds nothing")
-        XCTAssertNil(delta("Can you check my email", "Can you check"), "an older, shorter snapshot adds nothing")
-        XCTAssertNil(delta("Hello?", "Hello, my name is"), "a revision adds nothing: appending can't take words back")
-        XCTAssertNil(delta("send mail", "send the mail"), "an interior revision never repeats words already shown")
-        XCTAssertNil(delta("Hello there", "Hello, Sam"), "a revision no longer than before adds nothing")
     }
 
     func testGrokLiveAvailabilityParsesTheHostStatus() {
@@ -420,9 +407,9 @@ extension VoiceConversationControllerTests {
         session.stop()
     }
 
-    /// The pattern a user reported: "Can you checkCan you check my right
-    /// now?Can you check my right now?" from repeated, growing snapshots.
-    func testGrokLiveSessionTurnsRepeatedTranscriptSnapshotsIntoOneLine() async throws {
+    /// One item as xAI sent it on a real call (#1324): drafts that rewrite
+    /// each other, then one completed transcript. Only that one is kept.
+    func testGrokLiveSessionKeepsOnlyTheCompletedTranscriptOfAnItem() async throws {
         let (session, sockets) = makeGrokSession()
         var heard: [String] = []
         session.onEvent = { event in
@@ -435,19 +422,107 @@ extension VoiceConversationControllerTests {
         await grokSettle()
 
         let event = "conversation.item.input_audio_transcription.completed"
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "Can you check"])
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "Can you check my email right now?"])
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "Can you check my email right now?"])
-        socket.deliver(["type": event, "item_id": "i2", "transcript": "Thanks."])
-        await grokSettle(until: { heard.count == 3 })
-        XCTAssertEqual(heard.joined(), "Can you check my email right now?Thanks.")
-        XCTAssertEqual(heard, ["Can you check", " my email right now?", "Thanks."])
+        socket.deliver(["type": event, "item_id": "i1", "status": "in_progress", "transcript": "Eu, e, moro no Canadá..."])
+        socket.deliver(["type": event, "item_id": "i1", "status": "in_progress", "transcript": "Eu, e, moro no Canadá há oito anos."])
+        socket.deliver(["type": "input_audio_buffer.speech_stopped"])
+        socket.deliver(["type": event, "item_id": "i1", "status": "in_progress", "transcript": "Eu, e, moro no Canadá há oito anos."])
+        socket.deliver(["type": "input_audio_buffer.committed"])
+        await grokSettle()
+        XCTAssertEqual(heard, [], "drafts aren't appended")
+        socket.deliver(["type": event, "item_id": "i1", "status": "completed", "transcript": "Eu, e, moro no Canadá há oito anos."])
+        await grokSettle(until: { heard.count == 1 })
+        socket.deliver(["type": event, "item_id": "i1", "status": "in_progress", "transcript": "Eu, e, moro"])
+        socket.deliver(["type": event, "item_id": "i1", "status": "completed", "transcript": "Eu, e, moro no Canadá há oito anos."])
+        socket.deliver(["type": event, "item_id": "i2", "status": "completed", "transcript": "Obrigado."])
+        await grokSettle(until: { heard.count == 2 })
+        await grokSettle()
+        XCTAssertEqual(heard, ["Eu, e, moro no Canadá há oito anos.", "Obrigado."], "a late draft or repeat of a finished item adds nothing")
         session.stop()
     }
 
-    /// Without an item id there is no baseline: the snapshot goes through
-    /// whole. More items than are remembered keeps later deltas right.
-    func testGrokLiveSessionPassesIDlessSnapshotsAndBoundsRememberedItems() async throws {
+    /// An item that never gets its completed transcript keeps its newest
+    /// draft when the next item starts, or when the call ends.
+    func testGrokLiveSessionKeepsTheNewestDraftOfAnItemThatNeverCompletes() async throws {
+        let (session, sockets) = makeGrokSession()
+        var heard: [String] = []
+        session.onEvent = { event in
+            if case .inputTranscription(let text) = event { heard.append(text) }
+        }
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+
+        let event = "conversation.item.input_audio_transcription.completed"
+        socket.deliver(["type": event, "item_id": "i1", "status": "in_progress", "transcript": "send mail"])
+        socket.deliver(["type": event, "item_id": "i1", "status": "in_progress", "transcript": "send the mail to Sam"])
+        socket.deliver(["type": event, "item_id": "i2", "status": "in_progress", "transcript": "and"])
+        await grokSettle(until: { heard.count == 1 })
+        XCTAssertEqual(heard, ["send the mail to Sam"])
+        socket.deliver(["type": event, "item_id": "i2", "status": "in_progress", "transcript": "and Alex"])
+        await grokSettle()
+        session.stop()
+        XCTAssertEqual(heard, ["send the mail to Sam", "and Alex"])
+    }
+
+    /// A draft with no item id is replaced by the next snapshot with none,
+    /// so its completed transcript supersedes it.
+    func testGrokLiveSessionReplacesAnIDlessDraftWithItsCompletedTranscript() async throws {
+        let (session, sockets) = makeGrokSession()
+        var heard: [String] = []
+        session.onEvent = { event in
+            if case .inputTranscription(let text) = event { heard.append(text) }
+        }
+        session.start()
+        await grokSettle()
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        await grokSettle()
+
+        let event = "conversation.item.input_audio_transcription.completed"
+        socket.deliver(["type": event, "status": "in_progress", "transcript": "Boa noite..."])
+        socket.deliver(["type": event, "status": "completed", "transcript": "Boa noite, tia."])
+        await grokSettle(until: { heard.count == 1 })
+        await grokSettle()
+        session.stop()
+        XCTAssertEqual(heard, ["Boa noite, tia."])
+    }
+
+    /// Item ids belong to the xAI session: a draft the dropped connection
+    /// never completed is kept, and the new session's items start afresh.
+    func testGrokLiveSessionKeepsAHeldDraftWhenTheConnectionIsReplaced() async throws {
+        let (session, sockets) = makeGrokSession()
+        var heard: [String] = []
+        session.onEvent = { event in
+            if case .inputTranscription(let text) = event { heard.append(text) }
+        }
+        session.start()
+        await grokSettle()
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["type": "session.updated"])
+        await grokSettle()
+
+        let event = "conversation.item.input_audio_transcription.completed"
+        first.deliver(["type": event, "item_id": "i1", "status": "in_progress", "transcript": "Ontem eu bebi um copo de kefir"])
+        await grokSettle()
+        XCTAssertEqual(heard, [])
+        first.serverClose(nil)
+        await grokSettle(until: { sockets().count == 2 && sockets()[1].sent.first != nil })
+        XCTAssertEqual(heard, ["Ontem eu bebi um copo de kefir"])
+        let second = try XCTUnwrap(sockets().dropFirst().first)
+        second.deliver(["type": "session.updated"])
+        await grokSettle(until: { session.state == .ready })
+        second.deliver(["type": event, "item_id": "i1", "status": "completed", "transcript": "e depois eu trabalhei."])
+        await grokSettle(until: { heard.count == 2 })
+        session.stop()
+        XCTAssertEqual(heard, ["Ontem eu bebi um copo de kefir", "e depois eu trabalhei."])
+    }
+
+    /// Without a status, as the Realtime protocol sends it, each item's
+    /// transcript goes through once. Without an item id there is nothing to
+    /// remember it by, so it goes through whole every time.
+    func testGrokLiveSessionPassesStatuslessAndIDlessTranscriptsAndBoundsRememberedItems() async throws {
         let (session, sockets) = makeGrokSession()
         var heard: [String] = []
         session.onEvent = { event in
@@ -469,60 +544,10 @@ extension VoiceConversationControllerTests {
         for number in 1...6 {
             socket.deliver(["type": event, "item_id": "i\(number)", "transcript": "Line \(number)"])
         }
-        socket.deliver(["type": event, "item_id": "i6", "transcript": "Line 6 done"])
-        socket.deliver(["type": event, "item_id": "i6", "transcript": "Line 6 done"])
-        await grokSettle(until: { heard.count == 7 })
+        socket.deliver(["type": event, "item_id": "i6", "transcript": "Line 6"])
+        await grokSettle(until: { heard.count == 6 })
         await grokSettle()
-        XCTAssertEqual(heard, ["Line 1", "Line 2", "Line 3", "Line 4", "Line 5", "Line 6", " done"])
-        session.stop()
-    }
-
-    /// A longer revision adds nothing but becomes the baseline, so words
-    /// said after it arrive without repeating the revised ones.
-    func testGrokLiveSessionAddsWordsAfterARevisionWithoutRepeating() async throws {
-        let (session, sockets) = makeGrokSession()
-        var heard: [String] = []
-        session.onEvent = { event in
-            if case .inputTranscription(let text) = event { heard.append(text) }
-        }
-        session.start()
-        await grokSettle()
-        let socket = try XCTUnwrap(sockets().first)
-        socket.deliver(["type": "session.updated"])
-        await grokSettle()
-
-        let event = "conversation.item.input_audio_transcription.completed"
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "send mail"])
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "send the mail"])
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "send the mail to Sam"])
-        await grokSettle(until: { heard.count == 2 })
-        await grokSettle()
-        XCTAssertEqual(heard, ["send mail", " to Sam"])
-        session.stop()
-    }
-
-    /// A shorter revision adds nothing and leaves the longest snapshot as
-    /// the baseline, so growth after it never repeats words already shown.
-    func testGrokLiveSessionKeepsTheLongestSnapshotAcrossARevision() async throws {
-        let (session, sockets) = makeGrokSession()
-        var heard: [String] = []
-        session.onEvent = { event in
-            if case .inputTranscription(let text) = event { heard.append(text) }
-        }
-        session.start()
-        await grokSettle()
-        let socket = try XCTUnwrap(sockets().first)
-        socket.deliver(["type": "session.updated"])
-        await grokSettle()
-
-        let event = "conversation.item.input_audio_transcription.completed"
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples"])
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like grapes"])
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples pie"])
-        socket.deliver(["type": event, "item_id": "i1", "transcript": "I like apples"])
-        await grokSettle(until: { heard.joined() == "I like apples pie" })
-        await grokSettle()
-        XCTAssertEqual(heard.joined(), "I like apples pie")
+        XCTAssertEqual(heard, ["Line 1", "Line 2", "Line 3", "Line 4", "Line 5", "Line 6"])
         session.stop()
     }
 
