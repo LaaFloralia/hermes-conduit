@@ -11109,8 +11109,13 @@ final class AppState: ObservableObject {
     /// recording, offered again for a Retry.
     @discardableResult
     func appendToRoomDraft(_ words: String, dashboardID: UUID, roomID: String) -> Bool {
+        // The open room counts even when the list missed it (a new room
+        // whose list refresh failed).
+        let isOpen = activeRoomSurface.map {
+            $0.dashboardID == dashboardID && $0.room.roomID == roomID && !$0.room.isDisbanded
+        } ?? false
         guard dashboardID == activeDashboardID,
-              groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
+              isOpen || groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
             return false
         }
         let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)
