@@ -389,7 +389,8 @@ extension AppState {
             // Local Live outside agent mode has no model of its own to say
             // the call's news: classic voice takes it, as
             // openVoiceConversation does. In agent mode its fast model does.
-            if let engine = self.configuredLiveVoiceEngine(profile: profile), engine != .localLive || self.isLocalLiveAgent {
+            if let engine = self.configuredLiveVoiceEngine(profile: profile),
+               engine != .localLive || self.usesLocalLiveAgent(profile: profile) {
                 HermesCallTrace.shared.note("Opening live voice (\(engine))")
                 self.pendingHermesCall = opening
                 opened = await self.openVoiceConversation(intent)

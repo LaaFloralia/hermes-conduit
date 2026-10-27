@@ -2260,6 +2260,34 @@ final class HermesClient: ObservableObject {
     /// the ping would wait behind it past its budget and drop a working
     /// socket: that request's own budget answers for the socket instead
     /// (#1265).
+    /// How long the gateway has sent nothing on this socket.
+    var quietInterval: TimeInterval { Date().timeIntervalSince(lastInboundAt) }
+
+    /// One ping for a socket that may have died unseen while iOS held
+    /// Conduit suspended (#1362): one that doesn't answer is closed, as the
+    /// keepalive closes one, so the ordinary reconnect takes over. It waits
+    /// as long as a keepalive ping, since off screen a relayed path can be
+    /// slow without being dead. True when it answered, or anything else came
+    /// from the gateway meanwhile; skipped, as `healthCheck` is, while a
+    /// large frame is still being written.
+    func checkLiveness() async -> Bool {
+        guard let socket, isConnected else { return false }
+        guard requestsBeingWritten.isEmpty else { return true }
+        let started = Date()
+        do {
+            try await ping(timeout: keepalivePingTimeout)
+            return true
+        } catch {
+            // A cancelled check says nothing about the socket.
+            if error is CancellationError || Task.isCancelled { return true }
+            guard self.socket === socket, !closedIntentionally else { return false }
+            if lastInboundAt > started { return true }
+            logger.error("Liveness ping unanswered; closing the socket")
+            socket.cancel(with: .goingAway, reason: nil)
+            return false
+        }
+    }
+
     func healthCheck() async throws {
         guard requestsBeingWritten.isEmpty else {
             logger.notice("Connection check skipped: a large frame is still being written")

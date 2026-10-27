@@ -245,6 +245,9 @@ final class GPTLiveConversationController: ObservableObject {
     private let missingConsent: @MainActor () -> LiveVoiceModeName?
     @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
+    /// Whether a call starting now starts with the microphone off: a call
+    /// from Hermes the user muted in CallKit before this call was running.
+    var startsMuted: () -> Bool = { false }
     /// The model's voice is silenced (#487). Its words still show in the
     /// captions, and job news Conduit would have it say waits until the
     /// speaker is back on.
@@ -433,8 +436,9 @@ final class GPTLiveConversationController: ObservableObject {
         // A mute belongs to the call it was set in: a new call (one started
         // from CarPlay, which has no mute control, included) is heard.
         // Cleared before the call goes active so the headset mute starts
-        // the call unmuted too.
-        isMicrophoneMuted = false
+        // the call unmuted too. A call from Hermes muted in CallKit while
+        // it opened starts muted (startsMuted).
+        isMicrophoneMuted = startsMuted()
         // So is the speaker mute.
         isSpeakerMuted = false
         phase = .connecting
@@ -511,6 +515,7 @@ final class GPTLiveConversationController: ObservableObject {
         session.onAudioPaused = { [weak self] in self?.audioPauseChanged($0) }
         audioPaused = false
         self.session = session
+        if isMicrophoneMuted { session.setMicrophoneEnabled(false) }
         session.start(initialCaptureAuthorization: widgetAuthorization)
     }
 

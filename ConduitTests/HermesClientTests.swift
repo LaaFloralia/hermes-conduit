@@ -3308,6 +3308,37 @@ extension HermesClientTests {
         client.disconnect()
     }
 
+    /// A request off screen checks a socket that may have died while iOS
+    /// held Conduit suspended (#1362): unanswered, it's closed so the
+    /// ordinary reconnect takes over.
+    func testAnUnansweredLivenessCheckClosesTheSocket() async throws {
+        // A long interval, so only the check pings.
+        let (client, socket) = try await connectKeepaliveClient(interval: 60)
+        let alive = await client.checkLiveness()
+        XCTAssertFalse(alive)
+        XCTAssertTrue(socket.cancelled)
+        XCTAssertEqual(socket.sentTexts.filter { $0.contains("\"ping\"") }.count, 1)
+        client.disconnect()
+    }
+
+    func testAnAnsweredLivenessCheckLeavesTheSocketOpen() async throws {
+        let sent = Gate()
+        let (client, socket) = try await connectKeepaliveClient(interval: 60)
+        socket.onSend = { sent.signal() }
+        let check = Task { @MainActor in await client.checkLiveness() }
+        try await sent.wait("the liveness ping")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        let id = try XCTUnwrap(request["id"] as? Int)
+        try deliverReply(["jsonrpc": "2.0", "id": id, "result": ["pong": true]], on: socket)
+        let alive = await check.value
+        XCTAssertTrue(alive)
+        XCTAssertFalse(socket.cancelled)
+        XCTAssertTrue(client.isConnected)
+        client.disconnect()
+    }
+
     func testOffScreenTheKeepalivePingsLessOften() async throws {
         let (client, socket) = try await connectKeepaliveClient(backgroundInterval: 1.5)
         client.setKeepaliveBackgrounded(true)

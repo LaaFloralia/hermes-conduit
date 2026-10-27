@@ -223,6 +223,10 @@ final class ChatScrollEngine: ObservableObject {
     /// How long after the settled transcript changes the engine checks
     /// that rows were laid out where the reader is (#887).
     static let blankViewportCheckDelay: TimeInterval = 0.35
+    /// While a turn runs its layout passes check for a blank viewport too
+    /// (#1358), and a rebuild is at most this often, from any check: one
+    /// that didn't bring the rows back isn't redone on every streamed line.
+    static let liveBlankViewportRebuildInterval: TimeInterval = 2
     /// How long after its last scroll tick a fling counts as at rest, when
     /// the cards measured during it take their heights (#1238). UIKit can
     /// still report the deceleration on the tick that ends it.
@@ -252,6 +256,9 @@ final class ChatScrollEngine: ObservableObject {
     private(set) var isDragging = false
     private var latestAnimationUntil: TimeInterval?
     private var rowFrames: [String: ChatScrollRowFrame] = [:]
+    /// Frames of the running turn's live rows and a send waiting on screen,
+    /// by row id; only the blank viewport check reads them.
+    private var liveRowFrames: [String: ChatScrollRowFrame] = [:]
     private var visibilityTrackedMessageID: String?
     private var isVisibilityTrackedMessageOffscreen = false
     private(set) weak var surface: ChatScrollSurface?
@@ -269,6 +276,8 @@ final class ChatScrollEngine: ObservableObject {
     /// Bumped by every settled transcript change, so only the latest blank
     /// viewport check acts.
     private var blankViewportCheckGeneration: UInt64 = 0
+    private var blankViewportCheckPending = false
+    private var lastBlankViewportRebuildAt: TimeInterval?
     /// Cards measured while the reader was scrolling, or while the app was
     /// in the background, taking their heights once the reader rests and
     /// the app is back, each once, with its latest measurement. Weak: a
@@ -285,8 +294,9 @@ final class ChatScrollEngine: ObservableObject {
     /// not be the pass's yet, so the write doesn't relatch following.
     private var landingCardShift = false
     private var cardShiftSettleScheduled = false
-    /// Whether rows that report no frame (the running turn's live rows, a
-    /// send waiting on screen) sit below the latest row.
+    /// Whether rows that aren't messages (the running turn's live rows, a
+    /// send waiting on screen) sit below the latest row. They report their
+    /// frames through `liveRowFramesChanged`.
     var liveTailShowing: @MainActor () -> Bool = { false }
     /// Settings > Chat's "Stop at the start of long replies" (#365).
     var holdsRepliesAtStart: @MainActor () -> Bool = { false }
@@ -393,6 +403,7 @@ final class ChatScrollEngine: ObservableObject {
         }
         refreshTrackedMessageVisibility()
         refreshJumpButton()
+        scheduleBlankViewportCheckDuringLiveTurn()
     }
 
     /// The offset changed (user scroll, deceleration, or one of ours).
@@ -465,6 +476,15 @@ final class ChatScrollEngine: ObservableObject {
             holdPrependAnchor(on: surface)
         }
         refreshTopVisibleRow(persist: true)
+    }
+
+    func liveRowFramesChanged(_ frames: [String: ChatScrollRowFrame]) {
+        let lostARow = liveRowFrames.keys.contains { frames[$0] == nil }
+        liveRowFrames = frames
+        // A stack that dropped its rows may change no size at all.
+        if frames.isEmpty || lostARow {
+            scheduleBlankViewportCheckDuringLiveTurn()
+        }
     }
 
     func setPaused(_ paused: Bool) {
@@ -793,8 +813,11 @@ final class ChatScrollEngine: ObservableObject {
         latestAnimationUntil = nil
         cancelDisclosureSettle()
         blankViewportCheckGeneration &+= 1
+        blankViewportCheckPending = false
+        lastBlankViewportRebuildAt = nil
         topVisibleMessageID = nil
         rowFrames = [:]
+        liveRowFrames = [:]
         measuredCards = []
         dropCardShifts()
         // The new conversation's first transcript names its latest user
@@ -1287,13 +1310,28 @@ final class ChatScrollEngine: ObservableObject {
         }
     }
 
-    private func scheduleBlankViewportCheck(rebuildsLeft: Int) {
+    private func scheduleBlankViewportCheck(
+        rebuildsLeft: Int,
+        after delay: TimeInterval = ChatScrollEngine.blankViewportCheckDelay
+    ) {
         blankViewportCheckGeneration &+= 1
+        blankViewportCheckPending = true
         let generation = blankViewportCheckGeneration
-        schedule(Self.blankViewportCheckDelay) { [weak self] in
+        schedule(delay) { [weak self] in
             guard let self, generation == self.blankViewportCheckGeneration else { return }
+            self.blankViewportCheckPending = false
             self.checkForBlankViewport(rebuildsLeft: rebuildsLeft)
         }
+    }
+
+    /// #1358: a running turn streams into its live rows and can go a long
+    /// time without a settled change, so the lazy stack dropping every row
+    /// (the live ones too) left the screen blank until the chat was
+    /// reopened. While live rows show, a layout pass checks as well, and so
+    /// does the live rows' frames going away, one check at a time.
+    private func scheduleBlankViewportCheckDuringLiveTurn() {
+        guard !blankViewportCheckPending, mode == .following, !isPaused, !isDragging, liveTailShowing() else { return }
+        scheduleBlankViewportCheck(rebuildsLeft: 1)
     }
 
     /// #887: after a turn settled, the lazy stack could lay out no row at
@@ -1304,19 +1342,42 @@ final class ChatScrollEngine: ObservableObject {
     /// So the scroll view is built again, as reopening the chat would. No
     /// row covering the screen is the sign, when the latest row has no frame
     /// or ends above the screen; a run of steps collapsed into its first row
-    /// leaves a framed row in view. Live rows report no frame, so nothing is
-    /// rebuilt while they show: a long reply streaming at the bottom leaves
-    /// the rows above it unlaid without the screen being blank. The next
-    /// settled change, such as the reply landing, checks again.
+    /// leaves a framed row in view. While a turn runs, its live rows count
+    /// as rows (#1358): a long reply streaming at the bottom leaves the rows
+    /// above it unlaid without the screen being blank, and live rows that
+    /// aren't laid out either are the same blank screen.
     private func checkForBlankViewport(rebuildsLeft: Int) {
-        guard mode == .following, !isPaused, !isDragging, !latestAnimationInFlight,
-              let surface, !surface.isTracking, !surface.isDecelerating,
-              let last = targetCache.targets.last, !liveTailShowing() else { return }
-        let visible = visibleStackRange(of: surface)
-        guard !rowFrames.values.contains(where: { $0.maxY > visible.lowerBound && $0.minY < visible.upperBound }) else {
+        guard mode == .following, !isPaused, let surface else { return }
+        // A finger, a fling or the jump's animation moving the content:
+        // checked again once it's done, not dropped.
+        if isDragging || latestAnimationInFlight || surface.isTracking || surface.isDecelerating {
+            scheduleBlankViewportCheck(rebuildsLeft: rebuildsLeft)
             return
         }
-        if let lastFrame = rowFrames[last.id], lastFrame.maxY > visible.lowerBound { return }
+        let live = liveTailShowing()
+        // A send waiting in a chat with no message yet is a live tail too.
+        let last = targetCache.targets.last
+        guard last != nil || live else { return }
+        let visible = visibleStackRange(of: surface)
+        let liveFrames = live ? Array(liveRowFrames.values) : []
+        let onScreen = { (frame: ChatScrollRowFrame) in
+            frame.maxY > visible.lowerBound && frame.minY < visible.upperBound
+        }
+        guard !rowFrames.values.contains(where: onScreen), !liveFrames.contains(where: onScreen) else {
+            return
+        }
+        if let last, let lastFrame = rowFrames[last.id], lastFrame.maxY > visible.lowerBound { return }
+        if liveFrames.contains(where: { $0.maxY > visible.lowerBound }) { return }
+        // At most one rebuild every interval, whichever change asked: a
+        // rebuild that didn't help gets one more try once it is over.
+        if rebuildsLeft > 0, let lastRebuild = lastBlankViewportRebuildAt,
+           now() - lastRebuild < Self.liveBlankViewportRebuildInterval {
+            scheduleBlankViewportCheck(
+                rebuildsLeft: rebuildsLeft,
+                after: Self.liveBlankViewportRebuildInterval - (now() - lastRebuild)
+            )
+            return
+        }
         ChatViewportTrace.shared.log(String(
             format: "blank viewport: offset %.1f content %.1f, %ld rows laid out; %@",
             surface.contentOffsetY, surface.contentHeight, rowFrames.count,
@@ -1325,6 +1386,8 @@ final class ChatScrollEngine: ObservableObject {
         guard rebuildsLeft > 0 else { return }
         // The old layout's frames would answer the follow-up check.
         rowFrames = [:]
+        liveRowFrames = [:]
+        lastBlankViewportRebuildAt = now()
         refreshTrackedMessageVisibility()
         emit(.rebuildTranscript)
         scheduleBlankViewportCheck(rebuildsLeft: rebuildsLeft - 1)
