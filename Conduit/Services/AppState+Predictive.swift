@@ -182,7 +182,7 @@ extension AppState {
     func askPredictive(_ body: [String: Any], profile: String, wait: TimeInterval) async -> [String: Any]? {
         if let predictiveSender { return try? await predictiveSender(body) }
         guard let bridge = dashboardTicketBridge else { return nil }
-        let path = DashboardPath.withProfile(Predictive.path, profile: profile)
+        let path = DashboardPath.withProfile(Predictive.path, profile: profile, parameter: notifierPlugin.dashboardProfileParameter)
         return try? await bridge.requestJSON(
             path: path, method: "POST", body: body,
             timeoutMilliseconds: Int((wait + 2) * 1_000)
@@ -450,7 +450,7 @@ extension AppState {
     /// profile names one, and today's count. Nil without the plugin route.
     func loadPredictiveHostStatus() async -> Predictive.HostStatus? {
         guard predictiveIsServed, predictiveSender == nil, let bridge = dashboardTicketBridge else { return nil }
-        let path = DashboardPath.withProfile(Predictive.path, profile: activeProfile)
+        let path = DashboardPath.withProfile(Predictive.path, profile: activeProfile, parameter: notifierPlugin.dashboardProfileParameter)
         guard let answer = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 8_000) else { return nil }
         let model = (answer["fast_model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         return Predictive.HostStatus(fastModel: model, today: (answer["today"] as? NSNumber)?.intValue ?? 0)

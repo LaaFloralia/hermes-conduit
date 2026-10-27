@@ -2604,6 +2604,44 @@ or doc gives a width
 
 **Checked:** 2026-10-26, #1320.
 
+## Voice on a profile the dashboard didn't start with
+
+Voice and Watch calls, chat takeover, Desktop views and predictions on a
+profile other than the one the Hermes dashboard started with. Hermes 0.22.3+ (PLG-3) runs such a profile's plugin requests in
+a plugin host of its own, which carries no WebSockets and none of the
+dashboard process's state, so these routes take the profile as
+`?conduit_profile=` and stay in the dashboard (#1336).
+
+**Siblings:** Local Live (status, key, the call socket, Classic's speak
+socket) · Classic voice listening on a speech server · Grok Live's relay
+socket · Watch calls (tool grant, revoke, audio status and prepare) · chat
+takeover (claims are judged by the dashboard's pid) · Desktop views (the
+hook watches the dashboard's gateway) · predictions (they fork the gateway's
+chat) · the plugin update nudge (the `dashboard-profiles` capability) · Local
+Live's reason when it runs in a plugin host · the notifier README and
+CHANGELOG · not needed: Gemini, Qwen and GPT-Live tokens, Grok Live's status,
+the speech server's status and test (they read the profile's settings and dial
+the server over plain HTTP), Hermes calls, chat on screen and the other routes
+kept in the profile's home (plain HTTP and files, which work in the host), and the turn surface (sent without a
+profile, so it already reaches the dashboard)
+
+**Code**
+- App: `Conduit/Services/DashboardPath.swift` (conduitProfileParameter), `Conduit/Services/NotifierPluginStatus.swift` (dashboardProfileParameter, usedCapabilities), `Conduit/Voice/LocalLive/LocalLiveClient.swift`, `Conduit/Voice/GrokLive/GrokLiveClient.swift`, `Conduit/Voice/HermesVoiceGateway.swift` (profileParameter, rebuilt by AppState's read-aloud currency check when it changes), `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/SpeechServerSpeech.swift`, `Conduit/Voice/HermesVoiceConfigurationService.swift`, `Conduit/Watch/WatchToolGrantClient.swift`, `Conduit/Services/ChatTakeover.swift`, `Conduit/Services/AppState+Predictive.swift`, `Conduit/Services/AppState.swift` (the Desktop views read), `Shared/LocalLive/LocalLiveProtocol.swift`
+- Notifier: `notifier/dashboard/plugin_api.py` (_conduit_route_profile, LOCAL_LIVE_PLUGIN_HOST_REASON, ROUTE_CAPABILITIES), `notifier/README.md`
+- Tests: `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift`, `ConduitTests/ChatTakeoverTests.swift`, `notifier/tests/test_local_live.py`, `notifier/tests/test_grok_live.py`
+
+**Rulings**
+- A workaround until Hermes' plugin host carries WebSockets (asked for on NousResearch/hermes-agent#140051). Conduit sends `?conduit_profile=`, which Hermes doesn't route on, only to a plugin that lists `dashboard-profiles`; an older plugin keeps `?profile=`. The plugin scopes the route to that profile after Hermes' own consent check there, and refuses a Hermes Desktop ticket for any profile but its own, as `?profile=` does (2026-10-27, Eric, #1336).
+- The dashboard's own profile ("default") goes without `?conduit_profile=`. With `dashboard-profiles` the Grok Live and listening sockets leave it out too; with an older plugin they keep the `?profile=default` they always sent. Hermes' own `/api/audio/*` routes (Classic's speak and transcribe) aren't plugin routes and keep `?profile=`.
+
+- Which routes need it: those that read the dashboard process's own state (its gateway's chats, Hermes' websocket auth, Local Live's key registry and calls, the Watch bridges) or open a socket. A route that only reads and writes the profile's home works in the host and keeps `?profile=`.
+
+**Open gaps**
+- Drop the workaround once Hermes' plugin host carries WebSockets.
+- Pulse's and Linked Rooms' app sides are on their branches, not main. A links or rooms route served in a plugin host starts Linked Rooms' loops there too, so when those branches call the routes for such a profile, check them against this entry.
+
+**Checked:** 2026-10-27, #1344 with notifier #412 (every plugin route checked for the dashboard process's state).
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

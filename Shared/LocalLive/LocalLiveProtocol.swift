@@ -50,10 +50,11 @@ enum LocalLiveProtocol {
 
     /// The relay socket's query: the dashboard's own profile goes without
     /// one, as the status and key requests do, so the call is filed under
-    /// the same profile the server's key names.
-    static func profileQueryItems(_ profile: String) -> [URLQueryItem] {
+    /// the same profile the server's key names. `parameter` is
+    /// `conduit_profile` for a plugin that takes it (DashboardPath).
+    static func profileQueryItems(_ profile: String, parameter: String = "profile") -> [URLQueryItem] {
         guard !profile.isEmpty, profile != "default" else { return [] }
-        return [URLQueryItem(name: "profile", value: profile)]
+        return [URLQueryItem(name: parameter, value: profile)]
     }
 
     // MARK: Client → server

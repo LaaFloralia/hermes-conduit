@@ -52,6 +52,7 @@ struct VoiceSettingsRoute: View {
     init(
         bridge: DashboardTicketBridge,
         profile: String,
+        profileParameter: @escaping @MainActor () -> String = { "profile" },
         profileName: String? = nil,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions,
@@ -101,7 +102,7 @@ struct VoiceSettingsRoute: View {
         self.chatVoiceButton = chatVoiceButton
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
-        _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile))
+        _service = StateObject(wrappedValue: HermesVoiceConfigurationService(bridge: bridge, profile: profile, profileParameter: profileParameter))
         _conversationController = ObservedObject(wrappedValue: conversationController)
         self.actions = actions
         self.voiceEnabled = voiceEnabled

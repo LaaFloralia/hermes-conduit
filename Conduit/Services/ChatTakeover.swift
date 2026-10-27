@@ -177,15 +177,19 @@ final class ChatTakeoverClient {
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
 
     private let request: Request
+    /// The query parameter naming the profile: the claims this route drops
+    /// are judged by the dashboard process's pid (DashboardPath.conduitProfileParameter).
+    private let profileParameter: @MainActor () -> String
 
-    init(request: @escaping Request) {
+    init(request: @escaping Request, profileParameter: @escaping @MainActor () -> String = { "profile" }) {
         self.request = request
+        self.profileParameter = profileParameter
     }
 
     func takeOver(sessionIDs: [String], profile: String) async throws -> ChatTakeoverOutcome {
         let body: [String: Any] = ["session_ids": Array(sessionIDs.prefix(Self.maxSessionIDs))]
         do {
-            let response = try await request(DashboardPath.withProfile(Self.path, profile: profile), "POST", body)
+            let response = try await request(DashboardPath.withProfile(Self.path, profile: profile, parameter: profileParameter()), "POST", body)
             return try Self.outcome(from: response)
         } catch let error as DashboardTicketBridgeError {
             throw Self.mapped(error) ?? error

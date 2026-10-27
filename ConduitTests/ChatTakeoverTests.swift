@@ -106,6 +106,14 @@ extension HermesClientTests {
         XCTAssertEqual(seen?.path, "/api/plugins/conduit_push/sessions/takeover?profile=work")
         XCTAssertEqual(seen?.method, "POST")
         XCTAssertEqual(seen?.body?["session_ids"] as? [String], ["a", "b", "c", "d"])
+        // A plugin that takes ?conduit_profile= keeps the takeover in the
+        // dashboard process, whose pid the claims are judged by (#1336).
+        let dashboard = ChatTakeoverClient(request: { path, method, body in
+            seen = (path, method, body)
+            return ["ok": true, "status": "free"]
+        }, profileParameter: { DashboardPath.conduitProfileParameter })
+        _ = try await dashboard.takeOver(sessionIDs: ["a"], profile: "work")
+        XCTAssertEqual(seen?.path, "/api/plugins/conduit_push/sessions/takeover?conduit_profile=work")
     }
 
     func testClientMapsAMissingPlugin() async {
