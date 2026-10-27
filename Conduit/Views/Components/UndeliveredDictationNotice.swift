@@ -60,7 +60,7 @@ struct UndeliveredDictationNotice: View {
                 ProgressView()
                     .controlSize(.small)
                     .frame(width: 28, height: 28)
-                    .accessibilityLabel(Text("Transcribing"))
+                    .accessibilityLabel(AppLocalization.string("Transcribing"))
             } else {
                 Button {
                     onRetry(clip)
@@ -82,7 +82,7 @@ struct UndeliveredDictationNotice: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text("Delete"))
+                .accessibilityLabel(AppLocalization.string("Delete"))
                 .accessibilityValue(Text(message))
             }
         }

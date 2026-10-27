@@ -15,7 +15,7 @@ import Foundation
 
 /// One kept recording: 16 kHz mono PCM16 in `<id>.pcm`, described by
 /// `<id>.json`.
-struct DictationClip: Codable, Equatable, Identifiable {
+struct DictationClip: Codable, Equatable, Identifiable, Sendable {
     let id: UUID
     let recordedAt: Date
     let duration: TimeInterval
