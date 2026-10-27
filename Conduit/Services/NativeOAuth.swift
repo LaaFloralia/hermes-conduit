@@ -74,7 +74,7 @@ enum NativeOAuthError: LocalizedError, Equatable {
         case .tokenResponseMalformed: return AppLocalization.string("The dashboard returned invalid authentication tokens.")
         case .tokenStorageFailed: return AppLocalization.string("Could not save this dashboard.")
         case .timedOut: return AppLocalization.string("Sign-in timed out. Please try again.")
-        case .browserFailed: return AppLocalization.string("The sign-in page couldn't open. Please try again.")
+        case .browserFailed: return AppLocalization.string("The sign-in page couldn’t open. Please try again.")
         case .requestFailed(let status): return AppLocalization.string("Dashboard sign-in failed (HTTP \(String(status))).")
         }
     }

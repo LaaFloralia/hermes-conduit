@@ -169428,7 +169428,7 @@
         }
       }
     },
-    "Sign-in page didn't open" : {
+    "Sign-in page didn’t open" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -169510,7 +169510,7 @@
         }
       }
     },
-    "The sign-in page couldn't open. Please try again." : {
+    "The sign-in page couldn’t open. Please try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
