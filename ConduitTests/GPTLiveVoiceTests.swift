@@ -56,10 +56,12 @@ final class FakeGPTLivePeer: GPTLivePeer {
     private(set) var acceptedAnswers: [String] = []
     private(set) var sent: [[String: Any]] = []
     private(set) var microphoneEnabled = true
+    private(set) var microphoneEnabledAtOffer: Bool?
     private(set) var speakerEnabled = true
     private(set) var closed = false
 
     func makeOffer() async throws -> String {
+        microphoneEnabledAtOffer = microphoneEnabled
         if let offerError { throw offerError }
         return "v=0 offer"
     }
@@ -98,9 +100,10 @@ final class FakeGPTLiveSessionControl: GPTLiveSessionControlling {
     private(set) var stopped = 0
     private(set) var appended: [(text: String, channel: GPTLiveProtocol.Channel, delegationID: String?)] = []
     private(set) var microphoneEnabled: Bool?
+    private(set) var microphoneEnabledAtStart: Bool?
     private(set) var speakerEnabled: Bool?
 
-    func start() { started += 1 }
+    func start() { started += 1; microphoneEnabledAtStart = microphoneEnabled }
     func stop() { stopped += 1; isReady = false }
 
     func appendContext(_ text: String, channel: GPTLiveProtocol.Channel, delegationID: String?) -> Bool {
@@ -827,6 +830,26 @@ extension VoiceConversationControllerTests {
             headsetMute: headsetMute ?? HeadsetMicrophoneMute(system: FakeSystemInputMute())
         )
         return (controller, session, supervisor, fake)
+    }
+
+    func testGPTLiveCallMutedWhileOpeningNeverOpensTheMicrophone() async {
+        let (controller, controlled, _, _) = makeGPTController(clock: Date.init)
+        controller.startsMuted = { true }
+        await controller.start()
+        XCTAssertEqual(controlled.started, 1)
+        XCTAssertEqual(controlled.microphoneEnabledAtStart, false, "the mute reaches the session before it captures")
+        controlled.becomeReady()
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        XCTAssertEqual(controlled.microphoneEnabled, false)
+        controller.stop()
+
+        let peer = FakeGPTLivePeer()
+        let session = GPTLiveSession(client: FakeGPTLiveClient(), makePeer: { peer })
+        session.setMicrophoneEnabled(false)
+        session.start()
+        await settle()
+        XCTAssertEqual(peer.microphoneEnabledAtOffer, false, "the local track is created disabled")
+        session.stop()
     }
 
     func testGPTLiveCallShowsPausedWhileAnotherSoundHoldsTheAudio() async {

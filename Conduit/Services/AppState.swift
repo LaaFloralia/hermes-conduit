@@ -2820,6 +2820,7 @@ final class AppState: ObservableObject {
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt },
             provider: provider
         )
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in
             if qwen { self?.closeQwenLiveConversation() } else { self?.closeGeminiLiveConversation() }
@@ -3306,6 +3307,7 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGPTLiveConversation() }
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         controller.apiCallLimit = { [weak self] in
             guard let self else { return nil }
             return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.activeProfile).gptLiveAPIMaxMinutes)
@@ -3640,6 +3642,7 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGrokLiveConversation() }
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         controller.traceName = "Grok Live"
         return controller
     }()
@@ -3780,6 +3783,12 @@ final class AppState: ObservableObject {
     /// hands-free option on the speech server.
     var isLocalLiveAgent: Bool {
         loadVoiceProfilePreferences(profile: activeProfile).localLiveAgent
+    }
+
+    /// The same for `profile`, which a call from Hermes and the voice start
+    /// it asks for both read, so they pick the same voice.
+    func usesLocalLiveAgent(profile: String) -> Bool {
+        loadVoiceProfilePreferences(profile: profile).localLiveAgent
     }
 
     func setLocalLiveAgent(_ agent: Bool) {
@@ -4047,6 +4056,7 @@ final class AppState: ObservableObject {
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeLocalLiveConversation() }
+        controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
         controller.traceName = "Local Live"
         return controller
     }()
@@ -4082,6 +4092,49 @@ final class AppState: ObservableObject {
             }
         }
         return true
+    }
+
+    /// Starts Local Live for the CarPlay surface. CarPlay presents it, so no
+    /// phone sheet opens; the other voice modes and read aloud stop first,
+    /// as on the phone.
+    func startLocalLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        guard isConnected else { return }
+        messageReadAloudController.stop()
+        if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
+        stopQwenLiveConversation()
+        stopGeminiLiveConversation()
+        stopGPTLiveConversation()
+        stopGrokLiveConversation()
+        guard !localLiveController.isActive else { return }
+        // A call started from CarPlay's chat list is attached to that chat,
+        // as one started from a chat on the phone is.
+        if let thread {
+            voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        } else {
+            voiceBackgroundJobSupervisor.detachLiveThread()
+        }
+        localLiveTurns.reset()
+        localLiveOwnChat = nil
+        beginVoiceCallRecording(engine: .localLive)
+        await localLiveController.start()
+    }
+
+    /// CarPlay went away. A Local Live call only CarPlay was presenting
+    /// ends; one the phone's sheet or minimised bar shows keeps going.
+    func releaseCarPlayLocalLive() {
+        guard !(isSceneActive && (showLocalLiveSheet || minimisedLiveVoice == .localLive)) else { return }
+        if isLocalLiveActive {
+            closeLocalLiveConversation()
+        } else {
+            // Its work lets go of the call too (#449), and no turn of it
+            // runs on.
+            finishHermesCallbacks(engine: .localLive)
+            if localLiveControllerCreated { localLiveTurns.reset() }
+            localLiveOwnChat = nil
+            if voiceCallRecorder?.engine == .localLive { finishVoiceCallRecording() }
+            // A minimised call that failed has nothing left to show.
+            if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
+        }
     }
 
     func closeLocalLiveConversation() {
@@ -6797,6 +6850,11 @@ final class AppState: ObservableObject {
     private var chatCallTranscriptRequest: UUID?
     /// A call Hermes made (#449) that the live call now connecting answers.
     var pendingHermesCall: HermesCallOpening?
+    /// A call from Hermes muted in CallKit before its live voice was
+    /// running: that voice starts muted, as classic voice does (#558).
+    var hermesCallStartsMuted: Bool {
+        (liveHermesCall != nil || pendingHermesCall != nil) && isNativeHermesCallMuted
+    }
     /// Opens the voice of a call answered in CallKit; the CallKit call's
     /// end cancels it.
     var hermesCallOpenTask: Task<Void, Never>?
@@ -34701,8 +34759,13 @@ final class AppState: ObservableObject {
             return await resumeVoiceCall(sessionID: callID)
         }
         // A call from Hermes opens with its news, which Local Live has no
-        // model of its own to say: classic voice takes it.
-        if intent.source == .hermesCall, liveEngine == .localLive { liveEngine = nil }
+        // model of its own to say outside agent mode: classic voice takes
+        // it. In agent mode its fast model says it (#1376). The call made
+        // that choice when it was answered: a live opening waits in
+        // pendingHermesCall, and a classic one was queued for classic voice.
+        if intent.source == .hermesCall, liveEngine == .localLive, pendingHermesCall == nil {
+            liveEngine = nil
+        }
         if intent.source == .screenQuestion {
             // The device-test gate: an engine not cleared for screen
             // questions takes them in classic voice.

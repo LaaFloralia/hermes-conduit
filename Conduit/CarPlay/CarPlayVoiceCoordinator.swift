@@ -72,6 +72,9 @@ enum CarPlayVoiceMode: Equatable {
     case qwenLive
     case gptLive
     case grokLive
+    /// Live > Local (agent mode), and Classic's hands-free option on the
+    /// speech server, which runs on the same controller as on the phone.
+    case localLive
 
     @MainActor
     static func current(in appState: AppState) -> CarPlayVoiceMode {
@@ -79,7 +82,19 @@ enum CarPlayVoiceMode: Equatable {
         if appState.isQwenLiveEnabled { return .qwenLive }
         if appState.isGPTLiveEnabled { return .gptLive }
         if appState.isGrokLiveEnabled { return .grokLive }
+        // A call from Hermes on the hands-free option opens classic voice,
+        // which says why Hermes called: the car follows it until it ends,
+        // even if agent mode is turned on meanwhile.
+        if appState.isLocalLiveEnabled, !appState.voiceConversationController.hasLiveVoiceSession { return .localLive }
         return .classic
+    }
+
+    /// The mode as the car's voice list shows it: the hands-free option on
+    /// the speech server is listed as Classic, as on the phone.
+    @MainActor
+    static func listed(in appState: AppState) -> CarPlayVoiceMode {
+        let mode = current(in: appState)
+        return mode == .localLive && !appState.isLocalLiveAgent ? .classic : mode
     }
 }
 
@@ -89,6 +104,7 @@ enum CarPlayLiveVoiceMode: Equatable {
     case qwenLive
     case gptLive
     case grokLive
+    case localLive
 
     /// The live mode for a profile's Voice mode; nil for classic.
     init?(_ mode: CarPlayVoiceMode) {
@@ -98,6 +114,7 @@ enum CarPlayLiveVoiceMode: Equatable {
         case .qwenLive: self = .qwenLive
         case .gptLive: self = .gptLive
         case .grokLive: self = .grokLive
+        case .localLive: self = .localLive
         }
     }
 
@@ -107,6 +124,7 @@ enum CarPlayLiveVoiceMode: Equatable {
         case .qwenLive: return .qwenLive
         case .gptLive: return .gptLive
         case .grokLive: return .grokLive
+        case .localLive: return .localLive
         }
     }
 }
@@ -403,6 +421,7 @@ final class CarPlayVoiceCoordinator {
         appState.releaseCarPlayGeminiLive()
         appState.releaseCarPlayGPTLive()
         appState.releaseCarPlayGrokLive()
+        appState.releaseCarPlayLocalLive()
         // Up to ~30 MB of orb frames at 3x; drawn again on the next connect.
         CarPlayVoiceArtwork.clearCache()
         interruptionObservers.forEach(NotificationCenter.default.removeObserver)
@@ -480,7 +499,8 @@ final class CarPlayVoiceCoordinator {
 
     /// Stop: Hermes' spoken reply stops and the car listens. On the car's
     /// route the microphone is closed while Hermes speaks, so this is the
-    /// classic sheet's Interrupt; Gemini and Grok Live stop their speech.
+    /// classic sheet's Interrupt; Gemini, Qwen and Grok Live stop their
+    /// speech, and Local Live also tells the speech server to stop.
     func stopReply() {
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
@@ -495,6 +515,7 @@ final class CarPlayVoiceCoordinator {
         case .geminiLive: appState.geminiLiveController.interruptSpeaking()
         case .qwenLive: appState.qwenLiveController.interruptSpeaking()
         case .grokLive: appState.grokLiveController.interruptSpeaking()
+        case .localLive: appState.localLiveController.interruptSpeaking()
         case .gptLive: break
         }
     }
@@ -685,6 +706,8 @@ final class CarPlayVoiceCoordinator {
         case .gptLive: beginObservingGPTLive(appState.gptLiveController)
         // Grok Live runs on Gemini Live's controller, so its phases map the same.
         case .grokLive: beginObservingGeminiLive(appState.grokLiveController)
+        // So does Local Live.
+        case .localLive: beginObservingGeminiLive(appState.localLiveController)
         }
         let muted: AnyPublisher<Bool, Never>
         // Classic voice with its output muted says nothing aloud: there is
@@ -698,6 +721,7 @@ final class CarPlayVoiceCoordinator {
         case .qwenLive: muted = appState.qwenLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         case .gptLive: muted = appState.gptLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         case .grokLive: muted = appState.grokLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
+        case .localLive: muted = appState.localLiveController.$isMicrophoneMuted.eraseToAnyPublisher()
         }
         controlsObservation?.cancel()
         controlsObservation = muted
@@ -724,7 +748,17 @@ final class CarPlayVoiceCoordinator {
         stateObservation = controller.$state
             .sink { [weak self] state in
                 self?.handleControllerState(state)
+                // Once the change has landed (the publisher fires before it).
+                Task { @MainActor [weak self] in self?.followProfileModeAfterClassic() }
             }
+    }
+
+    /// A call from Hermes on Classic's hands-free option ran on classic
+    /// voice; once it ends, the car goes back to the profile's mode.
+    private func followProfileModeAfterClassic() {
+        guard isConnected, observedVoiceMode == .classic, let appState = lastBoundAppState,
+              CarPlayVoiceMode.current(in: appState) != .classic else { return }
+        observeCurrentVoiceMode(appState)
     }
 
     /// Gemini Live and Grok Live mode: CarPlay shows the conversation's phase
@@ -895,6 +929,10 @@ final class CarPlayVoiceCoordinator {
         case .grokLive:
             return consentIssue(appState.grokLiveController.awaitingConsent)
                 ?? liveIssue(appState.grokLiveController.hostIssue, .grokLive)
+                ?? (isMicrophoneDenied ? .microphoneDenied : nil)
+        // Local Live never asks for consent: the speech server is the user's own.
+        case .localLive:
+            return liveIssue(appState.localLiveController.hostIssue, .localLive)
                 ?? (isMicrophoneDenied ? .microphoneDenied : nil)
         }
     }
@@ -1074,6 +1112,9 @@ final class CarPlayVoiceCoordinator {
     /// only once it was listening: the car didn't hear the driver.
     func conversationStartingOnPhone(in appState: AppState) {
         guard isConnected, lastBoundAppState === appState else { return }
+        // The phone may have opened another voice than the profile's mode
+        // (classic voice for a call from Hermes on the hands-free option).
+        observeCurrentVoiceMode(appState)
         // A chat list still waiting for the voice screen stays closed.
         isChatPickerPending = false
         guard isBrowsing else { return }
@@ -1297,7 +1338,7 @@ final class CarPlayVoiceCoordinator {
         let appState = lastBoundAppState ?? appStateProvider()
         listedAgentProfiles = appState.profiles.count > 1 ? appState.profiles : []
         push(CarPlayBrowseTemplateFactory.voiceTemplate(
-            modes: CarPlayBrowse.modeRows(current: CarPlayVoiceMode.current(in: appState)),
+            modes: CarPlayBrowse.modeRows(current: CarPlayVoiceMode.listed(in: appState)),
             agents: CarPlayBrowse.agentRows(
                 profiles: appState.profiles,
                 active: appState.activeProfile,
@@ -1476,19 +1517,10 @@ final class CarPlayVoiceCoordinator {
         guard isConnected else { return }
         returnToVoiceScreen()
         let appState = lastBoundAppState ?? appStateProvider()
-        guard mode != CarPlayVoiceMode.current(in: appState) else { return }
+        guard mode != CarPlayVoiceMode.listed(in: appState) else { return }
         endConversation()
-        switch mode {
-        case .classic:
-            appState.setQwenLiveEnabled(false)
-            appState.setGeminiLiveEnabled(false)
-            appState.setGPTLiveEnabled(false)
-            appState.setGrokLiveEnabled(false)
-        case .geminiLive: appState.setGeminiLiveEnabled(true)
-        case .qwenLive: appState.setQwenLiveEnabled(true)
-        case .gptLive: appState.setGPTLiveEnabled(true)
-        case .grokLive: appState.setGrokLiveEnabled(true)
-        }
+        // Saved as Settings > Voice > Voice mode saves it.
+        appState.applyVoiceMode(mode.choice)
         observeCurrentVoiceMode(appState)
     }
 
@@ -1575,6 +1607,14 @@ final class CarPlayVoiceCoordinator {
             switch CarPlayGeminiLiveListenAction.forPhase(grok.phase) {
             case .start: await establishLiveVoice(.grokLive, appState: appState, generation: generation, attachingTo: thread)
             case .interrupt: grok.interruptSpeaking()
+            case .nothing: break
+            }
+            return
+        case .localLive:
+            let local = appState.localLiveController
+            switch CarPlayGeminiLiveListenAction.forPhase(local.phase) {
+            case .start: await establishLiveVoice(.localLive, appState: appState, generation: generation, attachingTo: thread)
+            case .interrupt: local.interruptSpeaking()
             case .nothing: break
             }
             return
@@ -1694,6 +1734,9 @@ final class CarPlayVoiceCoordinator {
         case .grokLive:
             let grok = appState.grokLiveController
             grok.setMicrophoneMuted(!grok.isMicrophoneMuted)
+        case .localLive:
+            let local = appState.localLiveController
+            local.setMicrophoneMuted(!local.isMicrophoneMuted)
         }
     }
 
@@ -1719,6 +1762,8 @@ final class CarPlayVoiceCoordinator {
             }
         case .grokLive:
             return Self.canTakeNotice(appState.grokLiveController.phase)
+        case .localLive:
+            return Self.canTakeNotice(appState.localLiveController.phase)
         }
     }
 
@@ -1743,6 +1788,7 @@ final class CarPlayVoiceCoordinator {
         case .qwenLive: appState.closeQwenLiveConversation()
         case .gptLive: appState.closeGPTLiveConversation()
         case .grokLive: appState.closeGrokLiveConversation()
+        case .localLive: appState.closeLocalLiveConversation()
         }
     }
 
@@ -1805,6 +1851,7 @@ final class CarPlayVoiceCoordinator {
         case .qwenLive: return appState.qwenLiveController.isActive
         case .gptLive: return appState.gptLiveController.isActive
         case .grokLive: return appState.grokLiveController.isActive
+        case .localLive: return appState.isLocalLiveActive
         }
     }
 
@@ -1863,6 +1910,15 @@ final class CarPlayVoiceCoordinator {
             }
             await establishLiveVoice(.grokLive, appState: appState, generation: generation)
             return
+        case .localLive:
+            let local = appState.localLiveController
+            guard !local.isActive else {
+                // Shown, not restarted, and unmuted for the driver as with GPT-Live.
+                local.setMicrophoneMuted(false)
+                return
+            }
+            await establishLiveVoice(.localLive, appState: appState, generation: generation)
+            return
         }
         let controller = appState.voiceConversationController
         if controller.hasLiveVoiceSession {
@@ -1881,7 +1937,7 @@ final class CarPlayVoiceCoordinator {
         await completeVoiceEstablishment(generation: generation, outcome: outcome)
     }
 
-    /// Starts a live mode (Gemini Live, GPT-Live or Grok Live) for this CarPlay surface
+    /// Starts a live mode (Gemini, Qwen, GPT-Live, Grok or Local Live) for this CarPlay surface
     /// once Hermes is connected (both start through the host), waiting the
     /// same bounded time as the classic prepare path.
     func establishLiveVoice(
@@ -1922,6 +1978,11 @@ final class CarPlayVoiceCoordinator {
             if !isCurrent(generation) || !isConnected {
                 appState.releaseCarPlayGrokLive()
             }
+        case .localLive:
+            await appState.startLocalLiveForCarPlay(attachingTo: thread)
+            if !isCurrent(generation) || !isConnected {
+                appState.releaseCarPlayLocalLive()
+            }
         }
         // A start that never began (Hermes dropped just before it) leaves
         // the car on the Thinking shown while it waited.
@@ -1949,6 +2010,7 @@ final class CarPlayVoiceCoordinator {
         case .qwenLive: return appState.qwenLiveController.phase == .idle
         case .gptLive: return appState.gptLiveController.phase == .idle
         case .grokLive: return appState.grokLiveController.phase == .idle
+        case .localLive: return appState.localLiveController.phase == .idle
         }
     }
 
