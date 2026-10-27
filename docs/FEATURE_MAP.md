@@ -2951,6 +2951,32 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 
 **Checked:** 2026-10-26, #1305 (with the Share extension's picker).
 
+## Bars lists scroll under
+
+The bars a screen's list or transcript scrolls under, and the fade under
+them: a chat's composer bar, the tab bar's clearance, and the list headers.
+
+**Siblings:** the chat composer bar (chats, project chats, Bot Chat) · group
+rooms' composer bar · the tab bar's clearance under the Chats, Bots and Tasks
+lists and Settings' pages · the Chats, Bots, Tasks and Capabilities headers ·
+iPhone, iPad and Mac · iOS 26 and earlier · text: no Settings caption or doc
+describes them
+
+**Code**
+- Bar and fade: `Conduit/Views/V2/V2TopBar.swift` (v2EdgeBar, V2SystemScrollEdge, V2LegacyScrollEdge, V2ScrollEdgeBackground)
+- Composer bars: `Conduit/Views/ChatView.swift` (bottomBar), `Conduit/Views/GroupChatView.swift` (bottomBar)
+- Tab bar: `Conduit/Views/V2/V2Shell.swift` (tabBarClearance, V2TabBarClearance, V2LegacyTabBarEdge)
+- Headers: `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/V2/V2TasksView.swift`, `Conduit/Views/CapabilitiesView.swift` (v2EdgeBar(.top) with V2LegacyScrollEdge)
+
+**Rulings**
+- On iOS 26 a bar is a `safeAreaBar` with the system's soft scroll edge. Before iOS 26, and on a Mac, it is a `safeAreaInset` over Conduit's own fading material. A bar and its fade read the same switch (`V2SystemScrollEdge.isUsed`), so they always agree (2026-10-27, #1397: on macOS 27 the composer bar's edge hid the transcript well above the composer, #1357).
+
+**Open gaps**
+- The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).
+- The system navigation bar over a chat keeps the system's top edge on a Mac too (`V2FadingBarBackdrop`, `V2SoftTopScrollEdge` in `Conduit/Views/ChatView.swift`): it is the navigation bar's own, not a bar of ours, and #1357 only showed the bottom. If macOS 27 draws it too tall as well, it moves to the same switch.
+
+**Checked:** 2026-10-27, #1397.
+
 ## Readable width on wide windows
 
 How wide a screen's content runs on an iPad, a Mac or a landscape phone,
