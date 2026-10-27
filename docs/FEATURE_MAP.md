@@ -1464,20 +1464,22 @@ screen) · CarPlay, locked, Watch and CallKit calls with the app in the
 background · a failed sync's retry · the backoff itself
 
 **Code**
-- Reconnects: `Conduit/Services/AppState.swift` (handleDisconnect, scheduleReconnect, scheduleReconnectAfterFailedSync, networkPathChanged, reconnectNowForWaitingVoice, recoverTransportForCarPlayIfNeeded, handleCarPlaySceneWillEnterForeground)
-- Network path: `Conduit/Services/PowerPolicy.swift` (pathSatisfied), `Conduit/Services/HermesClient.swift` (networkPathChanged, the ping of an open socket)
-- Tests: `ConduitTests/ReconnectBackoffTests.swift`, `ConduitTests/CarPlayTransportRecoveryTests.swift`
+- Reconnects: `Conduit/Services/AppState.swift` (handleDisconnect, scheduleReconnect, scheduleReconnectAfterFailedSync, networkPathChanged, reconnectNowForWaitingVoice, recoverTransportForCarPlayIfNeeded, handleCarPlaySceneWillEnterForeground, checkQuietTransportOffScreen, clientForVoiceRequest)
+- A call's requests: `Conduit/Services/AppState.swift` (voiceBackgroundJobSupervisor's backend), `Conduit/Services/AppState+SpokenApprovals.swift` (respondToApprovalByVoice, respondToClarifyByVoice)
+- Network path: `Conduit/Services/PowerPolicy.swift` (pathSatisfied), `Conduit/Services/HermesClient.swift` (networkPathChanged, the ping of an open socket, checkLiveness)
+- Tests: `ConduitTests/ReconnectBackoffTests.swift`, `ConduitTests/CarPlayTransportRecoveryTests.swift`, `ConduitTests/HermesClientTests.swift` (the liveness check)
 
 **Rulings**
 - A reconnect that skips the backoff needs a usable network path: without one no attempt can work, and the path coming back reconnects at once anyway. A drop mid-reply and someone waiting by voice both check it (#1060; #846 follow-up, #1191).
 - The network path changing reconnects at once without reading the path: it runs before the path monitor holds the new one, so a check there would stall recovery for the whole backoff (#1191).
 - Someone waiting by voice skips the backoff but keeps its count, so one request after another against a gateway that is down doesn't reset it (#1060).
 - The path change's ping of an open socket waits while a large frame (a picture) is still being written: its pings can't be answered in time and would close a working socket. A path that really died fails the write (2026-10-25, #1268).
+- A call's request to Hermes made while Conduit is off screen (CarPlay, a locked phone, a Watch call, a call from Hermes; every voice mode, spoken approvals and answers included) first pings a socket that has been quiet 30 s, as the phone coming on screen does: iOS may have held Conduit suspended until the car or the call woke it, and a socket that died then still looks open. Starting, titling and cancelling a call's jobs count, and so does asking whether a chat is busy before its turn. One that doesn't answer in a keepalive ping's 10 s (a relayed path can be slow off screen without being dead) is closed and the request waits for the reconnect, as after any drop. Before, GPT-Live started from CarPlay ran (it starts over HTTP) while every request it handed Hermes waited on the dead socket until it timed out (2026-10-27, #1382, from #1362).
 
 **Open gaps**
 - `recoverTransportForCarPlayIfNeeded(immediately:)` still reconnects at once without a path check (CarPlay connecting only).
 
-**Checked:** 2026-10-25, at #1268; 2026-10-24, at #1191.
+**Checked:** 2026-10-27, #1382 (a call's request off screen checks a quiet socket first); 2026-10-25, at #1268; 2026-10-24, at #1191.
 
 ## Native sign-in browser
 
