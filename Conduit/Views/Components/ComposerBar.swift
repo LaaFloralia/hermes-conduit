@@ -79,6 +79,8 @@ struct ComposerBar: View, Equatable {
     @Namespace private var glassNamespace
     /// The dictate button types into the draft (#290, #335).
     @StateObject private var dictation = ComposerDictationService()
+    /// Hermes dictations whose words never came, kept for Retry.
+    @ObservedObject private var dictationClips = DictationClipInbox.shared
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
     /// The draft as dictation last wrote it, so the full editor, which
@@ -597,6 +599,13 @@ struct ComposerBar: View, Equatable {
                 composerNoticeLine(notice)
             }
 
+            UndeliveredDictationNotice(
+                inbox: dictationClips,
+                identity: dictationClipIdentity,
+                delivering: appState.dictationClipsOnTheirWay,
+                onRetry: retryDictationClip
+            )
+
             if appState.isCompressingActiveSession {
                 compressingNotice
             }
@@ -842,6 +851,7 @@ struct ComposerBar: View, Equatable {
         let turnControl = Self.turnControlExpandsComposer(action: action, restsWhenIdle: restsWhenIdle)
         let hasNotice = showsStateNotice || appState.composerNotice != nil || appState.isCompressingActiveSession
             || appState.activeChatTakeover != nil || composerErrorMessage != nil
+            || !dictationClips.offered(for: dictationClipIdentity, delivering: appState.dictationClipsOnTheirWay).isEmpty
         let pickerUp = showAttachmentMenu || showDocumentPicker || showCamera
         let sheetUp = appState.showModelPicker || appState.showContextSheet || appState.showAgentsSheet
         return hasDraft || isDictating || turnControl || hasNotice || pickerUp || sheetUp || showsVoiceMessage
@@ -1885,6 +1895,38 @@ struct ComposerBar: View, Equatable {
                 try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() })
             } catch {
                 composerErrorMessage = UserFacingError.message(for: error)
+            }
+        }
+    }
+
+    /// Where this composer's dictations keep their recordings: none while
+    /// it takes no text, so a locked composer offers nothing to retry.
+    private var dictationClipIdentity: String? {
+        appState.composerTakesText ? appState.dictationClipIdentity : nil
+    }
+
+    /// Retry on a dictation whose words never came: one more upload of
+    /// its kept recording. The words go to the draft that was on screen
+    /// when it was tapped, even if another chat opened meanwhile.
+    private func retryDictationClip(_ clip: DictationClip) {
+        guard let gateway = appState.makeVoiceGateway(), let dashboardID = appState.activeDashboardID else {
+            composerErrorMessage = AppLocalization.string("Dictation with Hermes needs a connection to Hermes.")
+            return
+        }
+        let key = appState.composerDraftKeyOnScreen
+        composerErrorMessage = nil
+        Task {
+            do {
+                let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
+                guard !words.isEmpty else {
+                    composerErrorMessage = AppLocalization.string("No speech was captured.")
+                    return
+                }
+                appState.restoreRetriedDictation(words, clipID: clip.id, dashboardID: dashboardID, key: key)
+            } catch is CancellationError {
+                return
+            } catch {
+                composerErrorMessage = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
             }
         }
     }

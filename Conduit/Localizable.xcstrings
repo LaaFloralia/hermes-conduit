@@ -348859,6 +348859,170 @@
           }
         }
       }
+    },
+    "Your %@ dictation wasn't transcribed. Its recording is saved." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein %@ langes Diktat wurde nicht transkribiert. Die Aufnahme ist gespeichert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu dictado de %@ no se transcribió. La grabación está guardada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre dictée de %@ n’a pas été transcrite. L’enregistrement est conservé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte %@ Anda tidak ditranskripsikan. Rekamannya tersimpan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tua dettatura di %@ non è stata trascritta. La registrazione è salvata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の音声入力は文字起こしされませんでした。録音は保存されています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 분량의 받아쓰기를 텍스트로 변환하지 못했습니다. 녹음은 저장되어 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoje dyktowanie (%@) nie zostało przepisane. Nagranie jest zapisane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu ditado de %@ não foi transcrito. A gravação está salva."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Диктовка длиной %@ не распознана. Запись сохранена."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ süren dikteniz yazıya dökülemedi. Kaydı saklandı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你 %@ 的听写未能转写。录音已保存。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你 %@ 的聽寫未能轉寫。錄音已儲存。"
+          }
+        }
+      }
+    },
+    "Delete this recording? Its words haven't been transcribed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Aufnahme löschen? Ihr Inhalt wurde noch nicht transkribiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Eliminar esta grabación? Sus palabras aún no se han transcrito."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer cet enregistrement ? Ses paroles n’ont pas été transcrites."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hapus rekaman ini? Kata-katanya belum ditranskripsikan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminare questa registrazione? Le sue parole non sono state trascritte."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この録音を削除しますか？まだ文字起こしされていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 녹음을 삭제할까요? 아직 텍스트로 변환되지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usunąć to nagranie? Jego treść nie została przepisana."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apagar esta gravação? As palavras dela ainda não foram transcritas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить эту запись? Её текст ещё не распознан."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu kayıt silinsin mi? İçindeki sözler henüz yazıya dökülmedi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "删除这段录音？其中的内容尚未转写。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刪除這段錄音？其中的內容尚未轉寫。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
