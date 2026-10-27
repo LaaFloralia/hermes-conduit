@@ -491,7 +491,7 @@ struct MainView: View {
                 }
                 // The same readable column as V2's chat on a wide window;
                 // the backdrop still fills it.
-                .readableContentWidth(scaling: ReadableWidth.chat(available:))
+                .readableChatColumn()
             }
             .overlay(alignment: .leading) {
                 if !isPersistentSidebarActive {

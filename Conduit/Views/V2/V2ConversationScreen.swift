@@ -104,8 +104,9 @@ struct V2ConversationScreen: View {
                 }
                 // On a wide window the transcript, the composer and the
                 // voice button beside it keep to a readable column that
-                // widens with the window; the backdrop still fills it.
-                .readableContentWidth(scaling: ReadableWidth.chat(available:))
+                // widens with the window, its text a size or more larger as
+                // it does; the backdrop still fills it.
+                .readableChatColumn()
         }
         .modifier(V2FadingBarBackdrop())
         .onPreferenceChange(V2ComposerExpandedKey.self) { expanded in

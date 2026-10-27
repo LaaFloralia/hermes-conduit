@@ -1299,13 +1299,7 @@ private struct MarkdownList: View {
     /// (rather than a size frozen at body-evaluation time), so a system
     /// text-size change re-resolves them wherever the list re-evaluates.
     private var markerFont: UIFont {
-        ChatTypography.font(
-            for: .body,
-            appearance: chatTextSize,
-            compatibleWith: UITraitCollection(
-                preferredContentSizeCategory: UIContentSizeCategory(sizeCategory)
-            )
-        )
+        ChatTypography.font(for: .body, appearance: chatTextSize, environmentCategory: sizeCategory)
     }
 
     var body: some View {

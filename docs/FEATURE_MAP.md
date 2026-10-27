@@ -3036,27 +3036,32 @@ list hidden · the drawer shell's chat (Appearance, V2 off, with or without
 the persistent sidebar) · Settings' pages · a Chats or Bots list shown alone ·
 the call screens (Classic, live calls, live voice consent) · the sign-in
 screens (their own column) · cards and pictures whose kept heights depend on
-the column's width (see Cards drawn in web pages) · text: no Settings caption
-or doc gives a width
+the column's width (see Cards drawn in web pages) · the chat's text on a
+wide column (transcript, step rows and cards, timestamps and the reply's
+buttons, the composer, group rooms; the list beside it keeps its size) · text: no Settings caption or doc gives a
+width, and Chat text size's caption is about its slider, which still applies
+on top
 
 **Code**
-- Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:), chatMax, chatShare)
-- Chat column: `Conduit/Views/V2/V2ConversationScreen.swift` (readableContentWidth(scaling:)), and the drawer shell's in `Conduit/Views/RootView.swift` (chatNavigationContent)
+- Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:), chatMax, chatShare, chatTextSteps(column:), readableChatColumn)
+- Chat column: `Conduit/Views/V2/V2ConversationScreen.swift` (readableChatColumn()), and the drawer shell's in `Conduit/Views/RootView.swift` (chatNavigationContent)
+- Text on a wide column: `Conduit/Views/Components/ChatTypography.swift` (ChatTextAppearance.widthSteps, ChatTypography.boosted, font(for:appearance:environmentCategory:), chatWidthTextSteps), read at the chat's root in `Conduit/Views/ChatView.swift` (chatTextSize) and a room's in `Conduit/Views/GroupChatView.swift` (chatTextSize); the spots that resolve against the column's already-stepped size: `Conduit/Views/Components/MarkdownText.swift` (markerFont), `Conduit/Views/ChatView.swift` (bodyLineHeight; the cards' UIKit text through `UIFont.preferredFont(forTextStyle:in:)`: ReviewSummaryCard, ModelChangeSummaryCard, ToolRawTextSection, ClarifyCard, ClarifyQuestionRow, ApprovalCard, InputPromptCard), `Conduit/Views/GroupChatView.swift` (GroupApprovalCard)
 - List shown alone: `Conduit/Views/V2/V2Shell.swift` (ReadableWidth.list)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ReadableWidth.settings)
 - Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
 - Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
-- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
 
 **Rulings**
 - Widths follow the window, not the device (2026-10-19, #949).
 - A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
+- A wider chat column shows bigger text rather than longer lines: the column's text goes up one system text size for each size whose lines still hold as many words as the 760 pt column does (none beside the list on an iPad, two with an iPad's list hidden, three on a maximized Mac). Everything in the column steps together, its chrome (timestamps, the reply's buttons, banners) with its text so they keep their proportions: transcript, thinking, step rows, cards, the composer and group rooms, on top of the user's Dynamic Type and Chat text size (which group rooms now follow too, size and style, as chats do); it stops at the largest standard size, so an accessibility size stays as set. The list beside the chat and the top bar keep their size: the list's column doesn't widen (Eric, 2026-10-27, #1393: maximized on a Mac the chat looked small in a big empty space).
 - Settings (720 pt), a list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
 
 **Open gaps**
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-26, #1320.
+**Checked:** 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
 ## Voice on a profile the dashboard didn't start with
 

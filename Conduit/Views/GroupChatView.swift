@@ -26,6 +26,20 @@ struct GroupChatView: View {
     /// Bumped to build the transcript's scroll view again when SwiftUI left
     /// it blank (GroupRoomFollow.isBlank).
     @State private var transcriptScrollID = 0
+    /// The chat text size and style, and a wide window's steps
+    /// (`readableChatColumn`): the room's messages draw as a chat's do.
+    @AppStorage(ChatTypography.preferenceKey) private var chatTextSizeRaw = ChatTypography.defaultSize.rawValue
+    @AppStorage(ChatTypography.fontStylePreferenceKey) private var chatFontStyleRaw = ChatFontStyle.standard.rawValue
+    @Environment(\.chatWidthTextSteps) private var chatWidthTextSteps
+    @Environment(\.sizeCategory) private var columnSizeCategory
+
+    private var chatTextSize: ChatTextAppearance {
+        ChatTextAppearance(
+            size: ChatTypography.resolve(rawValue: chatTextSizeRaw),
+            style: ChatTypography.resolveStyle(rawValue: chatFontStyleRaw)
+        )
+        .widened(steps: chatWidthTextSteps, category: columnSizeCategory)
+    }
 
     var body: some View {
         Group {
@@ -45,6 +59,7 @@ struct GroupChatView: View {
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
+        .environment(\.chatTextSize, chatTextSize)
         .toolbar { toolbarContent }
         // V2's screen hosts this view and owns the room menu and picker.
         .modifier(GroupRoomPicturePicker(request: $choosingPicture, isEnabled: !isV2))
@@ -492,6 +507,7 @@ struct GroupRoomTitle: View {
 /// One member's pending approval. Rooms answer Run (once) or Reject only:
 /// session and permanent grants aren't offered for a room member's turn.
 struct GroupApprovalCard: View {
+    @Environment(\.sizeCategory) private var sizeCategory
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let approval: GroupPendingApproval
     let memberName: String
@@ -539,7 +555,7 @@ struct GroupApprovalCard: View {
             if !approval.command.isEmpty {
                 ApprovalCommandBox(
                     maxHeight: ApprovalCommandBox<EmptyView>.maxLines
-                        * UIFont.preferredFont(forTextStyle: .caption1).lineHeight
+                        * UIFont.preferredFont(forTextStyle: .caption1, in: sizeCategory).lineHeight
                 ) {
                     Text(verbatim: ApprovalDisplayText.revealingHidden(approval.command))
                         .font(.caption.monospaced())
