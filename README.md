@@ -162,6 +162,8 @@ On your home network the address is then `http://<nas-ip>:9119`; through Tailsca
 
 Plain HTTP over Tailscale (MagicDNS `.ts.net` domains and `100.64.0.0/10` tailnet IPs) is supported, since that traffic is already WireGuard-encrypted.
 
+Conduit only needs Tailscale Serve, which shares the dashboard with devices on your own tailnet. It doesn't need Tailscale SSH, so leave that off unless you use it for something else, and keep Tailscale updated on every device, including older ones like an iPad or Apple TV. Tailscale posts fixes on its [security bulletins](https://tailscale.com/security-bulletins) page.
+
 If the dashboard is behind Cloudflare Access, enable the optional service token on the login screen or in Settings > Connection (the first row, under your profile name). Conduit stores the client secret in Keychain (scoped to the gateway origin), and injects both Access headers into native authentication requests, WebSocket handshakes, and all in-page WebKit fetches via a document-start user script. Credentials are bound to the gateway URL and cleared when switching to a different host.
 
 **Native OAuth limitation:** service-token headers cannot be attached to the system Safari navigation that opens `/auth/native/authorize`. Native OAuth therefore requires that browser authorization route to be reachable through an interactive Cloudflare policy or without a service-token challenge. The token exchange, refresh, REST, and WebSocket-ticket requests still use the configured service-token headers. A service-token-only challenge in front of the authorize route cannot be bypassed by Conduit and must not silently fall back to embedded Google OAuth.

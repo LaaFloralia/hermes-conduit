@@ -2400,6 +2400,30 @@ workflow table
 
 **Checked:** 2026-10-24, at #1216.
 
+## Connection setup guide
+
+How to make the dashboard reachable from the phone (Tailscale Serve, the
+home network, your own domain) and what to tell Hermes to set it up.
+
+**Siblings:** README.md (Connecting: the ask-Hermes prompt, Docker or a NAS,
+by hand) · the website's setup page (setup/index.html, written by
+scripts/build_site.py in hermes-conduit-website) · the sign-in screen's Need
+help connecting? assistant and the prompts it hands out ·
+docs/OWN_VOICE_SERVER.md (names Tailscale only as a way to reach the speech
+server, never Tailscale SSH)
+
+**Code**
+- Assistant: `Conduit/Services/ConnectionSetupFlow.swift`, `Conduit/Views/ConnectionSetupView.swift`, `Conduit/Views/ConnectionSetupForm.swift`, `Conduit/Views/Login/LoginScreens.swift`
+- Docs: `README.md`
+
+**Rulings**
+- Remote access goes through Tailscale Serve, never Tailscale SSH or a port opened to the internet. The README and the setup page say Conduit doesn't need Tailscale SSH and to keep Tailscale updated (Eric, 2026-10-27, #1377, from issue #1366).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-27, at #1377.
+
 ## Review bots
 
 The two opencode reviewers that review every PR here and in the notifier, and
