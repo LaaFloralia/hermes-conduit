@@ -1345,7 +1345,7 @@ browser (separate)
 **Code**
 - Browser and setting: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController, NativeOAuthLoginModel.run)
 - The switch: `Conduit/Views/Login/LoginScreens.swift` (PrivateSignInPageToggle, advancedFields)
-- Error shown when the page fails: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailure.signInPageFailed, ConnectionFailureClassifier.classify)
+- Error shown when the page fails: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailure.signInPageFailed, ConnectionFailureClassifier.classify), `Conduit/Services/ConnectionSetupFlow.swift` (repairPath: a failed page goes to the staged test)
 - Repair and Sign In Again: `Conduit/Views/ConnectionSetupForm.swift` (repairReviewFooter, settingsSignInAgain), `Conduit/Views/ConnectionSetupView.swift` (repairSignInSheet), `Conduit/Services/ConnectionRepair.swift` (ConnectionRepairSignIn.mayOpenNativeSignIn, showsPrivateSignInSwitch)
 - Saved dashboards screen: `Conduit/Views/Login/LoginScreens.swift` (LoginDashboardsScreen.mayOpenSignInPage)
 - Tests: `ConduitTests/ConnectionRepairTests.swift` (testPrivateSignInSwitchShowsOnlyWhereSignInCanBeNative), `ConduitTests/ConnectionFailureTests.swift` (testNativeSignInBrowserFailureClassifiesAsSignInPageFailed, testNativeSignInFailuresNeverClaimBadCredentials)

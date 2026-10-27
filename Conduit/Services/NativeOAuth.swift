@@ -1136,7 +1136,11 @@ private struct WebAuthenticationView: UIViewControllerRepresentable {
                 nativeOAuthLogger.error("OAuth stage: browser session did not start")
                 ended = true
                 self.session = nil
-                onFailure(NativeOAuthError.browserFailed)
+                // This can run inside SwiftUI's update pass (setAuthorizeURL),
+                // so report it on the next turn, as the completion does.
+                DispatchQueue.main.async { [onFailure] in
+                    onFailure(NativeOAuthError.browserFailed)
+                }
             }
         }
     }
