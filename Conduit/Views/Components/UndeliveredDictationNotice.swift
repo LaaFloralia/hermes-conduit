@@ -62,8 +62,12 @@ struct UndeliveredDictationNotice: View {
                     .frame(width: 28, height: 28)
                     .accessibilityLabel(Text("Transcribing"))
             } else {
-                Button(AppLocalization.string("Retry")) {
+                Button {
                     onRetry(clip)
+                } label: {
+                    Text(AppLocalization.string("Retry"))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .font(.footnote.weight(.semibold))
                 .buttonStyle(.borderless)

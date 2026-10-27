@@ -11071,12 +11071,20 @@ final class AppState: ObservableObject {
     /// A dictation Retry's words for a room's draft, after what it holds.
     /// The open composer keeps its draft here as it changes, so the words
     /// reach whichever composer shows the room now, or wait for reopen.
-    func appendToRoomDraft(_ words: String, dashboardID: UUID, roomID: String) {
+    /// False when the room is gone (disbanded, or off this dashboard's
+    /// list): it can't be reopened, so the caller keeps the recording.
+    @discardableResult
+    func appendToRoomDraft(_ words: String, dashboardID: UUID, roomID: String) -> Bool {
+        if dashboardID == activeDashboardID,
+           !groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) {
+            return false
+        }
         let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)
         let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? "", dictated: words)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { return true }
         groupRoomDrafts[key] = text
         roomDraftAppends += 1
+        return true
     }
 
     /// The files staged in the open room's composer.

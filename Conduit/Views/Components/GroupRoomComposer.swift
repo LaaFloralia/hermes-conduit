@@ -814,8 +814,9 @@ struct GroupRoomComposer: View {
                     return
                 }
                 // Through the room's kept draft: this composer may be gone,
-                // or another one shows the room now.
-                appState.appendToRoomDraft(words, dashboardID: dashboardID, roomID: roomID)
+                // or another one shows the room now. A room gone meanwhile
+                // takes nothing: the recording stays for a Retry elsewhere.
+                guard appState.appendToRoomDraft(words, dashboardID: dashboardID, roomID: roomID) else { return }
                 dictationClips.delivered(clip.id)
             } catch is CancellationError {
                 return

@@ -340,7 +340,11 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         let dashboardID = try XCTUnwrap(appState.activeRoomSurface?.dashboardID)
         appState.closeGroupRoom()
 
-        appState.appendToRoomDraft("and the rest", dashboardID: dashboardID, roomID: room.roomID)
+        XCTAssertTrue(appState.appendToRoomDraft("and the rest", dashboardID: dashboardID, roomID: room.roomID))
+        XCTAssertFalse(
+            appState.appendToRoomDraft("lost", dashboardID: dashboardID, roomID: "room-gone"),
+            "A room off the list can't be reopened: the recording stays"
+        )
 
         await appState.openGroupRoom(room)
         XCTAssertEqual(appState.activeRoomDraft(), "half a thought and the rest")
