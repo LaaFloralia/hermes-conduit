@@ -1418,20 +1418,30 @@ on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 
 The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
 Return sends the composer message and Shift-Return starts a new line. It
-starts on on a Mac and off on iPhone and iPad; the on-screen keyboard's
+is on by default on a Mac and off on iPhone and iPad; the on-screen keyboard's
 Return key always inserts a new line.
 
-**Siblings:** the Keyboard caption ("When on, Return sends and Shift-Return
-starts a new line.", done, #1208) · the toggle's accessibility hint (not
-needed, it already says the setting applies to hardware keyboards only) ·
-the two default footnotes, Mac on and iPhone/iPad off (not needed, each
-states the default for its device) · the hardware-keyboards caption (not
-needed, shown only off a Mac and already says the on-screen Return key is
-unchanged) · a running dictation (done, #1315: Return stops it; the
+**Siblings:** the chat composer's inline field (chats, project chats, Bot
+Chat; done) · the full editor, a chat's and a room's (done, #1394) · group
+rooms' field (done, #1394) · the Mac, where the iPad app's text system
+takes Return before the key presses reach the field (done, #1394: a Return
+key command with priority over the text system) · iPad and iPhone with a
+hardware keyboard (done, the same command, with the key-press route kept
+for keypad Enter) · the Keyboard caption ("When on, Return sends and
+Shift-Return starts a new line.", done, #1208) · the toggle's accessibility
+hint (not needed, it already says the setting applies to hardware keyboards
+only) · the two default footnotes, Mac on and iPhone/iPad off (not needed,
+each states the default for its device) · the hardware-keyboards caption
+(not needed, shown only off a Mac and already says the on-screen Return key
+is unchanged) · a running dictation (done, #1315: Return stops it; the
 Keyboard caption is unchanged, as it describes the option)
 
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
+- Key handling: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView: the Return key command and pressesBegan; ReturnKeyTextEditor, the field rooms and the full editor use)
+- Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's)
+- Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (field, submitFromReturnKey)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
 - Tests: `ConduitTests/ComposerReturnKeyTests.swift`
 
@@ -1442,11 +1452,16 @@ Keyboard caption is unchanged, as it describes the option)
   the dictation, or calls off one still coming up, and sends nothing. The
   next Return, once the words are in and Send is back, sends (2026-10-26,
   #1315, see Send while dictating).
+- Every composer takes the option, the full editor included: Return there
+  sends like its Send button, and Shift-Return starts a new line (2026-10-27,
+  #1394).
 
 **Open gaps**
-- Group rooms' composer and the full editor don't take the option: Return there always starts a new line, which ends a running dictation as typing does, keeping its words (found in #1315 review).
+- Not yet checked on a Mac or an iPad with a keyboard: the Return key
+  command sending, Shift-Return and the IME's Return still reaching the
+  text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-26, at #1315.
+**Checked:** 2026-10-27, #1394.
 
 ## A chat's last reply
 
@@ -2014,8 +2029,8 @@ go. Talking and sending in one go is Voice message's or Voice's job.
 
 **Siblings:** chat composer (chats, project chats, Bot Chat; done) · group
 rooms (done) · the full editor, both composers' (done, it shows the same
-Stop) · the hardware Return key with Return sends on (done in chats' inline field, it stops the
-dictation; the full editor and group rooms don't take the option, see Composer Return key's gap) · the big voice button set to Dictation (done, its second
+Stop) · the hardware Return key with Return sends on (done, it stops the
+dictation, in chats, group rooms and the full editor, #1394) · the big voice button set to Dictation (done, its second
 tap does what the Stop does, a settle included) · Voice
 message's hold to record, let go to send (not changed, it's the one-tap
 path) · docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · strings (not
@@ -2027,7 +2042,7 @@ notifier (not needed, dictation is app-side)
 - Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
 - The Stop: `Conduit/Views/Components/ComposerDictationStopButton.swift`
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
-- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive, submitFromReturnKey)
 - Tests: `ConduitTests/DictationEngineTests.swift`, `ConduitTests/AppStateVoiceCapabilityTests.swift`
 
 **Rulings**
@@ -2039,7 +2054,7 @@ notifier (not needed, dictation is app-side)
 - A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message.
 - Not yet checked on a device: the Stop's width and the swap in the controls row and the full editor, with long translations and large text.
 
-**Checked:** 2026-10-26, at #1315.
+**Checked:** 2026-10-27, #1394.
 
 ## Chats top bar and search
 
