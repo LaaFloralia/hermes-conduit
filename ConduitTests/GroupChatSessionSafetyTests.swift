@@ -319,6 +319,38 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A dictation Retry that lands after its room was left: the words go
+    /// after the room's kept draft and are there on reopen.
+    func testRetriedDictationWordsReachALeftRoomsDraft() async throws {
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        appState.saveActiveRoomDraft("half a thought")
+        let dashboardID = try XCTUnwrap(appState.activeRoomSurface?.dashboardID)
+        appState.closeGroupRoom()
+
+        XCTAssertTrue(appState.appendToRoomDraft("and the rest", dashboardID: dashboardID, roomID: room.roomID))
+        XCTAssertFalse(
+            appState.appendToRoomDraft("lost", dashboardID: dashboardID, roomID: "room-gone"),
+            "A room off the list can't be reopened: the recording stays"
+        )
+
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomDraft(), "half a thought and the rest")
+        appState.closeGroupRoom()
+    }
+
     /// A send still in flight when the user leaves: the response settles the
     /// retry key wherever it now lives — the reopened room's active outbox
     /// (leave then reopen before the answer) or the parked copy.

@@ -40,6 +40,7 @@ struct GroupRoomComposer: View {
     @State private var showCamera = false
     @State private var isShowingFullEditor = false
     @StateObject private var dictation = ComposerDictationService()
+    @ObservedObject private var dictationClips = DictationClipInbox.shared
     /// The draft as it was when dictation began; dictated text goes after it.
     @State private var dictationPrefix = ""
     /// The draft as dictation last wrote it, to tell its writes from typing.
@@ -169,6 +170,14 @@ struct GroupRoomComposer: View {
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
         }
+        // A dictation Retry added words to this room's kept draft, which
+        // tracks the field as it changes: show it. Reading the kept draft
+        // keeps both of two Retries that land in the same update.
+        .onChange(of: appState.roomDraftAppend) { _, append in
+            guard let append, let surface,
+                  append.dashboardID == surface.dashboardID, append.roomID == surface.room.roomID else { return }
+            draft = appState.activeRoomDraft()
+        }
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
         }
@@ -267,6 +276,12 @@ struct GroupRoomComposer: View {
                 "Your previous message is still pending. Retry it from the room, or wait for it to deliver."
             ), color: .secondary)
         }
+        UndeliveredDictationNotice(
+            inbox: dictationClips,
+            identity: dictationClipIdentity,
+            delivering: appState.dictationClipsOnTheirWay,
+            onRetry: retryDictationClip
+        )
         // The session surface's error banner lives inside ChatView, which
         // this room surface replaces: room errors must render here.
         if let error = composerError ?? appState.errorMessage, !error.isEmpty {
@@ -802,6 +817,49 @@ struct GroupRoomComposer: View {
                 try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() })
             } catch {
                 composerError = UserFacingError.message(for: error)
+            }
+        }
+    }
+
+    /// Where this room's dictations keep their recordings: none in a room
+    /// that takes no messages (disbanded, or a host without room sends),
+    /// so it offers nothing to retry. A send in flight or a pending
+    /// message only holds Send; the draft still takes words.
+    private var dictationClipIdentity: String? {
+        guard surface?.room.isDisbanded == false,
+              appState.groupCapabilities?.supports("groups.send") == true else { return nil }
+        return appState.dictationClipIdentity
+    }
+
+    /// Retry on a dictation whose words never came: one more upload of
+    /// its kept recording. The words go to this room's draft, even if
+    /// another room or chat opened meanwhile.
+    private func retryDictationClip(_ clip: DictationClip) {
+        guard let gateway = appState.makeVoiceGateway(), let surface = appState.activeRoomSurface else {
+            composerError = AppLocalization.string("Dictation with Hermes needs a connection to Hermes.")
+            return
+        }
+        let dashboardID = surface.dashboardID
+        let roomID = surface.room.roomID
+        composerError = nil
+        Task {
+            do {
+                let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
+                guard !words.isEmpty else {
+                    composerError = AppLocalization.string("No speech was captured.")
+                    return
+                }
+                // Through the room's kept draft: this composer may be gone,
+                // or another one shows the room now. A room gone meanwhile
+                // takes nothing: the recording stays for a Retry elsewhere.
+                guard appState.appendToRoomDraft(words, dashboardID: dashboardID, roomID: roomID) else { return }
+                dictationClips.delivered(clip.id)
+            } catch is CancellationError {
+                return
+            } catch is DictationClipUnreadable {
+                composerError = AppLocalization.string("The recording couldn't be read. Try again in a moment.")
+            } catch {
+                composerError = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
             }
         }
     }

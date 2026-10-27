@@ -2220,6 +2220,15 @@ final class AppState: ObservableObject {
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
     @Published private(set) var roomQuoteRequest: ComposerQuoteRequest?
+    /// Words added to a room's kept draft from outside its composer (a
+    /// dictation Retry). The open room's composer adds them to its field.
+    @Published private(set) var roomDraftAppend: RoomDraftAppend?
+    struct RoomDraftAppend: Equatable {
+        let id = UUID()
+        let dashboardID: UUID
+        let roomID: String
+        let words: String
+    }
     /// A bot to add to the room composer's "To" row (its picture tapped, or
     /// its message replied to). The room composer applies and consumes it.
     @Published private(set) var roomRecipientRequest: RoomRecipientRequest?
@@ -11090,6 +11099,31 @@ final class AppState: ObservableObject {
         } else {
             groupRoomDrafts[key] = text
         }
+    }
+
+    /// A dictation Retry's words for a room's draft, after what it holds.
+    /// The open composer keeps its draft here as it changes, so the words
+    /// reach whichever composer shows the room now, or wait for reopen.
+    /// False when the room can't be confirmed (disbanded, off the room
+    /// list, or on a dashboard no longer active): the caller keeps the
+    /// recording, offered again for a Retry.
+    @discardableResult
+    func appendToRoomDraft(_ words: String, dashboardID: UUID, roomID: String) -> Bool {
+        // The open room counts even when the list missed it (a new room
+        // whose list refresh failed).
+        let isOpen = activeRoomSurface.map {
+            $0.dashboardID == dashboardID && $0.room.roomID == roomID && !$0.room.isDisbanded
+        } ?? false
+        guard dashboardID == activeDashboardID,
+              isOpen || groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
+            return false
+        }
+        let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)
+        let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? "", dictated: words)
+        guard !text.isEmpty else { return true }
+        groupRoomDrafts[key] = text
+        roomDraftAppend = RoomDraftAppend(dashboardID: dashboardID, roomID: roomID, words: words)
+        return true
     }
 
     /// The files staged in the open room's composer.
