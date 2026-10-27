@@ -1193,7 +1193,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Opening a Bot Chat
 
@@ -1418,20 +1418,30 @@ on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 
 The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
 Return sends the composer message and Shift-Return starts a new line. It
-starts on on a Mac and off on iPhone and iPad; the on-screen keyboard's
+is on by default on a Mac and off on iPhone and iPad; the on-screen keyboard's
 Return key always inserts a new line.
 
-**Siblings:** the Keyboard caption ("When on, Return sends and Shift-Return
-starts a new line.", done, #1208) · the toggle's accessibility hint (not
-needed, it already says the setting applies to hardware keyboards only) ·
-the two default footnotes, Mac on and iPhone/iPad off (not needed, each
-states the default for its device) · the hardware-keyboards caption (not
-needed, shown only off a Mac and already says the on-screen Return key is
-unchanged) · a running dictation (done, #1315: Return stops it; the
+**Siblings:** the chat composer's inline field (chats, project chats, Bot
+Chat; done) · the full editor, a chat's and a room's (done, #1394) · group
+rooms' field (done, #1394) · the Mac, where the iPad app's text system
+takes Return before the key presses reach the field (done, #1394: a Return
+key command with priority over the text system) · iPad and iPhone with a
+hardware keyboard (done, the same command, with the key-press route kept
+for keypad Enter) · the Keyboard caption ("When on, Return sends and
+Shift-Return starts a new line.", done, #1208) · the toggle's accessibility
+hint (not needed, it already says the setting applies to hardware keyboards
+only) · the two default footnotes, Mac on and iPhone/iPad off (not needed,
+each states the default for its device) · the hardware-keyboards caption
+(not needed, shown only off a Mac and already says the on-screen Return key
+is unchanged) · a running dictation (done, #1315: Return stops it; the
 Keyboard caption is unchanged, as it describes the option)
 
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
+- Key handling: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView: the Return key command and pressesBegan; ReturnKeyTextEditor, the field rooms and the full editor use)
+- Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's)
+- Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (field, submitFromReturnKey)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
 - Tests: `ConduitTests/ComposerReturnKeyTests.swift`
 
@@ -1442,11 +1452,16 @@ Keyboard caption is unchanged, as it describes the option)
   the dictation, or calls off one still coming up, and sends nothing. The
   next Return, once the words are in and Send is back, sends (2026-10-26,
   #1315, see Send while dictating).
+- Every composer takes the option, the full editor included: Return there
+  sends like its Send button, and Shift-Return starts a new line (2026-10-27,
+  #1394).
 
 **Open gaps**
-- Group rooms' composer and the full editor don't take the option: Return there always starts a new line, which ends a running dictation as typing does, keeping its words (found in #1315 review).
+- Not yet checked on a Mac or an iPad with a keyboard: the Return key
+  command sending, Shift-Return and the IME's Return still reaching the
+  text, in chats, rooms and the full editor.
 
-**Checked:** 2026-10-26, at #1315.
+**Checked:** 2026-10-27, #1394.
 
 ## A chat's last reply
 
@@ -1741,15 +1756,16 @@ voice reply model pickers · the Kanban task composer's catalog
 - The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-27, at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
 ## The Model sheet's settings
 
 How the composer's Model sheet changes the chat's model, reasoning, speed and
 YOLO: each one applies when it's tapped, with no Apply step.
 
-**Siblings:** the sheet's Model rows, Reasoning pills, Fast mode and YOLO
-toggles · the composer's reasoning chip · typed `/model` (opens the sheet),
+**Siblings:** the sheet's Model rows and search matches (tapped, or picked
+with Return), Reasoning pills, Fast mode and YOLO toggles · the composer's
+reasoning chip · typed `/model` (opens the sheet),
 `/fast` and `/yolo` · a bot's model picker and the Model page's Default,
 Delegate and Fallback model editors (not siblings: they're saved with the bot
 or the profile, not live session settings)
@@ -1769,7 +1785,39 @@ or the profile, not live session settings)
 **Open gaps**
 - The checked row doesn't follow a model changed elsewhere while the sheet is open.
 
-**Checked:** 2026-10-27, at #1334.
+**Checked:** 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
+
+## Searching for a model
+
+Typing part of a model's name in a model picker to find it, where each match
+names the provider that serves it, since several providers often offer the
+same model and the pick switches to that provider's route.
+
+**Siblings:** the model sheet (iPhone, iPad and Mac) · a bot's model
+picker · the Kanban task's model override · the model sheet's Edit
+(visibility) search (not needed: its matches sit under their provider's name)
+· the Model page's Default, Delegate and Fallback model editors and the voice
+job and voice reply model pickers (not needed: the provider is picked first,
+or the menu row already reads "model · provider") · Text (not needed: no
+README, docs or Settings caption describes the pickers)
+
+**Code**
+- Matching and the result row: `Conduit/Views/ModelSearch.swift` (ModelSearchQuery, modelSearchMatches, modelSearchHighlight, modelSearchFocusesOnOpen, ModelSearchResultText)
+- Model sheet: `Conduit/Views/ModelPickerView.swift` (searchField, searchResultsSection, pickHighlightedMatch, modelRow's showsProvider)
+- Bots: `Conduit/Views/BotModelPicker.swift` (searchResults)
+- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's searchMatches)
+- Tests: `ConduitTests/ModelPickerTests.swift`
+
+**Rulings**
+- Every match shows its provider under the model; the same model from two providers is two matches (Eric, 2026-10-27, #1388).
+- Every word typed must appear in the model's id or label or the provider's names, so "sonnet openrouter" finds one provider's Sonnet.
+- The model sheet's search hides models and providers hidden with Edit; Edit's own search still finds them.
+- On a Mac or with a hardware keyboard the sheet opens with the search focused, ↑ and ↓ move a highlight, Return picks the highlighted match as a tap would (the sheet stays open, per "The Model sheet's settings") and Esc closes the sheet. On touch the keyboard stays down until the field is tapped, and Return only puts it away.
+
+**Open gaps**
+- A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
+
+**Checked:** 2026-10-27, at #1395.
 
 ## Files over the size limit
 
@@ -2014,8 +2062,8 @@ go. Talking and sending in one go is Voice message's or Voice's job.
 
 **Siblings:** chat composer (chats, project chats, Bot Chat; done) · group
 rooms (done) · the full editor, both composers' (done, it shows the same
-Stop) · the hardware Return key with Return sends on (done in chats' inline field, it stops the
-dictation; the full editor and group rooms don't take the option, see Composer Return key's gap) · the big voice button set to Dictation (done, its second
+Stop) · the hardware Return key with Return sends on (done, it stops the
+dictation, in chats, group rooms and the full editor, #1394) · the big voice button set to Dictation (done, its second
 tap does what the Stop does, a settle included) · Voice
 message's hold to record, let go to send (not changed, it's the one-tap
 path) · docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · strings (not
@@ -2027,7 +2075,7 @@ notifier (not needed, dictation is app-side)
 - Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
 - The Stop: `Conduit/Views/Components/ComposerDictationStopButton.swift`
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
-- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive, submitFromReturnKey)
 - Tests: `ConduitTests/DictationEngineTests.swift`, `ConduitTests/AppStateVoiceCapabilityTests.swift`
 
 **Rulings**
@@ -2989,6 +3037,32 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
 
 **Checked:** 2026-10-26, #1305 (with the Share extension's picker).
+
+## Bars lists scroll under
+
+The bars a screen's list or transcript scrolls under, and the fade under
+them: a chat's composer bar, the tab bar's clearance, and the list headers.
+
+**Siblings:** the chat composer bar (chats, project chats, Bot Chat) · group
+rooms' composer bar · the tab bar's clearance under the Chats, Bots and Tasks
+lists and Settings' pages · the Chats, Bots, Tasks and Capabilities headers ·
+iPhone, iPad and Mac · iOS 26 and earlier · text: no Settings caption or doc
+describes them
+
+**Code**
+- Bar and fade: `Conduit/Views/V2/V2TopBar.swift` (v2EdgeBar, V2SystemScrollEdge, V2LegacyScrollEdge, V2ScrollEdgeBackground)
+- Composer bars: `Conduit/Views/ChatView.swift` (bottomBar), `Conduit/Views/GroupChatView.swift` (bottomBar)
+- Tab bar: `Conduit/Views/V2/V2Shell.swift` (tabBarClearance, V2TabBarClearance, V2LegacyTabBarEdge)
+- Headers: `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2BotsView.swift`, `Conduit/Views/V2/V2TasksView.swift`, `Conduit/Views/CapabilitiesView.swift` (v2EdgeBar(.top) with V2LegacyScrollEdge)
+
+**Rulings**
+- On iOS 26 a bar is a `safeAreaBar` with the system's soft scroll edge. Before iOS 26, and on a Mac, it is a `safeAreaInset` over Conduit's own fading material. A bar and its fade read the same switch (`V2SystemScrollEdge.isUsed`), so they always agree (2026-10-27, #1397: on macOS 27 the composer bar's edge hid the transcript well above the composer, #1357).
+
+**Open gaps**
+- The Mac fallback isn't confirmed on macOS 27; it waits on the reporter's TestFlight check (#1357).
+- The system navigation bar over a chat keeps the system's top edge on a Mac too (`V2FadingBarBackdrop`, `V2SoftTopScrollEdge` in `Conduit/Views/ChatView.swift`): it is the navigation bar's own, not a bar of ours, and #1357 only showed the bottom. If macOS 27 draws it too tall as well, it moves to the same switch.
+
+**Checked:** 2026-10-27, #1397.
 
 ## Readable width on wide windows
 

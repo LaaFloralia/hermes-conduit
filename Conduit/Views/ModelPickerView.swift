@@ -208,6 +208,7 @@ struct ModelPickerView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedModel = ""
     @State private var selectedProvider = ""
     /// The runtime's effort word ("none" when off); set on tap.
@@ -239,6 +240,18 @@ struct ModelPickerView: View {
     /// The catalog row this sheet last switched Hermes to, so a retry does
     /// not switch to it again while the row id and `runtime.model` differ.
     @State private var switchedRow: ModelPickerSwitchedRow?
+    /// The model search: its text, the row the arrow keys have reached, and
+    /// whether the field has focus.
+    @State private var searchQuery = ""
+    @State private var highlightedMatch = 0
+    @FocusState private var searchFocused: Bool
+    /// On a Mac or with a hardware keyboard: the field takes focus on open,
+    /// a match is highlighted and Return picks it. On touch, Return only
+    /// puts the keyboard away.
+    @State private var keyboardDriven = false
+    /// Whether the search field has had focus since the sheet opened, so
+    /// the focus retry never pulls it back from a user who moved on.
+    @State private var searchWasFocused = false
 
     var body: some View {
         NavigationStack {
@@ -247,25 +260,42 @@ struct ModelPickerView: View {
                 // quiet card on the open chat's glow (a Bot Chat's bot's).
                 ConduitBackdrop(glowTint: appState.profileGlowTint(appState.conversationIdentityProfile))
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        if editingVisibility {
-                            visibilityEditor
-                        } else {
-                            // Reasoning changes most often and the model
-                            // list can be long, so reasoning comes first.
-                            reasoningSection
-                            modelSection
-                            runSettingsSection
+                ScrollViewReader { scroller in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 24) {
+                            if editingVisibility {
+                                visibilityEditor
+                            } else {
+                                searchField
+                                if searching {
+                                    // The matches lead; reasoning stays
+                                    // below them, still at hand.
+                                    searchResultsSection
+                                    reasoningSection
+                                } else {
+                                    // Reasoning changes most often and the model
+                                    // list can be long, so reasoning comes first.
+                                    reasoningSection
+                                    modelSection
+                                }
+                                runSettingsSection
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 24)
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    .modifier(V2SoftTopScrollEdge(isOn: true))
+                    .onChange(of: highlightedMatch) { _, index in
+                        let matches = searchMatches
+                        guard searching, matches.indices.contains(index) else { return }
+                        withAnimation(ConduitMotion.response) {
+                            scroller.scrollTo(matches[index].id)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 24)
                 }
-                .scrollIndicators(.hidden)
-                .scrollDismissesKeyboard(.interactively)
-                .modifier(V2SoftTopScrollEdge(isOn: true))
             }
             .navigationTitle("Model")
             .navigationBarTitleDisplayMode(.inline)
@@ -277,6 +307,7 @@ struct ModelPickerView: View {
                             appState.saveModelVisibility(visibility)
                             editingVisibility = false
                         } else {
+                            searchFocused = false
                             visibilityQuery = ""
                             expandedVisibilityProvider = selectedProvider
                             editingVisibility = true
@@ -298,6 +329,31 @@ struct ModelPickerView: View {
             visibility = appState.modelVisibility
         }
         .task { await loadModels() }
+        .task {
+            // On a Mac or with a hardware keyboard, typing a model's name
+            // comes first. Asked again once the sheet settles, since a focus
+            // request made while it slides in can be dropped.
+            keyboardDriven = modelSearchFocusesOnOpen()
+            guard keyboardDriven else { return }
+            searchFocused = true
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, !searchWasFocused, !editingVisibility else { return }
+            searchFocused = true
+        }
+        .onChange(of: searchQuery) { _, _ in highlightedMatch = 0 }
+        // Edit can hide the highlighted match.
+        .onChange(of: editingVisibility) { _, _ in highlightedMatch = 0 }
+        .onChange(of: searchFocused) { _, focused in
+            if focused { searchWasFocused = true }
+        }
+        // Esc closes the sheet, as the picker's taps already applied.
+        .background {
+            Button(AppLocalization.string("Close")) { dismiss() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .onChange(of: appState.runtime.reasoningEffort) { _, effort in
             // Follow a level changed elsewhere (another device, a chat
             // switch), but not mid-tap, so the tapped pill doesn't flicker.
@@ -324,6 +380,102 @@ struct ModelPickerView: View {
             Button("Cancel", role: .cancel) {}
         } message: { confirmation in
             Text(confirmation.message)
+        }
+    }
+
+    /// Matches replace the provider list once the catalog is in; until then
+    /// the list's loading or failed state shows as usual.
+    private var searching: Bool {
+        !ModelSearchQuery(searchQuery).isEmpty
+            && ModelCatalogState.of(providers: catalogLoaded ? providers : nil, failed: catalogFailed) == .ready
+    }
+
+    private var searchMatches: [ModelSearchMatch] {
+        modelSearchMatches(in: visibleProviders, query: searchQuery)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(AppLocalization.string("Search providers or models"), text: $searchQuery)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .focused($searchFocused)
+                .onSubmit { pickHighlightedMatch() }
+                .onKeyPress(.downArrow) { moveHighlight(1) }
+                .onKeyPress(.upArrow) { moveHighlight(-1) }
+                .onKeyPress(.escape) {
+                    dismiss()
+                    return .handled
+                }
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(AppLocalization.string("Clear"))
+            }
+        }
+        .font(.subheadline)
+        .padding(11)
+        .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func moveHighlight(_ step: Int) -> KeyPress.Result {
+        guard keyboardDriven, searching else { return .ignored }
+        let matches = searchMatches
+        highlightedMatch = modelSearchHighlight(highlightedMatch, moving: step, count: matches.count)
+        // The highlight is only drawn, so VoiceOver hears which match
+        // Return will pick.
+        if matches.indices.contains(highlightedMatch) {
+            let match = matches[highlightedMatch]
+            let spoken: String = "\(match.model.id), \(match.provider.title)"
+            AccessibilityNotification.Announcement(spoken).post()
+        }
+        return .handled
+    }
+
+    /// Return picks the highlighted match, as a tap would, and keeps the
+    /// field focused for the next search. On touch it puts the keyboard away.
+    private func pickHighlightedMatch() {
+        guard keyboardDriven else {
+            searchFocused = false
+            return
+        }
+        searchFocused = true
+        let matches = searchMatches
+        guard matches.indices.contains(highlightedMatch), !modelRowsLocked else { return }
+        pick(matches[highlightedMatch].model, provider: matches[highlightedMatch].provider)
+    }
+
+    /// Each match names its provider: several providers often serve the
+    /// same model, and the pick switches to that provider's route.
+    private var searchResultsSection: some View {
+        ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
+            let matches = searchMatches
+            if matches.isEmpty {
+                Text(verbatim: AppLocalization.string("Nothing matches “\(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))”."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+            }
+            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in
+                modelRow(match.model, provider: match.provider, showsProvider: true, isHighlighted: keyboardDriven && index == highlightedMatch)
+                    .id(match.id)
+                if index < matches.count - 1 {
+                    Divider()
+                        .overlay(rowStroke)
+                        .padding(.leading, 16)
+                }
+            }
+            modelStatusRows
         }
     }
 
@@ -366,21 +518,26 @@ struct ModelPickerView: View {
                 }
             }
 
-            // The composer's error banner sits behind this sheet, so a failed
-            // switch is reported here.
-            if let modelError {
-                Label(modelError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-            } else if let modelNote {
-                Text(modelNote)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-            }
+            modelStatusRows
+        }
+    }
+
+    /// The composer's error banner sits behind this sheet, so a failed
+    /// switch is reported here.
+    @ViewBuilder
+    private var modelStatusRows: some View {
+        if let modelError {
+            Label(modelError, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+        } else if let modelNote {
+            Text(modelNote)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
         }
     }
 
@@ -436,27 +593,35 @@ struct ModelPickerView: View {
         }
     }
 
-    private func modelRow(_ model: ModelInfo, provider: ProviderInfo) -> some View {
+    /// `showsProvider` for a search match, which isn't under its provider's
+    /// name; `isHighlighted` for the match the arrow keys have reached.
+    private func modelRow(
+        _ model: ModelInfo,
+        provider: ProviderInfo,
+        showsProvider: Bool = false,
+        isHighlighted: Bool = false
+    ) -> some View {
         // The provider too, by any of its spellings: two providers can list
         // the same model id.
         let isSelected = selectedModel == model.id && provider.matches(selectedProvider)
         let isSwitching = switchingRow.map { $0.model == model.id && provider.matches($0.provider) } ?? false
         return Button {
-            Haptics.selectionChanged(!isSelected)
-            let previous = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
-            let selection = ModelPickerSelection(model: model.id, provider: provider.name)
-            Task { @MainActor in await switchModel(to: selection, from: previous) }
+            pick(model, provider: provider)
         } label: {
             HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(model.id)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                    if let label = model.label {
-                        Text(label)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                if showsProvider {
+                    ModelSearchResultText(title: model.id, detail: model.label, provider: provider.title)
+                } else {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.id)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        if let label = model.label {
+                            Text(label)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
                     }
                 }
                 Spacer(minLength: 12)
@@ -469,8 +634,8 @@ struct ModelPickerView: View {
                         .accessibilityHidden(true)
                 }
             }
-            // Under the provider's name.
-            .padding(.leading, 42)
+            // Under the provider's name, unless the row names it.
+            .padding(.leading, showsProvider ? 12 : 42)
             .padding(.trailing, 12)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -478,13 +643,32 @@ struct ModelPickerView: View {
                 isSelected ? Color.conduitAccent.opacity(colorScheme == .dark ? 0.14 : 0.08) : .clear,
                 in: RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
+            .overlay {
+                if isHighlighted {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.conduitAccent, lineWidth: 2)
+                }
+            }
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // One switch at a time, and not under another write.
-        .disabled(switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil)
+        .disabled(modelRowsLocked)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// One switch at a time, and not under another write.
+    private var modelRowsLocked: Bool {
+        switchingRow != nil || isApplyingReasoning || writingSpeed != nil || writingYolo != nil
+    }
+
+    /// A tapped row, or the search match Return picked.
+    private func pick(_ model: ModelInfo, provider: ProviderInfo) {
+        let isSelected = selectedModel == model.id && provider.matches(selectedProvider)
+        Haptics.selectionChanged(!isSelected)
+        let previous = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
+        let selection = ModelPickerSelection(model: model.id, provider: provider.name)
+        Task { @MainActor in await switchModel(to: selection, from: previous) }
     }
 
     private var reasoningSection: some View {

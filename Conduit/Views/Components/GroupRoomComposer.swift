@@ -29,7 +29,7 @@ struct GroupRoomComposer: View {
     @State private var recipients: [String] = []
     @Environment(\.groupMemberTints) private var tints
     @State private var attachments: [Attachment] = []
-    @FocusState private var isFocused: Bool
+    @State private var isFocused = false
     @State private var isUploading = false
     /// The upload in flight, cancelled when the composer goes away.
     @State private var uploadTask: Task<Void, Never>?
@@ -237,9 +237,12 @@ struct GroupRoomComposer: View {
             ComposerFullEditor(
                 text: $draft,
                 placeholder: AppLocalization.string("Message the room"),
+                fieldIdentifier: "room.composer.fullEditor.field",
                 enabled: true,
                 onUserEdit: { _ in },
                 onCollapse: { isShowingFullEditor = false },
+                canSubmitFromReturn: canSubmitFromReturn,
+                onSubmitFromReturn: { submitFromReturnKey() },
                 attachments: {
                     if !attachments.isEmpty { attachmentStrip }
                 },
@@ -317,15 +320,28 @@ struct GroupRoomComposer: View {
     }
 
     private var field: some View {
-        TextField(AppLocalization.string("Message the room"), text: $draft, axis: .vertical)
-            .lineLimit(1...6)
-            .focused($isFocused)
+        ReturnKeyTextEditor(
+            text: $draft,
+            isFocused: $isFocused,
+            accessibilityLabel: AppLocalization.string("Message the room"),
+            accessibilityIdentifier: "room.composer.field",
+            maxLines: 6,
+            canSubmitFromReturn: canSubmitFromReturn,
+            onSubmitFromReturn: { submitFromReturnKey() }
+        )
+            .background(alignment: .topLeading) {
+                if draft.isEmpty {
+                    Text(AppLocalization.string("Message the room"))
+                        .foregroundStyle(.tertiary)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
             .padding(.leading, 12)
             // Clear of the expand button once it shows.
             .padding(.trailing, showsExpand ? 44 : 12)
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .accessibilityIdentifier("room.composer.field")
             .overlay(alignment: .topTrailing) {
                 if showsExpand {
                     Button {
@@ -514,6 +530,22 @@ struct GroupRoomComposer: View {
     }
 
     // MARK: - Sending
+
+    /// Return key sends (Settings > Chat > Keyboard), as in a chat: Return
+    /// stands for Send, which is dictation's Stop while it runs.
+    private var canSubmitFromReturn: Bool {
+        canSend || dictationHoldsSendSlot
+    }
+
+    private func submitFromReturnKey() -> Bool {
+        if dictationHoldsSendSlot {
+            dictation.tapSlot()
+            return true
+        }
+        guard canSend else { return false }
+        send()
+        return true
+    }
 
     private func send() {
         guard canSend else { return }

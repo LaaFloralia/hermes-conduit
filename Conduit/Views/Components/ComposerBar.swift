@@ -812,6 +812,8 @@ struct ComposerBar: View, Equatable {
                     dictation.yieldToTyping()
                 },
                 onCollapse: { isShowingFullEditor = false },
+                canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot,
+                onSubmitFromReturn: { submitFromReturnKey() },
                 attachments: {
                     if let replyReference {
                         replyReferenceChip(replyReference)

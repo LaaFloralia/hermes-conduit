@@ -1288,13 +1288,13 @@ private struct V2TabBarClearance: ViewModifier {
     }
 }
 
-/// Before iOS 26, the capsule bar carries the fading material the lists
-/// scroll under, reaching a little above the bar. iOS 26 draws a soft
-/// edge under the bar's clearance instead.
+/// Before iOS 26, and on a Mac, the capsule bar carries the fading
+/// material the lists scroll under, reaching a little above the bar.
+/// iOS 26 draws a soft edge under the bar's clearance instead.
 private struct V2LegacyTabBarEdge: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), V2SystemScrollEdge.isUsed {
             content
         } else {
             content.background { V2ScrollEdgeBackground(edge: .bottom).padding(.top, -14) }

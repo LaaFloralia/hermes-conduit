@@ -293,4 +293,57 @@ final class ModelPickerTests: XCTestCase {
             sonnetRow, lastSwitched: nil,
             runtimeModel: "anthropic/claude-sonnet", runtimeProvider: "anthropic"))
     }
+
+    // MARK: - Search (#1388)
+
+    private let searchCatalog = [
+        ProviderInfo(
+            name: "openrouter",
+            models: [
+                ModelInfo(id: "anthropic/claude-sonnet-4.5", label: nil, reasoningCapable: true),
+                ModelInfo(id: "openai/gpt-5", label: nil, reasoningCapable: true),
+            ],
+            displayName: "OpenRouter"
+        ),
+        ProviderInfo(
+            name: "anthropic",
+            models: [ModelInfo(id: "claude-sonnet-4-5", label: "Claude Sonnet 4.5", reasoningCapable: true)]
+        ),
+    ]
+
+    /// The same model from two providers comes back twice, each match
+    /// carrying the provider that serves it.
+    func testSearchKeepsEachProviderOfTheSameModel() {
+        let matches = modelSearchMatches(in: searchCatalog, query: "sonnet")
+        XCTAssertEqual(matches.map(\.provider.name), ["openrouter", "anthropic"])
+        XCTAssertEqual(matches.map(\.model.id), ["anthropic/claude-sonnet-4.5", "claude-sonnet-4-5"])
+        XCTAssertEqual(matches.map(\.provider.title), ["OpenRouter", "anthropic"])
+        XCTAssertEqual(Set(matches.map(\.id)).count, 2)
+    }
+
+    /// Every word must match the model or its provider, so a provider's
+    /// name narrows a model several serve down to one of them.
+    func testSearchWordsCanNameTheProvider() {
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "Sonnet  openrouter").map(\.provider.name), ["openrouter"])
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "OPENROUTER").count, 2)
+        // A label matches too.
+        XCTAssertEqual(modelSearchMatches(in: searchCatalog, query: "sonnet 4.5").count, 2)
+        XCTAssertTrue(modelSearchMatches(in: searchCatalog, query: "luna").isEmpty)
+        XCTAssertTrue(modelSearchMatches(in: searchCatalog, query: "   ").isEmpty)
+    }
+
+    func testArrowKeysStayOnTheResults() {
+        XCTAssertEqual(modelSearchHighlight(0, moving: 1, count: 3), 1)
+        XCTAssertEqual(modelSearchHighlight(2, moving: 1, count: 3), 2)
+        XCTAssertEqual(modelSearchHighlight(0, moving: -1, count: 3), 0)
+        XCTAssertEqual(modelSearchHighlight(4, moving: 0, count: 0), 0)
+    }
+
+    /// Only a Mac or a hardware keyboard opens the sheet typing; a touch
+    /// phone keeps its keyboard down.
+    func testSearchTakesFocusOnlyWithAKeyboard() {
+        XCTAssertTrue(modelSearchFocusesOnOpen(onMac: true, hardwareKeyboard: false))
+        XCTAssertTrue(modelSearchFocusesOnOpen(onMac: false, hardwareKeyboard: true))
+        XCTAssertFalse(modelSearchFocusesOnOpen(onMac: false, hardwareKeyboard: false))
+    }
 }
