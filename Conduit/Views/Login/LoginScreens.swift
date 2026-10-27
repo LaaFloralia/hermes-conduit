@@ -880,20 +880,30 @@ struct LoginSwitchRow: View {
 
     var body: some View {
         Toggle(isOn: $isOn) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: title)
-                    .font(.callout.weight(.semibold))
-                Text(verbatim: detail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            LoginSwitchLabel(title: title, detail: detail)
         }
         .tint(.conduitAccent)
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
         .frame(minHeight: 60)
         .accessibilityIdentifier(identifier)
+    }
+}
+
+/// A login switch's title with its caption below, one label for VoiceOver.
+struct LoginSwitchLabel: View {
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(verbatim: title)
+                .font(.callout.weight(.semibold))
+            Text(verbatim: detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 
@@ -911,16 +921,12 @@ struct PrivateSignInPageToggle: View {
 
     var body: some View {
         Toggle(isOn: $privateSignIn) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(AppLocalization.string("Private sign-in page"))
-                    .font(.callout.weight(.semibold))
-                Text(privateSignIn
-                     ? AppLocalization.string("When the sign-in page opens, it starts fresh and shows every way to sign in, such as a login code.")
-                     : AppLocalization.string("The sign-in page can remember your account. Turn this on if you need another way to sign in, such as a login code."))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            LoginSwitchLabel(
+                title: AppLocalization.string("Private sign-in page"),
+                detail: privateSignIn
+                    ? AppLocalization.string("When the sign-in page opens, it starts fresh and shows every way to sign in, such as a login code.")
+                    : AppLocalization.string("The sign-in page can remember your account. Turn this on if you need another way to sign in, such as a login code.")
+            )
         }
         .tint(.conduitAccent)
         .accessibilityIdentifier(identifier)
