@@ -1455,7 +1455,35 @@ voice reply model pickers · the Kanban task composer's catalog
 - The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-10-27, at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+
+## The Model sheet's settings
+
+How the composer's Model sheet changes the chat's model, reasoning, speed and
+YOLO: each one applies when it's tapped, with no Apply step.
+
+**Siblings:** the sheet's Model rows, Reasoning pills, Fast mode and YOLO
+toggles · the composer's reasoning chip · typed `/model` (opens the sheet),
+`/fast` and `/yolo` · a bot's model picker and the Model page's Default,
+Delegate and Fallback model editors (not siblings: they're saved with the bot
+or the profile, not live session settings)
+
+**Code**
+- Sheet: `Conduit/Views/ModelPickerView.swift` (switchModel, runModelPickerSwitch, modelPickerShouldSwitch, applySpeed, applyYolo, applyReasoning)
+- Chip and writes: `Conduit/Views/Components/ComposerBar.swift` (the reasoning chip), `Conduit/Services/AppState.swift` (setReasoningEffort, setYoloModeReportingFailure), `Conduit/Services/HermesClient.swift` (setModel, setSpeed, ModelSwitchOutcome)
+- Tests: `ConduitTests/ModelPickerTests.swift`
+
+**Rulings**
+- Every control applies on tap, like Settings; the sheet has no Apply button and stays open (Eric, 2026-10-27, #1333, #1334).
+- A model Hermes wants confirmed asks on the tap; Cancel leaves the checkmark on the model the session still runs. A failed switch puts it back too and says why under the list.
+- A switch made mid-turn is held by Hermes for the next turn, and the sheet says it switches when the reply finishes.
+- Switching to a model without Ultrafast drops Ultrafast to Fast.
+- Errors show in their own section of the sheet, since the composer's banner is behind it.
+
+**Open gaps**
+- The checked row doesn't follow a model changed elsewhere while the sheet is open.
+
+**Checked:** 2026-10-27, at #1334.
 
 ## Files over the size limit
 
