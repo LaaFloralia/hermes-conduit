@@ -1214,19 +1214,19 @@ browser (separate)
 **Code**
 - Browser and setting: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController, NativeOAuthLoginModel.run)
 - The switch: `Conduit/Views/Login/LoginScreens.swift` (PrivateSignInPageToggle, advancedFields)
-- Repair and Sign In Again: `Conduit/Views/ConnectionSetupForm.swift` (repairReviewFooter, settingsSignInAgain), `Conduit/Views/ConnectionSetupView.swift` (repairSignInSheet)
-- Saved dashboards screen: `Conduit/Views/Login/LoginScreens.swift` (LoginDashboardsScreen)
+- Repair and Sign In Again: `Conduit/Views/ConnectionSetupForm.swift` (repairReviewFooter, settingsSignInAgain), `Conduit/Views/ConnectionSetupView.swift` (repairSignInSheet), `Conduit/Services/ConnectionRepair.swift` (ConnectionRepairSignIn.mayOpenNativeSignIn, showsPrivateSignInSwitch)
+- Saved dashboards screen: `Conduit/Views/Login/LoginScreens.swift` (LoginDashboardsScreen.mayOpenSignInPage)
+- Tests: `ConduitTests/ConnectionRepairTests.swift` (testPrivateSignInSwitchShowsOnlyWhereSignInCanBeNative)
 - Embedded browser sign-in: `Conduit/Views/LoginView.swift` (AuthWebView)
 - Bot MCP sign-in, its own browser: `Conduit/Views/BotCapabilitiesView.swift` (BotMcpBrowserView)
 
 **Rulings**
 - A native sign-in that opens the sign-in page opens it in an ASWebAuthenticationSession, not ephemeral by default, so the provider's page can remember the account between sign-ins. iOS asks "Conduit wants to use … to sign in" before a non-ephemeral session opens. Hermes accepts only a loopback redirect, so the code still arrives through the loopback listener and Conduit closes the browser itself (2026-10-26, #1329).
 - Private sign-in page makes each new browser session ephemeral, so a sign-in that opens the page shows every way the provider offers (a login code as well as a passkey) and can pick another account. It doesn't skip a saved grant: NativeOAuthLoginModel.run signs in with one without opening the page (2026-10-26, #1329).
-- The switch, with the caption for its setting inside its label, sits wherever a native sign-in can start from Conduit's own screens: the sign-in screen's Advanced card, Repair's Sign In to Reconnect and Settings' Sign In Again (2026-10-27, #1329, Eric).
+- The switch, with the caption for its setting inside its label, shows only where a native sign-in can start: the sign-in screen's Advanced card; Repair's Sign In to Reconnect and Settings' Sign In Again when the test's sign-in is native or a choice the capability check may still send to Safari, never when it is the embedded browser, which doesn't read it; and the saved dashboards screen while a row signs in without a saved password, since that row's discovery decides native or embedded browser on the tap (a list of password dashboards never shows it). Each place has its own accessibility identifier (2026-10-27, #1329, Eric).
 - A browser that fails or doesn't start reports "The sign-in page couldn't open" through the sheet's error; only the user closing it is a cancellation, and a closed browser never reopens (#1329).
 
 **Open gaps**
-- The saved dashboards screen has no Advanced card, so a returning user changes the switch through Add a dashboard, Repair or Sign In Again.
 - To switch accounts on a dashboard with a saved grant, sign out first; the switch alone keeps the grant.
 - Whether the session shares MobileSafari's own sign-in depends on iOS; in simulator testing with Pocket ID it kept only its own session.
 

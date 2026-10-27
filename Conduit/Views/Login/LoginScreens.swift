@@ -566,6 +566,14 @@ struct LoginDashboardsScreen: View {
         appState.savedDashboardRegistry.dashboards
     }
 
+    /// A row that signs in without a saved password can open its sign-in
+    /// page, natively when the dashboard's discovery says so on the tap, so
+    /// the Private sign-in page switch shows under the list. A list of
+    /// password dashboards alone never opens one.
+    private var mayOpenSignInPage: Bool {
+        signIns.values.contains { $0 == .session || $0 == .signInNeeded }
+    }
+
     private var content: some View {
         VStack(spacing: 22) {
             Spacer(minLength: 28)
@@ -585,6 +593,11 @@ struct LoginDashboardsScreen: View {
                     }
                 }
                 .settingsCard()
+            }
+            if mayOpenSignInPage {
+                PrivateSignInPageToggle(identifier: "login.dashboards.private-sign-in")
+                    .padding(16)
+                    .settingsCard()
             }
             Button {
                 Haptics.selection()
@@ -886,8 +899,9 @@ struct LoginSwitchRow: View {
 
 /// The Private sign-in page switch with the caption for its current
 /// setting, inside the switch's label so VoiceOver reads them together.
-/// Shared by the sign-in screen's Advanced card and the sign-in actions of
-/// Connection Setup (Repair's Sign In to Reconnect, Settings' Sign In Again).
+/// Shared by the sign-in screen's Advanced card, the saved dashboards
+/// screen and the sign-in actions of Connection Setup (Repair's Sign In to
+/// Reconnect, Settings' Sign In Again).
 /// It only matters when a native sign-in opens the sign-in page: a saved
 /// grant signs in without it.
 struct PrivateSignInPageToggle: View {

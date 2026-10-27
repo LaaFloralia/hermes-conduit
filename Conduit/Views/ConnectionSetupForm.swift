@@ -413,8 +413,10 @@ struct ConnectionSetupForm: View {
                         .accessibilityIdentifier("setup.review.sign-in-again-failure")
                 }
             }
-            ConnectionSetupPanel {
-                PrivateSignInPageToggle(identifier: "setup.review.private-sign-in")
+            if review.showsPrivateSignInSwitch {
+                ConnectionSetupPanel {
+                    PrivateSignInPageToggle(identifier: "setup.review.sign-in-again-private")
+                }
             }
             LoginPrimaryButton(title: AppLocalization.string("Sign In Again")) { review.signInAgain() }
                 .accessibilityIdentifier("setup.review.sign-in-again")
@@ -423,7 +425,9 @@ struct ConnectionSetupForm: View {
 
     /// Round 6: the Repair review's final actions. Reconnect Now requires a
     /// current validated candidate (a consumed one forces a fresh test);
-    /// Sign In to Reconnect opens the existing AuthWebView; an activation
+    /// Sign In to Reconnect opens the sign-in the test decided (native
+    /// sign-in in Safari, or the embedded AuthWebView), with the Private
+    /// sign-in page switch above it when that can be native; an activation
     /// failure is shown classified with the explicit next step. Never an
     /// automatic retry, never an automatic reconnection.
     @ViewBuilder
@@ -443,8 +447,10 @@ struct ConnectionSetupForm: View {
                 }
             }
             if repair.isInteractive {
-                ConnectionSetupPanel {
-                    PrivateSignInPageToggle(identifier: "setup.review.private-sign-in")
+                if repair.showsPrivateSignInSwitch {
+                    ConnectionSetupPanel {
+                        PrivateSignInPageToggle(identifier: "setup.review.sign-in-reconnect-private")
+                    }
                 }
                 LoginPrimaryButton(title: AppLocalization.string("Sign In to Reconnect")) { repair.signInToReconnect() }
                     .accessibilityIdentifier("setup.review.sign-in-reconnect")

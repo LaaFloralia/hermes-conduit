@@ -310,6 +310,26 @@ final class ConnectionRepairTests: XCTestCase {
         }
     }
 
+    func testPrivateSignInSwitchShowsOnlyWhereSignInCanBeNative() throws {
+        // A tested native sign-in, or a choice the capability check may still
+        // send to Safari, reads the switch; the embedded browser never does.
+        for (terminal, shows) in [
+            (ConnectionSetupTestEvent.requiresInteractiveSignIn(.authentication, .nativeOAuth(provider: "self-hosted")), true),
+            (.requiresInteractiveSignIn(.authentication, .browser(.legacyOAuth)), false),
+            (.requiresInteractiveSignIn(.authentication, .browser(.authProxyRedirect)), false),
+            (.requiresSignInChoice(.authentication, .nativeCapable(provider: "self-hosted")), true),
+            (.requiresSignInChoice(
+                .authentication,
+                .nativeCapable(provider: "self-hosted", advertisedFlows: ["cookie", "native_pkce"])
+            ), true),
+            (.requiresSignInChoice(.authentication, .legacyOAuth), false)
+        ] {
+            let flow = try repairFlowAtReview(ending: terminal)
+            XCTAssertEqual(ConnectionRepairSignIn.mayOpenNativeSignIn(for: flow.testState), shows, "\(terminal)")
+        }
+        XCTAssertFalse(ConnectionRepairSignIn.mayOpenNativeSignIn(for: ConnectionSetupTestState()))
+    }
+
     func testSignInToReconnectFromAChoiceChecksCapabilityOnlyForANativeCapableOffer() async throws {
         let native = CapabilitySeam(.success(true))
         let nativeFlow = try repairFlowAtReview(
