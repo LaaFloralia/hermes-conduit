@@ -83,6 +83,18 @@ enum SessionSource: String, Codable, CaseIterable {
     }
 }
 
+extension SessionSource {
+    /// Hermes' source for a Kanban worker's transcript. Hermes refuses to
+    /// reopen one as a chat (`session.resume` 4132): the board runs it, and
+    /// the task's Worker Log shows it.
+    static let hermesKanbanSource = "kanban"
+
+    /// `exclude_sources` for the chat lists: cron runs have a list of their
+    /// own, and Kanban workers stay on the board, as Hermes Desktop's sidebar
+    /// leaves them out.
+    static let chatListExcludedSources = "cron,\(hermesKanbanSource)"
+}
+
 struct Attachment: Codable, Identifiable, Equatable {
     let id: String
     var name: String

@@ -252,6 +252,30 @@ extension HermesVoiceGatewayTimeoutTests {
         session.stop()
     }
 
+    func testLocalLiveSessionTellsTheServerTheUserStoppedTheReplyAheadOfTheirAudio() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        session.cancelResponse()
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+        XCTAssertFalse(socket.sent.contains { $0["type"] as? String == "response.cancel" }, "nothing goes out before the call is ready")
+        // The check's answer is written after the call went ready.
+        await localLiveSettle(until: { socket.sent.contains { $0["type"] as? String == "conduit.turn.done" } })
+
+        // The Interrupt button, then the user speaking again (#1325): a
+        // server that shuts its microphone while it speaks opens it first.
+        let before = socket.sent.count
+        session.cancelResponse()
+        session.send(.audio(Data(repeating: 1, count: 640)))
+        await localLiveSettle(until: { socket.sent.count >= before + 2 })
+        XCTAssertEqual(socket.sent.dropFirst(before).map { $0["type"] as? String }, ["response.cancel", "input_audio_buffer.append"])
+        session.stop()
+        session.cancelResponse()
+        XCTAssertEqual(socket.sent.count, before + 2, "a stopped call sends nothing")
+    }
+
     func testLocalLiveSessionDropsOpenTurnsWhenItsConnectionEnds() async throws {
         let (session, sockets) = makeLocalLiveSession()
         var dropped = 0

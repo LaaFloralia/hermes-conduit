@@ -100,6 +100,110 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.last?.content, "Compressed 2 messages.")
     }
 
+    /// A reopened Bot Chat runs under the runtime id its resume minted,
+    /// which the roster's canonical id never names. `/new` there (with or
+    /// without a title) still compacts the bot's one chat instead of
+    /// starting a workspace chat in Chats (#1307).
+    func testNewInAReopenedBotChatCompactsInsteadOfStartingAChat() async throws {
+        let recorder = SlashCallRecorder()
+        var createdChats = 0
+        var operations = ChatResumeLifecycleOperations(
+            compressSession: { _, sessionID, focusTopic in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: focusTopic)
+                return SessionCompressResult(from: .object(["status": .string("compressed"), "removed": .number(2)]))
+            }
+        )
+        operations.createSession = { _, _ in
+            createdChats += 1
+            return (sessionId: "new-chat", storedSessionId: nil, profile: "default")
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        harness.appState.isConnected = true
+        // Only the durable id is registered; the chat is open by the
+        // runtime id its row pairs with it.
+        harness.appState.noteBotChatSessionForTesting("bot-stored", profile: "default")
+        harness.appState.sessions = [session("bot-runtime-2", storedID: "bot-stored")]
+        harness.appState.activeSessionId = "bot-runtime-2"
+
+        for command in ["/new", "/new Fresh start", "/reset", "/clear"] {
+            let submitted = await harness.appState.submitComposer(text: command)
+            XCTAssertTrue(submitted, command)
+        }
+
+        XCTAssertEqual(createdChats, 0, "a Bot Chat never forks into a new chat")
+        XCTAssertEqual(recorder.compressCalls.map(\.sessionID), Array(repeating: "bot-runtime-2", count: 4))
+        XCTAssertEqual(harness.appState.activeSessionId, "bot-runtime-2", "the user stays in the Bot Chat")
+    }
+
+    /// A compaction carries no attachments, so `/new` with one in a Bot
+    /// Chat is refused and the draft kept, title or not; it is never sent
+    /// to the bot as a message.
+    func testNewWithAttachmentsInABotChatIsRefused() async throws {
+        let recorder = SlashCallRecorder()
+        var prompts: [String] = []
+        var operations = ChatResumeLifecycleOperations(
+            compressSession: { _, sessionID, focusTopic in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: focusTopic)
+                return SessionCompressResult(from: .object(["status": .string("compressed")]))
+            }
+        )
+        operations.sendPrompt = { _, _, text in
+            prompts.append(text)
+            return .accepted
+        }
+        operations.uploadAttachment = { _, _, _ in nil }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        harness.appState.isConnected = true
+        harness.appState.noteBotChatSessionForTesting("bot-runtime-2", profile: "default")
+        harness.appState.activeSessionId = "bot-runtime-2"
+        let attachment = Attachment(
+            id: "notes",
+            name: "notes.txt",
+            uri: "file:///tmp/notes.txt",
+            mimeType: "text/plain",
+            kind: .document
+        )
+
+        for command in ["/new", "/new Fresh start"] {
+            harness.appState.errorMessage = nil
+            let submitted = await harness.appState.submitComposer(text: command, attachments: [attachment])
+            XCTAssertFalse(submitted, command)
+            XCTAssertNotNil(harness.appState.errorMessage, command)
+        }
+
+        XCTAssertTrue(prompts.isEmpty, "nothing reaches the bot")
+        XCTAssertTrue(recorder.compressCalls.isEmpty)
+    }
+
+    /// An ordinary chat keeps `/new`: it starts a new chat and compacts nothing.
+    func testNewInAnOrdinaryChatStartsANewChat() async throws {
+        let recorder = SlashCallRecorder()
+        var createdChats = 0
+        var operations = ChatResumeLifecycleOperations(
+            compressSession: { _, sessionID, focusTopic in
+                recorder.recordCompress(sessionID: sessionID, focusTopic: focusTopic)
+                return SessionCompressResult(from: .object(["status": .string("compressed")]))
+            }
+        )
+        operations.createSession = { _, _ in
+            createdChats += 1
+            return (sessionId: "new-chat", storedSessionId: nil, profile: "default")
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        harness.appState.isConnected = true
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/new")
+
+        XCTAssertEqual(createdChats, 1)
+        XCTAssertTrue(recorder.compressCalls.isEmpty)
+    }
+
     func testCompressPassesArgumentAsFocusTopic() async throws {
         let recorder = SlashCallRecorder()
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(

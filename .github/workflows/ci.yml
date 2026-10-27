@@ -32,9 +32,8 @@ name: CI
 #
 # One macOS job per run: GitHub allows 5 concurrent macOS jobs per account,
 # and runner queueing, not test time, was what made the three-job CI v4 shape
-# slow. A PR's superseded runs are cancelled. A newer push to main never
-# cancels an older one's run, so back-to-back merges overlap and each adds one
-# macOS job.
+# slow. A PR's superseded runs are cancelled. A newer push never cancels an
+# older one's run, so back-to-back merges overlap and each adds one macOS job.
 
 on:
   push:
@@ -42,10 +41,10 @@ on:
   pull_request:
     branches: [main]
 
-# A PR's newer push supersedes its older run. A push to main is grouped by its
-# own commit instead, so every merge gets a full run: branch protection does
-# not require PRs to be up to date with main, so this run is what catches two
-# PRs that pass alone but break together.
+# A PR's newer push supersedes its older run. A push is grouped by its own
+# commit instead, so every merge gets a full run: branch protection does not
+# require PRs to be up to date with main, so this run is what catches two PRs
+# that pass alone but break together.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
@@ -121,13 +120,13 @@ jobs:
         # where their code lives; a path that moved would send it to the
         # wrong file. notifier/ paths are checked on the plugin's main. On a
         # PR, an entry it adds or edits names it on its Checked line. A PR
-        # into pulse (pulse's copy of this workflow runs on those) that
-        # merges main, so it leaves fewer of main's commits to take than its
-        # base does, also passes main's maps where the PR and its base meet
-        # main (their merge bases): an entry main changed between the two
-        # that matches main's copy came in with the merge and keeps main's
-        # Checked line. If GitHub can't say, the check warns and runs without
-        # them, as it would have before.
+        # into pulse or linked-rooms (that branch's copy of this workflow
+        # runs on those) that merges main, so it leaves fewer of main's
+        # commits to take than its base does, also passes main's maps where
+        # the PR and its base meet main (their merge bases): an entry main
+        # changed between the two that matches main's copy came in with the
+        # merge and keeps main's Checked line. If GitHub can't say, the check
+        # warns and runs without them, as it would have before.
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -169,8 +168,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
-          # HEAD^1 is the base (a PR's merge commit) or the previous main
-          # commit (a push; main takes squash merges, one commit each): the
+          # HEAD^1 is the base (a PR's merge commit) or the branch's previous
+          # commit (a push; main takes squash merges, one commit each, and a
+          # merge of main into another branch brings main's changes too): the
           # unit classes this change touches join the curated ones, so a
           # PR's new or edited tests run before merge.
           python3 scripts/plan-tests.py smoke --repo-root . \
@@ -201,8 +201,8 @@ jobs:
         # The smoke job builds project-tests.yml (the app without its Watch
         # app and extensions, which no test runs) unless the change could
         # break those targets: their own folders, the shared code they
-        # compile, the project spec, or any push to main. Then it builds the
-        # whole app as shipped.
+        # compile, the project spec, or any push. Then it builds the whole
+        # app as shipped.
         id: spec
         env:
           EVENT: ${{ github.event_name }}
@@ -251,7 +251,7 @@ jobs:
           python3 scripts/ci-self-test.py
 
   smoke:
-    # The only macOS job of a PR or main run: one build, one booted simulator,
+    # The only macOS job of a PR or push run: one build, one booted simulator,
     # then the unit smoke classes and the UI smoke classes on them.
     name: Smoke
     needs: plan
@@ -268,9 +268,10 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Pick the build cache
-        # DerivedData from the newest main build of the same project and
-        # Xcode (the same runner image preferred), so ci-build-for-testing.sh
-        # recompiles only what changed since. A new Xcode starts clean.
+        # DerivedData from the newest build of the same project and Xcode
+        # that this run can reach (see "Save the build cache"), the same
+        # runner image preferred, so ci-build-for-testing.sh recompiles only
+        # what changed since. A new Xcode starts clean.
         id: cache-key
         env:
           SPEC: ${{ needs.plan.outputs.ui-spec }}
@@ -502,7 +503,9 @@ jobs:
           fi
 
       - name: Save the build cache
-        # Main's builds only (PRs restore the newest of them). A push to main
+        # Pushes' builds only. A PR restores the newest it can reach: main's,
+        # and on a PR into pulse or linked-rooms (each runs its own copy of
+        # this workflow) that branch's too, never another branch's. A push
         # always builds project.yml, so this saves the full app; the app-only
         # (slim) build PRs restore is saved by nightly unit shard 1 on main.
         # After the tests, so a test failure still saves a good build.

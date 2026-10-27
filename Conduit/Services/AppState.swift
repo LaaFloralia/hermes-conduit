@@ -4739,6 +4739,11 @@ final class AppState: ObservableObject {
     /// that its requested session no longer exists. Callers use this to
     /// retire a saved automatic-return target instead of retrying it forever.
     private var reconciliationSessionWasNotFound = false
+    /// Set when the resume RPC refused a Kanban worker's transcript (4132).
+    /// Hermes never reopens one as a chat, so it also counts as not found:
+    /// a saved automatic-return target is retired and a notification isn't
+    /// retried. This flag keeps its own message from being reworded.
+    private var reconciliationWasKanbanWorker = false
     /// Catalog rows `session.resume` answered 4007 for during an automatic
     /// resume, per dashboard and profile, for this app run. The catalog can
     /// keep listing a conversation the gateway no longer resumes; without
@@ -6177,6 +6182,19 @@ final class AppState: ObservableObject {
         let initialRegistry = preloadedRegistry
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
         self.savedDashboardRegistry = initialRegistry
+        // A phone that was signed in before keeps project chats out of
+        // Chats, as it had them (#1317). The defaults also say so when the
+        // registry is empty. A locked phone that can't read the registry at
+        // all decides on a later launch.
+        if defaults.string(forKey: ProjectChatsInChats.deviceDefaultKey) == nil,
+           preloadedRegistry != nil || SavedDashboardRegistryStore.load() != nil {
+            ProjectChatsInChats.settleDefault(
+                in: defaults,
+                existingInstall: !initialRegistry.dashboards.isEmpty
+                    || defaults.string(forKey: Self.chatResumeServerIdentityKey) != nil
+                    || defaults.string(forKey: "conduit.dashboardURL") != nil
+            )
+        }
         self.profileAppearanceStore = profileAppearanceStore ?? ProfileAppearanceStore(defaults: defaults)
         self.sessionPresentationCache = sessionPresentationCache
         self.offlineChatCache = offlineChatCache ?? Self.makeDefaultOfflineChatCache()
@@ -7885,7 +7903,10 @@ final class AppState: ObservableObject {
             let opened = await self.requestOpenSession(target ?? fallback ?? id) { [weak self] in
                 // A failed resume says "session not found"; the link's own
                 // words say what's missing. Other refusals keep their text.
-                guard let self, self.errorMessage == nil || self.reconciliationSessionWasNotFound else { return }
+                guard let self,
+                      self.errorMessage == nil
+                        || (self.reconciliationSessionWasNotFound && !self.reconciliationWasKanbanWorker)
+                else { return }
                 self.errorMessage = unavailable
             }.value
             // From outside a chat (a Live Activity, another app) the chat
@@ -10565,27 +10586,31 @@ final class AppState: ObservableObject {
         return activeProfile
     }
 
-    /// Upstream's canonical-forever-chat guard: `/new` or `/reset` inside a
-    /// bot's canonical chat would fork the relationship into a scratch
-    /// session — the one thing Bot Mode promises never happens. Returns
-    /// "/compact" (fresh working context, SAME conversation) ONLY when the
-    /// active session is positively that bot's canonical chat by ROSTER
-    /// evidence (the canonical registry names it, or names the lineage tip a
-    /// compaction moved it to). No roster evidence, no reroute — upstream's
-    /// `isCanonicalChatOnScreen` fails closed identically, and ordinary
+    /// Upstream's canonical-forever-chat guard: `/new`, `/reset` or
+    /// `/clear` inside a bot's canonical chat would fork the relationship
+    /// into a scratch session — the one thing Bot Mode promises never
+    /// happens. True ONLY
+    /// when the active session is positively a bot's canonical chat (see
+    /// `activeChatIsCanonicalBotChat`), whatever follows the command (`/new
+    /// A title` is still a reset). No evidence, no reroute: ordinary
     /// sessions keep full `/new` freedom.
-    private func canonicalForeverChatRerouteText(for text: String) -> String? {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard ["/new", "/reset", "/clear"].contains(trimmed) else { return nil }
-        guard let sessionId = activeSessionId else { return nil }
-        guard let bot = botOwnership.bot(owningAny: [sessionId]) else { return nil }
-        let canonicalIDs = [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        return BotMentions.foreverChatRerouteText(
-            for: text,
-            isCanonicalBotChat: canonicalIDs.contains(sessionId)
-        )
+    private func isCanonicalForeverChatReset(_ text: String) -> Bool {
+        guard let command = Self.parseSlashCommand(text),
+              ["new", "reset", "clear"].contains(command.name) else { return false }
+        return activeChatIsCanonicalBotChat
+    }
+
+    /// Whether the open chat is a bot's canonical chat, by positive
+    /// evidence: this process registered one of its ids when it opened the
+    /// Bot Chat (the registry only ever holds canonical chats and the
+    /// runtimes resuming them), or the roster's canonical id is one of the
+    /// chat's own ids. A resume runs a Bot Chat under a fresh runtime id the
+    /// roster never names, so the roster alone missed every reopened Bot
+    /// Chat and `/new` forked it into a workspace chat (#1307).
+    private var activeChatIsCanonicalBotChat: Bool {
+        guard let sessionId = activeSessionId else { return false }
+        let ids = chatOwnSessionIDs(for: sessionId).union([sessionId])
+        return botOwnership.botProfileName(owningAny: ids) != nil
     }
 
     /// The composer's @mention middleware, shared by every routing path (a
@@ -15192,7 +15217,9 @@ final class AppState: ObservableObject {
         requiredViewportTransitionGeneration: UInt64?,
         historySourceUnavailable: Bool
     ) async -> Bool {
+        // A Kanban worker is refused under any of its ids.
         guard reconciliationSessionWasNotFound,
+              !reconciliationWasKanbanWorker,
               let storedID = row.storedSessionId,
               !storedID.isEmpty,
               storedID != row.id,
@@ -15538,6 +15565,7 @@ final class AppState: ObservableObject {
         durablePersistedRowIDs = []
         reconciliationWasIdentityRejected = false
         reconciliationSessionWasNotFound = false
+        reconciliationWasKanbanWorker = false
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         // The resume RPC can overlap a user-initiated config.set. Capture the
@@ -16116,6 +16144,12 @@ final class AppState: ObservableObject {
                 // bounded current-Hermes page with one enormous row (which
                 // must not claim the backend lacks pagination).
                 errorMessage = UserFacingError.message(for: error)
+            case let rpcError as RpcError where rpcError.code == 4132:
+                // A Kanban worker's transcript: Hermes lets only the board
+                // run it. Lists leave these out; a link can still reach one.
+                reconciliationWasKanbanWorker = true
+                reconciliationSessionWasNotFound = true
+                errorMessage = AppLocalization.string("This chat is a Kanban task's worker, so only the board can run it. Open the task on the Kanban board and check its Worker Log.")
             default:
                 errorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
@@ -22272,13 +22306,26 @@ final class AppState: ObservableObject {
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
         noteBotChatSession(created.sessionId, profile: bot.name, label: bot.displayLabel)
-        if let stored = created.storedSessionId {
-            noteBotChatSession(stored, profile: bot.name, label: bot.displayLabel)
+        // The open resumes the STORED id, as Desktop's does: Hermes finds a
+        // chat by its stored key (the live session it just made, or the row
+        // the title wrote) and answers 4007 for a runtime id. Opening the
+        // runtime id failed the open, so a new bot's first message went to
+        // a chat Conduit never had open, and it was gone on the way back.
+        // A create that named no stored id is found by its title instead,
+        // which just landed: the lookup gives the row to open.
+        guard let storedID = created.storedSessionId else {
+            return await adoptWinningBotChat(
+                bot,
+                client: client,
+                epoch: epoch,
+                presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+                viewportTransitionGeneration: viewportTransitionGeneration
+            )
         }
         return await openCanonicalBotChat(
             bot,
-            registryID: created.storedSessionId ?? created.sessionId,
-            resumeID: created.sessionId,
+            registryID: storedID,
+            resumeID: storedID,
             epoch: epoch,
             client: client,
             presentationMigrationSessionIDs: presentationMigrationSessionIDs,
@@ -22290,7 +22337,8 @@ final class AppState: ObservableObject {
     /// miss and the eager title. Re-consult the registry; adopt the winner.
     /// Our abandoned lazy session holds zero messages and the gateway prunes
     /// it. If the winner cannot be confirmed, fail closed — never open our
-    /// untitled stray, never mint again.
+    /// untitled stray, never mint again. A create that named no stored id
+    /// comes here too, after its own title landed: the winner is our chat.
     private func adoptWinningBotChat(
         _ bot: BotProfile,
         client: HermesClient,
@@ -24121,7 +24169,7 @@ final class AppState: ObservableObject {
         }
         // The canonical-chat `/new` reroute is a compaction, which carries no
         // attachments; refuse rather than submit a literal `/compact` turn.
-        if !attachments.isEmpty, canonicalForeverChatRerouteText(for: text) != nil {
+        if !attachments.isEmpty, isCanonicalForeverChatReset(text) {
             errorMessage = AppLocalization.string(
                 "This bot chat never resets. Remove the attachments to compact it instead."
             )
@@ -25583,8 +25631,8 @@ final class AppState: ObservableObject {
                     acceptedSessionIDs: submissionSessionIDs,
                     baseline: submissionBaseline,
                     // Exactly what prompt.submit sent (a mention annotation
-                    // or the forever-chat reroute changes it, staged files'
-                    // references lead it); the check projects it the way
+                    // changes it, staged files' references lead it); the
+                    // check projects it the way
                     // the persisted user row is shown.
                     submittedText: promptText,
                     submissionContext: submissionContext
@@ -26494,11 +26542,11 @@ final class AppState: ObservableObject {
             // attachment-free slash commands arrive HERE, never through
             // sendMessage's reroute, so a bot's canonical chat compacts
             // instead of forking into a scratch session.
-            if canonicalForeverChatRerouteText(for: text) != nil {
+            if isCanonicalForeverChatReset(text) {
                 cancelChatResumeRestoration()
                 appendSlashOutput(
                     AppLocalization.string(
-                        "This chat never resets — compacting instead. Bot chats are one continuous conversation; for a throwaway session with this bot, use Sessions mode."
+                        "Bot chats never reset, so this one is compacted instead: Hermes carries on from a summary with fresh context, and keeps its memory and skills. For a separate chat, start one in Chats."
                     ),
                     context: submissionContext
                 )
@@ -29363,20 +29411,20 @@ final class AppState: ObservableObject {
 
     private func profileSessionsPath(_ profile: String, offset: Int = 0) -> String {
         DashboardPath.withExplicitProfile(
-            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=exclude&order=recent&exclude_sources=cron",
+            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=exclude&order=recent&exclude_sources=\(SessionSource.chatListExcludedSources)",
             profile: profile
         )
     }
 
     private func archivedSessionsPath(_ profile: String, offset: Int = 0) -> String {
         DashboardPath.withExplicitProfile(
-            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=only&order=recent&exclude_sources=cron",
+            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=only&order=recent&exclude_sources=\(SessionSource.chatListExcludedSources)",
             profile: profile
         )
     }
 
-    /// Fetch cron sessions separately. The main profileSessionsPath uses
-    /// exclude_sources=cron, so cron sessions never appear in the normal
+    /// Fetch cron sessions separately. The main profileSessionsPath excludes
+    /// cron (and Kanban workers), so cron sessions never appear in the normal
     /// dashboard query. This dedicated path uses source=cron to populate
     /// the cron tab in the sidebar.
     private func dashboardCronSessions(

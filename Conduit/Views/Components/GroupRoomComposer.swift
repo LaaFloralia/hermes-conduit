@@ -69,8 +69,15 @@ struct GroupRoomComposer: View {
         (hasText || !attachments.isEmpty) && roomAccepts && !isUploading
     }
 
+    /// A dictation's settle counts, so typing then ends it as in a chat.
     private var isDictationActive: Bool {
-        dictation.isCapturing || dictation.isStarting || dictation.isTranscribing
+        dictation.isDictating || dictation.isCapturing || dictation.isStarting || dictation.isTranscribing
+    }
+
+    /// Send's place is dictation's Stop until its words are in, as in a
+    /// chat (#1309), and the small mic steps aside meanwhile.
+    private var dictationHoldsSendSlot: Bool {
+        ComposerDictation.holdsSendSlot(isDictating: dictation.isDictating, isStarting: dictation.isStarting)
     }
 
     /// Resting, it is one slim bar: attach beside the field. Anything in
@@ -145,6 +152,8 @@ struct GroupRoomComposer: View {
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: rests)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: mentionCandidates.isEmpty)
+        // Send and the mic give way to dictation's Stop, and come back.
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: dictationHoldsSendSlot)
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 10)
@@ -226,8 +235,10 @@ struct GroupRoomComposer: View {
                 attachments: {
                     if !attachments.isEmpty { attachmentStrip }
                 },
-                dictateButton: { dictateButton },
-                actionButton: { sendButton }
+                dictateButton: {
+                    if !dictationHoldsSendSlot { dictateButton }
+                },
+                actionButton: { sendSlot(identifier: "room.composer.fullEditor.dictation.stop") }
             )
             .preferredColorScheme(appState.themePreference.colorScheme)
             .environmentObject(appState)
@@ -325,8 +336,10 @@ struct GroupRoomComposer: View {
         HStack(spacing: 8) {
             attachButton
             Spacer(minLength: 0)
-            dictateButton
-            sendButton
+            if !dictationHoldsSendSlot {
+                dictateButton
+            }
+            sendSlot()
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -443,6 +456,15 @@ struct GroupRoomComposer: View {
         if dictation.isStarting { return Text(AppLocalization.string("Cancel dictation")) }
         if dictation.isTranscribing { return Text(AppLocalization.string("Transcribing")) }
         return Text(AppLocalization.string("Dictate"))
+    }
+
+    @ViewBuilder
+    private func sendSlot(identifier: String = "room.composer.dictation.stop") -> some View {
+        if dictationHoldsSendSlot {
+            ComposerDictationStopButton(dictation: dictation, identifier: identifier)
+        } else {
+            sendButton
+        }
     }
 
     private var sendButton: some View {

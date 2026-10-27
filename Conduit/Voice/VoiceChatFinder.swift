@@ -103,7 +103,12 @@ enum VoiceChatFinder {
 
     static func path(query: String, profile: String) -> String {
         let encoded = DashboardPath.encodedQueryComponent(query) ?? ""
-        return DashboardPath.withProfile("\(searchPath)?q=\(encoded)&limit=\(resultLimit)", profile: profile)
+        // Kanban workers' transcripts can't open as chats (see
+        // SessionSource.hermesKanbanSource), so voice never finds them.
+        return DashboardPath.withProfile(
+            "\(searchPath)?q=\(encoded)&limit=\(resultLimit)&exclude_sources=\(SessionSource.hermesKanbanSource)",
+            profile: profile
+        )
     }
 
     /// The search response's chats, in Hermes' order.

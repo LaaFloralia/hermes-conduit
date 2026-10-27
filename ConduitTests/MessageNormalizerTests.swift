@@ -180,6 +180,20 @@ final class MessageNormalizerTests: XCTestCase {
         )
     }
 
+    func testSessionNormalizationLeavesKanbanWorkersOut() {
+        let sessions = MessageNormalizer.normalizeSessions(
+            .object([
+                "sessions": .array([
+                    .object(["id": .string("worker"), "source": .string("kanban")]),
+                    .object(["id": .string("chat"), "source": .string("desktop")])
+                ])
+            ]),
+            profile: "default"
+        )
+
+        XCTAssertEqual(sessions.map(\.id), ["chat"], "Hermes won't reopen a Kanban worker as a chat (4132)")
+    }
+
     func testSessionNormalizationPreservesExplicitProfileOwnership() {
         let sessions = MessageNormalizer.normalizeSessions(
             .object([

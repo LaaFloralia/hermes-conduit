@@ -22,9 +22,10 @@ has Siblings, Code, Rulings, Open gaps and a Checked line (the date of the
 last check against the code, and the PR that checked it; an entry seeded from
 main may name a commit). `scripts/check-feature-map.py` runs in CI: it checks
 that shape, that every path in backticks exists, and that an entry a PR adds
-or edits names that PR on its Checked line (on a PR into `pulse` that merges
-main, one main changed since `pulse` last took it that matches main's copy came
-in with main). A path that starts with notifier/ is in
+or edits names that PR on its Checked line (on a PR into `pulse` or
+`linked-rooms` that merges main, one main changed since that branch last took
+it that matches main's copy came in with main). A path that starts with
+notifier/ is in
 [hermes-conduit-notifier](https://github.com/kaishi00/hermes-conduit-notifier),
 checked against its main.
 
@@ -284,7 +285,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 - Watch GPT-Live and Local Live calls have no phone tools, and the Watch doesn't announce Hermes' phone changes (#994).
 - Classic finds and reads old chats through Hermes' session_search but can't open one in Conduit (#535).
 
-**Checked:** 2026-10-26, #1247 (the Watch broker's token and tool answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
+**Checked:** 2026-10-26, #1305 (VoiceChatFinder's search leaves Kanban workers out; see Kanban workers' transcripts); 2026-10-26, #1247 (the Watch broker's token and tool answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and a Watch token minted after consent was withdrawn, at #1182, carried in #1235; 2026-10-24, at #1223, for send_request's yes; 2026-10-23, seeded from main at 64d53c3; at #1191, Location's rule delete says when no dashboard is open (#972 review), which changes nothing about consent.
 
 ## Acknowledging work handed to Hermes
 
@@ -325,7 +326,7 @@ README and docs (none today: nothing describes the wording)
 Every way a call starts, and which chat it joins.
 
 **Siblings:** the chat's voice button (chats, project chats, Bot Chat) · the
-top bar's call button · Home's main button · the sidebar's New voice call ·
+top bar's call button · Home's main button (its own entry, Voice beside the tabs) · the sidebar's New voice call ·
 Siri, Shortcuts and the Action button · the wake phrase · widgets · CarPlay ·
 the Apple Watch · Resume Call · group rooms · a call from Hermes (its own
 entry)
@@ -356,7 +357,36 @@ entry)
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
 
-**Checked:** 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+
+## Voice beside the tabs
+
+The gold button beside the tab bar, and where voice goes when it is swapped
+for New chat, on a phone and on a split iPad or Mac window.
+
+**Siblings:** the round button (Voice, or New chat by Settings > Appearance >
+Main button) · voice in the Chats top bar and a project page's toolbar when
+swapped · the chat's own voice button (Starting a call) · a minimised call's
+way back · the iPad split layout, with the list shown or hidden (#1164) ·
+Tasks and Settings on a wide window · Bots and Bot Chat · group rooms · the
+Main button caption
+
+**Code**
+- Round button and bar: `Conduit/Views/V2/V2Shell.swift` (voiceButton, tabs, splitColumns' hostsSettings, V2SplitLayout.hasChatVoiceBeside, V2SplitLayout.tabBarUnderList, V2SplitLayout.settingsBesideList, V2MainButtonPreference)
+- Swapped voice: `Conduit/Views/V2/V2ChatsView.swift` (trailingControls), `Conduit/Views/V2/V2ProjectPage.swift` (toolbar)
+- Caption: `Conduit/Views/AuxiliaryViews.swift` (Main button)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift`
+
+**Rulings**
+- Swapped, the round button starts a new chat and voice moves to the top bar; a minimised call turns it back into voice (2026-10-17, #707).
+- Split, a chat beside the list that shows its own voice button takes voice: the round voice button, and the swapped top bar and project page voice, step aside while it shows; New chat stays. A group room has none, so the list keeps its voice beside one (Eric, 2026-10-26, #1319).
+- The round button's touch-and-hold Recent menu goes with it while a chat is beside the list; the chat's own button offers a call or dictation, not Recent, so closing the chat brings the menu back (2026-10-26, #1319).
+- Split, Settings opens in the chat's column with the Chats list kept beside it, and the bar stays under the list; a chat tapped there opens in Chats. Tasks and a list shown alone have no list column and center the bar under the screen, at the list column's width (Eric, 2026-10-26, #1319; replaces #1169's bar kept at the leading edge).
+
+**Open gaps**
+- Recent isn't reachable beside a chat on a split window (see Rulings).
+
+**Checked:** 2026-10-26, at #1319.
 
 ## Chat open elsewhere
 
@@ -555,7 +585,9 @@ talk, and how long the microphone waits.
 **Siblings:** Classic (phone, CarPlay, locked phone) · Gemini Live · Qwen
 Live · Grok Live · GPT-Live · Local Live · Watch calls · headset, speaker and car routes ·
 push to talk · Continuous Conversation · the Action, headset and CarPlay
-buttons
+buttons · the Interrupt button, CarPlay's Stop and the Watch orb · the
+notifier's Local Live read-back relay (phone socket and Watch bridge) · docs/VOICE_SETTINGS.md and
+docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 
 | Mode | On a headset | On the speaker or in the car |
 |---|---|---|
@@ -567,6 +599,7 @@ buttons
 - Routes: `Conduit/Voice/VoiceBargeInRoutePolicy.swift`
 - Classic: `Conduit/Voice/VoiceConversationController.swift` (isTalkOverAvailable, isSteerAvailable, beginPushToTalk), `Conduit/Voice/VoiceSpeechDetector.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Live modes: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/GPTLive/GPTLiveConversationController.swift`
+- Interrupt: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (interruptSpeaking), `Shared/GeminiLive/GeminiLiveSessionControlling.swift` (cancelResponse), `Shared/LocalLive/LocalLiveSession.swift` (cancelResponse), `Shared/LocalLive/LocalLiveProtocol.swift` (responseCancel), `ConduitWatch/WatchDirectCallModel.swift` (tapOrb), `notifier/dashboard/plugin_api.py` (_LocalLiveReadBack.from_client, _stop; the phone's socket and the Watch's bridge both run it)
 - Push to talk surfaces: `Conduit/Services/AppState.swift` (pushToTalkSurfaceAvailable)
 - Settings: `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GrokLiveViews.swift`
 
@@ -574,12 +607,13 @@ buttons
 - In Classic, talking over a spoken reply stops it and starts a new turn; speech while Hermes thinks steers it (2026-10-04, #391).
 - Talking over on the speaker is opt-in, "Talk over it on the speaker", off by default, one setting shared by Qwen, Gemini, Grok and Classic, which each mode's caption says (2026-10-03, #351; Classic 2026-10-04, #393; Qwen 2026-10-25, #1182).
 - Push to talk is per profile and off by default. While held no silence timer runs; a press while Hermes speaks interrupts, while it thinks steers. CarPlay and calls from Hermes stay hands-free (2026-10-22, #1106).
+- Interrupt (CarPlay's Stop and the Watch orb too) stops what plays on the device. In Local Live (the phone's Interrupt and the Watch orb; CarPlay has no Local Live) it also sends the speech server `response.cancel`, which the read-back relay passes on even when no sentence is in progress, so a server that shuts its own microphone while its reply plays listens again; nothing is guessed from the audio, and background jobs go on. Gemini, Grok and Qwen stop only what plays here: their servers hear the user over the reply and keep no gate (2026-10-27, #1331, notifier #404, from #1325).
 - With Continuous Conversation on, the default, Classic keeps listening through silence instead of pausing the microphone (2026-10-10, #520).
 
 **Open gaps**
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
-**Checked:** 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Qwen direct voice
 
@@ -700,7 +734,7 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
 
-**Checked:** 2026-10-26, #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 
@@ -789,59 +823,71 @@ Saved Dashboards and the Profiles sheet, and in the Watch's Settings)
 ## Pulse
 
 Hermes speaking up on its own: the report a few times a day, the morning
-brief and follow-ups, each landing as cards on the Pulse screen, with what
-Pulse remembers from the chats and what it learns from what the user does
-with its cards. It's a beta, so its app side is only on the `pulse` branch.
+brief, the daily look two weeks ahead and follow-ups, each landing as cards
+on the Pulse screen, with what Pulse remembers from the chats (birthdays and
+anniversaries every year among it) and what it learns from what the user
+does with its cards. It's a beta, so its app side is only on the `pulse` branch.
 
-**Siblings:** the Pulse screen (cards and their Why?, New and Earlier, thumbs
-and the one-tap reason, Not now until later today, tomorrow or next week, Done and
+**Siblings:** the Pulse screen (cards and their Why?, the morning brief's block and its fold, New and Earlier, thumbs
+and the one-tap reason, Wrong time among them, Not now until later today, tomorrow or next week, Done and
 Undo, Do it, Quiet for today and the quiet banner) · What Pulse learned (the
-loudest each kind gets, the lessons reasons made, Undo) · Settings > Pulse (on and
-off, model, nudge, budgets, home chat, the note to Pulse, quiet times) · Pulse
+loudest each kind gets, what learning holds with Reset and Start over, the lessons
+reasons and resets made, Undo) · What Pulse left out (the reports' and the look ahead's, and Bring it up) · Settings > Pulse (on and
+off, model, nudge, budgets, home chat, the note to Pulse, quiet times and the night) · Pulse
 pushes (kinds pulse.noticed, pulse.brief and pulse.followup, titled per the
 Notifications rulings, opening the Pulse screen, with Quiet for today) · the Watch (Pulse pushes there,
 Quiet for today's button included; unchecked, see Open gaps) · a call from Hermes (Pulse may call only
-once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, follow-ups,
-memory), its routes under /pulse and its capabilities · the Shortcuts inbox
+once the user opts in) · the hidden Pulse chat · the notifier's loop (report, brief, the look ahead,
+follow-ups, memory), its routes under /pulse and its capabilities · the Shortcuts inbox
 (the report and the morning brief read it, and with Pulse memory on, new
 events bring watches' checks forward) · the phone's calendar and reminders
-(the report and the morning brief read them) · Hermes's scheduled jobs and
+(the report, the morning brief and the look ahead read them, and a push waits while an event is on) · the people
+picked in Settings > Calendar & phone > People (the look ahead brings up their birthdays, and People's caption says
+so with a plugin that does) · the phone's status
+and Focus (a push waits while it's driving or a Focus holds Hermes's calls) · Hermes's scheduled jobs and
 its notes (the report reads them) · a new chat Do it starts, for an item from
 no chat · the `hermes conduit-push pulse` commands
 
 **Code**
-- App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen, the morning brief's block, What Pulse learned), Conduit/Views/V2/V2ChatsView.swift (V2PulseButton in the Chats bar, Pulse's chat left out of the list and content search), Conduit/Views/V2/V2VoiceButton.swift (Pulse's chat left out of voice recents), Conduit/Views/V2/V2Shell.swift (the `.pulse` route, full screen on a phone), Conduit/Services/PulseFeed.swift (cards, marks, ratings, which cards take Done and Do it and which ask why on a thumbs down, the brief's layout, which chat is Pulse's, what Pulse learned), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes; pulseRememberedHomes, Pulse's chat per dashboard across launches; startPulseNewChat, the new chat Do it fills; quietPulseForToday, Quiet for today from a notification, which a call keeps from switching dashboards), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse, quiet times), Shared/Notifications/PulseNotifications.swift and ConduitNotificationService/NotificationService.swift (which Pulse pushes get Quiet for today), Shared/NotificationE2E.swift (pulseQuietGateways, the hosts whose pushes offer it, shared with the extension), Conduit/Services/NotificationCategories.swift and Conduit/ConduitApp.swift (its button, done in the background, and the retry), Conduit/Services/PushNotificationService.swift (pulseQuietTarget, the push's dashboard and gateway, checked again on the tap)
+- App, on the `pulse` branch only, so not in backticks (the map check reads main): Conduit/Views/V2/V2PulsePage.swift (the screen, the morning brief's block, What Pulse learned, What Pulse left out), Conduit/Views/V2/V2ChatsView.swift (V2PulseButton in the Chats bar, Pulse's chat left out of the list and content search), Conduit/Views/V2/V2VoiceButton.swift (Pulse's chat left out of voice recents), Conduit/Views/PhoneSettingsViews.swift (People's caption on birthdays, with a plugin that reports `pulse_dates`), Conduit/Views/V2/V2Shell.swift (the `.pulse` route, full screen on a phone), Conduit/Services/PulseFeed.swift (cards, marks, ratings, which cards take Done and Do it and which ask why on a thumbs down, the brief's layout, which chat is Pulse's, what Pulse learned and left out, and what a card's Why? says learning did), Conduit/Services/AppState+Pulse.swift and Conduit/Services/AppState.swift (opensPulseScreen, for pushes; pulseRememberedHomes, Pulse's chat per dashboard across launches; pulseFoldedBriefs, the briefs folded per dashboard across launches, the newest 30 of each and the one just folded; unfoldPulseCard, a card put back open in a folded brief; startPulseNewChat, the new chat Do it fills; quietPulseForToday, Quiet for today from a notification, which a call keeps from switching dashboards), Conduit/Services/PulseSettings.swift and Conduit/Views/PulseSettingsViews.swift (Settings > Pulse, quiet times, What Pulse remembers and a yearly fact's day), Shared/Notifications/PulseNotifications.swift and ConduitNotificationService/NotificationService.swift (which Pulse pushes get Quiet for today), Shared/NotificationE2E.swift (pulseQuietGateways, the hosts whose pushes offer it, shared with the extension), Conduit/Services/NotificationCategories.swift and Conduit/ConduitApp.swift (its button, done in the background, and the retry), Conduit/Services/PushNotificationService.swift (pulseQuietTarget, the push's dashboard and gateway, checked again on the tap; pulseQuietAwaitsCall and takePendingPulseQuiet, the retry's wait for a call, kept across a relaunch on the day it was pressed)
 - Loop: `notifier/pulse.py` (the tick, the report's candidate run, cards from turns, push copy, the model Pulse's calls outside its chat run on), `notifier/pulse_delivery.py`, `notifier/pulse_host.py`, `notifier/pulse_hermes.py`, `notifier/chat_takeover.py`
-- Report: `notifier/pulse_report.py` (what it reads, the note to Pulse), `notifier/pulse_candidates.py` (the candidate list, which reads the note too, the router and the 30-day journal)
+- Report: `notifier/pulse_report.py` (what it reads, the note to Pulse), `notifier/pulse_candidates.py` (the candidate list, which reads the note too, the router and the 30-day journal, which What Pulse left out lists)
 - Memory, follow-ups and the brief: `notifier/pulse_memory.py`, `notifier/pulse_followup.py` (its checks read the note to Pulse), `notifier/pulse_brief.py` (what the brief reads: held cards, open items, the phone, the inbox, the note to Pulse)
 - Quiet times: `notifier/pulse_quiet.py` (whether Pulse is quiet now, and until when); the tick's gates in `notifier/pulse.py`
-- What happened since an item came up: `notifier/pulse_evidence.py` (later chats and cron runs, background processes); follow-up, held-reminder, brief-card and Do it checks read it with the item's chat in `notifier/pulse_followup.py`, its continuation through `notifier/pulse_hermes.py` (`chain_messages`), the phone's calendar and reminders and the report in `notifier/pulse_report.py`
-- Learning: `notifier/pulse_prefs.py` (what thumbs, Do it and Done teach, and how loudly things come up); reasons, lessons and levels: `notifier/pulse_learning.py`; outcomes: `notifier/pulse_ledger.py`; store, with the signals: `notifier/pulse_store.py`
+- The right time: `notifier/pulse_hours.py` (the night, the parts of the day, when news is useful, and whether the user is busy); follow-ups' holds in `notifier/pulse_followup.py`, the report's caps in `notifier/pulse_candidates.py`, and the events on now in `notifier/phone_store.py`
+- What happened since an item came up: `notifier/pulse_evidence.py` (later chats and cron runs, background processes); follow-up, held-reminder, brief-card, found-card and Do it checks read it with the item's chat in `notifier/pulse_followup.py`, its continuation through `notifier/pulse_hermes.py` (`chain_messages`), the phone's calendar and reminders and the report in `notifier/pulse_report.py`
+- Yearly dates and the look ahead: `notifier/pulse_dates.py` (the dates that come back every year, from the picked people's birthdays in `notifier/phone_store.py` and memory's yearly facts, and their lead times), `notifier/pulse_ahead.py` (once a day before the brief: what it reads, its candidates, decided by `notifier/pulse_candidates.py`, and its cards, held for the brief); its run in `notifier/pulse.py`'s memory run, journaled by `notifier/pulse_store.py` (`add_run`, `journaled_refs`, `release_held`)
+- What got done elsewhere: memory's close marks the thing's cards in `notifier/pulse_store.py` (`advance`, `found_cards`, `unmark_done`'s `put_back_at`, which keeps the checks off a card put back, and `end_rest`, which ends a done card's rest at its time without bringing it back), reminded commitments and word endings in `notifier/pulse_memory.py`, and the found-card checks and `read_first` in `notifier/pulse_followup.py`
+- Learning: `notifier/pulse_prefs.py` (what thumbs, Do it and Done teach, how loudly things come up, and what a reset forgets); reasons, lessons and levels: `notifier/pulse_learning.py`; outcomes: `notifier/pulse_ledger.py`; store, with the signals: `notifier/pulse_store.py`
 - Control: `notifier/pulse_control.py` (shared by the commands and the routes), `notifier/cli.py`, `notifier/dashboard/plugin_api.py` (/pulse)
-- Tests: `notifier/tests/test_pulse.py`, `notifier/tests/test_pulse_learning.py` (ratings, cards and the brief), `notifier/tests/test_pulse_candidates.py`, `notifier/tests/test_pulse_prefs.py` (the learning), `notifier/tests/test_pulse_personas.py` (personas over two weeks, each against the same run without learning); the app's ConduitTests/PulseFeedTests.swift (cards, What Pulse learned), ConduitTests/PulseSettingsTests.swift (Settings > Pulse, quiet times), ConduitTests/NotificationCopyTests.swift (which Pulse pushes offer Quiet for today) and ConduitTests/NotificationDashboardOwnershipTests.swift (which dashboard Quiet for today acts on), on `pulse`
+- Tests: `notifier/tests/test_pulse.py` (with memory's closes), `notifier/tests/test_pulse_learning.py` (ratings, cards and the brief, and the checks that mark cards done), `notifier/tests/test_pulse_candidates.py`, `notifier/tests/test_pulse_prefs.py` (the learning), `notifier/tests/test_pulse_personas.py` (personas over two weeks, each against the same run without learning), `notifier/tests/test_pulse_hours.py` (the night, waiting while busy, when news is useful, Wrong time), `notifier/tests/test_pulse_dates.py` (the yearly dates, their lead times and the look ahead); the app's ConduitTests/PulseFeedTests.swift (cards and their Why?, the brief's fold, What Pulse learned, What Pulse left out and what the look ahead left out, People's caption, Wrong time, Not now's choices at night, a card marked done while it's put off), ConduitTests/PulseSettingsTests.swift (Settings > Pulse, quiet times, the night, a yearly fact's day in What Pulse remembers), ConduitTests/NotificationCopyTests.swift (which Pulse pushes offer Quiet for today) and ConduitTests/NotificationDashboardOwnershipTests.swift (which dashboard Quiet for today acts on), on `pulse`
 
 **Rulings**
 - The app side stays off main: public TestFlight builds main, and internal testers' builds come from `pulse` (2026-10-21, #1092). The notifier side is on its main, off by default (2026-10-21, notifier #275).
 - No Pulse chat in sight: reports and the brief land as cards on the Pulse screen, and the home chat is hidden from Chats, search and voice recents (2026-10-22, #1116, notifier #291). The app remembers each dashboard's Pulse chat, so after a relaunch the Pulse button shows and the chat stays hidden at once; the remembered chat follows the feed, and goes when the feed names none, the plugin answers without Pulse or the dashboard is removed (2026-10-25, #1234, Eric's report: Pulse showed as a chat for a while after reopening).
 - Pulse learns in code, not as a line in a prompt. Thumbs, Do it (opened, something sent, got done) and Done are signals it learns from slowly, older ones counting for less: which kinds, chats and timings are worth bringing up, and how loudly, a push acted on within the hour making its kind louder. The report's candidates and the follow-ups go by what it learned. Not now, and a card opened and left alone, teach nothing. A kind's level (push now, Pulse screen, brief, off) is the loudest it gets, as the user set it or "too often" did, and learning moves things only below it. A promise Hermes made that's overdue, and a commitment or asked reminder due within a day, come up whatever learning says, within that level. A thumbs-down asks one tap for why, on a report card too once the plugin reports `pulse_learns`, and the reason acts at once for the card's kind (a report card's topic), as What Pulse learned says. Two thumbs no longer step a kind along the ladder, and the steps they made before are retired once (2026-10-26, Eric asked for the five improvements; notifier #385, #1286; before, thumbs moved a kind along the ladder, 2026-10-22, notifier #284). Each report item is its own card with its own thumbs (2026-10-23, notifier #330).
 - A report that finds nothing leaves no card (2026-10-23, notifier #324).
-- The morning brief comes every day at its time (07:00 by default, an hour before the first report) and sums up what's still open: what's due or on the calendar today, open promises and things the user said they'd do, and what the phone's automations logged. Held news still comes as its own cards under it, and a brief that brought none shows as its summary block. The next report leaves out what the brief already brought up, unless something about it changed. Settings > Pulse says the brief comes every day only to a plugin that reports `pulse_daily_brief` (2026-10-25, notifier #357, #1234, Eric's report: a 05:00 brief with nothing held never came).
+- The morning brief comes every day at its time (07:00 by default, an hour before the first report) and sums up what's still open: what's due or on the calendar today, open promises and things the user said they'd do, and what the phone's automations logged. Held news still comes as its own cards under it, and a brief that brought none shows as its summary block. Read, it folds from its header to one row saying when it came and what's left in it, and stays folded on that phone, across launches, until it's opened again; one whose cards are all handled folds by itself. A Pulse mark pointing into a folded brief opens it, and so does a card in it that comes back open, from Not now or with Undo; a Pulse push opens the screen at its top, where a new brief shows open until it's folded (2026-10-26, Eric asked for a way to fold the brief once it's been read; #1306). The next report leaves out what the brief already brought up, unless something about it changed. Settings > Pulse says the brief comes every day only to a plugin that reports `pulse_daily_brief` (2026-10-25, notifier #357, #1234, Eric's report: a 05:00 brief with nothing held never came).
 - Not now hides a card without teaching Pulse anything, and the plain one (no time chosen) rests the item a week (2026-10-23, #1173, notifier #334); it stays neutral when Pulse learns from ratings (2026-10-24, Eric).
-- Not now asks until when: later today (three hours, by 23:00; not offered from 22:30 on the phone's clock, when it would be tomorrow), tomorrow or next week (those two ten minutes before the morning brief, in time for it). The card leaves the list and the thing it's about rests until then, and its cleared row, in a morning brief too, and the Undo bar say when it comes back. At that time it comes back as new, at the top, without a push, and one about something Pulse remembers has its chat read first, like a held card's before the brief: done meanwhile, it's marked done instead, and a card no run got to comes back unread rather than late. Nothing is learned either way. An app from before, or a plugin that doesn't report `pulse_rest`, keeps the plain Not now: the card stays away and the thing rests a week (2026-10-26, Eric asked for the five improvements; notifier #380, #1278).
+- Not now asks until when: later today (three hours, by 23:00 and by the night's start, or at night ten minutes before the next morning brief; not offered when that's under half an hour away on the phone's clock, or tomorrow), tomorrow or next week (those two ten minutes before the morning brief, in time for it). The card leaves the list and the thing it's about rests until then, and its cleared row, in a morning brief too, and the Undo bar say when it comes back. At that time it comes back as new, at the top, without a push, and one about something Pulse remembers, or a report item Pulse found on its own, has its chat read first, like a held card's before the brief: done meanwhile, it's marked done instead, and a card no run got to comes back unread rather than late. Nothing is learned either way. An app from before, or a plugin that doesn't report `pulse_rest`, keeps the plain Not now: the card stays away and the thing rests a week (2026-10-26, Eric asked for the five improvements; notifier #380, #1278. The night's start and the brief at night came with Pulse at the right time, 2026-10-26, when Eric chose to build the gaps in order; notifier #399, #1318).
 - Report cards have Why? too. The candidate list gives each pick its reason (why now, and where it came from) apart from its line, the card carries it, and the app shows Why? on a report card when the plugin reports `pulse_card_why` and the reason isn't empty; a report written without the list has none. With a plugin from before, only follow-up cards show Why?, since every other card's why was a stock line. Before, the report line ended with the reason in brackets, every report item's card had the same stock why, which the app never showed, and a whole report's card showed a stock line, now cleared from earlier cards too (2026-10-26, Eric asked for the five improvements; notifier #381, #1283).
+- What learning decided shows, and can be undone. A card's Why? names the biggest part learning played in bringing it up (a kind, a chat, an area of life or where Pulse found it, a timing, or how loudly a kind comes up), how strongly, and the votes behind it lately. What Pulse learned lists what learning holds, strongest first, each with Reset, and Start over forgets all of it; each is a lesson Undo takes back, and the levels and the lessons from reasons stay. The lean over Pulse's cards in general, which every vote makes, goes only with Start over. What Pulse left out lists what the latest reports considered and left out, and why: what learning or the user's own rules kept out first, then the report's own picking. Bring it up makes one a card on the Pulse screen without a push, and its thumbs, Do it and Done then teach Pulse about things like it. The app shows these to a plugin that reports `pulse_explains` (2026-10-26, Eric chose to build slice 3 of designs/pulse-learning.md; notifier #394, #1302).
+- Pulse picks the time for a push. The night, in Settings > Pulse (22:00 to 07:00 by default, or none), holds a follow-up's push for the morning brief, or until the night ends when the brief comes over two hours later. A push also waits while an event on the phone's calendar is on (not all-day, free, cancelled or declined), while the phone said it was driving or on CarPlay in the last 15 minutes, or while a Focus that holds Hermes's calls is on; past three hours it comes up on the Pulse screen without one. Each check says when its news is useful (any time, office hours, the morning or the evening), and news is held until then and checked again first. What's urgent, or due before it would come (a day with no time counts as due by that day's night start), goes anyway. Wrong time on a thumbs down puts the card away until a better time and teaches nothing about the card; on a card that pushed it also keeps that kind from pushing in that part of the day (morning, midday, evening or night), a lesson Undo takes back. The report's picks are capped the same way, and at night go into the brief. Why? says what held a card. The app offers Wrong time and the Night row to a plugin that reports `pulse_hours` (2026-10-26, Eric: "The same reminder might be incredibly useful at 9 AM and infuriating at 11 PM", and he chose to build the gaps in order; notifier #399, #1318).
 - Pulse gets louder on its own only within the channels and intensity the user allowed. It never turns on a channel they turned off and never grants calling: calls need an opt-in, and adding the kinds that may call asks first (2026-10-24, Eric).
 - Tone stays out of what Pulse learns, and a reason given on a thumbs-down applies at once (2026-10-24, Eric).
 - Pulse pushes follow the Notifications rulings: App Language from title_label, titled with the session title (2026-10-23, notifier #334).
 - Code picks the report's items from a candidate list the model makes, and every candidate is journaled for 30 days (2026-10-24, notifier #337).
-- Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report and Do it checks. Pulse's own hidden chat stays out of the evidence (2026-10-24, Eric; notifier #346, #347). A long chat counts whole: checks read its newest lines and then its earlier ones on the same subject, and the report never takes an earlier turn in Pulse's own chat as news (2026-10-25, notifier #364, Eric's report: a card blamed a reminder job for bringing back finished items).
+- Before Pulse speaks up about an item it reads what happened since, wherever: the item's chat and its continuation, other chats and cron runs on the same subject, what Hermes runs in the background, and the phone's calendar and reminders. That holds for follow-up checks, held reminders, cards waiting for the brief, the report, Do it checks and the checks of a report item Pulse found on its own. Pulse's own hidden chat stays out of the evidence (2026-10-24, Eric; notifier #346, #347). A long chat counts whole: checks read its newest lines and then its earlier ones on the same subject, and the report never takes an earlier turn in Pulse's own chat as news (2026-10-25, notifier #364, Eric's report: a card blamed a reminder job for bringing back finished items).
 - Main reaches `pulse` by a merge commit, never a squash, so archives don't re-stitch old conflicts (2026-10-24, #1186; build 228's stitch lost the Chats Pulse button).
 - Done and Do it work on every report item, one Pulse found on its own included. Do it opens the chat it was found in, or, for one from the calendar, reminders, Hermes's notes or scheduled jobs, or the Shortcuts inbox, a new chat in the dashboard's default profile, with the reminder in the composer, and only in the chat Do it's New Chat made. It starts that chat only when New Chat can start one at once: connecting, during a profile switch or with another new chat on its way, the Pulse screen says why instead. The Do it check then reads that chat with the others on the subject. Done on a found item marks only the card, and the next report reads it as done. On a found item the app shows them only to a plugin that reports `pulse_found_actions`; with an older plugin they stay on items about something Pulse remembers (2026-10-25, Eric; notifier #362, #1240; Eric asked why date and worth-knowing cards couldn't be acted on).
 - What's finished stays finished. A reminder sent on with Do it, and Hermes's answer to it, can close a remembered item but never add one, and a commitment Pulse learns of more than half a day after its time (reading older chats) is kept as expired, never reminded (2026-10-25, Eric; notifier #364, Eric's report: a card blamed a reminder job for bringing back finished items).
+- What got done elsewhere leaves the Pulse screen. When memory reads a chat that shows a remembered thing done or called off, the thing closes and its cards (follow-ups and report items, about it or about what it replaced) get Pulse's done mark in the same write, shown as "Done, seen in the chat": a held card leaves the brief, and one put off with Not now or Wrong time shows as done and doesn't come back. A commitment Pulse reminded the user of stays closable for two weeks, so an answer in any chat, or to the reminder, closes it; said again, it's a new item with its own reminder. A report item Pulse found on its own has its chats read again a day after it came and once more a day later, while it's on the screen and under three days old, at most three a run and last, on what the follow-up checks leave; held for the brief or put off with Not now, it's read before it goes in or comes back, like a remembered one, and one tapped Do it on is left to Do it's check; one found outside the chats is read without Pulse's own chat. Undo takes Pulse's mark off and reopens the thing while that close still holds it, and a card that was put off stays put off. A card put back after any of Pulse's marks isn't read again for a mark: it goes to the brief as it is, stays on the screen, or comes back from Not now unread, and only a new close or a new Do it marks it again. Pulse's marks teach nothing. On the Pulse screen, a card marked done while it's put off shows as done, with Undo, in a morning brief too, and one put off with Wrong time shows that reason under it, as a done card shows its reason (2026-10-26, Eric: "is there a way that pulse recognizes in later scans that a previously surfaced card is taken care of?"; notifier #400, #1326).
 - After a plugin update the restarted dashboard takes Pulse over at once: a loop lease stamped with an older build is free, and one whose process has exited doesn't read as an older copy running, so Settings > Pulse and `pulse status` warn only while a process that loaded an older build really runs (2026-10-26, notifier #392, Eric's report: Pulse said the dashboard ran old code for a couple of minutes after the update had restarted it).
-- Settings > Pulse's model runs all of Pulse: its turns (the reports and the morning brief), memory, the report's candidate list, and follow-up, held-reminder, brief-card and Do it checks. On "Same as the Pulse chat" the calls outside the chat use the Pulse chat's own model, as Hermes reads it back when it reopens the chat, unless Hermes's "Pulse memory" slot names one; a chat without a model of its own, or whose provider is gone, leaves them on Hermes's main model (2026-10-25, #1262, notifier #375, Eric's report: with the Pulse chat on Volcengine, report lists and a follow-up check ran on the main model and failed while it was out of capacity).
+- Settings > Pulse's model runs all of Pulse: its turns (the reports and the morning brief), memory, the report's candidate list, and follow-up, held-reminder, brief-card, found-card and Do it checks. On "Same as the Pulse chat" the calls outside the chat use the Pulse chat's own model, as Hermes reads it back when it reopens the chat, unless Hermes's "Pulse memory" slot names one; a chat without a model of its own, or whose provider is gone, leaves them on Hermes's main model (2026-10-25, #1262, notifier #375, Eric's report: with the Pulse chat on Volcengine, report lists and a follow-up check ran on the main model and failed while it was out of capacity).
 - Do it's message fits what the card is about. For something the user meant to do (a commitment, a reminder, a plan, a follow-up topic) it asks Hermes to take care of it; for what Hermes said it would do (a follow-up card, a promise), to go ahead; for a date, to help get ready; for something watched, where it stands; for an interest, to tell more; for anything else, to look into it. The Do it button's icon has its colour set outright, so it shows on the button's accent fill (2026-10-25, #1275, Eric's report: the Do it line didn't always make sense for the card, and the button showed its title alone, pushed right).
-- A note to Pulse, in the user's own words, from Settings > Pulse or `hermes conduit-push pulse note`: the report's candidate list, the report turn, the morning brief and the follow-up and held-card checks read it as the closing paragraph of their instructions, and where it says what to bring up or leave out it comes before Pulse's own rules. Up to 1,500 characters; memory and the Do it check don't read it. The app shows the field only to a plugin that reports `pulse_note` (2026-10-25, Eric asked for the five improvements; notifier #378, #1277).
-- Quiet times: quiet days of the week and a vacation until a day in Settings > Pulse, and Quiet for today on the Pulse screen and as a Pulse notification's button. While quiet, Pulse sends nothing on its own: no report, look or morning brief, none it skipped goes late when the quiet ends at midnight, and a follow-up due to push waits for the first brief after. Memory, Do it's checks and a put-off card's return go on, and a report or look the user asks for still comes. Quiet for today lasts until midnight and never shortens a longer spell. The Pulse screen says Pulse is quiet and until when, with End quiet time for a spell. The notification's button works without opening Conduit, on the host the push came from (by its relay gateway) when that is the dashboard in use; otherwise, or when it can't reach Hermes, it says so, and that notification's tap tries again with Conduit open, switching dashboards as a tap on the push would. During a call it waits for the call to end, as a tapped notification does, and says so (a newer tap replaces it); it opens the Pulse screen only on the push's own dashboard. A pairing with no key gets no Quiet for today button: the button acts on the push's host, so it needs a push Conduit could verify. Settings shows a vacation's day in the plugin's time zone, as the plugin keeps it, and the Pulse screen says when quiet ends on the phone's clock. The app shows all of it only to a plugin that reports `pulse_quiet` (2026-10-26, Eric asked for the five improvements; notifier #383, #1285).
+- A note to Pulse, in the user's own words, from Settings > Pulse or `hermes conduit-push pulse note`: the report's candidate list, the report turn, the morning brief and the follow-up, held-card and found-card checks read it as the closing paragraph of their instructions, and where it says what to bring up or leave out it comes before Pulse's own rules. Up to 1,500 characters; memory and the Do it check don't read it. The app shows the field only to a plugin that reports `pulse_note` (2026-10-25, Eric asked for the five improvements; notifier #378, #1277).
+- Quiet times: quiet days of the week and a vacation until a day in Settings > Pulse, and Quiet for today on the Pulse screen and as a Pulse notification's button. While quiet, Pulse sends nothing on its own: no report, look or morning brief, none it skipped goes late when the quiet ends at midnight, and a follow-up due to push waits for the first brief after. Memory, Do it's checks and a put-off card's return go on, and a report or look the user asks for still comes. Quiet for today lasts until midnight and never shortens a longer spell. The Pulse screen says Pulse is quiet and until when, with End quiet time for a spell. The notification's button works without opening Conduit, on the host the push came from (by its relay gateway) when that is the dashboard in use; otherwise, or when it can't reach Hermes, it says so, and that notification's tap tries again with Conduit open, switching dashboards as a tap on the push would. During a call it waits for the call to end, as a tapped notification does, and says so; of it and a tapped notification, whichever started waiting last is the one that goes through, and if Conduit closes meanwhile it waits again at the next launch, on the day it was pressed only, since it was Quiet for that day, and not once it's two hours old, as a tap. It opens the Pulse screen only on the push's own dashboard. A pairing with no key gets no Quiet for today button: the button acts on the push's host, so it needs a push Conduit could verify. Settings shows a vacation's day in the plugin's time zone, as the plugin keeps it, and the Pulse screen says when quiet ends on the phone's clock. The app shows all of it only to a plugin that reports `pulse_quiet` (2026-10-26, Eric asked for the five improvements; notifier #383, #1285; the wait for a call came in #1302, carrying #1297's wait for a tapped notification over to the retry, the call fix Eric asked for with them).
+- Pulse remembers dates that come back every year and looks two weeks ahead. A birthday, an anniversary or another yearly date said in a chat is kept with its month and day, never expires, and stays open when a card about it is marked done; the people picked in Settings > Calendar & phone > People bring their birthdays, and a birthday said in a chat on the same day as a picked person's counts once. Birthdays and anniversaries come up two weeks ahead (or the first day Pulse knows of them, while over a day away), the day before and on the day; other yearly dates the day before and on the day; each lead time once a year. Once a day, from an hour before the morning brief and not while Pulse is quiet, one model call reads the next two weeks (the yearly dates, the phone's calendar and reminders, what Pulse remembers and what it brought up lately), words each date due and adds up to five things worth starting on today. Code decides as for the report, a date due a floor unless the call says it's done, covered or raised lately, and journals every candidate, so What Pulse left out lists the look ahead's too and says which left each out. What Pulse remembers and `pulse memory` show a yearly fact's day. What comes up is held for that morning's brief, or goes to the screen once the brief went; nothing from the look ahead pushes on its own, and a held card no brief took that day goes to the screen at midnight. With the follow-ups' budget spent or the call failing, the dates still come up in Pulse's own words. It runs with Pulse memory, on the follow-up budget whatever the follow-ups' switch, and `pulse ahead off` turns it off. People's caption says Pulse brings up their birthdays where the plugin reports `pulse_dates` (2026-10-27, Eric chose to build the gaps in order; notifier #407, #1339).
 
 **Open gaps**
 - Create Pulse chat in Settings > Pulse hasn't been tried on a real host: it must make a chat Pulse finds before anything is sent in it.
@@ -852,9 +898,13 @@ no chat · the `hermes conduit-push pulse` commands
 - Why? on report cards hasn't been tried on a phone against notifier 0.80.1 (#1283, #381).
 - Quiet for today from a Pulse notification hasn't been tried on a phone: its button runs in the background, where Conduit may still be connecting (#1285).
 - Learning hasn't been tried on a phone against notifier 0.81.1, nor a report card's reasons (#1286, #385).
-- What learning decided isn't shown yet: Why? doesn't name what Pulse learned, nothing lists what it left out, and What Pulse learned shows no strengths to reset (designs/pulse-learning.md, slice 3).
+- What Pulse learned's Reset and Start over, Why?'s line on what learning did, and What Pulse left out haven't been tried on a phone against notifier 0.84.0 (#1302, #394).
+- The night, waiting while busy, and Wrong time haven't been tried on a phone against notifier 0.86.0 (#1318, #399).
+- What got done elsewhere hasn't been tried on a phone against notifier 0.87.0 (#1326, notifier #400).
+- Yearly dates, the look ahead, What Pulse left out's look ahead section, a yearly fact's day in What Pulse remembers and People's caption haven't been tried on a phone against notifier 0.88.0 (#1339, notifier #407).
+- Not now's choices read the night and the brief's time on the phone's clock, while the plugin keeps them in Pulse's time zone: the two differ only when Settings > Pulse sets a time zone other than the phone's.
 
-**Checked:** 2026-10-26, at #1297 (a Pulse push tapped during a call no longer switches and opens once the call ends, like any notification, and Quiet for today's retry waits for the call the same way; the `pulse` branch gets both with its port); at #1293 with notifier #392 (the lease after a plugin update; the `pulse` branch's older-copy line needed no change); at #1292 (the Watch joins Siblings), carrying the `pulse` branch's entry: #1286 (learning, with notifier #385), #1285 (quiet times, with notifier #383), #1283 (Why? on report cards, with notifier #381), #1278 (Not now until when, with notifier #380), #1277 (the note to Pulse, with notifier #378) and #1275 (Do it's message and icon); 2026-10-25, at #1266, with #1264 on the `pulse` branch and notifier #375 (Pulse's model, ruled in #1262); the app side at #1240 on the `pulse` branch, with notifier #362 and #364, carried to main in #1241.
+**Checked:** 2026-10-27, at #1340, carrying the `pulse` branch's entry: #1339 (yearly dates and the look ahead, with notifier #407: birthdays and anniversaries from the chats and the picked people every year, the daily look two weeks ahead held for the brief, What Pulse left out's look ahead section, a yearly fact's day in What Pulse remembers, and People's caption, which says Pulse's memory has to be on); at #1332, carrying the `pulse` branch's entry: #1318 (Pulse at the right time, with notifier #399: the night, waiting while busy, Wrong time and its lesson, and Not now's choices at night) and #1326 (what got done elsewhere, with notifier #400: memory's close marks the thing's cards, a reminded commitment stays closable for two weeks, report items Pulse found on its own are read again, a card put back with Undo isn't marked again from its chat, and a card done while it's put off shows as done, with Undo and Wrong time under it when that put it off); at #1308, carrying the `pulse` branch's entry: #1302 (what learning decided, with notifier #394: Why? names it, What Pulse learned's Reset and Start over, and What Pulse left out with Bring it up; and Quiet for today's retry waits for a call, kept across a relaunch on the day it was pressed) and #1306 (the morning brief folds from its header and stays folded until it's opened again or a card in it comes back open); at #1297 (a Pulse push tapped during a call no longer switches and opens once the call ends, like any notification, and Quiet for today's retry waits for the call the same way; the `pulse` branch gets both with its port); at #1293 with notifier #392 (the lease after a plugin update; the `pulse` branch's older-copy line needed no change); at #1292 (the Watch joins Siblings), carrying the `pulse` branch's entry: #1286 (learning, with notifier #385), #1285 (quiet times, with notifier #383), #1283 (Why? on report cards, with notifier #381), #1278 (Not now until when, with notifier #380), #1277 (the note to Pulse, with notifier #378) and #1275 (Do it's message and icon); 2026-10-25, at #1266, with #1264 on the `pulse` branch and notifier #375 (Pulse's model, ruled in #1262); the app side at #1240 on the `pulse` branch, with notifier #362 and #364, carried to main in #1241.
 
 ## Artifacts
 
@@ -937,6 +987,31 @@ and README.md's bots line)
 
 **Checked:** 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
+## Opening a Bot Chat
+
+How Conduit finds a bot's one Bot Chat (the hidden session titled "Bot Chat"
+in the bot's profile), makes it the first time, and opens it.
+
+**Siblings:** a tap in the Bots list · a new bot's first open and its
+introduction · a push or a call from a Bot Chat · a link, card or artifact
+that names a bot · a widget, Shortcuts or shared-draft open of a Bot Chat (opens an existing chat only, by the lookup's row) · a last-chat restore that lands on a Bot Chat (resumes the saved row's stored id) · Hermes Desktop's Bot Chat open (same lookup, same title,
+same stored-id open)
+
+**Code**
+- Open: `Conduit/Services/AppState.swift` (openBotChat, resolveAndOpenBotChat, createAndOpenBotChat, adoptWinningBotChat, openCanonicalBotChat, openNewBotChat, openLinkedBotChat)
+- Lookup: `Conduit/Services/BotModeModels.swift` (BotChatLookupRow, BotChatResolver, BotChatTitleCollision), `Conduit/Services/HermesClient.swift` (findBotChatSession, createBotChatSession)
+- Callers: `Conduit/Views/BotRosterView.swift`, `Conduit/Services/AppState.swift` (routeBotOwnedNotification, the push and call route), `Conduit/Services/AppState.swift` (openWidgetConversation), `Conduit/Services/AppState+WidgetLaunch.swift`
+
+**Rulings**
+- One chat per bot, found by its title on the bot's profile; a lookup that fails, or comes back empty while the roster still names a chat, never makes a new one (Desktop's rule).
+- A chat Conduit makes is opened by its stored id, as Desktop does: Hermes resumes a chat by its stored key and answers 4007 for a runtime id. Opening the runtime id failed the open, so a new bot's first message went to a chat Conduit didn't have open and was gone on the way back (2026-10-26, a tester's report via Eric, #1300). A create that names no stored id is found by its title, which has just landed, and that row is opened; the runtime id is never resumed.
+- A title collision while making the chat adopts the chat that won instead of making a second one.
+
+**Open gaps**
+- The new-bot fix (#1300) was read from Conduit's and Hermes' code, not reproduced on a device; a tester confirms it on the next build.
+
+**Checked:** 2026-10-26, #1300.
+
 ## Bot mentions and teammate messages
 
 How the user brings another bot into a chat, and how bots' messages to each
@@ -979,6 +1054,29 @@ the bot's SOUL messaging section · README.md's bots line
 - None known.
 
 **Checked:** 2026-10-25, at #1259.
+
+## Links in messages
+
+A tap on a link in a reply opens it, the first time, wherever the reply is
+drawn until a touch mounts its text view.
+
+**Siblings:** chats, project chats and Bot Chat (one chat view) · group rooms ·
+VoiceOver and Switch Control (text view always mounted) · Voice Control and Full
+Keyboard Access (the text view mounts and lays out when they ask for the
+reply's elements) · long-press Open Link
+
+**Code**
+- Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
+- Test: `ConduitTests/DrawnTextLinkTapTests.swift`
+- Surfaces that draw until touched: `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift` (selectableTextDrawsUntilTouched)
+
+**Rulings**
+- The touch that mounts a reply's text view is routed to it laid out, so it finds the link under the finger; a link never needs a second tap (2026-10-26, #1303, carried in #1311).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-26, #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
 ## Markdown lists in messages
 
@@ -1080,6 +1178,34 @@ New Chat and its focus · a widget's or Shortcut's New Chat · the /new command
 
 **Checked:** 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
+## /new in a Bot Chat
+
+`/new` (and `/reset`, `/clear`) starts a new chat, except in a bot's one
+chat, which never forks: there it compacts the same chat instead, so the
+bot starts from a summary with fresh context and the user stays in Bots.
+
+**Siblings:** the composer's `/new` in chats and project chats (starts a new
+chat) · Bot Chat (compacts) · a Bot Chat `/new` with attachments (refused,
+the draft kept) · group rooms (no slash commands) · the notice the compaction
+shows (says the chat compacts and keeps its memory and skills) · the `/help`
+text and the slash suggestions' "Start a new conversation" (the general
+command, still right outside Bot Chats) · "A new chat that something waits
+on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
+
+**Code**
+- The guard: `Conduit/Services/AppState.swift` (activeChatIsCanonicalBotChat, isCanonicalForeverChatReset, executeSlashCommand's new/reset/clear case, the attachment refusal in performComposerSubmission)
+- Tests: `ConduitTests/AppStateSessionCompressTests.swift`
+
+**Rulings**
+- A Bot Chat is one continuous conversation: `/new` there compacts it, whatever follows the command, and never opens a chat in Chats. Saved memory and skills stay (upstream Bot Mode's forever chat; 2026-10-26, #1310, issue #1307).
+- The chat is a Bot Chat by positive evidence only: one of the chat's own ids is one this process registered when it opened the Bot Chat (a reopened one runs under a fresh runtime id), or the roster's canonical id. Without either, `/new` starts a new chat.
+- With attachments, `/new` in a Bot Chat (title or not) is refused and the draft kept: a compaction carries no attachments, and the text is never sent to the bot.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-10-26, #1310.
+
 ## Composer Return key
 
 The optional hardware-keyboard shortcut in Settings > Keyboard: with it on,
@@ -1093,7 +1219,8 @@ needed, it already says the setting applies to hardware keyboards only) ·
 the two default footnotes, Mac on and iPhone/iPad off (not needed, each
 states the default for its device) · the hardware-keyboards caption (not
 needed, shown only off a Mac and already says the on-screen Return key is
-unchanged)
+unchanged) · a running dictation (done, #1315: Return stops it; the
+Keyboard caption is unchanged, as it describes the option)
 
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
@@ -1103,11 +1230,15 @@ unchanged)
 **Rulings**
 - The caption describes the option, not current behaviour, because the
   option starts off on iPhone and iPad (2026-10-24, #1208, review of #1190).
+- While dictating, Return does what the Stop in Send's place does: stops
+  the dictation, or calls off one still coming up, and sends nothing. The
+  next Return, once the words are in and Send is back, sends (2026-10-26,
+  #1315, see Send while dictating).
 
 **Open gaps**
-- None known.
+- Group rooms' composer and the full editor don't take the option: Return there always starts a new line, which ends a running dictation as typing does, keeping its words (found in #1315 review).
 
-**Checked:** 2026-10-24, at #1208, carried in #1229.
+**Checked:** 2026-10-26, at #1315.
 
 ## A chat's last reply
 
@@ -1152,7 +1283,7 @@ devices)
 - Delegate tail sheet (its own follow state and Latest button): `Conduit/Views/ChatSupportSheets.swift` (DelegateAgentTailSheet)
 - Room history kept: `Conduit/Services/GroupChatModels.swift` (GroupRoomReplay tailWindow, retainedLimit), `Conduit/Services/AppState.swift` (the open and resync tail windows)
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (ReplyStartSettings), `Conduit/Services/AppState+SyncedPreferences.swift` (`app.stop_at_reply_start`)
-- Tests: `ConduitTests/ChatScrollEngineTests.swift` (Long replies stop at their start, An unread chat opens at its latest reply), `ConduitTests/GroupChatModelsTests.swift`
+- Tests: `ConduitTests/ChatScrollEngineTests.swift` (Long replies stop at their start, An unread chat opens at its latest reply), `ConduitTests/ChatScrollHostedTests.swift` (the real ChatView: a long reply's stop, and following to the end with Long replies off), `ConduitTests/GroupChatModelsTests.swift`
 
 **Rulings**
 - Only the user's own scroll leaves following, except a long reply's stop below. Being near the bottom (40 pt), the jump button or sending returns to it (chats: ChatScrollEngine; group rooms 2026-10-24, #1184).
@@ -1172,7 +1303,7 @@ devices)
 - A chat restored on launch (Continue where you left off) keeps its saved place, unread or not.
 - A group room that opens empty scrolls its first events to the end: that batch is usually the room's history arriving, which should open at its newest row, so only events after a row already seen land at a member message's start.
 
-**Checked:** 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
+**Checked:** 2026-10-26, #1313 (the stop stays armed, so a reader a shrinking row estimate clamps back to the bottom stops again instead of following the reply to its end; ChatScrollHostedTests in Tests); 2026-10-26, #1290 (the check for another device's message goes by row id; Code); 2026-10-25, at #1270.
 
 ## Reconnecting to Hermes
 
@@ -1363,7 +1494,35 @@ voice reply model pickers · the Kanban task composer's catalog
 - The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-10-27, at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+
+## The Model sheet's settings
+
+How the composer's Model sheet changes the chat's model, reasoning, speed and
+YOLO: each one applies when it's tapped, with no Apply step.
+
+**Siblings:** the sheet's Model rows, Reasoning pills, Fast mode and YOLO
+toggles · the composer's reasoning chip · typed `/model` (opens the sheet),
+`/fast` and `/yolo` · a bot's model picker and the Model page's Default,
+Delegate and Fallback model editors (not siblings: they're saved with the bot
+or the profile, not live session settings)
+
+**Code**
+- Sheet: `Conduit/Views/ModelPickerView.swift` (switchModel, runModelPickerSwitch, modelPickerShouldSwitch, applySpeed, applyYolo, applyReasoning)
+- Chip and writes: `Conduit/Views/Components/ComposerBar.swift` (the reasoning chip), `Conduit/Services/AppState.swift` (setReasoningEffort, setYoloModeReportingFailure), `Conduit/Services/HermesClient.swift` (setModel, setSpeed, ModelSwitchOutcome)
+- Tests: `ConduitTests/ModelPickerTests.swift`
+
+**Rulings**
+- Every control applies on tap, like Settings; the sheet has no Apply button and stays open (Eric, 2026-10-27, #1333, #1334).
+- A model Hermes wants confirmed asks on the tap; Cancel leaves the checkmark on the model the session still runs. A failed switch puts it back too and says why under the list.
+- A switch made mid-turn is held by Hermes for the next turn, and the sheet says it switches when the reply finishes.
+- Switching to a model without Ultrafast drops Ultrafast to Fast.
+- Errors show in their own section of the sheet, since the composer's banner is behind it.
+
+**Open gaps**
+- The checked row doesn't follow a model changed elsewhere while the sheet is open.
+
+**Checked:** 2026-10-27, at #1334.
 
 ## Files over the size limit
 
@@ -1596,6 +1755,41 @@ Classic voice utterances
 
 **Checked:** 2026-10-24, at #1222.
 
+## Send while dictating
+
+What the composer offers while a dictation runs: a wide Stop in Send's
+place until the words are in the draft, so they're read over before they
+go. Talking and sending in one go is Voice message's or Voice's job.
+
+**Siblings:** chat composer (chats, project chats, Bot Chat; done) · group
+rooms (done) · the full editor, both composers' (done, it shows the same
+Stop) · the hardware Return key with Return sends on (done in chats' inline field, it stops the
+dictation; the full editor and group rooms don't take the option, see Composer Return key's gap) · the big voice button set to Dictation (done, its second
+tap does what the Stop does, a settle included) · Voice
+message's hold to record, let go to send (not changed, it's the one-tap
+path) · docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · strings (not
+needed, Stop, Cancel, Transcribing and the dictation labels are already
+translated) · Watch and CarPlay (not needed, no composer dictation) · the
+notifier (not needed, dictation is app-side)
+
+**Code**
+- Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
+- The Stop: `Conduit/Views/Components/ComposerDictationStopButton.swift`
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (trailingControl, dictationHoldsSendSlot, submitFromReturnKey, applyDictationRequest for the big voice button, the full editor's buttons)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (sendSlot, dictationHoldsSendSlot, isDictationActive)
+- Tests: `ConduitTests/DictationEngineTests.swift`, `ConduitTests/AppStateVoiceCapabilityTests.swift`
+
+**Rulings**
+- Send isn't offered while dictating, from the tap that starts it until its last words are in (a Hermes upload included). A wide Stop holds its place and the small mic steps aside; Send comes back with the words in the draft. Send doesn't stop and send in one tap (Eric, 2026-10-26, #1309, #1315).
+- The Stop takes the whole slot, so a running reply's Stop, Steer or Queue comes back after the dictation too (2026-10-26, #1315).
+- Once stopped, the Stop shows Transcribing (an Apple engine finalizing, or Hermes) and waits out a 3.5 second grace, so a tap can't cut off its final words. That outlasts either Apple engine's whole settle, so only Hermes ever offers Done: past the grace it reads Done and ends the dictation there, keeping the draft's words, so a slow host never holds Send back. A Hermes dictation none of whose words are in yet waits throughout; once its first words land it settles like any engine's, and typing ends it (2026-10-26, #1315 review).
+
+**Open gaps**
+- A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message.
+- Not yet checked on a device: the Stop's width and the swap in the controls row and the full editor, with long translations and large text.
+
+**Checked:** 2026-10-26, at #1315.
+
 ## Chats top bar and search
 
 The Chats screen's controls: the profile row, the filter, Projects,
@@ -1620,7 +1814,45 @@ row) · iPad and Mac (same view) · searching messages ("In messages")
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
 
-**Checked:** 2026-10-24, at #1206; the match row at #1208, carried in #1229.
+**Checked:** 2026-10-26, #1328 (the chip names Home apart from hidden projects); #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
+
+## Project chats in Chats
+
+Which of a project's chats the Chats list shows: Settings > Appearance >
+Project chats (Off, Recent, All) and Filter ▸ Projects, which leaves the
+projects you untick out.
+
+**Siblings:** the Chats list with no filter · the status, Starred and source
+filters (they look through project chats too) · search and "In messages" ·
+the project's own page · pinned chats · All profiles · the iPad and Mac list
+(same view) · the empty list · Sync across devices · the Settings caption ·
+the chat pickers that read the same catalog (CarPlay's chat list, the Home
+Screen widget's and the Share extension's pickers, the home voice button's
+Recent menu) · the Archived sheet · README.md
+
+**Code**
+- Setting, its default and hidden projects: `Conduit/Models/ChatListSections.swift` (ProjectChatsInChats, deviceDefaultKey, settleDefault, HiddenChatProjects)
+- Old installs keep Off: `Conduit/Services/AppState.swift` (init, after the dashboard registry loads)
+- List and menu: `Conduit/Views/V2/V2ChatsView.swift` (mainListShows, uncachedFilterRows, projectsFilterMenu, projectToggle, hiddenProjectCount, shownHiddenProjectCount, hidesEverything, selectionTitles, searchCapsule)
+- Project of a row: `Conduit/Services/AppState.swift` (knownProjectID: the chats the project tree previews)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (Project chats section)
+- Sync: `Conduit/Services/AppState+SyncedPreferences.swift` (app.project_chats, hiddenChatProjectsSlot as app.hidden_chat_projects)
+
+**Rulings**
+- Recent is the default for a new install; a phone signed in before the change keeps Off, set once at launch from its saved dashboards or connection (a launch that can't read the dashboard registry, on a locked phone, leaves it to a later one), and a choice already made stays (2026-10-26, #1317, Eric). That default is the device's own (`deviceDefaultKey`), never the synced choice, so it can't overwrite a choice made on another device; a synced choice wins over it.
+- Filter ▸ Projects is a multi-select with every project ticked to start, Home's chats standing in for the ones in no project ("Not in a project" without a Home). It narrows every filter, is kept per profile, and All doesn't clear it; the gold chip names it and its × shows every project again (2026-10-26, #1317, Eric picked a menu over a switch on each project). The chip counts projects ("2 projects hidden") and names Home on its own ("Home hidden", or "Chats outside projects hidden" without a Home), since Home's chats are in no project (Eric, 2026-10-26, #1328).
+- A pinned chat stays listed whatever is hidden, and a search looks through every chat, a hidden project's too, as it does with the setting at Off (#708).
+- A hidden project's chat that waits for approval leaves the list like its other chats, but the filter's amber dot and its spoken count still count it, and Needs approval lists it (its count too), so hiding a project never keeps a wait from the dot out of Needs approval (2026-10-26, #1322; Needs approval in #1328, Eric). Starred and the sources still narrow Needs approval as they narrow every filter, while the dot counts every wait; that predates hidden projects.
+- When hidden projects are what empty the list, under any filter, the empty list says so and points to Filter > Projects instead of the filter's own wording (2026-10-26, #1322).
+- Filter ▸ Projects is offered once the profile has a project besides Home; with Home alone it would only hide every chat. On the Projects page, which lists every project, the bar's chip and filled icon leave hidden projects out (2026-10-26, #1322).
+- Filter ▸ Projects isn't offered in All profiles, where projects belong to one profile; the Settings switch still applies there to the projects of the profile in use, as before (2026-10-26, #1322).
+- The chat pickers (CarPlay's chat list, the widget's and Share extension's pickers, the home voice button's Recent menu) and the Archived sheet follow neither: each picks a chat to talk to or restore from every chat, and never hid project chats (2026-10-26, #1322).
+
+**Open gaps**
+- Until the profile's projects load, nothing is hidden: every chat would read as one in no project.
+- A row's project comes from the chats the project tree previews, so a project chat beyond its preview counts as in no project: it shows with the setting at Off, and hides with "Not in a project".
+
+**Checked:** 2026-10-26, #1328.
 
 ## Plan card
 
@@ -2182,35 +2414,59 @@ Group rooms with agents that belong to other people. Each agent runs on its
 owner's Hermes, with its owner's model and keys and its owner's rules for the
 room, and the hosts reach each other through the rooms mailbox. It's being
 built: the notifier side is on its main, and the app side comes in the
-`linked-rooms` branch's PRs, so none of it is in the app yet.
+`linked-rooms` branch's PRs, so none of it is in the app on main yet.
 
-**Siblings:** the room screen and room info (members from other
-installations, their route status, your agents' choices for the room) · New
-Group Chat with linked people · Settings > People (host setup, Links) · the
-Chats list (rooms hosted by others, and deleting one that ended) · the
-notifier's owner rules for room turns (tools, the framing, the reply scrub,
-past-chat search), with their routes and the `hermes conduit-push rooms`
-commands · the room memory guard · the room planner · a member cut off by its
-host · disbanding a room (the home's own agents' hidden chats for it) and a
-guest's `rooms forget` · the rooms mailbox (rooms.milim.dev) · rooms of only
-your own agents (unchanged, except that disbanding one now deletes its hidden
-chats) · past-chat search in every chat (it no longer finds those rooms) ·
-approvals for your agents in rooms hosted elsewhere · text that describes it:
-the notifier README's "Rooms with other people's agents", "A member cut off
-from a room" and "Disbanding a room ends its hidden chats", the framing and
-block messages models read, Disband's warning, Settings captions
+**Siblings:** the room screen and Group Info in both shells (members from
+other installations, their route status and pictures, your agents' choices for
+the room) · New Group Chat with linked people, the invite list and the join
+card · Settings > People (host setup, Links, Link with someone, Scan and
+Paste) · an invite (`conduit://link/`) opened from another app, a chat or the
+Camera · the sign-in Scan Code sheet, which Scan reuses · the Chats list
+(rooms hosted by others, and deleting one that ended) · the notifier's owner
+rules for room turns (tools, the framing, the reply scrub, past-chat search),
+with their routes and the `hermes conduit-push rooms` commands · the room
+memory guard · the room planner and the room driver's wakeups · a member cut
+off by its host · disbanding a room (the home's own agents' hidden chats for
+it) and a guest's `rooms forget` · the rooms mailbox (rooms.milim.dev) · Links
+between installations (invites, the four words, unlinking), with their routes
+and the `hermes conduit-push links` commands · getting a Hermes ready for
+rooms (its API server and the tools rooms may use), with its route and
+`hermes conduit-push rooms setup` · the room bridge (a member's Hermes
+answering a room's requests over its Link, with When asked and its turns a day
+held there, and the home's Hermes reaching a member's agent through it) ·
+rooms with people you've linked (a draft and its invites, joining with a grant
+for each agent, the start in the running room service, Start now, taking a
+draft back), with their routes and the rooms commands `invite`, `drafts`,
+`start`, `withdraw`, `invites`, `join` and `decline` · who's who in a room
+(the framing names each other agent's owner and the room's host) · rooms of
+only your own agents (unchanged, except that disbanding one now deletes its
+hidden chats) · past-chat search in every chat (it no longer finds those
+rooms) · approvals for your agents in rooms hosted elsewhere · text that
+describes it: the notifier README's "Rooms with other people's agents", "A
+member cut off from a room", "Disbanding a room ends its hidden chats",
+"Linking with someone", "Setting this Hermes up for rooms", "Rooms with people
+you've linked" and "Group rooms between turns", the framing and block
+messages models read, Disband's warning, Group Info and the choices page's
+captions, Settings captions, the invite's share message
 
 **Code**
 - Owner rules: `notifier/room_rules.py` (room_turn, tool_block, framing, scrub, filter_search), `notifier/room_choices.py` (the per-room choices, NEVER), `notifier/__init__.py` (pre_tool_call, pre_llm_call, transform_llm_output, transform_tool_result), `notifier/dashboard/plugin_api.py` (/rooms/choices, /rooms/defaults, capability room-rules), `notifier/cli.py` (rooms show, rooms set), `notifier/README.md` (Rooms with other people's agents)
-- Memory guard and planner: `notifier/room_memory.py`, `notifier/room_planner.py`
+- Memory guard, planner and wakeups: `notifier/room_memory.py`, `notifier/room_planner.py`, `notifier/room_wakeups.py` (a room's pass that ends doesn't keep every room's pass going), `notifier/README.md` (Group rooms between turns)
 - Cut-off members and disband cleanup: `notifier/room_cutoff.py` (MemberCutOff, read before Hermes sets a turn up), `notifier/room_cleanup.py` (the disband guard, the load sweep, forget_room), `notifier/dashboard/plugin_api.py` (DELETE /rooms/sessions, capability room-forget; it installs both guards where the dashboard drives rooms), `notifier/cli.py` (rooms forget), `notifier/README.md` (A member cut off from a room, Disbanding a room ends its hidden chats)
 - Mailbox: `notifier/mailbox/src/server.mjs`, `notifier/mailbox/README.md` (protocol v1, self-hosting), `notifier/mailbox/deploy/compose.yaml`
-- App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Views/GroupChatView.swift` (and Disband's warning), `Conduit/Views/V2/V2ConversationScreen.swift` (Disband's warning in V2), `Conduit/Services/HermesClient.swift` (groups.*)
-- App, on the `linked-rooms` branch only, so not in backticks: none yet. Each of the branch's PRs names here the app paths it adds
-- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/mailbox/test/server.e2e.test.mjs`
+- Links: `notifier/room_links.py` (invites, the accept and its confirm, unlinking, the inbox loop, links.json), `notifier/room_identity.py` (an installation's keys and its four words), `notifier/bip39_english.txt`, `notifier/room_envelope.py` (sealed, signed envelopes), `notifier/room_mailbox.py` (the mailbox client, which looks a peer mailbox's name up), `notifier/dashboard/plugin_api.py` (/rooms/identity, /rooms/links, capability room-links), `notifier/cli.py` (links invite, preview, accept, list, remove, cancel), `notifier/README.md` (Linking with someone)
+- Host setup: `notifier/room_setup.py` (what a profile needs, the setup and its gateway restart), `notifier/dashboard/plugin_api.py` (/rooms/setup, capability room-setup), `notifier/cli.py` (rooms setup), `notifier/README.md` (Setting this Hermes up for rooms)
+- Room bridge, a member's side: `notifier/room_bridge.py` (the envelopes' bodies and their checks, a grant's scope, bridge.json), `notifier/room_bridge_member.py` (a member's Hermes answers a home's room requests over its Link: the replay to its own API server, When asked and turns a day as "(pass)" runs, the run's statuses, the 10-minute cap), `notifier/room_links.py` (`Received.age` and `root`), `notifier/room_mailbox.py` (`Delivered.age`, by the mailbox's clock), `notifier/dashboard/plugin_api.py` (starts the bridge before the links loop)
+- Room bridge, the home's side: `notifier/room_bridge_home.py` (the loopback server Hermes reaches a member's agent at: each request carried over the Link, status reads answered from the statuses the member sends, a quiet member, a 12-minute turn and an unanswered dispatch read failed, Stop and revoke through an outbox, bridge.json's home section), `notifier/room_bridge.py` (the route table, the run states and the fields Hermes' client reads, `url`, `start` for both sides)
+- Rooms over Links: `notifier/room_invites.py` (drafts and invites on both sides, the answers, the rooms loop beside the bridge, rooms.json and its outbox, the join card's choices from the last room with the same people, who's who), `notifier/room_join.py` (a join's grants for its places, never approve, the reservation, the catalog from this Hermes' API server, the bridge binding and the choices, and undoing them), `notifier/room_start.py` (the start: each agent probed through the bridge, the room made in the running room service the draft names, legacy or canonical, its routes registered live, and the gateway's lock on the CLI's drafts), `notifier/room_choices.py` (a room's people, `last_with`), `notifier/room_rules.py` and `notifier/__init__.py` (the framing names other agents' owners and the room's host), `notifier/dashboard/plugin_api.py` (/rooms/drafts, /rooms/drafts/start, /rooms/invites, /rooms/invites/answer, /rooms/people, capability room-invites; the rooms loop starts with the bridge), `notifier/cli.py` (rooms invite, drafts, start, withdraw, invites, join, decline), `notifier/README.md` (Rooms with people you've linked)
+- App, today's rooms (a member from another installation has target kind peer): `Conduit/Services/GroupChatModels.swift` (GroupMember.target, members(namedBy:)), `Conduit/Services/AppState.swift` (activeRoomResponder, groupMemberBot), `Conduit/Views/GroupChatView.swift` (and Disband's warning), `Conduit/Views/V2/V2ConversationScreen.swift` (Disband's warning in V2), `Conduit/Services/HermesClient.swift` (groups.*)
+- App, on the `linked-rooms` branch only, so not in backticks: Conduit/Services/RoomChoices.swift (RoomChoices, RoomChoicesClient, canSetRoomChoices), Conduit/Views/GroupRoomInfoView.swift (GroupRoomInfoSheet, RoomAgentChoicesView), ConduitTests/GroupChatModelsTests+LinkedRooms.swift; in the files above, GroupPeerRoute, GroupMemberActivity, responderState, liveMember, rosterBot and GroupRoomDisband (GroupChatModels.swift), roomResponderCache and activeRoomResponderState (AppState.swift), and Group Info in both room menus. Each of the branch's PRs names here the app paths it adds
+- Settings > People, on the branch only too: Conduit/Views/PeopleSettingsViews.swift (PeopleSettingsPage, RoomSetupSection, PeopleSettingsText; Link with someone, Scan, Paste), Conduit/Views/RoomLinkSheets.swift (RoomLinkInviteSheet, RoomLinkOpenedSheet, RoomLinkQRCode, RoomLinkSheetText), Conduit/Services/RoomLinks.swift (RoomLinksClient, RoomLinkURL, canLinkRooms, routeRoomLink), Conduit/Services/RoomSetup.swift (RoomSetupClient, canSetUpRooms), ConduitTests/GroupChatModelsTests+People.swift; in files on main, the People row under Hermes in both shells (`Conduit/Views/AuxiliaryViews.swift`), DashboardTicketBridgeError.meaningfulDetail (`Conduit/Services/DashboardTicketBridge.swift`), pendingRoomLink (`Conduit/Services/AppState.swift`), an invite's way in through openURL and onOpenURL (`Conduit/ConduitApp.swift`) to its sheet (`Conduit/Views/RootView.swift`), the scheme's notes (`Conduit/Services/ConduitAppLink.swift`), and CodeScanPurpose, the scanner's words for an invite (`Conduit/Views/Login/DashboardCodeScanner.swift`)
+- Tests: `notifier/tests/test_room_rules.py`, `notifier/tests/test_room_choices.py`, `notifier/tests/test_room_memory.py`, `notifier/tests/test_room_cutoff.py`, `notifier/tests/test_room_cleanup.py`, `notifier/tests/test_room_identity.py`, `notifier/tests/test_room_envelope.py`, `notifier/tests/test_room_mailbox.py`, `notifier/tests/test_room_links.py`, `notifier/tests/test_room_wakeups.py`, `notifier/tests/test_room_setup.py`, `notifier/tests/test_room_bridge.py`, `notifier/tests/test_room_bridge_member.py`, `notifier/tests/test_room_bridge_home.py`, `notifier/tests/test_room_invites.py`, `notifier/tests/test_room_join.py`, `notifier/tests/test_room_start.py`, `notifier/tests/roomlink_client.py` (Hermes' own RoomLink client, verbatim from c73cbcc4), `notifier/mailbox/test/server.e2e.test.mjs`
 
 **Rulings**
 - The app side stays off main: Linked Rooms PRs target `linked-rooms`, which reaches main only once Eric has seen it all work, like `pulse`. The notifier side is on its main, hidden until Conduit shows it (2026-10-23, Eric).
+- Main reaches `linked-rooms` by a merge commit, never a squash, as it reaches `pulse`, so the next merge of main doesn't re-stitch old conflicts (2026-10-26, #1287; Pulse's ruling from #1186).
 - Memory stays on in rooms. Instead, past-chat search is off unless chosen, nothing from a room turn is saved to memory, skills or a memory provider, the agent is told who's asking, and what it shares follows its owner's choice for the room. A provider's automatic recall stays on, like MEMORY.md (2026-10-22, Eric; notifier #305).
 - Each owner's rules run on their own host, whichever host the room lives on. A room's choices default to Talk only, ask first, no past-chat search, joins in and 40 turns a day. Memory and skill writes, delegation, messaging, scheduled jobs, running code and Conduit's calls and settings are never allowed, the background review's included (2026-10-25, notifier #379).
 - The rules hold through Hermes' tool hooks, which see a call only when it carries the room session's id. A tool that calls other tools without it (`execute_code`) is never allowed, and a profile whose tools run outside the hooks (the Codex app-server runtime) can't take part in a room with other people's agents (2026-10-25, notifier #379).
@@ -2221,19 +2477,121 @@ block messages models read, Disband's warning, Settings captions
 - Disbanding a room deletes the home's own agents' hidden chats for it, with their earlier history and their helpers' chats, in every room, rooms of only your own agents too. Agents on other people's Hermes keep theirs, and their owners delete them later with `hermes conduit-push rooms forget` or the route the Chats list calls, which refuses a room still going on that host (2026-10-26, Eric; notifier #384).
 - Every link goes through the mailbox, on one LAN too. The shared one is rooms.milim.dev, a service of its own beside push.milim.dev (2026-10-22, Eric).
 - An agent runs on its owner's host with its owner's model and keys, so each owner pays for their own (2026-10-22, Eric).
+- Links are an installation's, not a profile's: each Hermes home has one identity, whose four words the other person compares, and the links routes take no profile. An invite (a link, or its QR code) is good for one accept within 24 hours. The inviter's Hermes confirms it, and the acceptor's then uses the mailbox that signed confirm names, not the invite's. Unlinking ends a Link at once on that side, and on the other when it next reads its mailbox. A Hermes keeps up to 50 Links and 10 waiting invites, each invite holding a place for its Link (2026-10-26, notifier #390). A peer's mailbox named by a host name is looked up before anything is sent to it, and refused (`bad_url`) when any address it has is on this computer or a private network (2026-10-26, notifier #397).
+- Getting a Hermes ready for rooms is one setup, from `hermes conduit-push rooms setup` or the route Settings > People calls, for one profile. It turns on the installation's API server (with a key made on the host that never leaves it, and a named profile's own key), saves the profile's room ceiling exactly, with MCP servers and toolsets added later kept out until they're added there, turns approvals that are off to manual, and restarts the gateway only when the API server isn't running. What it can't fix (YOLO mode, a managed install, a profile the host gateway doesn't serve, no free port) stops it before anything is written. A room pins its members' ceilings when it starts, so a changed ceiling stops that agent answering in rooms already started, and changing one the setup saved says so before it saves (2026-10-26, notifier #398).
+- A member's Hermes answers a room's requests only over the Link its grant's scope is bound to (bound when the agent joins), for that grant's profile, replayed to its own API server with the grant, never through a proxy. Approvals and clarify are refused there: the agent's owner answers them on their own Hermes. A request that waited more than 30 s at the mailbox, by the mailbox's clock, is dropped, since the home asks again if it still needs to, so a Hermes that was off never runs the turns it missed; stops and revokes apply however old. When asked and Listens only answer with a "(pass)" run and no model call; past its turns a day, the day's first turn is a notice and the rest pass. A turn still running 10 minutes after it started is stopped. Only a run's status and its final reply (cut to 64 KiB) go back, and a refusal as its code with a fixed sentence, never Hermes' text (2026-10-27, notifier #401).
+- A home's Hermes reaches a member's agent through the bridge's loopback server, at the URL the agent's route names (`room_bridge.url`: its Link and profile), only with a HermesRoom grant and only over that Link. Hermes' API key never leaves the host, approvals and clarify are refused there with nothing sent, and a Link that ended reads cut off. The member's answer is waited for 15 s: no answer is 504, and the mailbox refusing a request, 16 waiting or 60 a minute on a Link are 503, never a 4xx, which Hermes takes as a turn not admitted. Status reads are answered there from the statuses the member sends. A member quiet for 3 minutes, a turn still running 12 minutes after its admission, and a dispatch the member never answered, at Hermes' recovery of it, read failed with a sentence naming the Link ("Laifu's Hermes didn't answer."), so the room goes on. A read, a stop or a kept admission is answered there only for a grant the member took for that run; anything else is asked of the member (2026-10-27, notifier #406).
+- A room with people you've linked starts as a draft on its home, the Hermes that will host it: its name, the creator's own agents, and up to 5 people by Link, with up to 6 agents in all. Each Link gets (6 − the creator's agents) ÷ Links places, so no answer can overflow the room. It starts by itself once everyone has answered, or with whoever has joined when its creator starts it anyway (Start now); with fewer than 2 agents it makes no room and ends `too_few`. A draft lasts 7 days, the mailbox's hold, and can be taken back while it waits, which undoes the joins on each person's Hermes (2026-10-27, notifier #409).
+- An invite's join card shows who it's from (the Link's name), the room's name, the other people and agents, the places, and each profile's choices for the room from its most recent room with the same people (the same Links and other people's names), else its defaults. Joining mints each agent a grant on its own Hermes for its place: dispatch for 24 hours, status and stop for 30 days, never approve. Hermes reserves the place, the catalog comes from that Hermes' own API server with the new grant (the grant names the policy the API server runs, which a look-only grant for a minute reads first, and an API server that doesn't answer, or whose policy changes while it joins, refuses the join, `api_server`), the bridge binds the grant to the Link, and the agent's choices are saved. A join is refused with nothing made or sent for a profile not set up for rooms, one whose turns run on Codex's app server, an invite that ran out, a Link that ended, or more agents than places; one agent failing undoes the others, and so does the home's word on the room, or the invite running out, while they join (`ended`, `lapsed`) (2026-10-27, notifier #409).
+- The home takes an answer only from the Link it invited, for that Link's places, from the installation that Link's answers first came from, while the draft waits. At the start it asks each joined agent's Hermes through the bridge whether it still takes the grant: a refusal (a 4xx but 408 and 429) or a changed catalog or scope leaves the agent out, and no answer keeps it, for the bridge to settle its turns. The room is made in the running room service with every member at once, and each linked agent's route is registered at the bridge's URL, live with no restart on either side; a route that can't be saved leaves its agent cut off, and a create that fails is tried on 3 passes, then ends `start_failed`. Each person's Hermes hears that it started, with who's in it, or why not (`started_without_you`, `refused`, `withdrawn`, `lapsed`, `too_few`, `start_failed`) (2026-10-27, notifier #409).
+- The room goes in the room service the request that made it would use: with the dashboard in the gateway, that profile's canonical service, owned by the request's subject as Conduit's own rooms there are; else the legacy one the dashboard runs. A draft from the CLI goes to the gateway's while the gateway's dashboard runs the rooms loop, even with another dashboard beside it (Hermes Desktop's), else to the dashboard's. Answers arrive, and rooms start, only in a dashboard's rooms loop, one start at a time per installation (2026-10-27, notifier #409).
+- A linked agent's peer id is `l` and 12 hex of its Link id's SHA-256, and its member id that and `-<n>`, since Hermes' ids don't take a Link id's base64url. Its handle comes from its owner, made unique in the room (`laifu`, then `laifu-2`), with `@user`, `@all` and `@everyone` reserved; an agent named in the CLI gets its handle and name as Conduit tags its bot, and the default profile with no bot name is `@hermes`, Hermes. Every host's framing names each other agent's owner and the room's host, by the names this host's owner gave their Links, and GET /rooms/people gives that record for the app (2026-10-27, notifier #409).
+- The home's own agents need no room setup (they run in its own room service, with no grant) and always join in: their How it takes part and Turns a day aren't enforced there, as the build plan's decision 8 has it for v1 (2026-10-27, notifier #409).
+- Both sides keep their drafts, invites and outbox in conduit-rooms/rooms.json in the root Hermes home, 0600 under a file lock, and each envelope has its own message id, so one sent twice lands once. Grants travel only in answers and that file, never in a route's answer, the CLI's output or a log line. A join whose room never starts is undone a week after its invite ran out, and ended drafts and invites are forgotten after 30 days. The routes (capability room-invites) answer 60 requests a minute between them, and one that sends over the Links answers within 50 s or with `timed_out` (504) (2026-10-27, notifier #409).
+- Who's live in a room: the gateway's live turns where it reports them (`member_activity`, Hermes c73cbcc4), a running or stopping turn before a queued one, as Hermes Desktop reads them, and a status this build doesn't know is skipped; else the log, as before. A live member on another Hermes whose route says its Hermes refused the room reads "<name> is cut off", and one whose Hermes couldn't be reached reads "<name> can't be reached", in the header and where its reply would land, until its turn runs, whether the turn names it by member id or, having none, by profile. Hermes keeps routes in memory, so one not tried since its room service started reads as responding (2026-10-26, #1289).
+- Disband's warning in a room with a member from another installation says the room ends for everyone, your agents' sessions for it are deleted, and agents on other people's Hermes keep theirs. Rooms of only your own agents keep the old text, which holds since notifier #384 (2026-10-26, #1289).
+- Group Info, from the room menu in both shells, lists each member as your agent or on another Hermes, with its route's trouble. In a room with a member from another installation, each of your agents opens its choices for the room when the plugin reports room-rules, which stays out of usedCapabilities, so an older plugin gets no update notice. The choices page offers Talk only and Look things up, and shows Use my data or Custom, with its tools, only while one is the choice; how an agent takes part and its turns a day stay off it until rooms go over Links (N5), where the room bridge holds agents to them. Each change sends only that choice, one at a time from the tap, so an older answer can't land over a newer change; the page shows what the plugin answers, refuses an answer that isn't ok or names another room, and requests stay with the dashboard they were made for. The note's footer says it holds up to 1,000 characters, where typing stops (2026-10-26, #1289).
+- A member on another Hermes never takes one of your bots' names, pictures or colors, whatever its profile is called there (2026-10-26, #1289).
+- Settings > People is one page, from a People row under Hermes in both shells, shown while the plugin reports room-links. Its host setup needs room-setup, and with an older plugin the page says to update it. Neither joins usedCapabilities, so an older plugin gets no update notice. The Links part takes no profile; host setup is for the profile in use, which it names. Requests stay with the dashboard they were made for, and an unlink or a cancel, which waits on the mailbox, gets 55 s, past the plugin's 50. A refusal shows the plugin's words, a 502, 503 or 504 with words of its own too, since those are the mailbox's answers, not a dashboard that couldn't reach Hermes (2026-10-26, #1323).
+- Host setup lists what Set up will do, from what the plugin says it would change, or what blocks it, with only Check again then. The tools rooms may use are a switch for each toolset the plugin offers, starting from what it saved, and a setup that leaves them as they were keeps that ceiling as it is. Changing a ceiling the setup saved, from Change or from Set up, asks first with the CLI's words: the agent then stops answering in rooms already started with other people's agents. While the API server is already on, the page says other apps using it get only these tools too. A gateway busy with chats asks before restarting (Restart now or Later), and a restart that starts is followed every 2 s for up to 30 s, until the API server runs or says why it doesn't (2026-10-26, #1323).
+- Each Link shows its name, its status (Linked; waiting for the other Hermes to confirm; or never confirmed, so ask for a new invite; none for a status this build doesn't know) and their four words, with Unlink, which asks first and says it unlinks both sides. While one waits, the page reads the list every 5 s for up to 3 minutes. An invite waiting shows the name it shows you by and until when, with Cancel invite. Your Hermes' words show once its first invite or accept made its keys, and a Hermes without Python's cryptography package says it can't make Links. While there's a Link or an invite and nothing on the host reads the mailbox, the page says what the other side sends waits there, for up to 7 days (2026-10-26, #1323).
+- Only the plugin reads an invite. The app takes `conduit://link/` and a base64url payload, 2,048 characters in all at most, as the plugin does, whatever the case of the scheme and host, and sends it in the plugin's spelling. It never logs one and leaves it out of descriptions, since its token links whoever holds it with the inviter (2026-10-26, #1327).
+- Link with someone, at the top of Settings > People, asks for the name the other person sees, kept on this device for the next invite or accept, then makes the invite and shows its QR code, Send the invite (the share sheet, with the link), your Hermes' four words to compare, and until when it works, for one person. While it shows, it reads the Links every 3 s for up to 3 minutes and says when they've linked. Making and accepting an invite wait on the mailbox, so they get 55 s; reading one keeps the bridge's own time (2026-10-26, #1327).
+- An invite opened from another app (the share link, or the Camera reading its QR code), tapped in a chat, scanned with Scan or pasted opens one sheet over the app, and nothing else reads it: no chat or Settings link, no sign-in code. One the app can't read opens nothing. The sheet shows who it's from, their Hermes' four words to check with them, the mailbox's host, until when it works and, with more than one dashboard saved, which Hermes links; then Link with <name> (the catalog's Link is a web link), with the name they'll see you by. It stops there when the invite is your own, ran out, or is from someone already linked, whose Link it names, in that order. Until Conduit has connected and the plugin says what it serves, it waits, and a plugin without room-links says to update it (2026-10-26, #1327).
+- After Link with <name>, the sheet shows the Link waiting and reads the list every 3 s for up to 90 s, until it's linked. One still waiting then says their Hermes confirms once it reads its mailbox, and one gone from the list says to ask for a new invite. An accept the mailbox couldn't take yet keeps its Link waiting: the sheet shows the plugin's words and follows that Link. An invite from someone whose Link still waits opens on that Link (2026-10-26, #1327).
+- Scan reuses the sign-in Scan Code sheet, with an invite's words and without the prompt that asks Hermes for a sign-in code, and the invite opens once the scanner has closed. Paste is the system's paste control, so iOS asks nothing before it reads the clipboard, and it takes the first invite in what was copied (2026-10-26, #1327).
 
 **Open gaps**
-- The app shows none of it yet: the room screen and room info (with the choices, set until then with `hermes conduit-push rooms set`), New Group Chat with linked people, Settings > People and the Chats list come in the `linked-rooms` branch's PRs, with their Settings captions.
-- How an agent takes part and its turns a day are kept, not enforced, until the room bridge.
+- On main the app shows none of it, and invites are made and opened with `hermes conduit-push links`. The `linked-rooms` branch has the room screen, Group Info with your agents' choices, and Settings > People with host setup, the Links and linking with someone; New Group Chat with linked people, the join card and the Chats list come in its later PRs, with their Settings captions. Until then a room with linked people is made with `hermes conduit-push rooms invite` and joined with `rooms join`, and choices for a room hosted elsewhere are set with `hermes conduit-push rooms set`.
+- How an agent takes part and its turns a day are held by the room bridge (notifier #401 and #406), for agents in rooms hosted elsewhere; the home's own agents always join in. The choices page leaves them out until C3, which shows them only for agents in rooms hosted elsewhere.
+- A linked agent's grant is renewed only when a turn reaches it in the grant's last 5 minutes (Hermes' own refresh), so in a room that goes quiet an agent reads cut off a day after it joined. N5b renews grants every 12 hours while a room goes on (the notifier README says so).
+- Leaving a room, and its home removing an agent, come in N5b: until then an agent stays until the room is disbanded or its Link ends.
 - Use my data has no room-safe data tools yet (free/busy comes first).
 - A memory provider's automatic recall can't be skipped in a room without a Hermes change (written up for Hermes).
-- Disband's warning says every member's session ends. That holds for rooms of your own agents; in a room with other people's agents theirs stay on their hosts, and the warning changes with the room screen in the `linked-rooms` branch.
-- A cut-off member shows only as a failed turn (reason code unknown: Hermes has none for it) until the room screen reads its route status, and deleting an ended room hosted elsewhere from the Chats list comes with the `linked-rooms` branch's Chats list.
+- On main, Disband's warning says every member's session ends, which holds for rooms of your own agents; the `linked-rooms` branch's says that in a room with other people's agents theirs stay on their hosts.
+- On main a cut-off member shows only as a failed turn (reason code unknown: Hermes has none for it); the `linked-rooms` branch's room screen reads its route status. Deleting an ended room hosted elsewhere from the Chats list comes with the branch's Chats list.
 - Approvals for your agents in rooms hosted elsewhere don't reach you.
-- A profile on the Codex app-server runtime isn't refused yet: until joining refuses it, keep it out of rooms with other people's agents (the notifier README says so).
 - Agents that aren't Hermes (an A2A member) are left out.
+- An acceptor's Hermes that stays off for more than 7 days while its confirm waits at the mailbox leaves the inviter's side linked until its owner unlinks it (the notifier README says so).
+- Changing the tools rooms may use says the agent stops answering in rooms already started, but not in which.
+- An invite opened from another app while a sheet is already up (classic Settings, say) can't show over it, as a sign-in code link can't: open it again once the sheet is closed.
 
-**Checked:** 2026-10-26, #1284, with notifier #384.
+**Checked:** 2026-10-27, #1342 (rooms over Links, and Settings > People's lines from #1323 and #1327), with notifier #387, #390, #396, #397, #398, #401, #406 and #409.
+
+## Kanban workers' transcripts
+
+A Kanban task's worker runs in a Hermes session of its own (source
+`kanban`). Hermes refuses to reopen one as a chat (`session.resume` 4132):
+only the board may run it, so it can supervise the worker. Conduit leaves
+these sessions out wherever it offers chats, and the task's Worker Log is
+where to follow one.
+
+**Siblings:** each profile's chats list and its archived list (and their
+`session.list` fallback) · All profiles · project chats (lanes and
+previews) · search "In messages" · find chat on a phone call in Gemini,
+Qwen, Grok, GPT-Live and Local Live (VoiceChatFinder) · Classic voice and
+Hermes-run turns, which search with Hermes' own `session_search` · find chat
+on an Apple Watch call (notifier) · CarPlay's chat list, the Home Screen
+launcher widget's conversation picker, the Share extension's chat picker and
+the home voice button's Recent menu (they read the same list, the pickers
+through the widget snapshot) · opening a chat from a
+link or notification (the message shown) · the Kanban task's Worker Log ·
+Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
+
+**Code**
+- Sources: `Conduit/Models/Models.swift` (SessionSource.hermesKanbanSource, chatListExcludedSources)
+- Lists: `Conduit/Services/AppState.swift` (profileSessionsPath, archivedSessionsPath), `Conduit/Models/AllProfilesChats.swift` (sessionsPath), `Conduit/Services/HermesClient.swift` (MessageNormalizer.normalizeSessions drops `kanban` rows from every list it builds: the `session.list` fallback, project lanes and previews)
+- Search: `Conduit/Services/SessionContentSearch.swift` (path), `Conduit/Voice/VoiceChatFinder.swift` (path), `notifier/dashboard/plugin_api.py` (run_watch_find_chat, CHAT_SEARCH_EXCLUDED_SOURCES)
+- Opening one anyway: `Conduit/Services/AppState.swift` (the 4132 case where a resume fails, reconciliationWasKanbanWorker)
+- Pickers: `Conduit/Services/AppState+Widgets.swift` (publishWidgetSnapshot builds the widget and Share extension choices from the chats list), `Conduit/Services/AppState+WidgetLaunch.swift` (prepareWidgetLaunch says a choice no longer listed is unavailable), `Conduit/Services/AppState+ShareDraft.swift` (deliverSharedDraft's fallback to the chat on screen)
+- Worker Log: `Conduit/Views/Kanban/KanbanWorkerLogScreen.swift`
+- Tests: `ConduitTests/SessionContentSearchTests.swift`, `ConduitTests/VoiceChatFinderTests.swift`, `ConduitTests/MessageNormalizerTests.swift`, `ConduitTests/SidebarLayoutTests+AllProfiles.swift`, `ConduitTests/AppStateChatResumeTests.swift` (testOpeningAKanbanWorkerPointsAtTheBoard, testAutomaticReturnRetiresASavedKanbanWorker, testAutomaticReturnDoesNotRetryAKanbanWorkerByItsStoredID), `notifier/tests/test_watch_chats.py`
+
+**Rulings**
+- Kanban workers aren't chats: lists, search and voice leave them out with `exclude_sources`, as Desktop does, and the board's Worker Log shows them. The session normalizer drops them too, so a list whose source doesn't filter (projects, `session.list`) can't show one. Classic voice needs nothing: Hermes' `session_search` already hides `kanban` (2026-10-26, #1305, tester report via Eric).
+- A worker reached anyway (a link, a cached row) says it belongs to the board and points at its Worker Log instead of "Failed to restore this conversation" (2026-10-26, #1305).
+- A 4132 counts as "not found" everywhere a missing chat is handled: a worker saved as the last conversation is retired on the next return (the newest chat opens instead, and its stored id isn't tried, since Hermes refuses a worker under any id) and a notification for one isn't retried; only the message differs (2026-10-26, #1305 review).
+- A launcher widget still holding a worker (picked or saved before this change) says the conversation is unavailable, since the worker isn't in the chats list any more; it doesn't try the resume that would show the board message. A share sent to a worker from a snapshot written before this change goes the same way: the draft lands in the chat on screen with "Conduit couldn't open the chat you picked". The next snapshot, written once the app reads its chats list, has no workers (2026-10-26, #1305 review).
+- Rows saved before this change stay in the saved chat list until a full, non-empty read replaces them: a saved `SessionSummary` keeps no raw Hermes source (a worker is `.other`), and storing one for that window isn't worth the code (2026-10-26, #1305 review).
+
+**Open gaps**
+- A project card's count is Hermes' `session_count`, which may include workers in the project's folders; only the fallback (counting previews) leaves them out.
+- A worker's transcript (its messages, not the log) can't be read in Conduit. Hermes would serve it read-only over `GET /api/sessions/{id}/messages`; a read-only view is the maintainer's call.
+
+**Checked:** 2026-10-26, #1305 (with the Share extension's picker).
+
+## Readable width on wide windows
+
+How wide a screen's content runs on an iPad, a Mac or a landscape phone,
+where a phone layout would otherwise run the whole window.
+
+**Siblings:** chat surfaces (chats, project chats, Bot Chat and group rooms
+share the chat screen, so its column) · the chat beside the list and with the
+list hidden · the drawer shell's chat (Appearance, V2 off, with or without
+the persistent sidebar) · Settings' pages · a Chats or Bots list shown alone ·
+the call screens (Classic, live calls, live voice consent) · the sign-in
+screens (their own column) · cards and pictures whose kept heights depend on
+the column's width (see Cards drawn in web pages) · text: no Settings caption
+or doc gives a width
+
+**Code**
+- Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:), chatMax, chatShare)
+- Chat column: `Conduit/Views/V2/V2ConversationScreen.swift` (readableContentWidth(scaling:)), and the drawer shell's in `Conduit/Views/RootView.swift` (chatNavigationContent)
+- List shown alone: `Conduit/Views/V2/V2Shell.swift` (ReadableWidth.list)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ReadableWidth.settings)
+- Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
+- Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
+- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap)
+
+**Rulings**
+- Widths follow the window, not the device (2026-10-19, #949).
+- A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
+- Settings (720 pt), a list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
+
+**Open gaps**
+- Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
+
+**Checked:** 2026-10-26, #1320.
 
 ## Feature map rules
 
@@ -2249,7 +2607,7 @@ point at the map and its check
 - Rules: `CONTRIBUTING.md`, `docs/FEATURE_MAP.md` (the intro and the sibling sets), `.github/pull_request_template.md` (Siblings)
 - Reviewers: `.github/workflows/opencode-review.yml` (the Connected features focus area)
 - Notifier: `notifier/CONTRIBUTING.md`, `notifier/.github/pull_request_template.md`, `notifier/.github/workflows/opencode-review.yml`
-- Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits; on a PR into `pulse` that merges main, main's maps where the PR and its base meet main tell which entries came from main), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist; a PR into `pulse` runs `pulse`'s copy, whose trigger lists `pulse`), its PR number, base map and main's maps pinned by `scripts/tests/test_ci_workflow_contract.py`
+- Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits; on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main tell which entries came from main), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist; a PR into `pulse` or `linked-rooms` runs that branch's copy, whose trigger lists it), its PR number, base map and main's maps pinned by `scripts/tests/test_ci_workflow_contract.py`
 - Pointers: `README.md` (Architecture), `docs/CI.md` (the plan job under Jobs)
 
 **Rulings**
@@ -2258,14 +2616,14 @@ point at the map and its check
 - CONTRIBUTING.md holds the full rules. The intro, the PR templates and the reviewer prompts each carry the part their reader needs, so a rule change starts in CONTRIBUTING.md and then reaches each copy (2026-10-24, #1178).
 - The notifier's reviewers can't read this map, so a notifier PR names its entry, or the hermes-conduit PR that adds or updates it (2026-10-24, #1178).
 - An entry a PR adds or edits names that PR on its Checked line, and CI fails one that doesn't; a commit is only for an entry seeded from main. A carry PR names both, like "#1188, carried in #1200". The PR template asks for a Siblings line for every sibling the entry lists, Settings and model-facing text included (2026-10-24, #1209, Eric).
-- On a PR into `pulse` that merges main, an entry main changed between where `pulse` last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into `pulse` doesn't name the merge on every entry main changed. A `pulse` PR that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries).
+- On a PR into `pulse` or `linked-rooms` that merges main, an entry main changed between where that branch last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into the branch doesn't name the merge on every entry main changed. A PR into either that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries). `linked-rooms` gets the pass as `pulse` does, since Eric asked for the Linked Rooms app side on a branch like `pulse` (2026-10-26, #1287).
 - A refactor that changes no behavior and no user-facing or model-facing text (moving code, or changing how state is stored or observed) has no siblings: its PR says "No mapped feature" and adds no new entry, and reviewers don't ask for one. If it moves code an entry's Code lists, it updates those paths and the Checked line (2026-10-25, #1271, Eric; reviewer prompts and notifier copies in #1273 and notifier #377).
 
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's behavior without touching its entry isn't caught by CI; a reviewer flags it (minor). A refactor that changes no behavior is exempt unless it moves a listed path.
-- On a merge of main into `pulse`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping `pulse`'s edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
-- If GitHub can't say whether a PR into `pulse` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
+- On a merge of main into `pulse` or `linked-rooms`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping the branch's edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
+- If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-10-25, #1273.
+**Checked:** 2026-10-26, #1314.

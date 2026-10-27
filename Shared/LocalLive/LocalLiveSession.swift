@@ -207,6 +207,15 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         enqueue(texts, isAudio: message.isAudio, onSent: onSent, onFailure: onFailure)
     }
 
+    /// The user stopped the reply: the server stops it, and one that shuts
+    /// its microphone while its reply plays opens it again, which it can't
+    /// tell from the audio that follows (#1325). It goes out on the
+    /// connection's writer, ahead of the microphone audio after the tap.
+    func cancelResponse() {
+        guard state == .ready, let text = try? LocalLiveProtocol.encode(LocalLiveProtocol.responseCancel) else { return }
+        enqueue([text], onSent: nil, onFailure: nil)
+    }
+
     // MARK: Turns
 
     /// Part of the reply to the plugin's turn `turnID`.

@@ -162,6 +162,9 @@ enum LocalLiveProtocol {
         return "Update from \(name), which answered late:\n\(body)\nTell the user what matters from it, briefly."
     }
 
+    /// The user stopped the reply on the phone.
+    static let responseCancel: [String: Any] = ["type": "response.cancel"]
+
     static func turnDelta(turnID: String, text: String) -> [String: Any] {
         ["type": "conduit.turn.delta", "turn_id": turnID, "text": text]
     }

@@ -2281,12 +2281,33 @@ final class ChatScrollEngineTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 3598)
         XCTAssertEqual(engine.mode, .browsing)
         XCTAssertTrue(engine.showsJumpToLatest)
-        XCTAssertFalse(engine.replyHoldArmed)
+        XCTAssertTrue(engine.replyHoldArmed, "armed until the reader is below the reply's start")
         // The rest of the reply arrives below without moving the reader.
         surface.layOut(contentHeight: 6000)
         XCTAssertEqual(surface.contentOffsetY, 3598)
         assertNeverMovedUp(surface)
         XCTAssertEqual(surface.sets.count, 2)
+    }
+
+    /// Nightly 2026-10-26 (hosted): a newly appended row's estimate put the
+    /// max past the stop, its measured height shrank the content under it,
+    /// and SwiftUI clamped the reader back to the bottom, following again.
+    /// The next growth stops at the reply's start again, not at the end.
+    func testAStopUndoneByAShrinkingEstimateStopsAgain() {
+        let (engine, surface) = sendIntoHold()
+        surface.sets = []
+        surface.layOut(contentHeight: 4700)
+        XCTAssertEqual(surface.contentOffsetY, 3598)
+        XCTAssertEqual(engine.mode, .browsing)
+        // Measured: the reply still fits. SwiftUI clamps to the new bottom.
+        surface.layOut(contentHeight: 4300)
+        surface.contentOffsetY = 3500
+        engine.surfaceScrolled()
+        XCTAssertEqual(engine.mode, .following)
+        // The reply grows past the screen for real.
+        surface.layOut(contentHeight: 4700)
+        XCTAssertEqual(surface.contentOffsetY, 3598, "stops at the reply's start again")
+        XCTAssertEqual(engine.mode, .browsing)
     }
 
     func testABigChunkStopsAtTheReplyStartWithoutGoingPastIt() {
