@@ -170,12 +170,13 @@ struct GroupRoomComposer: View {
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
         }
-        // A dictation Retry added words to this room's kept draft: add
-        // them to the field too, after whatever it holds now.
+        // A dictation Retry added words to this room's kept draft, which
+        // tracks the field as it changes: show it. Reading the kept draft
+        // keeps both of two Retries that land in the same update.
         .onChange(of: appState.roomDraftAppend) { _, append in
             guard let append, let surface,
                   append.dashboardID == surface.dashboardID, append.roomID == surface.room.roomID else { return }
-            draft = ComposerDictation.draft(before: draft, dictated: append.words)
+            draft = appState.activeRoomDraft()
         }
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
