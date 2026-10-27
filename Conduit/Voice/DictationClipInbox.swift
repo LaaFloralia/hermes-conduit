@@ -14,6 +14,9 @@ import OSLog
 
 private let dictationClipLog = Logger(subsystem: "com.milim.relay", category: "DictationClips")
 
+/// A Retry whose kept recording is on disk but can't be read yet.
+struct DictationClipUnreadable: Error {}
+
 @MainActor
 final class DictationClipInbox: ObservableObject {
     static let shared = DictationClipInbox()
@@ -134,15 +137,15 @@ final class DictationClipInbox: ObservableObject {
         do {
             pcm16 = try await onDisk { store in Result { try store.audio(for: clip) } }.value.get()
         } catch {
-            // Hermes was never asked, so this isn't a failed transcription:
-            // it ends quietly. Audio that's gone leaves nothing to retry,
-            // so the row goes too; one that can't be read yet stays.
+            // Hermes was never asked, so this isn't a failed transcription.
+            // Audio that's gone leaves nothing to retry: the row goes too,
+            // quietly. One that can't be read yet stays, and says so.
             if case CocoaError.fileReadNoSuchFile = error {
                 delivered(clip.id)
-            } else {
-                dictationClipLog.error("Couldn't read a kept dictation for Retry: \(String(describing: error), privacy: .private)")
+                throw CancellationError()
             }
-            throw CancellationError()
+            dictationClipLog.error("Couldn't read a kept dictation for Retry: \(String(describing: error), privacy: .private)")
+            throw DictationClipUnreadable()
         }
         do {
             let words = try await transcribe(.dictation(pcm16: pcm16, sampleRate: clip.sampleRate))

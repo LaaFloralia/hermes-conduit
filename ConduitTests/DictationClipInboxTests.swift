@@ -171,6 +171,30 @@ final class DictationClipInboxTests: XCTestCase {
         XCTAssertTrue(DictationClipStore(directory: directory).clips().isEmpty)
     }
 
+    func testARetryWhoseAudioCantBeReadKeepsTheRowAndSaysSo() async throws {
+        let inbox = makeInbox()
+        let clip = try await keepRecording(in: inbox)
+        inbox.release(clip.id)
+        let audio = directory.appendingPathComponent(clip.id.uuidString).appendingPathExtension("pcm")
+        try FileManager.default.removeItem(at: audio)
+        try FileManager.default.createDirectory(at: audio, withIntermediateDirectories: false)
+        var uploads = 0
+
+        do {
+            _ = try await inbox.retry(clip) { _ in
+                uploads += 1
+                return "never"
+            }
+            XCTFail("Expected the unreadable audio to end the Retry")
+        } catch {
+            XCTAssertTrue(error is DictationClipUnreadable, "Says the recording can't be read: \(error)")
+        }
+        await inbox.filesWritten()
+
+        XCTAssertEqual(uploads, 0)
+        XCTAssertEqual(inbox.offered(for: Self.identity).map(\.id), [clip.id], "Still there to retry")
+    }
+
     func testARecordingItsDictationStillOwnsIsNotRetried() async throws {
         let inbox = makeInbox()
         let clip = try await keepRecording(in: inbox)

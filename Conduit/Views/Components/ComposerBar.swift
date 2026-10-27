@@ -1927,6 +1927,8 @@ struct ComposerBar: View, Equatable {
                 appState.restoreRetriedDictation(words, clipID: clip.id, dashboardID: dashboardID, key: key)
             } catch is CancellationError {
                 return
+            } catch is DictationClipUnreadable {
+                composerErrorMessage = AppLocalization.string("The recording couldn't be read. Try again in a moment.")
             } catch {
                 composerErrorMessage = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
             }

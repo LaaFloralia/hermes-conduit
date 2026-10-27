@@ -856,6 +856,8 @@ struct GroupRoomComposer: View {
                 dictationClips.delivered(clip.id)
             } catch is CancellationError {
                 return
+            } catch is DictationClipUnreadable {
+                composerError = AppLocalization.string("The recording couldn't be read. Try again in a moment.")
             } catch {
                 composerError = AppLocalization.string("Hermes couldn't transcribe that: \(UserFacingError.message(for: error))")
             }
