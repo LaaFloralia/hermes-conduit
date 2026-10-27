@@ -46,7 +46,7 @@ struct UndeliveredDictationNotice: View {
     }
 
     private func row(_ clip: DictationClip) -> some View {
-        let message = AppLocalization.string("Your \(VoiceMessageRecorder.durationLabel(clip.duration)) dictation wasn't transcribed. Its recording is saved.")
+        let message = AppLocalization.string("Your \(VoiceMessage.durationLabel(clip.duration)) dictation wasn't transcribed. Its recording is saved.")
         return HStack(alignment: .center, spacing: 8) {
             Image(systemName: "waveform.badge.exclamationmark")
                 .foregroundStyle(.secondary)
