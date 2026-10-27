@@ -348931,13 +348931,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你 %@ 的听写未能转写。录音已保存。"
+            "value" : "你的听写（%@）未能转写。录音已保存。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你 %@ 的聽寫未能轉寫。錄音已儲存。"
+            "value" : "你的聽寫（%@）未能轉寫。錄音已儲存。"
           }
         }
       }

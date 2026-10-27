@@ -1913,7 +1913,7 @@ struct ComposerBar: View, Equatable {
             composerErrorMessage = AppLocalization.string("Dictation with Hermes needs a connection to Hermes.")
             return
         }
-        let key = appState.composerDraftKeyOnScreen
+        let key = appState.durableComposerDraftKeyOnScreen
         composerErrorMessage = nil
         Task {
             do {

@@ -1972,7 +1972,7 @@ notifier (not needed, dictation is app-side)
 - Once stopped, the Stop shows Transcribing (an Apple engine finalizing, or Hermes) and waits out a 3.5 second grace, so a tap can't cut off its final words. That outlasts either Apple engine's whole settle, so only Hermes ever offers Done: past the grace it reads Done and ends the dictation there, keeping the draft's words, so a slow host never holds Send back. A Hermes dictation none of whose words are in yet waits throughout; once its first words land it settles like any engine's, and typing ends it (2026-10-26, #1315 review).
 
 **Open gaps**
-- A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message. A dropped connection now adds up to about two minutes of retries to that wait; Cancel ends it and keeps the recording for Retry (2026-10-27, #1380).
+- A Hermes upload none of whose words reached the draft can't be cut short: Transcribing waits until the words come or the watchdog ends it with its message. A dropped connection now adds up to about two minutes of retries to that wait, longer when each attempt runs to its timeout, up to the watchdog; Cancel ends it and keeps the recording for Retry (2026-10-27, #1380).
 - Not yet checked on a device: the Stop's width and the swap in the controls row and the full editor, with long translations and large text.
 
 **Checked:** 2026-10-27, at #1380.
@@ -1980,13 +1980,14 @@ notifier (not needed, dictation is app-side)
 ## Hermes dictation kept until transcribed
 
 A Hermes dictation's recording is written to the iPhone before it is
-uploaded and kept until its words are in a draft, so a dropped connection,
-a failed upload or Conduit stopping never loses what was said.
+uploaded and kept until its words are in a draft. Once it is saved
+(when the dictation stops), a dropped connection, a failed upload or
+Conduit stopping doesn't lose what was said.
 
 **Siblings:** chat composer (chats, project chats, Bot Chat, the full
 editor; done, Retry and Delete above the composer) · the big voice button
-set to Dictation (done, same service) · group rooms (done for keeping the
-recording; its Retry is offered in the chat composer, see Open gaps) ·
+set to Dictation (done, same service) · group rooms (done, Retry and
+Delete above the room's composer, the words into the room's draft) ·
 voice messages (not needed, the audio file is the message and goes with
 it) · Classic utterances (not needed, not dictation) · Apple and Apple's
 new model (not needed, on the iPhone) · docs/VOICE_SETTINGS.md "Dictate
@@ -1998,18 +1999,18 @@ dictation)
 - What the composer offers: `Conduit/Voice/DictationClipInbox.swift` (keep, release, delivered, retry; AppState.restoreRetriedDictation)
 - The recognizer: `Conduit/Voice/DictationRecognizers.swift` (HermesDictationRecognizer keepRecording, upload, cancel, deliver)
 - Wiring: `Conduit/Voice/ComposerDictationService.swift` (clipInbox, makeRecognizer clips), `Conduit/ConduitApp.swift` (load at launch), `Conduit/Services/AppState+PendingSend.swift` (ComposerRestoreRequest.dictationClipID)
-- The row: `Conduit/Views/Components/UndeliveredDictationNotice.swift`, `Conduit/Views/Components/ComposerBar.swift` (retryDictationClip)
+- The row: `Conduit/Views/Components/UndeliveredDictationNotice.swift`, `Conduit/Views/Components/ComposerBar.swift` (retryDictationClip; AppState.durableComposerDraftKeyOnScreen), `Conduit/Views/Components/GroupRoomComposer.swift` (retryDictationClip; AppState.appendToRoomDraft)
 - Tests: `ConduitTests/DictationClipStoreTests.swift`, `ConduitTests/DictationClipInboxTests.swift`
 
 **Rulings**
 - The recording is on disk (Application Support, out of backups) before the upload starts, and goes once its words reach the draft; a long recording Hermes answers empty for is kept too (2026-10-27, #1380).
-- An upload that fails on the connection or a busy host is tried again after 5, 15, 30 and 60 seconds while the Stop reads Transcribing, within the settle watchdog; a sign-in, a 4xx or Hermes' own error isn't (2026-10-27, #1380).
-- A recording whose words never came is offered above the chat composer for its own host and profile, with Retry (one upload; the words go into the draft that was on screen) and Delete (asks first). One kept from a dictation still listening when it ended counts when 2 seconds or longer (2026-10-27, #1380).
+- An upload that fails on the connection or a busy host is tried again after 5, 15, 30 and 60 seconds while the Stop reads Transcribing; a sign-in, a 4xx or Hermes' own error isn't (2026-10-27, #1380). The settle watchdog (the longest single upload plus 10 seconds) isn't stretched to cover every retry: it still bounds how long Send waits, and a dictation it ends keeps its recording for Retry (2026-10-27, PR_NUM).
+- A recording whose words never came is offered above the chat composer and the group room composer for its own host and profile, with Retry (one upload; the words go into the draft that was on screen) and Delete (asks first). One kept from a dictation still listening when it ended counts when 2 seconds or longer (2026-10-27, #1380).
+- A Retry's words go to the draft on screen when it was tapped, even if another chat or room opened meanwhile. A chat's is named by its durable id, so a chat whose runtime id is reused elsewhere never gets them; a room's by the dashboard and room (2026-10-27, PR_NUM).
 - Kept recordings go after two weeks, and past twenty the oldest go (2026-10-27, #1380).
 
 **Open gaps**
 - A recording is written when the dictation stops, not while it runs: Conduit ending mid-dictation still loses it.
-- Group rooms keep the recording, but Retry is offered in the chat composer, and its words go into that chat's draft rather than the room's.
 - Recordings over about 9 minutes exceed the host's 25 MB transcription limit once base64-encoded, so their upload and Retry fail the same way.
 
 **Checked:** 2026-10-27, at #1380.

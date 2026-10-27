@@ -98,7 +98,7 @@ extension AppState {
 
     /// A restoration can outlive the current runtime alias. Capture the
     /// durable destination while this chat still owns that alias.
-    private var durableComposerDraftKeyOnScreen: ComposerDraftKey {
+    var durableComposerDraftKeyOnScreen: ComposerDraftKey {
         let key = composerDraftKeyOnScreen
         guard !key.isNewConversation else { return key }
         return ComposerDraftKey(profile: key.profile, sessionID: durableComposerSessionID(for: key.sessionID))

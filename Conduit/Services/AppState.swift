@@ -11065,6 +11065,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// A dictation Retry's words for a room that isn't open any more:
+    /// after what its kept draft holds, so they're there on reopen.
+    func appendToRoomDraft(_ words: String, dashboardID: UUID, roomID: String) {
+        let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)
+        let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? "", dictated: words)
+        guard !text.isEmpty else { return }
+        groupRoomDrafts[key] = text
+    }
+
     /// The files staged in the open room's composer.
     func activeRoomAttachments() -> [Attachment] {
         guard let surface = activeRoomSurface else { return [] }

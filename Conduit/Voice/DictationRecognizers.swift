@@ -312,7 +312,9 @@ final class HermesDictationRecognizer: DictationRecognizer {
     /// so later dictations there go straight to the upload until relaunch.
     private static var liveUnavailable = Set<String>()
     /// A watchdog only: the upload has the gateway's own request budget,
-    /// sized for long recordings and remote providers.
+    /// sized for long recordings and remote providers. It isn't stretched
+    /// to cover every retry: it bounds how long Send waits, and a dictation
+    /// it ends keeps its recording for Retry.
     let settleTimeout: Duration = .milliseconds(HermesVoiceGateway.transcriptionMaximumRequestTimeoutMilliseconds + 10_000)
     let holdsWordsWhileSettling = true
     private let gateway: HermesVoiceGateway
