@@ -121,9 +121,10 @@ final class DictationClipInboxTests: XCTestCase {
         XCTAssertEqual(DictationClipStore(directory: directory).clips().first?.attempts, 1)
     }
 
-    func testARetryThatHearsNothingDeletesTheRecording() async throws {
+    func testARetryThatHearsNothingDeletesAShortRecording() async throws {
         let inbox = makeInbox()
-        let clip = try await keepRecording(in: inbox)
+        let kept = await inbox.keep(pcm16: Data(count: 16_000 * 2 * 5), sampleRate: 16_000, identity: Self.identity)
+        let clip = try XCTUnwrap(kept)
         inbox.release(clip.id)
 
         let words = try await inbox.retry(clip) { _ in "" }
@@ -132,6 +133,19 @@ final class DictationClipInboxTests: XCTestCase {
         XCTAssertEqual(words, "")
         XCTAssertTrue(inbox.clips.isEmpty)
         XCTAssertTrue(DictationClipStore(directory: directory).clips().isEmpty)
+    }
+
+    func testARetryThatHearsNothingKeepsALongRecording() async throws {
+        let inbox = makeInbox()
+        let clip = try await keepRecording(in: inbox)
+        inbox.release(clip.id)
+
+        let words = try await inbox.retry(clip) { _ in "" }
+        await inbox.filesWritten()
+
+        XCTAssertEqual(words, "")
+        XCTAssertEqual(inbox.offered(for: Self.identity).map(\.id), [clip.id], "Four minutes of silence isn't trusted")
+        XCTAssertEqual(DictationClipStore(directory: directory).clips().map(\.id), [clip.id])
     }
 
     func testARetryWhoseAudioIsGoneDropsTheRow() async throws {

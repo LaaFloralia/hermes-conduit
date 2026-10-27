@@ -122,7 +122,8 @@ final class DictationClipInbox: ObservableObject {
 
     /// A Retry: one upload of the kept recording. Returns its words; the
     /// caller puts them in a draft, then calls `delivered`. Empty words
-    /// mean Hermes heard none, and the recording is deleted.
+    /// mean Hermes heard none: a short recording is deleted, a long one
+    /// kept, since Hermes answers empty only for quiet audio.
     func retry(
         _ clip: DictationClip,
         transcribe: @MainActor (VoiceCapturedAudio) async throws -> String
@@ -136,12 +137,18 @@ final class DictationClipInbox: ObservableObject {
             // Hermes was never asked, so this isn't a failed transcription:
             // it ends quietly. Audio that's gone leaves nothing to retry,
             // so the row goes too; one that can't be read yet stays.
-            if case CocoaError.fileReadNoSuchFile = error { delivered(clip.id) }
+            if case CocoaError.fileReadNoSuchFile = error {
+                delivered(clip.id)
+            } else {
+                dictationClipLog.error("Couldn't read a kept dictation for Retry: \(String(describing: error), privacy: .private)")
+            }
             throw CancellationError()
         }
         do {
             let words = try await transcribe(.dictation(pcm16: pcm16, sampleRate: clip.sampleRate))
-            if words.isEmpty { delivered(clip.id) }
+            // Nothing heard: a short recording goes, a long one stays, as
+            // after its first upload (quietClipLimit).
+            if words.isEmpty, clip.duration < Self.quietClipLimit { delivered(clip.id) }
             return words
         } catch {
             attemptFailed(clip.id, error: error)
