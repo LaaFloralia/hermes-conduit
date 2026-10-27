@@ -1279,6 +1279,18 @@ final class VoiceConversationControllerTests: XCTestCase {
         controller.stop()
     }
 
+    func testStreamedInterimThisConversationMissedIsStillSaid() async {
+        let gateway = MockGateway()
+        let capture = MockCapture(permissionGranted: true)
+        let controller = await awaitingInterimController(gateway: gateway, playback: MockPlayback(), capture: capture)
+        // Streamed before this conversation joined: no deltas reached it.
+        controller.receiveAssistantEvent(.interim(sessionID: "session", text: "Checking", alreadyStreamed: true))
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Checking", alreadyShown: true))
+        await capture.waitUntilStartCount(2)
+        XCTAssertEqual(gateway.streams.flatMap(\.appended).joined(), "Checking")
+        controller.stop()
+    }
+
     func testPreviewedFinalDoesNotRepeatAnInterimButRecoversWithoutOne() async {
         for sawInterim in [false, true] {
             let gateway = MockGateway()

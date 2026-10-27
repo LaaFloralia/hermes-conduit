@@ -118,7 +118,7 @@ Grok Live sometimes speaks a tool call as text ("<tool_call>…") instead of cal
 
 Classic Voice, Gemini Live and Grok Live close the microphone while the agent talks on the speaker, in the car or over AirPlay (plus a short echo tail), because their microphone would hear the agent and it would keep interrupting itself. Use the Interrupt button there instead; on the CarPlay screen it's Stop, which stops the reply and listens in one tap. In Local Live, Interrupt (CarPlay's Stop and the Watch's orb included) also tells your speech server to stop the reply, so a server that shuts its own microphone while it speaks listens again.
 
-In Classic Voice, when Hermes says it's on something ("Checking your calendar now") before its tools finish, you hear that right away, and the conversation goes back to waiting for the answer. Talking over that line, Interrupt, CarPlay's Stop or a push to talk press stops it and opens the microphone to add to the request; the work goes on. Talking over the answer itself starts a new turn, as before.
+In Classic Voice, when Hermes says it's on something ("Checking your calendar now") before its tools finish, you hear that right away, and the conversation goes back to waiting for the answer. Talking over that line, Interrupt, CarPlay's Stop, or a press of the push to talk button on the phone's voice screen stops it and opens the microphone to add to the request; the work goes on. Talking over the answer itself starts a new turn, as before.
 
 In the car, a phone call, Siri or another app that takes the audio ends a Classic Voice conversation; once the audio comes back, CarPlay listens again on its own.
 

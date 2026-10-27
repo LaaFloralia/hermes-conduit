@@ -1118,7 +1118,10 @@ final class VoiceConversationController: ObservableObject {
             // filter at the segment boundary so held markdown cannot leak
             // into the next segment. This is NOT turn completion.
             if !isOutputMuted {
-                let spoken = (alreadyStreamed ? "" : spokenTextFilter.feed(text))
+                // Streamed commentary this conversation missed (it joined
+                // mid-turn) is said from the interim's own text.
+                let streamedHere = alreadyStreamed && receivedAssistantDelta
+                let spoken = (streamedHere ? "" : spokenTextFilter.feed(text))
                     + spokenTextFilter.finish()
                 if !spoken.isEmpty { speechDeltas.append(.text(spoken)) }
                 // Even a short/unpunctuated acknowledgement must flush the
@@ -1801,9 +1804,11 @@ final class VoiceConversationController: ObservableObject {
         bargeInStartedAt = nil
         playback.stop()
         cancelSpeechDrainAndStream()
-        speechDeltas.removeAll()
-        isSpeakingAcknowledgement = false
+        clearSpeechQueue()
         cachedRoutePolicy = nil
+        // As for an approval's notice: the steer window's startListening
+        // reopens capture. Pausing here would drop a locked phone's
+        // held microphone, which couldn't start again.
         isPlaybackCaptureSuspended = false
         state = .thinking
     }
@@ -2342,6 +2347,25 @@ final class VoiceConversationController: ObservableObject {
                 }
                 return
             }
+            if isSpeakingAcknowledgement, isAwaitingVoiceAssistant, !assistantFinished {
+                // Only the acknowledgement couldn't be said: Hermes' turn
+                // goes on, and its reply gets a fresh stream.
+                speechStream = nil
+                cachedRoutePolicy = nil
+                playback.stop()
+                // The rest of the failed acknowledgement, unless the drain
+                // already took its boundary.
+                if !reachedBoundary, let boundary = speechDeltas.firstIndex(of: .boundary) {
+                    speechDeltas.removeSubrange(...boundary)
+                }
+                isSpeakingAcknowledgement = speechDeltas.contains(.boundary)
+                endPlaybackCaptureSuspensionAfterMute()
+                if state == .speaking { state = .thinking }
+                if !speechDeltas.isEmpty {
+                    Task { @MainActor [weak self] in self?.startSpeechDrainIfNeeded() }
+                }
+                return
+            }
             // Terminal drain failure: settle playback like every other
             // terminal path so the lease and engine do not outlive the turn.
             // (The cancellation branch above intentionally keeps ownership —
@@ -2439,6 +2463,7 @@ final class VoiceConversationController: ObservableObject {
         speechDrainTask = nil
         speechStream = nil
         isDrainingSpeech = false
+        isSpeakingAcknowledgement = false
         task?.cancel()
         stream?.cancel()
     }
