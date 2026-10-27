@@ -5272,6 +5272,59 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(opened)
     }
 
+    func testBranchOpensByItsStoredIdLikeHermesResumes() async {
+        // Hermes' session.resume finds a session by its stored id, never by
+        // the runtime id session.create answers with (issue 1400).
+        var resumed: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [] },
+                openSession: { _, sessionID, _ in
+                    resumed.append(sessionID)
+                    guard sessionID == "branch-stored" else {
+                        throw RpcError(code: 4007, message: "session not found")
+                    }
+                    return SessionResumeResult(
+                        sessionId: "branch-runtime",
+                        storedSessionId: "branch-stored",
+                        messages: [
+                            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1"),
+                            ChatMessage(id: "assistant", role: .assistant, content: "Answer", timestamp: "2")
+                        ],
+                        snapshot: SessionRuntimeSnapshot(object: [:])
+                    )
+                },
+                branchSession: { _, _, _, _, _ in
+                    (sessionId: "branch-runtime", storedSessionId: "branch-stored", profile: "default")
+                },
+                setSessionTitle: { _, _, _ in },
+                refreshContext: { _, _ in }
+            )
+        )
+        let parent = session("stored-a")
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        harness.appState.sessions = [parent]
+        harness.appState.activeSessionId = parent.id
+        harness.appState.messages = [
+            ChatMessage(id: "user", role: .user, content: "Question", timestamp: "1"),
+            ChatMessage(id: "assistant", role: .assistant, content: "Answer", timestamp: "2")
+        ]
+
+        await harness.appState.branchFromAssistantMessage("assistant")
+
+        XCTAssertEqual(resumed, ["branch-stored"])
+        // The fixture's client reports no run status, which sets its own
+        // notice; only a failed restore matters here.
+        XCTAssertFalse(
+            harness.appState.errorMessage?.hasPrefix("Failed to restore") == true,
+            "Got: \(harness.appState.errorMessage ?? "nil")"
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, "branch-runtime")
+    }
+
     func testFailedBranchReconciliationReleasesViewportTransitionForLaterWrites() async {
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
@@ -5322,7 +5375,7 @@ final class AppStateChatResumeTests: XCTestCase {
             lifecycleOperations: ChatResumeLifecycleOperations(
                 loadCatalog: { _, _ in [] },
                 openSession: { _, sessionID, _ in
-                    if sessionID == "branch-runtime" {
+                    if sessionID == "branch-stored" {
                         await branchGate.suspend()
                     }
                     return SessionResumeResult(

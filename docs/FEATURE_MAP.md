@@ -845,10 +845,12 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 - Group rooms: `Conduit/Views/GroupChatView.swift` (GroupMessageCopyButton, GroupMessageQuoteButton, GroupReadAloudButton)
 - Pins: `Conduit/Views/PinnedReplyViews.swift`, `Conduit/Models/PinnedReplies.swift` (overview), `Conduit/Services/AppState+PinnedReplies.swift`, `Conduit/Services/AppState.swift` (deleteBot, forgetBotChatPinnedReplies), the sheet's Chats-list entry points in `Conduit/Views/SidebarView.swift` and `Conduit/Views/V2/V2ChatsView.swift` (showPinnedReplies)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
+- Branch (the ⋯ menu, /branch and /fork): `Conduit/Services/AppState.swift` (branchFromAssistantMessage), `Conduit/Services/HermesClient.swift` (branchSession); tests in `ConduitTests/AppStateChatResumeTests.swift`
 
 **Rulings**
 - A reply's row is React, Copy, Read aloud and ⋯ (Quote, Branch, Pin reply, and Show thinking when the run above it has thinking that Settings keeps for On request (see Steps in a turn)); no more icons of their own under messages (2026-10-23, #1156; 2026-10-25, #1243).
 - Pin lives in the long-press and selection menus, not the row: Pin for a passage, Pin reply for the whole reply (2026-10-20, #982 and #1097; 2026-10-23, #1156).
+- A branch opens by the stored id `session.create` names, and by its runtime id only when Hermes names none: Hermes' `session.resume` finds sessions only by stored id or title, so the runtime id is "session not found" (2026-10-27, issue 1400, #1402).
 - Double-tap and long-press on text stay text selection; reactions come from React or a reaction chip (2026-10-07, #437).
 - Read Aloud has no estimated follow-along highlight; only exact word timings from Hermes would bring it back (2026-10-19, #923).
 - A quoted reply travels in the message text, since Hermes has no field for hidden context (2026-10-04, #387).
@@ -858,7 +860,7 @@ the selection menu · the long-press menu · VoiceOver labels · pinned replies
 **Open gaps**
 - Group rooms still show Copy, Quote and Read aloud as three icons, with no React and no ⋯ (#1156).
 
-**Checked:** 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
+**Checked:** 2026-10-27, #1402 (Branch opens the new chat by its stored id; the row, menus and pins needed no change); 2026-10-26, #1311 (a drawn reply's text view is laid out as it mounts; selection and long-press menus unchanged); #1282 (carrying the ⋯'s Show thinking from #1243); the pinned replies sheet's This chat / All chats filter at #1269; 2026-10-24, pins at 78f21daa plus the #982 follow-ups; a deleted bot's pins at #1191.
 
 ## Conduit plugin update
 

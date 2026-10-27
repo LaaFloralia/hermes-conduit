@@ -23960,11 +23960,15 @@ final class AppState: ObservableObject {
                   profile == activeProfile,
                   self.client === client else { return }
 
+            // Hermes' session.resume finds a conversation by its stored id
+            // (or title), never by the runtime id session.create answered
+            // with: resuming that one is "session not found" (issue 1400).
+            // The stored id reattaches the live session the create made.
+            let storedID = branched.storedSessionId.flatMap { $0.isEmpty ? nil : $0 }
+                ?? branched.sessionId
             let summary = SessionSummary(
-                id: branched.storedSessionId ?? branched.sessionId,
-                alternateIds: [branched.sessionId, branched.storedSessionId]
-                    .compactMap { $0 }
-                    .filter { $0 != branched.storedSessionId ?? branched.sessionId },
+                id: storedID,
+                alternateIds: [branched.sessionId].filter { $0 != storedID },
                 title: title,
                 model: runtime.model.isEmpty ? "Hermes" : runtime.model,
                 updatedLabel: AppLocalization.string("now"),
@@ -23982,9 +23986,7 @@ final class AppState: ObservableObject {
             // the catalog below). They must never alias the source
             // conversation, and the source keeps its own mappings.
             if let runtime = ChatScrollIdentityNormalization.sessionID(branched.sessionId),
-               let durable = ChatScrollIdentityNormalization.sessionID(
-                   branched.storedSessionId ?? branched.sessionId
-               ),
+               let durable = ChatScrollIdentityNormalization.sessionID(storedID),
                runtime != durable {
                 conversationIdentityIndex.recordAuthoritative(
                     runtimeID: runtime,
@@ -24005,11 +24007,11 @@ final class AppState: ObservableObject {
             keepDelegateAgents(of: knownSessionIDs(for: branched.sessionId))
             let token = beginReconciliation()
             let reconciled = await reconcile(
-                sessionId: branched.sessionId,
+                sessionId: storedID,
                 using: client,
                 token: token,
-                acceptedSessionIDs: knownSessionIDs(for: branched.sessionId),
-                conversationIdentity: captureConversationIdentity(for: branched.sessionId),
+                acceptedSessionIDs: knownSessionIDs(for: storedID),
+                conversationIdentity: captureConversationIdentity(for: storedID),
                 requiredViewportTransitionGeneration: transitionGeneration
             )
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration),
