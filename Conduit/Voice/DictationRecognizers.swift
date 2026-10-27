@@ -500,6 +500,7 @@ final class HermesDictationRecognizer: DictationRecognizer {
 extension VoiceCapturedAudio {
     /// A Hermes dictation's recording (16 kHz mono PCM16) as the upload
     /// sends it.
+    @MainActor
     static func dictation(pcm16: Data, sampleRate: Double) -> VoiceCapturedAudio {
         VoiceCapturedAudio(
             wavData: AVAudioCaptureService.wavWrapping(pcm16: pcm16, sampleRate: Int(sampleRate)),
