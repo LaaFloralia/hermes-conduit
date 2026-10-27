@@ -158,6 +158,11 @@ final class ConnectionRepairTests: XCTestCase {
             ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: nil),
             [.connectionDetails, .connectionTest]
         )
+        // A sign-in page that didn't open says nothing about the address.
+        XCTAssertEqual(
+            ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: .signInPageFailed),
+            [.connectionDetails, .connectionTest]
+        )
         XCTAssertEqual(ConnectionSetupFlow.entryStep(for: .repairConnection), .connectionDetails)
     }
 
