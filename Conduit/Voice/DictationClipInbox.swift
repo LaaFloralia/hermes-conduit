@@ -132,10 +132,11 @@ final class DictationClipInbox: ObservableObject {
         let pcm16: Data
         do {
             pcm16 = try await onDisk { store in Result { try store.audio(for: clip) } }.value.get()
-        } catch CocoaError.fileReadNoSuchFile, CocoaError.fileNoSuchFile {
-            // Its audio is gone: nothing left to retry, so the row goes too.
+        } catch CocoaError.fileReadNoSuchFile {
+            // Its audio is gone: nothing left to retry, so the row goes
+            // too, quietly (Hermes was never asked).
             delivered(clip.id)
-            throw CocoaError(.fileReadNoSuchFile)
+            throw CancellationError()
         }
         do {
             let words = try await transcribe(.dictation(pcm16: pcm16, sampleRate: clip.sampleRate))

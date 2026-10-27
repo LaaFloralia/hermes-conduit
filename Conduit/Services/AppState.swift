@@ -2218,9 +2218,15 @@ final class AppState: ObservableObject {
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
     @Published private(set) var roomQuoteRequest: ComposerQuoteRequest?
-    /// Counts words added to a room's kept draft from outside its composer
-    /// (a dictation Retry), so the open room's composer reloads its draft.
-    @Published private(set) var roomDraftAppends = 0
+    /// Words added to a room's kept draft from outside its composer (a
+    /// dictation Retry). The open room's composer adds them to its field.
+    @Published private(set) var roomDraftAppend: RoomDraftAppend?
+    struct RoomDraftAppend: Equatable {
+        let id = UUID()
+        let dashboardID: UUID
+        let roomID: String
+        let words: String
+    }
     /// A bot to add to the room composer's "To" row (its picture tapped, or
     /// its message replied to). The room composer applies and consumes it.
     @Published private(set) var roomRecipientRequest: RoomRecipientRequest?
@@ -11083,7 +11089,7 @@ final class AppState: ObservableObject {
         let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? "", dictated: words)
         guard !text.isEmpty else { return true }
         groupRoomDrafts[key] = text
-        roomDraftAppends += 1
+        roomDraftAppend = RoomDraftAppend(dashboardID: dashboardID, roomID: roomID, words: words)
         return true
     }
 

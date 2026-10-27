@@ -146,8 +146,10 @@ final class DictationClipInboxTests: XCTestCase {
                 uploads += 1
                 return "never"
             }
-            XCTFail("Expected the missing audio to fail the Retry")
-        } catch {}
+            XCTFail("Expected the missing audio to end the Retry")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "Ends quietly, not as a transcription failure: \(error)")
+        }
         await inbox.filesWritten()
 
         XCTAssertEqual(uploads, 0)
