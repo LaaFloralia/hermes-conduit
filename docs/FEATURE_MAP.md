@@ -1193,7 +1193,7 @@ and README.md's bots line)
 - Desktop's drawn faces, shapes and pets show only as stills; Conduit draws an initial on the color.
 - The group picture switch guard has no test: it needs a ready DashboardTicketBridge double and a room switch mid-request (#1191).
 
-**Checked:** 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
+**Checked:** 2026-10-27, at #1395 (the editor's Model page gained search with each match's provider; saving unchanged); 2026-10-25, at #1222 (configure and MCP add wait in the profile config queue); before that #1192; group pictures at #1191.
 
 ## Opening a Bot Chat
 
@@ -1756,15 +1756,16 @@ voice reply model pickers · the Kanban task composer's catalog
 - The bot model picker says "Could not load models." without Try Again.
 - The Kanban composer shows a failed catalog as "No curated model catalog available", whose manual entry still works.
 
-**Checked:** 2026-10-27, at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
 ## The Model sheet's settings
 
 How the composer's Model sheet changes the chat's model, reasoning, speed and
 YOLO: each one applies when it's tapped, with no Apply step.
 
-**Siblings:** the sheet's Model rows, Reasoning pills, Fast mode and YOLO
-toggles · the composer's reasoning chip · typed `/model` (opens the sheet),
+**Siblings:** the sheet's Model rows and search matches (tapped, or picked
+with Return), Reasoning pills, Fast mode and YOLO toggles · the composer's
+reasoning chip · typed `/model` (opens the sheet),
 `/fast` and `/yolo` · a bot's model picker and the Model page's Default,
 Delegate and Fallback model editors (not siblings: they're saved with the bot
 or the profile, not live session settings)
@@ -1784,7 +1785,39 @@ or the profile, not live session settings)
 **Open gaps**
 - The checked row doesn't follow a model changed elsewhere while the sheet is open.
 
-**Checked:** 2026-10-27, at #1334.
+**Checked:** 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
+
+## Searching for a model
+
+Typing part of a model's name in a model picker to find it, where each match
+names the provider that serves it, since several providers often offer the
+same model and the pick switches to that provider's route.
+
+**Siblings:** the model sheet (iPhone, iPad and Mac) · a bot's model
+picker · the Kanban task's model override · the model sheet's Edit
+(visibility) search (not needed: its matches sit under their provider's name)
+· the Model page's Default, Delegate and Fallback model editors and the voice
+job and voice reply model pickers (not needed: the provider is picked first,
+or the menu row already reads "model · provider") · Text (not needed: no
+README, docs or Settings caption describes the pickers)
+
+**Code**
+- Matching and the result row: `Conduit/Views/ModelSearch.swift` (ModelSearchQuery, modelSearchMatches, modelSearchHighlight, modelSearchFocusesOnOpen, ModelSearchResultText)
+- Model sheet: `Conduit/Views/ModelPickerView.swift` (searchField, searchResultsSection, pickHighlightedMatch, modelRow's showsProvider)
+- Bots: `Conduit/Views/BotModelPicker.swift` (searchResults)
+- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's searchMatches)
+- Tests: `ConduitTests/ModelPickerTests.swift`
+
+**Rulings**
+- Every match shows its provider under the model; the same model from two providers is two matches (Eric, 2026-10-27, #1388).
+- Every word typed must appear in the model's id or label or the provider's names, so "sonnet openrouter" finds one provider's Sonnet.
+- The model sheet's search hides models and providers hidden with Edit; Edit's own search still finds them.
+- On a Mac or with a hardware keyboard the sheet opens with the search focused, ↑ and ↓ move a highlight, Return picks the highlighted match as a tap would (the sheet stays open, per "The Model sheet's settings") and Esc closes the sheet. On touch the keyboard stays down until the field is tapped, and Return only puts it away.
+
+**Open gaps**
+- A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
+
+**Checked:** 2026-10-27, at #1395.
 
 ## Files over the size limit
 
