@@ -782,7 +782,7 @@ confirmation and README say about restarts
 - Views: `Conduit/Views/ConduitPluginViews.swift` (NotifierPluginUpdateBanner, NotifierPluginUpdateStatusView, ConduitPluginSettingsDetail), `Conduit/Views/AuxiliaryViews.swift` (NotifierPluginUpdateNotice), `Conduit/Views/V2/V2FinishSetupCard.swift`
 - Gateway restart it reuses: `Conduit/Services/GatewayRestart.swift`
 - Notifier: `notifier/dashboard/plugin_api.py` (/self/update, /self/restart, /capabilities, finish_self_update_after_restart), `notifier/CHANGELOG.md`, `notifier/channels.yaml`
-- Tests: `ConduitTests/GatewayRestartTests+PluginUpdate.swift`, `notifier/tests/test_self_update.py`
+- Tests: `ConduitTests/GatewayRestartTests+PluginUpdate.swift`, `notifier/tests/test_self_update.py`, `notifier/tests/test_install_scan.py`
 
 **Rulings**
 - No automatic updates: restarts are the user's call; the notice offers each version once, and Update runs the whole update (2026-10-13, #582, Eric).
@@ -791,12 +791,13 @@ confirmation and README say about restarts
 - A gateway restart that takes the dashboard down with it (a service manager restarting both) still finishes the host job: the restarted dashboard marks it done when it loaded the new version (2026-10-24, notifier 0.69.1).
 - Every process the update restarts runs the new code at once, Pulse's loop included: a dashboard restarted by its service manager (a new pid) takes Pulse over from the old one without waiting out its lease (2026-10-26, notifier #392, Eric's report on 0.81.1).
 - The notice's What's New opens the notes in a sheet, presented by the notes it shows (a sheet item, not a flag); Settings shows the same notes inline in a disclosure (2026-10-25, Eric's report of a blank sheet, #1227).
+- Every file the plugin ships passes Hermes' install scan, which reads the whole checkout (the contract tests and the relay included) and refuses a dangerous verdict even with --force: no literal that looks like a token outside test folders (2026-10-27, notifier #418, Eric's host stuck on 0.84.1).
 
 **Open gaps**
 - Hermes Desktop's own serve process on the host keeps the old plugin until Desktop restarts; nothing tells the user.
 - A dashboard without a fixed basic-auth secret signs Conduit out at every restart; the updater signs in again, but the chat may land on the sign-in screen.
 
-**Checked:** 2026-10-26, at #1293 with notifier #392: the dashboard restart itself needed no change (systemd restarts it with the gateway, elsewhere the update re-execs it); 2026-10-25, Qwen Live's feature row and the qwen-live capability in the update nudge, at #1182, carried in #1235; at #1230 (the phone-run install and update requests wait in the profile config queue, the host-run update doesn't); at #1222; at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
+**Checked:** 2026-10-27, at #1350 with notifier #418: Hermes' install scan refused 0.95.0 over upstream/conftest.py's token; the app's update path needed no change; 2026-10-26, at #1293 with notifier #392: the dashboard restart itself needed no change (systemd restarts it with the gateway, elsewhere the update re-execs it); 2026-10-25, Qwen Live's feature row and the qwen-live capability in the update nudge, at #1182, carried in #1235; at #1230 (the phone-run install and update requests wait in the profile config queue, the host-run update doesn't); at #1222; at #1227: the notice's What's New sheet opened blank; Settings' disclosure and the notifier's CHANGELOG.md needed no change.
 
 ## Notifications
 
