@@ -495,6 +495,7 @@ struct ChatView: View {
 
                 if let pending = livePendingComposerSend {
                     PendingComposerSendBubble(pending: pending)
+                        .reportsLiveRowFrame(id: "pending-send")
                 }
 
                 // Fallback target for ScrollViewProxy before the engine has
@@ -637,6 +638,9 @@ struct ChatView: View {
             }
             .onPreferenceChange(ChatScrollRowFramesPreferenceKey.self) { frames in
                 scrollEngine.rowFramesChanged(frames)
+            }
+            .onPreferenceChange(ChatScrollLiveRowFramesPreferenceKey.self) { frames in
+                scrollEngine.liveRowFramesChanged(frames)
             }
             .onChange(of: scenePhase) { _, phase in
                 // In the background iOS still lays this view out for
@@ -891,7 +895,8 @@ struct ChatView: View {
             let live = appState.liveTurn
             return appState.isBusy || appState.activeChatRepliesElsewhere
                 || !live.streamingText.isEmpty || live.reasoningSegment != nil
-                || appState.pendingComposerSendOnScreen != nil
+                || (appState.pendingComposerSendOnScreen != nil
+                    && !appState.showsOfflineChatCopy && !appState.showsPendingNewChat)
         }
         scrollEngine.onEvent = { [weak engine = scrollEngine, weak router] event in
             // Requests made while handling a UIKit callback can land in the
@@ -1134,6 +1139,36 @@ private struct ChatScrollRowFramesPreferenceKey: PreferenceKey {
         nextValue: () -> [String: ChatScrollRowFrame]
     ) {
         value.merge(nextValue()) { _, new in new }
+    }
+}
+
+/// Frames of the rows below the messages (the running turn's live rows, a
+/// send waiting on screen) SwiftUI has laid out, keyed by row id. The scroll
+/// engine reads them only to tell a blank viewport from one showing them.
+private struct ChatScrollLiveRowFramesPreferenceKey: PreferenceKey {
+    static var defaultValue: [String: ChatScrollRowFrame] = [:]
+
+    static func reduce(
+        value: inout [String: ChatScrollRowFrame],
+        nextValue: () -> [String: ChatScrollRowFrame]
+    ) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private extension View {
+    /// Reports this live row's frame in the transcript stack
+    /// (ChatScrollLiveRowFramesPreferenceKey).
+    func reportsLiveRowFrame(id: String) -> some View {
+        background {
+            GeometryReader { geometry in
+                let frame = geometry.frame(in: CoordinateSpace.named(ChatScrollEngine.coordinateSpaceName))
+                Color.clear.preference(
+                    key: ChatScrollLiveRowFramesPreferenceKey.self,
+                    value: [id: ChatScrollRowFrame(minY: frame.minY, maxY: frame.maxY, order: Int.max)]
+                )
+            }
+        }
     }
 }
 // MARK: - Message Bubble
@@ -4630,6 +4665,7 @@ struct ChatLiveTurnRows: View {
                 )
             )
             .id(segment.id)
+            .reportsLiveRowFrame(id: segment.id)
         }
 
         if !projection.streamingText.isEmpty {
@@ -4638,6 +4674,7 @@ struct ChatLiveTurnRows: View {
                 active: isBusy
             )
             .id("streaming")
+            .reportsLiveRowFrame(id: "streaming")
         }
 
         if (isBusy && projection.streamingText.isEmpty) || repliesElsewhere {
@@ -4650,6 +4687,7 @@ struct ChatLiveTurnRows: View {
                 repliesElsewhere: repliesElsewhere
             )
             .id("typing")
+            .reportsLiveRowFrame(id: "typing")
         }
     }
 }

@@ -566,6 +566,27 @@ final class GroupChatModelsTests: XCTestCase {
             current: false, userScrolling: true, distanceFromBottom: GroupRoomFollow.nearBottomTolerance))
     }
 
+    /// #887, #1358: the lazy stack can lay out no row under a following
+    /// room, which is built again then, as a chat is.
+    func testARoomWithNoRowLaidOutOnScreenIsBlank() {
+        let visible: ClosedRange<CGFloat> = 3000...3800
+        // Nothing laid out, or only rows far above with the latest unlaid.
+        XCTAssertTrue(GroupRoomFollow.isBlank(frames: [:], visible: visible, lastRowID: "e9"))
+        XCTAssertTrue(GroupRoomFollow.isBlank(frames: ["e2": 400...600], visible: visible, lastRowID: "e9"))
+        // The latest row ends above the screen, nothing below it drawn.
+        XCTAssertTrue(GroupRoomFollow.isBlank(frames: ["e9": 2000...2990], visible: visible, lastRowID: "e9"))
+        // The member's Responding row counts as a row.
+        XCTAssertTrue(GroupRoomFollow.isBlank(
+            frames: ["e9": 2000...2990], visible: visible, lastRowID: "responding-row"))
+        XCTAssertFalse(GroupRoomFollow.isBlank(
+            frames: ["e9": 2000...2990, "responding-row": 3000...3060], visible: visible, lastRowID: "responding-row"))
+        // A row on screen, or the latest one below it, isn't blank.
+        XCTAssertFalse(GroupRoomFollow.isBlank(frames: ["e9": 3200...3700], visible: visible, lastRowID: "e9"))
+        XCTAssertFalse(GroupRoomFollow.isBlank(frames: ["e9": 3900...4200], visible: visible, lastRowID: "e9"))
+        // An empty room isn't blank.
+        XCTAssertFalse(GroupRoomFollow.isBlank(frames: [:], visible: visible, lastRowID: nil))
+    }
+
     func testALandingDecidesFollowingOnlyWhenItsOver() {
         // Its own animated scroll passing near the bottom doesn't follow.
         XCTAssertFalse(GroupRoomFollow.following(

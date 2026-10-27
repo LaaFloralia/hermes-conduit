@@ -159,7 +159,8 @@ final class ChatScrollEngineTests: XCTestCase {
     /// viewport (stack 3182...3982) is at the bottom.
     private func settleTurn(
         frames: [String: ChatScrollRowFrame],
-        liveTail: Bool = false
+        liveTail: Bool = false,
+        liveFrames: [String: ChatScrollRowFrame] = [:]
     ) -> (ChatScrollEngine, FakeChatScrollSurface) {
         // The engine holds its surface weakly, so the caller keeps it.
         let (engine, surface) = makeEngine()
@@ -171,6 +172,7 @@ final class ChatScrollEngineTests: XCTestCase {
             isInitialSync: false
         )
         engine.rowFramesChanged(frames)
+        engine.liveRowFramesChanged(liveFrames)
         events = []
         scheduled.forEach { $0() }
         return (engine, surface)
@@ -193,19 +195,153 @@ final class ChatScrollEngineTests: XCTestCase {
     func testLiveRowsUnderTheLatestRowAreNotABlankViewport() {
         let (_, surface) = settleTurn(
             frames: ["m10": ChatScrollRowFrame(minY: 2000, maxY: 3150, order: 10)],
-            liveTail: true
+            liveTail: true,
+            liveFrames: ["streaming": ChatScrollRowFrame(minY: 3162, maxY: 3900, order: .max)]
         )
         XCTAssertFalse(events.contains(.rebuildTranscript))
         withExtendedLifetime(surface) {}
     }
 
+    /// A long reply streaming at the bottom leaves the rows above it unlaid.
     func testLiveRowsUnderAnUnlaidLatestRowAreNotABlankViewport() {
         let (_, surface) = settleTurn(
             frames: ["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)],
-            liveTail: true
+            liveTail: true,
+            liveFrames: ["streaming": ChatScrollRowFrame(minY: 1200, maxY: 3990, order: .max)]
         )
         XCTAssertFalse(events.contains(.rebuildTranscript))
         withExtendedLifetime(surface) {}
+    }
+
+    /// #1358: the lazy stack dropped the live rows too while Hermes worked.
+    func testUnlaidLiveRowsUnderTheLatestRowAreABlankViewport() {
+        let (_, surface) = settleTurn(
+            frames: ["m10": ChatScrollRowFrame(minY: 2000, maxY: 3150, order: 10)],
+            liveTail: true
+        )
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// #1358: a turn streaming into its live rows changes no settled
+    /// transcript, so its layout passes check.
+    func testALayoutPassDuringALiveTurnFindsABlankViewport() {
+        let (engine, surface) = makeEngine()
+        // Nothing laid out, live rows included.
+        engine.liveTailShowing = { true }
+        events = []
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        surface.layOut(contentHeight: 4200)
+        XCTAssertEqual(scheduled.count, 1, "one check at a time")
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+
+        // The rebuild's own follow-up check, then no rebuild for a while: a
+        // rebuild that didn't help isn't redone on every streamed line, but
+        // gets one more try once the interval is over.
+        scheduled.forEach { $0() }
+        scheduled = []
+        events = []
+        clock += 1
+        surface.layOut(contentHeight: 4300)
+        scheduled.removeFirst()()
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        XCTAssertEqual(scheduled.count, 1, "a retry once the interval is over")
+        surface.layOut(contentHeight: 4400)
+        XCTAssertEqual(scheduled.count, 1, "still one check at a time")
+        clock += ChatScrollEngine.liveBlankViewportRebuildInterval
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+    }
+
+    /// A fling moving the content puts the check off, not away.
+    func testABlankCheckDuringAFlingWaitsForItToStop() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        events = []
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        surface.isDecelerating = true
+        scheduled.removeFirst()()
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        XCTAssertEqual(scheduled.count, 1, "checked again after the fling")
+        surface.isDecelerating = false
+        scheduled.removeFirst()()
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+    }
+
+    /// A stack that dropped its rows may change no size: the live rows'
+    /// frames going away checks.
+    func testLiveRowsLosingTheirFramesChecksForABlankViewport() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        engine.liveRowFramesChanged(["streaming": ChatScrollRowFrame(minY: 3200, maxY: 3980, order: .max)])
+        events = []
+        scheduled = []
+        engine.liveRowFramesChanged([:])
+        scheduled.forEach { $0() }
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testALiveRowLosingItsFrameChecksForABlankViewport() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        engine.liveRowFramesChanged([
+            "thinking": ChatScrollRowFrame(minY: 2000, maxY: 2400, order: .max),
+            "streaming": ChatScrollRowFrame(minY: 3200, maxY: 3980, order: .max),
+        ])
+        events = []
+        scheduled = []
+        engine.liveRowFramesChanged(["thinking": ChatScrollRowFrame(minY: 2000, maxY: 2400, order: .max)])
+        scheduled.forEach { $0() }
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    /// Settled changes share the interval.
+    func testASettledChangeSoonAfterARebuildWaitsOutTheInterval() {
+        let (engine, surface) = settleTurn(frames: ["m3": ChatScrollRowFrame(minY: 900, maxY: 1100, order: 3)])
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        scheduled = []
+        events = []
+        clock += 0.5
+        engine.transcriptChanged(
+            messages: Self.messages(0..<12),
+            transcriptRevision: 3,
+            viewportTransitionGeneration: 1,
+            isInitialSync: false
+        )
+        var due = scheduled
+        scheduled = []
+        due.forEach { $0() }
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+        XCTAssertFalse(scheduled.isEmpty, "a retry once the interval is over")
+        clock += ChatScrollEngine.liveBlankViewportRebuildInterval
+        due = scheduled
+        scheduled = []
+        due.forEach { $0() }
+        XCTAssertEqual(events.filter { $0 == .rebuildTranscript }.count, 1)
+        withExtendedLifetime(surface) {}
+    }
+
+    func testALayoutPassDuringALiveTurnShowingItsRowsDoesNotRebuild() {
+        let (engine, surface) = makeEngine()
+        engine.liveTailShowing = { true }
+        events = []
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        engine.liveRowFramesChanged(["streaming": ChatScrollRowFrame(minY: 3500, maxY: 4070, order: .max)])
+        scheduled.forEach { $0() }
+        XCTAssertFalse(events.contains(.rebuildTranscript))
+    }
+
+    func testALayoutPassWithNoLiveTurnDoesNotCheck() {
+        let (_, surface) = makeEngine()
+        scheduled = []
+        surface.layOut(contentHeight: 4100)
+        XCTAssertTrue(scheduled.isEmpty)
     }
 
     func testARowOnScreenIsNotABlankViewport() {
