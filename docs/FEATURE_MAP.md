@@ -537,6 +537,32 @@ it starts GPT-Live without one · the notifier README's Watch audio section
 
 **Checked:** 2026-10-26, #1247 (the Watch broker's bridge start keeps Conduit running through BackgroundTaskHold); 2026-10-25, at #1254.
 
+## A Watch call with no network
+
+watchOS gives a Watch call's live socket ("low-level networking") a route
+apart from the Watch's ordinary internet, so a Watch that browses fine
+through the iPhone can still have every socket refused with -1009 (#1346).
+
+**Siblings:** GPT-Live (the host bridge) · Gemini and Qwen (their own
+socket) · Grok and Local Live (the host bridge) · a call from Hermes answered
+on the Watch, which runs the same calls · the end message · the call log's
+lines · phone, CarPlay and CallKit calls, which reconnect on the iPhone's own
+network (Reconnecting to Hermes)
+
+**Code**
+- Shared rule: `Shared/WatchVoice/WatchNoNetwork.swift`, tests in `ConduitTests/WatchAudioBridgeTests.swift`
+- GPT-Live: `ConduitWatch/WatchBridgeCallModel.swift` (socketEvent, offlineRefusals in the call's end line)
+- Gemini, Qwen, Grok, Local Live: `ConduitWatch/WatchDirectCallModel.swift` (endIfNoNetwork, `directNoNetwork`)
+- The message: `ConduitWatch/WatchVoiceCall.swift` (WatchCallEnd.noNetwork)
+
+**Rulings**
+- A call none of whose sockets has opened ends on the second socket refused for no network (-1009, or data not allowed or roaming off), saying the Watch couldn't get a network connection and to keep the iPhone nearby with Bluetooth on or join Wi-Fi on the Watch. The first refusal is retried, since the route can come up just after the audio session activates. Once any socket has opened, a drop is the call's to rejoin as before (2026-10-27, #1349, for #1346).
+
+**Open gaps**
+- There's no iPhone-carried audio route to fall back on: the first Watch design carried audio through the iPhone and stopped whenever it locked or Conduit was suspended (designs/apple-watch-voice-direct.md).
+
+**Checked:** 2026-10-27, #1349.
+
 ## Calls from Hermes
 
 Hermes rings the user (a job is done, it waits on an answer, a scheduled

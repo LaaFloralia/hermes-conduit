@@ -403,3 +403,34 @@ private extension Data {
         self.init(bytes)
     }
 }
+
+/// A Watch call whose sockets get no network (#1346): it ends on the
+/// second refusal while none has opened, and never once one has.
+extension HermesVoiceGatewayTimeoutTests {
+    private static let watchOffline: [String: Any] = ["domain": NSURLErrorDomain, "code": URLError.notConnectedToInternet.rawValue]
+
+    func testWatchNoNetworkEndsOnTheSecondRefusalBeforeAnySocketOpened() {
+        var noNetwork = WatchNoNetwork()
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+        XCTAssertTrue(noNetwork.socketEnded(Self.watchOffline))
+        XCTAssertEqual(noNetwork.refusals, 2)
+    }
+
+    func testWatchNoNetworkLeavesDropsAfterAnOpenSocketToTheCall() {
+        var noNetwork = WatchNoNetwork()
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+        noNetwork.socketOpened()
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+        XCTAssertFalse(noNetwork.socketEnded(Self.watchOffline))
+    }
+
+    func testWatchNoNetworkCountsOnlyOfflineErrors() {
+        var noNetwork = WatchNoNetwork()
+        let hostDown: [String: Any] = ["domain": NSURLErrorDomain, "code": URLError.cannotConnectToHost.rawValue]
+        XCTAssertFalse(noNetwork.socketEnded(hostDown))
+        XCTAssertFalse(noNetwork.socketEnded(["code": 1006, "reason": ""]))
+        XCTAssertFalse(noNetwork.socketEnded(hostDown))
+        XCTAssertEqual(noNetwork.refusals, 0)
+        XCTAssertTrue(WatchNoNetwork.isOffline(["domain": NSURLErrorDomain, "code": URLError.dataNotAllowed.rawValue]))
+    }
+}

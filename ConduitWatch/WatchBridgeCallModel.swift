@@ -162,6 +162,8 @@ final class WatchBridgeCallModel: ObservableObject {
     private var pingMisses = 0
     private var pingOutstanding = false
     private var openFailures = 0
+    /// Sockets watchOS gave no network (#1346).
+    private var noNetwork = WatchNoNetwork()
     private var hostError: String?
     private var bytesUpBefore = 0
     private var bytesDownBefore = 0
@@ -658,6 +660,7 @@ final class WatchBridgeCallModel: ObservableObject {
         switch kind {
         case "open":
             socketOpenedAt = now
+            noNetwork.socketOpened()
             note("bridgeSocketOpen", [
                 "connection": number,
                 "ms": connectStartedAt.map { Int((now - $0) * 1000) } as Any,
@@ -673,6 +676,11 @@ final class WatchBridgeCallModel: ObservableObject {
             details["live"] = live
             details["screen"] = "\(scenePhase)"
             note("bridgeSocketClosed", details)
+            if endRequestedAt == nil, noNetwork.socketEnded(fields) {
+                openFailures += 1
+                finish(WatchCallEnd.noNetwork)
+                return
+            }
             connectionLost(code: fields["code"] as? Int ?? socket?.closeCode, opened: socketOpenedAt != nil)
         default:
             break
@@ -1934,6 +1942,7 @@ final class WatchBridgeCallModel: ObservableObject {
         lastPingAt = 0
         pingFailures = 0
         openFailures = 0
+        noNetwork = WatchNoNetwork()
         hostError = nil
         bytesUpBefore = 0
         bytesDownBefore = 0
@@ -2055,6 +2064,7 @@ final class WatchBridgeCallModel: ObservableObject {
             "playbackStalls": audio.playbackStalls - playbackStallsAtStart,
             "streamsOpened": streamsOpened,
             "openFailures": openFailures,
+            "offlineRefusals": noNetwork.refusals,
             "drops": drops,
             "rejoins": rejoins,
             "rejoinMaxMs": WatchVoiceStats.milliseconds(rejoinTimes.max()) as Any,
