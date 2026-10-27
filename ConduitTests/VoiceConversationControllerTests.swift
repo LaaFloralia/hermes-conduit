@@ -464,12 +464,13 @@ final class VoiceConversationControllerTests: XCTestCase {
         submitted: SubmitSpy,
         steers: SubmitSpy,
         interrupts: AwaitableCounter,
-        capture: MockCapture? = nil
+        capture: MockCapture? = nil,
+        playback: MockPlayback? = nil
     ) -> VoiceConversationController {
         let policy = RoutePolicyBox(.fullDuplex)
         return VoiceConversationController(
             capture: capture ?? MockCapture(permissionGranted: true),
-            playback: MockPlayback(),
+            playback: playback ?? MockPlayback(),
             gateway: gateway,
             routePolicyProvider: { policy.policy },
             submit: { await submitted.submit($0) },
@@ -1306,6 +1307,60 @@ final class VoiceConversationControllerTests: XCTestCase {
         await capture.waitUntilStartCount(2)
         XCTAssertEqual(gateway.openCount, 0)
         XCTAssertEqual(controller.conversationTranscript.filter { $0.speaker == .assistant }.map(\.text), ["Checking", "Done."])
+        controller.stop()
+    }
+
+    func testTalkingOverAnAcknowledgementSteersTheTurnInsteadOfCancellingIt() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let playback = MockPlayback()
+        let gate = InterruptParkingGate()
+        playback.drainGate = gate
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, playback: playback
+        )
+        await driveToThinking(controller, submitted: submitted)
+        controller.receiveAssistantEvent(.interim(sessionID: "session", text: "Checking now.", alreadyStreamed: false))
+        // The acknowledgement is still playing out.
+        await gate.waitUntilEntered()
+        XCTAssertEqual(controller.state, .speaking)
+
+        gateway.transcript = "Only this week"
+        await speakSteer(controller)
+        await steers.waitUntilSubmitted(1)
+
+        XCTAssertEqual(steers.texts, ["Only this week"])
+        XCTAssertEqual(submitted.texts, ["Question"], "talking over an acknowledgement is not a new turn")
+        XCTAssertEqual(interrupts.value, 0, "the work it acknowledged goes on")
+        XCTAssertEqual(gateway.streams.first?.cancelCount, 1, "the acknowledgement stops")
+        gate.release()
+        controller.stop()
+    }
+
+    func testStopOverAnAcknowledgementOpensASteerWindow() async {
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let submitted = SubmitSpy()
+        let steers = SubmitSpy()
+        let interrupts = AwaitableCounter()
+        let playback = MockPlayback()
+        let gate = InterruptParkingGate()
+        playback.drainGate = gate
+        let controller = makeSteerController(
+            gateway: gateway, submitted: submitted, steers: steers, interrupts: interrupts, playback: playback
+        )
+        await driveToThinking(controller, submitted: submitted)
+        controller.receiveAssistantEvent(.interim(sessionID: "session", text: "Checking now.", alreadyStreamed: false))
+        await gate.waitUntilEntered()
+
+        await controller.stopAssistantReply()
+
+        XCTAssertEqual(controller.state, .listening)
+        XCTAssertTrue(controller.isSteeringTurn, "the window steers the running turn")
+        XCTAssertEqual(interrupts.value, 0, "Stop over an acknowledgement keeps the work going")
+        XCTAssertEqual(gateway.streams.first?.cancelCount, 1)
+        gate.release()
         controller.stop()
     }
 

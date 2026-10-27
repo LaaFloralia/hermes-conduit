@@ -132,8 +132,9 @@ final class VoiceConversationController: ObservableObject {
     /// How long an accepted hand-back may wait for its reply to start.
     var backgroundHandBackStartTimeout: Duration = .seconds(60)
     private var captureEventsTask: Task<Void, Never>?
-    private enum SpeechQueueItem {
+    private enum SpeechQueueItem: Equatable {
         case text(String)
+        /// The end of an acknowledgement: its stream finishes here.
         case boundary
     }
     private var speechDeltas: [SpeechQueueItem] = []
@@ -145,6 +146,8 @@ final class VoiceConversationController: ObservableObject {
     private var assistantFinished = false
     private var receivedAssistantDelta = false
     private var lastInterimAssistantText: String?
+    /// Hermes' acknowledgement is queued or playing while its turn works on.
+    private var isSpeakingAcknowledgement = false
     private var utteranceStartedAt: Date?
     private var lastSpeechAt: Date?
     private var bargeInStartedAt: Date?
@@ -685,6 +688,21 @@ final class VoiceConversationController: ObservableObject {
             await openApprovalAnswerWindow(operation: operationGeneration)
             return
         }
+        if isAcknowledgementSteerable {
+            // Interrupt over Hermes' acknowledgement: it stops and the
+            // microphone opens to steer; the work it acknowledged goes on.
+            stopAcknowledgement()
+            isMicrophonePaused = false
+            let generation = operationGeneration
+            isSteeringTurn = true
+            await startListening()
+            guard isCurrent(generation) else {
+                isSteeringTurn = false
+                return
+            }
+            if isSteeringTurn, state != .listening { resumeTurnAfterSteer() }
+            return
+        }
         cachedRoutePolicy = nil
         // Deliberately leaves lastBargeInState alone: that property records
         // acoustic barge-in provenance, and this path always lands in
@@ -1030,8 +1048,9 @@ final class VoiceConversationController: ObservableObject {
             // else (silent gaps mid-reply, muted output) is ignored, so it
             // can't cut the turn short.
             let talkOver = isTalkOverAvailable
+            let overAcknowledgement = state == .speaking && isAcknowledgementSteerable
             if state == .thinking { thinkingRoom.observe(level, at: date) }
-            guard talkOver || isSteerAvailable else {
+            guard talkOver || overAcknowledgement || isSteerAvailable else {
                 bargeInStartedAt = nil
                 break
             }
@@ -1039,7 +1058,14 @@ final class VoiceConversationController: ObservableObject {
                 if bargeInStartedAt == nil { bargeInStartedAt = date }
                 if let started = bargeInStartedAt,
                    date.timeIntervalSince(started) >= configuration.bargeInDuration {
-                    if talkOver { scheduleBargeIn() } else { scheduleSteer() }
+                    if overAcknowledgement {
+                        stopAcknowledgement()
+                        scheduleSteer()
+                    } else if talkOver {
+                        scheduleBargeIn()
+                    } else {
+                        scheduleSteer()
+                    }
                 }
             } else {
                 bargeInStartedAt = nil
@@ -1087,7 +1113,7 @@ final class VoiceConversationController: ObservableObject {
             awaitedAssistantResponseStarted = true
             cancelBackgroundHandBackWatchdog()
             completeAssistantTranscript(text)
-            lastInterimAssistantText = text
+            lastInterimAssistantText = text.trimmingCharacters(in: .whitespacesAndNewlines)
             // Only feed commentary absent from message.delta. Finish the
             // filter at the segment boundary so held markdown cannot leak
             // into the next segment. This is NOT turn completion.
@@ -1099,6 +1125,7 @@ final class VoiceConversationController: ObservableObject {
                 // provider's sentence buffer while tools are still running.
                 if speechStream != nil || !speechDeltas.isEmpty {
                     speechDeltas.append(.boundary)
+                    isSpeakingAcknowledgement = true
                 }
             }
             spokenTextFilter.reset()
@@ -1112,7 +1139,8 @@ final class VoiceConversationController: ObservableObject {
             // Suppress a preview/reuse only when this voice consumer actually
             // received its interim. A reconnect without it still speaks the
             // final snapshot as recovery.
-            let repeatsInterim = alreadyShown && lastInterimAssistantText == content
+            let repeatsInterim = alreadyShown
+                && lastInterimAssistantText == content?.trimmingCharacters(in: .whitespacesAndNewlines)
             if !repeatsInterim { completeAssistantTranscript(content) }
             // Hermes normally supplies both deltas and a final snapshot. The
             // final snapshot is a recovery value, not another utterance.
@@ -1743,7 +1771,41 @@ final class VoiceConversationController: ObservableObject {
         // An approval's notice: the yes or no comes once it has been said,
         // and must not cancel the turn that waits on it.
         guard state == .speaking, !approvalNoticeOpensAnswerWindow else { return false }
+        // An acknowledgement: speech over it steers the turn it acknowledged.
+        guard !isAcknowledgementSteerable else { return false }
         return playback.isPlaying || !isAwaitingVoiceAssistant
+    }
+
+    /// Whether cutting the speech short right now steers Hermes' running
+    /// turn instead of cancelling it: what plays is only its
+    /// acknowledgement ("Checking now"), with nothing of the reply queued
+    /// behind it. Talking over it, Interrupt, CarPlay's Stop and a push to
+    /// talk press all stop the acknowledgement and open a steer window.
+    private var isAcknowledgementSteerable: Bool {
+        guard isSpeakingAcknowledgement,
+              steerTurn != nil,
+              isAwaitingVoiceAssistant,
+              !assistantFinished,
+              !isOutputMuted,
+              !approvalNoticeOpensAnswerWindow,
+              utteranceTask == nil,
+              backgroundNoticeTask == nil,
+              !suspendedInFlightTurnOrphaned else { return false }
+        // Every queued text ends at an acknowledgement's boundary.
+        return speechDeltas.last.map { $0 == .boundary } ?? true
+    }
+
+    /// Stops the acknowledgement's speech and goes back to waiting on the
+    /// turn; the caller opens the steer window.
+    private func stopAcknowledgement() {
+        bargeInStartedAt = nil
+        playback.stop()
+        cancelSpeechDrainAndStream()
+        speechDeltas.removeAll()
+        isSpeakingAcknowledgement = false
+        cachedRoutePolicy = nil
+        isPlaybackCaptureSuspended = false
+        state = .thinking
     }
 
     /// Whether speech may steer the running Hermes turn right now: Hermes
@@ -2181,6 +2243,7 @@ final class VoiceConversationController: ObservableObject {
     private func clearSpeechQueue() {
         speechDeltas.removeAll()
         spokenTextFilter.reset()
+        isSpeakingAcknowledgement = false
     }
 
     private func startSpeechDrainIfNeeded() {
@@ -2259,6 +2322,7 @@ final class VoiceConversationController: ObservableObject {
                 await playback.drain()
                 guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
                 self.speechStream = nil
+                if reachedBoundary { isSpeakingAcknowledgement = speechDeltas.contains(.boundary) }
             }
         } catch {
             guard isSpeechDrainCurrent(operation: operation, revision: revision) else { return }
