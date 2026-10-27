@@ -625,6 +625,8 @@ final class WatchDirectCallModel: ObservableObject {
         // As the iPhone's Interrupt button: playback stops now, and the
         // rest of this turn is dropped until Gemini ends or interrupts it.
         audio.stopPlayback()
+        // Local Live's server is told, so its microphone opens again (#1325).
+        session?.cancelResponse()
         suppressingModelTurn = true
         modelTurnActive = false
         lastModelTurnEndedAt = now

@@ -136,8 +136,10 @@ final class FakeGeminiLiveSessionControl: GeminiLiveSessionControlling {
     private(set) var started = 0
     private(set) var stopped = 0
     private(set) var sent: [[String: Any]] = []
+    private(set) var cancelledResponses = 0
 
     func start() { started += 1 }
+    func cancelResponse() { cancelledResponses += 1 }
     func stop() { stopped += 1; isReady = false }
     /// When set, sends are recorded but reported as failed.
     var failSends = false
@@ -1834,12 +1836,16 @@ extension VoiceConversationControllerTests {
 
         // Interrupt is how the user cuts in on the speaker.
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
+        XCTAssertEqual(session.cancelledResponses, 0)
         controller.interruptSpeaking()
         XCTAssertFalse(output.isPlaying)
+        XCTAssertEqual(session.cancelledResponses, 1, "The server is told, so a gate it keeps opens too (#1325)")
         session.onEvent?(.audio(Data([0, 0]), sampleRate: 24_000))
         XCTAssertFalse(output.isPlaying, "The rest of an interrupted turn is dropped")
         input.onChunk?(Data([1]))
         XCTAssertEqual(session.sent.count, 3)
+        controller.interruptSpeaking()
+        XCTAssertEqual(session.cancelledResponses, 1, "With nothing playing there is nothing to cancel")
         controller.stop()
     }
 

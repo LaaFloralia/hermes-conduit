@@ -436,9 +436,11 @@ final class GeminiLiveConversationController: ObservableObject {
 
     /// The Interrupt button: stop the model now. On an open speaker this is
     /// how the user barges in, since the mic is closed while it speaks.
+    /// The session tells a server that keeps its own microphone gate (#1325).
     func interruptSpeaking() {
         guard modelTurnActive || output.isPlaying else { return }
         output.interrupt()
+        session?.cancelResponse()
         suppressingModelTurn = true
         modelTurnActive = false
         lastModelTurnEndedAt = now()

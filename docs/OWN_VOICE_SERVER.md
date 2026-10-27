@@ -118,7 +118,11 @@ working as it does today.
 - **The reply hears itself on the speaker**: use headphones for now. Echo
   cancellation and talking over the reply on the speaker are being worked on
   for Local Live. Muting the mic on the server also works, but then you
-  can't talk over the reply.
+  can't talk over the reply. The Interrupt button still stops it: Conduit
+  sends your server a `response.cancel`, so a server that keeps its mic shut
+  while it speaks can listen again right away. On a server that only reads
+  text back, the cancel reaches it after a sentence it already finished
+  from plugin 0.88.
 
 The full API reference (routes, frames and close codes) is in the Conduit
 plugin's README, under "Your own speech server" and "Local Live".
