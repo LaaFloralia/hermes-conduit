@@ -2400,6 +2400,28 @@ workflow table
 
 **Checked:** 2026-10-24, at #1216.
 
+## Review bots
+
+The two opencode reviewers that review every PR here and in the notifier, and
+the models they call.
+
+**Siblings:** this repo's reviewer workflow and opencode config · the
+notifier's copies of both
+
+**Code**
+- Workflow: `.github/workflows/opencode-review.yml` (the reviewer matrix, secrets and prompt)
+- Config: `opencode.json` (providers, models and the reviewer's permissions)
+- Notifier: `notifier/.github/workflows/opencode-review.yml`, `notifier/opencode.json`
+
+**Rulings**
+- Two reviewers gate merges, and both repos run the same pair: GLM-5.3-Flash on Z.ai and Muse Spark 1.3 on Command Code (2026-10-27, #1335 and notifier #405, Eric).
+- A provider whose id is in the models.dev catalog (`commandcode` is) whitelists the one model it reviews with. Otherwise opencode titles each session with the newest small model in that catalog, which was Gemini 3.8 Flash, a call Eric didn't want (2026-10-27, #1391 and notifier #428, Eric asked why Gemini Flash was being called).
+
+**Open gaps**
+- The workflow runs main's config, so a change to either file is first exercised by the review after it merges.
+
+**Checked:** 2026-10-27, #1391.
+
 ## Settings connection page
 
 The page with the server, Reconnect, Restart Gateway, Cloudflare Access,
