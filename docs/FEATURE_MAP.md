@@ -1393,11 +1393,12 @@ dropped on it) · README.md's feature list
 - Every way in stages the same way: copied into the staging folder, size checked against the device's limit before it is read, images providers can't read re-encoded as JPEG, and anything left out named in the composer's notice. Nothing is sent until the user presses Send (2026-10-28, #1411).
 - A drop attaches files and leaves the rest: words dragged from another app go into the draft only when dropped on the field, and a link stays a link. Text counts as a file only when it comes as a named file. One picture dropped or pasted on the field keeps the picture paste; several items, or any other file, are staged like picked documents (2026-10-28, #1411, from #1408).
 - A locked chat composer takes no drop, as its Attach menu is off then; a room on a plugin that can't store its files says what fixes it, as its Attach menu does (2026-10-28, #1411).
+- A dropped folder is taken but not attached: the composer's notice names it and says to drop the files inside. Files dropped with it still attach (2026-10-28, #1422).
 
 **Open gaps**
-- A folder dropped from Finder isn't attached, and nothing says why: the drop is just refused.
+- A dropped folder's files aren't attached for the user; they drop the files themselves.
 
-**Checked:** 2026-10-28, #1411 (drag-and-drop attachments, issue #1408).
+**Checked:** 2026-10-28, #1422 (folder drops say why they aren't attached).
 
 ## A chat while it opens
 

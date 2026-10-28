@@ -1,6 +1,252 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ is a folder, so it wasn't attached. Drop the files inside it instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist ein Ordner und wurde daher nicht angehängt. Zieh stattdessen die Dateien darin hierher."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ es una carpeta, así que no se adjuntó. Suelta los archivos que contiene."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ est un dossier, il n'a donc pas été joint. Déposez plutôt les fichiers qu'il contient."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ adalah folder, jadi tidak dilampirkan. Letakkan file di dalamnya saja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ è una cartella, quindi non è stata allegata. Trascina invece i file che contiene."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@はフォルダのため添付されませんでした。中のファイルをドロップしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@은(는) 폴더라서 첨부되지 않았어요. 폴더 안의 파일을 끌어다 놓으세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ to folder, więc nie został dołączony. Upuść pliki z jego wnętrza."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ é uma pasta, então não foi anexada. Solte os arquivos que estão nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ — это папка, поэтому она не прикреплена. Перетащите файлы из неё."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ bir klasör olduğu için eklenmedi. Bunun yerine içindeki dosyaları bırakın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 是文件夹，因此未添加为附件。请改为拖放其中的文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 是資料夾，因此未加入附件。請改為拖放其中的檔案。"
+          }
+        }
+      }
+    },
+    "Folders can't be attached. Drop the files inside them instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordner können nicht angehängt werden. Zieh stattdessen die Dateien darin hierher."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las carpetas no se pueden adjuntar. Suelta los archivos que contienen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les dossiers ne peuvent pas être joints. Déposez plutôt les fichiers qu'ils contiennent."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder tidak dapat dilampirkan. Letakkan file di dalamnya saja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le cartelle non si possono allegare. Trascina invece i file che contengono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダは添付できません。中のファイルをドロップしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "폴더는 첨부할 수 없어요. 폴더 안의 파일을 끌어다 놓으세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie można dołączać folderów. Upuść pliki z ich wnętrza."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pastas não podem ser anexadas. Solte os arquivos que estão nelas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Папки нельзя прикрепить. Перетащите файлы из них."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klasörler eklenemez. Bunun yerine içlerindeki dosyaları bırakın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法添加文件夹作为附件。请改为拖放其中的文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法將資料夾加入附件。請改為拖放其中的檔案。"
+          }
+        }
+      }
+    },
+    "These folders weren't attached: %@. Drop the files inside them instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Ordner wurden nicht angehängt: %@. Zieh stattdessen die Dateien darin hierher."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas carpetas no se adjuntaron: %@. Suelta los archivos que contienen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces dossiers n'ont pas été joints : %@. Déposez plutôt les fichiers qu'ils contiennent."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder ini tidak dilampirkan: %@. Letakkan file di dalamnya saja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queste cartelle non sono state allegate: %@. Trascina invece i file che contengono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "次のフォルダは添付されませんでした：%@。中のファイルをドロップしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다음 폴더는 첨부되지 않았어요: %@. 폴더 안의 파일을 끌어다 놓으세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te foldery nie zostały dołączone: %@. Upuść pliki z ich wnętrza."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estas pastas não foram anexadas: %@. Solte os arquivos que estão nelas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти папки не прикреплены: %@. Перетащите файлы из них."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu klasörler eklenmedi: %@. Bunun yerine içlerindeki dosyaları bırakın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以下文件夹未添加为附件：%@。请改为拖放其中的文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以下資料夾未加入附件：%@。請改為拖放其中的檔案。"
+          }
+        }
+      }
+    },
     "This chat is a Kanban task's worker, so only the board can run it. Open the task on the Kanban board and check its Worker Log." : {
       "localizations" : {
         "de" : {
