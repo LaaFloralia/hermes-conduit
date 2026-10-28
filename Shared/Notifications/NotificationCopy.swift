@@ -40,12 +40,20 @@ enum NotificationCopy {
     /// label's title, joined with the chat's title when the host sent one;
     /// a call composes its line from the call's outcome. Any other title or
     /// body is the host's own text (an older plugin, a tool's prompt title).
-    /// The subtitle names the profile (`profileLine`).
+    /// The subtitle names the profile (`profileLine`). A reply whose
+    /// notification Hermes wrote shows its `headline` as the title.
     static func preview(_ content: [String: Any]) -> (title: String?, subtitle: String?, body: String?) {
         let hostTitle = nonEmpty(content["title"])
         let hostBody = nonEmpty(content["body"])
         guard let label = nonEmpty(content["title_label"]) else {
             return (hostTitle, profileLine(content, title: hostTitle), hostBody)
+        }
+        // A reply whose notification Hermes wrote (conduit_notify, #1415):
+        // its heading is the title, and the subtitle says which chat.
+        if label == "response.ready", let headline = nonEmpty(content["headline"]) {
+            let chat = nonEmpty(content["session_title"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let subtitle = [chat, profileLine(content, title: chat)].compactMap { $0 }.joined(separator: " · ")
+            return (headline, subtitle.isEmpty ? nil : subtitle, hostBody)
         }
         let title = labelTitle(label, content: content) ?? hostTitle
         let subtitle = profileLine(content, title: title)
@@ -84,7 +92,8 @@ enum NotificationCopy {
         let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let name = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
             ?? profile.flatMap({ $0.lowercased() == "default" ? nil : $0 }) else { return nil }
-        if let title, title == name || title.hasSuffix(" · \(name)") { return nil }
+        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           title == name.lowercased() || title.hasSuffix(" · \(name.lowercased())") { return nil }
         return name
     }
 

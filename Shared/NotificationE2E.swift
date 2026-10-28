@@ -166,7 +166,7 @@ enum NotificationE2E {
         /// provisioned for (never the relay's routing stub).
         var routingPayload: [String: Any] {
             var payload = content
-            for banner in ["title", "body", "title_label", "session_title"] { payload.removeValue(forKey: banner) }
+            for banner in ["title", "body", "title_label", "session_title", "headline"] { payload.removeValue(forKey: banner) }
             payload["type"] = type
             payload["gateway_id"] = record.gatewayID
             if let dashboardID = record.dashboardID { payload["dashboard_id"] = dashboardID }

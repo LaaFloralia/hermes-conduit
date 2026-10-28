@@ -135,4 +135,23 @@ final class NotificationCopyTests: XCTestCase {
                      "an unlabelled host title may be content, so the generic title stays")
         XCTAssertEqual(NotificationCopy.chatNames(["title": "Head to the airport", "profile": "work"]).subtitle, "work")
     }
+
+    func testWrittenHeadlineIsOnlyInThePreviewCopy() {
+        let content: [String: Any] = [
+            "title_label": "response.ready", "session_title": "Planning ", "headline": "Report finished",
+            "profile": "segundo-cerebro", "profile_name": "Segundo Cérebro", "body": "All 150 products analysed.",
+        ]
+        let preview = NotificationCopy.preview(content)
+        XCTAssertEqual(preview.title, "Report finished")
+        XCTAssertEqual(preview.subtitle, "Planning · Segundo Cérebro")
+        XCTAssertEqual(preview.body, "All 150 products analysed.")
+        XCTAssertEqual(NotificationCopy.chatNames(content).title, "Planning ", "Chat names never shows Hermes' words")
+        XCTAssertNil(NotificationCopy.preview(["title_label": "response.ready", "headline": "Done"]).subtitle)
+    }
+
+    func testBotChatSuffixIgnoresCase() {
+        XCTAssertNil(NotificationCopy.preview([
+            "title_label": "response.ready", "session_title": "ada ", "profile_name": "Ada",
+        ]).subtitle)
+    }
 }
