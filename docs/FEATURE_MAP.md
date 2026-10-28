@@ -2649,6 +2649,32 @@ server, never Tailscale SSH)
 
 **Checked:** 2026-10-27, at #1377.
 
+## Connection failure messages
+
+What Conduit says when it can't connect or sign in, classified from the
+error's type and code (never its text), and the troubleshooting it points to.
+
+**Siblings:** the sign-in screen's failure card · the setup assistant's
+connection test · Repair's Reconnect Now · Settings' Sign In Again · Siri's
+voice launch notice · the HTTPS & certificates troubleshooting page · the
+website's setup page (When it doesn't connect, in scripts/build_site.py in
+hermes-conduit-website)
+
+**Code**
+- Classification and copy: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailureClassifier, TLSTrustDiagnosis, userTitle, userMessage, helpDestination)
+- Where it lands: `Conduit/Services/ConnectionSetupFlow.swift` (repairPath), `Conduit/Services/ConnectionSetupTest.swift` (ConnectionSetupTestRecoveryPlan)
+- Shown: `Conduit/Views/ConnectionSetupForm.swift`, `Conduit/Views/ConnectionSetupView.swift` (the troubleshooting checks), `Conduit/Voice/Wake/PendingVoiceLaunchPolicy.swift`
+- Tests: `ConduitTests/ConnectionFailureTests.swift`, `ConduitTests/ConnectionSetupTestTests.swift`, `ConduitTests/ConnectionRepairTests.swift`
+
+**Rulings**
+- No TLS validation override: a certificate iOS refuses is never accepted, on any device (Eric, 2026-10-19, issue #129).
+- A refused certificate names the check iOS failed, read from the peer trust URLSession leaves on the error: the certificate doesn't name the address, it breaks Apple's certificate rules (825 days, serverAuth, key size, SHA-2), its dates, or else its root isn't trusted. The most specific comes first, since trusting the root wouldn't fix the others (2026-10-27, #1405, from issue #129's iPad report).
+
+**Open gaps**
+- The Watch and the dictation clip retry treat TLS failures only as never sent or not transient; they show no classified copy.
+
+**Checked:** 2026-10-27, #1405.
+
 ## Review bots
 
 The two opencode reviewers that review every PR here and in the notifier, and
