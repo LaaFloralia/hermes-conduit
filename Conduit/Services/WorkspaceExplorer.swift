@@ -276,7 +276,7 @@ final class WorkspaceExplorer: ObservableObject {
 
     /// A path a reply named, or a search match: its folders expand in the
     /// tree when it's in the open folder, and the file opens.
-    func reveal(_ path: String, line: Int? = nil) async -> WorkspaceEntry {
+    func reveal(_ path: String) async -> WorkspaceEntry {
         let name = (path as NSString).lastPathComponent
         var entry = WorkspaceEntry(name: name.isEmpty ? path : name, path: path, isDirectory: false)
         guard let root, contains(path), path != AppState.normalizedWorkspacePath(root) else { return entry }

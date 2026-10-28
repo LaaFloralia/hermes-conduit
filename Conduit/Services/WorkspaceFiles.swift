@@ -2,7 +2,7 @@ import Foundation
 
 /// The Folder tab's reads and changes (#1389): one root at a time, the open
 /// chat's working folder or a project's folder, through the host's notifier
-/// plugin (`/workspace/*`, plugin 0.107+). The plugin keeps every path inside
+/// plugin (`/workspace/*`, plugin 0.109+). The plugin keeps every path inside
 /// the root it's given and leaves out files that hold keys or passwords;
 /// file contents are read through Hermes' own `/api/fs/*` routes.
 final class WorkspaceFilesClient {
