@@ -8,6 +8,8 @@
 //  against the ear.
 //
 
+import AVFAudio
+import Combine
 import SwiftUI
 import UIKit
 
@@ -39,13 +41,27 @@ struct EarpieceCallProximity: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var audio = VoiceAudioSessionCoordinator.shared
     @AppStorage(VoiceEarpieceCalls.preferenceKey) private var earpieceCalls = VoiceEarpieceCalls.defaultValue
+    /// Headphones, Bluetooth or the car hold the audio: nothing to hold to
+    /// the ear. Posted off the main thread, so read on it.
+    @State private var playsElsewhere = false
+
+    private static let routeChanges = NotificationCenter.default
+        .publisher(for: AVAudioSession.routeChangeNotification)
+        .receive(on: DispatchQueue.main)
 
     private var monitorsProximity: Bool {
         VoiceEarpieceCalls.monitorsProximity(
             enabled: earpieceCalls,
             callOnPhone: appState.isVoiceInUse || appState.minimisedLiveVoice != nil,
             speakerChosen: audio.conversationSpeakerChosen,
-            inNativeCall: audio.isInNativeCall
+            inNativeCall: audio.isInNativeCall,
+            playsElsewhere: playsElsewhere
+        )
+    }
+
+    private func readRoute() {
+        playsElsewhere = VoiceEarpieceCalls.playsElsewhere(
+            AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
         )
     }
 
@@ -54,12 +70,15 @@ struct EarpieceCallProximity: ViewModifier {
             .onChange(of: monitorsProximity, initial: true) { _, monitors in
                 UIDevice.current.isProximityMonitoringEnabled = monitors
             }
-            .onChange(of: appState.isVoiceCallInProgress) { _, inProgress in
-                if !inProgress { audio.conversationCallEnded() }
+            .onChange(of: appState.isVoiceCallInProgress, initial: true) { _, inProgress in
+                if inProgress { readRoute() } else { audio.conversationCallEnded() }
             }
-            // Sign-out swaps the view out with a call possibly still up.
+            .onReceive(Self.routeChanges) { _ in readRoute() }
+            // Sign-out swaps the view out with a call possibly still up, and
+            // ends it without this view seeing the call end.
             .onDisappear {
                 UIDevice.current.isProximityMonitoringEnabled = false
+                audio.conversationCallEnded()
             }
     }
 }

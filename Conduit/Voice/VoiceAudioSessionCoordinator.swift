@@ -415,6 +415,7 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
     /// makes.
     func setConversationSpeaker(_ on: Bool) {
         guard !isInNativeCall else { return }
+        let previous = conversationSpeakerChosen
         conversationSpeakerChosen = on
         guard appliedPolicy == .conversation else { return }
         do {
@@ -426,6 +427,8 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
                 try session.clearOutputOverride()
             }
         } catch {
+            // The button shows where the call really plays.
+            conversationSpeakerChosen = previous
             audioSessionLogger.error("call speaker change failed: \(LogRedaction.describing(error), privacy: .public)")
         }
     }
@@ -597,11 +600,16 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
                 // deactivation between classic turns, which both drop the
                 // override. Only from the earpiece: headphones, Bluetooth
                 // and the car keep their route. The choice, not the
-                // current route, decides: a speaker the previous policy
-                // left on (`.defaultToSpeaker`) must not carry into the
-                // call.
-                if !isInNativeCall, phoneStyle, conversationSpeakerChosen, session.isOutputOnBuiltInReceiver {
-                    try? session.overrideOutputToSpeaker()
+                // current route, decides: an override still standing
+                // because the last call's deactivation was dropped (the
+                // next call began before it ran) comes off, so the call
+                // starts on the earpiece its button shows.
+                if !isInNativeCall, phoneStyle {
+                    if conversationSpeakerChosen {
+                        if session.isOutputOnBuiltInReceiver { try? session.overrideOutputToSpeaker() }
+                    } else if session.isOutputOnBuiltInSpeaker {
+                        try? session.clearOutputOverride()
+                    }
                 }
                 appliedPolicy = .conversation
             case .standalonePlayback:

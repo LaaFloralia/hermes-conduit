@@ -516,6 +516,7 @@ extension VoiceAudioSessionCoordinatorTests {
         _ = try coordinator.acquire(.conversationCapture)
 
         XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
     }
 
     func testSpeakerButtonMovesAnEarpieceCallToTheSpeakerAndBack() throws {
@@ -613,12 +614,73 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(session.speakerOverrides, 0)
     }
 
+    /// The last call's deactivation was dropped because the next call began
+    /// before it ran: its speaker override is still up, and must come off.
+    func testAStaleSpeakerOverrideComesOffWhenTheNextCallStarts() throws {
+        session.reportsCurrentCategory = true
+        let coordinator = makeEarpieceCoordinator()
+        let capture = try coordinator.acquire(.conversationCapture)
+        coordinator.setConversationSpeaker(true)
+        coordinator.release(capture)
+        coordinator.conversationCallEnded()
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker, "the mock keeps the override, as a dropped deactivation does")
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertTrue(session.categoryCalls.isEmpty, "the session already has the call's category")
+        XCTAssertEqual(session.overrideClears, 1)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
+    }
+
+    func testAFailedSpeakerChangeKeepsTheButtonTruthful() throws {
+        let coordinator = makeEarpieceCoordinator()
+        _ = try coordinator.acquire(.conversationCapture)
+        session.overrideError = VoiceAudioSessionMockError.configurationFailed
+
+        coordinator.setConversationSpeaker(true)
+
+        XCTAssertFalse(coordinator.conversationSpeakerChosen)
+
+        session.overrideError = nil
+        coordinator.setConversationSpeaker(true)
+        session.overrideError = VoiceAudioSessionMockError.configurationFailed
+        coordinator.setConversationSpeaker(false)
+
+        XCTAssertTrue(coordinator.conversationSpeakerChosen, "the call still plays on the speaker")
+    }
+
     func testProximityFollowsAnEarpieceCallOnThePhone() {
-        XCTAssertTrue(VoiceEarpieceCalls.monitorsProximity(enabled: true, callOnPhone: true, speakerChosen: false, inNativeCall: false))
-        XCTAssertFalse(VoiceEarpieceCalls.monitorsProximity(enabled: false, callOnPhone: true, speakerChosen: false, inNativeCall: false))
-        XCTAssertFalse(VoiceEarpieceCalls.monitorsProximity(enabled: true, callOnPhone: false, speakerChosen: false, inNativeCall: false))
-        XCTAssertFalse(VoiceEarpieceCalls.monitorsProximity(enabled: true, callOnPhone: true, speakerChosen: true, inNativeCall: false))
-        XCTAssertFalse(VoiceEarpieceCalls.monitorsProximity(enabled: true, callOnPhone: true, speakerChosen: false, inNativeCall: true))
+        func monitors(
+            enabled: Bool = true,
+            callOnPhone: Bool = true,
+            speakerChosen: Bool = false,
+            inNativeCall: Bool = false,
+            playsElsewhere: Bool = false
+        ) -> Bool {
+            VoiceEarpieceCalls.monitorsProximity(
+                enabled: enabled,
+                callOnPhone: callOnPhone,
+                speakerChosen: speakerChosen,
+                inNativeCall: inNativeCall,
+                playsElsewhere: playsElsewhere
+            )
+        }
+        XCTAssertTrue(monitors())
+        XCTAssertFalse(monitors(enabled: false))
+        XCTAssertFalse(monitors(callOnPhone: false))
+        XCTAssertFalse(monitors(speakerChosen: true))
+        XCTAssertFalse(monitors(inNativeCall: true))
+        XCTAssertFalse(monitors(playsElsewhere: true))
+    }
+
+    func testHeadphonesBluetoothAndTheCarPlayElsewhere() {
+        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([.builtInReceiver]))
+        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([.builtInSpeaker]))
+        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([]))
+        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.headphones]))
+        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.bluetoothHFP]))
+        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.carAudio]))
     }
 
     // MARK: Calls from Hermes in CallKit

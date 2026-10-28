@@ -6,6 +6,7 @@
 //  exercised with deterministic capture, playback, and gateway test doubles.
 //
 
+import AVFAudio
 import Foundation
 
 enum VoiceConversationState: Equatable {
@@ -378,10 +379,23 @@ enum VoiceEarpieceCalls {
 
     /// The proximity sensor turns the screen off against the ear while a
     /// call the user started runs on this phone (on screen or minimised)
-    /// and plays from the earpiece, not the loudspeaker. A call from Hermes
-    /// is left to CallKit, whose Speaker button Conduit doesn't track.
-    static func monitorsProximity(enabled: Bool, callOnPhone: Bool, speakerChosen: Bool, inNativeCall: Bool) -> Bool {
-        enabled && callOnPhone && !speakerChosen && !inNativeCall
+    /// and plays from the earpiece: not the loudspeaker, and not
+    /// headphones, Bluetooth or the car. A call from Hermes is left to
+    /// CallKit, whose Speaker button Conduit doesn't track.
+    static func monitorsProximity(
+        enabled: Bool,
+        callOnPhone: Bool,
+        speakerChosen: Bool,
+        inNativeCall: Bool,
+        playsElsewhere: Bool
+    ) -> Bool {
+        enabled && callOnPhone && !speakerChosen && !inNativeCall && !playsElsewhere
+    }
+
+    /// Outputs that take the audio off the phone itself, for
+    /// `monitorsProximity`'s `playsElsewhere`.
+    static func playsElsewhere(_ outputs: [AVAudioSession.Port]) -> Bool {
+        outputs.contains { $0 != .builtInReceiver && $0 != .builtInSpeaker }
     }
 }
 
