@@ -1367,6 +1367,42 @@ Read Aloud and live voice read-back · chat list previews and quotes
 
 **Checked:** 2026-10-23, at #1175.
 
+## A chat while it opens
+
+A chat that's opened again shows what it had at once, while Hermes sends
+the rest, instead of a blank chat.
+
+**Siblings:** chats and project chats · Bot Chat · group rooms · a cold
+launch and a chat picked in the saved Chats list (the same read-only copy) ·
+iPad and Mac windows (the same chat view) · Settings' Data handling caption ·
+Watch and CarPlay (not needed: neither shows a transcript)
+
+| Opening | Shows while it loads | Kept |
+|---|---|---|
+| A chat or project chat | its saved copy (newest 120 rows) | on the phone, the last 20 chats left per dashboard and profile; the last 8 read or saved also in memory |
+| A Bot Chat | the copy kept when it was left (after a `/new`, the compacted chat as it showed) | in memory, per dashboard and bot, one per bot, up to 120 rows |
+| A group room | the events it had | in memory, per dashboard and room, up to 400 events, until the room leaves the list |
+| A chat never opened | nothing, as before | not applicable |
+
+**Code**
+- Chats: `Conduit/Services/AppState.swift` (performSessionOpenNotingRefusal, presentSavedCopyWhileOpening, recordOfflineChatCopy), `Conduit/Services/OfflineChatCache.swift` (loadTranscript, keptTranscripts), `Conduit/Views/OfflineChatTranscriptView.swift`, `Conduit/Views/ChatView.swift` (the copy's overlay)
+- Bot Chat: `Conduit/Services/AppState.swift` (keepBotChatCopy, presentKeptBotChatCopy, keptBotChatCopies)
+- Group rooms: `Conduit/Services/AppState.swift` (openGroupRoom, parkActiveRoomSend, keptRoomReplays)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`
+
+**Rulings**
+- What shows while a chat opens is presentation only: it never enters the live transcript, so approvals, paging and resume never read it, and the live transcript replaces it wholesale (2026-10-27, #1404, Eric picked this over seeding the live transcript or keeping chat views alive).
+- Copies are kept per dashboard and profile (Bot Chat: per bot), so another profile's history never shows (2026-10-27, #1404).
+
+**Open gaps**
+- A chat whose live transcript lands somewhere other than its newest row (an unread reply, a restored reading place) moves there at the handover.
+- Bot Chat copies and group room events are memory only, so they don't outlive Conduit being stopped.
+- Settings' Data handling caption says recent conversations are kept so Conduit opens straight to them while it connects. It doesn't mention reopening, because what's kept on the device hasn't changed.
+- The first open of a chat after launch reads its file on the main thread (repeat opens come from memory); kept as is unless it shows in profiling (#1404).
+- While the copy is up, VoiceOver reads its rows with no "opening" announcement; the header and composer say Conduit is connecting, as for a chat picked in the saved list (#1404).
+
+**Checked:** 2026-10-27, #1404.
+
 ## Composer drafts
 
 Unsent words, files and a quoted reply wait in the composer they were typed

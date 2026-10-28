@@ -1110,6 +1110,8 @@ final class AppState: ObservableObject {
     /// A chat tapped in the saved list: it opens once the live list lands,
     /// ahead of the automatic resume.
     private var chatPickedFromSavedList: SavedChatListPick?
+    /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
+    private var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
     /// The scope whose list in memory came from Hermes after the saved files
     /// were last wiped, and so may be saved.
     private var savableChatListScope: WidgetWorkspaceID?
@@ -5264,6 +5266,7 @@ final class AppState: ObservableObject {
         lastPresentationCacheFlushDate = Date()
         cacheMessagePresentation(for: sessionIDs)
         recordOfflineChatCopy()
+        keepBotChatCopy()
     }
 
     // MARK: - Offline chat cache (#99)
@@ -5302,7 +5305,10 @@ final class AppState: ObservableObject {
               turnState != .synchronizing,
               !messages.isEmpty,
               let dashboardID = activeDashboardID,
-              let identities = offlineChatIdentities() else { return }
+              let identities = offlineChatIdentities(),
+              // A Bot Chat keeps no copy on the phone, even when a stray row
+              // of it is in the workspace's list (`keepBotChatCopy` keeps it).
+              botStoreProfile(forSessionIDs: Array(identities)) == nil else { return }
         offlineChatCache.record(
             dashboardID: dashboardID,
             profile: activeProfile,
@@ -5624,6 +5630,97 @@ final class AppState: ObservableObject {
         )
     }
 
+    /// A chat opened while connected shows its saved copy until its own
+    /// transcript lands, as a chat picked in the saved list does, so going
+    /// back to a chat never shows it blank first (#1352). A chat with no
+    /// copy opens as before, and so does one already picked in the saved
+    /// list (its copy is up).
+    private func presentSavedCopyWhileOpening(_ session: SessionSummary, openedAs sessionID: String) {
+        guard let dashboardID = activeDashboardID else { return }
+        var ids = Set(session.nestingIDs)
+        ids.insert(sessionID)
+        // A Bot Chat's row can turn up in the workspace's list (a stray from
+        // older server data): its copy is the one kept in memory, never a file.
+        guard botStoreProfile(forSessionIDs: Array(ids)) == nil else { return }
+        if let picked = offlineChatPresentation?.picked, !picked.sessionIDs.isDisjoint(with: ids) { return }
+        let durableID = session.storedSessionId ?? session.id
+        guard let saved = offlineChatCache.loadTranscript(durableID, dashboardID: dashboardID, profile: activeProfile) else {
+            return
+        }
+        offlineChatPresentation = OfflineChatPresentation(
+            dashboardID: dashboardID,
+            profile: activeProfile,
+            snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+            displayedTranscript: saved,
+            picked: OfflineChatPresentation.PickedChat(title: session.title, sessionIDs: ids, durableSessionID: durableID)
+        )
+    }
+
+    /// A Bot Chat has no row of its own, so it keeps no copy on the phone:
+    /// the one on screen is kept in memory when it's left, by dashboard and
+    /// bot, to show while it opens again (#1352).
+    private struct KeptBotChatCopy {
+        let sessionIDs: Set<String>
+        let transcript: OfflineCachedTranscript
+    }
+
+    private static func keptBotChatCopyKey(dashboardID: UUID, bot: String) -> String {
+        "\(dashboardID.uuidString)|\(bot)"
+    }
+
+    /// Keeps the Bot Chat on screen, as `recordOfflineChatCopy` saves any
+    /// other chat: connected, authoritative rows only.
+    private func keepBotChatCopy() {
+        guard isConnected,
+              offlineChatPresentation == nil,
+              turnState != .synchronizing,
+              let dashboardID = activeDashboardID,
+              let sessionID = activeSessionId,
+              let identities = offlineChatIdentities(),
+              let bot = botStoreProfile(forSessionIDs: Array(identities.union([sessionID]))) else { return }
+        let rows = messages.compactMap(OfflineCachedMessage.init)
+            .suffix(OfflineChatCacheStore.maxMessagesPerTranscript)
+        guard !rows.isEmpty else { return }
+        keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)] = KeptBotChatCopy(
+            sessionIDs: identities.union([sessionID]),
+            transcript: OfflineCachedTranscript(
+                sessionID: sessionID,
+                title: activeSessionTitle,
+                savedAt: Date(),
+                messages: Array(rows)
+            )
+        )
+    }
+
+    /// `presentSavedCopyWhileOpening` for a Bot Chat: its kept copy, when
+    /// the chat being opened is one of the ids it was kept under. It is what
+    /// was on screen when the chat was left, a /new's compaction included.
+    private func presentKeptBotChatCopy(bot: String, openedAs sessionID: String, title: String?) {
+        guard let dashboardID = activeDashboardID,
+              let kept = keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)],
+              kept.sessionIDs.contains(sessionID) else { return }
+        // Under the id it opens as, the Bot Chat's own: the one it was kept
+        // under was that run's runtime id, and words typed while it opens
+        // must keep to a draft the chat finds again.
+        let transcript = OfflineCachedTranscript(
+            sessionID: sessionID,
+            title: kept.transcript.title,
+            savedAt: kept.transcript.savedAt,
+            messages: kept.transcript.messages
+        )
+        offlineChatPresentation = OfflineChatPresentation(
+            dashboardID: dashboardID,
+            profile: activeProfile,
+            snapshot: OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+            displayedTranscript: transcript,
+            picked: OfflineChatPresentation.PickedChat(
+                title: title ?? kept.transcript.title,
+                sessionIDs: kept.sessionIDs.union([sessionID]),
+                durableSessionID: sessionID
+            )
+        )
+    }
+
     /// The chat picked in the saved list for this scope, as the id to open it
     /// by: its live row's when the live list has it, else its saved durable
     /// id. Forgotten once taken; a pick from another scope is dropped.
@@ -5682,8 +5779,10 @@ final class AppState: ObservableObject {
     private func wipeOfflineChatCache(dashboardID: UUID?) {
         if let dashboardID {
             offlineChatCache.removeDashboard(dashboardID)
+            keptBotChatCopies = keptBotChatCopies.filter { !$0.key.hasPrefix("\(dashboardID.uuidString)|") }
         } else {
             offlineChatCache.removeAll()
+            keptBotChatCopies.removeAll()
         }
         // Chat pictures kept on the phone go with the chats. Their files are
         // named by a hash, so they cannot be told apart by server.
@@ -5730,6 +5829,7 @@ final class AppState: ObservableObject {
         // on other dashboards. Keep their files rather than rewriting only
         // the messages currently loaded in memory.
         offlineChatCache.removeSavedChats()
+        keptBotChatCopies.removeAll()
         TranscriptImageCache.purge()
         TranscriptPictureMemory.forgetAll()
         // The summaries describing runs of steps go with the chats.
@@ -10845,6 +10945,10 @@ final class AppState: ObservableObject {
     private var parkedRoomOutboxes: [String: GroupRoomOutbox] = [:]
     /// Unsent room composer text, keyed like `parkedRoomOutboxes`.
     private var groupRoomDrafts: [String: String] = [:]
+    /// The events of rooms left this run, keyed like `parkedRoomOutboxes`:
+    /// a room opened again shows them at once while its tail loads, and the
+    /// tail replaces them (#1352).
+    private var keptRoomReplays: [String: GroupRoomReplay] = [:]
     /// The files staged in a room's composer, kept with its text. Their
     /// local copies are deleted when the draft is dropped.
     private var groupRoomAttachments: [String: [Attachment]] = [:]
@@ -10936,6 +11040,7 @@ final class AppState: ObservableObject {
         closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
         parkedRoomOutboxes.removeAll()
         groupRoomDrafts.removeAll()
+        keptRoomReplays.removeAll()
         dropRoomAttachments { _ in true }
         // A send still awaiting its reply belongs to the outgoing identity;
         // its defer's removal is a no-op once the key is gone.
@@ -10946,10 +11051,14 @@ final class AppState: ObservableObject {
         "\(dashboardID.uuidString)|\(roomID)"
     }
 
-    /// Move the open room's pending send (if any) into the parked store.
+    /// Move the open room's pending send (if any) into the parked store, and
+    /// keep its events to show when it opens again.
     private func parkActiveRoomSend() {
         guard let surface = activeRoomSurface else { return }
         let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        if activeRoomReplay.roomID == surface.room.roomID, !activeRoomReplay.events.isEmpty {
+            keptRoomReplays[key] = activeRoomReplay
+        }
         if groupRoomOutbox.pending != nil {
             parkedRoomOutboxes[key] = groupRoomOutbox
         } else {
@@ -10967,6 +11076,7 @@ final class AppState: ObservableObject {
         }
         parkedRoomOutboxes = parkedRoomOutboxes.filter { !isGone($0.key) }
         groupRoomDrafts = groupRoomDrafts.filter { !isGone($0.key) }
+        keptRoomReplays = keptRoomReplays.filter { !isGone($0.key) }
         dropRoomAttachments(where: isGone)
     }
 
@@ -10986,6 +11096,7 @@ final class AppState: ObservableObject {
             let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
             parkedRoomOutboxes.removeValue(forKey: key)
             groupRoomDrafts.removeValue(forKey: key)
+            keptRoomReplays.removeValue(forKey: key)
             dropRoomAttachments { $0 == key }
         }
         closeRoomSurface(parkingPendingSend: false)
@@ -11274,7 +11385,8 @@ final class AppState: ObservableObject {
         // A quote the room being left never took stays with it.
         if activeRoomSurface?.room.roomID != room.roomID { roomQuoteRequest = nil }
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
-        activeRoomReplay = GroupRoomReplay(roomID: room.roomID)
+        activeRoomReplay = keptRoomReplays[Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)]
+            ?? GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
         roomApprovalAnswers = [:]
         // A send parked when this room was left comes back with its retry
@@ -13607,6 +13719,7 @@ final class AppState: ObservableObject {
         // The outgoing dashboard's chat and Chats list as they show now are
         // what the next visit there opens to.
         recordOfflineChatCopy()
+        keepBotChatCopy()
         recordSavedChatList()
         selectDashboardTarget(id)
         rememberDashboardURL(dashboard.normalizedURL)
@@ -22898,9 +23011,20 @@ final class AppState: ObservableObject {
         setActiveSessionState(id: sessionId)
         keepDelegateAgents(of: acceptedSessionIDs)
         messages = []
+        // A chat with a saved copy shows it while Hermes sends the transcript
+        // (#1352): a Bot Chat the copy kept when it was left, any other the
+        // one on the phone.
+        // A known Bot Chat opened the ordinary way (a notification, a link)
+        // is still the bot's: the registry names it.
+        if let bot = conversationProfile ?? botConversationProfile(for: sessionId) {
+            presentKeptBotChatCopy(bot: bot, openedAs: sessionId, title: preferredTitle)
+        } else if let listedSession {
+            presentSavedCopyWhileOpening(listedSession, openedAs: sessionId)
+        }
         // Explicit navigation owns the chat surface from here. A chat picked
-        // in the saved list keeps its saved copy up until its own transcript
-        // replaces it (`messages`' didSet), rather than blanking first.
+        // in the saved list, or opened with a saved copy, keeps that copy up
+        // until its own transcript replaces it (`messages`' didSet), rather
+        // than blanking first.
         if offlineChatPresentation?.picked?.sessionIDs.contains(sessionId) != true {
             dismissOfflineChatPresentation()
         }
@@ -23656,6 +23780,9 @@ final class AppState: ObservableObject {
         let previousSessionID = activeSessionId
         let previousTitle = activeSessionTitle
         cacheMessagePresentation()
+        // The chat being left shows as it is now when it's opened again.
+        recordOfflineChatCopy()
+        keepBotChatCopy()
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
         let previousTurnState = turnState

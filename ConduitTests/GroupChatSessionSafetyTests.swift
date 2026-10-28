@@ -319,6 +319,58 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A room opened again shows the events it had at once, while its tail
+    /// loads, and the tail replaces them (#1352).
+    func testReopenedRoomShowsItsEventsWhileItsTailLoads() async throws {
+        final class LogBox {
+            var events = 1
+            var gate: ControlledSuspension?
+        }
+        let box = LogBox()
+        let room = self.room()
+        func message(_ seq: Int) -> GroupEvent {
+            GroupDecoders.event(AnyCodable.from([
+                "room_id": room.roomID,
+                "seq": seq,
+                "event_id": "srv-\(seq)",
+                "kind": "message.user",
+                "actor": ["kind": "user", "id": "human"],
+                "payload": ["text": "hello \(seq)", "thread_id": "main"],
+                "created_at": Double(seq),
+            ]))!
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                if let gate = box.gate { await gate.suspend() }
+                let events = (1...box.events).map(message).filter { $0.seq > sinceSeq }
+                return GroupLogPage(events: events, cursor: box.events, latestSeq: box.events, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1])
+        appState.closeGroupRoom()
+
+        box.events = 2
+        let gate = ControlledSuspension()
+        box.gate = gate
+        let reopening = Task { @MainActor in await appState.openGroupRoom(room) }
+        await gate.waitUntilSuspended()
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1], "What it had shows while the tail loads")
+
+        box.gate = nil
+        gate.resume()
+        await reopening.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2])
+        appState.closeGroupRoom()
+    }
+
     /// A dictation Retry that lands after its room was left: the words go
     /// after the room's kept draft and are there on reopen.
     func testRetriedDictationWordsReachALeftRoomsDraft() async throws {

@@ -292,6 +292,44 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNotNil(store.loadTranscript("stored-a", dashboardID: dashboard, profile: "work"), "Another profile's chat of the same id stays")
     }
 
+    /// A copy just saved or read is kept in memory, so opening its chat
+    /// again doesn't read the file (#1352), and every wipe that removes the
+    /// file forgets it too.
+    func testKeptCopiesGoWithTheirFiles() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let other = UUID()
+        let row = [ChatMessage(id: "m", role: .user, content: "hi", timestamp: "1")]
+        func save(_ id: String, _ dashboardID: UUID) {
+            store.record(dashboardID: dashboardID, profile: "default", sessionID: id, title: id, messages: row, sessions: [session(id)])
+        }
+        func copy(_ id: String, _ dashboardID: UUID) -> OfflineCachedTranscript? {
+            store.loadTranscript(id, dashboardID: dashboardID, profile: "default")
+        }
+
+        save("a", dashboard)
+        try FileManager.default.removeItem(at: store.transcriptFileURL("a", dashboardID: dashboard, profile: "default"))
+        XCTAssertEqual(copy("a", dashboard)?.messages.map(\.id), ["m"], "Read from memory, not the file")
+
+        store.removeTranscripts(sessionIDs: ["a"], dashboardID: dashboard, profile: "default")
+        XCTAssertNil(copy("a", dashboard))
+
+        save("b", dashboard)
+        save("c", other)
+        store.removeDashboard(dashboard)
+        XCTAssertNil(copy("b", dashboard))
+        XCTAssertNotNil(copy("c", other))
+
+        save("d", dashboard)
+        store.removeSavedChats()
+        XCTAssertNil(copy("c", other))
+        XCTAssertNil(copy("d", dashboard))
+
+        save("e", dashboard)
+        store.removeAll()
+        XCTAssertNil(copy("e", dashboard))
+    }
+
     /// The last chat saved being deleted leaves no chat to open to.
     func testRemovingTheOnlySavedChatClearsTheChatALaunchOpensTo() throws {
         let store = makeStore()
@@ -1385,6 +1423,147 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(opened.ids.contains("elsewhere"))
     }
 
+    /// Going back to a chat shows its saved copy at once while Hermes sends
+    /// its transcript, instead of a blank chat, and the live transcript
+    /// replaces it wholesale (#1352).
+    func testAChatOpenedAgainShowsItsSavedCopyUntilItsTranscriptLands() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gated = false
+        let live = [session("stored-a"), session("stored-b")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    // Only the first open of it waits: the gate holds one
+                    // suspension, and a later one would never be resumed.
+                    guard sessionID == "stored-a", !gated else { return }
+                    gated = true
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        // Connected through the seams, with stored-b on screen.
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+        seedCopy(store, dashboard: dashboard)
+
+        let opening = Task { @MainActor in await appState.openSession("stored-a") }
+        await gate.waitUntilSuspended()
+
+        let copy = try XCTUnwrap(appState.offlineChatPresentation)
+        XCTAssertEqual(copy.displayedMessages.map(\.id), ["u1", "a1"])
+        XCTAssertTrue(appState.showsOfflineChatCopy)
+        XCTAssertEqual(appState.displayedChatTitle, "stored-a")
+        XCTAssertTrue(appState.messages.isEmpty, "The copy never feeds the live transcript")
+
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertNil(appState.offlineChatPresentation)
+        XCTAssertEqual(appState.messages.map(\.id), ["live-stored-a"])
+    }
+
+    /// A Bot Chat keeps no copy on the phone; the one left this run shows
+    /// while it opens again, and only while it is still the bot's chat.
+    func testABotChatOpenedAgainShowsTheCopyKeptWhenItWasLeft() async throws {
+        useInMemoryKeychain()
+        var opens = 0
+        var gate: ControlledSuspension?
+        let (appState, _, _) = makeAppState(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSessionWithProfile: { _, _, _, profile in
+                opens += 1
+                if let gate { await gate.suspend() }
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime-\(opens)",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [ChatMessage(id: "\(bot)-reply-\(opens)", role: .assistant, content: "Hi", timestamp: "1")],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        appState.showLogin = false
+        addTeardownBlock { appState.client?.disconnect() }
+        let atlas = botProfile("atlas")
+
+        let openedAtlas = await appState.openBotChat(for: atlas)
+        let openedScout = await appState.openBotChat(for: botProfile("scout"))
+        XCTAssertTrue(openedAtlas)
+        XCTAssertTrue(openedScout)
+
+        let suspension = ControlledSuspension()
+        gate = suspension
+        let reopening = Task { @MainActor in await appState.openBotChat(for: atlas) }
+        await suspension.waitUntilSuspended()
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.map(\.id), ["atlas-reply-1"])
+        XCTAssertEqual(appState.offlineChatPresentation?.composerSessionID, "atlas-chat",
+                       "Words typed while it opens keep to the Bot Chat's own draft, not a runtime id")
+        XCTAssertTrue(appState.messages.isEmpty, "The copy never feeds the live transcript")
+
+        gate = nil
+        suspension.resume()
+        let reopened = await reopening.value
+        XCTAssertTrue(reopened)
+        XCTAssertNil(appState.offlineChatPresentation)
+        XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
+    }
+
+    /// A chat with no saved copy opens as it always has.
+    func testAChatWithNoSavedCopyOpensWithoutOne() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gated = false
+        let live = [session("stored-a"), session("stored-b"), session("stored-c")]
+        let opened = OpenedChats()
+        let (appState, store, dashboard) = makeAppState(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    // Only the first open of it waits: the gate holds one
+                    // suspension, and a later one would never be resumed.
+                    guard sessionID == "stored-c", !gated else { return }
+                    gated = true
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        // Connected through the seams, with stored-b on screen.
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+        seedCopy(store, dashboard: dashboard)
+
+        let opening = Task { @MainActor in await appState.openSession("stored-c") }
+        await gate.waitUntilSuspended()
+        XCTAssertNil(appState.offlineChatPresentation)
+        XCTAssertTrue(appState.messages.isEmpty)
+
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertEqual(appState.messages.map(\.id), ["live-stored-c"])
+    }
+
     /// A profile switch lists the target profile's rows as they showed last
     /// time until its own list lands, and saves the outgoing profile's.
     func testProfileSwitchListsTheTargetsSavedRowsUntilItsOwnListLands() async throws {
@@ -2183,7 +2362,8 @@ final class OfflineChatCacheTests: XCTestCase {
     /// chat open is recorded in `opened`.
     private func connectedLifecycle(
         catalog: @escaping @MainActor (String) async -> [SessionSummary],
-        opened: OpenedChats
+        opened: OpenedChats,
+        beforeOpen: @escaping @MainActor (String) async -> Void = { _ in }
     ) -> ChatResumeLifecycleOperations {
         ChatResumeLifecycleOperations(
             connectClient: { _ in },
@@ -2191,6 +2371,7 @@ final class OfflineChatCacheTests: XCTestCase {
             mintTicket: { _ in "profile-ticket" },
             openSession: { _, sessionID, _ in
                 opened.ids.append(sessionID)
+                await beforeOpen(sessionID)
                 return SessionResumeResult(
                     sessionId: sessionID,
                     messages: [ChatMessage(id: "live-\(sessionID)", role: .assistant, content: "Live", timestamp: "9")],
@@ -2270,6 +2451,24 @@ final class OfflineChatCacheTests: XCTestCase {
                 ChatMessage(id: "a1", role: .assistant, content: "Answer", timestamp: "2"),
             ],
             sessions: [session("stored-a"), session("stored-b")]
+        )
+    }
+
+    private func botProfile(_ name: String) -> BotProfile {
+        BotProfile(
+            name: name,
+            botTitle: nil,
+            displayName: name,
+            profileDescription: "",
+            model: nil,
+            provider: nil,
+            hasAvatar: false,
+            isPinned: false,
+            isHiddenByMeta: false,
+            appearanceColor: nil,
+            canonicalSession: nil,
+            lastActive: nil,
+            lastPreview: nil
         )
     }
 
