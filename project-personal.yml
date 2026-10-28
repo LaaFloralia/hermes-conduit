@@ -1,0 +1,36 @@
+# xcodegen overlay for the LAA fork's own-iPhone build:
+# `scripts/laa/install-on-iphone.sh` generates it, signs it with your team
+# and installs it.
+#
+# The iPhone app alone, signed automatically by your own team (a free Apple
+# ID works; its builds expire after 7 days), installed beside the App Store
+# Conduit: its own bundle ID and name, and none of the capabilities a
+# personal team can't sign (push, app groups, HealthKit, CarPlay, location
+# push). So no notifications, calls from Hermes, widgets or Watch here; the
+# App Store app keeps those. The Watch app and the extensions are left out,
+# as in project-tests.yml.
+include:
+  - path: project.yml
+settings:
+  base:
+    CODE_SIGN_STYLE: Automatic
+    # Passed on the command line (DEVELOPMENT_TEAM=...) by the script.
+    DEVELOPMENT_TEAM: ""
+targets:
+  Conduit:
+    dependencies:REPLACE:
+      - package: WebRTC
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.conduit
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_ENTITLEMENTS: ""
+        PROVISIONING_PROFILE_SPECIFIER: ""
+    postBuildScripts:
+      # The home screen name, so it isn't mistaken for the App Store app.
+      - name: Personal build name
+        basedOnDependencyAnalysis: false
+        script: |
+          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleDisplayName" "$plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${CONDUIT_PERSONAL_NAME:-Conduit LAA}" "$plist"
