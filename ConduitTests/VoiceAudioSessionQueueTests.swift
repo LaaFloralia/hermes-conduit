@@ -63,6 +63,20 @@ final class VoiceAudioSessionQueueTests: XCTestCase {
         XCTAssertEqual(backend.ops, [.category(.playAndRecord)])
     }
 
+    func testSpeakerButtonChangesSupersedeAQueuedDeactivation() throws {
+        // A call screen's Speaker button tapped just as a classic turn
+        // released the session: the deactivation must not land after it.
+        let gate = holdQueue()
+        try session.setActive(false, options: .notifyOthersOnDeactivation)
+        releaseLater(gate)
+
+        try session.overrideOutputToSpeaker()
+        try session.clearOutputOverride()
+        drainQueue()
+
+        XCTAssertEqual(backend.ops, [.speaker, .noOverride])
+    }
+
     func testDeactivationNeverLandsAfterANewerActivation() throws {
         // Unforced timing: whichever way the queue runs, the session ends
         // active.
@@ -170,6 +184,7 @@ private final class FakeAudioSessionBackend: VoiceAudioSessionBackend, @unchecke
         case activate
         case deactivate(AVAudioSession.SetActiveOptions)
         case speaker
+        case noOverride
     }
 
     private let lock = NSLock()
@@ -213,6 +228,10 @@ private final class FakeAudioSessionBackend: VoiceAudioSessionBackend, @unchecke
 
     func overrideOutputToSpeaker() throws {
         record(.speaker)
+    }
+
+    func clearOutputOverride() throws {
+        record(.noOverride)
     }
 
     private func record(_ op: Op) {

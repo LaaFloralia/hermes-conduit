@@ -361,6 +361,30 @@ enum VoiceScreenAwake {
     }
 }
 
+/// "Hold calls to your ear": a device-wide choice (not per profile) to have
+/// the voice conversations the user starts play like a phone call, from the
+/// earpiece, so nobody nearby hears them. The call screen's Speaker button
+/// moves a call to the loudspeaker; headphones, Bluetooth and the car keep
+/// their own route. Holding the phone to the ear turns the screen off. On
+/// by default in this build: it is why the build exists.
+enum VoiceEarpieceCalls {
+    static let preferenceKey = "conduit.voice.earpieceCalls"
+    static let defaultValue = true
+
+    /// The same value the views read through `@AppStorage`.
+    static var isOn: Bool {
+        UserDefaults.standard.object(forKey: preferenceKey) as? Bool ?? defaultValue
+    }
+
+    /// The proximity sensor turns the screen off against the ear while a
+    /// call the user started runs on this phone (on screen or minimised)
+    /// and plays from the earpiece, not the loudspeaker. A call from Hermes
+    /// is left to CallKit, whose Speaker button Conduit doesn't track.
+    static func monitorsProximity(enabled: Bool, callOnPhone: Bool, speakerChosen: Bool, inNativeCall: Bool) -> Bool {
+        enabled && callOnPhone && !speakerChosen && !inNativeCall
+    }
+}
+
 /// How hard the live call orb works the GPU (#432). It is a heavy
 /// Metal shader, so frames are spent only where they show: 60 fps while the
 /// assistant speaks, 30 the rest of the call, 30 throughout in Low Power

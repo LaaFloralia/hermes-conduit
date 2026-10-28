@@ -221,6 +221,7 @@ struct VoiceSettingsView: View {
     @State private var isApplyingDefaults = false
     @State private var microphonePermission: AVAudioApplication.recordPermission
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
+    @AppStorage(VoiceEarpieceCalls.preferenceKey) private var earpieceCalls = VoiceEarpieceCalls.defaultValue
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
     @AppStorage("conduit.voice.settingsAdvancedExpanded") private var advancedExpanded = false
@@ -1295,6 +1296,10 @@ struct VoiceSettingsView: View {
             }
             Toggle("Keep phone awake during voice conversations", isOn: $keepScreenAwake)
             Text("The screen stays on while a voice conversation is open, including the live voice modes. When off, the phone locks on its usual timer: live voice calls keep going in the background, and a classic voice conversation does too with Keep Listening When Locked on. Applies to this device.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle("Hold calls to your ear", isOn: $earpieceCalls)
+            Text("Voice conversations you start play from the earpiece, like a phone call, so people nearby don't hear them. Hold the phone to your ear and the screen turns off. Speaker in the call switches to the loudspeaker; headphones, Bluetooth and CarPlay keep their own route. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

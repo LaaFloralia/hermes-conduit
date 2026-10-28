@@ -457,6 +457,19 @@ struct LiveVoiceCallSheet: View {
     // MARK: Controls
 
     private var controls: some View {
+        // The Speaker button of "Hold calls to your ear" makes six, more
+        // than a small phone holds at full size.
+        ViewThatFits(in: .horizontal) {
+            controlRow
+            controlRow.dynamicTypeSize(.xSmall)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
+    }
+
+    private var controlRow: some View {
         HStack(alignment: .top, spacing: 0) {
             if phase == .failed {
                 LiveVoiceCallButton(symbol: "arrow.clockwise", title: AppLocalization.string("Try again"), action: onRetry)
@@ -474,6 +487,7 @@ struct LiveVoiceCallSheet: View {
                     action: onToggleMute
                 )
                 .disabled(!canMute)
+                LiveVoiceCallSpeakerButton()
                 LiveVoiceCallButton(
                     symbol: isSpeakerMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
                     title: isSpeakerMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
@@ -515,10 +529,6 @@ struct LiveVoiceCallSheet: View {
                 action: onEnd
             )
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 12)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
     }
 }
 

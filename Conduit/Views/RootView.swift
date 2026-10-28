@@ -209,6 +209,8 @@ struct MainView: View {
         ) { _, holds in
             UIApplication.shared.isIdleTimerDisabled = holds
         }
+        // "Hold calls to your ear": the screen goes off against the ear.
+        .modifier(EarpieceCallProximity())
         // A voice conversation on screen keeps the backdrop drifting, as a
         // running turn does (InteractionIdleState).
         .onChange(of: isVoiceConversationShown, initial: true) { _, shown in

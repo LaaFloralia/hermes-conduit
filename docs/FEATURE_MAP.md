@@ -677,10 +677,13 @@ Where the voice comes out, who owns the audio session, and what mutes what.
 echo-cancelling audio) · GPT-Live (WebRTC) · calls from Hermes (CallKit's
 Speaker button) · CarPlay · AirPods and Bluetooth · Read Aloud · the call
 screen's Mute and Silence · the minimised call bar · a Watch-answered call
-kept on the iPhone's headset (the Watch's Mute and End)
+kept on the iPhone's headset (the Watch's Mute and End) · Hold calls to your
+ear (LAA fork: the call screens' Speaker button, the proximity sensor, the
+Voice settings toggle)
 
 **Code**
-- Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
+- Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive, conversationConfiguration, setConversationSpeaker), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
+- Hold calls to your ear (LAA fork): `Conduit/Voice/VoiceTypes.swift` (VoiceEarpieceCalls), `Conduit/Views/EarpieceCallControls.swift` (LiveVoiceCallSpeakerButton, EarpieceCallProximity), `Conduit/Views/VoiceConversationSheet.swift` (v2Controls), `Conduit/Views/VoiceSettingsView.swift` (conversationSection)
 - Playback: `Conduit/Voice/AVSpeechPlaybackService.swift` (resumeOnFreshEngine), `Conduit/Voice/VoiceAudioEngineRecovery.swift`
 - Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
@@ -690,16 +693,17 @@ kept on the iPhone's headset (the Watch's Mute and End)
 
 **Rulings**
 - During a call from Hermes, CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148).
-- A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943).
+- A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943). LAA fork: with Hold calls to your ear on (the fork's default), a conversation the user starts plays from the earpiece instead; only the call screen's Speaker button moves it, the choice survives the classic turns' deactivations, and the next call starts on the earpiece again (LAA 2026-10-28).
 - Silence mutes the assistant's voice apart from the microphone; its speech is dropped, not held, and job news waits for unmute (2026-10-09, #488).
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
 - A call from Hermes answered on the Watch plays on the iPhone's headset when one is on there (AirPods, wired, never the car's); the Watch's Mute and End control it like a phone call's, and a mute from any of Conduit's own controls reaches the Watch (Eric 2026-10-24, #1225).
 
 **Open gaps**
 - Silence isn't on CarPlay or the minimised bar (#488).
+- LAA fork: the Speaker button isn't on the V1 classic sheet, the minimised bar or the Watch; a phone-style call the user starts isn't a CallKit call, so it has no Dynamic Island or lock-screen call screen.
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-10-28, LAA fork laa/earpiece-calls (Hold calls to your ear); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 

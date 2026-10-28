@@ -89,6 +89,10 @@ voice calls" section saying why, with Save Now to retry at once.
 
 Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call instead of ending it. The call keeps running, and a bar above the composer shows its state, with mute and end controls. When the call is attached to a chat, the bar also names that chat. Tapping the bar or swiping it up, or the composer's voice button, brings the sheet back. End (in the sheet or on the bar), a spoken goodbye, sign-out and server or profile changes still end the call. While minimised the screen can lock as usual; only the full sheet keeps the phone awake. Classic Voice is unchanged: swiping its sheet away still closes it.
 
+## Hold calls to your ear (LAA fork)
+
+On by default in this fork (Settings → Voice → Conversation). A voice conversation you start, in any mode, plays from the earpiece like a phone call instead of the loudspeaker, so people nearby don't hear it. Holding the phone to your ear turns the screen off. The call screen's Speaker button moves the call to the loudspeaker and back; the choice lasts until the call ends, and the next call starts on the earpiece again. Headphones, Bluetooth and CarPlay keep their own route. Calls from Hermes are unchanged: they already start on the earpiece, and CallKit's Speaker button owns the route. On the earpiece the microphone follows the speaker's rules (see Talking over the agent): where it closes while the agent talks, Interrupt cuts in.
+
 ## GPT-Live billing: ChatGPT plan or API key
 
 GPT-Live's settings have a **Billing** choice, per profile:

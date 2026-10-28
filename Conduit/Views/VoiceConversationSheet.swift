@@ -695,6 +695,7 @@ extension VoiceConversationSheet {
                 )
                 .disabled(controller.state == .transcribing)
             }
+            LiveVoiceCallSpeakerButton()
             LiveVoiceCallButton(
                 symbol: controller.isOutputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill",
                 title: controller.isOutputMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
