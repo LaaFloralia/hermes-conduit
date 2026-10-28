@@ -1367,6 +1367,38 @@ Read Aloud and live voice read-back · chat list previews and quotes
 
 **Checked:** 2026-10-23, at #1175.
 
+## Attaching files
+
+Photos, camera shots and any other file go into the composer as
+attachments, staged on the device and sent with the next message.
+
+**Siblings:** chat composer (chats, project chats, Bot Chat) · the full
+editor · group rooms · the composer's text field (pasted pictures, files
+dropped on it) · README.md's feature list
+
+| Way in | Chat composer and its full editor | Group room and its full editor |
+|---|---|---|
+| Attach › Camera, Photo Library, Document | yes | yes, with a plugin that stores room files |
+| A picture pasted in the field | yes, one picture | no |
+| Files dragged onto the chat, the room, the field or the full editor | yes | yes, with a plugin that stores room files |
+
+**Code**
+- Staging and its limits: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, AttachmentTypePolicy, AttachmentStaging's stageCopy and finishStaging)
+- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (AttachmentDrop, attachmentDropTarget), `Conduit/Views/ChatView.swift` and `Conduit/Views/GroupChatView.swift` (the drop targets), `Conduit/Services/AppState.swift` (dropIntoComposer, dropIntoRoomComposer), `Conduit/Views/Components/ComposerFullEditor.swift` (onDropFiles)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (attachmentButton, handleDocumentSelection, handleDroppedFiles, handlePastedImage), `Conduit/Views/Components/ComposerPasteTextView.swift` (paste(itemProviders:), onDroppedFiles)
+- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (attachButton, importDocuments, importDroppedFiles, finishImport)
+- Tests: `ConduitTests/ComposerAttachmentPolicyTests.swift`, `ConduitTests/ComposerPasteTextViewTests.swift`
+
+**Rulings**
+- Every way in stages the same way: copied into the staging folder, size checked against the device's limit before it is read, images providers can't read re-encoded as JPEG, and anything left out named in the composer's notice. Nothing is sent until the user presses Send (2026-10-28, #1411).
+- A drop attaches files and leaves the rest: words dragged from another app go into the draft only when dropped on the field, and a link stays a link. Text counts as a file only when it comes as a named file. One picture dropped or pasted on the field keeps the picture paste; several items, or any other file, are staged like picked documents (2026-10-28, #1411, from #1408).
+- A locked chat composer takes no drop, as its Attach menu is off then; a room on a plugin that can't store its files says what fixes it, as its Attach menu does (2026-10-28, #1411).
+
+**Open gaps**
+- A folder dropped from Finder isn't attached, and nothing says why: the drop is just refused.
+
+**Checked:** 2026-10-28, #1411 (drag-and-drop attachments, issue #1408).
+
 ## A chat while it opens
 
 A chat that's opened again shows what it had at once, while Hermes sends
@@ -1919,6 +1951,7 @@ message · the group room composer · the Settings caption for the limit
 - The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift`
+- Dropped files: `Conduit/Views/Components/AttachmentDrop.swift` (through AttachmentStaging.stageCopy, the Document picker's path)
 - Share extension: `Conduit/Services/AppState+ShareDraft.swift`
 - Ask Hermes About Screen: `Conduit/Intents/AskHermesAboutScreenIntent.swift`
 - Voice message: `Conduit/Services/AppState+VoiceMessage.swift`
@@ -1933,7 +1966,7 @@ message · the group room composer · the Settings caption for the limit
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
 - The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
 
-**Checked:** 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+**Checked:** 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
 ## Sending files in a chat
 
