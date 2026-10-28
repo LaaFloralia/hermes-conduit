@@ -1,0 +1,57 @@
+name: LAA personal build
+
+# The LAA fork's own-iPhone build (project-personal.yml) compiled for a
+# device, so the overlay, its bundle ID and the capabilities it leaves out
+# stay buildable. Unsigned: signing takes the team that installs it
+# (scripts/laa/install-on-iphone.sh).
+
+on:
+  push:
+    branches: [master, 'laa/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  device-build:
+    name: Personal build (device, unsigned)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate the personal project
+        run: xcodegen generate --spec project-personal.yml
+
+      - name: Build for a device, unsigned
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/personal-build.log"
+          if ! xcodebuild build -quiet \
+              -project Conduit.xcodeproj \
+              -scheme Conduit \
+              -configuration Release \
+              -destination 'generic/platform=iOS' \
+              -derivedDataPath build/personal \
+              CODE_SIGNING_ALLOWED=NO > "$log" 2>&1; then
+            grep -E "error:|BUILD FAILED" "$log" | head -n 60 || true
+            tail -n 40 "$log"
+            exit 1
+          fi
+          app=build/personal/Build/Products/Release-iphoneos/Conduit.app
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" -c "Print :CFBundleDisplayName" "$app/Info.plist"
+
+      - name: Upload the build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-build-log
+          path: ${{ runner.temp }}/personal-build.log
+          retention-days: 7

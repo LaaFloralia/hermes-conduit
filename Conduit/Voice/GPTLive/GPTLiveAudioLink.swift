@@ -227,12 +227,11 @@ final class SystemGPTLiveAudioSession: GPTLiveAudioSessionControlling {
     }
 
     func acquire() throws {
-        // In a call from Hermes, the call's policy: WebRTC applies this one
-        // itself, and `.defaultToSpeaker` there would take the speaker off
-        // the call screen's Speaker button (see `nativeCall`).
-        let configuration = coordinator.isInNativeCall
-            ? VoiceAudioSessionConfiguration.nativeCall
-            : VoiceAudioSessionConfiguration.capture
+        // In a call from Hermes or a phone-style call, the call's policy:
+        // WebRTC applies this one itself, and `.defaultToSpeaker` there
+        // would take the speaker off the call screen's Speaker button (see
+        // `nativeCall`).
+        let configuration = coordinator.conversationConfiguration
         let webRTC = RTCAudioSessionConfiguration.webRTC()
         webRTC.category = configuration.category.rawValue
         webRTC.mode = configuration.mode.rawValue

@@ -20,7 +20,10 @@ struct VoiceAudioSessionConfiguration: Equatable {
     /// option iOS sends a cleared override to the loudspeaker, not the
     /// earpiece, so the call screen's Speaker button could never turn the
     /// speaker off. The call starts on the earpiece, and only the button
-    /// moves it: CallKit never learns of a move Conduit makes.
+    /// moves it: CallKit never learns of a move Conduit makes. Also every
+    /// conversation's policy under "Hold calls to your ear"
+    /// (VoiceEarpieceCalls), where the call screen's own Speaker button
+    /// does the moving.
     static let nativeCall = Self(
         category: capture.category,
         mode: capture.mode,

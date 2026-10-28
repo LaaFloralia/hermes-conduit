@@ -472,6 +472,217 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertGreaterThanOrEqual(notifications, 2)
     }
 
+    // MARK: Calls held to the ear (VoiceEarpieceCalls)
+
+    private func makeEarpieceCoordinator() -> VoiceAudioSessionCoordinator {
+        VoiceAudioSessionCoordinator(session: session, earpieceCalls: { true })
+    }
+
+    func testCallsOffKeepTheLoudspeakerPolicy() throws {
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(coordinator.conversationConfiguration, .capture)
+        XCTAssertTrue(session.categoryCalls.last?.options.contains(.defaultToSpeaker) ?? false)
+    }
+
+    func testEarpieceCallsUseThePhoneCallPolicy() throws {
+        let coordinator = makeEarpieceCoordinator()
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(coordinator.conversationConfiguration, .nativeCall)
+        XCTAssertEqual(session.categoryCalls.last?.options, VoiceAudioSessionConfiguration.nativeCall.options,
+                       "with .defaultToSpeaker the call would play on the loudspeaker")
+        XCTAssertEqual(session.categoryCalls.last?.mode, .voiceChat)
+    }
+
+    func testAnEarpieceCallsReplyStaysOnTheEarpiece() throws {
+        let coordinator = makeEarpieceCoordinator()
+        let capture = try coordinator.acquire(.conversationCapture)
+        _ = try coordinator.acquire(.conversationPlayback)
+        coordinator.release(capture)
+        coordinator.ensureConversationSpeaker()
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
+    }
+
+    /// Wake listening and standalone speech leave the speaker on through
+    /// `.defaultToSpeaker`; only the Speaker button puts a call there.
+    func testAnEarpieceCallDoesNotInheritALeftoverSpeaker() throws {
+        session.isOutputOnBuiltInSpeaker = true
+        session.isOutputOnBuiltInReceiver = false
+        let coordinator = makeEarpieceCoordinator()
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
+    }
+
+    func testSpeakerButtonMovesAnEarpieceCallToTheSpeakerAndBack() throws {
+        let coordinator = makeEarpieceCoordinator()
+        _ = try coordinator.acquire(.conversationCapture)
+
+        coordinator.setConversationSpeaker(true)
+
+        XCTAssertTrue(coordinator.conversationSpeakerChosen)
+        XCTAssertEqual(session.speakerOverrides, 1)
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker)
+
+        coordinator.setConversationSpeaker(false)
+
+        XCTAssertFalse(coordinator.conversationSpeakerChosen)
+        XCTAssertEqual(session.overrideClears, 1)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
+    }
+
+    /// The override posts a route change, whose reassert must not override
+    /// again or change the category (which would clear it).
+    func testReassertAfterTheSpeakerButtonLeavesTheSpeakerAlone() throws {
+        session.reportsCurrentCategory = true
+        let coordinator = makeEarpieceCoordinator()
+        _ = try coordinator.acquire(.conversationCapture)
+        coordinator.setConversationSpeaker(true)
+        session.resetRecordings()
+
+        try coordinator.reassert()
+
+        XCTAssertTrue(session.categoryCalls.isEmpty)
+        XCTAssertEqual(session.speakerOverrides, 0)
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker)
+    }
+
+    /// Classic voice holds nothing while Hermes thinks, and that
+    /// deactivation drops the override: the choice brings it back.
+    func testSpeakerChoiceOutlastsTheDeactivationBetweenTurns() throws {
+        session.reportsCurrentCategory = true
+        let coordinator = makeEarpieceCoordinator()
+        let capture = try coordinator.acquire(.conversationCapture)
+        coordinator.setConversationSpeaker(true)
+        coordinator.release(capture)
+        XCTAssertEqual(session.deactivationCount, 1)
+        session.isOutputOnBuiltInSpeaker = false
+        session.isOutputOnBuiltInReceiver = true
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationPlayback)
+
+        XCTAssertTrue(session.categoryCalls.isEmpty, "the session already has the call's category")
+        XCTAssertEqual(session.speakerOverrides, 1)
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker)
+    }
+
+    func testSpeakerChoiceOnHeadphonesLeavesThemAlone() throws {
+        let coordinator = makeEarpieceCoordinator()
+        coordinator.setConversationSpeaker(true)
+        session.isOutputOnBuiltInReceiver = false
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.speakerOverrides, 0, "headphones, Bluetooth and the car keep their route")
+    }
+
+    func testSpeakerChoiceWaitsForTheNextAcquireWhileNothingHoldsTheSession() throws {
+        let coordinator = makeEarpieceCoordinator()
+        coordinator.setConversationSpeaker(true)
+        XCTAssertEqual(session.speakerOverrides, 0)
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertEqual(session.speakerOverrides, 1)
+    }
+
+    func testTheNextCallStartsOnTheEarpieceAgain() throws {
+        let coordinator = makeEarpieceCoordinator()
+        coordinator.setConversationSpeaker(true)
+
+        coordinator.conversationCallEnded()
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertFalse(coordinator.conversationSpeakerChosen)
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    func testSpeakerButtonLeavesACallFromHermesToCallKit() throws {
+        let coordinator = makeEarpieceCoordinator()
+        coordinator.configureForIncomingCall()
+        _ = try coordinator.acquire(.conversationCapture)
+
+        coordinator.setConversationSpeaker(true)
+
+        XCTAssertFalse(coordinator.conversationSpeakerChosen)
+        XCTAssertEqual(session.speakerOverrides, 0)
+    }
+
+    /// The last call's deactivation was dropped because the next call began
+    /// before it ran: its speaker override is still up, and must come off.
+    func testAStaleSpeakerOverrideComesOffWhenTheNextCallStarts() throws {
+        session.reportsCurrentCategory = true
+        let coordinator = makeEarpieceCoordinator()
+        let capture = try coordinator.acquire(.conversationCapture)
+        coordinator.setConversationSpeaker(true)
+        coordinator.release(capture)
+        coordinator.conversationCallEnded()
+        XCTAssertTrue(session.isOutputOnBuiltInSpeaker, "the mock keeps the override, as a dropped deactivation does")
+        session.resetRecordings()
+
+        _ = try coordinator.acquire(.conversationCapture)
+
+        XCTAssertTrue(session.categoryCalls.isEmpty, "the session already has the call's category")
+        XCTAssertEqual(session.overrideClears, 1)
+        XCTAssertTrue(session.isOutputOnBuiltInReceiver)
+    }
+
+    func testAFailedSpeakerChangeKeepsTheButtonTruthful() throws {
+        let coordinator = makeEarpieceCoordinator()
+        _ = try coordinator.acquire(.conversationCapture)
+        session.overrideError = VoiceAudioSessionMockError.configurationFailed
+
+        coordinator.setConversationSpeaker(true)
+
+        XCTAssertFalse(coordinator.conversationSpeakerChosen)
+
+        session.overrideError = nil
+        coordinator.setConversationSpeaker(true)
+        session.overrideError = VoiceAudioSessionMockError.configurationFailed
+        coordinator.setConversationSpeaker(false)
+
+        XCTAssertTrue(coordinator.conversationSpeakerChosen, "the call still plays on the speaker")
+    }
+
+    func testProximityFollowsAnEarpieceCallOnThePhone() {
+        func monitors(
+            enabled: Bool = true,
+            callOnPhone: Bool = true,
+            speakerChosen: Bool = false,
+            inNativeCall: Bool = false,
+            playsElsewhere: Bool = false
+        ) -> Bool {
+            VoiceEarpieceCalls.monitorsProximity(
+                enabled: enabled,
+                callOnPhone: callOnPhone,
+                speakerChosen: speakerChosen,
+                inNativeCall: inNativeCall,
+                playsElsewhere: playsElsewhere
+            )
+        }
+        XCTAssertTrue(monitors())
+        XCTAssertFalse(monitors(enabled: false))
+        XCTAssertFalse(monitors(callOnPhone: false))
+        XCTAssertFalse(monitors(speakerChosen: true))
+        XCTAssertFalse(monitors(inNativeCall: true))
+        XCTAssertFalse(monitors(playsElsewhere: true))
+    }
+
+    func testHeadphonesBluetoothAndTheCarPlayElsewhere() {
+        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([.builtInReceiver]))
+        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([.builtInSpeaker]))
+        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([]))
+        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.headphones]))
+        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.bluetoothHFP]))
+        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.carAudio]))
+    }
+
     // MARK: Calls from Hermes in CallKit
 
     func testNativeCallDropsDefaultToSpeakerSoTheSpeakerButtonCanTurnItOff() throws {
@@ -875,6 +1086,7 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         categoryCalls.removeAll()
         activationCalls.removeAll()
         speakerOverrides = 0
+        overrideClears = 0
     }
 
     var overrideError: Error?
@@ -908,6 +1120,18 @@ private final class MockVoiceAudioSession: VoiceAudioSessionControlling {
         speakerOverridden = true
         isOutputOnBuiltInSpeaker = true
         isOutputOnBuiltInReceiver = false
+    }
+
+    private(set) var overrideClears = 0
+
+    /// Back where the category puts it: the earpiece, with nothing
+    /// connected and no `.defaultToSpeaker`.
+    func clearOutputOverride() throws {
+        if let overrideError { throw overrideError }
+        overrideClears += 1
+        speakerOverridden = false
+        isOutputOnBuiltInSpeaker = false
+        isOutputOnBuiltInReceiver = true
     }
 
     func setCategory(

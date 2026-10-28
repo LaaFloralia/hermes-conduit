@@ -11,6 +11,7 @@
 //
 
 import AVFAudio
+import Combine
 import Foundation
 import OSLog
 import os
@@ -53,6 +54,9 @@ protocol VoiceAudioSessionControlling: AnyObject {
     /// Sends output to the loudspeaker; the override is cleared by
     /// CallKit's Speaker button, or by the next category change.
     func overrideOutputToSpeaker() throws
+    /// Drops a speaker override: output goes back where the category puts
+    /// it (the earpiece, without headphones, for a phone-style call).
+    func clearOutputOverride() throws
 }
 
 /// Defaults for session seams that never route: test doubles that don't
@@ -63,6 +67,7 @@ extension VoiceAudioSessionControlling {
     var isOutputOnBuiltInReceiver: Bool { false }
     func isConfigured(as configuration: VoiceAudioSessionConfiguration) -> Bool { false }
     func overrideOutputToSpeaker() throws {}
+    func clearOutputOverride() throws {}
 }
 
 /// The blocking AVAudioSession calls. `SystemVoiceAudioSession` makes them
@@ -75,6 +80,7 @@ protocol VoiceAudioSessionBackend: AnyObject, Sendable {
     ) throws
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws
     func overrideOutputToSpeaker() throws
+    func clearOutputOverride() throws
 }
 
 final class SharedAVAudioSessionBackend: VoiceAudioSessionBackend {
@@ -92,6 +98,10 @@ final class SharedAVAudioSessionBackend: VoiceAudioSessionBackend {
 
     func overrideOutputToSpeaker() throws {
         try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+    }
+
+    func clearOutputOverride() throws {
+        try AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
     }
 }
 
@@ -175,6 +185,11 @@ final class SystemVoiceAudioSession: VoiceAudioSessionControlling {
         let backend = self.backend
         try onQueue { try backend.overrideOutputToSpeaker() }
     }
+
+    func clearOutputOverride() throws {
+        let backend = self.backend
+        try onQueue { try backend.clearOutputOverride() }
+    }
 }
 
 /// Ownership token returned by `acquire`. Release is idempotent: releasing an
@@ -190,7 +205,7 @@ struct VoiceAudioLease: Equatable {
 }
 
 @MainActor
-final class VoiceAudioSessionCoordinator {
+final class VoiceAudioSessionCoordinator: ObservableObject {
     /// Shared instance: the underlying `AVAudioSession` is itself a
     /// process-global singleton, so one coordinator mirrors reality. Tests
     /// construct isolated instances with a mocked session seam.
@@ -198,7 +213,7 @@ final class VoiceAudioSessionCoordinator {
     /// must release leases on every terminal path (stop, cancellation,
     /// failure) — a lease still held at service deinit would leave a
     /// permanent owner entry here.
-    static let shared = VoiceAudioSessionCoordinator()
+    static let shared = VoiceAudioSessionCoordinator(earpieceCalls: { VoiceEarpieceCalls.isOn })
 
     /// The session policy currently applied to the system session, or nil
     /// while no audio intent is active. Nil means Conduit holds nothing, not
@@ -217,8 +232,21 @@ final class VoiceAudioSessionCoordinator {
 
     /// True from answering a call from Hermes in CallKit until the last
     /// call is gone: the conversation then uses the call's policy, whose
-    /// speaker the call screen can turn off.
-    private(set) var isInNativeCall = false
+    /// speaker the call screen can turn off. Published for the call
+    /// screens, which leave the Speaker button to CallKit then.
+    @Published private(set) var isInNativeCall = false
+
+    /// "Hold calls to your ear" (VoiceEarpieceCalls): a conversation the
+    /// user starts plays like a phone call, on the earpiece, rather than
+    /// the loudspeaker. Read at each transition, so a change applies from
+    /// the next one. A call from Hermes is always phone-style.
+    private let earpieceCalls: () -> Bool
+
+    /// The call screen's Speaker button in a phone-style conversation the
+    /// user started: on, the conversation plays on the loudspeaker until
+    /// they turn it off or the call ends (`conversationCallEnded`). A call
+    /// from Hermes keeps CallKit's own button instead.
+    @Published private(set) var conversationSpeakerChosen = false
     /// CallKit activated the call's audio and hasn't taken it back. The
     /// session is then CallKit's to keep active: activating it again from
     /// here (every acquire and every route change's reassert did) flipped
@@ -270,8 +298,19 @@ final class VoiceAudioSessionCoordinator {
     /// Optional injection instead of a default-constructed argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
     /// construct the MainActor-isolated `SystemVoiceAudioSession`.
-    init(session: VoiceAudioSessionControlling? = nil) {
+    init(session: VoiceAudioSessionControlling? = nil, earpieceCalls: @escaping () -> Bool = { false }) {
         self.session = session ?? SystemVoiceAudioSession()
+        self.earpieceCalls = earpieceCalls
+    }
+
+    /// Plays like a phone call: on the earpiece, the loudspeaker only by a
+    /// Speaker button (CallKit's, or the call screen's).
+    private var isPhoneStyleConversation: Bool { isInNativeCall || earpieceCalls() }
+
+    /// The conversation's session configuration. WebRTC applies it itself
+    /// for GPT-Live, so it reads the same choice.
+    var conversationConfiguration: VoiceAudioSessionConfiguration {
+        isPhoneStyleConversation ? .nativeCall : .capture
     }
 
     /// `onTakenOver` makes the owner one that gives way: it is called, on a
@@ -354,10 +393,12 @@ final class VoiceAudioSessionCoordinator {
     /// microphone stopped (barge-in off) could still land on the earpiece,
     /// and nothing put it back. Only from the earpiece, so headphones,
     /// Bluetooth and the car keep their route, and never in a call from
-    /// Hermes, whose Speaker button owns the choice. Once on the speaker it
-    /// does nothing: an override posts a route change of its own.
+    /// Hermes, whose Speaker button owns the choice, nor in a phone-style
+    /// call the user started unless its Speaker button is on. Once on the
+    /// speaker it does nothing: an override posts a route change of its own.
     func ensureConversationSpeaker() {
         guard appliedPolicy == .conversation, !isInNativeCall,
+              !earpieceCalls() || conversationSpeakerChosen,
               leases.values.contains(.conversationPlayback),
               session.isOutputOnBuiltInReceiver else { return }
         do {
@@ -365,6 +406,39 @@ final class VoiceAudioSessionCoordinator {
         } catch {
             audioSessionLogger.error("conversation speaker override failed: \(LogRedaction.describing(error), privacy: .public)")
         }
+    }
+
+    /// The call screen's Speaker button, in a phone-style conversation the
+    /// user started. Applied now when a conversation holds the session,
+    /// otherwise by the next acquire. A call from Hermes ignores it: there
+    /// CallKit's button owns the route, and never learns of a move Conduit
+    /// makes.
+    func setConversationSpeaker(_ on: Bool) {
+        guard !isInNativeCall else { return }
+        let previous = conversationSpeakerChosen
+        conversationSpeakerChosen = on
+        guard appliedPolicy == .conversation else { return }
+        do {
+            if on {
+                // An override posts a route change of its own.
+                guard !session.isOutputOnBuiltInSpeaker else { return }
+                try session.overrideOutputToSpeaker()
+            } else {
+                try session.clearOutputOverride()
+            }
+        } catch {
+            // The button shows where the call really plays.
+            conversationSpeakerChosen = previous
+            audioSessionLogger.error("call speaker change failed: \(LogRedaction.describing(error), privacy: .public)")
+        }
+    }
+
+    /// The user's call is over (no call on screen, minimised, in the car or
+    /// on the Watch): the next one starts on the earpiece again, as a phone
+    /// call does.
+    func conversationCallEnded() {
+        guard conversationSpeakerChosen else { return }
+        conversationSpeakerChosen = false
     }
 
     /// A call from Hermes answered in CallKit (#449): CallKit activates the
@@ -406,7 +480,8 @@ final class VoiceAudioSessionCoordinator {
     }
 
     /// The last call from Hermes is gone: a conversation still holding the
-    /// session goes back to its own policy now, speaker by default.
+    /// session goes back to its own policy now: the loudspeaker by
+    /// default, the earpiece when the user's calls are phone-style.
     func nativeCallEnded() {
         guard isInNativeCall else { return }
         isInNativeCall = false
@@ -494,16 +569,16 @@ final class VoiceAudioSessionCoordinator {
         do {
             switch target {
             case .conversation:
-                let configuration = isInNativeCall
-                    ? VoiceAudioSessionConfiguration.nativeCall
-                    : VoiceAudioSessionConfiguration.capture
-                // In a call the speaker is an override a category change
-                // clears. A reapply (a route change, the Speaker button
-                // itself) leaves a session already on the call's category
-                // alone, so the override's own route change can't loop
-                // back here through a reassert; one that does change it
-                // keeps whichever output the user is on.
-                let changesCategory = !(isInNativeCall && session.isConfigured(as: configuration))
+                let phoneStyle = isPhoneStyleConversation
+                let configuration = conversationConfiguration
+                // In a phone-style call the speaker is an override a
+                // category change clears. A reapply (a route change, the
+                // Speaker button itself) leaves a session already on the
+                // call's category alone, so the override's own route change
+                // can't loop back here through a reassert; one in a call
+                // from Hermes that does change it keeps whichever output
+                // the user is on.
+                let changesCategory = !(phoneStyle && session.isConfigured(as: configuration))
                 let keepsSpeaker = isInNativeCall && session.isOutputOnBuiltInSpeaker
                 if changesCategory {
                     try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
@@ -519,6 +594,22 @@ final class VoiceAudioSessionCoordinator {
                 // route change of its own.
                 if changesCategory, keepsSpeaker, !session.isOutputOnBuiltInSpeaker {
                     try? session.overrideOutputToSpeaker()
+                }
+                // A phone-style call the user started keeps its Speaker
+                // button's choice across category changes and the
+                // deactivation between classic turns, which both drop the
+                // override. Only from the earpiece: headphones, Bluetooth
+                // and the car keep their route. The choice, not the
+                // current route, decides: an override still standing
+                // because the last call's deactivation was dropped (the
+                // next call began before it ran) comes off, so the call
+                // starts on the earpiece its button shows.
+                if !isInNativeCall, phoneStyle {
+                    if conversationSpeakerChosen {
+                        if session.isOutputOnBuiltInReceiver { try? session.overrideOutputToSpeaker() }
+                    } else if session.isOutputOnBuiltInSpeaker {
+                        try? session.clearOutputOverride()
+                    }
                 }
                 appliedPolicy = .conversation
             case .standalonePlayback:

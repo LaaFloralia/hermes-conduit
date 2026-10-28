@@ -165,6 +165,170 @@
         }
       }
     },
+    "Hold calls to your ear" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe am Ohr führen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamadas al oído"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Appels à l'oreille"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan di telinga"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamate all'orecchio"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "受話口で通話する"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화처럼 귀에 대고 듣기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy przy uchu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chamadas no ouvido"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разговор у уха"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramaları kulakta dinle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "像打电话一样贴耳通话"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "像打電話一樣貼耳通話"
+          }
+        }
+      }
+    },
+    "Speaker" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lautsprecher"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altavoz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haut-parleur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speaker"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altoparlante"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スピーカー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스피커"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głośnik"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alto-falante"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Динамик"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hoparlör"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "扬声器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "擴音"
+          }
+        }
+      }
+    },
     "These folders weren't attached: %@. Drop the files inside them instead." : {
       "localizations" : {
         "de" : {
@@ -407,6 +571,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 上與這部 iPhone 配對的其他 Hermes 設定檔也可以讀取。你可以在「設定」>「位置」中關閉此項。"
+          }
+        }
+      }
+    },
+    "Voice conversations you start play from the earpiece, like a phone call, so people nearby don't hear them. Hold the phone to your ear and the screen turns off. Speaker in the call switches to the loudspeaker; headphones, Bluetooth and CarPlay keep their own route. Applies to this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachunterhaltungen, die du startest, laufen wie ein Telefonat über die Hörmuschel, damit niemand in der Nähe mithört. Hältst du das iPhone ans Ohr, schaltet sich der Bildschirm aus. „Lautsprecher“ im Anruf wechselt zum Lautsprecher; Kopfhörer, Bluetooth und CarPlay behalten ihre eigene Ausgabe. Gilt für dieses Gerät."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las conversaciones de voz que inicias suenan por el auricular, como una llamada, para que nadie cerca las oiga. Al acercar el teléfono a la oreja, la pantalla se apaga. Altavoz, durante la llamada, cambia al altavoz; los auriculares, el Bluetooth y CarPlay mantienen su propia salida. Se aplica a este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les conversations vocales que vous lancez passent par l'écouteur, comme un appel, pour que personne autour ne les entende. Portez le téléphone à l'oreille et l'écran s'éteint. Haut-parleur, pendant l'appel, bascule sur le haut-parleur ; les écouteurs, le Bluetooth et CarPlay gardent leur propre sortie. S'applique à cet appareil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Percakapan suara yang Anda mulai diputar dari speaker telinga, seperti telepon, agar orang di sekitar tidak mendengarnya. Dekatkan ponsel ke telinga dan layar akan mati. Speaker saat panggilan memindahkannya ke pengeras suara; headphone, Bluetooth, dan CarPlay tetap memakai jalurnya sendiri. Berlaku untuk perangkat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le conversazioni vocali che avvii escono dall'auricolare, come una telefonata, così chi è vicino non le sente. Avvicina il telefono all'orecchio e lo schermo si spegne. Altoparlante, durante la chiamata, passa all'altoparlante; cuffie, Bluetooth e CarPlay mantengono la loro uscita. Vale per questo dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自分から始めた音声会話を電話と同じく受話口から流し、周りに聞こえないようにします。耳に当てると画面が消えます。通話中の「スピーカー」でスピーカーに切り替えられます。ヘッドホン・Bluetooth・CarPlayはそれぞれの出力のままです。このデバイスに適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 시작한 음성 대화가 전화처럼 수화부로 재생되어 주변 사람에게 들리지 않습니다. 휴대폰을 귀에 대면 화면이 꺼집니다. 통화 중 스피커를 누르면 스피커로 전환됩니다. 헤드폰, Bluetooth, CarPlay는 각자의 출력을 유지합니다. 이 기기에 적용됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy głosowe, które zaczynasz, grają z głośnika rozmów, jak połączenie telefoniczne, więc nikt obok ich nie słyszy. Gdy przyłożysz telefon do ucha, ekran się wyłączy. Przycisk Głośnik w rozmowie przełącza na głośnik; słuchawki, Bluetooth i CarPlay zachowują własne wyjście. Dotyczy tego urządzenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As conversas por voz que você inicia tocam no alto-falante de chamada, como uma ligação, para que ninguém por perto ouça. Ao encostar o telefone no ouvido, a tela se apaga. Alto-falante, na chamada, muda para o alto-falante externo; fones, Bluetooth e CarPlay mantêm a própria saída. Vale para este dispositivo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голосовые разговоры, которые вы начинаете, звучат из разговорного динамика, как обычный звонок, и окружающие их не слышат. Поднесите телефон к уху — экран погаснет. Кнопка «Динамик» во время разговора включает громкую связь; наушники, Bluetooth и CarPlay сохраняют свой выход. Применяется на этом устройстве."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlattığın sesli konuşmalar, bir telefon araması gibi ahizeden çalar; böylece yakındakiler duymaz. Telefonu kulağına götürdüğünde ekran kapanır. Görüşmedeki Hoparlör düğmesi hoparlöre geçirir; kulaklık, Bluetooth ve CarPlay kendi çıkışlarını korur. Bu cihaz için geçerlidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你发起的语音对话会像打电话一样从听筒播放，旁人听不到。把手机贴近耳朵时屏幕会熄灭。通话中的“扬声器”可切换到扬声器；耳机、蓝牙和 CarPlay 保持各自的输出。仅适用于此设备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你發起的語音對話會像打電話一樣從聽筒播放，旁人聽不到。將手機貼近耳朵時螢幕會關閉。通話中的「擴音」可切換為擴音；耳機、藍牙和 CarPlay 會維持各自的輸出。只套用於此裝置。"
           }
         }
       }

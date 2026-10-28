@@ -35,11 +35,14 @@ name: CI
 # slow. A PR's superseded runs are cancelled. A newer push never cancels an
 # older one's run, so back-to-back merges overlap and each adds one macOS job.
 
+# LAA fork: master is the fork's build branch and laa/* its work branches;
+# main only mirrors upstream, so it runs nothing here.
 on:
   push:
-    branches: [main]
+    branches: [master, 'laa/**']
   pull_request:
-    branches: [main]
+    branches: [master]
+  workflow_dispatch:
 
 # A PR's newer push supersedes its older run. A push is grouped by its own
 # commit instead, so every merge gets a full run: branch protection does not

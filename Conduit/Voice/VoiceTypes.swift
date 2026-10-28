@@ -6,6 +6,7 @@
 //  exercised with deterministic capture, playback, and gateway test doubles.
 //
 
+import AVFAudio
 import Foundation
 
 enum VoiceConversationState: Equatable {
@@ -358,6 +359,43 @@ enum VoiceScreenAwake {
     /// on screen.
     static func holdsScreenAwake(enabled: Bool, voiceSheetShown: Bool, liveSheetShown: Bool) -> Bool {
         enabled && (voiceSheetShown || liveSheetShown)
+    }
+}
+
+/// "Hold calls to your ear": a device-wide choice (not per profile) to have
+/// the voice conversations the user starts play like a phone call, from the
+/// earpiece, so nobody nearby hears them. The call screen's Speaker button
+/// moves a call to the loudspeaker; headphones, Bluetooth and the car keep
+/// their own route. Holding the phone to the ear turns the screen off. On
+/// by default in this build: it is why the build exists.
+enum VoiceEarpieceCalls {
+    static let preferenceKey = "conduit.voice.earpieceCalls"
+    static let defaultValue = true
+
+    /// The same value the views read through `@AppStorage`.
+    static var isOn: Bool {
+        UserDefaults.standard.object(forKey: preferenceKey) as? Bool ?? defaultValue
+    }
+
+    /// The proximity sensor turns the screen off against the ear while a
+    /// call the user started runs on this phone (on screen or minimised)
+    /// and plays from the earpiece: not the loudspeaker, and not
+    /// headphones, Bluetooth or the car. A call from Hermes is left to
+    /// CallKit, whose Speaker button Conduit doesn't track.
+    static func monitorsProximity(
+        enabled: Bool,
+        callOnPhone: Bool,
+        speakerChosen: Bool,
+        inNativeCall: Bool,
+        playsElsewhere: Bool
+    ) -> Bool {
+        enabled && callOnPhone && !speakerChosen && !inNativeCall && !playsElsewhere
+    }
+
+    /// Outputs that take the audio off the phone itself, for
+    /// `monitorsProximity`'s `playsElsewhere`.
+    static func playsElsewhere(_ outputs: [AVAudioSession.Port]) -> Bool {
+        outputs.contains { $0 != .builtInReceiver && $0 != .builtInSpeaker }
     }
 }
 
