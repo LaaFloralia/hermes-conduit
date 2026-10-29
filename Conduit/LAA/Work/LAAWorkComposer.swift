@@ -11,7 +11,7 @@ struct LAAWorkComposer: View {
     var canSend = true
     let onChange: (String) -> Void
     let onSubmit: () -> Void
-    var submitLabel = "送信"
+    var submitLabel = LAACopy.WorkTab.send
     var accessibilityPrefix = "work.composer"
 
     @State private var focus = false
@@ -24,26 +24,32 @@ struct LAAWorkComposer: View {
     private var canSubmit: Bool { enabled && canSend && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
             HStack {
-                Text(verbatim: placeholder).font(.headline)
+                Text(verbatim: placeholder).laaTextStyle(.body).fontWeight(.semibold)
                 Spacer()
                 Menu {
-                    Picker(LAAWorkPresentation.japanese("入力の文字"), selection: $inputSize) {
+                    Picker(LAACopy.WorkTab.textSize, selection: $inputSize) {
                         ForEach(ChatTextSize.allCases, id: \.rawValue) { size in
                             Text(verbatim: size.displayName).tag(size.rawValue)
                         }
                     }
-                } label: { Image(systemName: "textformat.size") }
-                    .accessibilityLabel(Text(verbatim: "入力の文字サイズ"))
-                Button { fullEditor = true } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
-                    .accessibilityLabel(Text(verbatim: "全画面で入力"))
+                } label: {
+                    Image(systemName: "textformat.size")
+                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                }
+                    .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.textSize))
+                Button { fullEditor = true } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                }
+                    .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.fullEditor))
                     .accessibilityIdentifier("\(accessibilityPrefix).expand")
             }
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
-                    Text(verbatim: placeholder).foregroundStyle(LAAColors.muted)
-                        .padding(.horizontal, 9).padding(.vertical, 8).allowsHitTesting(false)
+                    Text(verbatim: placeholder).foregroundStyle(LAAColor.secondaryText)
+                        .padding(.horizontal, LAASpacing.x2).padding(.vertical, LAASpacing.x2).allowsHitTesting(false)
                 }
                 ComposerPasteTextView(
                     text: $text, isFocused: $focus, measuredHeight: $height, enabled: enabled,
@@ -56,12 +62,12 @@ struct LAAWorkComposer: View {
                 .frame(height: height)
                 .accessibilityIdentifier("\(accessibilityPrefix).field")
             }
-            .background(LAAColors.surface, in: RoundedRectangle(cornerRadius: 10))
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(LAAColors.hairline))
-            if let warning { Text(verbatim: warning).font(.caption).foregroundStyle(LAAColors.plum) }
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .overlay(RoundedRectangle(cornerRadius: LAARadius.card).stroke(LAAColor.separator))
+            if let warning { Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
             HStack {
                 Spacer()
-                Button(submitLabel, action: onSubmit).buttonStyle(.borderedProminent).disabled(!canSubmit)
+                Button(submitLabel, action: onSubmit).buttonStyle(.borderedProminent).tint(LAAColor.filledButton).disabled(!canSubmit)
                     .accessibilityIdentifier("\(accessibilityPrefix).send")
             }
         }
@@ -75,7 +81,7 @@ struct LAAWorkComposer: View {
                 attachments: { EmptyView() }, dictateButton: { EmptyView() },
                 actionButton: {
                     Button(submitLabel) { fullEditor = false; onSubmit() }
-                        .buttonStyle(.borderedProminent).disabled(!canSubmit)
+                        .buttonStyle(.borderedProminent).tint(LAAColor.filledButton).disabled(!canSubmit)
                 }
             )
         }

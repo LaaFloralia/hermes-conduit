@@ -33,19 +33,19 @@ struct LAAWorkSessionDetail: View {
 
     var body: some View {
         ZStack {
-            LAAColors.paper.ignoresSafeArea()
+            LAAColor.background.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
                     if let session {
                         sessionHeader(session)
-                        if let notice { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum).workCard() }
+                        if let notice { Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention).workCard() }
                         if let failure {
                             VStack(alignment: .leading) {
-                                Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
-                                Button(LAAWorkPresentation.japanese("接続を再確認")) { observationEpoch += 1 }
+                                Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
+                                Button(LAACopy.WorkTab.reconnect) { observationEpoch += 1 }
                             }.workCard()
                         }
-                        if (session.pending?.count ?? 0) > 0 || session.phase == "awaiting_decision" { decisionBanner }
+                        if session.needsDecision { decisionBanner }
                         resultBody
                         timeline
                         actions(session)
@@ -54,16 +54,17 @@ struct LAAWorkSessionDetail: View {
                             Task { await refreshSnapshot() }
                         }
                     } else if let failure {
-                        Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
-                        Button(LAAWorkPresentation.japanese("もう一度読み込む")) { observationEpoch += 1 }
+                        Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
+                        Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
                     } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                 }
-                .padding(16).frame(maxWidth: 720, alignment: .leading)
+                .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable { await refreshSnapshot() }
         }
-        .navigationTitle(Text(verbatim: session?.name ?? "セッション"))
+        .navigationTitle(Text(verbatim: session?.name ?? LAACopy.WorkTab.sessions))
+        .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .sheet(isPresented: $showResume) {
@@ -73,108 +74,110 @@ struct LAAWorkSessionDetail: View {
                     showResume = false
                     Task { await refreshSnapshot() }
                 }
-                .padding(16)
-                .navigationTitle(Text(verbatim: "後継セッション"))
+                .padding(LAASpacing.x4)
+                .navigationTitle(Text(verbatim: LAACopy.WorkTab.successor))
+                .background(LAAColor.background)
+                .tint(LAAColor.link)
             }.environmentObject(bridge)
         }
         .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)") { await observe() }
     }
 
     private func sessionHeader(_ session: LAAWorkSession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: session.name).font(.title2.bold()).foregroundStyle(LAAColors.ink)
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: session.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
             Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase) + " " + LAAWorkPresentation.phase(session.phase))
-                .foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(session.phase) ? LAAColors.plum : LAAColors.teal)
+                .foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(session.phase) ? LAAColor.attention : LAAColor.link)
             Text(verbatim: "プロジェクト: " + (projects.first { $0.id == session.projectId }?.name ?? (session.projectId == nil ? "なし" : "未確認")))
             Text(verbatim: "作業場所: " + workspace(session.workspaceId))
             Text(verbatim: "要求: " + (session.requested?.display ?? "未確認"))
             Text(verbatim: "観測: " + (session.observed?.display ?? "未確認"))
             if session.modelMismatch {
-                Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
+                Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
             } else if session.runtimeVerified != true {
                 Text(verbatim: "○ 実行時のモデルは未確認です。系統や設定の一致だけでは確定しません。")
-                    .foregroundStyle(LAAColors.muted)
+                    .foregroundStyle(LAAColor.secondaryText)
             }
             if let version = session.instructionVersion {
                 Text(verbatim: "プロジェクト指示版: \(version) · \(session.instructionHash ?? "ハッシュ未確認")")
-                    .font(.caption).foregroundStyle(LAAColors.muted)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            Text(verbatim: "最終活動: " + LAAWorkPresentation.date(session.updatedAt)).font(.caption).foregroundStyle(LAAColors.muted)
-        }.font(.subheadline).workCard()
+            Text(verbatim: "最終活動: " + LAAWorkPresentation.date(session.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+        }.laaTextStyle(.secondary).workCard()
     }
 
     private var decisionBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(LAAWorkPresentation.japanese("判断待ち"), systemImage: "exclamationmark.triangle.fill").font(.headline)
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Label(LAAWorkPresentation.japanese("判断待ち"), systemImage: "exclamationmark.triangle.fill").laaTextStyle(.body).fontWeight(.semibold)
             Text(verbatim: "内容を表示しています。回答は後続の機能で対応します。")
             if let decision = artifacts.first(where: { $0.type == "decision" })?.content {
-                Text(verbatim: decision).font(.caption).textSelection(.enabled)
+                Text(verbatim: decision).laaTextStyle(.secondary).textSelection(.enabled)
             } else { Text(verbatim: "判断内容を取得できていません。") }
-        }.foregroundStyle(LAAColors.plum).workCard()
+        }.foregroundStyle(LAAColor.attention).workCard()
     }
 
     private var resultBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: "最新の回答").font(.headline)
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: "最新の回答").laaTextStyle(.body).fontWeight(.semibold)
             if let answer = artifacts.first(where: { $0.type == "message" }) {
                 if let content = answer.content, !content.isEmpty {
-                    MarkdownText(source: content, foregroundStyle: .primary)
+                    MarkdownText(source: content, foregroundStyle: LAAColor.text)
                         .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
-                    if answer.truncated == true { Text(verbatim: "回答は途中まで表示しています。") .font(.caption).foregroundStyle(LAAColors.plum) }
+                    if answer.truncated == true { Text(verbatim: "回答は途中まで表示しています。") .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 } else {
                     Text(verbatim: answer.available == false ? "回答を取得できていません。" : "まだ回答はありません。")
-                        .foregroundStyle(LAAColors.muted)
+                        .foregroundStyle(LAAColor.secondaryText)
                 }
-            } else { Text(verbatim: "まだ回答はありません。").foregroundStyle(LAAColors.muted) }
+            } else { Text(verbatim: "まだ回答はありません。").foregroundStyle(LAAColor.secondaryText) }
         }.workCard()
     }
 
     private var timeline: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(verbatim: "経過").font(.headline)
-            if events.isEmpty { Text(verbatim: "記録を取得中です。").foregroundStyle(LAAColors.muted) }
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: "経過").laaTextStyle(.body).fontWeight(.semibold)
+            if events.isEmpty { Text(verbatim: "記録を取得中です。").foregroundStyle(LAAColor.secondaryText) }
             ForEach(events) { event in
                 HStack(alignment: .top) {
                     Text(verbatim: LAAWorkPresentation.event(event.type))
                     Spacer()
-                    Text(verbatim: LAAWorkPresentation.date(event.occurredAt)).font(.caption).foregroundStyle(LAAColors.muted)
+                    Text(verbatim: LAAWorkPresentation.date(event.occurredAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
                 Divider()
             }
             if let log = artifacts.first(where: { $0.type == "log" }) {
-                DisclosureGroup("ログ") {
-                    if let content = log.content { Text(verbatim: content).font(.system(.caption, design: .monospaced)).textSelection(.enabled) }
-                    if log.truncated == true { Text(verbatim: "ログは途中まで表示しています。").font(.caption).foregroundStyle(LAAColors.plum) }
+                DisclosureGroup(LAACopy.WorkTab.log) {
+                    if let content = log.content { Text(verbatim: content).laaTextStyle(.secondary).monospaced().textSelection(.enabled) }
+                    if log.truncated == true { Text(verbatim: "ログは途中まで表示しています。").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 }
             }
         }.workCard()
     }
 
     private func actions(_ session: LAAWorkSession) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if pendingStop != nil {
                 Label(LAAWorkPresentation.japanese("停止要求の結果は未確認です。状態を確認してから同じ要求を再照合できます。"), systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(LAAColors.plum)
-                Button(LAAWorkPresentation.japanese("停止状態を確認")) { Task { await refreshSnapshot() } }.disabled(stopping)
-                Button(LAAWorkPresentation.japanese("同じ停止要求を再照合")) { if let pendingStop { Task { await performStop(pendingStop) } } }
+                    .foregroundStyle(LAAColor.attention)
+                Button(LAACopy.WorkTab.checkStop) { Task { await refreshSnapshot() } }.disabled(stopping)
+                Button(LAACopy.WorkTab.retryStop) { if let pendingStop { Task { await performStop(pendingStop) } } }
                     .disabled(stopping)
             } else if session.phase == "stop_unconfirmed" {
                 Label(LAAWorkPresentation.japanese("停止はまだ確認できていません。"), systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(LAAColors.plum)
-                Button(LAAWorkPresentation.japanese("停止をもう一度確認")) { Task { await refreshSnapshot() } }
+                    .foregroundStyle(LAAColor.attention)
+                Button(LAACopy.WorkTab.checkStop) { Task { await refreshSnapshot() } }
             } else if session.phase == "stopped" {
                 Text(verbatim: "再開は同じ作業場所・プロファイルの後継セッションです。履歴は自動では引き継がれません。")
-                    .font(.caption).foregroundStyle(LAAColors.muted)
-                Button(LAAWorkPresentation.japanese("続きの指示を入力")) { showResume = true }.buttonStyle(.borderedProminent)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Button(LAACopy.WorkTab.resume) { showResume = true }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
             } else {
-                Button(LAAWorkPresentation.japanese("停止")) { beginStop() }.buttonStyle(.bordered).disabled(stopping)
+                Button(LAACopy.WorkTab.stop) { beginStop() }.buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
             }
             if let next = successor {
-                NavigationLink(LAAWorkPresentation.japanese("後継: \(next.name)")) {
+                NavigationLink("\(LAACopy.WorkTab.successor): \(next.name)") {
                     LAAWorkSessionDetail(id: next.id, projects: projects, workspaces: workspaces, drafts: drafts)
                 }
             } else if let nextID = session.resumedTo {
-                NavigationLink(LAAWorkPresentation.japanese("後継セッションを開く")) {
+                NavigationLink(LAACopy.WorkTab.openSuccessor) {
                     LAAWorkSessionDetail(id: nextID, projects: projects, workspaces: workspaces, drafts: drafts)
                 }
             }

@@ -111,6 +111,10 @@ struct LAAWorkSession: Decodable, Identifiable, Hashable {
     let events: Cursor
     let observation: Observation?
 
+    var needsDecision: Bool {
+        phase == "awaiting_decision" || (pending?.count ?? 0) > 0
+    }
+
     var modelMismatch: Bool {
         guard let requested, let observed else { return false }
         return [(requested.provider, observed.provider), (requested.model, observed.model),
@@ -163,7 +167,6 @@ struct LAAWorkTask: Decodable, Identifiable, Hashable {
     let description: String?
 }
 enum LAAWorkPresentation {
-    // LAA uses Japanese interface copy regardless of the device language.
     static func japanese(_ text: String) -> String { text }
 
     struct SessionRow: Identifiable {
@@ -212,6 +215,14 @@ enum LAAWorkPresentation {
             }
         }
         return sessionRows(sessions.filter { included.contains($0.id) })
+    }
+
+    static func decisionRows(_ rows: [SessionRow], projectID: String, phase: String) -> [SessionRow] {
+        rows.filter { row in
+            row.session.needsDecision &&
+                (projectID.isEmpty || row.session.projectId == projectID) &&
+                (phase.isEmpty || row.session.phase == phase)
+        }
     }
 
     static func phase(_ raw: String) -> String {

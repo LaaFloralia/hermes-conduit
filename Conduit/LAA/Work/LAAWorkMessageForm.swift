@@ -36,28 +36,28 @@ struct LAAWorkMessageForm: View {
     private var promptPlaceholder: String { mode == .resume ? "続きの指示" : "追加の指示" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if mode == .resume {
                 Text(verbatim: "会話履歴は引き継がれません。続きを進めるための情報を入力してください。")
-                    .font(.footnote).foregroundStyle(LAAColors.muted)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             if let pending {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(LAAWorkPresentation.japanese("送信結果は未確認"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Label(LAAWorkPresentation.japanese("送信結果は未確認"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
                     Text(verbatim: "状態を確認したうえで、同じ内容とIDで再照合できます。新しい送信は始めません。")
-                    Text(verbatim: pending.draft.text).font(.caption).lineLimit(4)
+                    Text(verbatim: pending.draft.text).laaTextStyle(.secondary).lineLimit(4)
                     if mode == .resume {
-                        Button(LAAWorkPresentation.japanese("後継セッションを確認")) { Task { await reconcile(pending) } }.disabled(sending)
+                        Button(LAACopy.WorkTab.checkSuccessor) { Task { await reconcile(pending) } }.disabled(sending)
                     } else {
-                        Button(LAAWorkPresentation.japanese("送信状況を確認して整理")) { showResolution = true }.disabled(sending)
+                        Button(LAACopy.WorkTab.resolveSend) { showResolution = true }.disabled(sending)
                     }
-                    Button(LAAWorkPresentation.japanese("同じ要求を再照合")) { Task { await perform(pending) } }.disabled(sending)
+                    Button(LAACopy.WorkTab.retryRequest) { Task { await perform(pending) } }.disabled(sending)
                 }.workCard()
             }
-            if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum) }
+            if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention) }
             if !canStart && mode == .followUp {
                 Text(verbatim: "実行中・判断待ち・停止中は追加送信できません。状態を確認してください。")
-                    .font(.caption).foregroundStyle(LAAColors.muted)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             LAAWorkComposer(text: $text, revision: $revision, placeholder: promptPlaceholder,
                             enabled: !sending && pending == nil && !drafts.persistenceFailed, canSend: canStart,
@@ -65,7 +65,7 @@ struct LAAWorkMessageForm: View {
                             accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer")
             if drafts.persistenceFailed {
                 Text(verbatim: "下書きを保存できません。送信せず、端末の保存状態を確認してください。")
-                    .foregroundStyle(LAAColors.plum).font(.caption)
+                    .foregroundStyle(LAAColor.attention).laaTextStyle(.secondary)
             }
         }
         .task(id: bridge.revision) {
@@ -75,10 +75,10 @@ struct LAAWorkMessageForm: View {
         }
         .confirmationDialog(LAAWorkPresentation.japanese("送信状況を確認しましたか？"), isPresented: $showResolution, titleVisibility: .visible) {
             if let pending, mode == .followUp {
-                Button(LAAWorkPresentation.japanese("送信済みと確認")) { resolve(pending, restoring: false) }
-                Button(LAAWorkPresentation.japanese("未送信と確認して下書きに戻す")) { resolve(pending, restoring: true) }
+                Button(LAACopy.WorkTab.confirmSent) { resolve(pending, restoring: false) }
+                Button(LAACopy.WorkTab.restoreDraft) { resolve(pending, restoring: true) }
             }
-            Button(LAAWorkPresentation.japanese("保留"), role: .cancel) { }
+            Button(LAACopy.WorkTab.hold, role: .cancel) { }
         } message: {
             Text(verbatim: "ログや回答を確認してください。未送信と確認できた場合だけ下書きに戻せます。判断できない場合は保留してください。")
         }

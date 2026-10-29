@@ -14,38 +14,39 @@ struct LAAWorkProjectDetail: View {
     }
     var body: some View {
         ZStack {
-            LAAColors.paper.ignoresSafeArea()
+            LAAColor.background.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(verbatim: current.name).font(.title2.bold()).foregroundStyle(LAAColors.ink)
-                    if let error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(LAAColors.plum) }
-                    VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    Text(verbatim: current.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                    if let error { Label(error, systemImage: "exclamationmark.triangle").foregroundStyle(LAAColor.attention) }
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         Text(verbatim: "指示版: \(current.instructionVersion.map(String.init) ?? "未確認")")
-                        Text(verbatim: "ハッシュ: \(current.instructionHash ?? "未確認")").font(.caption).textSelection(.enabled)
+                        Text(verbatim: "ハッシュ: \(current.instructionHash ?? "未確認")").laaTextStyle(.secondary).textSelection(.enabled)
                     }.workCard()
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(verbatim: "共通指示").font(.headline)
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        Text(verbatim: "共通指示").laaTextStyle(.body).fontWeight(.semibold)
                         if current.instructionRef != nil {
-                            Text(verbatim: "旧形式の参照・未適用").font(.caption).foregroundStyle(LAAColors.muted)
-                            Button(LAAWorkPresentation.japanese("旧参照を消去")) { clearLegacyRefOnOpen = true; showEditor = true }
+                            Text(verbatim: "旧形式の参照・未適用").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            Button(LAACopy.WorkTab.clearLegacy) { clearLegacyRefOnOpen = true; showEditor = true }
                                 .disabled(!current.hasInstructionBody || current.instructionError != nil)
                         }
                         if current.instructionError != nil {
                             Text(verbatim: "共通指示を読み取れません。内容を確認するまで編集できません。")
-                                .foregroundStyle(LAAColors.plum)
+                                .foregroundStyle(LAAColor.attention)
                         } else if current.hasInstructionBody {
                             let text = current.instructions ?? ""
                             Text(verbatim: text.isEmpty ? "共通指示はありません。" : text).textSelection(.enabled)
                         } else {
                             Text(verbatim: "Bridgeが指示本文を返すまで、内容の確認と編集はできません。")
-                                .foregroundStyle(LAAColors.muted)
+                                .foregroundStyle(LAAColor.secondaryText)
                         }
                     }.workCard()
-                    Button(LAAWorkPresentation.japanese("編集")) { clearLegacyRefOnOpen = false; showEditor = true }.buttonStyle(.bordered)
-                }.padding(16).frame(maxWidth: 720, alignment: .leading)
+                    Button(LAACopy.WorkTab.edit) { clearLegacyRefOnOpen = false; showEditor = true }.buttonStyle(.bordered)
+                }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).frame(maxWidth: 720, alignment: .leading)
             }
         }
-        .navigationTitle(Text(verbatim: "プロジェクト"))
+        .navigationTitle(Text(verbatim: LAACopy.WorkTab.project))
+        .tint(LAAColor.link)
         .toolbar(.hidden, for: .tabBar)
         .sheet(isPresented: $showEditor, onDismiss: { Task { await load() } }) {
             LAAWorkProjectEditor(project: current, canEditInstructions: current.hasInstructionBody && current.instructionError == nil,
@@ -121,14 +122,14 @@ struct LAAWorkProjectEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                if let error { Text(verbatim: error).foregroundStyle(LAAColors.plum) }
+                if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
                 if let remote, let pending {
                     Section(LAAWorkPresentation.japanese("現在の版とあなたの変更")) {
                         Text(verbatim: "現在の版 \(remote.version.map(String.init) ?? "未確認")")
                         Text(verbatim: "現在の名前: \(remote.name)")
-                        Text(verbatim: "現在の指示:").font(.headline)
+                        Text(verbatim: "現在の指示:").laaTextStyle(.body).fontWeight(.semibold)
                         Text(verbatim: remote.instructionError != nil ? "（読み取れません）" : (remote.instructions ?? "（なし）")).textSelection(.enabled)
-                        Text(verbatim: "あなたの変更:").font(.headline)
+                        Text(verbatim: "あなたの変更:").laaTextStyle(.body).fontWeight(.semibold)
                         if let mine = draftBody(pending) {
                             Text(verbatim: "名前: " + mine.name).textSelection(.enabled)
                             Text(verbatim: mine.instructions ?? "（指示は変更しない）").textSelection(.enabled)
@@ -136,45 +137,52 @@ struct LAAWorkProjectEditor: View {
                         }
                         if !confirmedConflict {
                             Text(verbatim: "前の保存結果は未確認です。結果を確定するまで選択できません。")
-                                .foregroundStyle(LAAColors.plum)
-                            Button(LAAWorkPresentation.japanese("同じ要求を再照合")) { Task { await perform(pending) } }.disabled(busy)
+                                .foregroundStyle(LAAColor.attention)
+                            Button(LAACopy.WorkTab.retryRequest) { Task { await perform(pending) } }.disabled(busy)
                         }
-                        Button(LAAWorkPresentation.japanese("現在の版を採用")) { chooseRemote(remote, pending: pending) }
+                        Button(LAACopy.WorkTab.useCurrent) { chooseRemote(remote, pending: pending) }
                             .disabled(!confirmedConflict)
-                        Button(LAAWorkPresentation.japanese("自分の変更をこの版に保存")) { chooseMine(remote, pending: pending) }
+                        Button(LAACopy.WorkTab.saveMine) { chooseMine(remote, pending: pending) }
                             .disabled(!confirmedConflict || (canEditInstructions && (!remote.hasInstructionBody || remote.instructionError != nil)))
                     }
                 } else if let pending {
                     Section(LAAWorkPresentation.japanese("保存結果は未確認")) {
                         Text(verbatim: "保存先の状態を確認し、同じ要求を再照合できます。")
                         if !confirmedConflict {
-                            Button(LAAWorkPresentation.japanese("同じ要求を再照合")) { Task { await perform(pending) } }.disabled(busy)
+                            Button(LAACopy.WorkTab.retryRequest) { Task { await perform(pending) } }.disabled(busy)
                         }
                         if current != nil {
-                            Button(LAAWorkPresentation.japanese("現在の版と比べる")) { Task { await loadConflict() } }.disabled(busy)
+                            Button(LAACopy.WorkTab.compare) { Task { await loadConflict() } }.disabled(busy)
                         }
                     }
                 }
-                Section(LAAWorkPresentation.japanese("名前")) { TextField(LAAWorkPresentation.japanese("プロジェクト名"), text: $name).disabled(pending != nil) }
+                Section(LAAWorkPresentation.japanese("名前")) { TextField(LAACopy.WorkTab.projectName, text: $name).disabled(pending != nil) }
                 Section(LAAWorkPresentation.japanese("共通指示")) {
                     if current?.instructionRef != nil {
-                        Text(verbatim: "旧形式の参照・未適用").font(.caption).foregroundStyle(LAAColors.muted)
-                        Button(clearLegacyRef ? LAAWorkPresentation.japanese("旧参照の消去を取り消す") : LAAWorkPresentation.japanese("旧参照を消去")) {
+                        Text(verbatim: "旧形式の参照・未適用").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        Button(clearLegacyRef ? LAACopy.WorkTab.undoClearLegacy : LAACopy.WorkTab.clearLegacy) {
                             clearLegacyRef.toggle()
                         }.disabled(pending != nil || !canEditInstructions)
-                        if clearLegacyRef { Text(verbatim: "保存時に旧参照を消去します。").font(.caption) }
+                        if clearLegacyRef { Text(verbatim: "保存時に旧参照を消去します。").laaTextStyle(.secondary) }
                     }
                     if canEditInstructions {
                         TextEditor(text: $instructions).frame(minHeight: 180).disabled(pending != nil)
+                            .scrollContentBackground(.hidden).background(LAAColor.surface)
                             .accessibilityIdentifier("work.project.instructions")
                     } else {
                         Text(verbatim: "Bridgeが指示本文を返すまで編集できません。")
-                            .foregroundStyle(LAAColors.muted)
+                            .foregroundStyle(LAAColor.secondaryText)
                     }
                 }
-                Button(LAAWorkPresentation.japanese("保存")) { save() }
+                Button(LAACopy.WorkTab.save) { save() }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy || pending != nil || drafts.persistenceFailed)
             }
+            .scrollContentBackground(.hidden)
+            .background(LAAColor.background)
+            .listRowBackground(LAAColor.surface)
+            .laaTextStyle(.body)
+            .foregroundStyle(LAAColor.text)
+            .tint(LAAColor.link)
             .onChange(of: name) { _, _ in saveDraft() }
             .onChange(of: instructions) { _, _ in saveDraft() }
             .onChange(of: clearLegacyRef) { _, _ in saveDraft() }
@@ -189,8 +197,8 @@ struct LAAWorkProjectEditor: View {
                     await loadConflict()
                 }
             }
-            .navigationTitle(Text(verbatim: current == nil ? "新しいプロジェクト" : "プロジェクトを編集"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAAWorkPresentation.japanese("閉じる")) { dismiss() } } }
+            .navigationTitle(Text(verbatim: current == nil ? LAACopy.WorkTab.newProject : LAACopy.WorkTab.editProject))
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
         }
     }
     private func draftBody(_ item: ComposerDraftStore.Submission) -> ChangeSet? {
