@@ -31,6 +31,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         }
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
         let fixture = LAABackgroundFixture(chatFixtureOverride: "rich", defaultsSuiteName: suiteName)
+        fixture.state.adoptProfileHermesNames([(profile: "laa-ciel", displayName: "Ciel")])
         fixture.state.themePreference = style == .dark ? .dark : .light
         XCTAssertEqual(fixture.state.composerPlaceholder, "Cielにメッセージを送信…")
         let bridge = LAABridgeSession(statusForTesting: .unpaired)
@@ -50,10 +51,13 @@ final class LAACompactChatSnapshotTests: XCTestCase {
                 .accessibilityHidden(true)
         }
         let host = UIHostingController(rootView: screen)
-        let previousWindow = UIApplication.shared.connectedScenes
+        let scenes = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows).first(where: \.isKeyWindow)
-        let window = UIWindow(frame: canvas)
+        let previousWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
+        let scene = try XCTUnwrap(previousWindow?.windowScene ?? scenes.first,
+                                 "The hosted conversation needs a window scene to render")
+        let window = UIWindow(windowScene: scene)
+        window.frame = canvas
         window.traitOverrides.horizontalSizeClass = .compact
         window.traitOverrides.verticalSizeClass = .regular
         window.traitOverrides.userInterfaceStyle = style
@@ -105,6 +109,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         XCTAssertEqual(image.size, canvas.size)
         XCTAssertEqual(image.cgImage?.width, 1320)
         XCTAssertEqual(image.cgImage?.height, 2868)
+        XCTAssertTrue(hasVisibleContent(image), "The rendered snapshot must not be blank")
         let attachment = XCTAttachment(image: image)
         attachment.name = "compact-440x956-\(style == .dark ? "dark" : "light")"
         attachment.lifetime = .keepAlways
@@ -122,6 +127,27 @@ final class LAACompactChatSnapshotTests: XCTestCase {
     private func textHosts(in root: UIView) -> [SelectableTextViewHostView] {
         let own = (root as? SelectableTextViewHostView).map { [$0] } ?? []
         return own + root.subviews.flatMap { textHosts(in: $0) }
+    }
+
+    private func hasVisibleContent(_ image: UIImage) -> Bool {
+        guard let cgImage = image.cgImage else { return false }
+        let width = 64, height = 128, bytesPerPixel = 4
+        var pixels = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
+        return pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * bytesPerPixel,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                            | CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            var darkest = UInt8.max, brightest = UInt8.min
+            for offset in stride(from: 0, to: buffer.count, by: bytesPerPixel) {
+                let value = max(buffer[offset], buffer[offset + 1], buffer[offset + 2])
+                darkest = min(darkest, value)
+                brightest = max(brightest, value)
+            }
+            return brightest > 40 && Int(brightest) - Int(darkest) > 20
+        }
     }
 }
 
