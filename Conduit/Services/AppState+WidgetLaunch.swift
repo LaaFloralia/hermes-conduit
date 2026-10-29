@@ -8,7 +8,20 @@ extension AppState {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme?.lowercased() == "conduit",
               components.host?.lowercased() == "widget" else { return false }
-        guard let link = WidgetLaunchLink(url: url) else { return true }
+        guard var link = WidgetLaunchLink(url: url) else { return true }
+        #if LAA_BUILD
+        // The widget may have been installed before its first snapshot. Bind
+        // that link to the app's current dashboard, without guessing a host.
+        if let workspace = link.workspace,
+           workspace.dashboardID == LAAEmployeeWidgetLinks.unresolvedDashboard,
+           LAAWidgetEmployee.forProfile(workspace.profile) != nil,
+           let dashboardID = activeDashboardID,
+           let resolved = WidgetLaunchLink(action: link.action,
+               workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: workspace.profile),
+               reference: link.reference) {
+            link = resolved
+        }
+        #endif
         cancelChatResumeRestoration()
         newChatLaunchStartedInApp = false
         widgetLaunchCoordinator.receive(link)
@@ -24,6 +37,11 @@ extension AppState {
         if link.action == .open, link.workspace == nil { return .handled }
         guard let workspace = link.workspace else { return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable")) }
         guard savedDashboardRegistry.dashboard(with: workspace.dashboardID) != nil else {
+            #if LAA_BUILD
+            if LAAWidgetEmployee.forProfile(workspace.profile) != nil {
+                return .failed(LAAEmployeeWidgetLinks.missingDashboardMessage)
+            }
+            #endif
             return .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
         }
         if isVoiceCallInProgress {
@@ -52,11 +70,21 @@ extension AppState {
             return .deferred
         }
         guard isConnected else {
+            #if LAA_BUILD
+            if LAAWidgetEmployee.forProfile(workspace.profile) != nil, !isConnecting {
+                return .failed(LAAEmployeeWidgetLinks.offlineMessage)
+            }
+            #endif
             return isConnecting ? .deferred : .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
         }
         guard profiles.contains(where: { $0 == workspace.profile })
                 || workspace.profile == "default"
                 || workspace.profile == defaultProfileName else {
+            #if LAA_BUILD
+            if LAAWidgetEmployee.forProfile(workspace.profile) != nil, widgetSettledCatalogOwner != nil {
+                return .failed(LAAEmployeeWidgetLinks.missingProfileMessage)
+            }
+            #endif
             return widgetSettledCatalogOwner == nil
                 ? .deferred
                 : .failed(AppLocalization.string("WidgetLaunch.WorkspaceUnavailable"))
@@ -118,6 +146,26 @@ extension AppState {
             return await openWidgetConversation(reference, workspace: workspace, lease: lease)
         case .talk:
             return await openWidgetVoice(workspace: workspace, lease: lease)
+        #if LAA_BUILD
+        case .employeeChat:
+            // Prefer the profile's saved dashboard chat, then its latest
+            // available chat. Create only after a successful empty catalog.
+            let rows = activeProfileSessions.filter { !$0.isArchived && $0.source == .chat }
+            let saved = chatResumeWidgetReference(for: workspace.profile).map(Self.widgetReference(from:))
+            let chosen = saved.flatMap { ref -> WidgetConversationReference? in
+                guard ref.kind == .dashboard, ref.scopeProfile == workspace.profile,
+                      rows.contains(where: { $0.id == ref.sessionID || $0.storedSessionId == ref.sessionID || $0.alternateIds.contains(ref.sessionID) }) else { return nil }
+                return ref
+            } ?? ChatResumeSessionResolver.latestChat(in: rows).map { row in
+                WidgetConversationReference(kind: .dashboard, scopeProfile: workspace.profile, botName: nil,
+                    botLabel: nil, sessionID: row.storedSessionId ?? row.id, isUnverified: false)
+            }
+            if let chosen { return await openWidgetConversation(chosen, workspace: workspace, lease: lease) }
+            let previous = activeSessionId
+            await createNewSession(widgetLease: lease)
+            guard lease.isCurrent else { return .deferred }
+            return activeSessionId != previous ? .handled : .failed(AppLocalization.string("WidgetLaunch.ConversationUnavailable"))
+        #endif
         }
     }
 

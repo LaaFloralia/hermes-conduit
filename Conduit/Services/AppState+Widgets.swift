@@ -11,6 +11,9 @@ extension AppState {
         return {
             WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.native)
             WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.character)
+            #if LAA_BUILD
+            WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.employee)
+            #endif
         }
     }
 

@@ -3503,3 +3503,23 @@ and rollback instructions · the upstream App Store build
 - Simulator push registration and real APNs delivery need a physical iPhone.
 
 **Checked:** 2026-10-29, based on 4cc3a723.
+
+## LAA employee widget
+
+**Siblings:** LAA Home Screen small and medium widgets · Lock Screen circular widget · the existing widget URL router and voice start · LAA shell's error notice · the upstream launcher widgets (unchanged)
+
+**Code**
+- Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
+- Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`
+- Snapshot reload and notice: `Conduit/Services/AppState+Widgets.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/AppState.swift`
+- Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
+
+**Rulings**
+- The LAA build offers eight employees, with Ciel as default. Small opens chat with a separate call link; medium has both actions; the circular Lock Screen widget opens a call. Artwork is static and no live status is shown.
+- The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing profile voice path. A missing dashboard or profile is explained in Japanese.
+- Only the LAA extension bundles the resized staff images. The upstream launcher and its App Store build remain unchanged.
+
+**Open gaps**
+- Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
+
+**Checked:** 2026-10-29, at 2738ed28 (LAA task 12 changes).

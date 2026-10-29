@@ -5,6 +5,9 @@ import Foundation
 enum ConduitWidgetKind {
     static let native = "com.milim.relay.widgets.native"
     static let character = "com.milim.relay.widgets.character"
+    #if LAA_BUILD
+    static let employee = "com.laa-inc.laa.widgets.employee"
+    #endif
 }
 
 struct WidgetWorkspaceID: Codable, Hashable {

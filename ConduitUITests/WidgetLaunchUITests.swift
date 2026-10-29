@@ -76,6 +76,38 @@ final class WidgetLaunchUITests: XCTestCase {
         // Audio non-activation is separately covered by Task 3's unit spies.
     }
 
+    #if LAA_BUILD
+    func testEveryEmployeeLinkReachesItsConversationAndVoicePath() throws {
+        for employee in ["ciel", "argus", "cfo", "cio", "cmo", "cos", "cto", "cso"] {
+            let profile = "laa-\(employee)"
+            let chat = launchApp(coldURL: employeeURL(action: "employeeChat", profile: profile))
+            let conversation = chat.otherElements[Identity.conversationOutcome]
+            XCTAssertTrue(conversation.waitForExistence(timeout: 15), "\(profile): \(tree(chat))")
+            XCTAssertEqual(chat.otherElements[Identity.workspaceOutcome].value as? String, profile)
+            XCTAssertEqual(conversation.value as? String, Identity.sessionID)
+            chat.terminate()
+
+            let call = launchApp(coldURL: employeeURL(action: "talk", profile: profile))
+            let voicePath = call.otherElements["widgetUITestVoicePath"]
+            XCTAssertTrue(voicePath.waitForExistence(timeout: 15), "\(profile): \(tree(call))")
+            XCTAssertEqual(voicePath.value as? String, profile)
+            call.terminate()
+        }
+    }
+
+    private func employeeURL(action: String, profile: String) -> URL {
+        var components = URLComponents()
+        components.scheme = "conduit"
+        components.host = "widget"
+        components.path = "/v1/\(action)"
+        components.queryItems = [
+            URLQueryItem(name: "dashboard", value: Identity.dashboardID.lowercased()),
+            URLQueryItem(name: "profile", value: profile)
+        ]
+        return components.url!
+    }
+    #endif
+
     func testRemovedWidgetTargetShowsRecovery() throws {
         let app = launchApp(coldURL: missingConversationURL)
 

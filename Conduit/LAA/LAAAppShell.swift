@@ -21,6 +21,13 @@ struct LAAAppShell: View {
 
     var body: some View {
         bar
+            .overlay(alignment: .top) {
+                if let notice = appState.pinSyncNotice {
+                    V2NoticeBanner(notice: notice) { appState.dismissPinSyncNotice(notice.id) }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                }
+            }
             .environmentObject(bridge)
             .tint(LAAColors.teal)
             .environment(\.laaSettingsAction, onRequestSettings)
