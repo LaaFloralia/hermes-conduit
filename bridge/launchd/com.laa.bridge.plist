@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<!-- Template: scripts/install.sh substitutes the @@...@@ placeholders and
-     writes the result to ~/Library/LaunchAgents/com.laa.bridge.plist. -->
+<!-- Template: scripts/install.sh substitutes the placeholders below and writes
+     the result to ~/Library/LaunchAgents/com.laa.bridge.plist. -->
 <dict>
 	<key>Label</key>
 	<string>com.laa.bridge</string>

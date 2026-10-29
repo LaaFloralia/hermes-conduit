@@ -44,16 +44,18 @@ python3 - "$PLIST_SRC" "$PLIST_DST" "$NODE" "$BRIDGE_DIR" "$STATE_DIR" "$PORT" "
 import sys
 src, dst, node, bridge_dir, state_dir, port, home = sys.argv[1:8]
 text = open(src, encoding="utf-8").read()
-for key, value in {
+placeholders = {
     "@@NODE@@": node,
     "@@BRIDGE_DIR@@": bridge_dir,
     "@@STATE_DIR@@": state_dir,
     "@@PORT@@": port,
     "@@HOME@@": home,
-}.items():
+}
+for key, value in placeholders.items():
     text = text.replace(key, value)
-if "@@" in text:
-    raise SystemExit("unsubstituted placeholder left in the plist template")
+left = [key for key in placeholders if key in text]
+if left:
+    raise SystemExit(f"unsubstituted placeholders in the plist template: {left}")
 open(dst, "w", encoding="utf-8").write(text)
 PY
 plutil -lint "$PLIST_DST" >/dev/null
