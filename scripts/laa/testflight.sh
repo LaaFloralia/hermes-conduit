@@ -8,10 +8,11 @@
 #     scripts/laa/testflight.sh
 #
 # The App Store Connect key reaches this script as ASC_KEY, ASC_KEY_ID and
-# ASC_ISSUER_ID from 1Password. It is written to a 0600 file under
-# ~/.config/laa/tmp-secrets for xcodebuild — the only form xcodebuild accepts —
-# and that file is removed when the script exits, however it exits. Nothing
-# prints, logs or passes it as an argument.
+# ASC_ISSUER_ID from 1Password (the final wait for the build needs it either
+# way). xcodebuild is given it — as a 0600 file under ~/.config/laa/tmp-secrets,
+# the only form it accepts, removed however the script exits — only when Xcode
+# has no Apple ID for the team; with one, the account signs (see step 2). Nothing
+# prints, logs or passes the key as an argument.
 #
 # Environment (all optional):
 #   CURRENT_PROJECT_VERSION  build number; default is the UTC time (YYMMDDHHMM)
@@ -69,16 +70,39 @@ case "$build_number" in
   ''|*[!0-9]*) fail "CURRENT_PROJECT_VERSION must be digits, not '$build_number'" ;;
 esac
 
-# 2. The key, for as long as this script runs.
-mkdir -p "$key_dir"
-chmod 700 "$key_dir"
-key_root="$(mktemp -d "$key_dir/authkey.XXXXXX")"
-chmod 700 "$key_root"
-key_path="$key_root/AuthKey_${ASC_KEY_ID}.p8"
-(umask 077; printf '%s\n' "$ASC_KEY" > "$key_path")
-trap 'rm -rf "$key_root"' EXIT INT TERM
-[ -s "$key_path" ] || fail "the App Store Connect key file came out empty"
-echo "App Store Connect key: $(basename "$key_path"), key ID $ASC_KEY_ID"
+# 2. Which session signs this build.
+#
+# Xcode's automatic signing has to add the App Groups (and HealthKit) to the
+# LAA App IDs the first time, and only an Apple ID added to Xcode may change an
+# App ID. An App Store Connect API key can read the portal and make profiles —
+# and that is what the profiles already fetched show: aps-environment set,
+# application-groups empty — but a capability change is refused, which surfaces
+# as "Authentication failed: Make sure a bearer token was provided…" and then
+# as "Provisioning profile … doesn't support the group.com.laa-inc.laa.* App
+# Group" (measured 2026-10-29: with the same key and entitlements the App IDs
+# already carry, provisioning passes). So: use the Apple ID when Xcode has one
+# for this team, and the key only when it doesn't.
+with_account=no
+if defaults read com.apple.dt.Xcode IDEProvisioningTeams 2>/dev/null | grep -q "$team"; then
+  with_account=yes
+fi
+
+key_path=""
+if [ "$with_account" = yes ]; then
+  echo "Signing with the Apple ID Xcode has for team $team (it can add the App capabilities)"
+else
+  # 2b. The key, for as long as this script runs: the only form xcodebuild
+  #     takes it in, removed however the script exits.
+  mkdir -p "$key_dir"
+  chmod 700 "$key_dir"
+  key_root="$(mktemp -d "$key_dir/authkey.XXXXXX")"
+  chmod 700 "$key_root"
+  key_path="$key_root/AuthKey_${ASC_KEY_ID}.p8"
+  (umask 077; printf '%s\n' "$ASC_KEY" > "$key_path")
+  trap 'rm -rf "$key_root"' EXIT INT TERM
+  [ -s "$key_path" ] || fail "the App Store Connect key file came out empty"
+  echo "Signing with the App Store Connect API key $ASC_KEY_ID (no Apple ID in Xcode)"
+fi
 
 # 3. The project. Generated, never committed (build/ is ignored).
 #
@@ -143,12 +167,14 @@ fi
 
 archive="$work/LAA.xcarchive"
 rm -rf "$archive" "$work/export"
-auth=(
-  -allowProvisioningUpdates
-  -authenticationKeyPath "$key_path"
-  -authenticationKeyID "$ASC_KEY_ID"
-  -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-)
+auth=(-allowProvisioningUpdates)
+if [ "$with_account" = no ]; then
+  auth+=(
+    -authenticationKeyPath "$key_path"
+    -authenticationKeyID "$ASC_KEY_ID"
+    -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+  )
+fi
 # Passed only when set, so project.yml's values stand otherwise. macOS's bash
 # 3.2 needs the +"${...}" guard to expand an empty array under `set -u`.
 extra=()

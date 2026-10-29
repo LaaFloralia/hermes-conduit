@@ -20,7 +20,7 @@ UTC time it started (`CURRENT_PROJECT_VERSION`, `YYMMDDHHMM`), so two uploads
 never collide; `MARKETING_VERSION` comes from `project.yml`.
 
 The build is verified up to the export; the first upload waits on the
-provisioning sign-in described under [Before the first upload](#before-the-first-upload-the-provisioning-step).
+sign-in described under [Before the first upload](#before-the-first-upload-one-thing-only-the-owner-can-do).
 
 `LAA_EXPORT_DESTINATION=export` stops after writing the `.ipa` to
 `build/laa/export` and uploads nothing — the way to check signing without
@@ -75,53 +75,48 @@ identity" error, and leaving it empty archives unsigned — and an unsigned
 archive loses the entitlements before `-exportArchive` signs with the store
 profile.
 
-## Before the first upload: the provisioning step
+## Before the first upload: one thing only the owner can do
 
-`xcodebuild` could not finish automatic signing with the App Store Connect API
-key on 2026-10-29. Every target stopped at
+`xcodebuild` with the App Store Connect API key stops at
 
 ```
 error: Authentication failed: Make sure a bearer token was provided, it is
 properly configured and signed, and it has not expired.
 ```
 
-and then fell back to the team's wildcard profile, which has no Push, App
-Groups or HealthKit, so the build failed those capabilities. The key itself is
-fine: `scripts/laa/asc.mjs` signs a JWT with it and the API answers 200, and so
-does a JWT signed from a copy of the file the script writes for xcodebuild. The
-toolchain reported it twice more through a plain `xcodebuild build`
-(`Authentication failed` for every target), so it is the provisioning session,
-not the key.
+for every target, then falls back to the team's wildcard profile and fails on
+"doesn't support the group.com.laa-inc.laa.* App Group". The cause is not the
+key. Measured on 2026-10-29: the same key fetched the team's capabilities and
+minted store profiles for all five bundles (in
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles`, with
+`aps-environment` = production and `application-groups` **empty**), and a build
+whose entitlements ask only for what the App IDs already carry provisions fine.
+What Xcode cannot do with a key is change an App ID: adding the App Groups and
+HealthKit is an Apple-ID operation, and the App Store Connect API doesn't expose
+App Group assignment at all (`PATCH bundleIdCapabilities` takes only
+`ICLOUD_VERSION`, `DATA_PROTECTION_PERMISSION_LEVEL` and
+`APPLE_ID_AUTH_APP_CONSENT`).
 
-What that leaves: the archive compiles (Xcode 27.1, WebRTC 153.0.0, Metal
-toolchain installed), `-exportArchive` signs a store IPA for
-`com.laa-inc.laa` / `PAW258GB42`, and its entitlements carry no
-`aps-environment` and no `com.apple.security.application-groups`, because the
-archive was unsigned. Uploading that would ship an app without working push or
-App Groups, so no upload has been made.
+So the one step left needs the owner: **Xcode > Settings > Accounts > + >
+Apple ID (team PAW258GB42)**. `scripts/laa/testflight.sh` notices the account
+(`IDEProvisioningTeams`) and drops the API key for signing, so the first
+archive then registers the App Groups and HealthKit on the four App IDs and
+makes the profiles. Without it, the alternative is the same thing by hand:
+developer.apple.com > Certificates, Identifiers & Profiles > Identifiers >
+App Groups > `group.com.laa-inc.laa.notifications` and
+`group.com.laa-inc.laa.launcher` > Configure > tick all four App IDs, and
+HealthKit on `com.laa-inc.laa`.
 
-To finish, give xcodebuild a provisioning session it accepts — an Apple ID in
-Xcode is the one path that also assigns the App Groups to the four App IDs:
+After the first upload, confirm the entitlements travelled:
 
-1. Xcode > Settings > Accounts > `+` > Apple ID, then pick the PAW258GB42 team
-   (an app-specific password may be needed; it is the owner's own sign-in, so
-   nobody else can do this step).
-2. `scripts/laa/testflight.sh`. The first archive then registers the App IDs'
-   capabilities and the App Groups, and creates the profiles.
-Without a sign-in, the App Groups can be assigned by hand, which is what
-automatic signing would have done: developer.apple.com > Certificates,
-Identifiers & Profiles > Identifiers > App Groups, select
-`group.com.laa-inc.laa.notifications` and `group.com.laa-inc.laa.launcher`,
-Configure, and tick all four App IDs (`com.laa-inc.laa`, `.widgets`,
-`.NotificationService`, `.ShareExtension`). The portal also needs HealthKit
-enabled on `com.laa-inc.laa` (Capabilities) if the build is to keep it.
+```sh
+codesign -d --entitlements :- build/laa/export/Conduit.ipa
+```
 
-3. Check the upload landed with entitlements:
-   `codesign -d --entitlements :- build/laa/export/Conduit.ipa` (or on the
-   exported `Payload/Conduit.app`) should list `aps-environment` = `production`
-   and both `group.com.laa-inc.laa.*` groups. If it does not, the App Groups
-   still aren't assigned on the App IDs in the developer portal
-   (Certificates, Identifiers & Profiles > Identifiers > App Groups > Configure).
+must list `aps-environment` = `production` and both `group.com.laa-inc.laa.*`
+groups in the app and each extension. A build without them has no shared
+container, so encrypted notifications and the widgets' chat index stop working;
+that is why nothing is uploaded until they are in.
 
 ## The personal install path
 
