@@ -57,6 +57,19 @@ export function createWorkspaceStore({ file, now = () => Date.now() }) {
   };
 }
 
+// One service instance is shared with the session routes, so a session's cwd
+// and the workspace listing agree and neither scans the roots twice.
+export function workspaceServiceFromOptions({ now = () => Date.now(), ...options } = {}) {
+  return createWorkspaceService({
+    roots: options.roots ?? resolveWorkspaceRoots(),
+    gitRun: options.gitRun ?? defaultGitRun,
+    createWorktree: options.createWorktree ?? defaultCreateWorktree,
+    statusTtlMs: options.statusTtlMs ?? 5000,
+    maxDepth: options.maxDepth ?? 3,
+    now,
+  });
+}
+
 export function createWorkspaceRoutes({
   workspaceStore,
   findProject = () => null,
@@ -66,8 +79,9 @@ export function createWorkspaceRoutes({
   createWorktree = defaultCreateWorktree,
   statusTtlMs = 5000,
   maxDepth = 3,
+  service: injectedService = null,
 } = {}) {
-  const service = createWorkspaceService({ roots, gitRun, createWorktree, statusTtlMs, maxDepth, now });
+  const service = injectedService ?? createWorkspaceService({ roots, gitRun, createWorktree, statusTtlMs, maxDepth, now });
 
   async function list({ req }) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
