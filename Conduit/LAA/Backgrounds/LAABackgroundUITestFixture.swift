@@ -3,13 +3,13 @@ import SwiftUI
 
 /// Uses real conversation surfaces and pickers with an isolated fake gateway.
 @MainActor
-private final class LAABackgroundFixture: ObservableObject {
+final class LAABackgroundFixture: ObservableObject {
     let state: AppState
     let room: GroupRoom
     let bots: [BotProfile]
     @Published var createdName: String?
 
-    init() {
+    init(chatFixtureOverride: String? = nil, defaultsSuiteName: String = "LAABackgroundUITestFixture") {
         let members = [
             GroupMember(memberID: "laa-ciel", profile: "laa-ciel", handle: "ciel", displayName: "Ciel", target: nil, extra: [:]),
             GroupMember(memberID: "laa-cto", profile: "laa-cto", handle: "ada", displayName: "Ada", target: nil, extra: [:]),
@@ -25,7 +25,7 @@ private final class LAABackgroundFixture: ObservableObject {
         }
         let args = ProcessInfo.processInfo.arguments
         let mode = args.firstIndex(of: "-LAA_GROUPS_STATE").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
-        let chatFixture = args.firstIndex(of: "-LAA_V2_CHAT_FIXTURE").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
+        let chatFixture = chatFixtureOverride ?? args.firstIndex(of: "-LAA_V2_CHAT_FIXTURE").flatMap { args.indices.contains($0 + 1) ? args[$0 + 1] : nil }
         let now = Date().timeIntervalSince1970
         var events = [
             GroupEvent(roomID: room.roomID, seq: 1, eventID: "one", kind: "message.user",
@@ -62,7 +62,7 @@ private final class LAABackgroundFixture: ObservableObject {
                 return GroupSendResult(event: event, accepted: true, driverStarted: false)
             }
         )
-        let defaults = UserDefaults(suiteName: "LAABackgroundUITestFixture")!
+        let defaults = UserDefaults(suiteName: defaultsSuiteName)!
         defaults.set("laa-ciel", forKey: "conduit.activeProfile")
         let app = AppState(defaults: defaults, loadSavedConnection: false,
                            clearSessionPresentationCache: {},

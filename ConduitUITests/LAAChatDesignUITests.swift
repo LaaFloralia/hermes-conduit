@@ -12,9 +12,23 @@ final class LAAChatDesignUITests: XCTestCase {
 
     func testRichMessageCopyAndEditor() {
         let app = launch()
+        XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["laa.employee.call"].exists)
         XCTAssertTrue(app.staticTexts["chat.date.separator"].waitForExistence(timeout: 10))
         let copy = app.buttons["chat.code.copy"]
         XCTAssertTrue(copy.waitForExistence(timeout: 10))
+        for (english, japanese) in [
+            ("React to this response", "この応答にリアクション"),
+            ("Copy response", "応答をコピー"),
+            ("Read response aloud", "応答を読み上げ")
+        ] {
+            XCTAssertTrue(app.buttons[english].exists || app.buttons[japanese].exists,
+                          "Missing reply action: \(english)")
+        }
+        XCTAssertTrue(app.buttons["chat.replyMoreMenu"].exists)
+        XCTAssertTrue(app.buttons["Attach"].exists)
+        XCTAssertTrue(app.buttons["composer.expand-editor"].exists)
+        XCTAssertTrue(app.buttons["composer.action"].exists)
         copy.tap()
         XCTAssertTrue(app.buttons["chat.code.copy"].label.contains("Copied"))
 

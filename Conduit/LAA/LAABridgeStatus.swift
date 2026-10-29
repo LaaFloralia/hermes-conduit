@@ -20,6 +20,15 @@ final class LAABridgeSession: ObservableObject {
         } catch { status = .keychainError }
     }
 
+    #if DEBUG
+    /// Hosted fixtures can choose an isolated state without reading Keychain.
+    init(statusForTesting: Status) {
+        keychain = .init()
+        client = .init()
+        status = statusForTesting
+    }
+    #endif
+
     var address: String { credentials?.baseURL.absoluteString ?? LAABridgeEndpoint.defaultAddress }
     var deviceID: String? { credentials?.deviceID }
 
