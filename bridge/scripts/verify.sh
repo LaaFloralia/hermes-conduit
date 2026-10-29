@@ -40,6 +40,9 @@ check "GET /v1/health" "200" "$(curl -s -o /dev/null -w '%{http_code}' --max-tim
 check "GET /v1/me without token" "401" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$PORT/v1/me")"
 check "GET /v1/me with a wrong token" "401" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer not-a-real-token' --max-time 5 "http://127.0.0.1:$PORT/v1/me")"
 check "GET /v1/nope" "404" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$PORT/v1/nope")"
+check "GET /v1/projects without token" "401" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$PORT/v1/projects")"
+check "GET /v1/workspaces without token" "401" "$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:$PORT/v1/workspaces")"
+check "PATCH /v1/projects/prj_0 without token" "401" "$(curl -s -o /dev/null -w '%{http_code}' -X PATCH --max-time 5 "http://127.0.0.1:$PORT/v1/projects/prj_000000000000")"
 check "POST /v1/_test/echo is absent" "404" "$(curl -s -o /dev/null -w '%{http_code}' -X POST --max-time 5 "http://127.0.0.1:$PORT/v1/_test/echo")"
 echo "  info  health body: $(curl -s --max-time 5 "http://127.0.0.1:$PORT/v1/health")"
 

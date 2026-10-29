@@ -28,11 +28,10 @@ import {
 import { IDEMPOTENCY_KEY_PATTERN, complete, requestFingerprint, reserve } from './idempotency.mjs';
 import { createDriveFsAdapter } from './drive/drivefs.mjs';
 import { driveRoutes } from './routes/drive.mjs';
-import { BridgeError } from './errors.mjs';
+import { BridgeError, badRequest } from './errors.mjs';
+import { businessRoutes } from './routes/index.mjs';
 
 export { BridgeError };
-
-const badRequest = (code, message) => new BridgeError(400, code, message);
 
 const LOOPBACK_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
 const ENROLL_FAILURE_WINDOW_MS = 60 * 1000;
@@ -63,6 +62,7 @@ export function createBridge({
   drive = null,
   now = () => Date.now(),
   log = defaultLog(),
+  routeOptions = {},
 } = {}) {
   const startedAt = now();
   const enrollFailures = [];
@@ -210,6 +210,7 @@ export function createBridge({
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
     ...driveRoutes({ adapter: drive ?? createDriveFsAdapter(), now, log: log === null ? null : undefined }),
+    ...businessRoutes({ store, now, options: routeOptions }),
   ];
 
   // --- request pipeline -----------------------------------------------------
@@ -305,7 +306,7 @@ export function createBridge({
           now: now(),
         }));
       }
-      ok(res, result.status, result.data, requestId);
+      ok(res, result.status, result.data, requestId, result.headers ?? {});
     } catch (err) {
       const error = err instanceof BridgeError
         ? err

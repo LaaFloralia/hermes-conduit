@@ -1,10 +1,10 @@
 # LAA Bridge（Mac側サービスの骨格）
 
-`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）**で、他の業務エンドポイント（sessions / tasks / brain …）と iOS クライアントは後続タスク。
+`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約**で、他の業務エンドポイント（sessions / tasks / brain …）と iOS クライアントは後続タスク。
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
-- 状態: `~/.local/state/laa-bridge/state.json`（端末、ペアリングコードの hash、idempotency 台帳）
+- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`）
 - 依存: Node.js 20.11+ の標準モジュールのみ（npm install 不要）。`laa-personal-agent`（`hq/harness/personal_agent_bridge.mjs`）と同じ ESM/Node 系に合わせ、外部依存を持たない
 
 ## 設計上の決定
@@ -17,7 +17,11 @@
 | 失効 | `laa-bridge revoke` は state を書き換えるだけ。稼働中サーバーは毎リクエスト state を読むため再起動不要で 401 になる | 失効の即時性 |
 | idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は保存応答を再返却、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
 | 失敗時 | state が壊れていたら起動しない（端末・台帳を失ったまま稼働させない） | §7 |
-| ルート追加 | 各領域は `src/routes/<area>.mjs` が `{method,path|pattern,scope,handler}` の配列を返し、`src/http.mjs` の `ROUTES` へ1行で登録する。ストリーム応答は handler が `res` を直接書き、`undefined` を返す | 並行作業の衝突を1行に閉じる |
+| ルート追加 | 各領域は `src/routes/<area>.mjs` が `{method,path|pattern,scope,handler,headers?}` の配列を返し、`src/http.mjs` の `ROUTES` へ1行で登録する。ストリーム応答は handler が `res` を直接書き、`undefined` を返す | 並行作業の衝突を1行に閉じる |
+| 版 | 変更系は `Idempotency-Key` 必須。Project の更新は加えて `If-Match`（ETag は `"<version>"`）必須。欠落は 428、不一致は 412 | §3。2台の端末が黙って上書きしない |
+| 命名 | Project は `nameSource` を持つ。`owner`（人・社長の指定）の名前は自動命名で置換できない（409 `name_source_locked`）。子セッションの「子｜」は後続タスクの session 側 | §3、`hq/tools/PASEO-HERMES.md`「会話とワークスペースの命名」 |
+| 指示版 | 指示本文は保存せず、`instructionRef` と本文の hash から `instructionHash` を作り、変更ごとに `instructionVersion` と履歴（20件）を残す | Brain / Drive の内容を Bridge に複製しない |
+| workspace | 既存の repo / worktree を許可 root（既定 `~/dev`・`~/.paseo/worktrees`）から読取専用で棚卸し、branch と `git status` を返す。作成は `paseo worktree create` のみ。削除・rename・archive・force は持たない | §4。既存 worktree を壊さない |
 
 ## 起動
 
@@ -63,8 +67,48 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `GET /v1/drive/files/{id}` | Bearer + `media:read` | `{id,name,mimeType,kind,size,modifiedAt,parents,downloadable,exportFormats?}` |
 | `GET|HEAD /v1/drive/files/{id}/content` | Bearer + `media:read` | bytes（200）、`Range` 部分（206）、範囲外（416）、Workspace文書（409） |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
+| `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。`limit`（1–100、既定50）と `cursor` |
+| `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructionRef?,instructions?}` → `{id,version,etag,instructionHash,instructionVersion,…}`（201） |
+| `GET /v1/projects/{id}` | Bearer + `sessions:read` | Project と `ETag`。範囲外・不存在は 404 |
+| `PATCH /v1/projects/{id}` | Bearer + `sessions:write` + `Idempotency-Key` + `If-Match` | 部分更新。`If-Match` 欠落 428、版不一致 412、owner 名への自動改名 409 |
+| `GET /v1/workspaces` | Bearer + `sessions:read` | 許可 root 配下の repo / worktree。`{path,displayPath,kind,branch,head,status,projectId}` |
+| `POST /v1/workspaces` | Bearer + `sessions:write` + `Idempotency-Key` | `{repoId,worktreeName,branch?,base?,projectId?}` → `paseo worktree create`（branch-off）で作成（201）、既存 branch は 409 |
+| `GET /v1/workspaces/{id}` | Bearer + `sessions:read` | 1件と `ETag`。`id` は実パスから導出する `ws_<16hex>` |
 
-エラーは `{"error":{"code","message","retryable"},"requestId"}`。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合、`429` 試行過多、`500` 内部。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
+エラーは `{"error":{"code","message","retryable"},"requestId"}`。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
+
+失敗した要求（4xx）は idempotency 台帳に `in_progress` のまま残る。同じ key での再送は 60 秒は `409 idempotency_key_in_flight`、その後は `409 idempotency_outcome_unknown` になるので、内容を直してやり直すときは**新しい key** を使う（成功の再送だけが保存応答を返す）。
+
+## Project と workspace（タスク13）
+
+Project は「ジャンル＋共通指示」で、パスを持たない。workspace は repo / worktree の実体で、`projectId` は作成時に Bridge が記録するだけの任意の紐付け。同じ Project を別の workspace で使えるため、ジャンルと作業場所が混ざらない。
+
+```sh
+# Project（作成は owner 名として記録される）
+curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: p1' \
+  -H 'content-type: application/json' \
+  -d '{"name":"Trading｜環境認識","instructionRef":"Brain/Context/aesthetic.md"}' \
+  http://127.0.0.1:9137/v1/projects
+
+# 更新は ETag 必須（version 2 を期待）
+curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: p2' -H 'If-Match: "1"' \
+  -H 'content-type: application/json' -d '{"name":"Trading｜環境認識 v2"}' \
+  http://127.0.0.1:9137/v1/projects/prj_xxxxxxxxxxxx
+
+# 既存の repo / worktree の棚卸し
+curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/workspaces
+
+# 新規 worktree（Paseo の branch-off。既存 branch は 409）
+curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: w1' \
+  -H 'content-type: application/json' \
+  -d '{"repoId":"ws_xxxxxxxxxxxxxxxx","worktreeName":"laa-example-40"}' \
+  http://127.0.0.1:9137/v1/workspaces
+```
+
+- 許可 root は `LAA_BRIDGE_WORKSPACE_ROOTS`（`:` 区切り）で差し替えられる。既定は `~/dev` と `~/.paseo/worktrees`。symlink は辿らず、realpath が root の外になる path は一覧・作成の両方で拒否する。
+- 一覧は `git status --porcelain=v2 --branch`（`GIT_OPTIONAL_LOCKS=0`）を1回だけ呼び、branch・ahead/behind・staged/modified/untracked/conflicted を返す。状態は5秒キャッシュ。Paseo daemon が落ちていても一覧は動く。
+- 作成は `paseo worktree create --mode branch-off` のみ。`git worktree remove`・`archive`・`--force`・rename は実装しない。Paseo が失敗したら 503 を返し、既存の worktree には触らない。作成後の path が許可 root の外なら 503（記録もしない）。
+- `projectId` の紐付けは `workspaces.json` に残る。worktree を消してもこの記録は自動削除しない（削除 API を持たない方針に合わせる）。
 
 ## Drive（一覧・metadata・Range配信）
 
@@ -121,7 +165,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（51 tests、約0.6秒。DriveFSのxattrテストはmacOSのみ）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（67 tests、約0.9秒。DriveFSのxattrテストはmacOSのみ）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。
@@ -133,7 +177,10 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 - ログは requestId・method・path・status・deviceId・エラーコードのみ。トークン・コード・body は残さない。
 - 実装していない: レート制限の永続化（メモリ内・enroll のみ）、監査ファイル、event stream、GUI 排他、Brain 書込み。
 - Drive: 索引はメモリ内で、Driveデスクトップが同期していない項目は見えない。Drive APIの書き出し・共有設定・削除は扱わない（読取専用）。
+- workspace の一覧は root 配下を毎回 walk する（深さ3、4000 entry、status 5秒キャッシュ）。巨大な root を許可すると遅くなるので、`LAA_BRIDGE_WORKSPACE_ROOTS` は用途の狭いディレクトリにする。
 
 ## 未対応（後続タスク）
 
 iOS クライアント、`/v1/sessions` 以降の業務端点、`/v1/events`、`/v1/jobs`、GUI lease、Brain 書込み、Usage/Mac 状態、DriveのWorkspace文書export。§9 の未決3・4（GUI・Brain書込み）は実証まで提供しない。
+
+Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）、Project と指示文書の実体（Brain/Drive）の存在確認。

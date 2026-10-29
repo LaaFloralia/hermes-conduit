@@ -1,7 +1,7 @@
 // Static configuration for the LAA Bridge. Values that an operator or a test
 // needs to change come from the environment; everything else is fixed here.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,4 +87,31 @@ export function expandScopes(names) {
     out.add(name);
   }
   return [...out].sort();
+}
+
+// Workspace roots the Bridge may inventory and create worktrees under. A path
+// outside these roots is refused even though the process could read it, so a
+// device cannot turn the Bridge into a filesystem browser.
+export const DEFAULT_WORKSPACE_ROOTS = Object.freeze([
+  join(homedir(), 'dev'),
+  join(homedir(), '.paseo', 'worktrees'),
+]);
+
+export function resolveWorkspaceRoots(env = process.env) {
+  const raw = env.LAA_BRIDGE_WORKSPACE_ROOTS;
+  const values = raw === undefined || raw.trim() === ''
+    ? [...DEFAULT_WORKSPACE_ROOTS]
+    : raw.split(/[:,]/).map((value) => value.trim()).filter((value) => value !== '');
+  return values.map((value) => resolve(value));
+}
+
+// The Paseo CLI lives outside launchd's minimal PATH, and its shebang runs
+// `node` through env. Resolve the binary once and prepend the running Node's
+// bin directory when the adapter spawns it (see workspaces.mjs).
+export function resolvePaseoBin(env = process.env) {
+  if (env.LAA_BRIDGE_PASEO_BIN) return env.LAA_BRIDGE_PASEO_BIN;
+  for (const candidate of ['/opt/homebrew/bin/paseo', '/usr/local/bin/paseo']) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return 'paseo';
 }
