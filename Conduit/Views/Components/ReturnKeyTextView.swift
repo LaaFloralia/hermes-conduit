@@ -280,16 +280,21 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
-        if view.markedTextRange == nil {
-            let font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
-            if view.font != font { view.font = font; view.invalidateIntrinsicContentSize() }
-        }
+        updateTypography(view)
         if view.isEditable != enabled { view.isEditable = enabled }
         view.accessibilityLabel = accessibilityLabel
         view.accessibilityIdentifier = accessibilityIdentifier
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
+    }
+
+    /// UITextView font assignments can reset attributes under an active IME.
+    /// Apply a changed size only after the marked text has committed.
+    func updateTypography(_ view: ReturnKeyTextView) {
+        guard view.markedTextRange == nil else { return }
+        let font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
+        if view.font != font { view.font = font; view.invalidateIntrinsicContentSize() }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ReturnKeyTextView, context: Context) -> CGSize? {
@@ -380,8 +385,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
             lastReportedText = textView.text
             parent.text = textView.text
             if !hasMarkedText, let view = textView as? ReturnKeyTextView {
-                let font = ChatTypography.inputFont(for: view.traitCollection, size: parent.inputTextSize)
-                if view.font != font { view.font = font }
+                parent.updateTypography(view)
             }
             textView.invalidateIntrinsicContentSize()
         }
