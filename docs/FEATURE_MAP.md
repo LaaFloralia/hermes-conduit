@@ -397,6 +397,7 @@ build (keeps its own chat and call controls)
 **Open gaps**
 - Receiver, speaker, Bluetooth routing and native call presentation still need the requested real-device checks; the UI flow tests use a fake control because CallKit does not run in the simulator.
 - ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
+- The separate, existing GPT-Live settings screen still offers API billing. Employee chat and widget calls do not use it; hiding the existing choice would require changing that other screen.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
 **Checked:** 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
