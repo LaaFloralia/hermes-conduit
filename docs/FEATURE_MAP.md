@@ -3462,3 +3462,34 @@ point at the map and its check
 - If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
 **Checked:** 2026-10-26, #1314.
+
+## LAA all-profile notification pairing
+
+The LAA-only Settings action moves the active dashboard's profile notifications
+and calls to this iPhone; each profile can be paired back from the App Store app.
+
+**Siblings:** single-profile pairing and automatic pairing · relay and
+notification encryption · calls on the same profile pairing · LAA Settings
+and rollback instructions · the upstream App Store build
+
+**Code**
+- Run and Settings controls: `Conduit/LAA/NotificationPairing/LAANotificationPairAll.swift`, `Conduit/LAA/NotificationPairing/LAANotificationPairAllView.swift`, `Conduit/Views/AuxiliaryViews.swift`
+- Existing pairing: `Conduit/Services/AppState+NotifierPluginUpdate.swift`, `Conduit/Services/AppState.swift`, `Conduit/Services/PushNotificationService.swift`
+- Tests and instructions: `ConduitTests/LAANotificationPairAllTests.swift`, `ConduitUITests/LAANotificationPairAllUITests.swift`, `Conduit/LAA/NotificationPairing/LAANotificationPairAllFixture.swift`, `docs/LAA_BUILD.md`
+
+**Rulings**
+- Read the current dashboard's roster, check each profile's notification
+  installation, skip those already on this iPhone, and claim one relay code
+  at a time. Key provisioning during the run is limited to the newly paired
+  profile. Missing or ambiguous status is a failure, not an unpaired profile.
+- Show each outcome and retry only failures, checking their status again first.
+  A dashboard switch or installation change stops the run; an in-flight request
+  may already have reached the old host and must be checked on retry.
+- The App Store build keeps its existing controls. To go back, pair that
+  profile from Settings > Notifications in the App Store app; the plugin
+  replaces the LAA pairing and does not restore the old pairing automatically.
+
+**Open gaps**
+- Simulator push registration and real APNs delivery need a physical iPhone.
+
+**Checked:** 2026-10-29, based on 4cc3a723.
