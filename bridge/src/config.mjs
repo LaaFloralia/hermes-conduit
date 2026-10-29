@@ -197,6 +197,21 @@ export function resolveUsageFeedTimeoutMs(env = process.env) {
   return Number.isFinite(value) && value >= 100 && value <= 60000 ? value : 5000;
 }
 
+// The read that missed the cap above keeps running up to this bound, so the next
+// request can answer from that same attempt instead of starting another one.
+export function resolveUsageRefreshTimeoutMs(env = process.env) {
+  const raw = env.LAA_BRIDGE_USAGE_REFRESH_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return 30000;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 1000 && value <= 60000 ? value : 30000;
+}
+
+// The last successful proxy payload, under the Bridge's state dir next to the
+// device and idempotency records. No credential is ever written here.
+export function resolveUsageFeedStateFile({ stateDir = resolveStateDir(), env = process.env } = {}) {
+  return resolve(env.LAA_BRIDGE_USAGE_FEED_STATE || join(stateDir, 'usage-feed.json'));
+}
+
 export function resolveStorageStatusFile(env = process.env) {
   return resolve(env.LAA_BRIDGE_STORAGE_STATUS
     || join(homedir(), '.local', 'state', 'laa-storage-guard', 'status.json'));
