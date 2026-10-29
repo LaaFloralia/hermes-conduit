@@ -172,12 +172,10 @@ final class VoicePlacedCalls {
         phase = .running
         audio.configureForNativeCall()
         host.setCallActive(true)
-        reportedMuted = host.voiceMuted() ?? false
-        if reportedMuted == true {
-            // The conversation was already muted (a paused microphone):
-            // the system's screen says so too.
-            callKit.reportPlacedCallMuted(true)
-        }
+        // CallKit's screen starts unmuted. A conversation that is already
+        // muted (a paused microphone) reaches it on the follow loop's next
+        // tick: a mute sent before CallKit had the call would be refused.
+        reportedMuted = false
     }
 
     /// The conversation ended in the app: CallKit hangs its call up.
@@ -222,7 +220,9 @@ final class VoicePlacedCalls {
     /// below every `followInterval`, and directly by the tests.
     func followOnce() {
         guard phase == .running || phase == .placing else { return }
-        if let muted = host.voiceMuted(), muted != reportedMuted {
+        // Only once CallKit shows the call: a mute for a call it doesn't
+        // have yet is refused.
+        if phase == .running, let muted = host.voiceMuted(), muted != reportedMuted {
             reportedMuted = muted
             callKit.reportPlacedCallMuted(muted)
         }

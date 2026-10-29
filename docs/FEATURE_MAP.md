@@ -749,7 +749,7 @@ Voice settings toggle and its caption)
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (HermesNativeCalls' muteOnWatch)
 
 **Rulings**
-- During a call from Hermes, CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148).
+- During a CallKit call — one from Hermes, or one the user places (LAA fork) — CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148; LAA 2026-10-29).
 - A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943). LAA fork: with Place calls as phone calls on (the fork's default), a conversation the user starts on the phone is placed as a CallKit outgoing call, on the provider calls from Hermes already use: it plays from the earpiece, only the system call screen's Speaker button moves it, and the system's Mute and End act on the conversation (LAA 2026-10-29). Where CallKit isn't placing the call, the conversation plays from the earpiece with the call screen's own Speaker button and the proximity sensor, the choice survives the classic turns' deactivations, and the next call starts on the earpiece again (LAA 2026-10-28, kept as the fallback).
 - Silence mutes the assistant's voice apart from the microphone; its speech is dropped, not held, and job news waits for unmute (2026-10-09, #488).
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).

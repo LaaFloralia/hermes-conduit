@@ -206,6 +206,9 @@ final class VoicePlacedCallsTests: XCTestCase {
         host.muted = true
 
         startAPlacedCall()
+        XCTAssertEqual(kit.mutedReports, [], "CallKit starts unmuted; nothing is sent before it has the call")
+
+        calls.followOnce()
 
         XCTAssertEqual(kit.mutedReports, [true])
         XCTAssertEqual(calls.reportedMuted, true)
