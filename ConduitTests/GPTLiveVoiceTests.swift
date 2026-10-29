@@ -2163,6 +2163,7 @@ extension AppStateVoiceCapabilityTests {
             else { UserDefaults.standard.removeObject(forKey: key) }
         }
         let appState = makeGPTLiveAppState()
+        appState.noteBotChatSessionForTesting("session-1", profile: "laa-cso")
         appState.activeSessionId = "session-1"
         appState.setGPTLiveEnabled(true)
         let (controller, session) = installFakeGPTLive(in: appState)
@@ -2171,7 +2172,7 @@ extension AppStateVoiceCapabilityTests {
         let control = LAAEmployeeVoiceControl()
         let calls = LAAEmployeeCallCoordinator(control: control)
         calls.bindVoiceControl(appState)
-        calls.start(profile: appState.conversationIdentityProfile, name: "LAA", conversationID: "session-1")
+        calls.start(profile: "laa-cso", name: "Talos", conversationID: "session-1")
         await settle(until: { placed.isWaitingForCallAudio })
         XCTAssertTrue(placed.isWaitingForCallAudio)
         XCTAssertEqual(session.started, 0)
@@ -2184,6 +2185,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(calls.snapshot?.phase, .connected)
         XCTAssertNil(calls.snapshot?.audioLevel)
         XCTAssertEqual(calls.snapshot?.context.conversationID, "session-1")
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread?.runtimeSessionID, "session-1")
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread?.profile, "laa-cso")
         calls.toggleMute()
         XCTAssertTrue(controller.isMicrophoneMuted)
         XCTAssertEqual(session.microphoneEnabled, false)

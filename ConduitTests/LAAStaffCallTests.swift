@@ -29,6 +29,26 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(LAACallKitPresentation.outgoingUpdate(name: "Talos").localizedCallerName, "Talos")
     }
 
+    func testPlacedCallNameFollowsConversationAndKeepsDefaultName() {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let appState = harness.appState
+        appState.setActiveProfileForTesting("default")
+        let defaultName = HermesCallerName.name(profile: "default", mainName: appState.profileDisplayName("default"))
+        XCTAssertEqual(appState.placedCallName, defaultName)
+
+        appState.noteBotChatSessionForTesting("staff-chat", profile: "laa-cso")
+        appState.activeSessionId = "staff-chat"
+        XCTAssertEqual(appState.placedCallName, "Talos")
+
+        appState.setActiveProfileForTesting("laa-cfo")
+        XCTAssertEqual(appState.placedCallName, "Talos")
+        appState.activeSessionId = nil
+        XCTAssertEqual(appState.placedCallName, "Morgan")
+    }
+
     func testProviderConsentStartsOnlyAfterAcceptedSheetDismisses() {
         let control = FakeControl()
         control.consent = .geminiLive
@@ -150,13 +170,14 @@ final class LAAStaffCallTests: XCTestCase {
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
             defaults.removePersistentDomain(forName: suite)
         }
+        harness.appState.noteBotChatSessionForTesting("session-1", profile: "laa-ciel")
         harness.appState.activeSessionId = "session-1"
         let kit = FakePlacedCallKit()
         let placed = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
         let control = LAAEmployeeVoiceControl()
         control.bind(harness.appState)
         let calls = LAAEmployeeCallCoordinator(control: control)
-        calls.start(profile: "default", name: "LAA", conversationID: "session-1")
+        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "session-1")
         for _ in 0..<1_000 where !placed.isWaitingForCallAudio { await Task.yield() }
         XCTAssertTrue(placed.isWaitingForCallAudio)
         XCTAssertFalse(harness.appState.showVoiceSheet)
@@ -166,6 +187,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertTrue(harness.appState.showVoiceSheet)
         XCTAssertTrue(harness.controller.hasLiveVoiceSession)
         XCTAssertEqual(calls.snapshot?.phase, .connected)
+        XCTAssertEqual(calls.snapshot?.context.profile, "laa-ciel")
         XCTAssertEqual(calls.snapshot?.context.conversationID, "session-1")
         calls.showChat()
         XCTAssertFalse(calls.isShowingCall)
@@ -174,6 +196,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertFalse(harness.appState.showVoiceSheet)
         XCTAssertNil(calls.snapshot)
         XCTAssertEqual(harness.appState.activeSessionId, "session-1")
+        XCTAssertEqual(harness.appState.conversationIdentityProfile, "laa-ciel")
         XCTAssertEqual(kit.endRequests, 1)
         kit.onPlacedCallEnded?(false)
     }
