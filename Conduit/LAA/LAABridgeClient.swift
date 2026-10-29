@@ -255,7 +255,14 @@ struct LAABridgeClient {
 }
 
 struct LAABridgeKeychain {
-    private let service = "com.laa.conduit.bridge"
+    private let service: String = {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE") {
+            return "com.laa.conduit.bridge.ui-test." + UUID().uuidString
+        }
+        #endif
+        return "com.laa.conduit.bridge"
+    }()
     private let account = "device"
     private var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,

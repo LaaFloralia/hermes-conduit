@@ -1199,8 +1199,12 @@ final class AppState: ObservableObject {
         return compressingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, activeSessionId) })
             || serverCompactingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, activeSessionId) })
     }
+    // Include assignments that leave the value unchanged: a newer connection
+    // may take ownership of an already-synchronizing state.
+    private var turnStateAssignmentRevision: UInt64 = 0
     @Published private(set) var turnState: TurnState = .idle {
         didSet {
+            turnStateAssignmentRevision &+= 1
             guard oldValue != turnState else { return }
             // A message waiting for this chat goes once it takes one.
             schedulePendingComposerSendCheck()
@@ -1658,7 +1662,21 @@ final class AppState: ObservableObject {
     private final class BotChatOpenFlight {
         var task: Task<Bool, Never>?
     }
+    private final class BotChatOpenContext {
+        let epoch: Int
+        let client: HermesClient
+        var turnStateAssignmentRevision: UInt64?
+
+        init(epoch: Int, client: HermesClient) {
+            self.epoch = epoch
+            self.client = client
+        }
+    }
     private var botChatOpenFlights: [String: BotChatOpenFlight] = [:]
+    #if DEBUG
+    /// Runs on the main actor after registration, before the flight task can start.
+    var onBotChatFlightRegisteredForTesting: (() -> Void)?
+    #endif
 
     /// Every id the client can POSITIVELY attribute to Bot Mode right now: the
     /// roster's canonical registry (id + lineage tip) and the runtime
@@ -14278,6 +14296,9 @@ final class AppState: ObservableObject {
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
+        #if LAA_BUILD
+        try? LAABackgroundStore.shared.removeAll(dashboardID: id)
+        #endif
         forgetRelayGatewayIDs(of: id)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
@@ -16083,8 +16104,10 @@ final class AppState: ObservableObject {
         historySourceUnavailable: Bool = false,
         presentationMigrationSessionIDs: Set<String> = [],
         conversationProfile: String? = nil,
-        widgetLease: WidgetLaunchLease? = nil
+        widgetLease: WidgetLaunchLease? = nil,
+        botChatOpenContext: BotChatOpenContext? = nil
     ) async -> Bool {
+        guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
         guard automaticChatResumeWorkIsCurrent(
             automaticWorkToken,
             syncOperationID: automaticSyncOperationID
@@ -16133,6 +16156,7 @@ final class AppState: ObservableObject {
         reconciliationWasKanbanWorker = false
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
+        botChatOpenContext?.turnStateAssignmentRevision = turnStateAssignmentRevision
         // The resume RPC can overlap a user-initiated config.set. Capture the
         // local-write position before launching either request so a response
         // from the older snapshot cannot clear the newer override.
@@ -16184,7 +16208,10 @@ final class AppState: ObservableObject {
                     resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
                     throw error
                 }
-                switch await transcriptOutcome {
+                guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
+                let transcriptResult = await transcriptOutcome
+                guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
+                switch transcriptResult {
                 case .hydrated(let persisted):
                     // The endpoint may resolve a runtime ID to its stored
                     // session ID; only rows belonging to this session may
@@ -16243,6 +16270,7 @@ final class AppState: ObservableObject {
                     throw error
                 }
             }
+            guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticSyncOperationID
@@ -16565,6 +16593,7 @@ final class AppState: ObservableObject {
             schedulePendingApprovalsRefresh(sessionId: result.sessionId, using: client)
             await refreshChatResumeContext(sessionId: result.sessionId, using: client)
 
+            guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticSyncOperationID
@@ -16681,9 +16710,11 @@ final class AppState: ObservableObject {
                     using: client
                 )
             }
+            guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
             return settled
 
         } catch {
+            guard botChatOpenContextIsCurrent(botChatOpenContext) else { return false }
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticSyncOperationID
@@ -22672,13 +22703,16 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        guard !Task.isCancelled else { return false }
         guard let client, isConnected else {
             errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
             return false
         }
+        let epoch = botRosterEpoch
         let flightKey = bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let flight = botChatOpenFlights[flightKey] {
             let joined = await flight.task?.value ?? false
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
             // A notification that joined a flight its own newer transition
             // superseded would otherwise inherit that stand-down and do
             // nothing. While its transition is still current, it opens the
@@ -22692,6 +22726,7 @@ final class AppState: ObservableObject {
                 return joined
             }
         }
+        guard !Task.isCancelled else { return false }
         // The closure captures the box WEAKLY: a strong capture would form
         // a flight<->task retain cycle that outlives the map entry.
         let flight = BotChatOpenFlight()
@@ -22708,16 +22743,23 @@ final class AppState: ObservableObject {
                     self.botChatOpenFlights.removeValue(forKey: flightKey)
                 }
             }
+            guard self.botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
             return await self.resolveAndOpenBotChat(
                 bot,
                 client: client,
+                epoch: epoch,
                 presentationMigrationSessionIDs: presentationMigrationSessionIDs,
                 viewportTransitionGeneration: viewportTransitionGeneration
             )
         }
         flight.task = task
         botChatOpenFlights[flightKey] = flight
-        return await task.value
+        #if DEBUG
+        onBotChatFlightRegisteredForTesting?()
+        #endif
+        let opened = await task.value
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        return opened
     }
 
     /// A bot open spans several awaited RPCs. Every step re-validates that
@@ -22728,13 +22770,23 @@ final class AppState: ObservableObject {
         epoch == botRosterEpoch && client === self.client
     }
 
+    private func botChatOpenFlightIsCurrent(epoch: Int, client: HermesClient) -> Bool {
+        !Task.isCancelled && botOpenFenceIsCurrent(epoch: epoch, client: client)
+    }
+
+    private func botChatOpenContextIsCurrent(_ context: BotChatOpenContext?) -> Bool {
+        guard let context else { return true }
+        return botChatOpenFlightIsCurrent(epoch: context.epoch, client: context.client)
+    }
+
     private func resolveAndOpenBotChat(
         _ bot: BotProfile,
         client: HermesClient,
+        epoch: Int,
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
-        let epoch = botRosterEpoch
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         // THE identity lookup, on the bot's own profile. A failed RPC is not
         // "no Bot Chat exists" — it is "unknown", and unknown means retry.
         let rows: [BotChatLookupRow]
@@ -22745,10 +22797,10 @@ final class AppState: ObservableObject {
                 rows = try await client.findBotChatSession(profile: bot.name)
             }
         } catch {
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+            guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
             return failBotChatOpen(bot, error: error, stage: .lookup)
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         switch BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
         case .failure(.unconfirmedAbsence):
             refuseBotChatConfirmation(bot)
@@ -22787,22 +22839,24 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         noteBotChatSession(resumeID, profile: bot.name, label: bot.displayLabel)
         noteBotChatSession(registryID, profile: bot.name, label: bot.displayLabel)
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         let outcome = await performSessionOpen(
             resumeID,
             reusing: viewportTransitionGeneration,
             presentationMigrationSessionIDs: presentationMigrationSessionIDs,
             conversationProfile: bot.name,
-            preferredTitle: bot.displayLabel
+            preferredTitle: bot.displayLabel,
+            botChatOpenContext: BotChatOpenContext(epoch: epoch, client: client)
         )
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         // Only a GENUINE failure owned by this invocation may publish: a
         // superseded open (the user navigated elsewhere, or re-tapped this
         // same bot so a newer open owns the viewport) is navigation state,
         // not an error.
-        if outcome == .failed, !Task.isCancelled,
-           botOpenFenceIsCurrent(epoch: epoch, client: client),
-           errorMessage == nil {
+        if outcome == .failed, errorMessage == nil {
             errorMessage = AppLocalization.string(
                 "Could not open \(bot.displayLabel)'s Bot Chat."
             )
@@ -22828,6 +22882,7 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         let created: (sessionId: String, storedSessionId: String?)
         do {
             if let createBotChat = chatResumeLifecycleOperations.createBotChat {
@@ -22836,6 +22891,7 @@ final class AppState: ObservableObject {
                 created = try await client.createBotChatSession(profile: bot.name)
             }
         } catch {
+            guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
             if BotChatTitleCollision.isError(error) {
                 return await adoptWinningBotChat(
                     bot,
@@ -22845,10 +22901,9 @@ final class AppState: ObservableObject {
                     viewportTransitionGeneration: viewportTransitionGeneration
                 )
             }
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
             return failBotChatOpen(bot, error: error, stage: .create)
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         do {
             if let titleBotChat = chatResumeLifecycleOperations.titleBotChat {
                 try await titleBotChat(client, created.sessionId, BotMode.canonicalChatTitle, bot.name)
@@ -22860,6 +22915,7 @@ final class AppState: ObservableObject {
                 )
             }
         } catch {
+            guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
             if BotChatTitleCollision.isError(error) {
                 return await adoptWinningBotChat(
                     bot,
@@ -22869,10 +22925,9 @@ final class AppState: ObservableObject {
                     viewportTransitionGeneration: viewportTransitionGeneration
                 )
             }
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
             return failBotChatOpen(bot, error: error, stage: .title)
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         noteBotChatSession(created.sessionId, profile: bot.name, label: bot.displayLabel)
         // The open resumes the STORED id, as Desktop's does: Hermes finds a
         // chat by its stored key (the live session it just made, or the row
@@ -22914,6 +22969,7 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         let rows: [BotChatLookupRow]
         do {
             if let findBotChat = chatResumeLifecycleOperations.findBotChat {
@@ -22924,11 +22980,11 @@ final class AppState: ObservableObject {
         } catch {
             // A cancelled or server-switched flight abandons silently, like
             // every other stage; only a current flight speaks.
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+            guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
             refuseBotChatConfirmation(bot)
             return false
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        guard botChatOpenFlightIsCurrent(epoch: epoch, client: client) else { return false }
         if case .success(.openExisting(let registryID, let resumeID)) =
             BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
             return await openCanonicalBotChat(
@@ -23245,7 +23301,8 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         conversationProfile: String? = nil,
         preferredTitle: String? = nil,
-        widgetLease: WidgetLaunchLease? = nil
+        widgetLease: WidgetLaunchLease? = nil,
+        botChatOpenContext: BotChatOpenContext? = nil
     ) async -> SessionOpenOutcome {
         await performSessionOpenNotingRefusal(
             sessionId,
@@ -23253,7 +23310,8 @@ final class AppState: ObservableObject {
             presentationMigrationSessionIDs: presentationMigrationSessionIDs,
             conversationProfile: conversationProfile,
             preferredTitle: preferredTitle,
-            widgetLease: widgetLease
+            widgetLease: widgetLease,
+            botChatOpenContext: botChatOpenContext
         ).outcome
     }
 
@@ -23268,8 +23326,10 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         conversationProfile: String? = nil,
         preferredTitle: String? = nil,
-        widgetLease: WidgetLaunchLease? = nil
+        widgetLease: WidgetLaunchLease? = nil,
+        botChatOpenContext: BotChatOpenContext? = nil
     ) async -> (outcome: SessionOpenOutcome, refused: Bool) {
+        guard botChatOpenContextIsCurrent(botChatOpenContext) else { return (.superseded, false) }
         guard let client else { return (.failed, false) }
         // A session open takes the viewport back from any open room. A room
         // surface is presentation-only (never session state), so closing it
@@ -23320,12 +23380,35 @@ final class AppState: ObservableObject {
             scopeProfile: conversationProfile
         )
         let token = beginReconciliation()
+        // A bot flight can lose its client while suspended. Close only the
+        // reconciliation and viewport it still owns; a newer navigation or
+        // automatic sync must retain its own state.
+        defer {
+            if let botChatOpenContext,
+               !botChatOpenContextIsCurrent(botChatOpenContext),
+               token == reconciliationToken,
+               chatViewportTransitionIsCurrent(generation: transitionGeneration) {
+                let settled = settleReconciliation(token)
+                if settled {
+                    chatResumeCoordinator.abandonPendingAutomaticSync()
+                }
+                if settled || reconciliation == nil {
+                    finishChatViewportTransition(generation: transitionGeneration)
+                    if turnState == .synchronizing,
+                       let ownedRevision = botChatOpenContext.turnStateAssignmentRevision,
+                       ownedRevision == turnStateAssignmentRevision {
+                        turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
+                    }
+                }
+            }
+        }
         let acceptedSessionIDs = knownSessionIDs(for: sessionId)
         // A bot chat is not the dashboard workspace's ORDINARY selection, but
         // it IS the conversation the user is viewing: the recorded reference
         // carries its kind, so the Sessions surface never adopts it while a
         // cold launch still restores exactly what was on screen. Ownership
         // comes from the bot registry (seeded above), never the id's shape.
+        guard botChatOpenContextIsCurrent(botChatOpenContext) else { return (.superseded, false) }
         setActiveSessionState(id: sessionId)
         keepDelegateAgents(of: acceptedSessionIDs)
         messages = []
@@ -23376,8 +23459,10 @@ final class AppState: ObservableObject {
             requiredViewportTransitionGeneration: transitionGeneration,
             presentationMigrationSessionIDs: presentationMigrationSessionIDs,
             conversationProfile: conversationProfile,
-            widgetLease: widgetLease
+            widgetLease: widgetLease,
+            botChatOpenContext: botChatOpenContext
         )
+        guard botChatOpenContextIsCurrent(botChatOpenContext) else { return (.superseded, false) }
         // The picked chat's saved copy has done its job: its own transcript
         // (or none, for an empty chat) is up, or the open failed.
         if chatViewportTransitionIsCurrent(generation: transitionGeneration),

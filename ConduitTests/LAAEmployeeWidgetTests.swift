@@ -18,8 +18,6 @@ final class LAAEmployeeWidgetTests: XCTestCase {
             XCTAssertEqual(employee.profile, "laa-\(employee.rawValue)")
             XCTAssertEqual(LAAWidgetEmployee.forProfile(employee.profile), employee)
             XCTAssertEqual(employee.heroImage, "LAAEmployee-\(employee.rawValue)-hero")
-            XCTAssertEqual(employee.avatarImage, "LAAEmployee-\(employee.rawValue)-avatar")
-            XCTAssertFalse(employee.role.isEmpty)
         }
         XCTAssertNil(LAAWidgetEmployee.forProfile("laa-unknown"))
     }

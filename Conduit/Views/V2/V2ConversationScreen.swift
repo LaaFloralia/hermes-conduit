@@ -138,6 +138,7 @@ struct V2ConversationScreen: View {
 #if LAA_BUILD
         .modifier(LAAInCallBarModifier())
 #endif
+        .laaConversationFeatures()
         .sheet(item: $artifactSessionIDs) { sheet in
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
@@ -454,6 +455,7 @@ private struct V2ConnectionLine: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
             }
+            .laaPhotoSupportingText()
             .foregroundStyle(connecting ? Color.orange : Color.red)
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .transition(.opacity)
@@ -488,6 +490,9 @@ private struct V2ConversationMenu: View {
 
     var body: some View {
         Menu {
+            #if LAA_BUILD
+            LAAConversationMenuItems()
+            #endif
             if appState.activeRoomSurface != nil {
                 GroupRoomActionItems(onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture)
             } else {
@@ -560,7 +565,7 @@ private struct V2PreGlassToolbarControl: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
-            content
+            content.laaToolbarGlass()
         } else {
             content.conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.10))
         }

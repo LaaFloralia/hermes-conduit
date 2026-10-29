@@ -3448,3 +3448,128 @@ extension HermesClientTests {
         XCTAssertLessThan(HermesClient.pingTimeout, HermesClient.livenessProbeTimeout)
     }
 }
+
+#if LAA_BUILD
+extension HermesClientTests {
+    func testLAAGroupCreateAndRenameUseGatewayContractAndFenceStaleReplies() async throws {
+        final class RoomBox {
+            var supportsRename = false
+            var room = GroupRoom(roomID: "laa-test-room", name: "Planning", members: [],
+                authorityGatewayID: "gw", authorityEpoch: 1, revision: 1,
+                createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0)
+        }
+        let box = RoomBox()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in
+                GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "gw", features: [],
+                    methods: box.supportsRename ? GroupWire.requiredMethods.union(["groups.rename"]) : GroupWire.requiredMethods,
+                    maxLogLimit: 500)
+            },
+            list: { _ in ([box.room], nil) },
+            state: { _, _ in (box.room, nil) },
+            log: { _, _, since, _ in
+                GroupLogPage(events: [], cursor: since, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw", authorityEpoch: 1)
+            }
+        )
+        let suite = "LAAGroupGatewayTests-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             clearSessionPresentationCache: {}, groupChatOperations: operations)
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport, profile: "laa-ciel")
+        defer { client.disconnect() }
+        let connect = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connect, "the group gateway connection")
+        state.client = client
+        state.isConnected = true
+        _ = state.adoptDashboard(forNormalizedURL: "https://test.example")
+
+        let bots = ["laa-ciel", "laa-cto"].map { profile in
+            BotProfile(name: profile, botTitle: nil, displayName: profile, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        let beforeProbe = socket.sentTexts.count
+        let deniedCreate = await state.createGroupRoom(name: "Planning", bots: bots, roomID: "laa-test-room")
+        XCTAssertFalse(deniedCreate)
+        XCTAssertEqual(socket.sentTexts.count, beforeProbe)
+        await state.refreshGroupChatSupport()
+        let sentCreate = Gate()
+        socket.onSend = { sentCreate.signal() }
+        let create = Task { await state.createGroupRoom(name: " Planning ", bots: bots, roomID: "laa-test-room") }
+        try await sentCreate.wait("groups.create")
+        let createRequest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any])
+        XCTAssertEqual(createRequest["method"] as? String, "groups.create")
+        let createParams = try XCTUnwrap(createRequest["params"] as? [String: Any])
+        XCTAssertEqual(createParams["room_id"] as? String, "laa-test-room")
+        XCTAssertEqual(createParams["name"] as? String, "Planning")
+        let members = try XCTUnwrap(createParams["members"] as? [[String: Any]])
+        XCTAssertEqual(Set(members.compactMap { $0["profile"] as? String }), Set(["laa-ciel", "laa-cto"]))
+        for member in members {
+            XCTAssertEqual(member["member_id"] as? String, member["profile"] as? String)
+            XCTAssertNotNil(member["handle"] as? String)
+            XCTAssertNotNil(member["display_name"] as? String)
+        }
+        let createID = try XCTUnwrap(createRequest["id"] as? Int)
+        try deliverReply(["jsonrpc": "2.0", "id": createID,
+                          "result": ["room": ["room_id": "laa-test-room", "name": "Planning"]]], on: socket)
+        try await awaitCompletion(of: create, "group creation")
+        let created = await create.value
+        XCTAssertTrue(created)
+        let surface = try XCTUnwrap(state.activeRoomSurface)
+        XCTAssertEqual(surface.room.roomID, "laa-test-room")
+
+        // The gateway does not advertise rename: no RPC must be sent.
+        XCTAssertFalse(LAAGroupRename.isAvailable(state))
+        let sentCount = socket.sentTexts.count
+        let denied = await LAAGroupRename.perform(state, surface: surface, name: "Renamed", eventID: "event-1")
+        XCTAssertFalse(denied)
+        XCTAssertEqual(socket.sentTexts.count, sentCount)
+
+        box.supportsRename = true
+        await state.refreshGroupChatSupport()
+        XCTAssertTrue(LAAGroupRename.isAvailable(state))
+        let sentRename = Gate()
+        socket.onSend = { sentRename.signal() }
+        let rename = Task { await LAAGroupRename.perform(state, surface: surface, name: "Renamed", eventID: "event-1") }
+        try await sentRename.wait("groups.rename")
+        let renameRequest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any])
+        XCTAssertEqual(renameRequest["method"] as? String, "groups.rename")
+        let renameParams = try XCTUnwrap(renameRequest["params"] as? [String: Any])
+        XCTAssertEqual(renameParams.count, 3)
+        XCTAssertEqual(renameParams["room_id"] as? String, "laa-test-room")
+        XCTAssertEqual(renameParams["event_id"] as? String, "event-1")
+        XCTAssertEqual(renameParams["name"] as? String, "Renamed")
+        let renameID = try XCTUnwrap(renameRequest["id"] as? Int)
+        box.room = GroupRoom(roomID: "laa-test-room", name: "Renamed", members: [],
+            authorityGatewayID: "gw", authorityEpoch: 1, revision: 2,
+            createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0)
+        try deliverReply(["jsonrpc": "2.0", "id": renameID,
+                          "result": ["room": ["room_id": "laa-test-room", "name": "Renamed"]]], on: socket)
+        try await awaitCompletion(of: rename, "group rename")
+        let renamed = await rename.value
+        XCTAssertTrue(renamed)
+        XCTAssertEqual(state.activeRoomSurface?.room.name, "Renamed")
+
+        let current = try XCTUnwrap(state.activeRoomSurface)
+        let sentStaleRename = Gate()
+        socket.onSend = { sentStaleRename.signal() }
+        let staleRename = Task { await LAAGroupRename.perform(state, surface: current, name: "Late", eventID: "event-2") }
+        try await sentStaleRename.wait("the stale groups.rename")
+        let staleRequest = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any])
+        let staleID = try XCTUnwrap(staleRequest["id"] as? Int)
+        state.closeGroupRoom()
+        try deliverReply(["jsonrpc": "2.0", "id": staleID,
+                          "result": ["room": ["room_id": "laa-test-room", "name": "Late"]]], on: socket)
+        try await awaitCompletion(of: staleRename, "stale group rename")
+        let staleResult = await staleRename.value
+        XCTAssertFalse(staleResult)
+        XCTAssertNil(state.activeRoomSurface)
+    }
+}
+#endif

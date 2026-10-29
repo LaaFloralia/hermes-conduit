@@ -3404,6 +3404,14 @@ final class HermesClient: ObservableObject {
         return room
     }
 
+    #if LAA_BUILD
+    func groupsRename(roomID: String, eventID: String, name: String) async throws -> GroupRoom {
+        let result = try await rpc("groups.rename", params: ["room_id": roomID, "event_id": eventID, "name": name], scoped: false)
+        guard let room = GroupDecoders.room(result.objectValue?["room"]) else { throw HermesError.invalidResponse }
+        return room
+    }
+    #endif
+
     /// One room's replay cursor, authority state, and live driver status.
     /// Tombstoned rooms are OPTED INTO by default: a poller must be able to
     /// OBSERVE a disband (`disbanded_at` set) to close its surface — with

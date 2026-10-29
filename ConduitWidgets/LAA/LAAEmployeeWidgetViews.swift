@@ -2,6 +2,9 @@
 import AppIntents
 import SwiftUI
 import WidgetKit
+#if LAA_WIDGET_TEST
+@testable import Conduit
+#endif
 
 extension LAAWidgetEmployee: AppEnum {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "社員")
@@ -37,21 +40,44 @@ struct LAAEmployeeTimelineProvider: AppIntentTimelineProvider {
         .make(employee: configuration.employee, snapshot: WidgetSnapshotStore.production?.read())
     }
     func timeline(for configuration: LAAEmployeeWidgetIntent, in context: Context) async -> Timeline<LAAEmployeeWidgetEntry> {
-        let entry = LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: WidgetSnapshotStore.production?.read())
+        Self.makeTimeline(configuration: configuration, snapshot: WidgetSnapshotStore.production?.read())
+    }
+
+    static func makeTimeline(configuration: LAAEmployeeWidgetIntent, snapshot: WidgetSnapshot?) -> Timeline<LAAEmployeeWidgetEntry> {
+        let entry = LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot)
         return Timeline(entries: [entry], policy: .never)
     }
 }
 
 struct LAAEmployeeWidget: Widget {
+    static let supportedFamilies: [WidgetFamily] = [.systemSmall, .accessoryCircular]
+
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: ConduitWidgetKind.employee, intent: LAAEmployeeWidgetIntent.self, provider: LAAEmployeeTimelineProvider()) { entry in
             LAAEmployeeWidgetView(entry: entry)
         }
         .configurationDisplayName("LAA 社員")
         .description("社員を選び、会話や電話を開きます。")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular])
+        .supportedFamilies(Self.supportedFamilies)
         .contentMarginsDisabled()
     }
+}
+
+private enum LAAEmployeeWidgetStyle {
+    static let lightBackground = Color(red: 246/255, green: 242/255, blue: 233/255)
+    static let darkBackground = Color(red: 15/255, green: 27/255, blue: 28/255)
+    static let actionBackground = Color(red: 0/255, green: 88/255, blue: 94/255)
+    static let actionForeground = Color.white
+    static let primaryForeground = Color.primary
+    static let nameFont = Font.custom("Georgia", size: 19)
+    static let actionIconFont = Font.system(size: 15, weight: .semibold)
+    static let actionLabelFont = Font.system(size: 10, weight: .semibold)
+    static let actionDiameter: CGFloat = 44
+    static let actionOutlineWidth: CGFloat = 1.5
+    static let namePadding: CGFloat = 12
+    static let actionSpacing: CGFloat = 18
+    static let bottomPadding: CGFloat = 8
+    static let heroActionClearance: CGFloat = 4
 }
 
 struct LAAEmployeeWidgetView: View {
@@ -64,77 +90,50 @@ struct LAAEmployeeWidgetView: View {
     var body: some View {
         Group {
             switch familyOverride ?? family {
-            case .systemSmall: small
             case .accessoryCircular: circular
-            default: medium
+            default: small
             }
         }
         .containerBackground(for: .widget) { background }
     }
 
     private var background: Color {
-        colorScheme == .dark ? Color(red: 15/255, green: 27/255, blue: 28/255)
-            : Color(red: 246/255, green: 242/255, blue: 233/255)
+        colorScheme == .dark ? LAAEmployeeWidgetStyle.darkBackground : LAAEmployeeWidgetStyle.lightBackground
     }
 
     private var small: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .bottomTrailing) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(entry.employee.name)
-                        .font(.custom("Georgia", size: 19))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .padding(.top, 13)
-                        .padding(.horizontal, 14)
-                    Spacer(minLength: 0)
-                }
+            let isFullColor = renderingMode == .fullColor
+            let heroHeight = isFullColor ? geometry.size.height * 0.86 : max(0,
+                geometry.size.height - LAAEmployeeWidgetStyle.actionDiameter
+                    - LAAEmployeeWidgetStyle.bottomPadding - LAAEmployeeWidgetStyle.heroActionClearance)
+            ZStack {
                 employeeImage(entry.employee.heroImage)
                     .scaledToFit()
-                    .frame(width: geometry.size.width * 0.9, height: geometry.size.height * 0.83)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .frame(width: geometry.size.width * 0.9, height: heroHeight)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isFullColor ? .bottom : .top)
                     .accessibilityHidden(true)
-                Link(destination: entry.call.url) {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color(red: 0.08, green: 0.40, blue: 0.38), in: Circle())
-                }
-                .accessibilityLabel("\(entry.employee.name) に電話")
-                .padding(11)
-            }
-        }
-        .widgetURL(entry.chat.url)
-        .accessibilityLabel("\(entry.employee.name) の会話")
-    }
 
-    private var medium: some View {
-        HStack(spacing: 12) {
-            employeeImage(entry.employee.avatarImage)
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(entry.employee.name)
-                    .font(.custom("Georgia", size: 22))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                Text(entry.employee.role)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 4)
-                HStack(spacing: 8) {
-                    action(entry.call.url, title: "電話", symbol: "phone.fill")
-                    action(entry.chat.url, title: "チャット", symbol: "bubble.left.fill")
+                VStack {
+                    HStack {
+                        Text(entry.employee.name)
+                            .font(LAAEmployeeWidgetStyle.nameFont)
+                            .foregroundStyle(LAAEmployeeWidgetStyle.primaryForeground)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, LAAEmployeeWidgetStyle.namePadding)
+                    .padding(.top, LAAEmployeeWidgetStyle.namePadding)
+                    Spacer(minLength: 0)
+                    HStack(spacing: LAAEmployeeWidgetStyle.actionSpacing) {
+                        action(entry.call.url, title: "Call", symbol: "phone.fill")
+                        action(entry.chat.url, title: "Chat", symbol: "bubble.left.fill")
+                    }
+                    .padding(.bottom, LAAEmployeeWidgetStyle.bottomPadding)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 17)
         }
-        .padding(.horizontal, 14)
         .widgetURL(entry.chat.url)
     }
 
@@ -145,14 +144,13 @@ struct LAAEmployeeWidgetView: View {
             .scaledToFit()
             .padding(8)
             .widgetURL(entry.call.url)
-            .accessibilityLabel("\(entry.employee.name) に電話")
+            .accessibilityLabel("\(entry.employee.name), Call")
     }
 
     @ViewBuilder
     private func employeeImage(_ name: String) -> some View {
         if #available(iOS 18.0, *) {
-            Image(name).resizable().widgetAccentedRenderingMode(.accentedDesaturated).widgetAccentable()
-                .saturation(renderingMode == .accented ? 0 : 1)
+            Image(name).resizable().widgetAccentedRenderingMode(.fullColor)
         } else {
             Image(name).resizable()
         }
@@ -160,16 +158,24 @@ struct LAAEmployeeWidgetView: View {
 
     private func action(_ url: URL, title: String, symbol: String) -> some View {
         Link(destination: url) {
-            Label(title, systemImage: symbol)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 8)
-                .background(.quaternary, in: Capsule())
+            VStack(spacing: 2) {
+                Image(systemName: symbol)
+                    .font(LAAEmployeeWidgetStyle.actionIconFont)
+                Text(title)
+                    .font(LAAEmployeeWidgetStyle.actionLabelFont)
+                    .lineLimit(1)
+            }
+            .frame(width: LAAEmployeeWidgetStyle.actionDiameter, height: LAAEmployeeWidgetStyle.actionDiameter)
+            .foregroundStyle(renderingMode == .fullColor ? LAAEmployeeWidgetStyle.actionForeground : LAAEmployeeWidgetStyle.primaryForeground)
+            .background {
+                if renderingMode == .fullColor {
+                    Circle().fill(LAAEmployeeWidgetStyle.actionBackground)
+                } else {
+                    Circle().strokeBorder(LAAEmployeeWidgetStyle.primaryForeground, lineWidth: LAAEmployeeWidgetStyle.actionOutlineWidth)
+                }
+            }
         }
-        .foregroundStyle(.primary)
-        .accessibilityLabel("\(entry.employee.name) に\(title)")
+        .accessibilityLabel("\(entry.employee.name), \(title)")
     }
 }
 #endif

@@ -42,9 +42,12 @@ settings:
     EXCLUDED_SOURCE_FILE_NAMES: Info.plist
 targets:
   ConduitTests:
+    sources:
+      - path: Shared/Widgets/LAAEmployeeWidget.swift
+      - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
     settings:
       base:
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_TEST"
   ConduitUITests:
     settings:
       base:
