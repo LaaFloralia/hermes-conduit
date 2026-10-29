@@ -820,8 +820,13 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
     }
 
     func testSecondClassicOpenWhileWaitingKeepsFirstSessionUsable() async {
-        let harness = makeHarness(requesterMode: .fullSupport)
+        let deviceTranscriber = MockDeviceTranscriber(transcript: "")
+        let harness = makeHarness(requesterMode: .fullSupport, deviceTranscriber: deviceTranscriber)
         harness.appState.activeSessionId = "session-1"
+        // This test submits through the fake Hermes gateway. First-voice setup
+        // otherwise selects on-device recognition on supported simulators.
+        let selectedHermes = await harness.appState.setVoiceTranscriptionMode(.hermes)
+        XCTAssertTrue(selectedHermes)
         let kit = FakePlacedCallKit()
         let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
         let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
@@ -829,6 +834,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
         XCTAssertTrue(calls.isWaitingForCallAudio)
         XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+        let preparedGeneration = harness.controller.voiceSessionGeneration
         kit.onPlacedCallStarted?()
 
         let secondOpened = await harness.appState.openVoiceConversation(intent)
@@ -838,6 +844,8 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         XCTAssertTrue(firstOpened)
         XCTAssertTrue(harness.appState.showVoiceSheet)
         XCTAssertTrue(harness.controller.hasLiveVoiceSession, "the shown sheet must own a live session")
+        XCTAssertEqual(harness.controller.voiceSessionGeneration, preparedGeneration)
+        XCTAssertEqual(harness.controller.activePreferences.resolvedTranscriptionMode, .hermes)
         guard firstOpened, harness.controller.hasLiveVoiceSession else {
             kit.onPlacedCallEnded?(false)
             harness.appState.closeVoiceConversation()
@@ -864,6 +872,10 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         }
         harness.capture.emit(level: 0, at: speechStart.addingTimeInterval(1.3))
         await harness.spy.waitUntilSubmitted(1)
+        XCTAssertEqual(harness.controller.voiceSessionGeneration, preparedGeneration)
+        XCTAssertEqual(harness.capture.finishUtteranceCount, 1)
+        XCTAssertEqual(harness.gateway.transcriptionCount, 1)
+        XCTAssertEqual(deviceTranscriber.transcriptionCount, 0)
         XCTAssertEqual(harness.spy.texts, ["Question"], "the first launch must submit its utterance")
         guard harness.spy.texts == ["Question"] else {
             kit.onPlacedCallEnded?(false)
@@ -1866,7 +1878,8 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
 
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
-        requesterMode: ImmediateVoiceConfigRequester.Mode = .failing
+        requesterMode: ImmediateVoiceConfigRequester.Mode = .failing,
+        deviceTranscriber: DeviceSpeechTranscriptionService? = nil
     ) -> Harness {
         let suite = "AppStateVoiceSuspensionTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
@@ -1910,6 +1923,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let controller = VoiceConversationController(
             capture: capture,
             playback: playback,
+            deviceTranscriber: deviceTranscriber,
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
             submit: submitAction,
