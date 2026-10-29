@@ -89,7 +89,12 @@ export function createBridge({
       res,
       error.status,
       {
-        error: { code: error.code, message: error.message, retryable: error.retryable },
+        error: {
+          code: error.code,
+          message: error.message,
+          retryable: error.retryable,
+          ...(error.details === undefined ? {} : { details: error.details }),
+        },
         requestId,
       },
       requestId,

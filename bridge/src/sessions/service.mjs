@@ -11,6 +11,13 @@
 // The Bridge never edits, upgrades or falls back on the requested profile: the
 // profile string is passed through, and whatever the delegation path reports as
 // `requested` / `observed` is recorded verbatim.
+//
+// Project instructions (BRIDGE.md §9) are applied here, once, at create time:
+// the project's body (or the file its `instructionRef` points at, read now) is
+// composed into a delimited block ahead of the owner's prompt, and only its
+// version and hash are recorded on the session and its events. A retry of the
+// same requestId after the instructions changed is therefore a conflict, not a
+// second run under a prompt the owner never saw.
 
 import { createHash } from 'node:crypto';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
@@ -23,6 +30,7 @@ const PROFILE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_TEXT_BYTES = 16_384;
 const MAX_NAME_LENGTH = 100;
 const MAX_ARTIFACT_BYTES = 64 * 1024;
+const INSTRUCTION_TAG = 'project_instructions';
 
 const sha = (value) => createHash('sha256').update(value, 'utf8').digest('hex');
 const count = (text) => [...text].length;
@@ -32,6 +40,7 @@ export function createSessionService({
   adapter,
   findWorkspace,
   findProject = () => null,
+  resolveProjectInstructions = () => null,
   now = () => Date.now(),
   retentionMs = 24 * 60 * 60 * 1000,
   pollMs = 2500,
@@ -59,6 +68,25 @@ export function createSessionService({
     return record;
   }
 
+  // A referenced instruction file is read here, at use time, so an edit in the
+  // vault reaches the next session without another PATCH. An unreadable file
+  // stops the session instead of running it without the shared instructions.
+  function resolveInstructions(project) {
+    let resolved;
+    try {
+      resolved = resolveProjectInstructions(project);
+    } catch (err) {
+      if (err instanceof BridgeError && err.status >= 500) throw err;
+      const code = err instanceof BridgeError ? err.code : 'instruction_unavailable';
+      throw new BridgeError(409, code, 'the project instructions cannot be read; fix the project or skip them for this session');
+    }
+    if (!resolved) return null;
+    if (new RegExp(`</${INSTRUCTION_TAG}`, 'i').test(resolved.body)) {
+      throw new BridgeError(409, 'instruction_invalid', `the project instructions contain the </${INSTRUCTION_TAG}> delimiter`);
+    }
+    return resolved;
+  }
+
   async function createSession({ deviceId, body = {}, resumedFrom = null }) {
     const requestId = parseRequestId(body.requestId);
     const profile = parseProfile(body.profile);
@@ -68,10 +96,19 @@ export function createSessionService({
     const projectId = body.projectId === undefined || body.projectId === null
       ? null
       : asText(body.projectId, 'projectId', { max: 100 });
+    const applyProjectInstructions = parseApplyProjectInstructions(body);
     const id = sessionIdFor(requestId);
+
+    // Resolve the project and its instructions before the request digest: a
+    // retry of the same requestId after the owner edited the instructions must
+    // be refused as a different request, not silently re-run under new text.
+    const project = projectId ? findProject(projectId) : null;
+    if (projectId && !project) throw notFound('project not found');
+    const instructions = project && applyProjectInstructions ? resolveInstructions(project) : null;
+
     // The request identity is bound to its content: the same requestId with a
-    // different profile, workspace, parent or prompt is a conflict, not a
-    // silent reconcile.
+    // different profile, workspace, parent, prompt or instruction version is a
+    // conflict, not a silent reconcile.
     const requestDigest = sha(JSON.stringify({
       profile,
       workspaceId,
@@ -82,6 +119,8 @@ export function createSessionService({
       completion: body.completion ?? null,
       scope: body.scope ?? null,
       returnTo: body.returnTo ?? null,
+      instructionVersion: instructions?.version ?? null,
+      instructionHash: instructions?.hash ?? null,
     }));
 
     const existing = sessionStore.get(id);
@@ -92,7 +131,6 @@ export function createSessionService({
 
     const workspace = await findWorkspace(workspaceId);
     if (!workspace) throw notFound('workspace not found under an allowlisted root');
-    if (projectId && !findProject(projectId)) throw notFound('project not found');
     if (parentId && !sessionStore.get(parentId)) throw notFound('parent session not found');
 
     let name = body.name === undefined || body.name === null ? null : asText(body.name, 'name', { max: MAX_NAME_LENGTH });
@@ -107,7 +145,7 @@ export function createSessionService({
       completion: asText(body.completion ?? 'Answer the request and leave the result for the Bridge to collect.', 'completion', { max: 2000 }),
       scope: asText(body.scope ?? 'Only the assigned workspace and task; do not touch other conversations.', 'scope', { max: 2000 }),
       returnTo: asText(body.returnTo ?? 'The requesting Bridge device', 'returnTo', { max: 2000 }),
-      prompt,
+      prompt: instructions ? composePrompt(project.id, instructions, prompt) : prompt,
     };
 
     const delegateRequestId = delegateIdFor(requestId);
@@ -128,6 +166,9 @@ export function createSessionService({
       name,
       nameSource,
       profile,
+      instructionVersion: instructions?.version ?? null,
+      instructionHash: instructions?.hash ?? null,
+      instructionsApplied: instructions !== null,
       requested,
       observed: null,
       modelCheck: null,
@@ -162,6 +203,10 @@ export function createSessionService({
           parentId,
           resumedFrom,
           delegateSessionId: created.sessionId,
+          // Only the identity of the applied instructions: the body stays in
+          // the project record and never enters the event journal.
+          instructionVersion: instructions?.version ?? null,
+          instructionHash: instructions?.hash ?? null,
         },
       }],
     });
@@ -453,6 +498,9 @@ export function createSessionService({
       workspaceId: record.workspaceId,
       cwd: record.cwd,
       profile: record.profile,
+      instructionVersion: record.instructionVersion ?? null,
+      instructionHash: record.instructionHash ?? null,
+      instructionsApplied: record.instructionsApplied === true,
       requested: record.requested,
       observed: record.observed ?? null,
       modelCheck: record.modelCheck ?? null,
@@ -500,6 +548,28 @@ export function createSessionService({
 }
 
 // --- pure helpers ----------------------------------------------------------
+
+// The owner's override wins: `instructions: null` or
+// `applyProjectInstructions: false` starts the session without the project
+// body. Any other inline text is refused rather than silently ignored, so the
+// app cannot believe it edited the project when it only changed one run.
+function parseApplyProjectInstructions(body) {
+  if (body.instructions !== undefined && body.instructions !== null) {
+    throw badRequest('payload_invalid', 'inline instructions are not accepted on create; PATCH the project or pass instructions: null to skip');
+  }
+  if (body.applyProjectInstructions !== undefined && typeof body.applyProjectInstructions !== 'boolean') {
+    throw badRequest('payload_invalid', 'applyProjectInstructions must be a boolean');
+  }
+  return body.applyProjectInstructions !== false && body.instructions !== null;
+}
+
+// One clearly delimited block, version and hash on the header line, then the
+// owner's own request. The body is the project's shared text verbatim; it was
+// refused at write time (or is refused above) if it could close the delimiter.
+function composePrompt(projectId, instructions, prompt) {
+  const header = `<${INSTRUCTION_TAG} project="${projectId}" version="${instructions.version}" hash="${instructions.hash}">`;
+  return `${header}\n${instructions.body}\n</${INSTRUCTION_TAG}>\n\n<user_request>\n${prompt}\n</user_request>`;
+}
 
 function parseRequestId(raw) {
   if (typeof raw !== 'string' || !REQUEST_ID_PATTERN.test(raw.trim())) {
