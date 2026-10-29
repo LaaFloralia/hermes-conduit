@@ -2878,7 +2878,9 @@ final class AppState: ObservableObject {
             beginVoiceCallRecording(engine: .geminiLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.geminiLive)
+            let scheduled = scheduleLiveVoiceStart(.geminiLive)
             Task {
+                guard takeScheduledLiveVoiceStart(.geminiLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
                 guard !waited || waitedCallStarts(.geminiLive) else { return }
                 await geminiLiveController.start()
@@ -2929,6 +2931,7 @@ final class AppState: ObservableObject {
     }
 
     func closeGeminiLiveConversation() {
+        cancelScheduledLiveVoiceStart(.geminiLive)
         callOffWaitingCall(.geminiLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .geminiLive)
@@ -2989,7 +2992,9 @@ final class AppState: ObservableObject {
             beginVoiceCallRecording(engine: .qwenLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.qwenLive)
+            let scheduled = scheduleLiveVoiceStart(.qwenLive)
             Task {
+                guard takeScheduledLiveVoiceStart(.qwenLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
                 guard !waited || waitedCallStarts(.qwenLive) else { return }
                 await qwenLiveController.start()
@@ -3040,6 +3045,7 @@ final class AppState: ObservableObject {
     }
 
     func closeQwenLiveConversation() {
+        cancelScheduledLiveVoiceStart(.qwenLive)
         callOffWaitingCall(.qwenLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .qwenLive)
@@ -3385,7 +3391,9 @@ final class AppState: ObservableObject {
             beginVoiceCallRecording(engine: .gptLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.gptLive)
+            let scheduled = scheduleLiveVoiceStart(.gptLive)
             Task {
+                guard takeScheduledLiveVoiceStart(.gptLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
                 guard !waited || waitedCallStarts(.gptLive) else { return }
                 await gptLiveController.start()
@@ -3436,6 +3444,7 @@ final class AppState: ObservableObject {
     }
 
     func closeGPTLiveConversation() {
+        cancelScheduledLiveVoiceStart(.gptLive)
         callOffWaitingCall(.gptLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .gptLive)
@@ -3699,7 +3708,9 @@ final class AppState: ObservableObject {
             beginVoiceCallRecording(engine: .grokLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.grokLive)
+            let scheduled = scheduleLiveVoiceStart(.grokLive)
             Task {
+                guard takeScheduledLiveVoiceStart(.grokLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
                 guard !waited || waitedCallStarts(.grokLive) else { return }
                 await grokLiveController.start()
@@ -3752,6 +3763,7 @@ final class AppState: ObservableObject {
     }
 
     func closeGrokLiveConversation() {
+        cancelScheduledLiveVoiceStart(.grokLive)
         callOffWaitingCall(.grokLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .grokLive)
@@ -4112,7 +4124,9 @@ final class AppState: ObservableObject {
             beginVoiceCallRecording(engine: .localLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.localLive)
+            let scheduled = scheduleLiveVoiceStart(.localLive)
             Task {
+                guard takeScheduledLiveVoiceStart(.localLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
                 guard !waited || waitedCallStarts(.localLive) else { return }
                 await localLiveController.start()
@@ -4165,6 +4179,7 @@ final class AppState: ObservableObject {
     }
 
     func closeLocalLiveConversation() {
+        cancelScheduledLiveVoiceStart(.localLive)
         callOffWaitingCall(.localLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .localLive)
@@ -7013,6 +7028,27 @@ final class AppState: ObservableObject {
     }
     /// The outgoing call bridge; injectable for a voice-open integration test.
     var voicePlacedCalls: VoicePlacedCalls = .shared
+
+    // An opened screen starts its controller on the next main-actor turn.
+    // A hang-up before that turn must cancel this exact scheduled start.
+    private var scheduledLiveVoiceStart: (engine: VoiceCallEngine, id: UUID)?
+    var hasScheduledLiveVoiceStart: Bool { scheduledLiveVoiceStart != nil }
+
+    private func scheduleLiveVoiceStart(_ engine: VoiceCallEngine) -> UUID {
+        let id = UUID()
+        scheduledLiveVoiceStart = (engine, id)
+        return id
+    }
+
+    private func takeScheduledLiveVoiceStart(_ engine: VoiceCallEngine, id: UUID) -> Bool {
+        guard scheduledLiveVoiceStart?.engine == engine, scheduledLiveVoiceStart?.id == id else { return false }
+        scheduledLiveVoiceStart = nil
+        return true
+    }
+
+    private func cancelScheduledLiveVoiceStart(_ engine: VoiceCallEngine) {
+        if scheduledLiveVoiceStart?.engine == engine { scheduledLiveVoiceStart = nil }
+    }
     /// Opens the voice of a call answered in CallKit; the CallKit call's
     /// end cancels it.
     var hermesCallOpenTask: Task<Void, Never>?
@@ -35012,6 +35048,9 @@ final class AppState: ObservableObject {
         voiceModeSwitchDismissing = shownLiveScreen
         if classicWasOpen || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
         endLiveVoiceCall()
+        // A mode switch ends the old placed call before asking for the next
+        // one, even if the view's onChange has not observed the end yet.
+        voicePlacedCalls.voiceChanged(running: false)
         applyVoiceMode(choice)
         guard isConnected else {
             errorMessage = AppLocalization.string("Reconnect to Hermes to start voice.")
@@ -35042,12 +35081,22 @@ final class AppState: ObservableObject {
     /// working in.
     func switchVoiceMode(to choice: VoiceModeChoice) async {
         guard case .proceed(let thread) = await handOffVoiceMode(to: choice) else { return }
+        if choice.engine != nil {
+            let profile = activeProfile
+            let start = await voicePlacedCalls.prepareForVoiceStart()
+            guard voicePlacedCalls.canStartVoice(start), isConnected, activeProfile == profile,
+                  !isVoiceInUse, minimisedLiveVoice == nil else {
+                voicePlacedCalls.cancelVoiceStart(start)
+                return
+            }
+        }
+        let opened: Bool
         switch choice.engine {
-        case .geminiLive: openGeminiLiveConversation(attachingTo: thread)
-        case .qwenLive: openQwenLiveConversation(attachingTo: thread)
-        case .gptLive: openGPTLiveConversation(attachingTo: thread)
-        case .grokLive: openGrokLiveConversation(attachingTo: thread)
-        case .localLive: openLocalLiveConversation(attachingTo: thread)
+        case .geminiLive: opened = openGeminiLiveConversation(attachingTo: thread)
+        case .qwenLive: opened = openQwenLiveConversation(attachingTo: thread)
+        case .gptLive: opened = openGPTLiveConversation(attachingTo: thread)
+        case .grokLive: opened = openGrokLiveConversation(attachingTo: thread)
+        case .localLive: opened = openLocalLiveConversation(attachingTo: thread)
         case nil:
             // Classic voice talks in the open chat: the call's chat opens
             // first. A call with no chat, or one in a Bot Chat off screen,
@@ -35071,7 +35120,9 @@ final class AppState: ObservableObject {
             if !started, !isVoiceInUse, errorMessage == nil {
                 errorMessage = AppLocalization.string("Reconnect to Hermes to start voice.")
             }
+            return
         }
+        if !opened { notePlacedCallVoiceStartFailed() }
     }
 
     /// Saves `choice` as the profile's voice mode. Turning one live mode on
@@ -35155,7 +35206,7 @@ final class AppState: ObservableObject {
             }
             // The call comes first, so the engine starts on the session
             // CallKit activated (LAA fork).
-            if intent.source != .hermesCall {
+            if intent.source != .hermesCall, !isLiveVoiceCallActive(liveEngine) {
                 let start = await voicePlacedCalls.prepareForVoiceStart()
                 guard voicePlacedCalls.canStartVoice(start), widgetLease?.isCurrent != false,
                       isConnected, targetProfile == activeProfile else {

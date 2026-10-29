@@ -183,9 +183,9 @@ final class VoicePlacedCallsTests: XCTestCase {
     /// screen for a moment: the new call waits for it, then is placed.
     func testAPlacementWaitsForTheLastCallToLeave() async {
         startAPlacedCall()
+        host.running = false
         calls.voiceChanged(running: false)
         XCTAssertEqual(calls.phase, .ending)
-        host.running = false
 
         let opening = Task { await calls.prepareForVoiceStart() }
         try? await Task.sleep(for: .milliseconds(120))
@@ -285,6 +285,7 @@ final class VoicePlacedCallsTests: XCTestCase {
     func testTheConversationEndingEndsTheCall() {
         startAPlacedCall()
 
+        host.running = false
         calls.voiceChanged(running: false)
 
         XCTAssertEqual(calls.phase, .ending)
@@ -315,6 +316,7 @@ final class VoicePlacedCallsTests: XCTestCase {
     func testAnEndThatCrossesTheAppsOwnEndsOnce() {
         startAPlacedCall()
 
+        host.running = false
         calls.voiceChanged(running: false)
         kit.onPlacedCallEnded?(false)
         // The view changes again for the same end, and one more end arrives
@@ -360,6 +362,7 @@ final class VoicePlacedCallsTests: XCTestCase {
         // An answered call from Hermes ends while a conversation it opened
         // keeps running: the phone places no second call for it.
         startAPlacedCall()
+        host.running = false
         calls.voiceChanged(running: false)
         kit.onPlacedCallEnded?(true)
         host.running = true

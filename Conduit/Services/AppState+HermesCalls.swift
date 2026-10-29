@@ -786,7 +786,7 @@ extension AppState {
     }
 
     private func endVoiceOfNativeCall() {
-        if isLiveVoiceCallActive || minimisedLiveVoice != nil {
+        if isLiveVoiceCallActive || minimisedLiveVoice != nil || hasScheduledLiveVoiceStart {
             endLiveVoiceCall()
         } else if showVoiceSheet || voiceConversationController.hasLiveVoiceSession {
             closeVoiceConversation()

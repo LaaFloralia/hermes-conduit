@@ -842,6 +842,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let opening = harness.appState.hermesCallOpenTask
         for _ in 0..<1_000 where requester.waiters.isEmpty { await Task.yield() }
         XCTAssertFalse(requester.waiters.isEmpty, "the actual voice preparation is in flight")
+        XCTAssertTrue(kit.names.isEmpty, "an answered Hermes call does not place an outgoing call while preparing")
         harness.appState.endVoiceForNativeCall()
         requester.release()
         await opening?.value
@@ -903,6 +904,17 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let listening = await harness.controller.waitForState(.listening)
         XCTAssertTrue(listening)
         XCTAssertEqual(harness.capture.startCount, 1)
+    }
+
+    func testNativeHangupClosesClassicVoiceEvenIfAnOldLiveSheetFlagRemains() {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        harness.appState.showGPTLiveSheet = true
+
+        harness.appState.endVoiceForPlacedCall()
+
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
     }
 
     func testARunningClassicConversationCarriesItsCall() async {

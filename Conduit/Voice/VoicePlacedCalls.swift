@@ -14,8 +14,8 @@
 //  The call is placed before the conversation's audio starts, and the
 //  conversation opens only once CallKit has activated the call's audio
 //  (`didActivate`), so no engine starts on a session CallKit is about to
-//  take. A conversation started another way (a widget, a saved call) is
-//  placed as soon as it runs.
+//  take. Phone launches, including a widget, a saved call, or a mode switch,
+//  wait for that activation before starting a new conversation.
 //
 //  "Place calls as phone calls" (VoicePhoneCalls) is on by default in this
 //  build. Where CallKit can't be used (a build without it, China's App
@@ -204,7 +204,7 @@ final class VoicePlacedCalls {
     func prepareForVoiceStart() async -> StartResult {
         // A conversation that ended as this one opens leaves its call on the
         // screen for a moment: the new call waits for it rather than being
-        // dropped, and the conversation opens when it can't have one.
+        // dropped. If it does not leave in time, the new open is cancelled.
         let deadline = ContinuousClock.now + Self.previousCallEndWait
         while phase == .ending, ContinuousClock.now < deadline {
             do { try await Task.sleep(for: .milliseconds(50)) } catch { return .cancelled }
