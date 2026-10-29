@@ -584,14 +584,24 @@ function parseApplyProjectInstructions(body) {
 // empty after its own normalisation (`title_invalid`), and the Bridge has no
 // mapping for that code, so a long project name would surface as a 503. Apply
 // the same normalisation (control, format and whitespace runs become one space)
-// and cut on character boundaries, never inside a multi-byte character.
-function sessionTitle(raw) {
-  const oneLine = raw.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim();
+// and cut on *grapheme* boundaries: cutting per code point would leave a lone
+// combining mark ("か" + U+3099 losing its dakuten) or half of a ZWJ emoji.
+const TITLE_SEGMENTER = new Intl.Segmenter('ja', { granularity: 'grapheme' });
+
+export function sessionTitle(raw) {
+  // A ZWJ (U+200D) is a format character but it *joins* one grapheme; replacing
+  // it with a space would split an emoji before the cut. Every other control,
+  // format and whitespace run becomes one space.
+  const oneLine = raw
+    .replace(/[\p{Cc}\s]+/gu, ' ')
+    .replace(/\p{Cf}/gu, (character) => (character === '\u200D' ? character : ' '))
+    .replace(/\s+/gu, ' ')
+    .trim();
   if (oneLine === '') throw badRequest('payload_invalid', 'the session title is empty after removing control characters');
   let title = '';
-  for (const character of oneLine) {
-    if (Buffer.byteLength(title + character, 'utf8') > TITLE_MAX_BYTES) break;
-    title += character;
+  for (const { segment } of TITLE_SEGMENTER.segment(oneLine)) {
+    if (Buffer.byteLength(title + segment, 'utf8') > TITLE_MAX_BYTES) break;
+    title += segment;
   }
   return title;
 }

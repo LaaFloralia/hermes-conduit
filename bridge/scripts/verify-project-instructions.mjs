@@ -54,20 +54,33 @@ export function journalStrings(events) {
 }
 
 // `ok` requires all of: the session recorded the project's version and hash,
-// the agent's answer is exactly the header hash (surrounding whitespace only),
-// the journal is complete and parseable, it carries the version but not the
-// body, and the agent answered without an error.
-export function evaluateVerification({ project, session, result, journal, journalTruncated = false, hash, body }) {
+// the answer artifact was not truncated, the agent's answer is exactly the
+// header hash (surrounding whitespace only), the journal is complete and
+// parseable, it carries the version but not the body, and the agent answered
+// without an error. A truncated answer is a failure even when its visible part
+// trims to the hash: the cut hides whatever followed it.
+export function evaluateVerification({
+  project,
+  session,
+  result,
+  journal,
+  journalTruncated = false,
+  resultTruncated = false,
+  hash,
+  body,
+}) {
   const { events, invalid } = parseJournal(journal);
   const intact = journalTruncated !== true && invalid.length === 0 && events.length > 0;
+  const answer = typeof result === 'string' ? result : '';
   const carriesVersion = events.some((event) => event?.payload?.instructionVersion === project?.instructionVersion);
   const checks = {
     identity: session?.instructionVersion === project?.instructionVersion
       && session?.instructionHash === hash,
-    applied: typeof result === 'string' && result.trim() === hash,
+    answerIntact: resultTruncated !== true,
+    applied: resultTruncated !== true && answer.trim() === hash,
     journalIntact: intact,
     noLeak: intact && carriesVersion && !journalStrings(events).includes(body),
-    answered: typeof result === 'string' && result.trim() !== '' && session?.phase !== 'error',
+    answered: answer.trim() !== '' && session?.phase !== 'error',
   };
   return { ok: Object.values(checks).every(Boolean), checks };
 }
@@ -172,7 +185,9 @@ async function run() {
   steps.push({ step: 'settle', phase: detail.phase });
 
   const artifacts = (await ok('GET', `/v1/sessions/${record.id}/artifacts`)).body.data.items;
-  const result = artifacts.find((item) => item.type === 'message')?.content ?? '';
+  const message = artifacts.find((item) => item.type === 'message');
+  const result = message?.content ?? '';
+  const resultTruncated = message?.truncated === true;
   const log = artifacts.find((item) => item.type === 'log');
   const journal = log?.content ?? '';
   const journalTruncated = log?.truncated === true;
@@ -183,6 +198,7 @@ async function run() {
     result,
     journal,
     journalTruncated,
+    resultTruncated,
     hash: edited.body.data.instructionHash,
     body: V2,
   });
@@ -191,6 +207,7 @@ async function run() {
     ok: verdict.ok,
     ...verdict.checks,
     journalTruncated,
+    resultTruncated,
     resultChars: result.trim().length,
     journalChars: journal.length,
   });

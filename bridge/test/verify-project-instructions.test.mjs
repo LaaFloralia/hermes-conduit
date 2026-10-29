@@ -18,6 +18,7 @@ function evaluate(overrides = {}) {
     result: hash,
     journal: cleanJournal,
     journalTruncated: false,
+    resultTruncated: false,
     hash,
     body,
     ...overrides,
@@ -29,6 +30,7 @@ test('a clean run passes every check', () => {
   assert.equal(verdict.ok, true);
   assert.deepEqual(verdict.checks, {
     identity: true,
+    answerIntact: true,
     applied: true,
     journalIntact: true,
     noLeak: true,
@@ -70,6 +72,15 @@ test('a body hidden behind JSON escaping is still found', () => {
   const line = JSON.stringify({ payload: { instructions: body } });
   assert.equal(line.includes(body), false, 'the raw line must not match the real body');
   assert.equal(journalStrings(parseJournal(line).events).includes(body), true, 'the decoded search must match it');
+});
+
+test('a truncated answer is a failed check even when it trims to the hash', () => {
+  // hash + whitespace up to the 64 KiB cut + the body: the visible part trims
+  // to the hash, but the cut hides whatever followed it.
+  const verdict = evaluate({ result: hash, resultTruncated: true });
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.checks.answerIntact, false);
+  assert.equal(verdict.checks.applied, false);
 });
 
 test('a truncated journal cannot prove the absence of a leak', () => {

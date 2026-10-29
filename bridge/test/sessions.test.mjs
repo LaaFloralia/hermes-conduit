@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { BridgeError } from '../src/errors.mjs';
+import { sessionTitle } from '../src/sessions/service.mjs';
 import { startBridge } from './helpers.mjs';
 
 // Fake delegation path. It mirrors the parts of laa-personal-agent the Bridge
@@ -50,7 +51,11 @@ function fakeDelegation() {
           || Buffer.byteLength(title, 'utf8') > 200) {
           throw new BridgeError(400, 'title_invalid', 'title is invalid');
         }
-        if (/[\p{Cc}\p{Cf}]/u.test(title)) throw new BridgeError(400, 'title_invalid', 'title contains control characters');
+        // ZWJ is allowed: it joins one grapheme (emoji); everything else in Cc/Cf
+        // must already have been removed by the Bridge.
+        if (/[\p{Cc}\p{Cf}]/u.test(title.replace(/\u200D/gu, ''))) {
+          throw new BridgeError(400, 'title_invalid', 'title contains control characters');
+        }
       }
       // Mirrors laa-personal-agent: the title is not part of the request digest.
       const digest = JSON.stringify({ profile, cwd, task });
@@ -611,6 +616,14 @@ test('a title that normalises to nothing is refused before delegation', async (t
   assert.equal(created.status, 400);
   assert.equal(created.body.error.code, 'payload_invalid');
   assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 0);
+});
+
+test('title truncation never splits a combining mark or a ZWJ emoji', () => {
+  const base = 'あ'.repeat(65); // 195 bytes: one more grapheme does not fit
+  assert.equal(sessionTitle(`${base}か\u3099`), base, 'the dakuten must not be left behind');
+  assert.equal(sessionTitle(`${base}👨‍👩‍👧`), base, 'a ZWJ emoji must not be split');
+  assert.equal(sessionTitle('あ'.repeat(66)), 'あ'.repeat(66), 'a whole grapheme that fits is kept');
+  assert.ok(Buffer.byteLength(sessionTitle(`${base}か\u3099`), 'utf8') <= 200);
 });
 
 test('a session without a project runs with the prompt alone', async (t) => {
