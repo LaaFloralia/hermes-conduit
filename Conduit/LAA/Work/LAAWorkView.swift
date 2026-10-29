@@ -51,7 +51,6 @@ struct LAAWorkView: View {
             }
             .refreshable { await load() }
         }
-        .navigationTitle(Text(verbatim: LAACopy.WorkTab.title))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
