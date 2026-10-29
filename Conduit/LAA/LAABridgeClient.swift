@@ -161,7 +161,8 @@ struct LAABridgeClient {
         let config = URLSessionConfiguration.ephemeral
         config.urlCache = nil
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        config.timeoutIntervalForRequest = 20
+        // Leave room for long polls; each request supplies its own timeout.
+        config.timeoutIntervalForRequest = 120
         self.session = URLSession(configuration: config, delegate: LAANoRedirects(), delegateQueue: nil)
     }
 
@@ -211,7 +212,7 @@ struct LAABridgeClient {
             throw LAABridgeError.invalidAddress
         }
         var request = URLRequest(url: url)
-        if let timeout { request.timeoutInterval = timeout }
+        request.timeoutInterval = timeout ?? 20
         request.httpMethod = method
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Accept")

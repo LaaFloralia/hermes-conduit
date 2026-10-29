@@ -36,6 +36,19 @@ final class BridgeMockProtocol: URLProtocol {
         }
         return data
     }
+    static func timedRequest(_ client: LAABridgeClient, credentials: LAABridgeCredentials,
+                             timeout: TimeInterval?) async -> (TimeInterval, LAABridgeError?) {
+        let start = Date()
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(
+                method: "GET", path: "/v1/timeout-test", credentials: credentials, timeout: timeout)
+            return (Date().timeIntervalSince(start), nil)
+        } catch let error as LAABridgeError {
+            return (Date().timeIntervalSince(start), error)
+        } catch {
+            return (Date().timeIntervalSince(start), .invalidResponse)
+        }
+    }
     static func main() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
         func fixture(_ name: String) throws -> LAAUsagePage {
@@ -81,6 +94,7 @@ final class BridgeMockProtocol: URLProtocol {
             require(request.url?.path == "/v1/example", "request path")
             require(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token", "auth header")
             require(request.value(forHTTPHeaderField: "Idempotency-Key") == key.value, "idempotency key")
+            require(request.timeoutInterval == 20, "default request timeout")
             require(request.url?.absoluteString.contains("test-token") == false, "token not in URL")
             return (200, Data("{\"data\":{\"items\":[],\"nextCursor\":null},\"requestId\":\"test\"}".utf8))
         }
@@ -146,6 +160,20 @@ final class BridgeMockProtocol: URLProtocol {
         BridgeMockProtocol.handler = { _ in throw URLError(.serverCertificateUntrusted) }
         do { let _: LAAUsagePage = try await client.get("/v1/example", credentials: creds); require(false, "TLS must fail") }
         catch let e as LAABridgeError { require(e == .tlsFailed, "TLS error") }
+        if let address = ProcessInfo.processInfo.environment["LAA_BRIDGE_TIMEOUT_TEST_URL"] {
+            guard let url = URL(string: address), url.scheme == "http", url.host == "127.0.0.1", url.port != nil else {
+                require(false, "timeout test needs a loopback URL")
+                return
+            }
+            let live = LAABridgeClient()
+            let local = LAABridgeCredentials(baseURL: url, deviceID: "dev_test", token: "test-token")
+            async let normal = timedRequest(live, credentials: local, timeout: nil)
+            async let longPoll = timedRequest(live, credentials: local, timeout: 40)
+            let (ordinary, extended) = await (normal, longPoll)
+            require(ordinary.1 == .networkUnreachable && (17...27).contains(ordinary.0), "default timeout near 20 seconds")
+            require(extended.1 == nil && (28...39).contains(extended.0), "40-second timeout survives a 30-second response")
+            print(String(format: "Timeouts: default %.1fs, extended %.1fs", ordinary.0, extended.0))
+        }
         print("Bridge client: fixtures, error mapping, URL policy and request headers passed")
     }
 }
