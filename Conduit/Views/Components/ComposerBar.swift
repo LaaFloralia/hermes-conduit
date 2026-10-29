@@ -1504,7 +1504,9 @@ struct ComposerBar: View, Equatable {
                 }
             }
             .accessibilityLabel(accessibilityLabel)
+#if LAA_BUILD
             .accessibilityIdentifier("composer.action")
+#endif
         } else {
             Menu {
                 ForEach(choices) { choice in
@@ -1524,7 +1526,9 @@ struct ComposerBar: View, Equatable {
             .menuIndicator(.hidden)
             .modifier(composerActionChrome)
             .accessibilityLabel(accessibilityLabel)
+#if LAA_BUILD
             .accessibilityIdentifier("composer.action")
+#endif
             .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send"))
             .accessibilityAction(named: Text(accessibilityLabel)) {
                 performComposerAction()
