@@ -118,6 +118,8 @@ struct LAAAppShell: View {
                         NavigationStack {
                             if tab == .usage {
                                 LAAUsageView(onRequestSettings: onRequestSettings)
+                            } else if tab == .work {
+                                LAAWorkView(onRequestSettings: onRequestSettings)
                             } else {
                                 LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
                             }
