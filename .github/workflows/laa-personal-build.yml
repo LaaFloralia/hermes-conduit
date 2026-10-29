@@ -8,6 +8,10 @@ name: LAA personal build
 on:
   push:
     branches: [master, 'laa/**']
+    paths-ignore:
+      # Bridge (laa-bridge.yml) and LAA docs/assets build nothing here.
+      - 'bridge/**'
+      - 'docs/laa/**'
   workflow_dispatch:
 
 permissions:

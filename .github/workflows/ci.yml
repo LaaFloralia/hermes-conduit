@@ -40,8 +40,16 @@ name: CI
 on:
   push:
     branches: [master, 'laa/**']
+    paths-ignore:
+      # Bridge (laa-bridge.yml) and LAA docs/assets build nothing here.
+      - 'bridge/**'
+      - 'docs/laa/**'
   pull_request:
     branches: [master]
+    paths-ignore:
+      # Bridge (laa-bridge.yml) and LAA docs/assets build nothing here.
+      - 'bridge/**'
+      - 'docs/laa/**'
   workflow_dispatch:
 
 # A PR's newer push supersedes its older run. A push is grouped by its own
