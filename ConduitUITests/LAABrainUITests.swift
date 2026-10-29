@@ -24,6 +24,8 @@ final class LAABrainUITests: XCTestCase {
     func testBrowseReadRawAndSearch() {
         let app = launch("normal")
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
+        XCTAssertFalse(app.buttons["Tags"].isEnabled)
+        XCTAssertTrue(app.staticTexts["Tags are not available yet."].exists)
         app.staticTexts["Start"].tap()
         XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 10))
         app.buttons["laa.brain.rawToggle"].tap()
@@ -31,7 +33,7 @@ final class LAABrainUITests: XCTestCase {
         let back = app.buttons["laa.brain.back"]
         XCTAssertTrue(back.waitForExistence(timeout: 5))
         back.tap()
-        app.buttons["フォルダ"].tap()
+        app.buttons["Folders"].tap()
         let folder = app.staticTexts["Company"]
         XCTAssertTrue(folder.waitForExistence(timeout: 5))
         folder.tap()
@@ -48,6 +50,17 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.brain.searchResult"].firstMatch.waitForExistence(timeout: 10))
         app.buttons["laa.brain.searchResult"].firstMatch.tap()
         XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 10))
+    }
+
+    func testRecentCanShowAndHideAllNotes() {
+        let app = launch("many")
+        let seeAll = app.buttons["See all"]
+        XCTAssertTrue(seeAll.waitForExistence(timeout: 30))
+        XCTAssertFalse(app.staticTexts["Note 4"].exists)
+        seeAll.tap()
+        XCTAssertTrue(app.staticTexts["Note 4"].waitForExistence(timeout: 10))
+        app.buttons["Show less"].tap()
+        XCTAssertFalse(app.staticTexts["Note 4"].exists)
     }
 
     func testCreateReportsTheConflictSafePath() {
@@ -104,7 +117,7 @@ final class LAABrainUITests: XCTestCase {
         let app = launch("normal")
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
         app.staticTexts["Start"].tap()
-        let metadata = app.buttons["メタデータ（frontmatter）"]
+        let metadata = app.buttons["Frontmatter"]
         XCTAssertTrue(metadata.waitForExistence(timeout: 10))
         metadata.tap()
         XCTAssertTrue(app.staticTexts["---\nstatus: draft\n---"].waitForExistence(timeout: 5))
@@ -144,7 +157,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         XCTAssertTrue(save.isEnabled)
         save.tap()
-        let acknowledge = app.buttons["Inboxを確認して新しく作る"]
+        let acknowledge = app.buttons["Check Inbox and start again"]
         XCTAssertTrue(acknowledge.waitForExistence(timeout: 10))
         app.swipeUp()
         XCTAssertTrue(save.waitForExistence(timeout: 10))

@@ -38,7 +38,7 @@ struct LAABrainCreateView: View {
                         Label { Text(verbatim: "新規メモを保存しました") } icon: { Image(systemName: "checkmark.circle") }
                         Text(verbatim: created.path).textSelection(.enabled).accessibilityIdentifier("laa.brain.createdPath")
                         if created.suffixApplied { Text(verbatim: "同名のメモがあるため、別の名前で保存しました。") }
-                        Button { open(created) } label: { Text(verbatim: "メモを開く") }
+                        Button { open(created) } label: { Text(verbatim: LAACopy.Brain.openNote) }
                     }
                     #if DEBUG
                     if LAABrainData.isMarkedTextFixture {
@@ -50,31 +50,31 @@ struct LAABrainCreateView: View {
                     #endif
                 } else {
                     Section {
-                        TextField(text: $name) { Text(verbatim: "メモの名前") }
+                        TextField(text: $name) { Text(verbatim: LAACopy.Brain.name) }
                             .accessibilityIdentifier("laa.brain.newName")
                             .disabled(pending != nil || saving)
                         TextEditor(text: $content).frame(minHeight: 180)
                             .accessibilityIdentifier("laa.brain.newContent")
                             .disabled(pending != nil || saving)
-                    } header: { Text(verbatim: "新規メモ") }
+                    } header: { Text(verbatim: LAACopy.Brain.newNote) }
                     footer: { Text(verbatim: "InboxにMarkdownとして新規保存します。同名のメモは上書きしません。本文は48 KBまでです。") }
                     if scopeAllowed == false {
                         Section { Text(verbatim: "この端末にはメモを新規作成する権限（brain:create）がありません。Macで権限を付けた接続コードを発行し、再接続してください。") }
                     } else if let scopeError, pending == nil {
                         Section {
-                            Text(verbatim: scopeError.japaneseText).foregroundStyle(LAAColors.plum)
-                            Button { Task { await checkScope() } } label: { Text(verbatim: "権限を再確認") }
+                            Text(verbatim: scopeError.japaneseText).foregroundStyle(LAAColor.attention)
+                            Button { Task { await checkScope() } } label: { Text(verbatim: LAACopy.Brain.checkPermission) }
                         }
                     }
                     if let failure {
-                        Section { Text(verbatim: failure).foregroundStyle(LAAColors.plum) }
+                        Section { Text(verbatim: failure).foregroundStyle(LAAColor.attention) }
                     }
                     if pending != nil {
                         Section {
                             Text(verbatim: pending?.deviceID == LAABrainData.deviceID(bridge)
                                  ? "保存結果が不明です。同じ操作を再確認します。別のメモとして作り直す前にInboxを確認してください。"
                                  : "接続が変わったため、この操作は再送できません。別のメモとして作り直す前にInboxを確認してください。")
-                            Button { _ = clearPending() } label: { Text(verbatim: "Inboxを確認して新しく作る") }
+                            Button { _ = clearPending() } label: { Text(verbatim: LAACopy.Brain.checkInbox) }
                         }
                     }
                     Section {
@@ -87,7 +87,7 @@ struct LAABrainCreateView: View {
                             Task { await save() }
                         } label: {
                             if saving { ProgressView() }
-                            else { Text(verbatim: pending == nil ? "新規保存" : "同じ操作を再確認") }
+                            else { Text(verbatim: pending == nil ? LAACopy.Brain.save : LAACopy.Brain.checkAgain) }
                         }
                         .disabled(!pendingLoaded || saving || (pending != nil && pending?.deviceID != LAABrainData.deviceID(bridge)) ||
                                   (pending == nil && (scopeAllowed != true || LAABrainCreateBody.make(name: name, content: content) == nil)))
@@ -101,11 +101,14 @@ struct LAABrainCreateView: View {
                     #endif
                 }
             }
-            .navigationTitle(Text(verbatim: "新規メモ"))
+            .laaTextStyle(.body)
+            .scrollContentBackground(.hidden)
+            .background(LAAColor.background)
+            .navigationTitle(Text(verbatim: LAACopy.Brain.newNote))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Text(verbatim: "閉じる") }.disabled(saving)
+                    Button { dismiss() } label: { Text(verbatim: LAACopy.Brain.close) }.disabled(saving)
                 }
                 #if DEBUG
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -124,7 +127,7 @@ struct LAABrainCreateView: View {
                 #endif
             }
             .interactiveDismissDisabled(saving)
-            .tint(LAAColors.teal)
+            .tint(LAAColor.link)
             .task {
                 do {
                     if let saved = try pendingStore.read() {

@@ -440,7 +440,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
-- Brain: `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
+- Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
+- Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
@@ -457,8 +458,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   Settings. Other plugins retain their controls.
 - The Mac Bridge is paired by a one-time code. The device token and its address
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
-  scope and service failures are distinguished. Other Bridge tabs share the
-  connection state and retain their placeholders until their own work lands.
+  scope and service failures are distinguished. Bridge tabs share the
+  connection state and expose only their supported actions.
 - The shared Bridge request supports JSON writes, idempotency keys, If-Match
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
@@ -476,6 +477,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   use the opt-in `brain:create` scope and the server's conflict-safe name.
   An uncertain create retains its exact request and key in ThisDeviceOnly
   Keychain until the same device reconciles it or the user checks Inbox.
+- Assets reads Drive listing and name search through the existing `media:read`
+  Bridge endpoint, including folder navigation and cursor paging. Filters apply
+  only to loaded items. File previews, Inspiration and Studio remain disabled
+  with reasons; missing Drive authorization and Bridge failures are distinct.
+- Brain shows Recent and Folders with Tags disabled until supported; the note
+  body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
 
@@ -485,7 +492,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   not have sufficient contrast in dark mode; their screen tasks should use the
   semantic filled-button color pair. The existing Hermes login retains its
   Conduit backdrop.
-- Work and Source still need their finished content. Brain cannot edit existing
+- Work routines are not yet available; Assets previews, Inspiration and Studio
+  remain unavailable. Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
   The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
@@ -497,7 +505,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-30, laa/v2-shell (design v2 common shell); laa/usage-design-v2-04-urgent based on aec30021 (Usage); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
+**Checked:** 2026-10-30, laa/v2-shell (design v2 common shell); laa/usage-design-v2-04-urgent based on aec30021 (Usage); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
 
 ## LAA Work tab
 

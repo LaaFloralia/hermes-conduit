@@ -69,10 +69,18 @@ enum LAABrainData {
         let first = "Company/Start.md", second = "Company/Other.md"
         let firstID = LAABrainReference(path: first, includeInbox: false).id
         let secondID = LAABrainReference(path: second, includeInbox: false).id
-        let items: [[String: Any]] = mode == "empty" ? [] : [
+        var items: [[String: Any]] = mode == "empty" ? [] : [
             ["id": firstID, "path": first, "title": "Start", "modifiedAt": "2026-10-29T00:00:00.000Z", "area": "company"],
             ["id": secondID, "path": second, "title": "Other", "modifiedAt": "2026-10-28T00:00:00.000Z", "area": "company"],
         ]
+        if mode == "many" {
+            for number in 3...4 {
+                let path = "Company/Note \(number).md"
+                items.append(["id": LAABrainReference(path: path, includeInbox: false).id,
+                              "path": path, "title": "Note \(number)",
+                              "modifiedAt": "2026-10-2\(9 - number)T00:00:00.000Z", "area": "company"])
+            }
+        }
         switch url.path {
         case "/v1/me": return try decode(["scopes": mode == "denied" ? ["brain:read"] : ["brain:read", "brain:create"]])
         case "/v1/brain/files": return try decode(["items": items, "nextCursor": NSNull()])
