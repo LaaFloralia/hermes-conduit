@@ -24,6 +24,7 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import { resolvePaseoBin, resolveWorkspaceRoots } from '../config.mjs';
 import { badRequest, conflict, dependencyUnavailable, notFound } from '../errors.mjs';
+import { encodeCursor, parseCursor, parseLimit } from './pagination.mjs';
 import { createJsonFile, parseObjectBody } from './state-file.mjs';
 
 const WORKSPACE_SCHEMA = 1;
@@ -44,11 +45,6 @@ export function createWorkspaceStore({ file, now = () => Date.now() }) {
     },
     all() {
       return Object.values(state.read().workspaces ?? {});
-    },
-    findExisting(repoPath, branch) {
-      return Object.values(state.read().workspaces ?? {}).find(
-        (record) => record.repoPath === repoPath && record.branch === branch,
-      ) ?? null;
     },
     put(record) {
       return state.mutate((doc) => {
@@ -135,8 +131,6 @@ export function createWorkspaceRoutes({
     if (existingBranch !== '') {
       throw conflict('worktree_exists', `branch ${branch} already exists in ${displayPath(repo.path)}`);
     }
-    const recorded = workspaceStore.findExisting(repo.path, branch);
-    if (recorded) throw conflict('worktree_exists', `branch ${branch} is already recorded for ${displayPath(repo.path)}`);
 
     let created;
     try {
@@ -518,30 +512,6 @@ function parseBranch(raw) {
 function requireId(raw, field) {
   if (typeof raw !== 'string' || raw.trim() === '') throw badRequest('payload_invalid', `${field} is required`);
   return raw.trim();
-}
-
-function parseLimit(raw) {
-  if (raw === undefined || raw === null || raw === '') return 50;
-  const limit = Number(raw);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-    throw badRequest('limit_invalid', 'limit must be an integer between 1 and 100');
-  }
-  return limit;
-}
-
-function encodeCursor(offset) {
-  return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url');
-}
-
-function parseCursor(raw) {
-  if (raw === undefined || raw === null || raw === '') return 0;
-  try {
-    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-    if (Number.isInteger(parsed?.offset) && parsed.offset >= 0) return parsed.offset;
-  } catch {
-    // fall through
-  }
-  throw badRequest('cursor_invalid', 'cursor is not recognised');
 }
 
 async function mapLimit(items, limit, fn) {

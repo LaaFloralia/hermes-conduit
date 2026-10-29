@@ -192,6 +192,12 @@ test('a worktree is created through paseo and the project link persists', async 
 
   const del = await bridge.request(`/v1/workspaces/${response.body.data.id}`, { method: 'DELETE', token });
   assert.equal(del.status, 405, 'a workspace can never be removed through the Bridge');
+
+  // A branch that disappears outside the Bridge (git worktree remove) must be
+  // creatable again: the registry records a project link, it is not a lock.
+  rmSync(response.body.data.path, { recursive: true, force: true });
+  const again = await bridge.request('/v1/workspaces', { ...request, key: 'ws-create-again' });
+  assert.equal(again.status, 201, 'a stale registry row must not block a deleted branch');
 });
 
 test('worktree creation refuses conflicts and dependency failures without touching anything', async (t) => {

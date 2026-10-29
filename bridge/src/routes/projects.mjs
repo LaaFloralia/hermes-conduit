@@ -18,10 +18,10 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import { badRequest, BridgeError, conflict, notFound } from '../errors.mjs';
+import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { createJsonFile, parseObjectBody } from './state-file.mjs';
 
 const PROJECT_SCHEMA = 1;
-const PROJECT_ID_PATTERN = /^prj_[0-9a-f]{12}$/;
 const NAME_MAX = 80;
 const INSTRUCTION_REF_MAX = 300;
 const INSTRUCTIONS_MAX_BYTES = 32 * 1024;
@@ -281,31 +281,3 @@ function parseIfMatch(header, currentVersion) {
   }
   throw new BridgeError(412, 'version_mismatch', `project is at version ${currentVersion}; read it again before updating`);
 }
-
-// --- pagination ------------------------------------------------------------
-
-function parseLimit(raw) {
-  if (raw === undefined || raw === null || raw === '') return 50;
-  const limit = Number(raw);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
-    throw badRequest('limit_invalid', 'limit must be an integer between 1 and 100');
-  }
-  return limit;
-}
-
-function encodeCursor(offset) {
-  return Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url');
-}
-
-function parseCursor(raw) {
-  if (raw === undefined || raw === null || raw === '') return 0;
-  try {
-    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-    if (Number.isInteger(parsed?.offset) && parsed.offset >= 0) return parsed.offset;
-  } catch {
-    // fall through
-  }
-  throw badRequest('cursor_invalid', 'cursor is not recognised');
-}
-
-export { PROJECT_ID_PATTERN };
