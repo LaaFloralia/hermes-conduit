@@ -110,12 +110,14 @@ struct LAABrainCreateView: View {
                 #if DEBUG
                 ToolbarItemGroup(placement: .primaryAction) {
                     if LAABrainData.isTestFixture {
-                        Button("Dismiss keyboard") {
+                        Button {
                             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                        }.accessibilityIdentifier("laa.brain.fixture.dismissKeyboard")
+                        } label: { Text(verbatim: "Dismiss keyboard") }
+                        .accessibilityIdentifier("laa.brain.fixture.dismissKeyboard")
                     }
                     if LAABrainData.isMarkedTextFixture {
-                        Button("Compose") { fixtureDidMark = LAABrainMarkedTextFixture.compose() }
+                        Button { fixtureDidMark = LAABrainMarkedTextFixture.compose() }
+                            label: { Text(verbatim: "Compose") }
                             .accessibilityIdentifier("laa.brain.fixture.compose")
                     }
                 }
