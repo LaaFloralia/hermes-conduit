@@ -16,7 +16,7 @@ struct LAAUsageView: View {
     var body: some View {
         ZStack {
             LAAColors.paper.ignoresSafeArea()
-            ScrollView {
+            List {
                 VStack(alignment: .leading, spacing: LAASpacing.x6) {
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
                         Text(verbatim: "Usage")
@@ -45,7 +45,12 @@ struct LAAUsageView: View {
                 .padding(.bottom, LAASpacing.x8)
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
             .refreshable { await refresh() }
         }
         .navigationTitle(Text(verbatim: "Usage"))
