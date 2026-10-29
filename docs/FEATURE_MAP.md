@@ -714,6 +714,7 @@ Pulse (it may call only once the user opts in)
 - Answered on the Watch while the iPhone has a headset on (AirPods, wired), the call stays on the iPhone and plays there, whatever the Watch's voice: the iPhone answers its own ring with its own voice mode, and the Watch's call screen keeps Mute and End, shared through the relay's ring control. Every mute reaches the other device: CallKit's on either call screen, and Conduit's own (the call screen's Mute, the minimised bar, Classic's paused microphone). A relay restart mid-call loses nothing: each device writes its state again and reads on, and a change made while the relay was down is retried. With no headset on the iPhone, or a relay older than 0.17, the Watch takes it as before (Eric 2026-10-24, #1225, notifier #354).
 - In the car, CarPlay rings and the Watch stays quiet (2026-10-14, #602).
 - A call muted in CallKit before its voice is running starts muted in every voice: classic voice since #558, the live modes since #1378 (their controllers' `startsMuted`, from AppState's hermesCallStartsMuted; GPT-Live hands it to GPTLiveSession so the WebRTC track is created disabled).
+- In Classic Voice, unmuting after a reply finished while muted opens a new recording window for the next utterance, for both incoming Hermes calls and calls placed from Conduit.
 - On a profile set to Local Live in agent mode, a call from Hermes opens Local Live, and its fast model says why Hermes called; on Classic's hands-free option it opens Classic, which says it. Since #1194 the call asked for Local Live but the voice start still turned it into Classic (2026-10-27, #1378, from #1376).
 - A call from a cron job rings like one from a chat. Hermes runs a restart-safe cron job in a worker process that exits right after the turn, so the turn's end waits for the call request to reach the relay, up to 3 seconds (the failed turn's alert call and held calls swept then too, all in one wait), and the worker's exit then waits up to 10 more for its retries, and up to 3 after that for the usual push they fall back to (2026-10-26, notifier #389, issue #388).
 
@@ -731,33 +732,39 @@ Where the voice comes out, who owns the audio session, and what mutes what.
 echo-cancelling audio) · GPT-Live (WebRTC) · calls from Hermes (CallKit's
 Speaker button) · CarPlay · AirPods and Bluetooth · Read Aloud · the call
 screen's Mute and Silence · the minimised call bar · a Watch-answered call
-kept on the iPhone's headset (the Watch's Mute and End) · Hold calls to your
-ear (LAA fork: the call screens' Speaker button, the proximity sensor, the
-Voice settings toggle)
+kept on the iPhone's headset (the Watch's Mute and End) · Place calls as
+phone calls (LAA fork: a conversation placed as a CallKit call — the
+system's call screen, its Mute and End — the call screens' own Speaker
+button and the proximity sensor where CallKit isn't placing the call, the
+Voice settings toggle and its caption)
 
 **Code**
-- Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive, conversationConfiguration, setConversationSpeaker), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
-- Hold calls to your ear (LAA fork): `Conduit/Voice/VoiceTypes.swift` (VoiceEarpieceCalls), `Conduit/Views/EarpieceCallControls.swift` (LiveVoiceCallSpeakerButton, EarpieceCallProximity), `Conduit/Views/VoiceConversationSheet.swift` (v2Controls), `Conduit/Views/VoiceSettingsView.swift` (conversationSection)
+- Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive, placedCallRequiresActivation, conversationConfiguration, setConversationSpeaker), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
+- Place calls as phone calls (LAA fork): `Conduit/Voice/VoicePlacedCalls.swift` (VoicePlacedCalls, prepareForVoiceStart, voiceStartFailed, PlacedCallBridge), `Conduit/Voice/HermesNativeCalls.swift` (placeCall, requestPlacedCallEnd, placedCallEndStep, the CXStartCallAction, CXEndCallAction and CXSetMutedCallAction delegates, callKitAvailable), `Conduit/Voice/VoiceTypes.swift` (VoicePhoneCalls), `Conduit/Views/RootView.swift` (PlacedCallBridge), `Conduit/Services/AppState.swift` (openVoiceConversation's prepareForVoiceStart, notePlacedCallVoiceStartFailed, isPhoneVoiceCallRunning, voiceCallRunsElsewhere), `Conduit/Services/AppState+HermesCalls.swift` (setPlacedPhoneCallActive, isCallKitCallAnswered)
+- Where CallKit isn't placing the call (LAA fork): `Conduit/Views/EarpieceCallControls.swift` (LiveVoiceCallSpeakerButton, EarpieceCallProximity), `Conduit/Views/VoiceConversationSheet.swift` (v2Controls), `Conduit/Views/VoiceSettingsView.swift` (conversationSection)
 - Playback: `Conduit/Voice/AVSpeechPlaybackService.swift` (resumeOnFreshEngine), `Conduit/Voice/VoiceAudioEngineRecovery.swift`
-- Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
+- Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GPTLive/GPTLivePeer.swift` (first-capture authorization), `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`, `Conduit/Services/WidgetLaunchCoordinator.swift` (first-capture authorization)
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
 - A Watch answer kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, muteOnWatch, inAppMuteChanged), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `ConduitWatch/HermesWatchCalls.swift` (phoneCallMuted)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (HermesNativeCalls' muteOnWatch)
 
 **Rulings**
-- During a call from Hermes, CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148).
-- A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943). LAA fork: with Hold calls to your ear on (the fork's default), a conversation the user starts plays from the earpiece instead; only the call screen's Speaker button moves it, the choice survives the classic turns' deactivations, and the next call starts on the earpiece again (LAA 2026-10-28).
+- During a CallKit call — one from Hermes, or one the user places (LAA fork) — CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148; LAA 2026-10-29).
+- A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943). LAA fork: with Place calls as phone calls on (the fork's default), a conversation the user starts on the phone is placed as a CallKit outgoing call, on the provider calls from Hermes already use: it plays from the earpiece, only the system call screen's Speaker button moves it, and the system's Mute and End act on the conversation (LAA 2026-10-29).
+- LAA fork: the call is placed before the conversation's audio starts, and the conversation opens only once `didActivate` gave the call its audio. If activation does not arrive within 2 s, the call ends and the conversation does not start. If that activation is withdrawn before the first audio starts, an attempt to start it is cancelled and ends the call; a later activation cannot authorize the earlier start. A conversation that never runs — a refused microphone, an engine that couldn't start — ends its call (`voiceStartFailed`, and the phone's `isPhoneVoiceCallRunning`, which excludes a failed minimised call; one the call's own audio took keeps it, since CallKit hands the audio back), and a conversation that begins while the last call is still ending gets its own call when it's gone (LAA 2026-10-29). Where CallKit isn't placing the call, the conversation plays from the earpiece with the call screen's own Speaker button and the proximity sensor, the choice survives the classic turns' deactivations, and the next call starts on the earpiece again (LAA 2026-10-28, kept as the fallback).
+- While a Classic phone launch is being prepared or waiting for CallKit audio, a second phone launch cannot take its session. An ended or replaced session cannot be presented by the waiting launch.
 - Silence mutes the assistant's voice apart from the microphone; its speech is dropped, not held, and job news waits for unmute (2026-10-09, #488).
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
 - A call from Hermes answered on the Watch plays on the iPhone's headset when one is on there (AirPods, wired, never the car's); the Watch's Mute and End control it like a phone call's, and a mute from any of Conduit's own controls reaches the Watch (Eric 2026-10-24, #1225).
 
 **Open gaps**
 - Silence isn't on CarPlay or the minimised bar (#488).
-- LAA fork: the Speaker button isn't on the V1 classic sheet, the minimised bar or the Watch; a phone-style call the user starts isn't a CallKit call, so it has no Dynamic Island or lock-screen call screen.
+- LAA fork: the call screen's own Speaker button (where CallKit isn't placing the call) isn't on the V1 classic sheet, the minimised bar or the Watch. A conversation CarPlay or the Watch runs isn't placed as a call, and neither is one started with CarPlay connected: their own screens run those. What the system's call screen does on a device — the Dynamic Island, the route indicator, a placed call's behaviour over CarPlay or Bluetooth — isn't established by the mocked tests.
+- LAA fork: a call placed here is not listed in the phone's Recents. The one shared provider leaves `includesCallsInRecents` off: tapping a Recents entry would have to start the same call again, which needs an `INStartCallIntent` handler (SiriKit intents), and the provider also rings calls from Hermes, which can't be called back from the Phone app. Enabling it for placed calls alone isn't possible on one provider.
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-28, LAA fork laa/earpiece-calls (Hold calls to your ear); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-10-29, LAA fork laa/callkit-outgoing (a conversation the user starts is placed as a CallKit call; the earpiece Speaker button and proximity sensor stay as the fallback); 2026-10-28, LAA fork laa/earpiece-calls; 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 

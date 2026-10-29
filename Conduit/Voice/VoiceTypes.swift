@@ -362,13 +362,19 @@ enum VoiceScreenAwake {
     }
 }
 
-/// "Hold calls to your ear": a device-wide choice (not per profile) to have
-/// the voice conversations the user starts play like a phone call, from the
-/// earpiece, so nobody nearby hears them. The call screen's Speaker button
-/// moves a call to the loudspeaker; headphones, Bluetooth and the car keep
-/// their own route. Holding the phone to the ear turns the screen off. On
-/// by default in this build: it is why the build exists.
-enum VoiceEarpieceCalls {
+/// "Place calls as phone calls": a device-wide choice (not per profile) to
+/// have the voice conversations the user starts placed as phone calls, so
+/// iOS's own call screen runs them (CallKit, VoicePlacedCalls): the lock
+/// screen, the Dynamic Island, the call banner over other apps, the
+/// earpiece, and the screen going off against the ear. The call screen's
+/// Speaker button moves a call to the loudspeaker; headphones, Bluetooth and
+/// the car keep their own route. Where CallKit can't be used (a call from
+/// Hermes is already on the screen, a build or storefront without it) the
+/// conversation still plays from the earpiece, with the call screen's own
+/// Speaker button and the proximity sensor below. On by default in this
+/// build: it is why the build exists. The preference key is the one "Hold
+/// calls to your ear" used, so the choice already made carries over.
+enum VoicePhoneCalls {
     static let preferenceKey = "conduit.voice.earpieceCalls"
     static let defaultValue = true
 
@@ -380,8 +386,9 @@ enum VoiceEarpieceCalls {
     /// The proximity sensor turns the screen off against the ear while a
     /// call the user started runs on this phone (on screen or minimised)
     /// and plays from the earpiece: not the loudspeaker, and not
-    /// headphones, Bluetooth or the car. A call from Hermes is left to
-    /// CallKit, whose Speaker button Conduit doesn't track.
+    /// headphones, Bluetooth or the car. A CallKit call is left to iOS,
+    /// which does this itself, and its Speaker button Conduit doesn't
+    /// track: `inNativeCall` covers a call from Hermes and one placed here.
     static func monitorsProximity(
         enabled: Bool,
         callOnPhone: Bool,

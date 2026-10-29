@@ -457,8 +457,9 @@ struct LiveVoiceCallSheet: View {
     // MARK: Controls
 
     private var controls: some View {
-        // The Speaker button of "Hold calls to your ear" makes six, more
-        // than a small phone holds at full size.
+        // The Speaker button of "Place calls as phone calls" (where CallKit
+        // isn't placing the call) makes six, more than a small phone holds
+        // at full size.
         ViewThatFits(in: .horizontal) {
             controlRow
             controlRow.dynamicTypeSize(.xSmall)

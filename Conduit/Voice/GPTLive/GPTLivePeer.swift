@@ -35,7 +35,7 @@ protocol GPTLivePeer: AnyObject {
     var onAudioPaused: (@MainActor (Bool) -> Void)? { get set }
     /// Opens the microphone and the data channel and returns the local SDP
     /// offer, with its ICE candidates gathered.
-    func makeOffer() async throws -> String
+    func makeOffer(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) async throws -> String
     func acceptAnswer(_ sdp: String) async throws
     /// False when the channel isn't open or refused the message.
     @discardableResult
@@ -97,8 +97,10 @@ final class WebRTCGPTLivePeer: NSObject, GPTLivePeer {
         }
     }
 
-    func makeOffer() async throws -> String {
+    func makeOffer(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) async throws -> String {
+        guard initialCaptureAuthorization?.mayStartCapture != false else { throw CancellationError() }
         try audio.start()
+        initialCaptureAuthorization?.captureDidStart()
         let configuration = RTCConfiguration()
         configuration.sdpSemantics = .unifiedPlan
         let constraints = RTCMediaConstraints(mandatoryConstraints: nil, optionalConstraints: nil)

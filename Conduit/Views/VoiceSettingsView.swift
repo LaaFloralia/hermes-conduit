@@ -221,7 +221,7 @@ struct VoiceSettingsView: View {
     @State private var isApplyingDefaults = false
     @State private var microphonePermission: AVAudioApplication.recordPermission
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
-    @AppStorage(VoiceEarpieceCalls.preferenceKey) private var earpieceCalls = VoiceEarpieceCalls.defaultValue
+    @AppStorage(VoicePhoneCalls.preferenceKey) private var phoneCalls = VoicePhoneCalls.defaultValue
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
     @AppStorage("conduit.voice.settingsAdvancedExpanded") private var advancedExpanded = false
@@ -1298,8 +1298,8 @@ struct VoiceSettingsView: View {
             Text("The screen stays on while a voice conversation is open, including the live voice modes. When off, the phone locks on its usual timer: live voice calls keep going in the background, and a classic voice conversation does too with Keep Listening When Locked on. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Toggle("Hold calls to your ear", isOn: $earpieceCalls)
-            Text("Voice conversations you start play from the earpiece, like a phone call, so people nearby don't hear them. Hold the phone to your ear and the screen turns off. Speaker in the call switches to the loudspeaker; headphones, Bluetooth and CarPlay keep their own route. Applies to this device.")
+            Toggle("Place calls as phone calls", isOn: $phoneCalls)
+            Text("Voice conversations you start are placed as phone calls, so iOS shows them on its call screen, the lock screen and the Dynamic Island, with Mute and End there. A call plays from the earpiece until the call screen's Speaker turns the loudspeaker on, and holding the phone to your ear turns the screen off. Headphones, Bluetooth and CarPlay keep their own route. Where CallKit isn't available, a call still plays from the earpiece and the call screen's own Speaker button moves it. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

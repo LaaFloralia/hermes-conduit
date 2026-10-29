@@ -50,6 +50,7 @@ final class FakeGPTLivePeer: GPTLivePeer {
     var onConnectionInterrupted: (@MainActor (Bool) -> Void)?
     var onAudioPaused: (@MainActor (Bool) -> Void)?
     var offerError: Error?
+    var offerHook: (@MainActor () throws -> Void)?
     var channelOpen = true
     /// Sends fail once this many have gone out (nil: never).
     var sendsBeforeFailure: Int?
@@ -60,9 +61,12 @@ final class FakeGPTLivePeer: GPTLivePeer {
     private(set) var speakerEnabled = true
     private(set) var closed = false
 
-    func makeOffer() async throws -> String {
+    func makeOffer(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) async throws -> String {
+        guard initialCaptureAuthorization?.mayStartCapture != false else { throw CancellationError() }
         microphoneEnabledAtOffer = microphoneEnabled
         if let offerError { throw offerError }
+        try offerHook?()
+        initialCaptureAuthorization?.captureDidStart()
         return "v=0 offer"
     }
 
@@ -2145,7 +2149,108 @@ extension AppStateVoiceCapabilityTests {
         )
         _ = appState.gptLiveController
         appState.gptLiveController = controller
+        controller.startsMuted = { [weak appState] in appState?.hermesCallStartsMuted ?? false }
         return (controller, session)
+    }
+
+    func testPlacedCallWaitsForAudioAndStartsLiveMuted() async {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (controller, session) = installFakeGPTLive(in: appState)
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: appState, kit: kit)
+        let opening = Task {
+            await appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallMuteChanged?(true)
+        XCTAssertEqual(session.started, 0)
+        kit.onPlacedCallAudioActivated?()
+        let opened = await opening.value
+        await settle(until: { session.started == 1 })
+        XCTAssertTrue(opened)
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        XCTAssertEqual(session.microphoneEnabledAtStart, false)
+        appState.closeGPTLiveConversation()
+    }
+
+    func testPlacedCallHangupBeforeAudioDoesNotStartLive() async {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (_, session) = installFakeGPTLive(in: appState)
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: appState, kit: kit)
+        let opening = Task {
+            await appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        XCTAssertEqual(kit.names.count, 1, "the outgoing call was requested before the hangup")
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallEnded?(true)
+        let opened = await opening.value
+        XCTAssertFalse(opened)
+        XCTAssertEqual(session.started, 0)
+        XCTAssertFalse(appState.showGPTLiveSheet)
+    }
+
+    func testPlacedCallHangupAfterOpeningButBeforeTheStartTaskDoesNotStartLive() async {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (_, session) = installFakeGPTLive(in: appState)
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: appState, kit: kit)
+        let preparing = Task { await calls.prepareForVoiceStart() }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        let start = await preparing.value
+        XCTAssertTrue(calls.canStartVoice(start))
+
+        XCTAssertTrue(appState.openGPTLiveConversation())
+        XCTAssertEqual(session.started, 0, "the controller's scheduled start has not run yet")
+        kit.onPlacedCallEnded?(true)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(appState.showGPTLiveSheet)
+        XCTAssertEqual(session.started, 0)
+    }
+
+    func testPlacedCallAudioTimeoutDoesNotStartLive() async {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (_, session) = installFakeGPTLive(in: appState)
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: appState, kit: kit, timeout: .milliseconds(60))
+        let opening = Task {
+            await appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        let opened = await opening.value
+        XCTAssertFalse(opened)
+        XCTAssertEqual(session.started, 0)
+        XCTAssertEqual(kit.endRequests, 1)
+        XCTAssertFalse(appState.showGPTLiveSheet)
+    }
+
+    func testHermesIncomingVoiceNeverPlacesAnOutgoingCall() async {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        let (_, session) = installFakeGPTLive(in: appState)
+        let kit = FakePlacedCallKit()
+        _ = makePlacedCallsForTesting(appState: appState, kit: kit)
+        let opened = await appState.openVoiceConversation(
+            PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .hermesCall)
+        )
+        await settle(until: { session.started == 1 })
+        XCTAssertTrue(opened)
+        XCTAssertTrue(kit.names.isEmpty)
+        XCTAssertEqual(session.started, 1)
+        appState.closeGPTLiveConversation()
     }
 
     func testCarPlayStartsAGPTLiveCallAndShowsARunningOneWithoutRestarting() async {
@@ -2336,6 +2441,28 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.minimisedLiveVoice)
     }
 
+    func testMinimisedLiveFailureEndsItsPlacedCallButKeepsTheBar() async {
+        let appState = makeGPTLiveAppState()
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: appState, kit: kit)
+        let (controller, session) = await startMinimisableGPTLive(in: appState)
+        calls.voiceChanged(running: true)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        calls.followOnce()
+        swipeGPTLiveSheetAway(appState)
+        session.onStateChange?(.failed("Connection lost"))
+        calls.followOnce()
+        XCTAssertFalse(controller.isActive)
+        XCTAssertFalse(appState.isPhoneVoiceCallRunning)
+        XCTAssertEqual(appState.minimisedLiveVoice, .gptLive)
+        XCTAssertEqual(calls.phase, .ending)
+        XCTAssertEqual(kit.endRequests, 1)
+        kit.onPlacedCallEnded?(false)
+        XCTAssertEqual(calls.phase, .idle)
+        appState.endMinimisedLiveVoice()
+    }
+
     func testASheetFlagLeftBehindDoesNotKeepTheCallMinimised() async {
         let appState = makeGPTLiveAppState()
         let (controller, _) = await startMinimisableGPTLive(in: appState)
@@ -2361,6 +2488,28 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.minimisedLiveVoice)
         XCTAssertEqual(session.started, 1, "the running call is shown, not restarted")
         XCTAssertTrue(controller.isActive)
+    }
+
+    func testTheMicReopensAMinimisedPlacedCallWithoutRestartingIt() async {
+        let appState = makeGPTLiveAppState()
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: appState, kit: kit)
+        let (controller, session) = await startMinimisableGPTLive(in: appState)
+        calls.voiceChanged(running: true)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        swipeGPTLiveSheetAway(appState)
+
+        let opened = await appState.openVoiceConversation(
+            PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
+        )
+        XCTAssertTrue(opened)
+        XCTAssertTrue(appState.showGPTLiveSheet)
+        XCTAssertNil(appState.minimisedLiveVoice)
+        XCTAssertEqual(session.started, 1, "the running call is shown, not restarted")
+        XCTAssertEqual(kit.names.count, 1, "the existing system call is kept")
+        XCTAssertTrue(controller.isActive)
+        appState.closeGPTLiveConversation()
     }
 
     func testCarPlayGoingAwayKeepsAMinimisedCall() async {

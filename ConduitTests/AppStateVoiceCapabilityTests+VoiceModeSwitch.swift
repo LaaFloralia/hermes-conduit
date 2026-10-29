@@ -199,6 +199,50 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(condition(), "timed out", file: file, line: line)
     }
 
+    private func switchFromAPlacedGPTCall() async -> (AppState, FakeGeminiLiveSessionControl, FakePlacedCallKit, Task<Void, Never>) {
+        let appState = makeModeSwitchAppState()
+        appState.setGPTLiveEnabled(true)
+        let (gptController, gptSession) = installModeSwitchFakeGPTLive(in: appState)
+        let geminiSession = installModeSwitchFakeGeminiLive(in: appState)
+        appState.showGPTLiveSheet = true
+        await gptController.start()
+        gptSession.becomeReady()
+
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: appState, kit: kit)
+        calls.voiceChanged(running: true)
+        XCTAssertEqual(kit.names.count, 1)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+
+        let switching = Task { await appState.switchVoiceMode(to: .gemini) }
+        await waitUntil { appState.voiceModeSwitchDismissing == .gptLive && kit.endRequests == 1 }
+        appState.liveVoiceSheetDismissed(.gptLive)
+        kit.onPlacedCallEnded?(false)
+        await waitUntil { kit.names.count == 2 && calls.isWaitingForCallAudio }
+        kit.onPlacedCallStarted?()
+        return (appState, geminiSession, kit, switching)
+    }
+
+    func testSwitchingAPlacedCallWaitsForTheNewCallsAudio() async {
+        let (appState, session, kit, switching) = await switchFromAPlacedGPTCall()
+        XCTAssertEqual(session.started, 0)
+        XCTAssertFalse(appState.showGeminiLiveSheet)
+        kit.onPlacedCallAudioActivated?()
+        await switching.value
+        await waitUntil { session.started == 1 }
+        XCTAssertTrue(appState.showGeminiLiveSheet)
+        appState.closeGeminiLiveConversation()
+    }
+
+    func testEndingAPlacedCallWhileSwitchingDoesNotStartTheNewVoice() async {
+        let (appState, session, kit, switching) = await switchFromAPlacedGPTCall()
+        kit.onPlacedCallEnded?(true)
+        await switching.value
+        XCTAssertEqual(session.started, 0)
+        XCTAssertFalse(appState.showGeminiLiveSheet)
+    }
+
     func testTheOldScreensDismissalDoesNotTouchANewCallOnTheSameEngine() async {
         // A hands-free Local Live call moving to Local restarts the same
         // engine; GPT-Live stands in for it here, with fakes.
