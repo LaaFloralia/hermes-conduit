@@ -3530,3 +3530,24 @@ and rollback instructions · the upstream App Store build
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
 **Checked:** 2026-10-29, at 2738ed28 (LAA task 12 changes).
+
+## LAA conversation backgrounds and employee groups
+
+**Siblings:** employee chat and streamed replies · hosted group-room messages and composer · the conversation menu and navigation bar · local photo access and offline copies · the upstream App Store build
+
+**Code**
+- Local scope, image downscaling and contrast: `Conduit/LAA/Backgrounds/LAABackgroundStore.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
+- Employee group entry, creation and settings: `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/HermesClient.swift`, `Shared/Widgets/LAAEmployeeWidget.swift`
+- Existing room, bubbles and controls: `Conduit/Views/GroupChatView.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Theme.swift`
+- Tests: `ConduitTests/LAABackgroundAndGroupTests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`, `ConduitUITests/LAABridgeRealUITests.swift`, `Conduit/LAA/Backgrounds/LAABackgroundUITestFixture.swift`
+
+**Rulings**
+- Store a background locally by dashboard, profile, surface and conversation or room id; copy downscaled photos into the app, never upload them, and fall back to paper if the photo is missing. Dim bright photos to keep white body text at least 4.5:1; dim and blur remain adjustable.
+- Paper retains the existing chat appearance. Night, ink and photo put employee replies on opaque surfaces; a photo uses clear glass and a dim backing for the bar and composer. All other glass controls retain their regular default.
+- Create a hosted room from the eight named employee profiles actually available on the current gateway, with the existing 2–6 member contract and retry identity. Rename only when `groups.rename` is advertised.
+
+**Open gaps**
+- The current hosted-room API does not provide member addition or removal; the settings show these actions disabled with a reason.
+- Photo picker, Keychain, actual display contrast and glass effects need physical iPhone verification.
+
+**Checked:** 2026-10-29, based on 7b8fc2ba (LAA task 10).

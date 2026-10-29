@@ -56,6 +56,7 @@ struct GroupChatView: View {
                 }
             }
         }
+        .laaConversationBackground()
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
@@ -497,7 +498,7 @@ struct GroupRoomTitle: View {
         .padding(.leading, 6)
         .padding(.trailing, 14)
         .padding(.vertical, 5)
-        .conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.06))
+        .laaGroupTitleGlass()
         // The navigation bar doesn't grow; touch and hold shows it large.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityElement(children: .ignore)
@@ -1215,6 +1216,7 @@ extension View {
         let fill = tint.map { Color(uiColor: $0.readableColor).opacity(0.10) } ?? Color.primary.opacity(0.06)
         let stroke = tint.map { Color(uiColor: $0.readableColor).opacity(0.18) } ?? Color.primary.opacity(0.06)
         return background(fill, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .laaGroupSurface()
             .overlay {
                 RoundedRectangle(cornerRadius: 19, style: .continuous)
                     .strokeBorder(stroke, lineWidth: 1)

@@ -158,7 +158,8 @@ struct GroupRoomComposer: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .background(foundation, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .laaComposerSurface(foundation)
+        .laaComposerGlassScope()
         .overlay {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(stroke, lineWidth: 1)

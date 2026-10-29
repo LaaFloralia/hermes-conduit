@@ -386,6 +386,7 @@ struct ChatView: View {
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
+        .laaConversationBackground()
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
         // are staged in the composer for the user to send (#1408).
         .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
@@ -2658,6 +2659,7 @@ struct AssistantBubble: View {
                 chatTextSize: chatTextSize
             )
             .equatable()
+            .laaAssistantSurface()
             // Pin sits in the reply's long-press menu, not its action row
             // (#918): Pin for the selected passage, Pin reply for all of it
             // (#1147). A pinned passage's jump flashes it in this text.
@@ -4750,6 +4752,7 @@ struct StreamingBubble: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .laaAssistantSurface()
     }
 }
 
