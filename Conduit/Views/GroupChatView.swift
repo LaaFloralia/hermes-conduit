@@ -56,6 +56,7 @@ struct GroupChatView: View {
                 }
             }
         }
+        .laaConversationBackground()
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
@@ -489,6 +490,7 @@ struct GroupRoomTitle: View {
                     .lineLimit(1)
                 Text(subtitle)
                     .font(.caption2)
+                    .laaPhotoSupportingText()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .contentTransition(.opacity)
@@ -497,7 +499,7 @@ struct GroupRoomTitle: View {
         .padding(.leading, 6)
         .padding(.trailing, 14)
         .padding(.vertical, 5)
-        .conduitGlassSurface(cornerRadius: 20, tint: .conduitAccent.opacity(0.06))
+        .laaGroupTitleGlass()
         // The navigation bar doesn't grow; touch and hold shows it large.
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityElement(children: .ignore)
@@ -750,6 +752,7 @@ struct GroupUserBubble<Footer: View>: View {
                     if let timestamp {
                         Text(GroupBubbleTime.text(timestamp))
                             .font(.caption2)
+                            .laaPhotoSupportingText()
                             .foregroundStyle(.conduitTertiary)
                     }
                     // Like a chat, Copy takes only what the user wrote.
@@ -810,11 +813,13 @@ struct GroupMemberBubble: View {
                     HStack(spacing: 6) {
                         Text(name)
                             .font(.caption.weight(.semibold))
+                            .laaPhotoSupportingText()
                             .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                             .lineLimit(1)
                         if let timestamp {
                             Text(GroupBubbleTime.text(timestamp))
                                 .font(.caption2)
+                                .laaPhotoSupportingText()
                                 .foregroundStyle(.conduitTertiary)
                         }
                     }
@@ -855,6 +860,7 @@ struct GroupSystemEventCaption: View {
     var body: some View {
         Text(caption)
             .font(.caption2)
+            .laaPhotoSupportingText()
             .foregroundStyle(.conduitTertiary)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
@@ -911,6 +917,7 @@ struct GroupRespondingRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(name)
                     .font(.caption.weight(.semibold))
+                    .laaPhotoSupportingText()
                     .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                     .lineLimit(1)
                 HStack(spacing: 6) {
@@ -1215,6 +1222,7 @@ extension View {
         let fill = tint.map { Color(uiColor: $0.readableColor).opacity(0.10) } ?? Color.primary.opacity(0.06)
         let stroke = tint.map { Color(uiColor: $0.readableColor).opacity(0.18) } ?? Color.primary.opacity(0.06)
         return background(fill, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+            .laaGroupSurface()
             .overlay {
                 RoundedRectangle(cornerRadius: 19, style: .continuous)
                     .strokeBorder(stroke, lineWidth: 1)

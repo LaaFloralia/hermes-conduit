@@ -86,6 +86,8 @@ struct LAAAppShell: View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_PAIR_ALL") {
             LAANotificationPairAllFixtureScreen()
+        } else if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BACKGROUND") {
+            LAABackgroundUITestFixtureScreen()
         } else {
             normalBar
         }
@@ -116,6 +118,8 @@ struct LAAAppShell: View {
                         NavigationStack {
                             if tab == .usage {
                                 LAAUsageView(onRequestSettings: onRequestSettings)
+                            } else if tab == .work {
+                                LAAWorkView(onRequestSettings: onRequestSettings)
                             } else {
                                 LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
                             }
@@ -136,6 +140,7 @@ struct LAAAppShell: View {
             NavigationStack(path: $chatsPath) {
                 V2ChatsView(appState: appState)
                     .equatable()
+                    .laaGroupListEntry()
                     .navigationTitle(LAATab.chats.title)
                     .navigationDestination(for: V2Route.self) { route in
                         switch route {

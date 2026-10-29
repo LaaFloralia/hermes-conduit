@@ -450,6 +450,46 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 **Checked:** 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
+## LAA Work tab
+
+The LAA build's Bridge-backed session, project and read-only Linear task views.
+
+**Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
+store · the session and project API · the Linear task read API
+
+**Code**
+- Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
+  `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`
+- Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
+  `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
+- Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
+- Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitUITests/LAAWorkUITests.swift`
+
+**Rulings**
+- Session and successor writes keep the exact body, request ID and idempotency
+  key until their outcome is known; the existing composer never sends through
+  Hermes for these requests. Event history gaps trigger a detail and artifact
+  reread. Requested and observed models stay visible, including mismatches.
+- Closing the full-screen composer refreshes the inline editor immediately.
+  If a created workspace's actual branch differs from the requested name,
+  show both names and the actual branch in the session confirmation.
+- Project instruction edits require a readable body and If-Match. A 412 keeps
+  both the user's edit and the current version for an explicit choice. A name
+  change alone does not replace shared instructions. Legacy references are
+  shown as unapplied metadata and can only be explicitly cleared.
+- Linear is the source of truth and tasks are read-only. Pending decisions are
+  read-only until Task 15; routines remain a placeholder.
+
+**Open gaps**
+- Decision replies, child-session creation and provider parity belong to Tasks
+  15 and 16; preflight model resolution is unavailable in the current API.
+
+**Checked:** 2026-10-29, 67166210. Signed Simulator tests covered pairing,
+sections, workspace entry, durable composer draft, empty, 503 and offline
+states. Against the real Bridge, a scratch session was created, messaged,
+stopped and resumed; artifacts and a stale If-Match 412 were read back.
+Injected event-history gaps and resynchronization also reread the snapshot.
+
 ## Voice beside the tabs
 
 The gold button beside the tab bar, and where voice goes when it is swapped
@@ -3530,3 +3570,24 @@ and rollback instructions · the upstream App Store build
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
 **Checked:** 2026-10-29, based on 5d712c50 and the LAA task 12b changes.
+
+## LAA conversation backgrounds and employee groups
+
+**Siblings:** employee chat and streamed replies · hosted group-room messages and composer · the conversation menu and navigation bar · local photo access and offline copies · the upstream App Store build
+
+**Code**
+- Local scope, image downscaling and contrast: `Conduit/LAA/Backgrounds/LAABackgroundStore.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
+- Employee group entry, creation and settings: `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/HermesClient.swift`, `Shared/Widgets/LAAEmployeeWidget.swift`
+- Existing room, bubbles and controls: `Conduit/Views/GroupChatView.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Theme.swift`
+- Tests: `ConduitTests/LAABackgroundAndGroupTests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`, `ConduitUITests/LAABridgeRealUITests.swift`, `Conduit/LAA/Backgrounds/LAABackgroundUITestFixture.swift`
+
+**Rulings**
+- Store a background locally by dashboard, profile, surface and conversation or room id; copy downscaled photos into the app, never upload them, and fall back to paper if the photo is missing. Dim bright photos to keep white body text at least 4.5:1; dim and blur remain adjustable.
+- Paper retains the existing chat appearance. Night, ink and photo put employee replies on opaque surfaces; a photo uses clear glass and a dim backing for the bar and composer. All other glass controls retain their regular default.
+- Create a hosted room from the eight named employee profiles actually available on the current gateway, with the existing 2–6 member contract and retry identity. Rename only when `groups.rename` is advertised.
+
+**Open gaps**
+- The current hosted-room API does not provide member addition or removal; the settings show these actions disabled with a reason.
+- Photo picker, Keychain, actual display contrast and glass effects need physical iPhone verification.
+
+**Checked:** 2026-10-29, based on 7b8fc2ba (LAA task 10).

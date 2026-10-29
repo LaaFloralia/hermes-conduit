@@ -386,6 +386,7 @@ struct ChatView: View {
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
+        .laaConversationBackground()
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
         // are staged in the composer for the user to send (#1408).
         .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
@@ -2658,6 +2659,7 @@ struct AssistantBubble: View {
                 chatTextSize: chatTextSize
             )
             .equatable()
+            .laaAssistantSurface()
             // Pin sits in the reply's long-press menu, not its action row
             // (#918): Pin for the selected passage, Pin reply for all of it
             // (#1147). A pinned passage's jump flashes it in this text.
@@ -3096,6 +3098,7 @@ private struct MessageTimestampLabel: View {
         if let label = MessageTimestampFormatter.displayString(for: timestamp) {
             Text(label)
                 .font(.caption2.weight(.medium))
+                .laaPhotoSupportingText()
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
                 .monospacedDigit()
                 .accessibilityLabel(AppLocalization.string("Sent \(label)"))
@@ -4750,6 +4753,7 @@ struct StreamingBubble: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .laaAssistantSurface()
     }
 }
 

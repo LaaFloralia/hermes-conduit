@@ -694,13 +694,15 @@ extension View {
     func conduitGlassSurface(
         cornerRadius: CGFloat,
         tint: Color = .clear,
-        interactive: Bool = false
+        interactive: Bool = false,
+        clear: Bool = false
     ) -> some View {
         if #available(iOS 26.0, *) {
+            let glass: Glass = clear ? .clear : .regular
             if interactive {
-                self.glassEffect(.regular.tint(tint).interactive(), in: .rect(cornerRadius: cornerRadius))
+                self.glassEffect(glass.tint(tint).interactive(), in: .rect(cornerRadius: cornerRadius))
             } else {
-                self.glassEffect(.regular.tint(tint), in: .rect(cornerRadius: cornerRadius))
+                self.glassEffect(glass.tint(tint), in: .rect(cornerRadius: cornerRadius))
             }
         } else {
             self
@@ -712,31 +714,38 @@ extension View {
         }
     }
 
-    @ViewBuilder
     func conduitGlassControl(
         cornerRadius: CGFloat = 18,
         tint: Color = .clear,
         prominent: Bool = false,
         interactive: Bool = true
     ) -> some View {
+        modifier(ConduitGlassControlStyle(cornerRadius: cornerRadius, tint: tint,
+                                          prominent: prominent, interactive: interactive))
+    }
+
+}
+
+private struct ConduitGlassControlStyle: ViewModifier {
+    @Environment(\.laaClearGlassControls) private var clear
+    let cornerRadius: CGFloat
+    let tint: Color
+    let prominent: Bool
+    let interactive: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
+            let glass: Glass = clear ? .clear : .regular
             if interactive {
-                self.glassEffect(
-                    .regular.tint(prominent ? tint.opacity(0.88) : tint).interactive(),
-                    in: .rect(cornerRadius: cornerRadius)
-                )
+                content.glassEffect(glass.tint(prominent ? tint.opacity(0.88) : tint).interactive(),
+                                    in: .rect(cornerRadius: cornerRadius))
             } else {
-                self.glassEffect(
-                    .regular.tint(prominent ? tint.opacity(0.88) : tint),
-                    in: .rect(cornerRadius: cornerRadius)
-                )
+                content.glassEffect(glass.tint(prominent ? tint.opacity(0.88) : tint),
+                                    in: .rect(cornerRadius: cornerRadius))
             }
         } else {
-            self
-                .background(
-                    prominent ? tint.opacity(0.92) : Color.conduitSurface.opacity(0.78),
-                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                )
+            content.background(prominent ? tint.opacity(0.92) : Color.conduitSurface.opacity(0.78),
+                               in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)

@@ -526,6 +526,7 @@ struct ComposerBar: View, Equatable {
     var body: some View {
         let _ = TranscriptPerf.note(.composerBarBody)
         composerWithRequestHandlers
+        .laaComposerGlassScope()
         .onAppear {
             if loadedDraftKey == nil {
                 loadDraft(for: activeDraftKey)
@@ -756,7 +757,7 @@ struct ComposerBar: View, Equatable {
                 }
             }
         }
-        .background(composerFoundation, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .laaComposerSurface(composerFoundation)
         .overlay {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(composerStroke, lineWidth: 1)
