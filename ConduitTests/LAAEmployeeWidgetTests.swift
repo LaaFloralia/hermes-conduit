@@ -63,6 +63,22 @@ final class LAAEmployeeWidgetTests: XCTestCase {
         XCTAssertNotEqual(state.activeProfile, "laa-cso")
     }
 
+    func testOfflineReconnectDefersWithoutOpeningAnotherProfile() async throws {
+        let dashboard = SavedDashboard(id: dashboardID, label: "Test", normalizedURL: "https://widget-test.invalid")
+        let state = try makeState(dashboards: [dashboard])
+        _ = state.handleScenePhase(.active)
+        state.isConnected = false
+        state.isConnecting = true
+        let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID:
+            WidgetWorkspaceID(dashboardID: dashboardID, profile: "default"), workspaces: [])
+        let link = LAAEmployeeWidgetLinks.link(employee: .argus, action: .talk, snapshot: snapshot)
+
+        let result = await state.prepareWidgetLaunch(link, lease: WidgetLaunchLease(isCurrent: { true }))
+
+        XCTAssertEqual(result, .deferred)
+        XCTAssertNotEqual(state.activeProfile, "laa-argus")
+    }
+
     func testEmptyEmployeeCatalogCreatesConversationInThatProfile() async throws {
         let dashboard = SavedDashboard(id: dashboardID, label: "Test", normalizedURL: "https://widget-test.invalid")
         let state = try makeState(dashboards: [dashboard])
