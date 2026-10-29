@@ -1,5 +1,8 @@
 #if LAA_BUILD
 import Foundation
+#if LAA_WIDGET_TEST
+@testable import Conduit
+#endif
 
 /// Static identities are independent of the last widget snapshot. Profiles are
 /// validated by the app against the selected dashboard when a link is opened.
@@ -21,22 +24,8 @@ enum LAAWidgetEmployee: String, CaseIterable {
         }
     }
 
-    var role: String {
-        switch self {
-        case .ciel: "社長秘書"
-        case .argus: "トレード"
-        case .cfo: "財務"
-        case .cio: "情報"
-        case .cmo: "広報・制作"
-        case .cos: "業務管理"
-        case .cto: "技術"
-        case .cso: "セキュリティ"
-        }
-    }
-
     var profile: String { "laa-\(rawValue)" }
     var heroImage: String { "LAAEmployee-\(rawValue)-hero" }
-    var avatarImage: String { "LAAEmployee-\(rawValue)-avatar" }
 
     static func forProfile(_ profile: String) -> Self? {
         allCases.first { $0.profile == profile }
