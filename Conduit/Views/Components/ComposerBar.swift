@@ -407,10 +407,8 @@ struct ComposerBar: View, Equatable {
         colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.09)
     }
 
-    /// The composer with its padding and the handlers for requests from
-    /// AppState and the draft. Split from `body` so the type checker takes
-    /// the modifier chain in two parts.
-    private var composerWithRequestHandlers: some View {
+    /// Keep the modifier chains short enough for optimized builds to type-check.
+    private var composerContainer: some View {
         Group {
             if #available(iOS 26.0, *) {
                 GlassEffectContainer(spacing: 16) {
@@ -433,6 +431,10 @@ struct ComposerBar: View, Equatable {
             guard restsWhenIdle else { return }
             composerUseChanged(inUse)
         }
+    }
+
+    private var composerWithDraftHandlers: some View {
+        composerContainer
         // One photo picker for both attach buttons (resting and expanded),
         // so it survives the composer expanding under it.
         .photosPicker(
@@ -463,6 +465,10 @@ struct ComposerBar: View, Equatable {
         }
         .onChange(of: attachments) { _, _ in persistCurrentDraft() }
         .onChange(of: replyReference) { _, _ in persistCurrentDraft() }
+    }
+
+    private var composerWithInputRequestHandlers: some View {
+        composerWithDraftHandlers
         .onChange(of: updates.inputs.prefillToken) { _, _ in
             applyPendingPrefill()
         }
@@ -482,6 +488,10 @@ struct ComposerBar: View, Equatable {
         .onChange(of: updates.inputs.dictationRequest) { _, request in
             applyDictationRequest(request)
         }
+    }
+
+    private var composerWithRequestHandlers: some View {
+        composerWithInputRequestHandlers
         .onChange(of: updates.inputs.activeSessionId) { _, sessionID in
             // Another chat: a voice message for the last one is dropped.
             if voiceMessages.isActive, !voiceMessages.isSending, voiceMessages.sessionID != sessionID {
