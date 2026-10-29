@@ -13,12 +13,14 @@
 
 import { createProjectRoutes, createProjectStore } from './projects.mjs';
 import { createWorkspaceRoutes, createWorkspaceStore } from './workspaces.mjs';
+import { taskRoutes } from './tasks.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
   const workspaceStore = createWorkspaceStore({ file: `${store.dir}/workspaces.json`, now });
 
   return [
+    ...taskRoutes({ ...(options.tasks ?? {}), now }),
     ...createProjectRoutes({ projects: projectStore, now }),
     ...createWorkspaceRoutes({
       workspaceStore,

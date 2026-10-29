@@ -66,6 +66,8 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `GET /v1/drive/files?query=&folderId=&pageSize=&cursor=` | Bearer + `media:read` | `{items,nextCursor}` |
 | `GET /v1/drive/files/{id}` | Bearer + `media:read` | `{id,name,mimeType,kind,size,modifiedAt,parents,downloadable,exportFormats?}` |
 | `GET|HEAD /v1/drive/files/{id}/content` | Bearer + `media:read` | bytes（200）、`Range` 部分（206）、範囲外（416）、Workspace文書（409） |
+| `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
+| `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
 | `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。`limit`（1–100、既定50）と `cursor` |
 | `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructionRef?,instructions?}` → `{id,version,etag,instructionHash,instructionVersion,…}`（201） |
@@ -134,6 +136,28 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: w1' \
 
 制約: 初回バイトはDriveデスクトップの取得待ちで秒単位になる。Drive API（`files.get?alt=media` + `Range`）を直接使う経路は未認可で、速さと全ファイル到達性が要るなら親がOAuthクライアント（`drive.readonly`）を用意する。
 
+## タスク読取（`/v1/tasks`）
+
+ROADMAP 19。**読取専用**で、担当の設定も worker の起動もしない。実装は `src/routes/tasks.mjs`（HTTP）と `src/tasks/`（Linear / Kanban アダプター）。Linear は現行の正本で、Mac の既存ラッパー `/Users/laa/.config/laa/linear-agent-token.sh`（1Password Agents の既存認証を実行時だけ取得）を再利用する。新しい API キー・OAuth は追加していない。
+
+各項目は `{id, source, sourceId, title, owner, executor, status, dependencies, result, project, labels, url, updatedAt, version}`。**owner と executor を分ける**のが要点:
+
+| フィールド | 意味 |
+|---|---|
+| `owner.kind` | `owner`（社長の担当）/ `agent`（エージェントの担当）/ `unassigned` |
+| `executor` | 実行するエージェント（Linear の `delegate`、なければエージェント担当者）。社長担当なら `null` |
+| `status` | Linear の状態名・type・`open`/`done`/`closed` |
+| `dependencies` | `blockedBy` / `blocks`（issue identifier）と `complete`（relation を全ページ読めたか） |
+| `result` | `none` / `reported`（最新の `[laa-agent]` コメント）/ `completed` / `canceled`。詳細では `summary` と `commentId` も返す |
+| `version` | Linear の `updatedAt`（将来の書込で `If-Match` に使う版） |
+
+- 一覧は `{items, nextCursor, total, sources, suppressedDuplicates}`。`sources` は取得元ごとの `available` / `unavailable` と理由で、取得できないことを空一覧にしない。Linear 自体が失敗したときは 503（`linear_credential_unavailable` など）。
+- `cursor` は件数オフセットをフィルタ集合に束縛した不透明値（24時間で失効）。別フィルタで使うと 400 `cursor_filter_mismatch`、壊れていれば 400 `cursor_invalid`、期限切れは 410 `cursor_expired`。
+- 詳細は `{task, comments, links}`。`task.description` を含み、コメントは 4,000 文字で切り詰めて `truncated` を付ける。添付は `links`。
+- **Kanban** は `source: "kanban"` の別ソース。Conduit は Hermes dashboard の `/api/plugins/kanban/*` を読むが、その API は loopback でも 401 で、Bridge が使える認証済みラッパーがまだ無い。よって現在は `sources[].state = "unavailable"`（`kanban_wrapper_not_authorized`）を返し、項目は 0 件。Linear の identifier を持つ Kanban 項目は重複として落とし、`suppressedDuplicates.kanban` に数える（社長タスクを複製しない）。ラッパーが用意できたら `createKanbanTaskSource({ baseUrl, request })` を差し込むだけで有効になる。
+- 読み取り専用の担保: Linear アダプターは `query` 以外の GraphQL 文書を拒否し（`linear_read_only_guard`）、mutation を定義しない。Kanban アダプターは `/dispatch` や reassign を呼ばない。ルートは GET のみ。
+- 照合: 2026-10-25 に Linear を直接読んだ結果と 57 件を突き合わせ、件数・title・状態・owner/executor・依存・project・updatedAt が一致（差分 0）。詳細 3 件もコメント・添付・依存が一致。再実行は `node scripts/verify-tasks.mjs`。
+
 ## 停止・再起動・クラッシュ復帰
 
 ```sh
@@ -176,11 +200,12 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 - Tailscale の到達性は認証ではない。ACL とトークンの両方で絞る。TLS は Serve が終端する。
 - ログは requestId・method・path・status・deviceId・エラーコードのみ。トークン・コード・body は残さない。
 - 実装していない: レート制限の永続化（メモリ内・enroll のみ）、監査ファイル、event stream、GUI 排他、Brain 書込み。
+- `/v1/tasks` は Linear の全非アーカイブ課題を 1 リクエスト最大 500 件まで読み、フィルタとページングは Bridge 側で行う。500 件を超えると `sources[].truncated = true`。
 - Drive: 索引はメモリ内で、Driveデスクトップが同期していない項目は見えない。Drive APIの書き出し・共有設定・削除は扱わない（読取専用）。
 - workspace の一覧は root 配下を毎回 walk する（深さ3、4000 entry、status 5秒キャッシュ）。巨大な root を許可すると遅くなるので、`LAA_BRIDGE_WORKSPACE_ROOTS` は用途の狭いディレクトリにする。
 
 ## 未対応（後続タスク）
 
-iOS クライアント、`/v1/sessions` 以降の業務端点、`/v1/events`、`/v1/jobs`、GUI lease、Brain 書込み、Usage/Mac 状態、DriveのWorkspace文書export。§9 の未決3・4（GUI・Brain書込み）は実証まで提供しない。
+iOS クライアント、`/v1/sessions` 以降の業務端点、`/v1/events`、`/v1/jobs`、GUI lease、Brain 書込み、Usage/Mac 状態、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。§9 の未決3・4（GUI・Brain書込み）は実証まで提供しない。Kanban の読取は親が認証済みラッパーを承認するまで無効。
 
 Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）、Project と指示文書の実体（Brain/Drive）の存在確認。

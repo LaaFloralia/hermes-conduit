@@ -12,7 +12,7 @@ import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
 import { issuePairing } from '../src/pairing.mjs';
 
-export async function startBridge({ now, testEndpoints = true, drive = null, workspace } = {}) {
+export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null } = {}) {
   const clock = now ?? (() => Date.now());
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-test-'));
   const stateDir = join(dir, 'state');
@@ -22,6 +22,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
   for (const root of workspaceRoots) mkdirSync(root, { recursive: true });
   const routeOptions = {
     workspaces: { ...(workspace ?? {}), roots: workspaceRoots },
+    ...(tasks ? { tasks } : {}),
   };
 
   let bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null, routeOptions });
