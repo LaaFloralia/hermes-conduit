@@ -23361,6 +23361,26 @@ final class AppState: ObservableObject {
             scopeProfile: conversationProfile
         )
         let token = beginReconciliation()
+        // A bot flight can lose its client while suspended. Close only the
+        // reconciliation and viewport it still owns; a newer navigation or
+        // automatic sync must retain its own state.
+        defer {
+            if let botChatOpenContext,
+               !botChatOpenContextIsCurrent(botChatOpenContext),
+               token == reconciliationToken,
+               chatViewportTransitionIsCurrent(generation: transitionGeneration) {
+                let settled = settleReconciliation(token)
+                if settled {
+                    chatResumeCoordinator.abandonPendingAutomaticSync()
+                }
+                if settled || reconciliation == nil {
+                    finishChatViewportTransition(generation: transitionGeneration)
+                    if turnState == .synchronizing {
+                        turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
+                    }
+                }
+            }
+        }
         let acceptedSessionIDs = knownSessionIDs(for: sessionId)
         // A bot chat is not the dashboard workspace's ORDINARY selection, but
         // it IS the conversation the user is viewing: the recorded reference

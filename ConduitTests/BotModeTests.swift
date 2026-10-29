@@ -1254,9 +1254,9 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.botModePhase, BotModePhase.idle)
     }
 
-    func testServerSwitchDuringBotCreationDoesNotPublishCreatedSession() async {
-        let creationStarted = expectation(description: "The bot session creation has started")
-        let creationGate = BotOpenGate()
+    func testServerSwitchBeforeBotCreationFlightStarts() async {
+        var lookupCalls = 0
+        var creationCalls = 0
         var titleCalls = 0
         var resumeCalls = 0
         let harness = makeBotHarness(
@@ -1273,10 +1273,13 @@ final class BotModeTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                findBotChat: { _, _ in [] },
+                refreshContext: { _, _ in },
+                findBotChat: { _, _ in
+                    lookupCalls += 1
+                    return []
+                },
                 createBotChat: { _, _ in
-                    creationStarted.fulfill()
-                    await creationGate.wait()
+                    creationCalls += 1
                     return ("runtime-new", "stored-new")
                 },
                 titleBotChat: { _, _, _, _ in titleCalls += 1 }
@@ -1287,21 +1290,291 @@ final class BotModeTests: XCTestCase {
             profile: "default"
         )
 
-        async let opened = harness.appState.openBotChat(for: makeBot(name: "atlas"))
-        await fulfillment(of: [creationStarted], timeout: 10)
-        let didSwitch = harness.appState.prepareChatResumeForConnection(
-            to: "https://elsewhere.example", dashboardID: UUID()
-        )
-        XCTAssertTrue(didSwitch)
-        creationGate.release()
-        let result = await opened
+        var registered = false
+        var didSwitch = false
+        harness.appState.onBotChatFlightRegisteredForTesting = { [weak state = harness.appState] in
+            registered = true
+            XCTAssertEqual(lookupCalls, 0, "the flight has not started")
+            didSwitch = state?.prepareChatResumeForConnection(
+                to: "https://elsewhere.example", dashboardID: UUID()
+            ) ?? false
+        }
+        let result = await harness.appState.openBotChat(for: makeBot(name: "atlas"))
 
+        XCTAssertTrue(registered)
+        XCTAssertTrue(didSwitch)
         XCTAssertFalse(result)
+        XCTAssertEqual(lookupCalls, 0)
+        XCTAssertEqual(creationCalls, 0, "a cancelled flight must not create a bot chat")
         XCTAssertEqual(titleCalls, 0)
         XCTAssertEqual(resumeCalls, 0)
         XCTAssertNil(harness.appState.activeSessionId)
         XCTAssertNil(harness.appState.botConversationProfileForTesting("runtime-new"))
         XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    func testSameDashboardReconnectSettlesAbandonedBotOpen() async {
+        let resumeStarted = expectation(description: "The bot resume has started")
+        let resumeGate = BotOpenGate()
+        let harness = makeBotHarness(
+            configureDefaults: { defaults in
+                defaults.set("https://one.example", forKey: "conduit.chatResumeServerIdentity.v1")
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSessionWithProfile: { _, id, _, _ in
+                    resumeStarted.fulfill()
+                    await resumeGate.wait()
+                    return SessionResumeResult(
+                        sessionId: id,
+                        storedSessionId: "stored-1",
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in },
+                findBotChat: { _, _ in
+                    [BotChatLookupRow(id: "stored-1", resolvedID: "runtime-1", title: "Bot Chat")]
+                }
+            )
+        )
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        async let opened = harness.appState.openBotChat(for: makeBot(name: "atlas"))
+        await fulfillment(of: [resumeStarted], timeout: 10)
+        XCTAssertTrue(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "viewport-probe")
+        let snapshot = ChatScrollSnapshot(anchorMessageID: "after-reconnect", followsLatest: false)
+        harness.appState.recordChatViewport(snapshot, for: key)
+        XCTAssertNil(harness.store.snapshot(for: key), "the open owns the frozen viewport")
+
+        XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "new-ticket"),
+            profile: "default"
+        )
+        resumeGate.release()
+        let result = await opened
+
+        XCTAssertFalse(result)
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        XCTAssertNotEqual(harness.appState.turnState, .synchronizing)
+        harness.appState.recordChatViewport(snapshot, for: key)
+        XCTAssertEqual(harness.store.snapshot(for: key), snapshot, "the abandoned open must release its viewport")
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    func testSameDashboardReconnectSettlesCompactBotOpen() async {
+        await assertReconnectSettlesBotOpen(compact: true, throwsOnResume: false)
+    }
+
+    func testSameDashboardReconnectSettlesFailedBotOpen() async {
+        await assertReconnectSettlesBotOpen(compact: false, throwsOnResume: true)
+    }
+
+    func testSameDashboardReconnectDuringContextRefreshReleasesViewport() async {
+        let refreshStarted = expectation(description: "The bot context refresh has started")
+        let refreshGate = BotOpenGate()
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                SessionResumeResult(
+                    sessionId: id,
+                    storedSessionId: "stored-1",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in
+                refreshStarted.fulfill()
+                await refreshGate.wait()
+            },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(id: "stored-1", resolvedID: "runtime-1", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        async let opened = harness.appState.openBotChat(for: makeBot(name: "atlas"))
+        await fulfillment(of: [refreshStarted], timeout: 10)
+        XCTAssertTrue(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "new-ticket"),
+            profile: "default"
+        )
+        refreshGate.release()
+        let result = await opened
+
+        XCTAssertFalse(result)
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        XCTAssertNotEqual(harness.appState.turnState, .synchronizing)
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "refresh-viewport-probe")
+        harness.appState.recordChatViewport(.latest, for: key)
+        XCTAssertEqual(harness.store.snapshot(for: key), .latest)
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    private func assertReconnectSettlesBotOpen(compact: Bool, throwsOnResume: Bool) async {
+        let resumeStarted = expectation(description: "The bot resume has started")
+        let resumeGate = BotOpenGate()
+        var resumeCalls = 0
+        var operations = ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                resumeCalls += 1
+                resumeStarted.fulfill()
+                await resumeGate.wait()
+                if throwsOnResume { throw URLError(.networkConnectionLost) }
+                return SessionResumeResult(
+                    sessionId: id,
+                    storedSessionId: "stored-1",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(id: "stored-1", resolvedID: "runtime-1", title: "Bot Chat")]
+            }
+        )
+        if compact { operations.persistedTranscript = { _, _, _ in .unavailable } }
+        let harness = makeBotHarness(lifecycleOperations: operations)
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        async let opened = harness.appState.openBotChat(for: makeBot(name: "atlas"))
+        await fulfillment(of: [resumeStarted], timeout: 10)
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "new-ticket"),
+            profile: "default"
+        )
+        resumeGate.release()
+        let result = await opened
+
+        XCTAssertFalse(result)
+        XCTAssertEqual(resumeCalls, 1, "the stale flight must not retry the compact resume")
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        XCTAssertNotEqual(harness.appState.turnState, .synchronizing)
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "reconnect-viewport-probe")
+        harness.appState.recordChatViewport(.latest, for: key)
+        XCTAssertEqual(harness.store.snapshot(for: key), .latest)
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    func testAbandonedBotOpenDoesNotClearNewerViewportGeneration() async {
+        await assertAbandonedBotOpenPreservesNewOwnership(newViewport: true)
+    }
+
+    func testAbandonedBotOpenDoesNotClearNewerReconciliationToken() async {
+        await assertAbandonedBotOpenPreservesNewOwnership(newViewport: false)
+    }
+
+    private func assertAbandonedBotOpenPreservesNewOwnership(newViewport: Bool) async {
+        let resumeStarted = expectation(description: "The old bot resume has started")
+        let resumeGate = BotOpenGate()
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                resumeStarted.fulfill()
+                await resumeGate.wait()
+                return SessionResumeResult(
+                    sessionId: id,
+                    storedSessionId: "stored-1",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(id: "stored-1", resolvedID: "runtime-1", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        async let opened = harness.appState.openBotChat(for: makeBot(name: "atlas"))
+        await fulfillment(of: [resumeStarted], timeout: 10)
+        if newViewport {
+            harness.appState.beginExplicitChatViewportTransition()
+        } else {
+            harness.appState.beginReconciliation()
+        }
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "new-ticket"),
+            profile: "default"
+        )
+        resumeGate.release()
+        let result = await opened
+
+        XCTAssertFalse(result)
+        XCTAssertTrue(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "new-owner-probe")
+        harness.appState.recordChatViewport(.latest, for: key)
+        XCTAssertNil(harness.store.snapshot(for: key), "the new owner must retain its frozen viewport")
+    }
+
+    func testAbandonedBotOpenDoesNotSettleNewerNavigation() async {
+        let oldResumeStarted = expectation(description: "The old bot resume has started")
+        let newResumeStarted = expectation(description: "The new bot resume has started")
+        let oldResumeGate = BotOpenGate()
+        let newResumeGate = BotOpenGate()
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, id, _, _ in
+                if id == "runtime-atlas" {
+                    oldResumeStarted.fulfill()
+                    await oldResumeGate.wait()
+                } else {
+                    newResumeStarted.fulfill()
+                    await newResumeGate.wait()
+                }
+                return SessionResumeResult(
+                    sessionId: id,
+                    storedSessionId: id.replacingOccurrences(of: "runtime", with: "stored"),
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "stored-\(profile)", resolvedID: "runtime-\(profile)", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+
+        async let oldOpened = harness.appState.openBotChat(for: makeBot(name: "atlas"))
+        await fulfillment(of: [oldResumeStarted], timeout: 10)
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "new-ticket"),
+            profile: "default"
+        )
+        async let newOpened = harness.appState.openBotChat(for: makeBot(name: "scout"))
+        await fulfillment(of: [newResumeStarted], timeout: 10)
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-scout")
+        XCTAssertTrue(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+
+        oldResumeGate.release()
+        let oldResult = await oldOpened
+        XCTAssertFalse(oldResult)
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-scout")
+        XCTAssertTrue(harness.appState.activeChatScrollSessionIdentity.isReconciling)
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "new-viewport-probe")
+        harness.appState.recordChatViewport(.latest, for: key)
+        XCTAssertNil(harness.store.snapshot(for: key), "the newer navigation still owns its viewport")
+
+        newResumeGate.release()
+        let newResult = await newOpened
+        XCTAssertTrue(newResult)
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-scout")
+        XCTAssertFalse(harness.appState.activeChatScrollSessionIdentity.isReconciling)
     }
 
     func testServerSwitchDoesNotRetryBotResumeAfterCompactResponse() async {
