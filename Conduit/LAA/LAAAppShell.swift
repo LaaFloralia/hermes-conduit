@@ -102,11 +102,17 @@ struct LAAAppShell: View {
                 .tabItem { Label(LAATab.chats.title, systemImage: LAATab.chats.symbol) }
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
-                NavigationStack {
-                    if tab == .usage {
-                        LAAUsageView(onRequestSettings: onRequestSettings)
+                Group {
+                    if tab == .brain {
+                        LAABrainView(onRequestSettings: onRequestSettings)
                     } else {
-                        LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                        NavigationStack {
+                            if tab == .usage {
+                                LAAUsageView(onRequestSettings: onRequestSettings)
+                            } else {
+                                LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                            }
+                        }
                     }
                 }
                 .tabItem { Label(tab.title, systemImage: tab.symbol) }

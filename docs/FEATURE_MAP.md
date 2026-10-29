@@ -398,16 +398,17 @@ mode menu)
 
 ## LAA five-tab shell
 
-The LAA iPhone build's top-level navigation, Bridge pairing and Usage tab.
+The LAA iPhone build's top-level navigation, Bridge pairing, Brain and Usage tabs.
 
 **Siblings:** the existing Chats list, sessions and group rooms · Hermes login
 and offline chats · Conduit Settings and its direct Hermes usage report ·
 notifications and in-app links · the four Bridge-backed tabs · the upstream
-App Store build · the Bridge API and Usage data contract
+App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
+- Brain: `Conduit/LAA/Brain/`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
@@ -426,11 +427,20 @@ App Store build · the Bridge API and Usage data contract
   pull-to-refresh. A missing value is not zero; stale, expired and unavailable
   readings and observation times are shown. Hermes' existing Settings report
   remains the direct path for historical tokens and costs.
+- Brain lists the default permitted areas, optionally adds Inbox on request,
+  searches locally through the Bridge, and opens Markdown or its exact source.
+  Frontmatter remains available, unresolved syntax and image references remain
+  visible, and wiki links resolve only against the permitted listing. New notes
+  use the opt-in `brain:create` scope and the server's conflict-safe name.
+  An uncertain create retains its exact request and key in ThisDeviceOnly
+  Keychain until the same device reconciles it or the user checks Inbox.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
 
 **Open gaps**
-- Work, Brain and Source still need their finished content. The LAA shell uses
+- Work and Source still need their finished content. Brain cannot edit existing
+  notes; relative images are shown as references until Bridge supports them.
+  The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
   are not in this five-tab shell.
 - The existing Hermes Settings report has its own missing-number handling;
