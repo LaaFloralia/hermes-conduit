@@ -79,6 +79,7 @@ struct LAABackgroundUITestFixtureScreen: View {
     @State private var sheet: FixtureSheet?
     @State private var bridgeResult = "未確認"
     @EnvironmentObject private var bridge: LAABridgeSession
+    private var appState: AppState { fake.state }
 
     var body: some View {
         NavigationStack {
@@ -123,7 +124,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                 case .pairing:
                     LAAPairingView().environmentObject(bridge)
                 case .groupList:
-                    LAAGroupListView().environmentObject(fake.state)
+                    LAAGroupListView().environmentObject(appState)
                 case .settings:
                     NavigationStack {
                         LAAGroupSettingsContent(room: fake.room, canRename: true) { name, _ in
