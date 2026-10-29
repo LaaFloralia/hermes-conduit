@@ -56,7 +56,7 @@ struct LAAAssetsView: View {
             }
             .refreshable { await reload(key) }
         }
-        .navigationTitle(Text(verbatim: LAACopy.Assets.title))
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
@@ -75,6 +75,7 @@ struct LAAAssetsView: View {
             Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
             Text(verbatim: LAACopy.Assets.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("laa.assets.title")
             Text(verbatim: LAACopy.Assets.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         }
     }

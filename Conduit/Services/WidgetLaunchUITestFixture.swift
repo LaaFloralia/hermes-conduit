@@ -345,6 +345,11 @@ struct WidgetLaunchUITestFixtureModifier: ViewModifier {
                             Text(verbatim: "Deliver widget URL")
                         }
                         .accessibilityIdentifier(WidgetLaunchUITestFixture.deliveryButtonID)
+                        #if LAA_BUILD
+                        // The edge-to-edge LAA shell puts the default overlay under the system area.
+                        .padding(.top, 80)
+                        .padding(.leading, 24)
+                        #endif
                     }
                     outcomeElements
                 }

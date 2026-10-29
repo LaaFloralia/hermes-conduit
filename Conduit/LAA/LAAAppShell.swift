@@ -149,12 +149,6 @@ struct LAAAppShell: View {
                                 LAAUsageView(onRequestSettings: onRequestSettings)
                             } else if tab == .work {
                                 LAAWorkView(onRequestSettings: onRequestSettings)
-                                    .toolbar {
-                                        ToolbarItem(placement: .principal) {
-                                            Text(verbatim: tab.title)
-                                                .accessibilityAddTraits(.isHeader)
-                                        }
-                                    }
                             } else {
                                 LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
                             }

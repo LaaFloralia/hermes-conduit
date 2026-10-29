@@ -51,6 +51,7 @@ struct LAAWorkView: View {
             }
             .refreshable { await load() }
         }
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
@@ -75,6 +76,7 @@ struct LAAWorkView: View {
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
                 Text(verbatim: LAACopy.WorkTab.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                    .accessibilityAddTraits(.isHeader).accessibilityIdentifier("laa.work.title")
                 Text(verbatim: LAACopy.WorkTab.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)

@@ -50,7 +50,7 @@ struct LAABrainView: View {
                 }
                 .refreshable { await load() }
             }
-            .navigationTitle(Text(verbatim: LAACopy.Brain.title))
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
@@ -112,6 +112,7 @@ struct LAABrainView: View {
             Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
             Text(verbatim: LAACopy.Brain.title).font(LAAType.screenTitle)
                 .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("laa.brain.title")
             Text(verbatim: LAACopy.Brain.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         }
     }

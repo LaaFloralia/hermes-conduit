@@ -14,13 +14,17 @@ final class LAAShellNavigationUITests: XCTestCase {
             XCTAssertTrue(app.buttons[name].exists, "Missing tab \(name)")
         }
         app.buttons["Work"].tap()
-        XCTAssertTrue(app.navigationBars.staticTexts["Work"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["laa.work.title"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.navigationBars.staticTexts["Work"].exists)
         app.buttons["Brain"].tap()
-        XCTAssertTrue(app.navigationBars["Brain"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.navigationBars.staticTexts["Brain"].exists)
         app.buttons["Usage"].tap()
-        XCTAssertTrue(app.navigationBars["Usage"].waitForExistence(timeout: 10))
+        // Usage uses a custom header instead of a navigation bar.
+        XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 10))
         app.buttons["Assets"].tap()
-        XCTAssertTrue(app.navigationBars["Assets"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["laa.assets.title"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.navigationBars.staticTexts["Assets"].exists)
         let settings = app.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: 10))
         settings.tap()
@@ -59,7 +63,7 @@ final class LAAShellNavigationUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_CALL_COVERS_TABS"]
         app.launch()
-        XCTAssertTrue(app.navigationBars["Assets"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["laa.assets.title"].waitForExistence(timeout: 30))
         XCTAssertFalse(app.buttons["Usage"].exists)
     }
     /// Opt-in only: the operator places a one-time code on this dedicated
