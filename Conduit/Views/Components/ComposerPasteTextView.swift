@@ -37,25 +37,23 @@ enum PastedRemoteImage {
 }
 
 struct ComposerPasteTextView: UIViewRepresentable {
-    /// One line of body text plus the text insets at the current text size,
-    /// so a large Text Size doesn't clip the first line.
+    /// Three lines, using the same font as the field.
     static var minimumHeight: CGFloat { minimumHeight(for: nil) }
-    /// About four lines at large text sizes, never under the original
-    /// 160 pt, and capped so the composer can't cover the chat.
+    /// Eight lines, capped for accessibility sizes on small displays.
     static var maximumHeight: CGFloat { maximumHeight(for: nil) }
 
     /// The bounds for a text view's own traits, the same source its
     /// `adjustsFontForContentSizeCategory` font scales from.
-    static func minimumHeight(for traits: UITraitCollection?) -> CGFloat {
-        max(44, ceil(bodyLineHeight(for: traits)) + 16)
+    static func minimumHeight(for traits: UITraitCollection?, size: ChatTextSize = .larger) -> CGFloat {
+        ceil(bodyLineHeight(for: traits, size: size) * 3) + 16
     }
 
-    static func maximumHeight(for traits: UITraitCollection?) -> CGFloat {
-        min(max(160, ceil(bodyLineHeight(for: traits)) * 4 + 16), 280)
+    static func maximumHeight(for traits: UITraitCollection?, size: ChatTextSize = .larger) -> CGFloat {
+        max(minimumHeight(for: traits, size: size), min(ceil(bodyLineHeight(for: traits, size: size) * 8) + 16, 360))
     }
 
-    private static func bodyLineHeight(for traits: UITraitCollection?) -> CGFloat {
-        UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits).lineHeight
+    private static func bodyLineHeight(for traits: UITraitCollection?, size: ChatTextSize) -> CGFloat {
+        ChatTypography.inputFont(for: traits, size: size).lineHeight
     }
 
     @Binding var text: String
@@ -65,6 +63,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
     let onPastedImage: (PastedImage) -> Void
     let onPastedImageError: (String) -> Void
     let editorIdentity: UUID
+    var inputTextSize: ChatTextSize = .larger
     /// Files dropped or pasted on the field that are staged as attachments
     /// (`AttachmentDrop.stagesAsFiles`), on the main thread.
     var onDroppedFiles: (([NSItemProvider]) -> Void)? = nil
@@ -110,8 +109,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     func makeUIView(context: Context) -> ImagePasteTextView {
         let view = ImagePasteTextView()
         view.delegate = context.coordinator
-        view.font = .preferredFont(forTextStyle: .body)
-        view.adjustsFontForContentSizeCategory = true
+        view.accessibilityIdentifier = "composer.field"
+        view.font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
+        view.adjustsFontForContentSizeCategory = false
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -123,8 +123,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.alwaysBounceVertical = false
         view.showsVerticalScrollIndicator = true
         view.keyboardDismissMode = .interactive
-        view.minimumReportedHeight = Self.minimumHeight
-        view.maximumReportedHeight = Self.maximumHeight
+        updateTypography(view)
         view.editorIdentity = editorIdentity
         view.onContentHeightChange = { height in
             context.coordinator.updateMeasuredHeight(height)
@@ -144,16 +143,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: ImagePasteTextView, context: Context) {
         TranscriptPerf.note(.composerUpdateUIView)
-        // Text Size changed while the app was open: the font follows on its
-        // own, the height bounds need re-reading. Checked by category so the
-        // hot update path doesn't look up fonts.
-        let category = uiView.traitCollection.preferredContentSizeCategory
-        if uiView.boundsContentSizeCategory != category {
-            uiView.boundsContentSizeCategory = category
-            uiView.minimumReportedHeight = Self.minimumHeight(for: uiView.traitCollection)
-            uiView.maximumReportedHeight = Self.maximumHeight(for: uiView.traitCollection)
-            uiView.setNeedsLayout()
-        }
+        updateTypography(uiView)
         context.coordinator.parent = self
         context.coordinator.isActive = true
         context.coordinator.apply(
@@ -181,6 +171,20 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.onSubmitFromReturn = onSubmitFromReturn
         if isFocused, !uiView.isFirstResponder { uiView.becomeFirstResponder() }
         if !isFocused, uiView.isFirstResponder { _ = uiView.resignFirstResponder() }
+    }
+
+    /// Assigning a font rewrites text attributes on UITextView. Never do it
+    /// while an IME owns marked text; the delegate retries after composition.
+    func updateTypography(_ view: ImagePasteTextView) {
+        guard view.markedTextRange == nil else { return }
+        let category = view.traitCollection.preferredContentSizeCategory
+        guard view.boundsContentSizeCategory != category || view.appliedInputTextSize != inputTextSize else { return }
+        view.boundsContentSizeCategory = category
+        view.appliedInputTextSize = inputTextSize
+        view.font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
+        view.minimumReportedHeight = Self.minimumHeight(for: view.traitCollection, size: inputTextSize)
+        view.maximumReportedHeight = Self.maximumHeight(for: view.traitCollection, size: inputTextSize)
+        view.setNeedsLayout()
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -222,6 +226,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
             textView.scrollRangeToVisible(textView.selectedRange)
             textView.setNeedsLayout()
             flushPendingProgrammaticIfCompositionEnded(textView)
+            if let view = textView as? ImagePasteTextView { parent.updateTypography(view) }
         }
         func textViewDidBeginEditing(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
@@ -231,6 +236,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
             guard isActive, !isApplyingProgrammaticState else { return }
             parent.isFocused = false
             flushPendingProgrammaticIfCompositionEnded(textView)
+            if let view = textView as? ImagePasteTextView { parent.updateTypography(view) }
         }
 
         func updateMeasuredHeight(_ height: CGFloat) {
@@ -290,6 +296,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
             // composition ends and stays the newest instruction.
             if textView.markedTextRange != nil {
                 TranscriptPerf.note(.composerMarkedTextDeferral)
+                // A later binding echo with the same revision cannot
+                // replace the intentional instruction queued earlier.
+                if pendingProgrammatic?.revision == programmaticRevision { return }
                 pendingProgrammatic = (text, programmaticRevision, cursorAtEnd)
                 return
             }
@@ -412,6 +421,7 @@ final class ImagePasteTextView: ReturnKeyTextView {
     var minimumReportedHeight: CGFloat = 44
     /// The Text Size the height bounds were last read at.
     var boundsContentSizeCategory: UIContentSizeCategory?
+    var appliedInputTextSize: ChatTextSize?
     var maximumReportedHeight: CGFloat = 160
     private var lastReportedHeight: CGFloat = 0
 

@@ -20,6 +20,8 @@ enum WidgetLaunchUITestFixture {
     /// before launch: "resume" for the seeded conversation, "newChat" for a
     /// new one. The app picks it up through the same path as a real share.
     static let shareDraftArgument = "-CONDUIT_UI_TEST_SHARE_DRAFT"
+    static let persistentDraftArgument = "-CONDUIT_UI_TEST_PERSISTENT_DRAFTS"
+    static let unknownDeliveryArgument = "-CONDUIT_UI_TEST_UNKNOWN_DELIVERY"
     static let sharedDraftText = "Shared from another app: https://example.com/article"
     static let sharedDraftFileName = "shared-note.png"
 
@@ -120,6 +122,21 @@ enum WidgetLaunchUITestFixture {
             probeActiveSessions: { _ in [] }
         )
 
+        let draftStore: ComposerDraftStore?
+        if let index = arguments.firstIndex(of: persistentDraftArgument), arguments.indices.contains(index + 1),
+           let id = UUID(uuidString: arguments[index + 1]) {
+            let file = FileManager.default.temporaryDirectory.appendingPathComponent("ComposerUITest-\(id.uuidString)/drafts.json")
+            if arguments.contains(unknownDeliveryArgument), !FileManager.default.fileExists(atPath: file.path) {
+                let seed = ComposerDraftStore(capacity: .max, fileURL: file)
+                let key = ComposerDraftKey(profile: profile, sessionID: sessionID, dashboardID: dashboardID)
+                _ = seed.beginSubmission(.init(id: UUID(), key: key, dashboardID: dashboardID,
+                                               draft: .init(text: "Interrupted message", attachments: []), pendingSendID: nil),
+                                         clearingDraft: true)
+            }
+            draftStore = ComposerDraftStore(capacity: .max, fileURL: file)
+        } else {
+            draftStore = nil
+        }
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: true,
@@ -127,7 +144,8 @@ enum WidgetLaunchUITestFixture {
             clearSessionPresentationCache: {},
             sessionCatalogLoader: { _ in try await catalog.rows() },
             chatResumeLifecycleOperations: resumeOperations,
-            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            composerDraftStore: draftStore
         )
         guard let connection = appState.connection else { return nil }
         appState.client = HermesClient(connection: connection, profile: profile)

@@ -1173,7 +1173,7 @@ private struct SettingsHome: View {
                     homeSection("Hermes", tint: .conduitAura) {
                         settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
                         settingsLink(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
-                        settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
+                        settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
                         settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"))
                         if appState.supportsHermesCalls {
                             settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
@@ -1355,7 +1355,7 @@ private struct SettingsHome: View {
         v2Group(AppLocalization.string("Hermes"), symbol: "gearshape.2") {
             v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
             v2Link(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
-            v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
+            v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
             v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
             v2Link(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
             v2Link(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
@@ -1672,6 +1672,7 @@ struct ChatSettingsDetail: View {
             trailingSection: AnyView(
                 VStack(spacing: 24) {
                     ChatTextSizeSettings()
+                    ComposerTextSizeSettings()
                     ChatFontStyleSettings()
                     ReplyStartSettings()
                     ComposerReturnKeySettings()
@@ -1749,6 +1750,7 @@ private struct ChatTextSizeSettings: View {
                 )
                 .tint(.conduitAccent)
                 .accessibilityLabel("Chat text size")
+                .accessibilityIdentifier("settings.chat-text-size")
                 .accessibilityValue(selected.displayName)
                 .accessibilityHint("Five steps from smallest to largest. Applies to conversation text immediately.")
                 Text(selected.displayName)
@@ -1756,6 +1758,30 @@ private struct ChatTextSizeSettings: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
+        }
+    }
+}
+
+private struct ComposerTextSizeSettings: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @AppStorage(ChatTypography.inputPreferenceKey) private var raw = ChatTypography.defaultInputSize.rawValue
+
+    private var selected: ChatTextSize { ChatTypography.inputSize(rawValue: raw) }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Input text size"), symbol: "textformat.size", tint: .conduitAura) {
+            Slider(
+                value: Binding(get: { Double(selected.rawValue) }, set: { raw = Int($0.rounded()) }),
+                in: 0...Double(ChatTextSize.allCases.count - 1), step: 1
+            )
+            .tint(.conduitAccent)
+            .accessibilityLabel("Input text size")
+            .accessibilityIdentifier("settings.input-text-size")
+            .accessibilityValue(selected.displayName)
+            Text(selected.displayName)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 }

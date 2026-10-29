@@ -230,6 +230,11 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var accessibilityIdentifier: String?
     var textInsets: UIEdgeInsets = .zero
     var maxLines: Int?
+    var minLines = 1
+    var inputTextSize: ChatTextSize = .larger
+    /// A revision distinguishes intentional replacements from a lagging
+    /// binding echo while UIKit is composing text.
+    var programmaticRevision: UInt64? = nil
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
     /// Whether the composer's Send (or dictation's Stop in its place) can
     /// act now; Return falls back to a newline when it can't.
@@ -242,8 +247,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     func makeUIView(context: Context) -> ReturnKeyTextView {
         let view = ReturnKeyTextView()
         view.delegate = context.coordinator
-        view.font = .preferredFont(forTextStyle: .body)
-        view.adjustsFontForContentSizeCategory = true
+        view.font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
+        view.adjustsFontForContentSizeCategory = false
         view.backgroundColor = .clear
         view.textColor = .label
         view.tintColor = .systemOrange
@@ -275,6 +280,10 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
+        if view.markedTextRange == nil {
+            let font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
+            if view.font != font { view.font = font; view.invalidateIntrinsicContentSize() }
+        }
         if view.isEditable != enabled { view.isEditable = enabled }
         view.accessibilityLabel = accessibilityLabel
         view.accessibilityIdentifier = accessibilityIdentifier
@@ -288,15 +297,16 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         guard let font = uiView.font else { return nil }
         let width = proposal.width ?? uiView.bounds.width
         let insets = uiView.textContainerInset.top + uiView.textContainerInset.bottom
-        // Not laid out yet: one line.
-        guard width > 0 else { return CGSize(width: width, height: ceil(font.lineHeight + insets)) }
+        let minimum = ceil(font.lineHeight * CGFloat(max(1, minLines)) + insets)
+        // Not laid out yet: retain the requested minimum.
+        guard width > 0 else { return CGSize(width: width, height: minimum) }
         let fitting = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         let cap = ceil(font.lineHeight * CGFloat(maxLines) + insets)
         let scrolls = fitting > cap
         if uiView.isScrollEnabled != scrolls {
             DispatchQueue.main.async { uiView.isScrollEnabled = scrolls }
         }
-        return CGSize(width: width, height: min(ceil(fitting), cap))
+        return CGSize(width: width, height: max(minimum, min(ceil(fitting), cap)))
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -309,15 +319,36 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         /// report's echo, possibly behind typing still in flight, never a
         /// change made elsewhere (#333).
         private var lastReportedText: String?
+        private var appliedRevision: UInt64?
+        private var pendingRevision: UInt64?
 
         init(_ parent: ReturnKeyTextEditor) {
             self.parent = parent
+            self.appliedRevision = parent.programmaticRevision
         }
 
         /// A change made elsewhere (dictation, a quote, a mention, a send
         /// clearing the field) goes into the field, the cursor after it.
         /// Internal, with the IME state passed in, for tests.
         func apply(text: String, to textView: UITextView, hasMarkedText: Bool) {
+            if let revision = parent.programmaticRevision {
+                guard revision != appliedRevision else { return }
+                if hasMarkedText {
+                    if pendingRevision == revision { return }
+                    pendingText = text
+                    pendingRevision = revision
+                    return
+                }
+                pendingText = nil
+                pendingRevision = nil
+                appliedRevision = revision
+                guard textView.text != text else { return }
+                lastReportedText = text
+                textView.text = text
+                textView.selectedRange = NSRange(location: (text as NSString).length, length: 0)
+                textView.invalidateIntrinsicContentSize()
+                return
+            }
             guard textView.text != text, text != lastReportedText else { return }
             if hasMarkedText {
                 // The binding also echoes the composition itself; only a
@@ -345,9 +376,13 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
                 parent.text = pending
                 return
             }
-            if !hasMarkedText { pendingText = nil }
+            if !hasMarkedText { pendingText = nil; pendingRevision = nil }
             lastReportedText = textView.text
             parent.text = textView.text
+            if !hasMarkedText, let view = textView as? ReturnKeyTextView {
+                let font = ChatTypography.inputFont(for: view.traitCollection, size: parent.inputTextSize)
+                if view.font != font { view.font = font }
+            }
             textView.invalidateIntrinsicContentSize()
         }
 

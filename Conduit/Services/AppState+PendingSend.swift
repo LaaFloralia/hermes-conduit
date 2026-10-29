@@ -96,15 +96,15 @@ extension AppState {
     var composerDraftKeyOnScreen: ComposerDraftKey {
         switch composerChatOnScreen {
         case .newChat:
-            return ComposerDraftKey(profile: activeProfile, sessionID: ComposerDraftKey.newConversationSessionID)
+            return ComposerDraftKey(profile: activeProfile, sessionID: ComposerDraftKey.newConversationSessionID, dashboardID: activeDashboardID)
         case .savedCopy:
             if let sessionID = offlineChatPresentation?.composerSessionID {
-                return ComposerDraftKey(profile: activeProfile, sessionID: sessionID)
+                return ComposerDraftKey(profile: activeProfile, sessionID: sessionID, dashboardID: activeDashboardID)
             }
         case .live, .none:
             break
         }
-        return ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile)
+        return ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile, dashboardID: activeDashboardID)
     }
 
     /// A restoration can outlive the current runtime alias. Capture the
@@ -112,7 +112,7 @@ extension AppState {
     var durableComposerDraftKeyOnScreen: ComposerDraftKey {
         let key = composerDraftKeyOnScreen
         guard !key.isNewConversation else { return key }
-        return ComposerDraftKey(profile: key.profile, sessionID: durableComposerSessionID(for: key.sessionID))
+        return ComposerDraftKey(profile: key.profile, sessionID: durableComposerSessionID(for: key.sessionID), dashboardID: key.dashboardID)
     }
 
     /// The waiting message, while its chat is the one on screen.
@@ -147,7 +147,8 @@ extension AppState {
     /// it, after any message already waiting there. False when there is no
     /// chat it could wait for.
     @discardableResult
-    func sendWhenConnected(_ text: String, replyReference: ComposerReplyReference?) -> Bool {
+    func sendWhenConnected(_ text: String, replyReference: ComposerReplyReference?,
+                           draftKey: ComposerDraftKey? = nil, composerDraft: ComposerDraft? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard composerWaitsForChat, !trimmed.isEmpty, Self.parseSlashCommand(trimmed) == nil,
               let dashboardID = activeDashboardID else { return false }
@@ -167,9 +168,25 @@ extension AppState {
                 title: displayedChatTitle
             )
         }
-        // Accept only once the file is safe. On failure the caller keeps
-        // its draft, and any previously accepted message stays unchanged.
-        guard recordPendingComposerSendFile(pending) else { return false }
+        // The waiting file and the draft snapshot are separate writes. First
+        // reserve their combined message in the journal, so interruption at
+        // either boundary cannot lose it or restore it twice.
+        let transfer: ComposerDraftStore.Submission?
+        if let draftKey, let composerDraft {
+            let reservation = ComposerDraftStore.Submission(id: UUID(), key: draftKey, dashboardID: dashboardID,
+                                                             draft: pending.draft, pendingSendID: pending.id)
+            guard composerDraftStore.beginSubmission(reservation, clearingDraft: true) else { return false }
+            transfer = reservation
+        } else {
+            transfer = nil
+        }
+        guard recordPendingComposerSendFile(pending) else {
+            if let transfer {
+                _ = composerDraftStore.finishSubmission(transfer.id, restoring: true, restoreDraft: composerDraft)
+            }
+            return false
+        }
+        if let transfer, !composerDraftStore.finishSubmission(transfer.id, restoring: false) { return false }
         composerNotice = nil
         if let other = pendingComposerSend, other.id != pending.id {
             returnPendingComposerSendToDraft(other)
@@ -240,12 +257,14 @@ extension AppState {
     }
 
     /// The composer put the words back: the waiting message's file goes too.
-    func consumeComposerRestoreRequest(_ id: UUID) {
-        guard let index = composerRestoreRequests.firstIndex(where: { $0.id == id }) else { return }
+    @discardableResult
+    func consumeComposerRestoreRequest(_ id: UUID) -> Bool {
+        guard let index = composerRestoreRequests.firstIndex(where: { $0.id == id }) else { return false }
         let request = composerRestoreRequests.remove(at: index)
-        if let pending = request.pending { removePendingComposerSendFile(pending) }
+        let removed = request.pending.map { removePendingComposerSendFile($0) } ?? true
         if let sharedDraftID = request.sharedDraftID { sharedDraftReachedComposer(sharedDraftID) }
         if let dictationClipID = request.dictationClipID { DictationClipInbox.shared.delivered(dictationClipID) }
+        return removed
     }
 
     func dismissComposerNotice() {
@@ -268,6 +287,9 @@ extension AppState {
 
     func settlePendingComposerSend() {
         guard let pending = pendingComposerSend else { return }
+        guard !composerDraftStore.unknownSubmissions.contains(where: {
+            $0.dashboardID == pending.dashboardID && composerDraftKeysAreSameChat($0.key, pending.draftKey)
+        }) else { return }
         // Another dashboard's: its file stays, and the next visit there
         // puts it back as a draft.
         guard pending.dashboardID == activeDashboardID else {
@@ -299,24 +321,33 @@ extension AppState {
     /// Through the normal send, busy mode and all. One that doesn't go
     /// comes back to the composer, like any send that didn't.
     private func deliverPendingComposerSend(_ pending: PendingComposerSend) {
+        let key = durableComposerDraftKeyOnScreen
+        let submission = ComposerDraftStore.Submission(
+            id: UUID(), key: key, dashboardID: pending.dashboardID,
+            draft: pending.draft, pendingSendID: pending.id
+        )
+        guard composerDraftStore.beginSubmission(submission, clearingDraft: false) else {
+            composerNotice = AppLocalization.string("Could not save your draft. Keep the app open and try again.")
+            return
+        }
         cancelPendingComposerSendRecheck()
         pendingComposerSend = nil
         deliveringPendingComposerSendIDs.insert(pending.id)
         let context = composerSubmissionContext()
-        let key = durableComposerDraftKeyOnScreen
         Task { @MainActor [weak self] in
             guard let self else { return }
             let sent = await self.submitComposer(text: pending.outboundText, context: context)
             self.deliveringPendingComposerSendIDs.remove(pending.id)
             if sent {
-                self.removePendingComposerSendFile(pending)
+                if self.removePendingComposerSendFile(pending) {
+                    self.composerDraftStore.finishSubmission(submission.id, restoring: false)
+                } else {
+                    self.composerDraftStore.markSubmissionUnknown(submission.id)
+                }
                 return
             }
-            self.restoreFailedPendingComposerSend(
-                pending,
-                submittedDraftKey: key,
-                mayHaveGone: self.takeComposerSubmissionOfUnknownDelivery(context)
-            )
+            _ = self.takeComposerSubmissionOfUnknownDelivery(context)
+            self.composerDraftStore.markSubmissionUnknown(submission.id)
         }
     }
 
@@ -421,6 +452,7 @@ extension AppState {
         let leftBehind = pendingComposerSendFiles(dashboardID: dashboardID).filter { file in
             file.id != pendingComposerSend?.id
                 && !deliveringPendingComposerSendIDs.contains(file.id)
+                && !composerDraftStore.submissions.contains { $0.pendingSendID == file.id }
                 && !composerRestoreRequests.contains { $0.pending?.id == file.id }
         }
         composerRestoreRequests.append(contentsOf: leftBehind.map { restoreRequest(for: $0, focuses: false) })

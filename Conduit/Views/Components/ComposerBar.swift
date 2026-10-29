@@ -38,10 +38,11 @@ struct ComposerBar: View, Equatable {
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
     @State private var composerErrorMessage: String?
+    @State private var reviewedSubmission: ComposerDraftStore.Submission?
     /// NOT view state: the store is owned by AppState because it must
     /// outlive this view's unmount (the room surface swap destroys the
     /// subtree — a `@State` store here would die with the draft it holds).
-    private var draftStore: ComposerDraftStore { appState.composerDraftStore }
+    @ObservedObject private var draftStore: ComposerDraftStore
     @State private var editorIdentity = UUID()
     /// Generation of intentional composer text replacements. Every program
     /// path that replaces the composer content routes through
@@ -70,6 +71,7 @@ struct ComposerBar: View, Equatable {
     /// on a Mac and inserts a newline on iPhone and iPad
     /// (`ComposerReturnKey.sendsByDefault`).
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
+    @AppStorage(ChatTypography.inputPreferenceKey) private var inputTextSizeRaw = ChatTypography.defaultInputSize.rawValue
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
     /// The app's choice for the big button beside the chat (V2); the
     /// profile's own, if any, is in `updates.inputs`.
@@ -102,6 +104,7 @@ struct ComposerBar: View, Equatable {
     init(appState: AppState) {
         appStateID = ObjectIdentifier(appState)
         _updates = StateObject(wrappedValue: ComposerUpdates(appState))
+        _draftStore = ObservedObject(wrappedValue: appState.composerDraftStore)
     }
 
     nonisolated static func == (lhs: ComposerBar, rhs: ComposerBar) -> Bool {
@@ -114,20 +117,15 @@ struct ComposerBar: View, Equatable {
         let attachmentGeneration: UInt64
     }
 
-    /// About three lines of body text: below this a draft is short enough
-    /// to read in place, so the expand icon stays out of the way.
-    static let fullEditorThreshold: CGFloat = 80
-
     static func showsFullEditorButton(measuredHeight: CGFloat) -> Bool {
-        // At large Text Sizes one line alone can reach 80 pt; the icon still
-        // waits for more than a line.
-        measuredHeight >= max(fullEditorThreshold, ComposerPasteTextView.minimumHeight + 20)
+        true
     }
 
-    static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
+    static func composerDraftKey(for sessionID: String?, profile: String, dashboardID: UUID? = nil) -> ComposerDraftKey {
         ComposerDraftKey(
             profile: profile,
-            sessionID: sessionID ?? ComposerDraftKey.newConversationSessionID
+            sessionID: sessionID ?? ComposerDraftKey.newConversationSessionID,
+            dashboardID: dashboardID
         )
     }
 
@@ -159,7 +157,7 @@ struct ComposerBar: View, Equatable {
         _ rhs: ComposerDraftKey,
         identity: ChatScrollSessionIdentity
     ) -> Bool {
-        guard lhs.profile == rhs.profile else { return false }
+        guard lhs.profile == rhs.profile, lhs.dashboardID == rhs.dashboardID else { return false }
         if lhs == rhs { return true }
         guard !lhs.isNewConversation, !rhs.isNewConversation else { return false }
         return identity.areEquivalent(lhs.sessionID, rhs.sessionID)
@@ -341,7 +339,15 @@ struct ComposerBar: View, Equatable {
         // A waiting screenshot rides on the next new turn only, so while
         // Hermes replies it doesn't turn the typed message into a Queue.
         let screenshotCounts = pendingScreenshot != nil && !appState.turnState.isRunning
-        return appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty || screenshotCounts)
+        let proposed = appState.composerAction(hasText: hasText, hasAttachments: !attachments.isEmpty || screenshotCounts)
+        if proposed != .stop && (unknownSubmission != nil || draftStore.persistenceFailed) { return .unavailable }
+        return proposed
+    }
+
+    private var unknownSubmission: ComposerDraftStore.Submission? {
+        draftStore.unknownSubmissions.first {
+            $0.dashboardID == appState.activeDashboardID && appState.composerDraftKeysAreSameChat($0.key, activeDraftKey)
+        }
     }
 
     /// A screenshot from Ask Hermes About Screen waiting on this chat. It
@@ -453,7 +459,10 @@ struct ComposerBar: View, Equatable {
             }
             // The suggestion row folds while typing and asks once it pauses.
             appState.predictiveDraftChanged(newValue)
+            persistCurrentDraft()
         }
+        .onChange(of: attachments) { _, _ in persistCurrentDraft() }
+        .onChange(of: replyReference) { _, _ in persistCurrentDraft() }
         .onChange(of: updates.inputs.prefillToken) { _, _ in
             applyPendingPrefill()
         }
@@ -547,6 +556,19 @@ struct ComposerBar: View, Equatable {
             guard inUse else { return }
             dictation.cancel()
         }
+        .confirmationDialog(
+            AppLocalization.string("Resolve delivery"),
+            isPresented: Binding(get: { reviewedSubmission != nil }, set: { if !$0 { reviewedSubmission = nil } }),
+            titleVisibility: .visible,
+            presenting: reviewedSubmission
+        ) { submission in
+            Button(AppLocalization.string("Restore to draft")) { resolveUnknownSubmission(submission, restoring: true) }
+            Button(AppLocalization.string("Confirmed sent")) { resolveUnknownSubmission(submission, restoring: false) }
+            Button(AppLocalization.string("Cancel"), role: .cancel) { reviewedSubmission = nil }
+        } message: { submission in
+            Text(AppLocalization.string("Check the conversation to see whether this message was sent. Restore it only if it was not sent."))
+            + Text(verbatim: "\n\n" + submission.draft.text)
+        }
         .onDisappear {
             dictation.cancel()
             if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
@@ -601,6 +623,26 @@ struct ComposerBar: View, Equatable {
 
             if let notice = appState.composerNotice {
                 composerNoticeLine(notice)
+            }
+
+            if draftStore.persistenceFailed {
+                pasteErrorNotice(AppLocalization.string("Could not save your draft. Keep the app open and try again."))
+            }
+            if let submission = unknownSubmission {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(AppLocalization.string("Delivery is unknown. Check this chat before sending again."))
+                        .font(.footnote)
+                    Text(submission.draft.text).font(.footnote).lineLimit(3)
+                    if !submission.draft.attachments.isEmpty {
+                        Text(submission.draft.attachments.map(\.name).joined(separator: ", "))
+                            .font(.footnote).lineLimit(2)
+                    }
+                    Button(AppLocalization.string("Review message")) { reviewedSubmission = submission }
+                        .font(.footnote.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14).padding(.top, 10)
+                .accessibilityIdentifier("composer.unknown-delivery")
             }
 
             UndeliveredDictationNotice(
@@ -745,6 +787,7 @@ struct ComposerBar: View, Equatable {
                     handlePastedImageError(message, editorIdentity: currentEditorIdentity)
                 },
                 editorIdentity: editorIdentity,
+                inputTextSize: ChatTypography.inputSize(rawValue: inputTextSizeRaw),
                 onDroppedFiles: { providers in
                     guard currentEditorIdentity == editorIdentity else { return }
                     handleDroppedFiles(providers)
@@ -811,6 +854,7 @@ struct ComposerBar: View, Equatable {
             ComposerFullEditor(
                 text: $text,
                 placeholder: appState.composerPlaceholder,
+                programmaticRevision: composerRevision,
                 enabled: appState.composerTakesText,
                 onUserEdit: { edited in
                     // Dictation writing the draft is not typing.
@@ -1597,6 +1641,7 @@ struct ComposerBar: View, Equatable {
     private func submit(_ choice: ComposerSendChoice? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty || pendingScreenshot != nil else { return }
+        guard unknownSubmission == nil, !draftStore.persistenceFailed else { return }
         if appState.composerWaitsForChat {
             queueUntilChatIsReady(trimmed)
             return
@@ -1629,14 +1674,14 @@ struct ComposerBar: View, Equatable {
         let outboundText = choice?.slashCommand.map { "/\($0) \(repliedText)" } ?? repliedText
         let submittedAction = choice.map { $0.busyInputMode?.composerAction ?? .send } ?? action
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
-        let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
-        let submittedClearCount = draftStore.clearCount
-        let submittedDashboardID = appState.activeDashboardID
-        let submittedChatTitle = appState.displayedChatTitle
-        // The words may come back after the chat's runtime id has moved on:
-        // they go back by its durable id, as a waiting message's do.
-        let submittedRestoreKey = submittedDraftKey == activeDraftKey
-            ? appState.durableComposerDraftKeyOnScreen : submittedDraftKey
+        guard let submittedDashboardID = appState.activeDashboardID else { return }
+        let snapshotAttachments = submittedAttachments + [pendingScreenshot].compactMap { $0 }
+        let submission = ComposerDraftStore.Submission(
+            id: UUID(), key: submittedDraftKey, dashboardID: submittedDashboardID,
+            draft: ComposerDraft(text: submittedText, attachments: snapshotAttachments, replyReference: submittedReply),
+            pendingSendID: nil, screenshotID: pendingScreenshot?.id
+        )
+        guard draftStore.beginSubmission(submission, clearingDraft: true) else { Haptics.error(); return }
         let submissionContext = appState.composerSubmissionContext()
         rotateAttachmentGeneration()
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
@@ -1653,30 +1698,44 @@ struct ComposerBar: View, Equatable {
                 text: outboundText,
                 attachments: submittedAttachments,
                 context: submissionContext,
-                busyMode: choice?.busyInputMode
+                busyMode: choice?.busyInputMode,
+                onConversationReady: { ready in
+                    guard let sessionID = ready.sessionID else { return false }
+                    let key = ComposerDraftKey(profile: submittedDraftKey.profile,
+                                               sessionID: appState.durableComposerSessionID(for: sessionID),
+                                               dashboardID: submittedDashboardID)
+                    return draftStore.rebindSubmission(submission.id, to: key)
+                }
             )
             guard didSubmit else {
-                restoreSubmittedDraftIfNeeded(
-                    text: submittedText,
-                    attachments: submittedAttachments,
-                    replyReference: submittedReply,
-                    for: submittedDraftKey,
-                    restoringTo: submittedRestoreKey,
-                    dashboardID: submittedDashboardID,
-                    chatTitle: submittedChatTitle,
-                    stoppedQuietly: appState.composerSubmissionStoppedQuietly(submissionContext),
-                    clearCount: submittedClearCount
-                )
+                _ = appState.takeComposerSubmissionOfUnknownDelivery(submissionContext)
+                draftStore.markSubmissionUnknown(submission.id)
                 Haptics.error()
                 return
             }
-            draftStore.removeDraft(for: submittedDraftBucket)
+            draftStore.finishSubmission(submission.id, restoring: false)
             guard loadedDraftKey == submittedDraftKey else { return }
             // A prefill the reply asked for (a slash command's) goes in
             // here if its update hasn't put it in yet.
             applyPendingPrefill()
             isShowingSlashSuggestions = Self.shouldShowSlashSuggestions(for: text, isProgrammaticDraftRestore: false)
         }
+    }
+
+    private func resolveUnknownSubmission(_ submission: ComposerDraftStore.Submission, restoring: Bool) {
+        guard let key = loadedDraftKey else { return }
+        persistCurrentDraft()
+        if let pendingID = submission.pendingSendID,
+           !appState.removePendingComposerSendFile(id: pendingID, dashboardID: submission.dashboardID, profile: submission.key.profile) {
+            return
+        }
+        guard draftStore.finishSubmission(submission.id, restoring: restoring, destination: key) else { return }
+        if let screenshotID = submission.screenshotID, pendingScreenshot?.id == screenshotID {
+            appState.discardPendingScreenshot(forSession: appState.activeSessionId)
+        }
+        reviewedSubmission = nil
+        if restoring { loadDraft(for: key) }
+        appState.schedulePendingComposerSendCheck()
     }
 
     /// The chat on screen is still on its way: the message waits in it as
@@ -1687,7 +1746,13 @@ struct ComposerBar: View, Equatable {
         let submittedReply = ComposerReplyReference.appliesToDraft(trimmed, hasAttachments: false)
             ? replyReference : nil
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
-        guard appState.sendWhenConnected(trimmed, replyReference: submittedReply) else {
+        let composerDraft = ComposerDraft(text: text, attachments: attachments, replyReference: submittedReply)
+        guard appState.sendWhenConnected(trimmed, replyReference: submittedReply,
+                                         draftKey: submittedDraftKey, composerDraft: composerDraft) else {
+            // If persistence failed after a reservation was made, its journal
+            // owns the words and needs review; don't leave a second copy in
+            // the visible field.
+            if unknownSubmission != nil { collapseSubmittedDraft(clearingReply: submittedReply != nil) }
             Haptics.error()
             return
         }
@@ -1707,9 +1772,21 @@ struct ComposerBar: View, Equatable {
     private func applyComposerRestoreRequests() {
         guard let loadedDraftKey else { return }
         for request in appState.composerRestoreRequests where request.dashboardID == appState.activeDashboardID {
-            if restoreRequest(request, belongsTo: loadedDraftKey) {
-                let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
-                    .restoring(request.draft)
+            let onScreen = restoreRequest(request, belongsTo: loadedDraftKey)
+            let key = onScreen ? loadedDraftKey
+                : (draftStore.keys.first { appState.composerDraftKeysAreSameChat($0, request.key) } ?? request.key)
+            let pendingID = request.pending?.id
+            if let pendingID, draftStore.hasRestoredPending(pendingID) {
+                if appState.consumeComposerRestoreRequest(request.id) { draftStore.forgetRestoredPending(pendingID) }
+                continue
+            }
+            let current = onScreen ? ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
+                                   : draftStore.draft(for: key)
+            let restored = current.restoring(request.draft)
+            let saved = pendingID.map { draftStore.saveRestoredPending($0, draft: restored, for: key) }
+                ?? draftStore.save(restored, for: key)
+            guard saved else { continue }
+            if onScreen {
                 // Put back, not typed: a "/cmd" draft opens no suggestions.
                 if text != restored.text { suppressNextTextChangeSuggestions = true }
                 replaceComposerText(restored.text, cursorAtEnd: true)
@@ -1721,12 +1798,10 @@ struct ComposerBar: View, Equatable {
                         isFocused = true
                     }
                 }
-            } else {
-                let key = draftStore.keys.first { appState.composerDraftKeysAreSameChat($0, request.key) }
-                    ?? request.key
-                draftStore.save(draftStore.draft(for: key).restoring(request.draft), for: key)
             }
-            appState.consumeComposerRestoreRequest(request.id)
+            if appState.consumeComposerRestoreRequest(request.id), let pendingID {
+                draftStore.forgetRestoredPending(pendingID)
+            }
         }
     }
 
@@ -2318,6 +2393,14 @@ struct ComposerBar: View, Equatable {
         )
     }
 
+    private func persistCurrentDraft() {
+        guard let key = Self.draftKeyToKeep(
+            loaded: loadedDraftKey, loadedClearCount: loadedDraftClearCount,
+            storeClearCount: draftStore.clearCount
+        ) else { return }
+        saveDraft(for: key)
+    }
+
     private func loadDraft(for key: ComposerDraftKey) {
         // Kept under another of the chat's ids (typed over its saved copy,
         // or in the New Chat that created it): it's this chat's draft.
@@ -2539,6 +2622,11 @@ struct ComposerBar: View, Equatable {
 
     nonisolated static func discardStagedFile(_ attachment: Attachment) {
         guard let url = URL(string: attachment.uri), url.isFileURL else { return }
+        // A restored draft can point to the journal's durable copy. That
+        // copy may still be needed by an unresolved submission; only remove
+        // temporary staging files here.
+        let temporary = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().path + "/"
+        guard url.resolvingSymlinksInPath().path.hasPrefix(temporary) else { return }
         try? FileManager.default.removeItem(at: url)
     }
 

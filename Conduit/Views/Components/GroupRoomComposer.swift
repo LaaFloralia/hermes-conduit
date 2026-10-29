@@ -22,6 +22,7 @@ struct GroupRoomComposer: View {
     let members: [GroupMember]
 
     @State private var draft = ""
+    @State private var draftRevision: UInt64 = 0
     /// A whole room message quoted with the next one (its Quote button).
     @State private var replyReference: ComposerReplyReference?
     /// The bots picked in the "To" row, by tag, in the order picked. The
@@ -31,6 +32,7 @@ struct GroupRoomComposer: View {
     @State private var attachments: [Attachment] = []
     @State private var isFocused = false
     @State private var isUploading = false
+    @State private var isRegisteringSend = false
     /// The upload in flight, cancelled when the composer goes away.
     @State private var uploadTask: Task<Void, Never>?
     @State private var composerError: String?
@@ -46,6 +48,7 @@ struct GroupRoomComposer: View {
     /// The draft as dictation last wrote it, to tell its writes from typing.
     @State private var dictatedDraft: String?
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
+    @AppStorage(ChatTypography.inputPreferenceKey) private var inputTextSizeRaw = ChatTypography.defaultInputSize.rawValue
 
     private let controlSize = ComposerBar.controlSize
 
@@ -58,6 +61,8 @@ struct GroupRoomComposer: View {
     /// Whether the room takes a message at all right now.
     private var roomAccepts: Bool {
         !appState.activeRoomSendInFlight
+            && !isRegisteringSend
+            && !appState.composerDraftStore.persistenceFailed
             // An ambiguous-outcome pending message owns the composer: retry
             // it explicitly (same event id) or it stays visible — a NEW
             // message typed meanwhile would be silently swallowed.
@@ -68,6 +73,12 @@ struct GroupRoomComposer: View {
 
     private var canSend: Bool {
         (hasText || !attachments.isEmpty) && roomAccepts && !isUploading
+    }
+
+    private func replaceDraft(_ value: String) {
+        guard draft != value else { return }
+        draftRevision &+= 1
+        draft = value
     }
 
     /// A dictation's settle counts, so typing then ends it as in a chat.
@@ -110,7 +121,7 @@ struct GroupRoomComposer: View {
             notices
             if !mentionCandidates.isEmpty {
                 MentionSuggestionList(candidates: mentionCandidates) { candidate in
-                    draft = MentionAutocomplete.completing(draft, with: candidate)
+                    replaceDraft(MentionAutocomplete.completing(draft, with: candidate))
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
@@ -162,7 +173,7 @@ struct GroupRoomComposer: View {
         // room: the draft and its files come back on reopen and are kept
         // as they change.
         .onAppear {
-            draft = appState.activeRoomDraft()
+            replaceDraft(appState.activeRoomDraft())
             attachments = appState.activeRoomAttachments()
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
@@ -180,7 +191,7 @@ struct GroupRoomComposer: View {
         .onChange(of: appState.roomDraftAppend) { _, append in
             guard let append, let surface,
                   append.dashboardID == surface.dashboardID, append.roomID == surface.room.roomID else { return }
-            draft = appState.activeRoomDraft()
+            replaceDraft(appState.activeRoomDraft())
         }
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
@@ -242,6 +253,7 @@ struct GroupRoomComposer: View {
             ComposerFullEditor(
                 text: $draft,
                 placeholder: AppLocalization.string("Message the room"),
+                programmaticRevision: draftRevision,
                 fieldIdentifier: "room.composer.fullEditor.field",
                 enabled: true,
                 onUserEdit: { _ in },
@@ -277,6 +289,9 @@ struct GroupRoomComposer: View {
 
     @ViewBuilder
     private var notices: some View {
+        if appState.composerDraftStore.persistenceFailed {
+            notice(AppLocalization.string("Could not save your draft. Keep the app open and try again."), color: .red)
+        }
         if appState.activeRoomSendInFlight, appState.pendingRoomMessage == nil {
             // A poll can show the message delivered before the send's own
             // answer returns; Send stays off until it does.
@@ -323,7 +338,7 @@ struct GroupRoomComposer: View {
     }
 
     private var showsExpand: Bool {
-        draft.count > 240 || draft.filter({ $0 == "\n" }).count >= 3
+        true
     }
 
     private func notice(_ text: String, color: Color) -> some View {
@@ -343,6 +358,9 @@ struct GroupRoomComposer: View {
             accessibilityLabel: AppLocalization.string("Message the room"),
             accessibilityIdentifier: "room.composer.field",
             maxLines: 6,
+            minLines: 3,
+            inputTextSize: ChatTypography.inputSize(rawValue: inputTextSizeRaw),
+            programmaticRevision: draftRevision,
             canSubmitFromReturn: canSubmitFromReturn,
             onSubmitFromReturn: { submitFromReturnKey() }
         )
@@ -585,19 +603,19 @@ struct GroupRoomComposer: View {
         dictation.stop()
         Haptics.light()
         isShowingFullEditor = false
-        if sendsReply { replyReference = nil }
-        if sendsRecipients { recipients = [] }
         if files.isEmpty {
-            draft = ""
+            isRegisteringSend = true
             Task {
-                // The pending row owns the text only once AppState REGISTERS
-                // the send. A declined send (connection or room changed
-                // before the guards ran) hands the text back.
-                let registered = await appState.sendGroupRoomMessage(text)
-                if !registered {
-                    // Anything typed since goes after the text handed back.
-                    draft = draft.isEmpty ? typed : typed + "\n" + draft
-                    restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
+                defer { isRegisteringSend = false }
+                let remainingText = !typed.isEmpty && draft.hasPrefix(typed)
+                    ? String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines) : draft
+                let submitted = ComposerDraft(text: typed, attachments: [], replyReference: sendsReply ? reply : nil)
+                let remaining = ComposerDraft(text: remainingText, attachments: attachments)
+                _ = await appState.sendGroupRoomMessage(text, submittedDraft: submitted, remainingDraft: remaining) {
+                    replaceDraft(remaining.text)
+                    appState.saveActiveRoomDraft(remaining.text)
+                    if sendsReply { replyReference = nil }
+                    if sendsRecipients { recipients = [] }
                 }
             }
             return
@@ -621,22 +639,21 @@ struct GroupRoomComposer: View {
             // to the room open now. The typed text and the files stay in
             // this room's draft.
             guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
-            // Uploaded: the composer hands over its text and files now, so a
-            // second tap can't send them twice.
-            // Typed on after it while the files went up: only the sent
-            // text leaves the draft.
-            let handedOver = !typed.isEmpty && draft.hasPrefix(typed)
-            if handedOver {
-                draft = String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            let remainingText = !typed.isEmpty && draft.hasPrefix(typed)
+                ? String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines) : draft
+            let remainingFiles = attachments.filter { file in !files.contains { $0.id == file.id } }
+            let submitted = ComposerDraft(text: typed, attachments: files, replyReference: sendsReply ? reply : nil)
+            let remaining = ComposerDraft(text: remainingText, attachments: remainingFiles)
+            let registered = await appState.sendGroupRoomMessage(message, submittedDraft: submitted, remainingDraft: remaining) {
+                replaceDraft(remaining.text)
+                attachments = remaining.attachments
+                appState.saveActiveRoomDraft(remaining.text)
+                appState.saveActiveRoomAttachments(remaining.attachments)
+                if sendsReply { replyReference = nil }
+                if sendsRecipients { recipients = [] }
             }
-            attachments.removeAll { file in files.contains { $0.id == file.id } }
-            let registered = await appState.sendGroupRoomMessage(message)
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
-            } else {
-                if handedOver, !typed.isEmpty { draft = draft.isEmpty ? typed : typed + "\n" + draft }
-                attachments = files + attachments
-                restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
             }
         }
     }
@@ -742,7 +759,7 @@ struct GroupRoomComposer: View {
         switch request.content {
         case .text(let quote):
             dictation.yieldToTyping()
-            draft = ChatQuote.inserting(quote, into: draft)
+            replaceDraft(ChatQuote.inserting(quote, into: draft))
             announcement = AppLocalization.string("Quoted in your message")
         case .reply(let reference):
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
@@ -824,7 +841,7 @@ struct GroupRoomComposer: View {
             }
             let next = ComposerDictation.draft(before: prefix, dictated: transcript)
             dictatedDraft = next
-            draft = next
+            replaceDraft(next)
         }
         dictation.onFinish = { _ in Haptics.light() }
         dictation.onFailure = { message in composerError = message }

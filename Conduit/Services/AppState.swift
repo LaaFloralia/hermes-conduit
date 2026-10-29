@@ -4924,7 +4924,7 @@ final class AppState: ObservableObject {
     /// open), so a typed draft survives navigating to a room and back — a
     /// per-view store would be destroyed by the very navigation the save
     /// is meant to survive.
-    let composerDraftStore = ComposerDraftStore()
+    let composerDraftStore: ComposerDraftStore
     /// Coalesces presentation-cache flushes during streaming so we
     /// don't serialize and write UserDefaults on every WebSocket frame.
     private var presentationCacheFlushTask: Task<Void, Never>?
@@ -5439,7 +5439,7 @@ final class AppState: ObservableObject {
     /// Whether two drafts are the same chat's: the same key, the chat under
     /// another of its ids, or the New Chat draft and the chat it created.
     func composerDraftKeysAreSameChat(_ lhs: ComposerDraftKey, _ rhs: ComposerDraftKey) -> Bool {
-        guard lhs.profile == rhs.profile else { return false }
+        guard lhs.profile == rhs.profile, lhs.dashboardID == rhs.dashboardID else { return false }
         if lhs == rhs { return true }
         if lhs.isNewConversation || rhs.isNewConversation {
             let chat = lhs.isNewConversation ? rhs : lhs
@@ -5488,8 +5488,14 @@ final class AppState: ObservableObject {
         offlineChatCache.recordPendingSend(pending)
     }
 
-    func removePendingComposerSendFile(_ pending: PendingComposerSend) {
+    @discardableResult
+    func removePendingComposerSendFile(_ pending: PendingComposerSend) -> Bool {
         offlineChatCache.removePendingSend(id: pending.id, dashboardID: pending.dashboardID, profile: pending.profile)
+    }
+
+    @discardableResult
+    func removePendingComposerSendFile(id: UUID, dashboardID: UUID, profile: String) -> Bool {
+        offlineChatCache.removePendingSend(id: id, dashboardID: dashboardID, profile: profile)
     }
 
     func pendingComposerSendFiles(dashboardID: UUID) -> [PendingComposerSend] {
@@ -6342,6 +6348,7 @@ final class AppState: ObservableObject {
         groupChatOperations: GroupChatLifecycleOperations = .live,
         sessionPresentationCache: SessionPresentationCache = .shared,
         offlineChatCache: OfflineChatCacheStore? = nil,
+        composerDraftStore: ComposerDraftStore? = nil,
         sessionYoloStore: SessionYoloStore? = nil,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
         profileAppearanceStore: ProfileAppearanceStore? = nil,
@@ -6352,6 +6359,9 @@ final class AppState: ObservableObject {
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
+        self.composerDraftStore = composerDraftStore ?? (defaults === UserDefaults.standard
+            ? ComposerDraftStore(capacity: .max, fileURL: ComposerDraftStore.defaultFileURL)
+            : ComposerDraftStore())
         self.notifierPluginNoticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.appInstallSource = AppInstallSource.lastKnown(in: defaults)
         // The registry (and its legacy migration) loads before any connection
@@ -10791,9 +10801,9 @@ final class AppState: ObservableObject {
         // gateway. The next connection re-probes them before it decides which
         // conversation this workspace was in.
         invalidateBotModeState()
-        // Drafts are keyed by (profile, session id) only: they must not
-        // leak into another server whose strings collide.
-        composerDraftStore.removeAll()
+        // Dashboard-scoped drafts remain available on return. Fence the old
+        // mounted composer so it cannot save into the incoming dashboard.
+        composerDraftStore.detachComposer()
         return true
     }
 
@@ -11120,7 +11130,10 @@ final class AppState: ObservableObject {
         parkedRoomOutboxes = parkedRoomOutboxes.filter { !isGone($0.key) }
         groupRoomDrafts = groupRoomDrafts.filter { !isGone($0.key) }
         keptRoomReplays = keptRoomReplays.filter { !isGone($0.key) }
-        dropRoomAttachments(where: isGone)
+        // A temporarily missing or disbanded room can still contain an
+        // unsent draft or an unresolved send. Its durable record must not
+        // lose the attachment merely because the room list changed.
+        groupRoomAttachments = groupRoomAttachments.filter { !isGone($0.key) }
     }
 
     /// Drops the staged files of the rooms `isDropped` names, and their
@@ -11140,7 +11153,7 @@ final class AppState: ObservableObject {
             parkedRoomOutboxes.removeValue(forKey: key)
             groupRoomDrafts.removeValue(forKey: key)
             keptRoomReplays.removeValue(forKey: key)
-            dropRoomAttachments { $0 == key }
+            groupRoomAttachments.removeValue(forKey: key)
         }
         closeRoomSurface(parkingPendingSend: false)
     }
@@ -11149,9 +11162,18 @@ final class AppState: ObservableObject {
     /// server-side twin: an ambiguous send that landed, seen by a poll, a
     /// resync, or a reopen's tail.
     private func settlePendingRoomSend(from events: [GroupEvent]) {
-        guard groupRoomOutbox.settle(from: events) else { return }
+        guard let surface = activeRoomSurface, let pending = groupRoomOutbox.pending,
+              events.contains(where: { $0.eventID == GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID) }),
+              finishRoomSubmission(eventID: pending.eventID, dashboardID: surface.dashboardID, roomID: surface.room.roomID),
+              groupRoomOutbox.settle(from: events) else { return }
         pendingRoomMessage = groupRoomOutbox.pending
         clearRoomSendError()
+    }
+
+    private func finishRoomSubmission(eventID: String, dashboardID: UUID, roomID: String) -> Bool {
+        let key = Self.roomComposerKey(dashboardID: dashboardID, roomID: roomID)
+        guard let submission = composerDraftStore.submissions.first(where: { $0.key == key && $0.groupEventID == eventID }) else { return true }
+        return composerDraftStore.finishSubmission(submission.id, restoring: false)
     }
 
     /// Retire the send-failure banner, and only that banner: an unrelated
@@ -11245,7 +11267,12 @@ final class AppState: ObservableObject {
     /// The open room's unsent composer text.
     func activeRoomDraft() -> String {
         guard let surface = activeRoomSurface else { return "" }
-        return groupRoomDrafts[Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)] ?? ""
+        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        return groupRoomDrafts[key] ?? composerDraftStore.draft(for: Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)).text
+    }
+
+    private static func roomComposerKey(dashboardID: UUID, roomID: String) -> ComposerDraftKey {
+        ComposerDraftKey(profile: "", sessionID: "\u{1f}room:\(roomID)", dashboardID: dashboardID)
     }
 
     /// Keep the open room's composer text so leaving and reopening the room
@@ -11258,6 +11285,10 @@ final class AppState: ObservableObject {
         } else {
             groupRoomDrafts[key] = text
         }
+        let draftKey = Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        var kept = composerDraftStore.draft(for: draftKey)
+        kept.text = text
+        composerDraftStore.save(kept, for: draftKey)
     }
 
     /// A dictation Retry's words for a room's draft, after what it holds.
@@ -11278,8 +11309,12 @@ final class AppState: ObservableObject {
             return false
         }
         let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)
-        let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? "", dictated: words)
+        let draftKey = Self.roomComposerKey(dashboardID: dashboardID, roomID: roomID)
+        var kept = composerDraftStore.draft(for: draftKey)
+        let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? kept.text, dictated: words)
         guard !text.isEmpty else { return true }
+        kept.text = text
+        guard composerDraftStore.save(kept, for: draftKey) else { return false }
         groupRoomDrafts[key] = text
         roomDraftAppend = RoomDraftAppend(dashboardID: dashboardID, roomID: roomID, words: words)
         return true
@@ -11288,7 +11323,8 @@ final class AppState: ObservableObject {
     /// The files staged in the open room's composer.
     func activeRoomAttachments() -> [Attachment] {
         guard let surface = activeRoomSurface else { return [] }
-        return groupRoomAttachments[Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)] ?? []
+        let key = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        return groupRoomAttachments[key] ?? composerDraftStore.draft(for: Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)).attachments
     }
 
     /// Keep the open room's staged files with its text, so leaving and
@@ -11302,6 +11338,10 @@ final class AppState: ObservableObject {
         } else {
             groupRoomAttachments[key] = attachments
         }
+        let draftKey = Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        var kept = composerDraftStore.draft(for: draftKey)
+        kept.attachments = attachments
+        composerDraftStore.save(kept, for: draftKey)
     }
 
     /// Drop the room surface AND stop its poller. The complete teardown —
@@ -11441,6 +11481,13 @@ final class AppState: ObservableObject {
         groupRoomOutbox = parkedRoomOutboxes.removeValue(
             forKey: Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)
         ) ?? GroupRoomOutbox()
+        if groupRoomOutbox.pending == nil,
+           let saved = composerDraftStore.submissions.first(where: {
+               $0.key == Self.roomComposerKey(dashboardID: dashboardID, roomID: room.roomID)
+                   && $0.groupEventID != nil && $0.groupOutboundText != nil
+           }), let eventID = saved.groupEventID, let text = saved.groupOutboundText {
+            _ = groupRoomOutbox.beginSend(text: text) { eventID }
+        }
         pendingRoomMessage = groupRoomOutbox.pending
 
         do {
@@ -11581,13 +11628,19 @@ final class AppState: ObservableObject {
     /// retry key) now owns the text. `false` means the guards declined it
     /// and nothing holds the text, so the composer must keep its draft.
     @discardableResult
-    func sendGroupRoomMessage(_ rawText: String) async -> Bool {
+    func sendGroupRoomMessage(
+        _ rawText: String,
+        submittedDraft: ComposerDraft? = nil,
+        remainingDraft: ComposerDraft? = nil,
+        onRegistered: (() -> Void)? = nil
+    ) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return false }
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.send") == true,
               !activeRoomSendInFlight else { return false }
         guard surface.room.isDisbanded == false else { return false }
+        guard !composerDraftStore.persistenceFailed else { return false }
         // A pending (ambiguous-outcome) message owns the composer: the SAME
         // text retries with the same event id; DIFFERENT text is refused so
         // no message is ever silently swallowed or silently replaced.
@@ -11598,10 +11651,25 @@ final class AppState: ObservableObject {
             return false
         }
         let epoch = groupRoomEpoch
+        let hadPending = groupRoomOutbox.pending != nil
         let logical = groupRoomOutbox.beginSend(text: text) {
             "conduit-\(UUID().uuidString.lowercased())"
         }
+        let journalKey = Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        if !composerDraftStore.submissions.contains(where: { $0.key == journalKey && $0.groupEventID == logical.eventID }) {
+            let submission = ComposerDraftStore.Submission(
+                id: UUID(), key: journalKey, dashboardID: surface.dashboardID,
+                draft: submittedDraft ?? ComposerDraft(text: text, attachments: []), pendingSendID: nil,
+                groupEventID: logical.eventID, groupOutboundText: logical.text
+            )
+            guard composerDraftStore.beginSubmission(submission, clearingDraft: submittedDraft != nil, remainingDraft: remainingDraft) else {
+                if !hadPending { groupRoomOutbox.discard() }
+                showRoomSendError(AppLocalization.string("Could not save your draft. Keep the app open and try again."))
+                return false
+            }
+        }
         pendingRoomMessage = groupRoomOutbox.pending
+        onRegistered?()
         let sendKey = Self.roomKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
         activeRoomSendInFlight = true
         let sendToken = UUID()
@@ -11609,6 +11677,9 @@ final class AppState: ObservableObject {
         // Per room: this send's end unlocks only its own room's composer,
         // whether that room is still open, reopened, or not open at all.
         defer {
+            if let submission = composerDraftStore.submissions.first(where: { $0.key == journalKey && $0.groupEventID == logical.eventID }) {
+                composerDraftStore.markSubmissionUnknown(submission.id)
+            }
             // Only while the entry is still this send's: after a teardown a
             // newer send to the same room owns the entry and the composer.
             if inFlightRoomSendTokens[sendKey] == sendToken {
@@ -11636,6 +11707,7 @@ final class AppState: ObservableObject {
                 // the active outbox when the SAME room was already reopened,
                 // else the parked one — a delivered send never offers retry.
                 if result.event.roomID == surface.room.roomID {
+                    guard finishRoomSubmission(eventID: logical.eventID, dashboardID: surface.dashboardID, roomID: surface.room.roomID) else { return true }
                     if activeRoomSurface?.room.roomID == surface.room.roomID,
                        activeRoomSurface?.dashboardID == surface.dashboardID {
                         groupRoomOutbox.accept(eventID: logical.eventID)
@@ -11665,6 +11737,7 @@ final class AppState: ObservableObject {
                 authorityGatewayID: activeRoomReplay.authorityGatewayID,
                 authorityEpoch: activeRoomReplay.authorityEpoch
             ))
+            guard finishRoomSubmission(eventID: logical.eventID, dashboardID: surface.dashboardID, roomID: surface.room.roomID) else { return true }
             groupRoomOutbox.accept(eventID: logical.eventID)
             pendingRoomMessage = groupRoomOutbox.pending
             if result.driverStarted {
@@ -13361,7 +13434,8 @@ final class AppState: ObservableObject {
         retireVoiceBackgroundJobs()
         // Unsent drafts belong to the signed-out user; AppState owns the
         // store (it outlives the composer view), so sign-out must clear it.
-        composerDraftStore.removeAll()
+        if let activeDashboardID { composerDraftStore.removeDashboard(activeDashboardID) }
+        else { composerDraftStore.removeAll() }
         // So do words on their way back to a draft.
         composerRestoreRequests = []
         composerNotice = nil
@@ -24400,7 +24474,8 @@ final class AppState: ObservableObject {
         attachments: [Attachment] = [],
         context: ComposerSubmissionContext? = nil,
         onBusy: (() -> Void)? = nil,
-        busyMode: BusyInputMode? = nil
+        busyMode: BusyInputMode? = nil,
+        onConversationReady: ((ComposerSubmissionContext) -> Bool)? = nil
     ) async -> Bool {
         noteUserWordsSent()
         var submissionContext = context ?? composerSubmissionContext()
@@ -24411,6 +24486,7 @@ final class AppState: ObservableObject {
             guard let started = await checkingBeforeSend(submissionContext, startsChat: true, {
                 await startChatForComposerSubmission()
             }) else { return false }
+            guard onConversationReady?(started) != false else { return false }
             submissionContext = started
         }
         let sent = await performComposerSubmission(

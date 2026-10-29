@@ -168,6 +168,20 @@ enum ChatTypography {
     /// The size's preference key. Namespaced like ComposerReturnKey.
     static let preferenceKey = "conduit.chatTextSize"
 
+    /// Input is independently adjustable; the LAA design starts one step
+    /// larger than the transcript while still following Dynamic Type.
+    static let inputPreferenceKey = "conduit.composerTextSize"
+    static let defaultInputSize: ChatTextSize = .larger
+
+    static func inputSize(rawValue: Int) -> ChatTextSize {
+        ChatTextSize(rawValue: rawValue) ?? defaultInputSize
+    }
+
+    static func inputFont(for traits: UITraitCollection?, size: ChatTextSize) -> UIFont {
+        let base = UIFont.preferredFont(forTextStyle: .body, compatibleWith: traits)
+        return base.withSize(base.pointSize * size.scale)
+    }
+
     /// Initial/fallback value: existing users keep today's appearance.
     static let defaultSize: ChatTextSize = .default
 

@@ -119,7 +119,7 @@ enum ReplyQuoteEnvelope {
 
 /// A whole earlier reply attached to the next message (the composer's
 /// "Replying to…" chip).
-struct ComposerReplyReference: Equatable {
+struct ComposerReplyReference: Codable, Equatable {
     let authorName: String
     let text: String
     /// Worked out once: the chip re-renders with every composer update.

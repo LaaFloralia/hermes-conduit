@@ -727,16 +727,19 @@ final class OfflineChatCacheStore {
     }
 
     /// Removes only this message, including an earlier single-file copy.
-    func removePendingSend(id: UUID, dashboardID: UUID, profile: String) {
+    @discardableResult
+    func removePendingSend(id: UUID, dashboardID: UUID, profile: String) -> Bool {
         for url in [
             pendingSendFileURL(dashboardID: dashboardID, profile: profile, id: id),
             pendingSendFileURL(dashboardID: dashboardID, profile: profile),
         ] {
+            guard fileManager.fileExists(atPath: url.path) else { continue }
             guard let data = try? Data(contentsOf: url),
-                  let pending = try? JSONDecoder().decode(PendingComposerSend.self, from: data),
-                  pending.id == id, pending.dashboardID == dashboardID, pending.profile == profile else { continue }
-            try? fileManager.removeItem(at: url)
+                  let pending = try? JSONDecoder().decode(PendingComposerSend.self, from: data) else { return false }
+            guard pending.id == id, pending.dashboardID == dashboardID, pending.profile == profile else { continue }
+            do { try fileManager.removeItem(at: url) } catch { return false }
         }
+        return true
     }
 
     @discardableResult

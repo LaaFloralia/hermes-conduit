@@ -167,10 +167,10 @@ struct GroupChatView: View {
                                     latestJumps += 1
                                     Task { await appState.sendGroupRoomMessage(pending.text) }
                                 } label: {
-                                    Label(
-                                        AppLocalization.string("Not delivered — retry"),
-                                        systemImage: "arrow.clockwise"
-                                    )
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(AppLocalization.string("Delivery is unknown. Check this chat before sending again."))
+                                        Label(AppLocalization.string("Retry"), systemImage: "arrow.clockwise")
+                                    }
                                     .font(.caption.weight(.semibold))
                                 }
                                 .buttonStyle(.plain)

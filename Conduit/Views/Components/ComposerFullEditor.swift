@@ -13,6 +13,7 @@ import SwiftUI
 struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: View>: View {
     @Binding var text: String
     let placeholder: String
+    var programmaticRevision: UInt64? = nil
     var fieldIdentifier = "composer.fullEditor.field"
     let enabled: Bool
     /// Every change made while the editor has focus, with the new text:
@@ -36,6 +37,7 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
     @ViewBuilder let actionButton: () -> ActionButton
 
     @State private var isFocused = false
+    @AppStorage(ChatTypography.inputPreferenceKey) private var inputTextSizeRaw = ChatTypography.defaultInputSize.rawValue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -74,6 +76,8 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
                     accessibilityLabel: placeholder,
                     accessibilityIdentifier: fieldIdentifier,
                     textInsets: UIEdgeInsets(top: 8, left: 5, bottom: 8, right: 5),
+                    inputTextSize: ChatTypography.inputSize(rawValue: inputTextSizeRaw),
+                    programmaticRevision: programmaticRevision,
                     canSubmitFromReturn: canSubmitFromReturn,
                     onSubmitFromReturn: onSubmitFromReturn
                 )
