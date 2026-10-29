@@ -8,7 +8,7 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
     func testDefaultConfigurationAndSupportedFamilies() {
         let configuration = LAAEmployeeWidgetIntent()
         XCTAssertEqual(configuration.employee, .ciel)
-        XCTAssertEqual(LAAEmployeeWidget.supportedFamilies, [.systemSmall, .accessoryCircular])
+        XCTAssertEqual(LAAEmployeeWidget.supportedFamilies, [.systemSmall, .accessoryRectangular, .accessoryCircular])
     }
 
     func testTimelineKeepsEachSelectedEmployeeAndBothDeepLinks() throws {
@@ -25,6 +25,9 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
             XCTAssertEqual(timeline.policy, .never)
             XCTAssertEqual(entry.employee, employee)
             XCTAssertEqual(entry.employee.heroImage, "LAAEmployee-\(employee.rawValue)-hero")
+            XCTAssertEqual(entry.defaultLink(for: .systemSmall).url, entry.chat.url)
+            XCTAssertEqual(entry.defaultLink(for: .accessoryRectangular).url, entry.call.url)
+            XCTAssertEqual(entry.defaultLink(for: .accessoryCircular).url, entry.call.url)
             for (link, action) in [(entry.call, WidgetLaunchAction.talk), (entry.chat, .employeeChat)] {
                 let decoded = try XCTUnwrap(WidgetLaunchLink(url: link.url))
                 XCTAssertEqual(decoded.action, action)
