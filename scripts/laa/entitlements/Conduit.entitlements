@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- The LAA build's entitlements: the capabilities the LAA team's App ID
+         holds, under the LAA App Groups. Kept apart from Conduit.entitlements
+         so the App Store app's signing is untouched.
+
+         CarPlay voice-based conversation and the Location Push service
+         (com.apple.developer.location.push) are left out: both are granted by
+         Apple on request, which this account doesn't have, and a build
+         carrying one fails to sign. -->
+    <key>com.apple.developer.healthkit</key>
+    <true/>
+    <key>com.apple.developer.healthkit.access</key>
+    <array/>
+    <key>com.apple.developer.healthkit.background-delivery</key>
+    <true/>
+    <key>aps-environment</key>
+    <string>production</string>
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.laa-inc.laa.notifications</string>
+        <string>group.com.laa-inc.laa.launcher</string>
+    </array>
+</dict>
+</plist>

@@ -1,7 +1,24 @@
 import Foundation
 
 struct WidgetSnapshotStore {
-    static let appGroup = "group.com.milim.relay.launcher"
+    /// The App Group this build shares with the app and the widgets: the one
+    /// the build names in its Info.plist (`ConduitLauncherAppGroup`, from
+    /// `CONDUIT_LAUNCHER_APP_GROUP`), else upstream's. Every target that reads
+    /// the snapshot passes the same key through its own Info.plist, so a build
+    /// under another team's App Groups needs no source edit.
+    static let appGroup = configuredAppGroup("ConduitLauncherAppGroup")
+        ?? "group.com.milim.relay.launcher"
+
+    /// The App Group a build names in its Info.plist, when it names a usable
+    /// one. Anything else (absent, empty, an unexpanded build setting) leaves
+    /// the caller its upstream group.
+    static func configuredAppGroup(_ key: String) -> String? {
+        guard let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              value.hasPrefix("group.") else { return nil }
+        return value
+    }
+
     static let filename = "launcher-v1.json"
     private let directory: URL
     private let fileManager: FileManager

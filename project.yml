@@ -23,6 +23,13 @@ settings:
     # signed for its own relay sets an https URL, e.g.
     # xcodebuild CONDUIT_DEFAULT_RELAY_URL=https://push.example.com
     CONDUIT_DEFAULT_RELAY_URL: ""
+    # The App Group each target reads its shared container from. Each
+    # Info.plist passes them through, so a build under another team's App
+    # Groups (project-laa.yml) needs no source edit: the app and the
+    # extension it shares a container with each read the key from their own
+    # Info.plist.
+    CONDUIT_NOTIFICATION_APP_GROUP: group.com.milim.relay.notifications
+    CONDUIT_LAUNCHER_APP_GROUP: group.com.milim.relay.launcher
 packages:
   # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
   # Google WebRTC as a binary xcframework, pinned to an exact release.

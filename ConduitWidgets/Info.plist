@@ -27,5 +27,7 @@
 	</dict>
 	<key>ConduitDraftLanguages</key>
 	<array/>
+	<key>ConduitLauncherAppGroup</key>
+	<string>$(CONDUIT_LAUNCHER_APP_GROUP)</string>
 </dict>
 </plist>

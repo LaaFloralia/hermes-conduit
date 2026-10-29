@@ -1,0 +1,104 @@
+# xcodegen overlay for the LAA build — the fork's own paid-team app, delivered
+# by TestFlight. `scripts/laa/testflight.sh` generates it, archives and
+# uploads; this file is the only build path for it.
+#
+#   xcodegen generate --spec project-laa.yml
+#   xcodebuild archive -project Conduit.xcodeproj -scheme Conduit ...
+#
+# The app alone under the LAA team (PAW258GB42), display name "LAA", bundle
+# IDs under com.laa-inc.laa and the LAA App Groups, signed automatically.
+# Everything upstream is untouched: the App Store app keeps its own bundle
+# IDs, group, entitlements and relay.
+#
+# Left out, and why:
+#   - CarPlay voice-based conversation and the Location Push service
+#     extension: both entitlements are granted by Apple on request, which this
+#     account doesn't have (Conduit.entitlements, scripts/laa/entitlements).
+#   - ConduitLocationPush: the extension exists only for that entitlement, so
+#     the app no longer embeds it. It stays in the project spec (xcodegen
+#     keeps every target an include declares) but nothing builds it.
+# HealthKit is kept: it is a self-service capability the team's App ID can
+# hold, and automatic signing adds it.
+include:
+  - path: project.yml
+settings:
+  base:
+    DEVELOPMENT_TEAM: PAW258GB42
+    CODE_SIGN_STYLE: Automatic
+    # The App Groups the LAA App IDs hold (group.com.laa-inc.laa.*). Each
+    # Info.plist passes them to the code that opens the container, and
+    # scripts/laa/entitlements names the same groups.
+    CONDUIT_NOTIFICATION_APP_GROUP: group.com.laa-inc.laa.notifications
+    CONDUIT_LAUNCHER_APP_GROUP: group.com.laa-inc.laa.launcher
+    # The LAA push relay (scripts/laa/relay-*.sh) — this Mac, published on the
+    # tailnet only. It holds the LAA APNs key and pushes to the LAA bundle,
+    # so a phone registers here instead of upstream's shared relay.
+    CONDUIT_DEFAULT_RELAY_URL: https://mac-mini.tailc9b8e7.ts.net:9443
+    # Xcode 27's build system refuses a target whose Info.plist is also a
+    # copied resource ("Multiple commands produce .../Info.plist"), and this
+    # spec hands each target its whole folder. Xcode 26 lets it through, which
+    # is why project.yml doesn't carry this: without it, no archive of the full
+    # app (Watch app and extensions included) gets past the build description.
+    EXCLUDED_SOURCE_FILE_NAMES: Info.plist
+targets:
+  Conduit:
+    # The app embeds the Watch app and the three extensions that sign with
+    # the LAA team; the Location Push extension is not among them.
+    dependencies:REPLACE:
+      - package: WebRTC
+      - target: ConduitWatch
+      - target: ConduitNotificationService
+      - target: ConduitWidgets
+      - target: ConduitShareExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/Conduit.entitlements
+        # Automatic signing: a named profile would be the App Store app's.
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        # Automatic signing picks the identity per configuration (Apple
+        # Development for a device build, Apple Distribution for an archive).
+        # Naming one here is the "conflicting code signing identity" error.
+        CODE_SIGN_IDENTITY: ""
+    postBuildScripts:
+      # The home screen name, beside the App Store Conduit.
+      - name: LAA build name
+        basedOnDependencyAnalysis: false
+        script: |
+          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          /usr/libexec/PlistBuddy -c "Delete :CFBundleDisplayName" "$plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${CONDUIT_DISPLAY_NAME:-LAA}" "$plist"
+  ConduitWatch:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWatch.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_IDENTITY: ""
+  ConduitWatchWidgets:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp.widgets
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_IDENTITY: ""
+  ConduitNotificationService:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitNotificationService.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_IDENTITY: ""
+  ConduitWidgets:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_IDENTITY: ""
+  ConduitShareExtension:
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.ShareExtension
+        CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitShareExtension.entitlements
+        PROVISIONING_PROFILE_SPECIFIER: ""
+        CODE_SIGN_IDENTITY: ""

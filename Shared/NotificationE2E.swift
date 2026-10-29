@@ -15,7 +15,24 @@ import Security
 /// Wire format and derivation mirror hermes-conduit-notifier's `e2e.py`;
 /// NotificationE2ETests checks both against vectors produced by it.
 enum NotificationE2E {
-    static let appGroup = "group.com.milim.relay.notifications"
+    /// The App Group this build shares with its Notification Service
+    /// Extension: the one the build names in its Info.plist
+    /// (`ConduitNotificationAppGroup`, from `CONDUIT_NOTIFICATION_APP_GROUP`),
+    /// else upstream's. The extension reads the same key from its own
+    /// Info.plist, so a build under another team's App Groups needs no source
+    /// edit.
+    static let appGroup = configuredAppGroup("ConduitNotificationAppGroup")
+        ?? "group.com.milim.relay.notifications"
+
+    /// The App Group a build names in its Info.plist, when it names a usable
+    /// one. Anything else (absent, empty, an unexpanded build setting) leaves
+    /// the caller its upstream group.
+    static func configuredAppGroup(_ key: String) -> String? {
+        guard let value = (Bundle.main.object(forInfoDictionaryKey: key) as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              value.hasPrefix("group.") else { return nil }
+        return value
+    }
     static let userInfoKey = "conduit_e2e"
     static let answerPrefix = "e2e1."
     static let maxAge: TimeInterval = 24 * 60 * 60

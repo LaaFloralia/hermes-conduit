@@ -173,5 +173,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>ConduitNotificationAppGroup</key>
+	<string>$(CONDUIT_NOTIFICATION_APP_GROUP)</string>
+	<key>ConduitLauncherAppGroup</key>
+	<string>$(CONDUIT_LAUNCHER_APP_GROUP)</string>
 </dict>
 </plist>

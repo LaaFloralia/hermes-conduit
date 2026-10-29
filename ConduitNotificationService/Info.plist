@@ -27,5 +27,7 @@
 		<key>NSExtensionPrincipalClass</key>
 		<string>$(PRODUCT_MODULE_NAME).NotificationService</string>
 	</dict>
+	<key>ConduitNotificationAppGroup</key>
+	<string>$(CONDUIT_NOTIFICATION_APP_GROUP)</string>
 </dict>
 </plist>
