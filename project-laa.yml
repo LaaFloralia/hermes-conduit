@@ -56,10 +56,13 @@ targets:
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/Conduit.entitlements
         # Automatic signing: a named profile would be the App Store app's.
         PROVISIONING_PROFILE_SPECIFIER: ""
-        # Automatic signing picks the identity per configuration (Apple
-        # Development for a device build, Apple Distribution for an archive).
-        # Naming one here is the "conflicting code signing identity" error.
-        CODE_SIGN_IDENTITY: ""
+        # Automatic signing chooses the profile; the identity has to be the
+        # one it signs a device build with, and -exportArchive re-signs with
+        # Apple Distribution for the store. Naming Apple Distribution here is
+        # the "conflicting code signing identity" error, and naming nothing
+        # leaves the archive unsigned — with no entitlements for export to
+        # keep.
+        CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
       # The home screen name, beside the App Store Conduit.
       - name: LAA build name
@@ -74,31 +77,31 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWatch.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
-        CODE_SIGN_IDENTITY: ""
+        CODE_SIGN_IDENTITY: "Apple Development"
   ConduitWatchWidgets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp.widgets
         PROVISIONING_PROFILE_SPECIFIER: ""
-        CODE_SIGN_IDENTITY: ""
+        CODE_SIGN_IDENTITY: "Apple Development"
   ConduitNotificationService:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitNotificationService.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
-        CODE_SIGN_IDENTITY: ""
+        CODE_SIGN_IDENTITY: "Apple Development"
   ConduitWidgets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
-        CODE_SIGN_IDENTITY: ""
+        CODE_SIGN_IDENTITY: "Apple Development"
   ConduitShareExtension:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.ShareExtension
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitShareExtension.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
-        CODE_SIGN_IDENTITY: ""
+        CODE_SIGN_IDENTITY: "Apple Development"

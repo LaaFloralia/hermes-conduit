@@ -19,6 +19,9 @@ is VALID and the LAA Internal group can install it. Every build number is the
 UTC time it started (`CURRENT_PROJECT_VERSION`, `YYMMDDHHMM`), so two uploads
 never collide; `MARKETING_VERSION` comes from `project.yml`.
 
+The build is verified up to the export; the first upload waits on the
+provisioning sign-in described under [Before the first upload](#before-the-first-upload-the-provisioning-step).
+
 `LAA_EXPORT_DESTINATION=export` stops after writing the `.ipa` to
 `build/laa/export` and uploads nothing — the way to check signing without
 spending a build number.
@@ -64,6 +67,52 @@ nothing else), which is what App Store Connect's export compliance asks.
 on Xcode 27: the spec hands every target its whole folder, and Xcode 27's build
 system refuses a target whose Info.plist is both processed and copied
 ("Multiple commands produce …/Info.plist"). Xcode 26 lets it through.
+
+`CODE_SIGN_IDENTITY: "Apple Development"` in the same targets is load-bearing
+too, in both directions: `Apple Distribution` is the "conflicting code signing
+identity" error, and leaving it empty archives unsigned — and an unsigned
+archive loses the entitlements before `-exportArchive` signs with the store
+profile.
+
+## Before the first upload: the provisioning step
+
+`xcodebuild` could not finish automatic signing with the App Store Connect API
+key on 2026-10-29. Every target stopped at
+
+```
+error: Authentication failed: Make sure a bearer token was provided, it is
+properly configured and signed, and it has not expired.
+```
+
+and then fell back to the team's wildcard profile, which has no Push, App
+Groups or HealthKit, so the build failed those capabilities. The key itself is
+fine: `scripts/laa/asc.mjs` signs a JWT with it and the API answers 200, and so
+does a JWT signed from a copy of the file the script writes for xcodebuild. The
+toolchain reported it twice more through a plain `xcodebuild build`
+(`Authentication failed` for every target), so it is the provisioning session,
+not the key.
+
+What that leaves: the archive compiles (Xcode 27.1, WebRTC 153.0.0, Metal
+toolchain installed), `-exportArchive` signs a store IPA for
+`com.laa-inc.laa` / `PAW258GB42`, and its entitlements carry no
+`aps-environment` and no `com.apple.security.application-groups`, because the
+archive was unsigned. Uploading that would ship an app without working push or
+App Groups, so no upload has been made.
+
+To finish, give xcodebuild a provisioning session it accepts — an Apple ID in
+Xcode is the one path that also assigns the App Groups to the four App IDs:
+
+1. Xcode > Settings > Accounts > `+` > Apple ID, then pick the PAW258GB42 team
+   (an app-specific password may be needed; it is the owner's own sign-in, so
+   nobody else can do this step).
+2. `scripts/laa/testflight.sh`. The first archive then registers the App IDs'
+   capabilities and the App Groups, and creates the profiles.
+3. Check the upload landed with entitlements:
+   `codesign -d --entitlements :- build/laa/export/Conduit.ipa` (or on the
+   exported `Payload/Conduit.app`) should list `aps-environment` = `production`
+   and both `group.com.laa-inc.laa.*` groups. If it does not, the App Groups
+   still aren't assigned on the App IDs in the developer portal
+   (Certificates, Identifiers & Profiles > Identifiers > App Groups > Configure).
 
 ## The personal install path
 
