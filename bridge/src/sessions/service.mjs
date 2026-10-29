@@ -13,11 +13,15 @@
 // `requested` / `observed` is recorded verbatim.
 //
 // Project instructions (BRIDGE.md §9) are applied here, once, at create time:
-// the project's body (or the file its `instructionRef` points at, read now) is
-// composed into a delimited block ahead of the owner's prompt, and only its
-// version and hash are recorded on the session and its events. A retry of the
-// same requestId after the instructions changed is therefore a conflict, not a
-// second run under a prompt the owner never saw.
+// the project's inline body is composed into a delimited block ahead of the
+// owner's prompt, and only its version and hash are recorded on the session and
+// its events. A retry of the same requestId after the instructions changed is
+// therefore a conflict, not a second run under a prompt the owner never saw.
+//
+// The session's display name is also the Paseo agent title, so the daemon shows
+// "Project｜Session" instead of "Origin / owner: laa-bridge". The title is not
+// part of the request identity: renaming a session must not look like a new
+// request.
 
 import { createHash } from 'node:crypto';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
@@ -68,9 +72,8 @@ export function createSessionService({
     return record;
   }
 
-  // A referenced instruction file is read here, at use time, so an edit in the
-  // vault reaches the next session without another PATCH. An unreadable file
-  // stops the session instead of running it without the shared instructions.
+  // The project's inline body, resolved once per create. A store error stops the
+  // session instead of running it without the shared instructions.
   function resolveInstructions(project) {
     let resolved;
     try {
@@ -108,8 +111,11 @@ export function createSessionService({
 
     // The request identity is bound to its content: the same requestId with a
     // different profile, workspace, parent, prompt or instruction version is a
-    // conflict, not a silent reconcile.
-    const requestDigest = sha(JSON.stringify({
+    // conflict, not a silent reconcile. `legacyRequestDigest` is the same value
+    // without the two instruction fields, which is what records created before
+    // instructions were applied carry; an identical retry of one of those must
+    // still reconcile instead of turning into a 409.
+    const requestBody = {
       profile,
       workspaceId,
       parentId,
@@ -119,13 +125,17 @@ export function createSessionService({
       completion: body.completion ?? null,
       scope: body.scope ?? null,
       returnTo: body.returnTo ?? null,
+    };
+    const requestDigest = sha(JSON.stringify({
+      ...requestBody,
       instructionVersion: instructions?.version ?? null,
       instructionHash: instructions?.hash ?? null,
     }));
+    const legacyRequestDigest = sha(JSON.stringify(requestBody));
 
     const existing = sessionStore.get(id);
     if (existing) {
-      assertSameRequest(existing, { profile, workspaceId, parentId, projectId, requestDigest });
+      assertSameRequest(existing, { profile, workspaceId, parentId, projectId, requestDigest, legacyRequestDigest });
       return { session: existing, created: false };
     }
 
@@ -148,8 +158,12 @@ export function createSessionService({
       prompt: instructions ? composePrompt(project.id, instructions, prompt) : prompt,
     };
 
+    // The Paseo agent title: the project is what the owner recognises in the
+    // daemon, and the session name already carries the child prefix. It is not
+    // part of the request identity (see the header comment).
+    const title = project ? `${project.name}｜${name}` : name;
     const delegateRequestId = delegateIdFor(requestId);
-    const created = await adapter.create({ requestId: delegateRequestId, profile, cwd: workspace.path, task });
+    const created = await adapter.create({ requestId: delegateRequestId, profile, cwd: workspace.path, task, title });
     if (typeof created?.sessionId !== 'string' || created.sessionId === '') {
       throw new BridgeError(503, 'delegation_inconsistent', 'the delegation path returned no session id');
     }
@@ -650,10 +664,10 @@ function parseWait(raw) {
   return value;
 }
 
-function assertSameRequest(record, { profile, workspaceId, parentId, projectId, requestDigest }) {
+function assertSameRequest(record, { profile, workspaceId, parentId, projectId, requestDigest, legacyRequestDigest }) {
   if (record.profile !== profile || record.workspaceId !== workspaceId
     || (record.parentId ?? null) !== parentId || (record.projectId ?? null) !== projectId
-    || record.requestDigest !== requestDigest) {
+    || (record.requestDigest !== requestDigest && record.requestDigest !== legacyRequestDigest)) {
     throw conflict('request_id_conflict', 'requestId was already used for a different session request');
   }
 }

@@ -20,7 +20,7 @@
 | ルート追加 | 各領域は `src/routes/<area>.mjs` が `{method,path|pattern,scope,handler,headers?}` の配列を返し、`src/http.mjs` の `ROUTES` へ1行で登録する。ストリーム応答は handler が `res` を直接書き、`undefined` を返す | 並行作業の衝突を1行に閉じる |
 | 版 | 変更系は `Idempotency-Key` 必須。Project の更新は加えて `If-Match`（ETag は `"<version>"`）必須。欠落は 428、不一致は 412 | §3。2台の端末が黙って上書きしない |
 | 命名 | Project は `nameSource` を持つ。`owner`（人・社長の指定）の名前は自動命名で置換できない（409 `name_source_locked`）。子セッションは `parentId` を持つと表示名の先頭が「子｜」になり、指定名にも付く。Paseo 側の表示名は委譲経路が変更 API を持たないため、Bridge が記録する名前が正 | §3、`hq/tools/PASEO-HERMES.md`「会話とワークスペースの命名」 |
-| 指示版 | 指示本文は Project ごとに Bridge の state（0600）へ保存し、`instructionHash` は本文そのものの SHA-256、変更ごとに `instructionVersion` と直近10版の履歴（本文・hash・版・時刻）を残す。`instructionRef` は Brain root 配下のファイルを**使用時**に読む代替で、本文とは排他。イベント・ログへ本文は出さない | §9。iPhone から編集し、全セッションへ同じ版を適用する |
+| 指示版 | 指示本文は Project ごとに Bridge の state（0600）へ保存し、`instructionHash` は本文そのものの SHA-256、変更ごとに `instructionVersion` と直近10版の履歴（本文・hash・版・時刻）を残す。**本文のみ**を受け付け、`instructionRef` は書き込み時に 400 `instruction_ref_unsupported`（Bridge はファイルを読まない）。イベント・ログへ本文は出さない | §9。iPhone から編集し、全セッションへ同じ版を適用する |
 | workspace | 既存の repo / worktree を許可 root（既定 `~/dev`・`~/.paseo/worktrees`）から読取専用で棚卸し、branch と `git status` を返す。作成は `paseo worktree create` のみ。削除・rename・archive・force は持たない | §4。既存 worktree を壊さない |
 | session | 実体は既存 `laa-personal-agent`（create/status/send/stop）。Bridge の `ses_<16hex>` は requestId から決定論的に導出し、委譲先の requestId も同じく決定論的なので、結果不明の再送は二重起動せず同じ agent に戻る。要求した profile は変更も代替もしない | §4・§9。二重実行防止を2層（Bridge の Idempotency-Key と委譲先の requestId）で持つ |
 | session event | セッション記録と journal を同じ JSON に置き、状態変化とイベントを同時に commit する。seq は prune 後も進み、24時間を超えた cursor は 410、journal が届かない cursor も 410 | §5・§9。欠落を「新着なし」と偽らない |
@@ -72,10 +72,10 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
 | `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。本文は含めない。`limit`（1–100、既定50）と `cursor` |
-| `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructions?,instructionRef?}` → `{id,version,etag,instructions,instructionHash,instructionVersion,…}`（201）。本文と ref の同時指定は 400 |
-| `GET /v1/projects/{id}` | Bearer + `sessions:read` | Project と `ETag`。`instructions`（ref なら使用時に読んだ本文）・`instructionVersion`・`instructionHash`。範囲外・不存在は 404、ref が読めないときは `instructionError` 付きで 200 |
-| `PATCH /v1/projects/{id}` | Bearer + `sessions:write` + `Idempotency-Key` + `If-Match` | 部分更新。`If-Match` 欠落 428、版不一致 412（`error.details.current` に現在の版・hash・ETag・本文）、owner 名への自動改名 409 |
-| `GET /v1/projects/{id}/instructions/versions` | Bearer + `sessions:read` | 直近10版の `{items:[{version,hash,body,instructionRef,updatedAt}]}`（新しい順） |
+| `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructions?}` → `{id,version,etag,instructions,instructionHash,instructionVersion,…}`（201）。`instructionRef` は 400 `instruction_ref_unsupported` |
+| `GET /v1/projects/{id}` | Bearer + `sessions:read` | Project と `ETag`。`instructions`（保存済み本文）・`instructionVersion`・`instructionHash`。`instructionRef` は旧レコードのメタデータのみ。範囲外・不存在は 404 |
+| `PATCH /v1/projects/{id}` | Bearer + `sessions:write` + `Idempotency-Key` + `If-Match` | 部分更新。`If-Match` 欠落 428、版不一致 412（`error.details.current` に現在の版・hash・ETag・本文）、owner 名への自動改名 409、`instructionRef` 400（`null` は旧メタデータの消去のみ） |
+| `GET /v1/projects/{id}/instructions/versions` | Bearer + `sessions:read` | 直近10版の `{items:[{version,hash,body,updatedAt}]}`（新しい順） |
 | `GET /v1/workspaces` | Bearer + `sessions:read` | 許可 root 配下の repo / worktree。`{path,displayPath,kind,branch,head,status,projectId}` |
 | `POST /v1/workspaces` | Bearer + `sessions:write` + `Idempotency-Key` | `{repoId,worktreeName,branch?,base?,projectId?}` → `paseo worktree create`（branch-off）で作成（201）、既存 branch は 409 |
 | `GET /v1/workspaces/{id}` | Bearer + `sessions:read` | 1件と `ETag`。`id` は実パスから導出する `ws_<16hex>` |
@@ -129,8 +129,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: w1' \
   http://127.0.0.1:9137/v1/workspaces
 ```
 
-- 共通指示は Project ごとに1つ。`instructions`（本文を Bridge が保存）か `instructionRef`（Brain root 配下のファイルを**使用時**に読む）のどちらかで、両方の同時指定は 400。片方を PATCH すると他方は消える。本文は 32 KiB まで、`</project_instructions>` を含む本文は区切りを壊すため 400。
-- `instructionHash` は本文そのものの `sha256:`。`instructionVersion` は 0（未設定）から始まり、本文/ref が変わるたびに1つ進む。直近10版を `instructions/versions` で返す。ref のファイルを編集した場合は版を進めず、次の GET・セッションで新しい本文と hash を読む（Project の設定は変わっていないため）。
+- 共通指示は Project ごとに1つで、**本文のみ**（`instructions`、Bridge が保存）。`instructionRef` は受け付けず 400 `instruction_ref_unsupported`（Bridge が任意のファイルを読む経路を作らない。AGENTS.md / PROJECT-RULES.md は各エージェントが自分で読む）。本文は 32 KiB まで、`</project_instructions>` を含む本文は区切りを壊すため 400。
+- `instructionHash` は本文そのものの `sha256:`。`instructionVersion` は 0（未設定）から始まり、本文が変わるたびに1つ進む。直近10版を `instructions/versions` で返す。旧レコードが持つ `instructionRef` はメタデータとして返すだけで、読まず・適用せず、`PATCH {instructionRef:null}` か本文の保存で消える。
 - `POST /v1/sessions` に `projectId` を渡すと、委譲プロンプトは `<project_instructions project="…" version="…" hash="…">` ブロック＋`<user_request>` の順で構成する。セッションと `session.created` イベントには版と hash だけを記録し、本文は残さない。同じ requestId で指示が変わっていれば 409 `request_id_conflict`。`instructions:null` か `applyProjectInstructions:false` でその回だけ省略できる（inline の指示文は受け付けない）。resume は新しい試行として現在の版を適用する。
 - 許可 root は `LAA_BRIDGE_WORKSPACE_ROOTS`（`:` 区切り）で差し替えられる。既定は `~/dev` と `~/.paseo/worktrees`。symlink は辿らず、realpath が root の外になる path は一覧・作成の両方で拒否する。
 - 一覧は `git status --porcelain=v2 --branch`（`GIT_OPTIONAL_LOCKS=0`）を1回だけ呼び、branch・ahead/behind・staged/modified/untracked/conflicted を返す。状態は5秒キャッシュ。Paseo daemon が落ちていても一覧は動く。
@@ -141,12 +141,12 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: w1' \
 
 ```sh
 cd bridge
-npm test    # fake vault と fake adapter で契約を固定
+npm test    # fake adapter と fake state で契約を固定
 LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
   LAA_BRIDGE_VERIFY_WORKSPACE=ws_… node scripts/verify-project-instructions.mjs
 ```
 
-`verify-project-instructions.mjs` は Project 作成 → 編集 → 古い `If-Match` の 412（現在の版・ETag・本文）→ 版履歴 → 実セッションへの適用 → 停止を1回で回す。2026-10-29 に loopback で実測: 作成 201（`instructionVersion` 1）、編集 200（2）、stale 412 の `details.current` に版2・ETag `"2"`・本文、履歴2件（本文つき）、セッションは `instructionVersion=2` と hash を記録し、DSH の応答が指示ヘッダの hash（71文字）をそのまま返した（＝指示ブロックが委譲プロンプトに届いた）。journal に本文は入らず、版と hash だけ。検証用の端末は失効、Project・セッション・作業用 worktree は削除した。
+`verify-project-instructions.mjs` は Project 作成 → 編集 → 古い `If-Match` の 412（現在の版・ETag・本文）→ 版履歴 → 実セッションへの適用 → 停止を1回で回す。`ok:true` は「セッションが同じ版/hash を記録」「応答が指示ヘッダの hash を返す（＝ブロックが委譲プロンプトに届いた）」「journal に版はあるが本文はない」の3つが揃った時だけ。どれか欠ければ終了コード1。2026-10-29 に loopback で実測: 作成 201（`instructionVersion` 1）、編集 200（2）、stale 412 の `details.current` に版2・ETag `"2"`・本文、履歴2件（本文つき）、セッションは `instructionVersion=2` と hash を記録し、DSH の応答が指示ヘッダの hash（71文字）をそのまま返した。journal に本文は入らず、版と hash だけ。検証用の端末は失効、Project・セッション・作業用 worktree は削除し、Bridge が起動した Paseo agent は `paseo archive` で退避した。
 
 ## Drive（一覧・metadata・Range配信）
 
@@ -195,6 +195,8 @@ ROADMAP 14。実体は既存の Mac 委譲経路 `/Users/laa/.local/bin/laa-pers
 ### 記録する値
 
 `profile`（要求した名前）、`requested`（委譲先が解決した provider/model/effort）、`observed`（agent が実際に報告した値と `sources`）、`runtimeVerified`、`modelCheck`、`parentId`、`requestId`、`workspaceId`、`cwd`、`projectId`、`instructionVersion`・`instructionHash`・`instructionsApplied`（適用した共通指示の版と hash。本文は持たない）、`delegateSessionId`。**要求した model を書き換えたり、別 profile に代替したりしない**。resume で別 profile を渡すと 400 `model_change_rejected`。
+
+Paseo の会話名（title）は `Project名｜セッション名`、Project なしならセッション名（親があれば既に「子｜」が付く）。`adapter.create` の `title` として `laa-personal-agent` へ渡し、daemon が「Origin / owner: laa-bridge」ではなく作業名を表示する。title は requestId の同一性判定（digest）に含めないので、名前の変更は新しい要求にならない。
 
 ### イベントと再接続
 
@@ -342,4 +344,4 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 
 iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。Kanban の読取は親が認証済みラッパーを承認するまで無効。
 
-Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）。共通指示の本文は保存・版管理・適用まで実装済みで、`instructionRef` の実体は Brain root 配下に限る（Drive 参照は未対応）。
+Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）。共通指示は本文の保存・版管理・適用まで実装済みで、外部ファイル参照は持たない。

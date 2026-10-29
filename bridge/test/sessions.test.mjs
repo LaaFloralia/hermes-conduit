@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -37,9 +37,10 @@ function fakeDelegation() {
     setPending(requestId, pending) {
       records.get(requestId).pending = pending;
     },
-    async create({ requestId, profile, cwd, task }) {
-      calls.push({ op: 'create', requestId, profile, cwd, task });
+    async create({ requestId, profile, cwd, task, title }) {
+      calls.push({ op: 'create', requestId, profile, cwd, task, title });
       if (adapter.unavailable) throw new BridgeError(503, 'delegation_unavailable', 'down', { retryable: true });
+      // Mirrors laa-personal-agent: the title is not part of the request digest.
       const digest = JSON.stringify({ profile, cwd, task });
       const existing = records.get(requestId);
       if (existing) {
@@ -124,10 +125,8 @@ function sessionFixture(t) {
   const repo = join(root, 'repo');
   mkdirSync(join(repo, '.git'), { recursive: true });
   const realRepo = realpathSync(repo);
-  const brain = join(dir, 'brain');
-  mkdirSync(join(brain, 'Context'), { recursive: true });
   const gitRun = async () => '';
-  return { dir, root, brain, repo: realRepo, gitRun, workspaceId: workspaceId(realRepo) };
+  return { dir, root, repo: realRepo, gitRun, workspaceId: workspaceId(realRepo) };
 }
 
 function workspaceId(path) {
@@ -139,7 +138,6 @@ async function boot(t, { adapter = fakeDelegation(), now, sessions = {} } = {}) 
   const bridge = await startBridge({
     now,
     workspace: { roots: [fixture.root], gitRun: fixture.gitRun },
-    projects: { brainRoot: fixture.brain },
     sessions: { adapter, pollMs: 25, ...sessions },
   });
   t.after(() => bridge.close());
@@ -172,6 +170,19 @@ async function createSession(ctx, overrides = {}, key = 'k-create-1') {
     key,
     body: createBody(ctx, overrides),
   });
+}
+
+// Every string value in a payload, decoded. Searching the serialized JSON would
+// miss a body whose newlines are escaped, so the leak checks walk the values.
+function decodedText(value) {
+  const parts = [];
+  const walk = (item) => {
+    if (typeof item === 'string') parts.push(item);
+    else if (Array.isArray(item)) item.forEach(walk);
+    else if (item && typeof item === 'object') Object.values(item).forEach(walk);
+  };
+  walk(value);
+  return parts.join('\n');
 }
 
 test('a session records its request, workspace, parent and resolved model', async (t) => {
@@ -525,6 +536,7 @@ test('a project instruction body is composed into the delegated prompt and recor
   assert.equal(session.instructionsApplied, true);
 
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  assert.equal(create.title, `${project.name}｜${session.name}`, 'the Paseo title names project and session');
   const prompt = create.task.prompt;
   const header = `<project_instructions project="${project.id}" version="1" hash="${project.instructionHash}">`;
   assert.ok(prompt.startsWith(header), prompt.slice(0, 120));
@@ -538,7 +550,9 @@ test('a project instruction body is composed into the delegated prompt and recor
   const createdEvent = events.body.data.items.find((event) => event.type === 'session.created');
   assert.equal(createdEvent.payload.instructionVersion, 1);
   assert.equal(createdEvent.payload.instructionHash, project.instructionHash);
-  assert.equal(JSON.stringify(createdEvent.payload).includes(body), false);
+  assert.equal(decodedText(events.body.data.items).includes(body), false, 'the journal must not carry the body');
+  // The detector is not vacuous: the same walk finds the body when it is there.
+  assert.equal(decodedText([{ payload: { instructions: body } }]).includes(body), true);
 });
 
 test('a session without a project runs with the prompt alone', async (t) => {
@@ -549,6 +563,7 @@ test('a session without a project runs with the prompt alone', async (t) => {
   assert.equal(created.body.data.instructionHash, null);
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
   assert.equal(create.task.prompt, 'Reply with the single word ok.');
+  assert.equal(create.title, created.body.data.name, 'without a project the title is the session name');
 });
 
 test('an explicit override skips the project instructions', async (t) => {
@@ -606,25 +621,72 @@ test('a retry of the same requestId after an instruction edit is a conflict', as
   assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
 });
 
-test('a referenced instruction file is read at create time', async (t) => {
+test('a legacy instructionRef record is never applied', async (t) => {
   const ctx = await boot(t);
-  const ref = join(ctx.brain, 'Context', 'rules.md');
-  writeFileSync(ref, 'Rule one.\n');
-  const project = await createProject(ctx, { name: 'x', instructionRef: 'Context/rules.md' }, 'k-p4');
-  assert.equal(project.instructionVersion, 1);
+  const iso = '2026-10-01T00:00:00.000Z';
+  const legacy = {
+    id: 'prj_cccccccccccc',
+    name: 'Trading｜旧ref',
+    nameSource: 'owner',
+    instructionRef: 'Context/rules.md',
+    instructions: null,
+    instructionHash: null,
+    instructionVersion: 0,
+    instructionHistory: [],
+    version: 1,
+    createdAt: iso,
+    updatedAt: iso,
+    createdBy: null,
+  };
+  writeFileSync(
+    join(ctx.bridge.stateDir, 'projects.json'),
+    `${JSON.stringify({ schema: 2, projects: { [legacy.id]: legacy } }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 
-  // Editing the file after the project was written still reaches the session.
-  writeFileSync(ref, 'Rule two.\n');
-  const created = await createSession(ctx, { projectId: project.id }, 'k-ref-1');
+  // The referenced file does not exist; the session still starts, because a ref
+  // is metadata and is never read.
+  const created = await createSession(ctx, { projectId: legacy.id }, 'k-ref-1');
   assert.equal(created.status, 201);
-  assert.equal(created.body.data.instructionVersion, 1, 'the project version did not change');
-  assert.notEqual(created.body.data.instructionHash, project.instructionHash, 'the applied hash is the file read now');
+  assert.equal(created.body.data.instructionsApplied, false);
+  assert.equal(created.body.data.instructionVersion, null);
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
-  assert.ok(create.task.prompt.includes('Rule two.'));
+  assert.equal(create.task.prompt, 'Reply with the single word ok.');
+  assert.equal(create.title, `${legacy.name}｜${created.body.data.name}`);
+});
 
-  // A missing file stops the session instead of running it without them.
-  rmSync(ref);
-  const missing = await createSession(ctx, { requestId: 'req-ref-2', projectId: project.id }, 'k-ref-2');
-  assert.equal(missing.status, 409);
-  assert.equal(missing.body.error.code, 'instruction_ref_unavailable');
+test('a retry of a record created before instructions still reconciles', async (t) => {
+  const ctx = await boot(t);
+  const first = await createSession(ctx);
+  assert.equal(first.status, 201);
+  const id = first.body.data.id;
+
+  // A record written by the earlier code carries the digest without the two
+  // instruction fields; the same request must still resolve to it, not 409.
+  const legacyDigest = createHash('sha256')
+    .update(JSON.stringify({
+      profile: 'deepseek-flash-high',
+      workspaceId: ctx.workspaceId,
+      parentId: null,
+      projectId: null,
+      prompt: 'Reply with the single word ok.',
+      purpose: null,
+      completion: null,
+      scope: null,
+      returnTo: null,
+    }), 'utf8')
+    .digest('hex');
+  const file = join(ctx.bridge.stateDir, 'sessions.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.sessions[id].requestDigest = legacyDigest;
+  writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
+
+  const retried = await createSession(ctx, {}, 'k-legacy-retry');
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.data.id, id);
+
+  const changed = await createSession(ctx, { prompt: 'different prompt' }, 'k-legacy-changed');
+  assert.equal(changed.status, 409);
+  assert.equal(changed.body.error.code, 'request_id_conflict');
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
 });
