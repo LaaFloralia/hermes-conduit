@@ -349,6 +349,13 @@ test('resume creates a linked successor with the same profile and never changes 
   assert.equal(changedModel.status, 400);
   assert.equal(changedModel.body.error.code, 'model_change_rejected');
 
+  const sameRequest = await ctx.bridge.request(`/v1/sessions/${id}/resume`, {
+    method: 'POST', token: ctx.token, key: 'k-r1b', body: { message: 'continue', requestId: 'req-1' },
+  });
+  assert.equal(sameRequest.status, 409);
+  assert.equal(sameRequest.body.error.code, 'request_id_conflict');
+  assert.equal((await ctx.bridge.request(`/v1/sessions/${id}`, { token: ctx.token })).body.data.resumedTo, null);
+
   const resumed = await ctx.bridge.request(`/v1/sessions/${id}/resume`, {
     method: 'POST', token: ctx.token, key: 'k-r2', body: { message: 'continue' },
   });

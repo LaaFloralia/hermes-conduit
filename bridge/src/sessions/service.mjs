@@ -289,6 +289,11 @@ export function createSessionService({
     const requestId = body.requestId === undefined || body.requestId === null
       ? `resume-${original.id}-${sha(key ?? '').slice(0, 16)}`
       : parseRequestId(body.requestId);
+    // A resume is a new attempt and needs its own identity; reusing the
+    // original requestId would resolve back to the stopped session itself.
+    if (requestId === original.requestId) {
+      throw conflict('request_id_conflict', 'resume needs its own requestId');
+    }
 
     const result = await createSession({
       deviceId,
