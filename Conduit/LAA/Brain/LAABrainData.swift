@@ -6,6 +6,10 @@ import Foundation
 enum LAABrainData {
     #if DEBUG
     @MainActor private static var fixtureWrites = 0
+    @MainActor private(set) static var fixtureSubmittedContent: String?
+    @MainActor static var fixtureMarkedAtSave = false
+    static var isTestFixture: Bool { fixture != nil }
+    static var isMarkedTextFixture: Bool { fixture == "marked" }
     #endif
     private static var fixture: String? {
         #if DEBUG
@@ -42,6 +46,7 @@ enum LAABrainData {
                                          retryable: false, details: nil, requestId: nil, currentETag: nil)
             }
             let request = try JSONDecoder().decode(FixtureCreate.self, from: body)
+            if fixture == "marked" { fixtureSubmittedContent = request.content }
             let actual = String(request.path.dropLast(3)) + " 2.md"
             return try decode(["id": LAABrainReference(path: actual, includeInbox: true).id,
                                "path": actual, "suffixApplied": true])
@@ -53,7 +58,7 @@ enum LAABrainData {
     }
 
     #if DEBUG
-    private struct FixtureCreate: Decodable { let path: String }
+    private struct FixtureCreate: Decodable { let path: String; let content: String }
     private static func decode<T: Decodable>(_ object: Any) throws -> T {
         try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: object))
     }
