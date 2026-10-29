@@ -418,6 +418,10 @@ App Store build · the Bridge API and Usage data contract
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
   scope and service failures are distinguished. Other Bridge tabs share the
   connection state and retain their placeholders until their own work lands.
+- The shared Bridge request supports JSON writes, idempotency keys, If-Match
+  and per-request timeouts. It retains response metadata and structured HTTP
+  errors; long-poll callers allow the wait plus ten seconds. Existing reads
+  retain their original error mapping, and writes are never retried by the client.
 - Usage reads quota windows, balances and Mac status from Bridge on entry or
   pull-to-refresh. A missing value is not zero; stale, expired and unavailable
   readings and observation times are shown. Hermes' existing Settings report
@@ -431,8 +435,10 @@ App Store build · the Bridge API and Usage data contract
   are not in this five-tab shell.
 - The existing Hermes Settings report has its own missing-number handling;
   Bridge's Usage data does not replace or claim to fix that report.
+- Project version errors provide the current ETag in the 412 error details;
+  callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-29, laa/usage-tab-09, based on f8f148d1.
+**Checked:** 2026-10-29, laa/bridge-client-shared-25i (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
 ## Voice beside the tabs
 

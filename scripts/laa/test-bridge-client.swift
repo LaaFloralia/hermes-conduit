@@ -3,12 +3,13 @@ import Foundation
 
 final class BridgeMockProtocol: URLProtocol {
     static var handler: ((URLRequest) throws -> (Int, Data))!
+    static var headers: [String: String] = [:]
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         do {
             let (status, body) = try Self.handler(request)
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: Self.headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: body)
             client?.urlProtocolDidFinishLoading(self)
@@ -20,6 +21,20 @@ final class BridgeMockProtocol: URLProtocol {
 @main struct BridgeClientTests {
     static func require(_ condition: @autoclosure () -> Bool, _ name: String) {
         if !condition() { fputs("FAILED: \(name)\n", stderr); exit(1) }
+    }
+    static func body(of request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
     }
     static func main() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -71,6 +86,57 @@ final class BridgeMockProtocol: URLProtocol {
         }
         let page: LAAUsagePage = try await client.write("/v1/example", method: "POST", body: Data("{}".utf8), credentials: creds, key: key)
         require(page.items.isEmpty, "success envelope")
+        BridgeMockProtocol.headers = ["ETag": "\"4\""]
+        BridgeMockProtocol.handler = { request in
+            require(request.httpMethod == "PATCH", "general method")
+            require(body(of: request) == Data("{\"name\":\"test\"}".utf8), "general JSON body")
+            require(request.value(forHTTPHeaderField: "Content-Type") == "application/json", "JSON content type")
+            require(request.value(forHTTPHeaderField: "Idempotency-Key") == key.value, "general idempotency key")
+            require(request.value(forHTTPHeaderField: "If-Match") == "\"3\"", "If-Match header")
+            require(request.timeoutInterval == 35, "long-poll timeout is not capped at 20 seconds")
+            return (201, Data("{\"data\":{\"items\":[],\"nextCursor\":null},\"requestId\":\"req-test\"}".utf8))
+        }
+        let response: LAABridgeResponse<LAAUsagePage> = try await client.request(
+            method: "PATCH", path: "/v1/example", jsonBody: Data("{\"name\":\"test\"}".utf8),
+            credentials: creds, idempotencyKey: key, ifMatch: "\"3\"", timeout: 35)
+        require(response.data.items.isEmpty && response.requestId == "req-test", "decoded response envelope")
+        require(response.status == 201 && response.etag == "\"4\"", "response status and ETag")
+
+        for (status, code) in [(409, "request_id_conflict"), (409, "idempotency_outcome_unknown"),
+                               (409, "stop_unconfirmed"), (410, "cursor_expired"),
+                               (412, "version_mismatch"), (428, "precondition_required")] {
+            BridgeMockProtocol.headers = ["ETag": "\"5\""]
+            BridgeMockProtocol.handler = { _ in
+                let body = "{\"error\":{\"code\":\"\(code)\",\"message\":\"details\",\"retryable\":false,\"details\":{\"current\":5,\"nested\":[true,null,\"x\"]}},\"requestId\":\"req-error\"}"
+                return (status, Data(body.utf8))
+            }
+            do {
+                let _: LAABridgeResponse<LAAUsagePage> = try await client.request(method: "GET", path: "/v1/example", credentials: creds)
+                require(false, "HTTP \(status) must fail")
+            } catch let error as LAABridgeHTTPError {
+                require(error.status == status && error.code == code, "structured HTTP status and code")
+                require(error.message == "details" && error.retryable == false && error.requestId == "req-error", "error metadata")
+                require(error.details == .object(["current": .number(5), "nested": .array([.bool(true), .null, .string("x")])]), "nested error details")
+                require(error.currentETag == "\"5\"", "ETag on HTTP error")
+            }
+        }
+        BridgeMockProtocol.headers = [:]
+        BridgeMockProtocol.handler = { _ in
+            (412, Data("{\"error\":{\"code\":\"version_mismatch\",\"details\":{\"current\":{\"etag\":\"\\\"17\\\"\",\"version\":17}}},\"requestId\":\"req-current\"}".utf8))
+        }
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(method: "PATCH", path: "/v1/projects/test", credentials: creds)
+            require(false, "stale project must fail")
+        } catch let error as LAABridgeHTTPError {
+            require(error.code == "version_mismatch" && error.currentETag == "\"17\"", "current ETag from server error details")
+        }
+        BridgeMockProtocol.handler = { _ in (412, Data("not-json".utf8)) }
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(method: "GET", path: "/v1/example", credentials: creds)
+            require(false, "malformed error must fail")
+        } catch let error as LAABridgeHTTPError {
+            require(error.status == 412 && error.code == nil && error.currentETag == nil, "status survives malformed error; missing ETag stays nil")
+        }
         BridgeMockProtocol.handler = { _ in (401, Data("{\"error\":{\"code\":\"token_revoked\"}}".utf8)) }
         do { let _: LAAUsagePage = try await client.get("/v1/example", credentials: creds); require(false, "401 must fail") }
         catch let e as LAABridgeError { require(e == .revoked, "401 envelope") }

@@ -81,13 +81,62 @@ struct LAABridgeIdempotencyKey: Hashable {
     }
 }
 
+/// A decoded Bridge envelope and the HTTP metadata returned with it.
+struct LAABridgeResponse<T: Decodable> {
+    let data: T
+    let requestId: String
+    let status: Int
+    let etag: String?
+}
+
+enum LAABridgeJSONValue: Decodable, Equatable {
+    case null, bool(Bool), number(Decimal), string(String)
+    case array([LAABridgeJSONValue]), object([String: LAABridgeJSONValue])
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        if value.decodeNil() { self = .null }
+        else if let result = try? value.decode(Bool.self) { self = .bool(result) }
+        else if let result = try? value.decode(Decimal.self) { self = .number(result) }
+        else if let result = try? value.decode(String.self) { self = .string(result) }
+        else if let result = try? value.decode([LAABridgeJSONValue].self) { self = .array(result) }
+        else { self = .object(try value.decode([String: LAABridgeJSONValue].self)) }
+    }
+
+    fileprivate var currentETag: String? {
+        guard case .object(let details) = self,
+              case .object(let current)? = details["current"],
+              case .string(let etag)? = current["etag"] else { return nil }
+        return etag
+    }
+}
+
+/// HTTP failures retain the server's code and details for safe reconciliation.
+struct LAABridgeHTTPError: Error, Equatable {
+    let status: Int
+    let code: String?
+    let message: String?
+    let retryable: Bool?
+    let details: LAABridgeJSONValue?
+    let requestId: String?
+    let currentETag: String?
+
+    var legacyError: LAABridgeError { .response(status: status, code: code) }
+}
+
 private struct BridgeEnvelope<T: Decodable>: Decodable {
     let data: T
     let requestId: String
 }
 private struct BridgeErrorEnvelope: Decodable {
-    struct Detail: Decodable { let code: String }
+    struct Detail: Decodable {
+        let code: String?
+        let message: String?
+        let retryable: Bool?
+        let details: LAABridgeJSONValue?
+    }
     let error: Detail
+    let requestId: String?
 }
 struct LAABridgeEnrollment: Decodable {
     let deviceId: String
@@ -118,37 +167,58 @@ struct LAABridgeClient {
 
     func enroll(baseURL: URL, code: String, name: String) async throws -> LAABridgeEnrollment {
         let body = try JSONEncoder().encode(EnrollmentRequest(code: code, name: name, platform: "ios"))
-        return try await request(baseURL: baseURL, path: "/v1/devices/enroll", method: "POST", body: body)
+        do {
+            let result: LAABridgeResponse<LAABridgeEnrollment> = try await send(
+                baseURL: baseURL, path: "/v1/devices/enroll", method: "POST", body: body)
+            return result.data
+        } catch let error as LAABridgeHTTPError { throw error.legacyError }
     }
 
     func get<T: Decodable>(_ path: String, credentials: LAABridgeCredentials) async throws -> T {
-        try await request(baseURL: credentials.baseURL, path: path, token: credentials.token)
+        do {
+            let result: LAABridgeResponse<T> = try await request(method: "GET", path: path, credentials: credentials)
+            return result.data
+        } catch let error as LAABridgeHTTPError { throw error.legacyError }
     }
 
     /// Callers own the key and request bytes; this client never retries writes.
     func write<T: Decodable>(_ path: String, method: String, body: Data,
                              credentials: LAABridgeCredentials, key: LAABridgeIdempotencyKey) async throws -> T {
-        try await request(baseURL: credentials.baseURL, path: path, method: method,
-                          body: body, token: credentials.token, key: key)
+        do {
+            let result: LAABridgeResponse<T> = try await request(method: method, path: path, jsonBody: body,
+                                                                 credentials: credentials, idempotencyKey: key)
+            return result.data
+        } catch let error as LAABridgeHTTPError { throw error.legacyError }
+    }
+
+    /// The caller owns write keys and retries. For long-poll use a timeout of wait + 10 seconds.
+    func request<T: Decodable>(method: String, path: String, jsonBody: Data? = nil,
+                               credentials: LAABridgeCredentials, idempotencyKey: LAABridgeIdempotencyKey? = nil,
+                               ifMatch: String? = nil, timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
+        try await send(baseURL: credentials.baseURL, path: path, method: method, body: jsonBody,
+                       token: credentials.token, key: idempotencyKey, ifMatch: ifMatch, timeout: timeout)
     }
 
     private struct EnrollmentRequest: Encodable { let code: String; let name: String; let platform: String }
 
-    private func request<T: Decodable>(baseURL: URL, path: String, method: String = "GET",
-                                        body: Data? = nil, token: String? = nil,
-                                        key: LAABridgeIdempotencyKey? = nil) async throws -> T {
+    private func send<T: Decodable>(baseURL: URL, path: String, method: String = "GET",
+                                     body: Data? = nil, token: String? = nil,
+                                     key: LAABridgeIdempotencyKey? = nil, ifMatch: String? = nil,
+                                     timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
         guard path.hasPrefix("/v1/"), !path.hasPrefix("//"),
               let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
               url.host == baseURL.host, url.scheme == baseURL.scheme, url.port == baseURL.port else {
             throw LAABridgeError.invalidAddress
         }
         var request = URLRequest(url: url)
+        if let timeout { request.timeoutInterval = timeout }
         request.httpMethod = method
         request.httpBody = body
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if body != nil { request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let key { request.setValue(key.value, forHTTPHeaderField: "Idempotency-Key") }
+        if let ifMatch { request.setValue(ifMatch, forHTTPHeaderField: "If-Match") }
         let data: Data
         let response: URLResponse
         do {
@@ -167,13 +237,19 @@ struct LAABridgeClient {
         } catch { throw LAABridgeError.networkUnreachable }
         guard let http = response as? HTTPURLResponse else { throw LAABridgeError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
-            let code = (try? JSONDecoder().decode(BridgeErrorEnvelope.self, from: data))?.error.code
-            throw LAABridgeError.response(status: http.statusCode, code: code)
+            let envelope = try? JSONDecoder().decode(BridgeErrorEnvelope.self, from: data)
+            let details = envelope?.error.details
+            let currentETag = http.value(forHTTPHeaderField: "ETag") ??
+                ([412, 428].contains(http.statusCode) ? details?.currentETag : nil)
+            throw LAABridgeHTTPError(status: http.statusCode, code: envelope?.error.code,
+                                     message: envelope?.error.message, retryable: envelope?.error.retryable,
+                                     details: details, requestId: envelope?.requestId, currentETag: currentETag)
         }
         guard let envelope = try? JSONDecoder().decode(BridgeEnvelope<T>.self, from: data) else {
             throw LAABridgeError.invalidResponse
         }
-        return envelope.data
+        return LAABridgeResponse(data: envelope.data, requestId: envelope.requestId,
+                                 status: http.statusCode, etag: http.value(forHTTPHeaderField: "ETag"))
     }
 }
 
