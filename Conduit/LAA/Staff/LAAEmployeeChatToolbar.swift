@@ -36,6 +36,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         ToolbarItem(placement: .principal) {
             LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
                               status: status, isObscured: calls.isShowingCall)
+                .laaPhotoGlassScope()
         }
         ToolbarItem(placement: .topBarTrailing) {
             LAAEmployeeCallButton(reason: reason) {
@@ -74,6 +75,7 @@ struct LAAEmployeeHeader: View {
     var avatarURL: URL? = nil
     let status: String
     var isObscured = false
+    @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
 
     var body: some View {
@@ -86,6 +88,7 @@ struct LAAEmployeeHeader: View {
                     Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
+            .modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showDetails) {
@@ -93,6 +96,22 @@ struct LAAEmployeeHeader: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("laa.employee.header")
+    }
+}
+
+private struct LAAEmployeeHeaderGlass: ViewModifier {
+    let clear: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if clear {
+            content
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.06), interactive: false)
+        } else {
+            content
+        }
     }
 }
 
@@ -132,6 +151,7 @@ struct LAAEmployeeCallButton: View {
             Image(systemName: "phone.fill")
                 .frame(width: 40, height: 40)
                 .contentShape(Circle())
+                .laaToolbarGlass()
         }
         .disabled(reason != nil)
         .accessibilityLabel(Text(verbatim: "電話"))
