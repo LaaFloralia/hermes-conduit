@@ -178,7 +178,9 @@ final class VoiceConversationController: ObservableObject {
     private var isVoiceSessionActive = false
     /// Identity of the logical conversation, independent of its capture windows.
     private(set) var voiceSessionGeneration: UInt64 = 0
-    private var hasStartedSessionCapture = false
+    /// A paused listen, settled reply, or released runtime needs a new
+    /// utterance window; resuming the engine alone does not open one.
+    private var requiresFreshCaptureOnResume = true
     private var isAwaitingVoiceAssistant = false
     private var awaitedAssistantResponseStarted = false
     /// Every session id POSITIVELY confirmed to route this conversation's
@@ -294,7 +296,7 @@ final class VoiceConversationController: ObservableObject {
     /// UI integration should refresh this when a fresh session is created.
     func beginVoiceTurn(sessionID: String) {
         voiceSessionGeneration &+= 1
-        hasStartedSessionCapture = false
+        requiresFreshCaptureOnResume = true
         initialWidgetCaptureAuthorization = nil
         isVoiceSessionActive = true
         isAwaitingVoiceAssistant = false
@@ -597,7 +599,7 @@ final class VoiceConversationController: ObservableObject {
         }
         do {
             try capture.startListening(includePreRoll: includePreRoll)
-            hasStartedSessionCapture = true
+            requiresFreshCaptureOnResume = false
             widgetAuthorization?.captureDidStart()
             if initialWidgetCaptureAuthorization === widgetAuthorization {
                 initialWidgetCaptureAuthorization = nil
@@ -645,6 +647,7 @@ final class VoiceConversationController: ObservableObject {
 
     private func settlePausedListen() {
         guard isVoiceSessionActive else { return }
+        requiresFreshCaptureOnResume = true
         cachedRoutePolicy = nil
         resetMicrophoneMeter()
         state = .listening
@@ -682,9 +685,9 @@ final class VoiceConversationController: ObservableObject {
             return
         }
         guard isVoiceSessionActive else { return }
-        if !hasStartedSessionCapture {
-            // An initially muted call has no capture window to resume yet.
-            // Start it normally, including permission and push-to-talk gates.
+        if requiresFreshCaptureOnResume {
+            // No current utterance window exists. Start normally, including
+            // permission, call authorization, and push-to-talk gates.
             isMicrophonePaused = false
             await startListening()
             return
@@ -799,7 +802,7 @@ final class VoiceConversationController: ObservableObject {
 
     func stop() {
         voiceSessionGeneration &+= 1
-        hasStartedSessionCapture = false
+        requiresFreshCaptureOnResume = true
         initialWidgetCaptureAuthorization = nil
         failedForAudioInterruption = false
         releaseRuntimeResources()
@@ -852,6 +855,7 @@ final class VoiceConversationController: ObservableObject {
     /// surface without this bump would let superseded work apply.
     private func releaseRuntimeResources() {
         operationGeneration &+= 1
+        requiresFreshCaptureOnResume = true
         cachedRoutePolicy = nil
         utteranceTask?.cancel()
         utteranceTask = nil
@@ -2497,6 +2501,7 @@ final class VoiceConversationController: ObservableObject {
     /// Capture is paused without the user-pause flag so the sheet's Listen
     /// control remains "start the next turn", not "unpause".
     private func settleOpenSessionAfterAssistantTurn() {
+        requiresFreshCaptureOnResume = true
         cachedRoutePolicy = nil
         isPlaybackCaptureSuspended = false
         // Full-duplex routes keep capture live through TTS for barge-in.

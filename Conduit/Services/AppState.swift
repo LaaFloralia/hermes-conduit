@@ -7046,6 +7046,7 @@ final class AppState: ObservableObject {
     /// The latest phone open owns a prepared Classic session until it presents it.
     private var pendingClassicPhoneOpen: (id: UUID, sessionGeneration: UInt64)?
     private var classicPhoneOpenID: UUID?
+    private var isClassicPhoneOpenInFlight = false
 
     // An opened screen starts its controller on the next main-actor turn.
     // A hang-up before that turn must cancel this exact scheduled start.
@@ -35272,6 +35273,13 @@ final class AppState: ObservableObject {
             if !opened { notePlacedCallVoiceStartFailed() }
             return opened
         }
+        // Only one phone launch may prepare or wait for a Classic session.
+        // A second launch must not take ownership of the first one's session
+        // and then close it when the already-placed CallKit call rejects it.
+        guard intent.source == .hermesCall || !isClassicPhoneOpenInFlight else { return false }
+        let isPhoneLaunch = intent.source != .hermesCall
+        if isPhoneLaunch { isClassicPhoneOpenInFlight = true }
+        defer { if isPhoneLaunch { isClassicPhoneOpenInFlight = false } }
         // Mutual exclusion: the voice conversation owns playback while its
         // sheet is open, so a read aloud started before must not continue.
         messageReadAloudController.stop()
@@ -35280,9 +35288,6 @@ final class AppState: ObservableObject {
         let classicOpenID = UUID()
         if intent.source != .hermesCall {
             classicPhoneOpenID = classicOpenID
-            if let pending = pendingClassicPhoneOpen {
-                pendingClassicPhoneOpen = (classicOpenID, pending.sessionGeneration)
-            }
         }
         let outcome = await prepareVoiceConversation(
             profile: intent.profile,
@@ -35291,8 +35296,7 @@ final class AppState: ObservableObject {
         )
         let preparedVoiceSession = voiceConversationController.voiceSessionGeneration
         let ownsPreparedSession = intent.source != .hermesCall && classicPhoneOpenID == classicOpenID && outcome == .handled
-            && (preparedVoiceSession != previousVoiceSession
-                || pendingClassicPhoneOpen?.sessionGeneration == preparedVoiceSession)
+            && preparedVoiceSession != previousVoiceSession
         if ownsPreparedSession {
             pendingClassicPhoneOpen = (classicOpenID, preparedVoiceSession)
         }
@@ -35318,6 +35322,9 @@ final class AppState: ObservableObject {
         case .handled:
             break
         }
+        guard intent.source == .hermesCall || (classicPhoneOpenID == classicOpenID
+              && voiceConversationController.voiceSessionGeneration == preparedVoiceSession
+              && voiceConversationController.hasLiveVoiceSession) else { return false }
         // Phone presentation: the prepared conversation is shown in the
         // Voice sheet. CarPlay attaches through prepareVoiceConversation /
         // attachToLiveVoiceConversation instead and never mutates
@@ -35339,7 +35346,12 @@ final class AppState: ObservableObject {
             }
             callStart = start
         }
-        guard !Task.isCancelled else { return false }
+        guard !Task.isCancelled, intent.source == .hermesCall || (classicPhoneOpenID == classicOpenID
+              && voiceConversationController.voiceSessionGeneration == preparedVoiceSession
+              && voiceConversationController.hasLiveVoiceSession) else {
+            voicePlacedCalls.cancelVoiceStart(callStart)
+            return false
+        }
         voiceConversationController.installInitialWidgetCaptureAuthorization(
             voicePlacedCalls.captureAuthorization(initialCaptureAuthorization, for: callStart) { [weak self] in
                 Task { @MainActor [weak self] in

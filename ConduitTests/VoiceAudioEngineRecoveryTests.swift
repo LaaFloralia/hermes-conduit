@@ -340,6 +340,90 @@ extension VoiceAudioSessionCoordinatorTests {
         controller.endVoiceSession()
     }
 
+    func testUnmuteAfterReplyStartsARealSecondRecordingWindow() async throws {
+        try await verifyUnmuteAfterReplyRecords(continuous: true)
+        try await verifyUnmuteAfterReplyRecords(continuous: false)
+    }
+
+    private func verifyUnmuteAfterReplyRecords(continuous: Bool) async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let capture = PermissionGrantedCapture(service: service)
+        let gateway = MockGateway(transcript: "hello", startsPlaybackOnOpen: true)
+        let submissions = SubmitSpy()
+        let controller = VoiceConversationController(
+            capture: capture, playback: MockPlayback(), gateway: gateway,
+            routePolicyProvider: { .fullDuplex },
+            submit: { await submissions.submit($0) }, interrupt: { true }
+        )
+        defer { controller.endVoiceSession() }
+        var preferences = VoiceProfilePreferences()
+        preferences.continuousConversation = continuous
+        controller.setProfilePreferences(preferences)
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        await controller.startListening()
+
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 960
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<960 { samples[i] = 0.25 }
+        service.consume(buffer, generation: service.captureGeneration)
+        let firstSpeech = Date()
+        controller.ingestAudioLevel(0.1, at: firstSpeech)
+        controller.ingestAudioLevel(0, at: firstSpeech.addingTimeInterval(1.3))
+        await submissions.waitUntilSubmitted(1)
+        XCTAssertFalse(service.activelyRecording, "the first utterance has finished")
+
+        controller.receiveAssistantEvent(.started(sessionID: "classic"))
+        controller.receiveAssistantEvent(.delta(sessionID: "classic", text: "Answer."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking)
+        controller.pauseMicrophone()
+        controller.receiveAssistantEvent(.completed(sessionID: "classic", content: "Answer."))
+        let settled = await controller.waitForState(continuous ? .listening : .idle)
+        XCTAssertTrue(settled)
+        XCTAssertTrue(controller.isMicrophonePaused)
+        XCTAssertFalse(service.activelyRecording, "a muted reply must not open a window")
+
+        await controller.resumeMicrophone()
+        XCTAssertTrue(service.activelyRecording, "unmute must open a new recording window")
+        service.consume(buffer, generation: service.captureGeneration)
+        let secondUtterance = try service.finishUtterance()
+        XCTAssertFalse(secondUtterance.pcm16Data.isEmpty, "the next utterance must contain real PCM")
+    }
+
+    func testPausedLifecycleRestoreOpensARealRecordingWindow() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let controller = VoiceConversationController(
+            capture: PermissionGrantedCapture(service: service), playback: MockPlayback(),
+            gateway: MockGateway(), routePolicyProvider: { .fullDuplex },
+            submit: { _ in true }, interrupt: { true }
+        )
+        defer { controller.endVoiceSession() }
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        await controller.startListening()
+        controller.pauseMicrophone()
+        controller.suspendRuntimeForLifecycle()
+        controller.setForegroundActive(true)
+
+        await controller.resumeMicrophone()
+        XCTAssertTrue(service.activelyRecording)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 960
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<960 { samples[i] = 0.25 }
+        service.consume(buffer, generation: service.captureGeneration)
+        let utterance = try service.finishUtterance()
+        XCTAssertFalse(utterance.pcm16Data.isEmpty)
+    }
+
     func testRemuteDuringFirstPermissionRequestDoesNotStartCaptureOrLoseAuthorization() async {
         let factory = FakeCaptureEngineFactory()
         let service = makeCaptureService(factory)
