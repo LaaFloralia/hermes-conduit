@@ -7035,8 +7035,10 @@ final class AppState: ObservableObject {
     /// A call the user placed from Conduit is on the system's call screen
     /// (LAA fork, VoicePlacedCalls): like an answered call from Hermes, it
     /// keeps the conversation it carries running with the phone locked or
-    /// Conduit in the background. See `isNativeCallVoiceSurfaceActive`.
-    @Published private(set) var isPlacedPhoneCallActive = false
+    /// Conduit in the background. Only `setPlacedPhoneCallActive` writes it
+    /// (AppState+HermesCalls, another file, so it can't be private(set)).
+    /// See `isNativeCallVoiceSurfaceActive`.
+    @Published var isPlacedPhoneCallActive = false
     /// A profile's call settings on the host (AppState+HermesCalls), for
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
