@@ -174,9 +174,7 @@ struct LAAAppShell: View {
             LoginView()
         } else {
             NavigationStack(path: $chatsPath) {
-                V2ChatsView(appState: appState)
-                    .equatable()
-                    .laaGroupListEntry()
+                LAAChatsView(appState: appState)
                     .navigationTitle(LAATab.chats.title)
                     .navigationDestination(for: V2Route.self) { route in
                         switch route {

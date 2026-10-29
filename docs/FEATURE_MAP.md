@@ -3622,7 +3622,7 @@ and rollback instructions · the upstream App Store build
 
 **Code**
 - Local scope, image downscaling and contrast: `Conduit/LAA/Backgrounds/LAABackgroundStore.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
-- Employee group entry, creation and settings: `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/HermesClient.swift`, `Shared/Widgets/LAAEmployeeWidget.swift`
+- Employee group entry, creation and settings: `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/HermesClient.swift`, `Shared/Widgets/LAAEmployeeWidget.swift`
 - Existing room, bubbles and controls: `Conduit/Views/GroupChatView.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Theme.swift`
 - Tests: `ConduitTests/LAABackgroundAndGroupTests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`, `ConduitUITests/LAABridgeRealUITests.swift`, `Conduit/LAA/Backgrounds/LAABackgroundUITestFixture.swift`
 
@@ -3635,4 +3635,24 @@ and rollback instructions · the upstream App Store build
 - The current hosted-room API does not provide member addition or removal; the settings show these actions disabled with a reason.
 - Photo picker, Keychain, actual display contrast and glass effects need physical iPhone verification.
 
-**Checked:** 2026-10-30, c9500886 (employee photo header); 2026-10-29, based on 7b8fc2ba (LAA task 10).
+**Checked:** 2026-10-30, based on 1b4bdba5 (LAA v2 Chats entry), c9500886 (employee photo header); 2026-10-29, based on 7b8fc2ba (LAA task 10).
+
+## LAA Chats list
+
+**Siblings:** employee widget Chat and existing conversation links · hosted group rooms and group creation · the LAA settings entry · the upstream Chats list and its search · iPhone and iPad · accessibility and offline copies
+
+**Code**
+- List, search and real-state mapping: `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Chats/LAAChatsModel.swift`, `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/LAA/Chats/LAAChatsCopy.swift`, `Conduit/LAA/LAAAppShell.swift`
+- Employee routing and room data: `Conduit/Services/AppState+WidgetLaunch.swift`, `Shared/Widgets/LAAEmployeeWidget.swift`, `Conduit/LAA/Groups/LAAGroupViews.swift`, `Conduit/Services/AppState.swift`
+- Tests: `ConduitTests/LAAChatsTests.swift`, `ConduitUITests/LAAChatsUITests.swift`, `Conduit/LAA/Chats/LAAChatsFixtureView.swift`
+
+**Rulings**
+- The LAA list shows Ciel, available employees, hosted rooms and loaded recent conversations. Employee taps use the widget's saved-or-latest chat route; conversation and room taps keep their existing identity. Search covers names, room members and loaded conversation titles and previews, and distinguishes incomplete reads from no matches.
+- Show no invented unread counts or activity. The creation actions use existing Hermes flows; unavailable actions are disabled and their reason is available. Conduit's upstream list remains unchanged.
+
+**Open gaps**
+- Recent is limited to the catalogs the app has loaded and respects the existing All Profiles setting. The existing hosted-room read returns its first page; See all exposes all rooms already loaded, not undiscovered pages.
+- The LAA redesign does not expose the upstream list's filters, full-text message search, archived sheet, pin ordering, project and artifact controls on this screen. The existing underlying records and links are retained.
+- Dynamic Type, VoiceOver, reduced transparency, small screens, and the employee and group routes require physical iPhone verification.
+
+**Checked:** 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
