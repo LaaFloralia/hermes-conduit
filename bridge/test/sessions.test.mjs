@@ -551,8 +551,20 @@ test('a project instruction body is composed into the delegated prompt and recor
   assert.equal(createdEvent.payload.instructionVersion, 1);
   assert.equal(createdEvent.payload.instructionHash, project.instructionHash);
   assert.equal(decodedText(events.body.data.items).includes(body), false, 'the journal must not carry the body');
-  // The detector is not vacuous: the same walk finds the body when it is there.
-  assert.equal(decodedText([{ payload: { instructions: body } }]).includes(body), true);
+  // The detector is not vacuous: write the body into the same journal and the
+  // same check over the same events must find it.
+  const file = join(ctx.bridge.stateDir, 'sessions.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.streams[session.id].events.push({
+    seq: 9999,
+    type: 'session.debug',
+    version: 2,
+    occurredAt: new Date().toISOString(),
+    payload: { instructions: body },
+  });
+  writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
+  const leaked = await ctx.bridge.request(`/v1/sessions/${session.id}/events?afterSeq=0`, { token: ctx.token });
+  assert.equal(decodedText(leaked.body.data.items).includes(body), true, 'a leaked body must be detected');
 });
 
 test('a session without a project runs with the prompt alone', async (t) => {
