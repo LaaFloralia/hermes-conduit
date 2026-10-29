@@ -376,6 +376,22 @@ final class VoicePlacedCallsTests: XCTestCase {
         XCTAssertEqual(host.mutedValues, [true, false])
     }
 
+    /// The system's screen can mute the call before its start is performed.
+    func testAScreenMuteWhileTheCallIsPlacingStillMutesTheVoice() {
+        calls.voiceChanged(running: true)
+        XCTAssertEqual(calls.phase, .placing)
+
+        kit.onPlacedCallMuteChanged?(true)
+
+        XCTAssertEqual(host.mutedValues, [true])
+        XCTAssertEqual(calls.reportedMuted, true)
+
+        // The follow loop doesn't echo it back to the screen.
+        kit.onPlacedCallStarted?()
+        calls.followOnce()
+        XCTAssertEqual(kit.mutedReports, [])
+    }
+
     func testTheAppsMuteReachesTheScreenOnce() {
         startAPlacedCall()
 
