@@ -110,4 +110,4 @@ Tailscaleは輸送の前提で、認証の代替にしない（BRIDGE.md §1）�
 - `host.cpu`・`host.memory` が `unavailable`（null）で、0や前回値の使い回しにならないことを確認する。
 - fixtureは [fixtures/usage/](fixtures/usage/) の4件をそのまま応答として返し、アプリ側で欠測・古い・推計・期限切れの表示が分かれることを確認する。
 - 認証：`usage:read` 無しで403、失効トークンで401、proxy停止中でも Bridge が 200 で `unavailable` を返すことを確認する。
-- 遅いproxy：fake upstreamを遅くし、成功payloadがある時は元の `observedAt` のまま即時に返り（20分経過で `stale`、値は保持）、無い時は `unavailable` になることを `bridge/test/usage-feed.test.mjs` で固定する。実proxyの `/widget` は upstream 20秒で明示的なJSON 503を返す（空応答にしない。`usage-meters/test_usage.py`）。
+- 遅いproxy：fake upstreamを遅くし、成功payloadがある時は元の `observedAt` のまま即時に返り（20分経過で `stale`、値は保持）、無い時は `unavailable` になることを `bridge/test/usage-feed.test.mjs` で固定する。実proxyの `/widget` は upstream 30秒で明示的なJSON 503を返す（空応答にしない。`usage-meters/test_usage.py`）。
