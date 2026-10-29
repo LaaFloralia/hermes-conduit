@@ -57,6 +57,6 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
       ...workspaceOptions,
     }),
     ...createSessionRoutes({ sessions: sessionService }),
-    ...usageRoutes({ ...(options.usage ?? {}), now }),
+    ...usageRoutes({ ...(options.usage ?? {}), stateDir: store.dir, now }),
   ];
 }

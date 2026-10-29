@@ -69,6 +69,8 @@ Console collector（`dev/inventory`）とR2のsnapshotは**正本にしない**�
 
 - `fetchedAt` が未来（+60秒超）の応答は捨てて `unavailable`（collectorと同じ判定）。
 - proxyの `source: verified` は「画面確認値・自動更新なし」。鮮度では `stale` にせず、`observedAt` と期限だけ示す（collectorの既存表示に合わせる）。
+- 遅いproxy（2026-10-29）：`/widget` はMac負荷で19–25秒かかる。Bridgeは既定5秒（`LAA_BRIDGE_USAGE_FEED_TIMEOUT_MS`）で応答が無ければ、最後に成功したpayloadを**元の `fetchedAt`・`updatedAt` のまま**返し、`observedAt`・`stale`・`expired` を上の規則で再計算する。古い値を新しい値として見せない。その読みは背景で最大30秒（`LAA_BRIDGE_USAGE_REFRESH_TIMEOUT_MS`）続き、同時1本までで、次回の要求が新しい値を受け取る。成功payloadが無ければ従来どおり全件 `unavailable`＋`fetch_failed`。
+- 最後に成功したpayloadはBridgeのstate `usage-feed.json`（`~/.local/state/laa-bridge/`、0600、資格情報なし）に保存し、再起動後に読み戻す。JSON不正・別schema・サイズ超過は無視し、値を作らない。
 - `live`/`local` は `updatedAt` と `fetchedAt` の古い方から20分で `stale`（`USAGE_AUTO_STALE_MS`）。
 - analytics は要求時取得なので `stale` にしない。取得失敗は `unavailable`＋`auth_required`（401）と `fetch_failed` を区別する。
 - storage-guard は `checked_at` が26時間超で `stale`、ファイル欠落・JSON不正で `unavailable`。**Bridgeから `laa-storage-guard status` を起動しない**（50.7秒の全走査）。
@@ -108,3 +110,4 @@ Tailscaleは輸送の前提で、認証の代替にしない（BRIDGE.md §1）�
 - `host.cpu`・`host.memory` が `unavailable`（null）で、0や前回値の使い回しにならないことを確認する。
 - fixtureは [fixtures/usage/](fixtures/usage/) の4件をそのまま応答として返し、アプリ側で欠測・古い・推計・期限切れの表示が分かれることを確認する。
 - 認証：`usage:read` 無しで403、失効トークンで401、proxy停止中でも Bridge が 200 で `unavailable` を返すことを確認する。
+- 遅いproxy：fake upstreamを遅くし、成功payloadがある時は元の `observedAt` のまま即時に返り（20分経過で `stale`、値は保持）、無い時は `unavailable` になることを `bridge/test/usage-feed.test.mjs` で固定する。実proxyの `/widget` は upstream 20秒で明示的なJSON 503を返す（空応答にしない。`usage-meters/test_usage.py`）。

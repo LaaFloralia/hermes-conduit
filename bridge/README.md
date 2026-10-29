@@ -91,7 +91,7 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `GET /v1/brain/search?q=&k=&area=&adopted=&rerank=` | Bearer + `brain:read` | `laa-brain search` の結果を `{found,matchBasis,results[{path,section,lines,status,relevance,text}]}` で返す。既定はローカルのみ（`rerank=1` で Jev 再判定） |
 | `POST /v1/brain/files` | Bearer + `brain:create` + `Idempotency-Key` | `{path,content,onConflict?}` → 201 新規ノート（`id,path,contentHash,size,suffixApplied`）。既存内容は変更しない |
 | `GET /v1/brain/gates` | Bearer + `brain:read` | vault・git・Syncthing・空き容量の事前条件（`ok`／`code`） |
-| `GET /v1/usage` | Bearer + `usage:read` | CodexBar proxy の利用枠・残高を `{items,nextCursor}` で返す。欠測は `unavailable`＋`value:null` |
+| `GET /v1/usage` | Bearer + `usage:read` | CodexBar proxy の利用枠・残高を `{items,nextCursor}` で返す。欠測は `unavailable`＋`value:null`、proxy が5秒を超えたら直前の成功値を元の `observedAt` で返す |
 | `GET /v1/mac/status` | Bearer + `usage:read` | `host.cpu`・`host.memory`・`host.disk.free` の3件。CPU・メモリは Bridge 内サンプラ（10秒キャッシュ）、空き容量は storage-guard の状態ファイル |
 
 エラーは `{"error":{"code","message","retryable"},"requestId"}`。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`413` 読取上限超過、`415` テキストでない、`423` 排他中（git同期中・master以外）、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo・Syncthing・vault）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
@@ -250,12 +250,13 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: b1' \
 
 ## Usage と Mac 状態（`/v1/usage`・`/v1/mac/status`）
 
-ROADMAP 09。契約は `docs/laa/USAGE.md` §4、応答例は `docs/laa/fixtures/usage/`。実装は `src/routes/usage.mjs` と `src/usage/`（items / proxy / host）。読取専用で `usage:read` だけを要求し、資格情報・請求データ・provider の URL・cookie・エラー原文は返さない。
+ROADMAP 09。契約は `docs/laa/USAGE.md` §4、応答例は `docs/laa/fixtures/usage/`。実装は `src/routes/usage.mjs` と `src/usage/`（items / proxy / feed / host）。読取専用で `usage:read` だけを要求し、資格情報・請求データ・provider の URL・cookie・エラー原文は返さない。
 
 | 項目 | 決定 | 理由 |
 |---|---|---|
 | 利用枠・残高 | `http://127.0.0.1:8081/widget`（version 1）を読む。`provider.<id>.quota` / `.balance` / `.credits` / `.usage` の16件を固定順で返す | USAGE.md §1。Console collector と同じ表示射影（code-owned の id・ラベル・単位）で、provider 側の任意テキストは通さない |
 | 欠測 | フィードに無い provider も `unavailable`＋`value:null`＋`nullReason:"fetch_failed"` で並べる。proxy 停止・タイムアウト（既定5秒、`LAA_BRIDGE_USAGE_FEED_TIMEOUT_MS`）・不正 JSON・`fetchedAt` が60秒超未来、は全件 unavailable の **200** | §4。0 で埋めない。Bridge の障害と「値が無い」を混ぜない |
+| 遅いproxy | 5秒（既定）で応答が無ければ、最後に成功した `/widget` payload を**元の時刻のまま**返す。`observedAt`・`stale`・`expired` は既存規則で判定し、古い値を新しい値として見せない。その読みは背景で最大30秒（`LAA_BRIDGE_USAGE_REFRESH_TIMEOUT_MS`）続き、同時1本まで。成功 payload が無ければ従来どおり全件 unavailable | 2026-10-29の実測で `/widget` は19–25秒。snapshot は `state/usage-feed.json`（0600、資格情報なし）。再起動時に読み戻し、破損・別schemaは無視する |
 | 鮮度 | `live`/`local`/`codexbar-cli` は provider `updatedAt` と `fetchedAt` の古い方から20分（`LAA_BRIDGE_USAGE_AUTO_STALE_MS`）で `stale`。`source:"verified"` は画面確認値なので stale にしない | §4。verified は `observedAt` と期限で鮮度を示す |
 | 期限切れ | quota は `value` を決めた窓の `resetsAt` 経過、balance は `expiresOnUtc` 経過（日付は当日UTC末まで有効）または残高のある component が全期限切れ、で `expired:true`。値は保持する | §4。`claude-api` のような「一部だけ期限到来」は期限切れと呼ばない |
 | 費用・トークン | v1 には含めない（`profile.*` の item を作らない）。アプリは現行どおり dashboard を直接読む | USAGE.md §6 親の決定1。新しい読取チケットを増やさない。dashboard は実測401で、Bridge専用の認可が未決のため |
@@ -270,7 +271,7 @@ curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/mac/status
 
 `items[]` は `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。`availability:"unavailable"` の時だけ `value:null`・`nullReason` が付き、`observedAt` は null になる。`availability:"available"` は `value` が数値（0 も実値）。`detail` は quota=`{windows[{label,remainingPercent,resetsAt,windowMinutes?}]}`、balance=`{currency,components[]?,expiresOnUtc?}`、credits=`{renewsAt?,grantedAmount?,monthlyGrantedAmount?,dailyRemaining?,dailyGrantedAmount?}`、usage=`{periodDays,models[{model,inputTokens,outputTokens}]}`、CPU=`{windowSeconds,userPercent,systemPercent}`、メモリ=`{totalBytes,availableBytes,swapUsedBytes?}`、disk=`{volume,totalGb,level?,findings[]}`。
 
-検証: `npm test` の `test/usage.test.mjs` は HTTP 経由で fixture と同じ読みを1件ずつ照合し、`test/usage-sources.test.mjs` は射影・鮮度・期限・サニタイズ・10秒キャッシュ・状態ファイルの異常を固定する。実機は `node bridge/scripts/verify-usage.mjs`（proxy と状態ファイルを直接読み、独立計算と突き合わせる。資格情報なし）。
+検証: `npm test` の `test/usage.test.mjs` は HTTP 経由で fixture と同じ読みを1件ずつ照合し、`test/usage-sources.test.mjs` は射影・鮮度・期限・サニタイズ・10秒キャッシュ・状態ファイルの異常を、`test/usage-feed.test.mjs` は遅いproxyの直前値（成功値あり／なし）・単一in-flight・再起動時のsnapshot読み戻し・破損snapshotの無視を固定する。実機は `node bridge/scripts/verify-usage.mjs`（proxy と状態ファイルを直接読み、独立計算と突き合わせる。資格情報なし）。
 
 ## 停止・再起動・クラッシュ復帰
 
