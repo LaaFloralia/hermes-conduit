@@ -78,6 +78,14 @@ struct GPTLiveSettingsSection: View {
         GPTLiveBilling.allCases.map { (id: $0, title: $0.badge) }
     }
 
+    private var displayedBilling: GPTLiveBilling {
+        #if LAA_BUILD
+        .subscription
+        #else
+        billing
+        #endif
+    }
+
     private var apiVoiceChoices: [(id: String, title: String)] {
         var choices = [(id: "", title: AppLocalization.string("Server default"))]
         choices += GPTLiveVoice.apiNames.map { (id: $0, title: "\($0.prefix(1).uppercased())\($0.dropFirst())") }
@@ -163,8 +171,10 @@ struct GPTLiveSettingsSection: View {
                 }
                 .disabled(isChecking)
                 .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
+                #if !LAA_BUILD
                 billingSettings
-                if billing == .subscription {
+                #endif
+                if displayedBilling == .subscription {
                     ConduitMenuPicker(
                         value: voice,
                         choices: voiceChoices,
@@ -177,6 +187,9 @@ struct GPTLiveSettingsSection: View {
                     ) {
                         Text("Voice").foregroundStyle(.secondary)
                     }
+                    #if LAA_BUILD
+                    .accessibilityIdentifier("laa.gptlive.subscription-voice")
+                    #endif
                     Text("The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -238,6 +251,9 @@ struct GPTLiveSettingsSection: View {
         ConduitMenuPicker(value: billing, choices: billingChoices, onSelect: selectBilling) {
             Text("Billing").foregroundStyle(.secondary)
         }
+        #if LAA_BUILD
+        .accessibilityIdentifier("laa.gptlive.billing")
+        #endif
         if billing == .api {
             Text("Bills your Hermes server's OpenAI API key per minute of call time, separately from any ChatGPT plan. The call screen shows which one a call is on.")
                 .font(.caption)
@@ -285,6 +301,9 @@ struct GPTLiveSettingsSection: View {
                 model.setAPIHermesCalls(requested)
             }
         ))
+        #if LAA_BUILD
+        .accessibilityIdentifier("laa.gptlive.api-hermes-calls")
+        #endif
         Text("When Hermes calls you, the call uses the ChatGPT subscription unless this is on.")
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -299,7 +318,7 @@ struct GPTLiveSettingsSection: View {
             isAvailable = availability.isAvailable
             switch availability {
             // The host reports its own voice; a voice chosen here overrides it.
-            case .available(let modelName, let hostVoice?) where (billing == .api ? apiVoice : voice).isEmpty:
+            case .available(let modelName, let hostVoice?) where (displayedBilling == .api ? apiVoice : voice).isEmpty:
                 status = AppLocalization.string("Available (\(modelName), voice \(hostVoice))")
             case .available(let modelName, _):
                 status = AppLocalization.string("Available (\(modelName))")

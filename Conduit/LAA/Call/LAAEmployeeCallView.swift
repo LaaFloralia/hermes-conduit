@@ -24,10 +24,21 @@ struct LAAEmployeeCallView: View {
                             Text(snapshot.context.name)
                                 .font(.custom("Georgia", size: 32, relativeTo: .title))
                                 .accessibilityIdentifier("laa.call.name")
+                            if LAAStaff(profile: snapshot.context.profile) != nil {
+                                Text(verbatim: "GPT-Live")
+                                    .laaTextStyle(.secondary)
+                                    .accessibilityIdentifier("laa.call.engine")
+                            }
                             status(snapshot)
                                 .font(.subheadline)
                                 .foregroundStyle(.white.opacity(0.8))
                                 .accessibilityIdentifier("laa.call.status")
+                            if let note = snapshot.voiceNote {
+                                Text(verbatim: note)
+                                    .laaTextStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .accessibilityIdentifier("laa.call.voice-note")
+                            }
                         }
                         Spacer(minLength: 32)
                         controls(snapshot)

@@ -11,6 +11,7 @@ final class LAAStaffCallUITests: XCTestCase {
         app.buttons["laa.employee.call"].tap()
         XCTAssertTrue(app.buttons["laa.call.chat"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["laa.call.name"].exists)
+        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "GPT-Live")
         app.buttons["laa.call.chat"].tap()
         XCTAssertTrue(app.staticTexts["laa.fixture.conversation"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["laa.call.return"].waitForExistence(timeout: 5))
@@ -22,11 +23,39 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertFalse(app.buttons["laa.call.return"].exists)
     }
 
-    func testUnpairedAndMissingVoiceExplainDisabledCall() {
+    func testEmployeeVoiceSettingAndCall() {
+        let app = launch()
+        XCTAssertTrue(app.buttons["laa.employee.header"].waitForExistence(timeout: 10))
+        app.buttons["laa.employee.header"].tap()
+        let picker = app.descendants(matching: .any)["laa.employee.voice-setting"]
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        attachScreenshot(name: "employee-voice-settings")
+        picker.tap()
+        let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Juniper")).firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout: 5))
+        choice.tap()
+        app.buttons["閉じる"].tap()
+        app.buttons["laa.employee.call"].tap()
+        XCTAssertTrue(app.staticTexts["laa.call.engine"].waitForExistence(timeout: 10))
+        attachScreenshot(name: "employee-gpt-live-call")
+    }
+
+    func testGeneralGPTLiveSettingsHideAPIBillingEvenWithAnOldPreference() {
+        let app = launch("-laa-gpt-live-settings")
+        let voice = app.descendants(matching: .any)["laa.gptlive.subscription-voice"]
+        XCTAssertTrue(voice.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["laa.gptlive.billing"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["laa.gptlive.api-hermes-calls"].exists)
+        voice.tap()
+        let subscriptionVoice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Arbor")).firstMatch
+        XCTAssertTrue(subscriptionVoice.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Cedar")).firstMatch.exists)
+    }
+
+    func testUnavailableBridgeExplainsDisabledCallAndClassicVoiceIsNotRequired() {
         for (argument, reason) in [("-laa-unpaired", "端末を接続すると通話できます"),
                                    ("-laa-revoked", "端末を再接続してください"),
-                                   ("-laa-offline", "Hermesに接続してください"),
-                                   ("-laa-no-voice", "音声出力を設定してください")] {
+                                   ("-laa-offline", "Hermesに接続してください")] {
             let app = launch(argument)
             let button = app.buttons["laa.employee.call"]
             XCTAssertTrue(button.waitForExistence(timeout: 10))
@@ -36,6 +65,10 @@ final class LAAStaffCallUITests: XCTestCase {
             XCTAssertTrue(header.label.contains(reason))
             app.terminate()
         }
+        let app = launch("-laa-no-voice")
+        let button = app.buttons["laa.employee.call"]
+        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        XCTAssertTrue(button.isEnabled)
     }
 
     func testLightDarkAndReduceMotionScreenshots() {

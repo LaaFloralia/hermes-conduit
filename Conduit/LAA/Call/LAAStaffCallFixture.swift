@@ -7,9 +7,14 @@ import SwiftUI
 private final class LAAFixtureCallControl: LAAEmployeeCallControlling {
     var unavailableReason: String? = nil
     var onUpdate: ((LAAEmployeeCallSnapshot) -> Void)?
+    var selectedVoice: String?
     private var snapshot: LAAEmployeeCallSnapshot?
 
     func start(_ context: LAAEmployeeCallContext) {
+        guard LAAEmployeeGPTLivePlan.make(profile: context.profile, savedVoice: selectedVoice) != nil else {
+            onUpdate?(LAAEmployeeCallSnapshot(context: context, phase: .failed("社員が見つかりません")))
+            return
+        }
         let value = LAAEmployeeCallSnapshot(context: context, phase: .connected, connectedAt: Date(),
                                             usesSystemRoutePicker: ProcessInfo.processInfo.arguments.contains("-laa-native-call"))
         snapshot = value
@@ -24,6 +29,7 @@ private final class LAAFixtureCallControl: LAAEmployeeCallControlling {
 struct LAAStaffCallFixture: View {
     static let launchArgument = "-laa-staff-call-fixture"
     @StateObject private var calls = LAAEmployeeCallCoordinator(control: LAAFixtureCallControl())
+    @State private var voice = LAAStaff.ciel.defaultGPTLiveVoice
     private let args = ProcessInfo.processInfo.arguments
     private let profile = "laa-ciel"
     private let conversationID = "fixture-conversation"
@@ -32,11 +38,35 @@ struct LAAStaffCallFixture: View {
         if args.contains("-laa-unpaired") { return LAAEmployeeCallAvailability.bridgeReason(.unpaired) }
         if args.contains("-laa-revoked") { return LAAEmployeeCallAvailability.bridgeReason(.revoked) }
         if args.contains("-laa-offline") { return "Hermesに接続してください" }
-        if args.contains("-laa-no-voice") { return LAAEmployeeCallAvailability.voiceReason(.noTextToSpeech) }
+        if args.contains("-laa-no-voice") {
+            return LAAEmployeeCallAvailability.voiceReason(profile: profile, canStart: false, issue: .noTextToSpeech)
+        }
         return nil
     }
 
     var body: some View {
+        if args.contains("-laa-gpt-live-settings") {
+            settingsFixture
+        } else {
+            callFixture
+        }
+    }
+
+    private var settingsFixture: some View {
+        ScrollView {
+            GPTLiveSettingsSection(model: GPTLiveSettingsModel(
+                enabled: true,
+                setEnabled: { _ in },
+                checkAvailability: { .success(.available(model: "fixture", voice: "vale")) },
+                voice: "vale",
+                billing: .api,
+                apiVoice: "cedar"
+            ))
+            .padding()
+        }
+    }
+
+    private var callFixture: some View {
         NavigationStack {
             VStack {
                 Text(verbatim: "元の会話")
@@ -48,7 +78,8 @@ struct LAAStaffCallFixture: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    LAAEmployeeHeader(profile: profile, name: "Ciel", status: reason ?? "● 待機中")
+                    LAAEmployeeHeader(profile: profile, name: "Ciel", status: reason ?? "● 待機中",
+                                      voiceSetting: $voice)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     LAAEmployeeCallButton(reason: reason) {
@@ -61,6 +92,9 @@ struct LAAStaffCallFixture: View {
             }
         }
         .modifier(LAACallPresentation(calls: calls))
+        .onChange(of: voice) { _, value in
+            (calls.control as? LAAFixtureCallControl)?.selectedVoice = value
+        }
         .preferredColorScheme(args.contains("-laa-dark") ? .dark : .light)
         // SwiftUI exposes the read-only public environment value; its writable
         // backing key is used only in this DEBUG fixture for a still screenshot.

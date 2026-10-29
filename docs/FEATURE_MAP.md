@@ -372,16 +372,17 @@ entry)
 
 The LAA build's employee chat header, avatar and in-app call presentation.
 
-**Siblings:** employee chat header · call screen · return-to-call bar ·
-Classic and Live voice · native CallKit presentation · the upstream App Store
+**Siblings:** employee chat header and voice setting · employee widget Call · call screen · return-to-call bar ·
+GPT-Live on the ChatGPT plan · native CallKit presentation · the upstream App Store
 build (keeps its own chat and call controls)
 
 **Code**
 - Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `project-laa.yml`, `project-personal.yml`
 - Chat header, photo glass and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
 - Call state, existing voice adapter, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`
+- Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
 - LAA-only native presentation: `Conduit/LAA/Call/LAACallKitPresentation.swift`, `Conduit/Voice/HermesNativeCalls.swift`, `Conduit/Services/AppState.swift`
-- Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`
+- Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAAEmployeeGPTLiveTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`
 
 **Rulings**
 - Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
@@ -389,14 +390,17 @@ build (keeps its own chat and call controls)
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
 - Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
+- Employee calls from the chat and widget use GPT-Live on the ChatGPT subscription, the employee's profile and its SOUL persona, regardless of the workspace's voice or billing setting. A missing persona or subscription failure stops the call; there is no API fallback or mode switch during the employee call. The employee detail's voice picker stores a ChatGPT voice in that profile's existing preferences; the call reports if the host does not confirm it. The default profile keeps its existing voice behavior.
+- In the LAA build, GPT-Live settings offer only the ChatGPT plan and all GPT-Live calls, including calls from Hermes, use that plan even if API billing was previously saved. The saved preference is retained; the App Store build's billing choices are unchanged.
 - The native provider uses the bundled LAA mask and staff names for outgoing calls; unknown profiles keep their existing name. On iOS 14 and later the system takes the provider name from the app display name.
 - CallKit recents remain off because a recents entry cannot yet start a call back.
 
 **Open gaps**
 - Receiver, speaker, Bluetooth routing and native call presentation still need the requested real-device checks; the UI flow tests use a fake control because CallKit does not run in the simulator.
+- ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-10-30, c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration; device checks pending).
+**Checked:** 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
@@ -3621,13 +3625,13 @@ and rollback instructions · the upstream App Store build
 
 **Rulings**
 - The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. Medium is not offered, and no live status is shown.
-- The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing profile voice path. A missing dashboard or profile is explained in Japanese.
+- The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-10-30, widget routing and configuration tests before the final image-position adjustment. The final Home Screen render and device behavior remain to be checked.
+**Checked:** 2026-10-30, based on 7efd7f90 (Task 11c routing); widget routing and configuration tests before the final image-position adjustment. The final Home Screen render and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 

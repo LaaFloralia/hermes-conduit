@@ -45,6 +45,9 @@ final class LAAStaffCallTests: XCTestCase {
 
         appState.setActiveProfileForTesting("laa-cfo")
         XCTAssertEqual(appState.placedCallName, "Talos")
+        appState.laaEmployeeGPTLivePlan = appState.laaEmployeeCallPlan(profile: "laa-cto")
+        XCTAssertEqual(appState.placedCallName, "Ada", "a widget call names its selected employee")
+        appState.laaEmployeeGPTLivePlan = nil
         appState.activeSessionId = nil
         XCTAssertEqual(appState.placedCallName, "Morgan")
     }
@@ -115,9 +118,11 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(fake.speaker, true)
         fake.voiceStatus.muted = false
         fake.voiceStatus.level = nil
+        fake.voiceStatus.voiceNote = "選んだ声を確認できません"
         fake.changed.send()
         await fulfillment(of: [updated], timeout: 5)
         XCTAssertNil(snapshots.last?.audioLevel)
+        XCTAssertEqual(snapshots.last?.voiceNote, "選んだ声を確認できません")
         fake.voiceStatus.phase = .ended
         fake.changed.send()
         await fulfillment(of: [ended], timeout: 5)
@@ -165,19 +170,18 @@ final class LAAStaffCallTests: XCTestCase {
         observation.cancel()
     }
 
-    func testHeaderControlUsesExistingClassicCallAndKeepsChat() async {
+    func testDefaultProfileKeepsExistingClassicCallAndChat() async {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
             defaults.removePersistentDomain(forName: suite)
         }
-        harness.appState.noteBotChatSessionForTesting("session-1", profile: "laa-ciel")
         harness.appState.activeSessionId = "session-1"
         let kit = FakePlacedCallKit()
         let placed = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
         let control = LAAEmployeeVoiceControl()
         control.bind(harness.appState)
         let calls = LAAEmployeeCallCoordinator(control: control)
-        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "session-1")
+        calls.start(profile: "default", name: "LAA", conversationID: "session-1")
         for _ in 0..<1_000 where !placed.isWaitingForCallAudio { await Task.yield() }
         XCTAssertTrue(placed.isWaitingForCallAudio)
         XCTAssertFalse(harness.appState.showVoiceSheet)
@@ -187,7 +191,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertTrue(harness.appState.showVoiceSheet)
         XCTAssertTrue(harness.controller.hasLiveVoiceSession)
         XCTAssertEqual(calls.snapshot?.phase, .connected)
-        XCTAssertEqual(calls.snapshot?.context.profile, "laa-ciel")
+        XCTAssertEqual(calls.snapshot?.context.profile, "default")
         XCTAssertEqual(calls.snapshot?.context.conversationID, "session-1")
         calls.showChat()
         XCTAssertFalse(calls.isShowingCall)
@@ -196,7 +200,7 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertFalse(harness.appState.showVoiceSheet)
         XCTAssertNil(calls.snapshot)
         XCTAssertEqual(harness.appState.activeSessionId, "session-1")
-        XCTAssertEqual(harness.appState.conversationIdentityProfile, "laa-ciel")
+        XCTAssertEqual(harness.appState.conversationIdentityProfile, "default")
         XCTAssertEqual(kit.endRequests, 1)
         kit.onPlacedCallEnded?(false)
     }
@@ -271,6 +275,9 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(.speechRecognitionDenied), "音声認識を許可してください")
         XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(.noSpeechToText(detail: nil)), "音声入力を設定してください")
         XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(.noTextToSpeech), "音声出力を設定してください")
+        XCTAssertNil(LAAEmployeeCallAvailability.voiceReason(profile: "laa-ciel", canStart: false, issue: .noTextToSpeech))
+        XCTAssertEqual(LAAEmployeeCallAvailability.voiceReason(profile: "default", canStart: false, issue: .noTextToSpeech),
+                       "音声出力を設定してください")
     }
 
     func testPairingFailureExplainsItsState() {
