@@ -9140,7 +9140,12 @@ final class AppState: ObservableObject {
     /// Who a call placed from here says it is calling: the profile's name,
     /// as a call from Hermes names it.
     var placedCallName: String {
-        HermesCallerName.name(profile: activeProfile, mainName: profileDisplayName(activeProfile))
+        let fallback = HermesCallerName.name(profile: activeProfile, mainName: profileDisplayName(activeProfile))
+        #if LAA_BUILD
+        return LAACallKitPresentation.callerName(profile: conversationIdentityProfile, fallback: fallback)
+        #else
+        return fallback
+        #endif
     }
 
     /// A call runs somewhere: on this screen or minimised, in CarPlay, on

@@ -14,7 +14,8 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         calls.snapshot?.context.profile == profile && calls.snapshot?.context.conversationID == appState.activeSessionId
     }
     private var reason: String? {
-        if calls.snapshot?.phase.isOngoing == true { return sameCall ? nil : "別の会話で通話中です" }
+        if calls.snapshot != nil { return sameCall ? nil : "別の会話の通話を確認してください" }
+        if appState.isVoiceCallInProgress { return "別の通話を終了してください" }
         if let reason = LAAEmployeeCallAvailability.bridgeReason(bridge.status) { return reason }
         guard appState.isConnected else { return "Hermesに接続してください" }
         guard appState.canStartPhoneVoiceConversation else {
@@ -24,7 +25,10 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
     private var status: String {
         if let reason { return reason }
-        if sameCall { return "● 通話中" }
+        if sameCall {
+            if case .failed = calls.snapshot?.phase { return "▲ 通話を確認" }
+            return "● 通話中"
+        }
         return appState.isBusy ? "● 応答中" : "● 待機中"
     }
 

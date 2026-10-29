@@ -8,7 +8,7 @@ struct LAAAppShell: View {
     let onRequestSettings: () -> Void
 
     @StateObject private var bridge = LAABridgeSession()
-    @StateObject private var employeeCalls = LAAEmployeeCallCoordinator(control: LAAUnavailableCallControl())
+    @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var chatsPath: [V2Route] = []
 

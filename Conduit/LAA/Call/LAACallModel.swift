@@ -45,27 +45,31 @@ struct LAAEmployeeCallSnapshot: Equatable {
 protocol LAAEmployeeCallControlling: AnyObject {
     var unavailableReason: String? { get }
     var onUpdate: ((LAAEmployeeCallSnapshot) -> Void)? { get set }
+    func requiredConsent(for context: LAAEmployeeCallContext) -> LiveVoiceModeName?
+    func grantConsent(_ mode: LiveVoiceModeName)
     func start(_ context: LAAEmployeeCallContext)
     func setMuted(_ muted: Bool)
     func setSpeaker(_ speaker: Bool)
     func end()
 }
 
-/// Until the outgoing-call branch is integrated the entry point is disabled.
-@MainActor
-final class LAAUnavailableCallControl: LAAEmployeeCallControlling {
-    var unavailableReason: String? { "通話機能の準備中です" }
-    var onUpdate: ((LAAEmployeeCallSnapshot) -> Void)?
-    func start(_ context: LAAEmployeeCallContext) {}
-    func setMuted(_ muted: Bool) {}
-    func setSpeaker(_ speaker: Bool) {}
-    func end() {}
+extension LAAEmployeeCallControlling {
+    func requiredConsent(for context: LAAEmployeeCallContext) -> LiveVoiceModeName? { nil }
+    func grantConsent(_ mode: LiveVoiceModeName) {}
+}
+
+struct LAAEmployeeCallConsent: Identifiable {
+    let id = UUID()
+    let mode: LiveVoiceModeName
 }
 
 @MainActor
 final class LAAEmployeeCallCoordinator: ObservableObject {
     @Published private(set) var snapshot: LAAEmployeeCallSnapshot?
     @Published var isShowingCall = false
+    @Published var consentRequest: LAAEmployeeCallConsent?
+    private var pendingContext: LAAEmployeeCallContext?
+    private var consentAccepted = false
     let control: LAAEmployeeCallControlling
 
     init(control: LAAEmployeeCallControlling) {
@@ -75,9 +79,40 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
 
     var unavailableReason: String? { control.unavailableReason }
 
+    func bindVoiceControl(_ appState: AppState) {
+        guard let voiceControl = control as? LAAEmployeeVoiceControl else { return }
+        objectWillChange.send()
+        voiceControl.bind(appState)
+    }
+
     func start(profile: String, name: String, conversationID: String?) {
-        guard control.unavailableReason == nil, snapshot?.phase.isOngoing != true else { return }
+        guard control.unavailableReason == nil, snapshot == nil,
+              consentRequest == nil, pendingContext == nil else { return }
         let context = LAAEmployeeCallContext(profile: profile, name: name, conversationID: conversationID)
+        if let mode = control.requiredConsent(for: context) {
+            pendingContext = context
+            consentRequest = LAAEmployeeCallConsent(mode: mode)
+            return
+        }
+        start(context)
+    }
+
+    func answerConsent(_ allowed: Bool) {
+        guard let request = consentRequest, pendingContext != nil else { return }
+        consentAccepted = allowed
+        if allowed { control.grantConsent(request.mode) }
+        consentRequest = nil
+    }
+
+    func consentDidDismiss() {
+        let context = consentAccepted ? pendingContext : nil
+        pendingContext = nil
+        consentAccepted = false
+        consentRequest = nil
+        if let context { start(context) }
+    }
+
+    private func start(_ context: LAAEmployeeCallContext) {
         snapshot = LAAEmployeeCallSnapshot(context: context, phase: .connecting)
         isShowingCall = true
         control.start(context)
@@ -85,7 +120,7 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
 
     func receive(_ update: LAAEmployeeCallSnapshot) {
         // A late callback from a previous call must not replace the current one.
-        guard let current = snapshot, update.context == current.context else { return }
+        guard let current = snapshot, update.context.id == current.context.id else { return }
         // Once ending starts, a delayed connection or level callback must not
         // resurrect the call. The adapter can still report end or failure.
         if case .ending = current.phase {
@@ -116,6 +151,7 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
         guard let snapshot else { return }
         if case .ending = snapshot.phase { return }
         if case .failed = snapshot.phase {
+            control.end()
             self.snapshot = nil
             isShowingCall = false
         } else {

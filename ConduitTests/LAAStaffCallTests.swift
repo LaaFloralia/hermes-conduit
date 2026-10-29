@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import XCTest
 import AVFAudio
+import Combine
 @testable import Conduit
 
 @MainActor
@@ -14,6 +15,190 @@ final class LAAStaffCallTests: XCTestCase {
         }
         XCTAssertNil(LAAStaff(profile: "default"))
         XCTAssertNil(LAAStaff(profile: "laa-other"))
+    }
+
+    func testCallKitPresentationUsesBundledIconAndStaffNames() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "callkit-icon-template-120", withExtension: "png"))
+        let configuration = LAACallKitPresentation.configuration()
+        XCTAssertEqual(configuration.iconTemplateImageData, try Data(contentsOf: url))
+        XCTAssertEqual(LAACallKitPresentation.localizedName, "LAA")
+        for staff in LAAStaff.allCases {
+            XCTAssertEqual(LAACallKitPresentation.callerName(profile: "laa-\(staff.rawValue)", fallback: "original"), staff.name)
+        }
+        XCTAssertEqual(LAACallKitPresentation.callerName(profile: "default", fallback: "original"), "original")
+        XCTAssertEqual(LAACallKitPresentation.outgoingUpdate(name: "Talos").localizedCallerName, "Talos")
+    }
+
+    func testProviderConsentStartsOnlyAfterAcceptedSheetDismisses() {
+        let control = FakeControl()
+        control.consent = .geminiLive
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "chat-one")
+        XCTAssertEqual(calls.consentRequest?.mode, .geminiLive)
+        XCTAssertNil(calls.snapshot)
+        calls.answerConsent(false)
+        calls.consentDidDismiss()
+        XCTAssertNil(control.context)
+        XCTAssertNil(control.grantedConsent)
+
+        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "chat-one")
+        calls.answerConsent(true)
+        XCTAssertEqual(control.grantedConsent, .geminiLive)
+        XCTAssertNil(calls.snapshot)
+        calls.consentDidDismiss()
+        XCTAssertEqual(control.context?.conversationID, "chat-one")
+        XCTAssertTrue(calls.isShowingCall)
+    }
+
+    func testBindingVoiceControlRefreshesAvailability() {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let calls = LAAEmployeeCallCoordinator(control: LAAEmployeeVoiceControl())
+        XCTAssertEqual(calls.unavailableReason, "通話を準備中です")
+        var notifications = 0
+        let observer = calls.objectWillChange.sink { _ in notifications += 1 }
+        calls.bindVoiceControl(harness.appState)
+        XCTAssertEqual(notifications, 1)
+        XCTAssertNil(calls.unavailableReason)
+        observer.cancel()
+    }
+
+    func testVoiceAdapterTracksRealStatusAndExternalEnd() async {
+        let fake = FakeVoiceHost()
+        fake.voiceStatus = LAAEmployeeVoiceStatus(phase: .connected, muted: true, speaker: false,
+                                                   nativeRoute: true, level: 0.4)
+        fake.resolvedConversation = "new-chat"
+        let control = LAAEmployeeVoiceControl(host: fake.makeHost())
+        let connected = expectation(description: "voice connected")
+        let updated = expectation(description: "voice updated")
+        let ended = expectation(description: "voice ended externally")
+        var snapshots: [LAAEmployeeCallSnapshot] = []
+        control.onUpdate = { snapshot in
+            snapshots.append(snapshot)
+            if snapshot.phase == .connected, snapshots.count == 1 { connected.fulfill() }
+            else if snapshot.phase == .connected { updated.fulfill() }
+            else if snapshot.phase == .ended { ended.fulfill() }
+        }
+        let context = LAAEmployeeCallContext(profile: "laa-ciel", name: "Ciel", conversationID: nil)
+        control.start(context)
+        await fulfillment(of: [connected], timeout: 5)
+        XCTAssertEqual(snapshots.last?.context.conversationID, "new-chat")
+        XCTAssertEqual(snapshots.last?.audioLevel, 0.4)
+        XCTAssertEqual(snapshots.last?.usesSystemRoutePicker, true)
+        XCTAssertNotNil(snapshots.last?.connectedAt)
+        XCTAssertEqual(fake.beginCount, 1)
+        control.setMuted(false)
+        control.setSpeaker(true)
+        XCTAssertEqual(fake.mute, false)
+        XCTAssertEqual(fake.speaker, true)
+        fake.voiceStatus.muted = false
+        fake.voiceStatus.level = nil
+        fake.changed.send()
+        await fulfillment(of: [updated], timeout: 5)
+        XCTAssertNil(snapshots.last?.audioLevel)
+        fake.voiceStatus.phase = .ended
+        fake.changed.send()
+        await fulfillment(of: [ended], timeout: 5)
+        XCTAssertEqual(snapshots.last?.phase, .ended)
+        XCTAssertEqual(fake.endCount, 0)
+    }
+
+    func testEndingPendingVoiceOpenCannotRestartIt() async {
+        let fake = FakeVoiceHost()
+        fake.holdOpen = true
+        let began = expectation(description: "open waiting")
+        fake.didBegin = { began.fulfill() }
+        let control = LAAEmployeeVoiceControl(host: fake.makeHost())
+        var snapshots: [LAAEmployeeCallSnapshot] = []
+        control.onUpdate = { snapshots.append($0) }
+        let context = LAAEmployeeCallContext(profile: "laa-ciel", name: "Ciel", conversationID: "chat")
+        control.start(context)
+        await fulfillment(of: [began], timeout: 5)
+        control.end()
+        fake.pendingOpen?.resume(returning: .opened(context))
+        fake.pendingOpen = nil
+        await Task.yield()
+        XCTAssertEqual(fake.endCount, 1)
+        XCTAssertEqual(fake.beginCount, 0)
+        XCTAssertEqual(snapshots.map(\.phase), [.ended])
+    }
+
+    func testVoiceOpenFailureRemainsAvailableToDismiss() async {
+        let fake = FakeVoiceHost()
+        fake.failOpen = true
+        let control = LAAEmployeeVoiceControl(host: fake.makeHost())
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        let failed = expectation(description: "voice open failed")
+        let observation = calls.$snapshot.sink { snapshot in
+            if case .failed = snapshot?.phase { failed.fulfill() }
+        }
+        calls.start(profile: "laa-ciel", name: "Ciel", conversationID: "chat")
+        await fulfillment(of: [failed], timeout: 5)
+        calls.showChat()
+        calls.showCall()
+        XCTAssertTrue(calls.isShowingCall)
+        calls.end()
+        XCTAssertNil(calls.snapshot)
+        XCTAssertEqual(fake.endCount, 1)
+        observation.cancel()
+    }
+
+    func testHeaderControlUsesExistingClassicCallAndKeepsChat() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "session-1"
+        let kit = FakePlacedCallKit()
+        let placed = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let control = LAAEmployeeVoiceControl()
+        control.bind(harness.appState)
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        calls.start(profile: "default", name: "LAA", conversationID: "session-1")
+        for _ in 0..<1_000 where !placed.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(placed.isWaitingForCallAudio)
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        for _ in 0..<1_000 where calls.snapshot?.phase != .connected { await Task.yield() }
+        XCTAssertTrue(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+        XCTAssertEqual(calls.snapshot?.phase, .connected)
+        XCTAssertEqual(calls.snapshot?.context.conversationID, "session-1")
+        calls.showChat()
+        XCTAssertFalse(calls.isShowingCall)
+        calls.showCall()
+        calls.end()
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertNil(calls.snapshot)
+        XCTAssertEqual(harness.appState.activeSessionId, "session-1")
+        XCTAssertEqual(kit.endRequests, 1)
+        kit.onPlacedCallEnded?(false)
+    }
+
+    func testSystemHangupDuringCallKitActivationReturnsToChat() async {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        harness.appState.activeSessionId = "session-1"
+        let kit = FakePlacedCallKit()
+        let placed = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let control = LAAEmployeeVoiceControl()
+        control.bind(harness.appState)
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        calls.start(profile: "default", name: "LAA", conversationID: "session-1")
+        for _ in 0..<1_000 where !placed.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(placed.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallEnded?(true)
+        for _ in 0..<1_000 where calls.snapshot != nil { await Task.yield() }
+        XCTAssertNil(calls.snapshot)
+        XCTAssertFalse(calls.isShowingCall)
+        XCTAssertEqual(harness.appState.activeSessionId, "session-1")
+        XCTAssertFalse(harness.appState.showVoiceSheet)
     }
 
     func testBundledAssetsAndFallbackWhenEntireSetMissing() {
@@ -146,6 +331,10 @@ private final class FakeControl: LAAEmployeeCallControlling {
     var requestedMute: Bool?
     var requestedSpeaker: Bool?
     var endCount = 0
+    var consent: LiveVoiceModeName?
+    var grantedConsent: LiveVoiceModeName?
+    func requiredConsent(for context: LAAEmployeeCallContext) -> LiveVoiceModeName? { consent }
+    func grantConsent(_ mode: LiveVoiceModeName) { grantedConsent = mode }
     func start(_ context: LAAEmployeeCallContext) { self.context = context }
     func setMuted(_ muted: Bool) { requestedMute = muted }
     func setSpeaker(_ speaker: Bool) { requestedSpeaker = speaker }
@@ -153,6 +342,43 @@ private final class FakeControl: LAAEmployeeCallControlling {
     func publish(phase: LAAEmployeeCallPhase) {
         guard let context else { return }
         onUpdate?(LAAEmployeeCallSnapshot(context: context, phase: phase))
+    }
+}
+
+@MainActor
+private final class FakeVoiceHost {
+    let changed = PassthroughSubject<Void, Never>()
+    var voiceStatus = LAAEmployeeVoiceStatus(phase: .connecting)
+    var resolvedConversation: String?
+    var holdOpen = false
+    var failOpen = false
+    var pendingOpen: CheckedContinuation<LAAEmployeeVoiceOpenResult, Never>?
+    var didBegin: (() -> Void)?
+    var beginCount = 0
+    var endCount = 0
+    var mute: Bool?
+    var speaker: Bool?
+
+    func makeHost() -> LAAEmployeeVoiceHost {
+        LAAEmployeeVoiceHost(
+            unavailable: { nil }, consent: { _ in nil }, grant: { _ in },
+            open: { context in
+                if self.failOpen { return .failed }
+                if self.holdOpen {
+                    return await withCheckedContinuation { continuation in
+                        self.pendingOpen = continuation
+                        self.didBegin?()
+                    }
+                }
+                return .opened(LAAEmployeeCallContext(id: context.id, profile: context.profile, name: context.name,
+                                                      conversationID: self.resolvedConversation ?? context.conversationID))
+            },
+            status: { self.voiceStatus },
+            observe: { changed in [self.changed.sink { _ in changed() }] },
+            beginClassicListening: { self.beginCount += 1 },
+            mute: { self.mute = $0 }, speaker: { self.speaker = $0 },
+            end: { self.endCount += 1 }
+        )
     }
 }
 #endif

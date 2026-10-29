@@ -209,6 +209,10 @@ struct LAACallPresentation: ViewModifier {
             LAAEmployeeCallView(calls: calls)
                 .preferredColorScheme(.dark)
         }
+        .sheet(item: $calls.consentRequest, onDismiss: calls.consentDidDismiss) { request in
+            LiveVoiceConsentSheet(mode: request.mode, onAnswer: calls.answerConsent)
+                .presentationDetents([.medium, .large])
+        }
     }
 }
 
@@ -219,14 +223,17 @@ struct LAAInCallBar: View {
 
     var body: some View {
         if let snapshot = calls.snapshot,
-           snapshot.phase.isOngoing,
            !calls.isShowingCall,
            snapshot.context.profile == profile,
            snapshot.context.conversationID == conversationID {
             Button(action: calls.showCall) {
                 HStack(spacing: 8) {
                     Image(systemName: "phone.fill")
-                    Text(verbatim: "\(snapshot.context.name) と通話中")
+                    if case .failed = snapshot.phase {
+                        Text(verbatim: "通話を確認してください")
+                    } else {
+                        Text(verbatim: "\(snapshot.context.name) と通話中")
+                    }
                     Spacer()
                     Text(verbatim: "通話に戻る")
                     Image(systemName: "chevron.right")
