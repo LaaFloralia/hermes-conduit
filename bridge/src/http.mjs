@@ -26,15 +26,11 @@ import {
   randomToken,
 } from './auth.mjs';
 import { IDEMPOTENCY_KEY_PATTERN, complete, requestFingerprint, reserve } from './idempotency.mjs';
+import { createDriveFsAdapter } from './drive/drivefs.mjs';
+import { driveRoutes } from './routes/drive.mjs';
+import { BridgeError } from './errors.mjs';
 
-class BridgeError extends Error {
-  constructor(status, code, message, { retryable = false } = {}) {
-    super(message);
-    this.status = status;
-    this.code = code;
-    this.retryable = retryable;
-  }
-}
+export { BridgeError };
 
 const badRequest = (code, message) => new BridgeError(400, code, message);
 
@@ -64,6 +60,7 @@ export function createBridge({
   version = VERSION,
   testEndpoints = testEndpointsEnabled(),
   allowedOrigins = [],
+  drive = null,
   now = () => Date.now(),
   log = defaultLog(),
 } = {}) {
@@ -212,6 +209,7 @@ export function createBridge({
     { method: 'POST', path: '/v1/devices/enroll', auth: false, idempotent: false, handler: enroll },
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
+    ...driveRoutes({ adapter: drive ?? createDriveFsAdapter(), now, log: log === null ? null : undefined }),
   ];
 
   // --- request pipeline -----------------------------------------------------
@@ -229,7 +227,7 @@ export function createBridge({
     try {
       checkOrigin(req);
 
-      const candidates = ROUTES.filter((route) => route.path === pathname);
+      const candidates = ROUTES.filter((route) => (route.pattern ? route.pattern.test(pathname) : route.path === pathname));
       if (candidates.length === 0) {
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
@@ -294,8 +292,11 @@ export function createBridge({
         }
       }
 
-      const result = await route.handler({ req, requestId, device, rawBody });
-      if (idempotencyKey && result) {
+      const params = route.pattern ? (route.pattern.exec(pathname) ?? []).slice(1) : [];
+      const result = await route.handler({ req, res, requestId, device, rawBody, params });
+      // A streaming handler (Drive content) writes its own bytes and returns nothing.
+      if (!result) return;
+      if (idempotencyKey) {
         store.mutate((state) => complete(state, {
           deviceId: device.id,
           key: idempotencyKey,

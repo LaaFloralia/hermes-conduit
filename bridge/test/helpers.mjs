@@ -9,13 +9,13 @@ import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
 import { issuePairing } from '../src/pairing.mjs';
 
-export async function startBridge({ now, testEndpoints = true } = {}) {
+export async function startBridge({ now, testEndpoints = true, drive = null } = {}) {
   const clock = now ?? (() => Date.now());
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-test-'));
   const stateDir = join(dir, 'state');
   const store = createStore({ dir: stateDir, idempotencyRetentionMs: IDEMPOTENCY_RETENTION_MS, now: clock });
 
-  let bridge = createBridge({ store, testEndpoints, now: clock, log: null });
+  let bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null });
   let address = await bridge.listen({ port: 0, host: '127.0.0.1' });
 
   async function request(path, { method = 'GET', body, token, key, headers = {} } = {}) {
@@ -55,7 +55,7 @@ export async function startBridge({ now, testEndpoints = true } = {}) {
     },
     async restart() {
       await bridge.close();
-      bridge = createBridge({ store, testEndpoints, now: clock, log: null });
+      bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null });
       address = await bridge.listen({ port: 0, host: '127.0.0.1' });
     },
     async close() {
