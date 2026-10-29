@@ -407,7 +407,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
-- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
+- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Brain: `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
@@ -423,10 +423,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
   retain their original error mapping, and writes are never retried by the client.
-- Usage reads quota windows, balances and Mac status from Bridge on entry or
-  pull-to-refresh. A missing value is not zero; stale, expired and unavailable
-  readings and observation times are shown. Hermes' existing Settings report
-  remains the direct path for historical tokens and costs.
+- Usage reads quota windows, balances and Mac status from Bridge, and model
+  usage and cost directly from the authenticated Hermes dashboard, on entry or
+  manual refresh. It keeps each source separate, retains the previous readings
+  and times on failure, and disables duplicate refreshes. Missing, zero, stale,
+  expired and unavailable values remain distinct; no unrelated services are
+  summed. Hermes' existing Settings report remains available.
 - Brain lists the default permitted areas, optionally adds Inbox on request,
   searches locally through the Bridge, and opens Markdown or its exact source.
   Frontmatter remains available, unresolved syntax and image references remain
@@ -445,10 +447,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   are not in this five-tab shell.
 - The existing Hermes Settings report has its own missing-number handling;
   Bridge's Usage data does not replace or claim to fix that report.
+- Hermes reports a zero billed cost both for a true zero and a missing billed
+  cost, so the Usage tab labels that actual cost unknown rather than guessing.
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
+**Checked:** 2026-10-30, laa/usage-design-v2-04 based on 64fbe8b4 (Usage); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
 
 ## LAA Work tab
 

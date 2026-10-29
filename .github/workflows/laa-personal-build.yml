@@ -37,7 +37,7 @@ jobs:
       - name: Check Bridge client contracts
         run: |
           xcrun swiftc -D LAA_BUILD \
-            Conduit/LAA/LAABridgeClient.swift Conduit/LAA/LAAUsageModels.swift \
+            Conduit/LAA/LAABridgeClient.swift Conduit/LAA/Usage/LAAUsageModels.swift \
             scripts/laa/test-bridge-client.swift -o "$RUNNER_TEMP/laa-bridge-client-tests"
           "$RUNNER_TEMP/laa-bridge-client-tests" "$GITHUB_WORKSPACE"
 
