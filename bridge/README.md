@@ -114,27 +114,15 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: w1' \
 
 ## Drive（一覧・metadata・Range配信）
 
-既存のGoogle認可はMacの**Driveデスクトップ**（floralia@laa-inc.com）。`~/Library/CloudStorage/GoogleDrive-floralia@laa-inc.com` にツリーを出し、各項目のDrive IDを `com.google.drivefs.item-id#S` xattr に持つ。Bridgeはこの既存経路を**読取専用**で使い、OAuth付与・APIキー・アカウントを追加せず、Driveクライアントの資格情報も取り出さない（`src/drive/drivefs.mjs`）。
+`/v1/drive/files` は Google Drive API v3 を直接呼び、`files.list`・`files.get`・`files.get?alt=media` へクライアントの `Range` をそのまま中継する（`src/drive/google-api.mjs`、外部依存なし）。Driveデスクトップの同期フォルダ（`~/Library/CloudStorage`）は**読まない**。macOSのTCCがnodeプロセスへDrive管理ファイル全体の読取りを求め、許可するとnodeで動く全スクリプトに権限が広がること、オンライン専用ファイルは丸ごと取得しないと読めずRange再生に合わないことが理由（launchd配下では実際に `readdir` が許可待ちで停止した）。
 
-- 一覧の対象はDriveデスクトップが見せる範囲（マイドライブ・共有ドライブ）。「共有アイテム」の未追加分とゴミ箱は含まない。索引は初回に構築して60秒キャッシュする（実測: 約700項目で0.3秒）。
-- `?query=` は索引全体の名前検索、`?folderId=` はそのフォルダ直下、どちらも無い場合はDriveルート（ブラウズの入口）。
-- `content` は単一の `Range` をローカルファイルの部分読みへ中継する（206・`Content-Range`・`Content-Length`・MIME・`Accept-Ranges`・ETag）。複数rangeは無視して200で全体を返し、範囲外は `416` と `Content-Range: bytes */size`。クライアントが切ると読み取りを中止する。
-- Workspace文書（.gdoc/.gsheet/.gslides）はディスク上はリンク情報だけなので、`409 export_required` と書き出し候補形式を返す。Bridgeは書き出しを行わない。
+認可はまだ無い。`LAA_DRIVE_CLIENT_ID`・`LAA_DRIVE_CLIENT_SECRET`・`LAA_DRIVE_REFRESH_TOKEN` の3つが揃った時だけ有効になり、無ければ全端点が `503 drive_not_configured` を返す（上流へ何も試さない）。必要な認可は OAuthクライアント（Desktop）と `https://www.googleapis.com/auth/drive.readonly` のrefresh token。
 
-実測（2026-10-29、ループバック、実ファイル、テスト用の一時端末）:
+- 一覧は `corpora=allDrives`・`supportsAllDrives=true`・`trashed = false`。`?query=` は `name contains`、`?folderId=` は `'<id>' in parents`、どちらも無ければルート一覧。cursorは上流の `nextPageToken` を不透明化して24時間有効（期限切れは410）。
+- `content` は `files.get?alt=media` へRangeを中継し、Driveの 206・`Content-Range`・`Content-Length`・MIME・ETag をそのまま返す。416は `Content-Range: bytes */size` 付きで返し、クライアント切断時は上流のfetchをabortする。HEADはmetadataから計算し、media endpointを開かない。
+- Workspace文書（Docs/Sheets/Slides）は `409 export_required` と書き出し候補形式を返す。Bridgeは書き出しを行わない。
 
-| 項目 | 結果 |
-|---|---|
-| 初回バイト（未キャッシュの9.6MB mp4、`bytes=0-65535`） | 206、2,674ms |
-| 中間seek（同ファイル、`bytes=4830429-5092572`） | 206、1,615ms |
-| キャッシュ済みファイルの先頭・中間 | 206、1–2ms |
-| 中断（1チャンク読後に切断） | 読み取り停止、以後のリクエストは正常 |
-| 範囲外 | 416 `range_not_satisfiable` |
-| Workspace文書 | 409 `export_required`（pdf/docx/txt） |
-| 未知のID | 404 `not_found` |
-| Driveクライアント無し | 503 `drive_unavailable`（retryable） |
-
-制約: 初回バイトはDriveデスクトップの取得待ちで秒単位になる。Drive API（`files.get?alt=media` + `Range`）を直接使う経路は未認可で、速さと全ファイル到達性が要るなら親がOAuthクライアント（`drive.readonly`）を用意する。
+検証状況（2026-10-29）: 認可が無いため実ファイルでの再生・seek・中断は**未実施**。ローカルのfake Drive API（Range→206/416、pageToken、401/404/500）とHTTP契約テスト（206/416/HEAD/中断/409/404/503）で検証した。実機確認は認可後に `scripts/verify-drive.mjs` で行う。
 
 ## タスク読取（`/v1/tasks`）
 
@@ -189,7 +177,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（67 tests、約0.9秒。DriveFSのxattrテストはmacOSのみ）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（89 tests、約1秒。Driveはfake APIで検証）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。
@@ -201,7 +189,7 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 - ログは requestId・method・path・status・deviceId・エラーコードのみ。トークン・コード・body は残さない。
 - 実装していない: レート制限の永続化（メモリ内・enroll のみ）、監査ファイル、event stream、GUI 排他、Brain 書込み。
 - `/v1/tasks` は Linear の全非アーカイブ課題を 1 リクエスト最大 500 件まで読み、フィルタとページングは Bridge 側で行う。500 件を超えると `sources[].truncated = true`。
-- Drive: 索引はメモリ内で、Driveデスクトップが同期していない項目は見えない。Drive APIの書き出し・共有設定・削除は扱わない（読取専用）。
+- Drive: 認可が無いため実Driveへは未接続（503 `drive_not_configured`）。`~/Library/CloudStorage` は読まない。書き出し・共有設定・削除は扱わない（読取専用）。認可情報は環境変数のみで受け取り、ログ・URL・応答へ出さない。
 - workspace の一覧は root 配下を毎回 walk する（深さ3、4000 entry、status 5秒キャッシュ）。巨大な root を許可すると遅くなるので、`LAA_BRIDGE_WORKSPACE_ROOTS` は用途の狭いディレクトリにする。
 
 ## 未対応（後続タスク）

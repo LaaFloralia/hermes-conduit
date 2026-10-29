@@ -1,13 +1,13 @@
-// HTTP contract for /v1/drive/files. The adapter is a fake here, so the test
-// pins the Bridge behaviour (status codes, headers, range maths, cancellation)
-// without needing the owner's Drive or a Google credential.
+// HTTP contract for /v1/drive/files. The Drive adapter is a fake here, so the
+// test pins the Bridge behaviour (status codes, headers, range relay,
+// cancellation) without the owner's Drive or a Google credential.
 
 import assert from 'node:assert/strict';
 import { Readable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
 import { startBridge } from './helpers.mjs';
-import { DriveUnavailableError } from '../src/drive/drivefs.mjs';
 import { parseRange } from '../src/routes/drive.mjs';
+import { DriveNotConfiguredError } from '../src/drive/google-api.mjs';
 
 const VIDEO = Buffer.from(Array.from({ length: 4096 }, (_, i) => i % 251));
 
@@ -43,6 +43,8 @@ const DOC = {
   webViewLink: 'https://drive.google.com/file/d/doc_workspace_1/view',
 };
 
+// Emulates the two Drive API behaviours the route depends on: page tokens and
+// files.get?alt=media answering the forwarded Range with 206/416.
 function fakeDrive({ slow = false, unavailable = false } = {}) {
   const items = [
     folder('folder_root_1', 'Studio'),
@@ -51,47 +53,64 @@ function fakeDrive({ slow = false, unavailable = false } = {}) {
     file('file_small_1', 'note.pdf', Buffer.from('%PDF-1.7 test')),
     DOC,
   ];
-  const state = { opened: 0, destroyed: 0, closed: 0 };
+  const state = { opened: 0, destroyed: 0, aborted: 0, ranges: [] };
   return {
     state,
-    async list({ query = '', folderId = null, pageSize = 50, offset = 0 }) {
-      if (unavailable) throw new DriveUnavailableError('mount missing');
+    async list({ query = '', folderId = null, pageSize = 50, pageToken = null }) {
+      if (unavailable) throw new DriveNotConfiguredError();
+      const offset = pageToken === null ? 0 : Number(pageToken.replace('tok-', ''));
       const filtered = items.filter((item) => {
         if (folderId !== null && (item.parents[0] ?? null) !== folderId) return false;
         return item.name.toLowerCase().includes(query.toLowerCase());
       });
-      return { items: filtered.slice(offset, offset + pageSize), total: filtered.length };
+      const page = filtered.slice(offset, offset + pageSize);
+      const next = offset + page.length;
+      return { items: page, nextPageToken: next < filtered.length ? `tok-${next}` : null };
     },
     async get(id) {
-      if (unavailable) throw new DriveUnavailableError('mount missing');
+      if (unavailable) throw new DriveNotConfiguredError();
       const item = items.find((candidate) => candidate.id === id);
       if (!item) return null;
       const { body, ...publicItem } = item;
       return { item: publicItem, etag: `"${(item.size ?? 0).toString(16)}"` };
     },
-    async open(id, { start = 0, end } = {}) {
-      if (unavailable) throw new DriveUnavailableError('mount missing');
+    async open(id, { range = null, signal } = {}) {
+      if (unavailable) throw new DriveNotConfiguredError();
       const item = items.find((candidate) => candidate.id === id);
-      if (!item) return null;
-      if (item.kind === 'folder') return { kind: 'folder', item };
-      if (item.kind === 'workspace_document') return { kind: 'workspace_document', item };
+      if (!item || item.kind !== 'file') return null;
       state.opened += 1;
-      const slice = item.body.subarray(start, end === undefined ? undefined : end + 1);
+      state.ranges.push(range);
+      const size = item.body.length;
+      const parsed = parseRange(range, size);
+      const headers = new Headers({
+        'content-type': item.mimeType,
+        'accept-ranges': 'bytes',
+        etag: `"${size.toString(16)}"`,
+      });
+      if (parsed.kind === 'unsatisfiable') {
+        headers.set('content-range', `bytes */${size}`);
+        return { status: 416, headers, stream: Readable.from([]) };
+      }
+      const start = parsed.kind === 'range' ? parsed.start : 0;
+      const end = parsed.kind === 'range' ? parsed.end : size - 1;
+      const body = item.body.subarray(start, end + 1);
+      headers.set('content-length', String(body.length));
+      if (parsed.kind === 'range') headers.set('content-range', `bytes ${start}-${end}/${size}`);
+      signal?.addEventListener('abort', () => {
+        state.aborted += 1;
+      });
       const stream = slow
         ? new Readable({
             read() {
-              setTimeout(() => this.push(slice.subarray(0, 16)), 5);
+              setTimeout(() => this.push(body.subarray(0, 16)), 5);
             },
             destroy(error, callback) {
               state.destroyed += 1;
               callback(error);
             },
           })
-        : Readable.from(slice);
-      stream.on('close', () => {
-        state.closed += 1;
-      });
-      return { kind: 'binary', item, etag: `"${item.size.toString(16)}"`, stream };
+        : Readable.from(body);
+      return { status: parsed.kind === 'range' ? 206 : 200, headers, stream };
     },
   };
 }
@@ -225,7 +244,7 @@ describe('drive content and ranges', () => {
     assert.ok(body.equals(VIDEO));
   });
 
-  it('answers a middle range with 206 and Content-Range', async () => {
+  it('forwards the Range header and relays 206 with Content-Range', async () => {
     const response = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
       headers: { authorization: `Bearer ${token}`, range: 'bytes=2000-2999' },
     });
@@ -234,6 +253,7 @@ describe('drive content and ranges', () => {
     assert.equal(response.headers.get('content-length'), '1000');
     const body = Buffer.from(await response.arrayBuffer());
     assert.ok(body.equals(VIDEO.subarray(2000, 3000)));
+    assert.equal(drive.state.ranges.at(-1), 'bytes=2000-2999', 'the client Range reaches the adapter unchanged');
   });
 
   it('supports open-ended and suffix ranges', async () => {
@@ -252,15 +272,7 @@ describe('drive content and ranges', () => {
     assert.ok(Buffer.from(await suffix.arrayBuffer()).equals(VIDEO.subarray(-10)));
   });
 
-  it('clamps a range that runs past the end', async () => {
-    const response = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
-      headers: { authorization: `Bearer ${token}`, range: `bytes=4000-99999` },
-    });
-    assert.equal(response.status, 206);
-    assert.equal(response.headers.get('content-range'), `bytes 4000-${VIDEO.length - 1}/${VIDEO.length}`);
-  });
-
-  it('answers an unsatisfiable range with 416', async () => {
+  it('relays a 416 from Drive with its Content-Range', async () => {
     const response = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
       headers: { authorization: `Bearer ${token}`, range: `bytes=${VIDEO.length + 10}-` },
     });
@@ -271,15 +283,7 @@ describe('drive content and ranges', () => {
     assert.equal(JSON.parse(body).error.code, 'range_not_satisfiable');
   });
 
-  it('ignores a multi-range request and serves the whole file', async () => {
-    const response = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
-      headers: { authorization: `Bearer ${token}`, range: 'bytes=0-9,20-29' },
-    });
-    assert.equal(response.status, 200);
-    assert.equal((await response.arrayBuffer()).byteLength, VIDEO.length);
-  });
-
-  it('answers HEAD without a body', async () => {
+  it('answers HEAD from metadata without opening the media endpoint', async () => {
     const openedBefore = drive.state.opened;
     const response = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
       method: 'HEAD',
@@ -289,7 +293,14 @@ describe('drive content and ranges', () => {
     assert.equal(response.headers.get('content-length'), '100');
     assert.equal(response.headers.get('content-range'), `bytes 0-99/${VIDEO.length}`);
     assert.equal((await response.arrayBuffer()).byteLength, 0);
-    assert.equal(drive.state.opened, openedBefore, 'HEAD must not open the file');
+    assert.equal(drive.state.opened, openedBefore, 'HEAD must not open the media stream');
+
+    const headFull = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
+      method: 'HEAD',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(headFull.status, 200);
+    assert.equal(headFull.headers.get('content-length'), String(VIDEO.length));
   });
 
   it('refuses to stream a Workspace document and a folder', async () => {
@@ -303,7 +314,7 @@ describe('drive content and ranges', () => {
     assert.equal(folderResponse.body.error.code, 'not_a_file');
   });
 
-  it('stops reading when the client disconnects', async () => {
+  it('aborts the upstream request when the client disconnects', async () => {
     const slow = fakeDrive({ slow: true });
     const slowBridge = await startBridge({ drive: slow });
     const slowToken = await pairDevice(slowBridge);
@@ -317,7 +328,8 @@ describe('drive content and ranges', () => {
     await reader.read();
     controller.abort();
     await new Promise((resolvePromise) => setTimeout(resolvePromise, 100));
-    assert.equal(slow.state.destroyed, 1, 'the adapter stream must be destroyed on abort');
+    assert.equal(slow.state.destroyed, 1, 'the upstream stream must be destroyed on abort');
+    assert.equal(slow.state.aborted, 1, 'the adapter signal must be aborted');
     // The server keeps serving other requests after a cancelled stream.
     const health = await slowBridge.request('/v1/health');
     assert.equal(health.status, 200);
@@ -325,14 +337,22 @@ describe('drive content and ranges', () => {
   });
 });
 
-describe('drive adapter failures', () => {
-  it('reports a missing Drive client as 503 instead of an empty list', async () => {
+describe('drive configuration and failures', () => {
+  it('reports an unconfigured Drive as 503 drive_not_configured', async () => {
+    const bridge = await startBridge({ drive: null });
+    const token = await pairDevice(bridge);
+    const response = await bridge.request('/v1/drive/files', { token });
+    assert.equal(response.status, 503);
+    assert.equal(response.body.error.code, 'drive_not_configured');
+    await bridge.close();
+  });
+
+  it('reports a missing Drive authorization as 503, not an empty list', async () => {
     const bridge = await startBridge({ drive: fakeDrive({ unavailable: true }) });
     const token = await pairDevice(bridge);
     const response = await bridge.request('/v1/drive/files', { token });
     assert.equal(response.status, 503);
-    assert.equal(response.body.error.code, 'drive_unavailable');
-    assert.equal(response.body.error.retryable, true);
+    assert.equal(response.body.error.code, 'drive_not_configured');
     await bridge.close();
   });
 });
