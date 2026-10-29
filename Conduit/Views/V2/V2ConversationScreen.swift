@@ -173,6 +173,7 @@ struct V2ConversationScreen: View {
             V2Backdrop(glowProfile: appState.activeRoomSurface == nil ? appState.conversationIdentityProfile : nil)
             conversation
                 .overlay(alignment: .bottomTrailing) {
+#if !LAA_BUILD
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
                         // shrinks and fades while the composer is expanded.
@@ -186,6 +187,7 @@ struct V2ConversationScreen: View {
                             .padding(.bottom, 10)
                             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: hidesVoiceButton)
                     }
+#endif
                 }
                 // On a wide window the transcript, the composer and the
                 // voice button beside it keep to a readable column that

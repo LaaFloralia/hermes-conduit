@@ -11,6 +11,44 @@ import SwiftUI
 import UIKit
 import WebKit
 
+enum MarkdownRichPalette {
+    static func link(usesAccentSurface: Bool, usesLAARichContentStyle: Bool) -> UIColor {
+        if usesAccentSurface { return .white }
+#if LAA_BUILD
+        if usesLAARichContentStyle { return UIColor(LAAColor.link) }
+#endif
+        return .link
+    }
+
+    static func marker(usesAccentSurface: Bool, usesLAARichContentStyle: Bool) -> UIColor {
+        if usesAccentSurface { return .white }
+#if LAA_BUILD
+        if usesLAARichContentStyle { return UIColor(LAAColor.link) }
+#endif
+        return UIColor(Color.conduitAccent)
+    }
+}
+
+enum MarkdownRichMetrics {
+#if LAA_BUILD
+    static let listGap = LAASpacing.x2
+    static let markerGap = LAASpacing.x2
+    static let quoteGap = LAASpacing.x2
+    static let inset = LAASpacing.x3
+    static let verticalInset = LAASpacing.x2
+    static let codeVerticalInset = LAASpacing.x2
+    static let radius = LAARadius.card
+#else
+    static let listGap: CGFloat = 7
+    static let markerGap: CGFloat = 9
+    static let quoteGap: CGFloat = 6
+    static let inset: CGFloat = 12
+    static let verticalInset: CGFloat = 10
+    static let codeVerticalInset: CGFloat = 8
+    static let radius: CGFloat = 13
+#endif
+}
+
 struct MarkdownText: View {
     let source: String
     var foregroundStyle: Color = .primary
@@ -46,6 +84,31 @@ struct MarkdownText: View {
     @Environment(\.markdownJoinsProseRuns) private var joinsProseRuns
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.accessibilitySwitchControlEnabled) private var switchControlEnabled
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var usesLAARichContentStyle: Bool {
+#if LAA_BUILD
+        laaRichContentStyle
+#else
+        false
+#endif
+    }
+
+    private var effectiveForeground: Color {
+#if LAA_BUILD
+        if usesLAARichContentStyle && !usesAccentSurface { return LAAColor.text }
+#endif
+        return foregroundStyle
+    }
+
+    private var effectiveLinkColor: UIColor {
+#if LAA_BUILD
+        if usesLAARichContentStyle && !usesAccentSurface { return UIColor(LAAColor.link) }
+#endif
+        return usesAccentSurface ? .white : .link
+    }
 
     var body: some View {
         // Path fork is centralized here: ordinary messages keep the exact
@@ -55,7 +118,7 @@ struct MarkdownText: View {
         if MarkdownLargeDocumentPolicy.isLargeDocument(source) {
             LargeMarkdownDocumentView(
                 source: source,
-                foregroundStyle: foregroundStyle,
+                foregroundStyle: effectiveForeground,
                 usesAccentSurface: usesAccentSurface,
                 gatewayMediaDataURL: gatewayMediaDataURL
             )
@@ -76,13 +139,15 @@ struct MarkdownText: View {
     @ViewBuilder
     private var normalBody: some View {
         let _ = isStreaming ? () : TranscriptPerf.note(.settledMarkdownBody, context: source)
+        let foregroundStyle = effectiveForeground
         let rendering = MarkdownRenderCache.rendering(
             source: source,
             recognizesGatewayMedia: gatewayMediaDataURL != nil,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
             isStreaming: isStreaming,
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
         // A settled answer in the chat draws its prose runs in one text
         // view each. A streaming reply keeps a view per block, so a new
@@ -114,7 +179,7 @@ struct MarkdownText: View {
                     font: ChatTypography.font(for: .body, appearance: chatTextSize),
                     textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                     lineSpacing: 4,
-                    linkColor: usesAccentSurface ? .white : .link
+                    linkColor: effectiveLinkColor
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if rendering.needsRichBounding {
@@ -148,7 +213,8 @@ struct MarkdownText: View {
                                     for: piece.blocks,
                                     foregroundStyle: foregroundStyle,
                                     usesAccentSurface: usesAccentSurface,
-                                    chatTextSize: chatTextSize
+                                    chatTextSize: chatTextSize,
+                                    usesLAARichContentStyle: usesLAARichContentStyle
                                 ),
                                 topPadding: MarkdownProseRun.topPadding(for: rendering.blocks[index]),
                                 foregroundStyle: foregroundStyle,
@@ -354,7 +420,8 @@ final class MarkdownRendering {
         for run: Range<Int>,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
-        chatTextSize: ChatTextAppearance
+        chatTextSize: ChatTextAppearance,
+        usesLAARichContentStyle: Bool = false
     ) -> NSAttributedString {
         if let text = proseRunTexts[run] { return text }
         let text = MarkdownProseRun.attributedText(
@@ -362,7 +429,8 @@ final class MarkdownRendering {
             references: references,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
         proseRunTexts[run] = text
         return text
@@ -391,17 +459,21 @@ enum MarkdownRenderCache {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         isStreaming: Bool,
-        chatTextSize: ChatTextAppearance
+        chatTextSize: ChatTextAppearance,
+        usesLAARichContentStyle: Bool = false
     ) -> MarkdownRendering {
-        // `foregroundStyle` is deliberately absent from the key: only two
-        // values are ever passed (.primary / .white), each uniquely tied to
-        // `usesAccentSurface` (false / true), so keying on that is stable —
+        // `foregroundStyle` is deliberately absent from the key: its
+        // supported values are tied to the accent and LAA surface flags —
         // whereas `String(describing:)` of a SwiftUI Color is not (its
         // description is undocumented and can drift for adaptive colors). The
         // assert fails loudly in debug if a third style is ever introduced;
         // promote it to an explicit key token then.
+        var supportedStyle = usesAccentSurface ? foregroundStyle == .white : foregroundStyle == .primary
+#if LAA_BUILD
+        if usesLAARichContentStyle && !usesAccentSurface && foregroundStyle == LAAColor.text { supportedStyle = true }
+#endif
         assert(
-            usesAccentSurface ? foregroundStyle == .white : foregroundStyle == .primary,
+            supportedStyle,
             "MarkdownRenderCache keys on usesAccentSurface, not foregroundStyle; a new style needs an explicit key token."
         )
 
@@ -415,6 +487,7 @@ enum MarkdownRenderCache {
         let key = [
             recognizesGatewayMedia ? "1" : "0",
             usesAccentSurface ? "1" : "0",
+            usesLAARichContentStyle ? "laa" : "conduit",
             UIApplication.shared.preferredContentSizeCategory.rawValue,
             chatTextSize.cacheIdentity,
             // Hermes' @session links are titled with the chat's name once
@@ -434,7 +507,8 @@ enum MarkdownRenderCache {
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 newestCharacterOpacities: [],
-                chatTextSize: chatTextSize
+                chatTextSize: chatTextSize,
+                usesLAARichContentStyle: usesLAARichContentStyle
             )
         )
         // While streaming, `source` changes every frame, so a cached entry is
@@ -537,7 +611,8 @@ enum MarkdownSelectionFormatter {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         newestCharacterOpacities: [Double],
-        chatTextSize: ChatTextAppearance = .default
+        chatTextSize: ChatTextAppearance = .default,
+        usesLAARichContentStyle: Bool = false
     ) -> NSAttributedString? {
         guard !blocks.isEmpty, blocks.allSatisfy(\.isSelectableFlowBlock) else { return nil }
 
@@ -546,7 +621,8 @@ enum MarkdownSelectionFormatter {
         // `.default` reproduces the historical fonts exactly.
         let bodyFont = ChatTypography.font(for: .body, appearance: chatTextSize)
         let textColor = usesAccentSurface ? UIColor.white : UIColor(foregroundStyle)
-        let linkColor = usesAccentSurface ? UIColor.white : UIColor.link
+        let linkColor = MarkdownRichPalette.link(usesAccentSurface: usesAccentSurface, usesLAARichContentStyle: usesLAARichContentStyle)
+        let markerColor = MarkdownRichPalette.marker(usesAccentSurface: usesAccentSurface, usesLAARichContentStyle: usesLAARichContentStyle)
         let result = NSMutableAttributedString()
 
         for (index, block) in blocks.enumerated() {
@@ -556,6 +632,7 @@ enum MarkdownSelectionFormatter {
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
+                markerColor: markerColor,
                 usesAccentSurface: usesAccentSurface,
                 foregroundStyle: foregroundStyle,
                 chatTextSize: chatTextSize
@@ -576,6 +653,9 @@ enum MarkdownSelectionFormatter {
         }
 
         applyTrailingCharacterOpacities(newestCharacterOpacities, to: result, baseColor: textColor)
+#if LAA_BUILD
+        if usesLAARichContentStyle { return LAALinkDecoration.addingIndicators(to: result) }
+#endif
         return result
     }
 
@@ -585,6 +665,7 @@ enum MarkdownSelectionFormatter {
         bodyFont: UIFont,
         textColor: UIColor,
         linkColor: UIColor,
+        markerColor: UIColor,
         usesAccentSurface: Bool,
         foregroundStyle: Color,
         chatTextSize: ChatTextAppearance
@@ -610,7 +691,7 @@ enum MarkdownSelectionFormatter {
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
-                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent),
+                markerColor: markerColor,
                 chatTextSize: chatTextSize
             )
 
@@ -623,7 +704,7 @@ enum MarkdownSelectionFormatter {
                 bodyFont: bodyFont,
                 textColor: textColor,
                 linkColor: linkColor,
-                markerColor: usesAccentSurface ? .white : UIColor(Color.conduitAccent),
+                markerColor: markerColor,
                 chatTextSize: chatTextSize
             )
 
@@ -847,7 +928,6 @@ struct MarkdownBlockView: View {
                 selectionSegment: blockDescriptor,
                 trailingCharacterOpacities: newestCharacterOpacities
             )
-
         case .quote(let lines):
             MarkdownQuote(
                 lines: lines,
@@ -1104,13 +1184,15 @@ enum InlineMarkdownContent {
         let foregroundStyle: Color
         let font: UIFont
         let usesAccentSurface: Bool
+        let usesLAARichContentStyle: Bool
 
-        init(source: String, definitions: String, foregroundStyle: Color, font: UIFont, usesAccentSurface: Bool) {
+        init(source: String, definitions: String, foregroundStyle: Color, font: UIFont, usesAccentSurface: Bool, usesLAARichContentStyle: Bool) {
             self.source = source
             self.definitions = definitions
             self.foregroundStyle = foregroundStyle
             self.font = font
             self.usesAccentSurface = usesAccentSurface
+            self.usesLAARichContentStyle = usesLAARichContentStyle
         }
 
         override var hash: Int {
@@ -1120,6 +1202,7 @@ enum InlineMarkdownContent {
             hasher.combine(foregroundStyle)
             hasher.combine(font)
             hasher.combine(usesAccentSurface)
+            hasher.combine(usesLAARichContentStyle)
             return hasher.finalize()
         }
 
@@ -1130,6 +1213,7 @@ enum InlineMarkdownContent {
                 && foregroundStyle == other.foregroundStyle
                 && font == other.font
                 && usesAccentSurface == other.usesAccentSurface
+                && usesLAARichContentStyle == other.usesLAARichContentStyle
         }
     }
 
@@ -1152,10 +1236,11 @@ enum InlineMarkdownContent {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         font: UIFont,
-        trailingCharacterOpacities: [Double]
+        trailingCharacterOpacities: [Double],
+        usesLAARichContentStyle: Bool = false
     ) -> NSAttributedString {
         func build() -> NSAttributedString {
-            SelectableTextView.bridge(
+            let bridged = SelectableTextView.bridge(
                 attributed(
                     source: source,
                     references: references,
@@ -1164,8 +1249,12 @@ enum InlineMarkdownContent {
                 ),
                 defaultFont: font,
                 defaultColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
-                linkColor: usesAccentSurface ? .white : .link
+                linkColor: MarkdownRichPalette.link(usesAccentSurface: usesAccentSurface, usesLAARichContentStyle: usesLAARichContentStyle)
             )
+#if LAA_BUILD
+            if usesLAARichContentStyle { return LAALinkDecoration.addingIndicators(to: bridged) }
+#endif
+            return bridged
         }
         // A streaming tail fades its newest characters each frame.
         guard trailingCharacterOpacities.isEmpty else { return build() }
@@ -1175,7 +1264,8 @@ enum InlineMarkdownContent {
             definitions: references.definitionsMarkdown,
             foregroundStyle: foregroundStyle,
             font: font,
-            usesAccentSurface: usesAccentSurface
+            usesAccentSurface: usesAccentSurface,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
         if let cached = bridgedCache.object(forKey: key) { return cached }
         // The bridge builds a mutable string; every row shares the cached
@@ -1250,19 +1340,35 @@ private struct InlineMarkdown: View {
     var trailingCharacterOpacities: [Double] = []
     @Environment(\.markdownReferences) private var references
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var linkColor: UIColor {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return UIColor(LAAColor.link) }
+#endif
+        return usesAccentSurface ? .white : .link
+    }
 
     private var effectiveFont: UIFont {
         font ?? ChatTypography.font(for: .body, appearance: chatTextSize)
     }
 
     private var attributed: NSAttributedString {
-        InlineMarkdownContent.bridged(
+#if LAA_BUILD
+        let usesLAARichContentStyle = laaRichContentStyle
+#else
+        let usesLAARichContentStyle = false
+#endif
+        return InlineMarkdownContent.bridged(
             source: source,
             references: references,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
             font: effectiveFont,
-            trailingCharacterOpacities: trailingCharacterOpacities
+            trailingCharacterOpacities: trailingCharacterOpacities,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
     }
 
@@ -1273,7 +1379,7 @@ private struct InlineMarkdown: View {
             textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
             lineSpacing: lineSpacing,
             maximumNumberOfLines: maximumNumberOfLines,
-            linkColor: usesAccentSurface ? .white : .link,
+            linkColor: linkColor,
             textAlignment: textAlignment,
             selfSizingWidthRange: selfSizingWidthRange,
             selectionCoordinator: selectionCoordinator,
@@ -1294,6 +1400,30 @@ private struct MarkdownList: View {
     var trailingCharacterOpacities: [Double] = []
     @Environment(\.chatTextSize) private var chatTextSize
     @Environment(\.sizeCategory) private var sizeCategory
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var markerColor: Color {
+#if LAA_BUILD
+        if laaRichContentStyle { return usesAccentSurface ? LAAColor.ownBubbleText : LAAColor.link }
+#endif
+        return usesAccentSurface ? Color.white.opacity(0.92) : Color.conduitAccent
+    }
+
+    private var completeMarkerColor: Color {
+#if LAA_BUILD
+        if laaRichContentStyle { return usesAccentSurface ? LAAColor.ownBubbleText : LAAColor.link }
+#endif
+        return usesAccentSurface ? Color.white : Color.conduitAccent
+    }
+
+    private var inactiveMarkerColor: Color {
+#if LAA_BUILD
+        if laaRichContentStyle { return usesAccentSurface ? LAAColor.ownBubbleText : LAAColor.secondaryText }
+#endif
+        return usesAccentSurface ? Color.white.opacity(0.82) : Color.secondary
+    }
 
     /// Marker glyphs resolve Dynamic Type through the environment category
     /// (rather than a size frozen at body-evaluation time), so a system
@@ -1303,26 +1433,24 @@ private struct MarkdownList: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: MarkdownRichMetrics.listGap) {
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                 let task = MarkdownParser.taskItem(item)
                 // Top-aligned with the marker in a box at least one text
                 // line tall: the item is a UIKit text view, which reports no
                 // text baseline to SwiftUI, so a first-baseline row put the
                 // marker a line above its text.
-                HStack(alignment: .top, spacing: 9) {
+                HStack(alignment: .top, spacing: MarkdownRichMetrics.markerGap) {
                     if let task {
                         Image(systemName: task.complete ? "checkmark.square.fill" : "square")
                             .font(.system(size: markerFont.pointSize))
-                            .foregroundStyle(task.complete
-                                             ? (usesAccentSurface ? Color.white : Color.conduitAccent)
-                                             : (usesAccentSurface ? Color.white.opacity(0.82) : Color.secondary))
+                            .foregroundStyle(task.complete ? completeMarkerColor : inactiveMarkerColor)
                             .frame(width: ChatTypography.dimension(16, appearance: chatTextSize), alignment: .trailing)
                             .frame(minHeight: markerFont.lineHeight)
                     } else {
                         Text(ordered ? "\(start + index)." : "•")
                             .font(.system(size: markerFont.pointSize, weight: .semibold, design: chatTextSize.style.fontDesign))
-                            .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.92) : Color.conduitAccent)
+                            .foregroundStyle(markerColor)
                             .frame(width: ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize), alignment: .trailing)
                             .frame(minHeight: markerFont.lineHeight)
                     }
@@ -1351,6 +1479,23 @@ private struct MarkdownQuote: View {
     let selectionSegments: [MarkdownSelectionSegmentDescriptor]
     var trailingCharacterOpacities: [Double] = []
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var quoteLineColor: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.link }
+#endif
+        return usesAccentSurface ? Color.white.opacity(0.78) : Color.conduitAccent.opacity(0.78)
+    }
+
+    private var quoteFill: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
+#endif
+        return usesAccentSurface ? Color.black.opacity(0.13) : Color.conduitAccent.opacity(0.07)
+    }
 
     private var callout: (kind: String, text: String)? {
         guard let first = lines.first, let marker = MarkdownParser.calloutMarker(first.text) else { return nil }
@@ -1372,12 +1517,12 @@ private struct MarkdownQuote: View {
                 trailingCharacterOpacities: trailingCharacterOpacities
             )
         } else {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: MarkdownRichMetrics.quoteGap) {
                 ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                     HStack(alignment: .top, spacing: 8) {
                         HStack(spacing: 3) {
                             ForEach(0..<max(line.depth, 1), id: \.self) { _ in
-                                Capsule().fill(usesAccentSurface ? Color.white.opacity(0.78) : Color.conduitAccent.opacity(0.78)).frame(width: 3)
+                                Capsule().fill(quoteLineColor).frame(width: 3)
                             }
                         }
                         InlineMarkdown(
@@ -1395,11 +1540,11 @@ private struct MarkdownQuote: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, MarkdownRichMetrics.inset)
+            .padding(.vertical, MarkdownRichMetrics.verticalInset)
             .background(
-                usesAccentSurface ? Color.black.opacity(0.13) : Color.conduitAccent.opacity(0.07),
-                in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+                quoteFill,
+                in: RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
             )
         }
     }
@@ -1842,6 +1987,17 @@ private struct MarkdownPlainCell: View {
     let font: UIFont
     let alignment: MarkdownTableAlignment
     @Environment(\.markdownReferences) private var references
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var usesLAARichContentStyle: Bool {
+#if LAA_BUILD
+        laaRichContentStyle
+#else
+        false
+#endif
+    }
 
     var body: some View {
         let _ = TranscriptPerf.note(.plainTableCellBody)
@@ -1851,10 +2007,12 @@ private struct MarkdownPlainCell: View {
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
             font: font,
-            trailingCharacterOpacities: []
+            trailingCharacterOpacities: [],
+            usesLAARichContentStyle: usesLAARichContentStyle
         )))
             .multilineTextAlignment(alignment.text)
-            .tint(usesAccentSurface ? .white : Color(uiColor: .link))
+            .tint(Color(uiColor: MarkdownRichPalette.link(usesAccentSurface: usesAccentSurface,
+                                                         usesLAARichContentStyle: usesLAARichContentStyle)))
             .fixedSize(horizontal: false, vertical: true)
     }
 }
@@ -2524,6 +2682,33 @@ private struct GatewayMediaFileCard: View {
     @State private var failed = false
     @State private var tooLarge = false
     @State private var openTask: Task<Void, Never>?
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var fileSurface: Color {
+#if LAA_BUILD
+        if laaRichContentStyle { return LAAColor.subtleSurface }
+#endif
+        return Color.primary.opacity(0.05)
+    }
+
+    private var fileAccent: Color {
+#if LAA_BUILD
+        if laaRichContentStyle { return LAAColor.link }
+#endif
+        return .conduitAccent
+    }
+
+    private var fileTypeLabel: String {
+#if LAA_BUILD
+        if laaRichContentStyle {
+            let ext = (path as NSString).pathExtension.uppercased()
+            return ext.isEmpty ? kind.label : ext
+        }
+#endif
+        return kind.label
+    }
 
     var body: some View {
         Group {
@@ -2554,7 +2739,7 @@ private struct GatewayMediaFileCard: View {
         HStack(spacing: 12) {
             Image(systemName: failed ? "exclamationmark.triangle.fill" : kind.systemImage)
                 .font(.title2)
-                .foregroundStyle(failed ? Color.secondary : Color.conduitAccent)
+                .foregroundStyle(failed ? Color.secondary : fileAccent)
                 .frame(width: 44, height: 44)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             VStack(alignment: .leading, spacing: 2) {
@@ -2562,7 +2747,7 @@ private struct GatewayMediaFileCard: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(verbatim: failed ? failureLabel : kind.label)
+                Text(verbatim: failed ? failureLabel : fileTypeLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -2577,12 +2762,13 @@ private struct GatewayMediaFileCard: View {
         }
         .padding(10)
         .frame(maxWidth: 360, alignment: .leading)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(fileSurface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 13, style: .continuous).strokeBorder(Color.secondary.opacity(0.18), lineWidth: 1)
         }
         .accessibilityElement(children: .combine)
         .opensMediaPreview(open)
+        .accessibilityIdentifier("chat.media.file")
     }
 
     private var displayName: String {
@@ -3002,6 +3188,53 @@ struct ChatCodeBlock: View {
     var selectionSegment: MarkdownSelectionSegmentDescriptor?
     @State private var copied = false
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var codeFill: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
+#endif
+        return usesAccentSurface ? Color.black.opacity(0.24) : Color.primary.opacity(0.055)
+    }
+    private var codeLink: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.link }
+#endif
+        return usesAccentSurface ? .white : .conduitAccent
+    }
+    private var copyTitle: String {
+#if LAA_BUILD
+        if laaRichContentStyle { return copied ? LAACopy.chatCopied : LAACopy.chatCopy }
+#endif
+        return copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy")
+    }
+    private var codeLabel: String {
+#if LAA_BUILD
+        if laaRichContentStyle { return LAACopy.chatCode }
+#endif
+        return AppLocalization.string("Code")
+    }
+    private var codeHeaderFill: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
+#endif
+        return usesAccentSurface ? Color.black.opacity(0.28) : Color.primary.opacity(0.055)
+    }
+    private var codeBorder: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.separator }
+#endif
+        return usesAccentSurface ? Color.white.opacity(0.28) : Color.secondary.opacity(0.20)
+    }
+    private var highlightedInLAA: Bool {
+#if LAA_BUILD
+        return laaRichContentStyle
+#else
+        return false
+#endif
+    }
 
     /// Code content scales with the chat text size (issue #85); the
     /// language label and Copy button above stay interface chrome.
@@ -3014,7 +3247,7 @@ struct ChatCodeBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
+                Text(normalizedLanguage == "plain" ? codeLabel : normalizedLanguage)
                     .font(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
                 Spacer()
@@ -3024,13 +3257,14 @@ struct ChatCodeBlock: View {
                     copied = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
                 } label: {
-                    Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
+                    Label(copyTitle, systemImage: copied ? "checkmark" : "doc.on.doc").font(.caption2.weight(.semibold))
                 }
-                .tint(usesAccentSurface ? .white : .conduitAccent)
+                .tint(codeLink)
+                .accessibilityIdentifier("chat.code.copy")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(usesAccentSurface ? Color.black.opacity(0.28) : Color.primary.opacity(0.055))
+            .padding(.horizontal, MarkdownRichMetrics.inset)
+            .padding(.vertical, MarkdownRichMetrics.codeVerticalInset)
+            .background(codeHeaderFill)
             ScrollView(.horizontal, showsIndicators: false) {
                 Group {
                     if usesAccentSurface {
@@ -3045,7 +3279,8 @@ struct ChatCodeBlock: View {
                         )
                     } else {
                         SelectableTextView(
-                            attributedText: SyntaxHighlighter.highlight(source, language: normalizedLanguage),
+                            attributedText: SyntaxHighlighter.highlight(source, language: normalizedLanguage,
+                                                                        usesLAARichContentStyle: highlightedInLAA),
                             font: codeFont,
                             textColor: .label,
                             lineSpacing: 3,
@@ -3055,16 +3290,16 @@ struct ChatCodeBlock: View {
                         )
                     }
                 }
-                .padding(12)
+                .padding(MarkdownRichMetrics.inset)
             }
         }
         .background(
-            usesAccentSurface ? Color.black.opacity(0.24) : Color.primary.opacity(0.055),
-            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            codeFill,
+            in: RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(usesAccentSurface ? Color.white.opacity(0.28) : Color.secondary.opacity(0.20), lineWidth: 1)
+            RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
+                .strokeBorder(codeBorder, lineWidth: 1)
         }
     }
 }
@@ -3543,15 +3778,29 @@ enum SyntaxHighlighter {
     /// tokenizer bakes colors only — fonts are applied when the result is
     /// bridged into an NSAttributedString with a caller-supplied default
     /// font — so one highlighted value serves every typography.
-    static func highlight(_ source: String, language: String) -> AttributedString {
-        let key = "\(language)|\(source)" as NSString
+    static func highlight(_ source: String, language: String, usesLAARichContentStyle: Bool = false) -> AttributedString {
+        let key = "\(usesLAARichContentStyle)|\(language)|\(source)" as NSString
         if let cached = cache.object(forKey: key) { return cached.value }
-        let highlighted = tokenize(source, language: language)
+        let highlighted = tokenize(source, language: language, usesLAARichContentStyle: usesLAARichContentStyle)
         cache.setObject(HighlightedCode(highlighted), forKey: key, cost: source.utf8.count)
         return highlighted
     }
 
-    private static func tokenize(_ source: String, language: String) -> AttributedString {
+    private static func tokenize(_ source: String, language: String, usesLAARichContentStyle: Bool) -> AttributedString {
+        var textColor = Color.primary
+        var commentColor = Color.secondary
+        var stringColor = Color.conduitAura
+        var numberColor = Color.orange
+        var keywordColor = Color.conduitAccent
+#if LAA_BUILD
+        if usesLAARichContentStyle {
+            textColor = LAAColor.text
+            commentColor = LAAColor.secondaryText
+            stringColor = LAAColor.link
+            numberColor = LAAColor.link
+            keywordColor = LAAColor.link
+        }
+#endif
         let keywords: Set<String> = ["as", "async", "await", "break", "case", "catch", "class", "const", "continue", "def", "else", "enum", "false", "final", "for", "func", "guard", "if", "import", "in", "init", "let", "nil", "null", "private", "public", "return", "self", "static", "struct", "switch", "throw", "true", "try", "var", "while"]
         // String-literal alternatives must be disjoint (`\\.` vs `[^"\\]`):
         // if both branches can match a backslash, an unterminated literal with
@@ -3564,18 +3813,18 @@ enum SyntaxHighlighter {
         var output = AttributedString()
         for match in expression.matches(in: source, range: range) {
             guard let matchRange = Range(match.range, in: source) else { continue }
-            append(String(source[cursor..<matchRange.lowerBound]), color: .primary, to: &output)
+            append(String(source[cursor..<matchRange.lowerBound]), color: textColor, to: &output)
             let token = String(source[matchRange])
             let color: Color
-            if token.hasPrefix("//") || token.hasPrefix("#") || token.hasPrefix("/*") { color = .secondary }
-            else if token.hasPrefix("\"") || token.hasPrefix("'") { color = .conduitAura }
-            else if Double(token) != nil { color = .orange }
-            else if keywords.contains(token) { color = .conduitAccent }
-            else { color = .primary }
+            if token.hasPrefix("//") || token.hasPrefix("#") || token.hasPrefix("/*") { color = commentColor }
+            else if token.hasPrefix("\"") || token.hasPrefix("'") { color = stringColor }
+            else if Double(token) != nil { color = numberColor }
+            else if keywords.contains(token) { color = keywordColor }
+            else { color = textColor }
             append(token, color: color, to: &output)
             cursor = matchRange.upperBound
         }
-        append(String(source[cursor...]), color: .primary, to: &output)
+        append(String(source[cursor...]), color: textColor, to: &output)
         return output
     }
 

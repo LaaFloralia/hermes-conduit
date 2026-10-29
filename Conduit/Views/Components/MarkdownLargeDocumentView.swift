@@ -702,18 +702,18 @@ private struct LargeDocumentPreparingView: View {
 /// selected chat text size (fonts bake into the string — issue #85), and
 /// the accent-surface flag (colors bake in).
 ///
-/// Invariant for the remaining inputs: `foregroundStyle` is tied 1:1 to
-/// `usesAccentSurface` at every call site (`.primary`/`false` and
-/// `.white`/`true` — the same pairing `MarkdownRenderCache` asserts), and
-/// the per-chunk reference subset is fixed by the prepared plan. A changed
-/// source means a new source identity and therefore new chunk-view ids and
-/// fresh boxes, so neither input can change for a surviving box. Large
-/// structures are never hashed or serialized on body evaluation.
+/// The foreground color is also part of the memo identity: an LAA chat can
+/// use a different color on the same non-accent surface. The per-chunk
+/// reference subset is fixed by the prepared plan. A changed source gets
+/// fresh chunk-view ids and boxes, so large structures are never hashed or
+/// serialized on body evaluation.
 final class LargeFlowChunkBox {
     private var cachedText: NSAttributedString?
     private var cachedCategory: UIContentSizeCategory?
     private var cachedChatTextSize: ChatTextAppearance?
     private var cachedUsesAccentSurface: Bool?
+    private var cachedForegroundStyle: Color?
+    private var cachedUsesLAARichContentStyle: Bool?
 
     @MainActor
     func attributedText(
@@ -722,12 +722,15 @@ final class LargeFlowChunkBox {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         contentCategory: UIContentSizeCategory = UIApplication.shared.preferredContentSizeCategory,
-        chatTextSize: ChatTextAppearance = .default
+        chatTextSize: ChatTextAppearance = .default,
+        usesLAARichContentStyle: Bool = false
     ) -> NSAttributedString? {
         if let cachedText,
            cachedCategory == contentCategory,
            cachedChatTextSize == chatTextSize,
-           cachedUsesAccentSurface == usesAccentSurface {
+           cachedUsesAccentSurface == usesAccentSurface,
+           cachedForegroundStyle == foregroundStyle,
+           cachedUsesLAARichContentStyle == usesLAARichContentStyle {
             return cachedText
         }
         let text = MarkdownSelectionFormatter.attributedText(
@@ -736,12 +739,15 @@ final class LargeFlowChunkBox {
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
             newestCharacterOpacities: [],
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
         cachedText = text
         cachedCategory = contentCategory
         cachedChatTextSize = chatTextSize
         cachedUsesAccentSurface = usesAccentSurface
+        cachedForegroundStyle = foregroundStyle
+        cachedUsesLAARichContentStyle = usesLAARichContentStyle
         return text
     }
 }
@@ -762,6 +768,9 @@ struct LargeFlowChunkView: View {
 
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
 
     /// Per-view memo box: identity comes from the enclosing ForEach index
     /// (keyed by source identity), so it survives re-evaluations and dies
@@ -769,20 +778,26 @@ struct LargeFlowChunkView: View {
     @State private var box = LargeFlowChunkBox()
 
     var body: some View {
+#if LAA_BUILD
+        let usesLAARichContentStyle = laaRichContentStyle
+#else
+        let usesLAARichContentStyle = false
+#endif
         if let attributed = box.attributedText(
             blocks: blocks,
             references: references,
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
             contentCategory: UIContentSizeCategory(sizeCategory),
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            usesLAARichContentStyle: usesLAARichContentStyle
         ) {
             SelectableTextView(
                 attributedText: attributed,
                 font: ChatTypography.font(for: .body, appearance: chatTextSize),
                 textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                 lineSpacing: 4,
-                linkColor: usesAccentSurface ? .white : .link,
+                linkColor: MarkdownRichPalette.link(usesAccentSurface: usesAccentSurface, usesLAARichContentStyle: usesLAARichContentStyle),
                 selectionCoordinator: selectionCoordinator,
                 selectionSegment: selectionSegment
             )
@@ -909,6 +924,9 @@ struct LargeCodeBlockView: View {
     let usesAccentSurface: Bool
 
     @Environment(\.chatRowDisclosure) private var disclosure
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
     @State private var expanded = false
     @State private var copied = false
     @State private var slices: LargeCodeBlockResult<[String]>?
@@ -925,6 +943,42 @@ struct LargeCodeBlockView: View {
     }
 
     private var normalizedLanguage: String { MarkdownLanguage.normalized(language) }
+    private var codeFill: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
+#endif
+        return usesAccentSurface ? Color.black.opacity(0.24) : Color.primary.opacity(0.055)
+    }
+    private var codeAccent: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.link }
+#endif
+        return usesAccentSurface ? .white : .conduitAccent
+    }
+    private var codeBorder: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.separator }
+#endif
+        return usesAccentSurface ? Color.white.opacity(0.28) : Color.secondary.opacity(0.20)
+    }
+    private var codeHeaderFill: Color {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return LAAColor.subtleSurface }
+#endif
+        return usesAccentSurface ? Color.black.opacity(0.28) : Color.primary.opacity(0.055)
+    }
+    private var codeLabel: String {
+#if LAA_BUILD
+        if laaRichContentStyle { return LAACopy.chatCode }
+#endif
+        return AppLocalization.string("Code")
+    }
+    private var copyLabel: String {
+#if LAA_BUILD
+        if laaRichContentStyle { return copied ? LAACopy.chatCopied : LAACopy.chatCopy }
+#endif
+        return copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy")
+    }
 
     var body: some View {
         let sourceIdentity = LargeCodeBlockResult<Void>.sourceIdentity(of: source)
@@ -964,24 +1018,21 @@ struct LargeCodeBlockView: View {
                                 Label("Show all \(lineStats?.value.count ?? 0) lines", systemImage: "chevron.down")
                                     .font(.caption.weight(.semibold))
                             }
-                            .tint(usesAccentSurface ? .white : .conduitAccent)
-                            .padding(.top, 8)
+                            .tint(codeAccent)
+                            .padding(.top, MarkdownRichMetrics.codeVerticalInset)
                         }
                     }
                 }
-                .padding(12)
+                .padding(MarkdownRichMetrics.inset)
             }
         }
         .background(
-            usesAccentSurface ? Color.black.opacity(0.24) : Color.primary.opacity(0.055),
-            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+            codeFill,
+            in: RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .strokeBorder(
-                    usesAccentSurface ? Color.white.opacity(0.28) : Color.secondary.opacity(0.20),
-                    lineWidth: 1
-                )
+            RoundedRectangle(cornerRadius: MarkdownRichMetrics.radius, style: .continuous)
+                .strokeBorder(codeBorder, lineWidth: 1)
         }
         .task(id: "stats-\(sourceIdentity)") {
             // One whole-block scan per source, off the MainActor and
@@ -1015,7 +1066,7 @@ struct LargeCodeBlockView: View {
 
     private var header: some View {
         HStack {
-            Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
+            Text(normalizedLanguage == "plain" ? codeLabel : normalizedLanguage)
                 .font(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
             Spacer()
@@ -1029,14 +1080,14 @@ struct LargeCodeBlockView: View {
                     copied = false
                 }
             } label: {
-                Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy"), systemImage: copied ? "checkmark" : "doc.on.doc")
+                Label(copyLabel, systemImage: copied ? "checkmark" : "doc.on.doc")
                     .font(.caption2.weight(.semibold))
             }
-            .tint(usesAccentSurface ? .white : .conduitAccent)
+            .tint(codeAccent)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(usesAccentSurface ? Color.black.opacity(0.28) : Color.primary.opacity(0.055))
+        .padding(.horizontal, MarkdownRichMetrics.inset)
+        .padding(.vertical, MarkdownRichMetrics.codeVerticalInset)
+        .background(codeHeaderFill)
     }
 }
 
@@ -1066,9 +1117,10 @@ enum LargeCodeSliceIdentity {
     static func identity(
         source: String,
         sizeCategory: ContentSizeCategory,
-        chatTextSize: ChatTextAppearance
+        chatTextSize: ChatTextAppearance,
+        usesLAARichContentStyle: Bool = false
     ) -> String {
-        "\(source.hashValue)-\(sizeCategory)-chat:\(chatTextSize.cacheIdentity)"
+        "\(source.hashValue)-\(sizeCategory)-chat:\(chatTextSize.cacheIdentity)-laa:\(usesLAARichContentStyle)"
     }
 }
 
@@ -1134,6 +1186,24 @@ private struct LargeCodeSliceView: View {
     @State private var highlightState = LargeCodeSliceHighlightState()
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var usesLAARichContentStyle: Bool {
+#if LAA_BUILD
+        laaRichContentStyle
+#else
+        false
+#endif
+    }
+    private var textColor: UIColor {
+        if usesAccentSurface { return UIColor.white.withAlphaComponent(0.96) }
+#if LAA_BUILD
+        if usesLAARichContentStyle { return UIColor(LAAColor.text) }
+#endif
+        return .label
+    }
 
     private var font: UIFont {
         ChatTypography.font(for: .blockCode, appearance: chatTextSize)
@@ -1143,7 +1213,8 @@ private struct LargeCodeSliceView: View {
         LargeCodeSliceIdentity.identity(
             source: source,
             sizeCategory: sizeCategory,
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            usesLAARichContentStyle: usesLAARichContentStyle
         )
     }
 
@@ -1158,7 +1229,7 @@ private struct LargeCodeSliceView: View {
                 SelectableTextView(
                     attributedText: highlighted,
                     font: font,
-                    textColor: .label,
+                    textColor: textColor,
                     lineSpacing: 3,
                     wrapsLines: false
                 )
@@ -1166,7 +1237,7 @@ private struct LargeCodeSliceView: View {
                 SelectableTextView(
                     text: source,
                     font: font,
-                    textColor: usesAccentSurface ? UIColor.white.withAlphaComponent(0.96) : .label,
+                    textColor: textColor,
                     lineSpacing: 3,
                     maximumNumberOfLines: maximumNumberOfLines,
                     wrapsLines: false
@@ -1196,7 +1267,8 @@ private struct LargeCodeSliceView: View {
             let passIdentity = sliceIdentity
             let highlightedResult = await SyntaxHighlighter.highlightAsync(
                 currentSource,
-                language: currentLanguage
+                language: currentLanguage,
+                usesLAARichContentStyle: usesLAARichContentStyle
             )
             // Everything from here on runs on the main actor (the .task
             // closure inherits this MainActor view's context), so the state
@@ -1210,8 +1282,9 @@ private struct LargeCodeSliceView: View {
             let bridged = SelectableTextView.bridge(
                 highlightedResult,
                 defaultFont: currentFont,
-                defaultColor: .label,
-                linkColor: .link
+                defaultColor: textColor,
+                linkColor: MarkdownRichPalette.link(usesAccentSurface: usesAccentSurface,
+                                                    usesLAARichContentStyle: usesLAARichContentStyle)
             )
             highlightState.syncAndStore(bridged, passIdentity: passIdentity)
         }
@@ -1248,9 +1321,9 @@ extension MarkdownCodeSlicer {
 
 extension SyntaxHighlighter {
     /// Off-main, cancellation-checked entry for large-slice highlighting.
-    static func highlightAsync(_ source: String, language: String) async -> AttributedString {
+    static func highlightAsync(_ source: String, language: String, usesLAARichContentStyle: Bool = false) async -> AttributedString {
         await Task.yield()
         guard !Task.isCancelled else { return AttributedString(source) }
-        return highlight(source, language: language)
+        return highlight(source, language: language, usesLAARichContentStyle: usesLAARichContentStyle)
     }
 }

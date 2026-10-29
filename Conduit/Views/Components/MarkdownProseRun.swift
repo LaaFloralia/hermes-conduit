@@ -175,13 +175,14 @@ enum MarkdownProseRun {
         references: MarkdownReferenceContext,
         foregroundStyle: Color,
         usesAccentSurface: Bool,
-        chatTextSize: ChatTextAppearance
+        chatTextSize: ChatTextAppearance,
+        usesLAARichContentStyle: Bool = false
     ) -> NSAttributedString {
         let bodyFont = ChatTypography.font(for: .body, appearance: chatTextSize)
         let textColor = usesAccentSurface ? UIColor.white : UIColor(foregroundStyle)
         let markerColor = usesAccentSurface
             ? UIColor.white.withAlphaComponent(0.92)
-            : UIColor(Color.conduitAccent)
+            : MarkdownRichPalette.marker(usesAccentSurface: false, usesLAARichContentStyle: usesLAARichContentStyle)
         let markerFont = ChatTypography.styled(
             UIFont.systemFont(ofSize: bodyFont.pointSize, weight: .semibold),
             role: .body,
@@ -195,7 +196,8 @@ enum MarkdownProseRun {
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 font: font,
-                trailingCharacterOpacities: []
+                trailingCharacterOpacities: [],
+                usesLAARichContentStyle: usesLAARichContentStyle
             )
         }
 
@@ -320,13 +322,23 @@ struct MarkdownProseRunView: View {
     let selectionCoordinator: MarkdownSelectionCoordinator?
     let selectionSegment: MarkdownSelectionSegmentDescriptor?
     @Environment(\.chatTextSize) private var chatTextSize
+#if LAA_BUILD
+    @Environment(\.laaRichContentStyle) private var laaRichContentStyle
+#endif
+
+    private var linkColor: UIColor {
+#if LAA_BUILD
+        if laaRichContentStyle && !usesAccentSurface { return UIColor(LAAColor.link) }
+#endif
+        return usesAccentSurface ? .white : .link
+    }
 
     var body: some View {
         SelectableTextView(
             attributedText: text,
             font: ChatTypography.font(for: .body, appearance: chatTextSize),
             textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
-            linkColor: usesAccentSurface ? .white : .link,
+            linkColor: linkColor,
             selectionCoordinator: selectionCoordinator,
             selectionSegment: selectionSegment,
             keepsParagraphStyles: true

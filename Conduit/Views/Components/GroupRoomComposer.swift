@@ -141,6 +141,16 @@ struct GroupRoomComposer: View {
             if !attachments.isEmpty {
                 attachmentStrip
             }
+#if LAA_BUILD
+            HStack(alignment: .bottom, spacing: LAASpacing.x2) {
+                attachButton
+                field.laaChatInputSurface()
+                sendSlot()
+            }
+            if !rests {
+                controlsRow.transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+#else
             HStack(alignment: .bottom, spacing: 2) {
                 if rests {
                     attachButton
@@ -157,20 +167,33 @@ struct GroupRoomComposer: View {
                 controlsRow
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+#endif
         }
+#if LAA_BUILD
+        .laaComposerSurface(.clear)
+#else
         .laaComposerSurface(foundation)
+#endif
         .laaComposerGlassScope()
+#if !LAA_BUILD
         .overlay {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(stroke, lineWidth: 1)
         }
+#endif
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: rests)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: mentionCandidates.isEmpty)
         // Send and the mic give way to dictation's Stop, and come back.
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: dictationHoldsSendSlot)
+#if LAA_BUILD
+        .padding(.horizontal, LAASpacing.x4)
+        .padding(.top, LAASpacing.x2)
+        .padding(.bottom, LAASpacing.x2)
+#else
         .padding(.horizontal, 12)
         .padding(.top, 8)
         .padding(.bottom, 10)
+#endif
         // The view is keyed by room, so appear/change bracket exactly one
         // room: the draft and its files come back on reopen and are kept
         // as they change.
@@ -357,6 +380,14 @@ struct GroupRoomComposer: View {
         true
     }
 
+    private var maximumFieldLines: Int {
+#if LAA_BUILD
+        8
+#else
+        6
+#endif
+    }
+
     private func notice(_ text: String, color: Color) -> some View {
         Text(text)
             .font(.caption)
@@ -373,7 +404,7 @@ struct GroupRoomComposer: View {
             isFocused: $isFocused,
             accessibilityLabel: AppLocalization.string("Message the room"),
             accessibilityIdentifier: "room.composer.field",
-            maxLines: 6,
+            maxLines: maximumFieldLines,
             minLines: 3,
             inputTextSize: ChatTypography.inputSize(rawValue: inputTextSizeRaw),
             programmaticRevision: draftRevision,
@@ -407,7 +438,11 @@ struct GroupRoomComposer: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+#if LAA_BUILD
+                    .accessibilityLabel(Text(verbatim: LAACopy.chatExpandEditor))
+#else
                     .accessibilityLabel(Text(AppLocalization.string("Expand editor")))
+#endif
                     .transition(.opacity)
                 }
             }
@@ -415,12 +450,16 @@ struct GroupRoomComposer: View {
 
     private var controlsRow: some View {
         HStack(spacing: 8) {
+#if !LAA_BUILD
             attachButton
+#endif
             Spacer(minLength: 0)
             if !dictationHoldsSendSlot {
                 dictateButton
             }
+#if !LAA_BUILD
             sendSlot()
+#endif
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -476,13 +515,25 @@ struct GroupRoomComposer: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
+#if LAA_BUILD
+                .foregroundStyle(canAttach ? LAAColor.link : LAAColor.secondaryText)
+#else
                 .foregroundStyle(canAttach ? Color.primary : Color.secondary)
+#endif
                 .frame(width: controlSize, height: controlSize)
                 .contentShape(ComposerBar.controlHitShape)
         }
+#if LAA_BUILD
+        .accessibilityLabel(Text(verbatim: LAACopy.chatAttach))
+#else
         .accessibilityLabel(Text(AppLocalization.string("Attach")))
+#endif
         .disabled(isUploading)
+#if LAA_BUILD
+        .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
+#else
         .conduitGlassControl(cornerRadius: controlSize / 2, tint: .conduitAccent.opacity(0.08))
+#endif
         // The controls row is capped; touch and hold shows each control large.
         .accessibilityShowsLargeContentViewer {
             Label(AppLocalization.string("Attach"), systemImage: "plus")
@@ -562,21 +613,33 @@ struct GroupRoomComposer: View {
                         .font(.system(size: 14, weight: .semibold))
                 }
             }
+#if LAA_BUILD
+            .foregroundStyle(canSend || isUploading ? LAAColor.filledButtonText : LAAColor.secondaryText)
+#else
             .foregroundStyle(canSend || isUploading ? Color.white : Color.secondary.opacity(0.48))
+#endif
             .frame(width: controlSize, height: controlSize)
             .contentShape(ComposerBar.controlHitShape)
         }
         .disabled(!canSend)
+#if LAA_BUILD
+        .background(canSend || isUploading ? LAAColor.filledButton : LAAColor.subtleSurface, in: Circle())
+#else
         .conduitGlassControl(
             cornerRadius: controlSize / 2,
             tint: canSend || isUploading ? Color.conduitAccent : Color.primary.opacity(0.025),
             prominent: canSend,
             interactive: canSend
         )
+#endif
         .accessibilityShowsLargeContentViewer {
             Label(AppLocalization.string("Send"), systemImage: "arrow.up")
         }
+#if LAA_BUILD
+        .accessibilityLabel(Text(verbatim: LAACopy.chatSend))
+#else
         .accessibilityLabel(Text(AppLocalization.string("Send")))
+#endif
         .accessibilityIdentifier("room.composer.send")
     }
 

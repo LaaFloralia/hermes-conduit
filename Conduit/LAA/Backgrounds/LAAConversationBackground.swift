@@ -45,6 +45,7 @@ private struct LAAConversationBackgroundModifier: ViewModifier {
         let _ = store.revision
         if value.kind == .paper {
             content.environment(\.laaBackgroundKind, .paper)
+                .background(LAAColor.background.ignoresSafeArea())
         } else {
             content
                 .environment(\.laaBackgroundKind, value.kind)
@@ -115,14 +116,19 @@ struct LAAConversationMenuItems: View {
         Button {
             if let key = LAAConversationScope.current(appState) { features.sheet = .background(key) }
         } label: {
-            Label(String("背景"), systemImage: "photo.on.rectangle")
+            Label(LAACopy.chatBackground, systemImage: "photo.on.rectangle")
         }
         .disabled(LAAConversationScope.current(appState) == nil)
         .accessibilityIdentifier("conversation.background")
         if appState.activeRoomSurface != nil {
             Button { features.sheet = .group } label: {
-                Label(String("グループ設定"), systemImage: "person.2")
+                Label(LAACopy.chatGroupSettings, systemImage: "person.2")
             }
+            Button {} label: {
+                Label(LAACopy.chatGroupCallUnavailable, systemImage: "phone")
+            }
+            .disabled(true)
+            .accessibilityIdentifier("room.call.reason")
         }
     }
 }
@@ -178,7 +184,7 @@ struct LAABackgroundPicker: View {
         let photoSelected = value.kind == .photo
         NavigationStack {
             Form {
-                Section(String("背景")) {
+                Section(LAACopy.chatBackground) {
                     ForEach(LAABackground.Kind.allCases.filter { $0 != .photo }, id: \.self) { kind in
                         Button { select(kind) } label: {
                             HStack {
@@ -188,11 +194,11 @@ struct LAABackgroundPicker: View {
                             }
                         }
                         .accessibilityIdentifier("background.choice.\(kind.rawValue)")
-                        .accessibilityValue(Text(verbatim: value.kind == kind ? "選択中" : ""))
+                        .accessibilityValue(Text(verbatim: value.kind == kind ? LAACopy.chatSelected : ""))
                     }
                     PhotosPicker(selection: $photo, matching: .images) {
                         HStack {
-                            Text(verbatim: "端末の写真")
+                            Text(verbatim: LAACopy.chatDevicePhoto)
                             Spacer()
                             if photoSelected { Image(systemName: "checkmark") }
                         }
@@ -200,33 +206,33 @@ struct LAABackgroundPicker: View {
                     .accessibilityIdentifier("background.choice.photo")
                     #if DEBUG
                     if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BACKGROUND") {
-                        Button(String("テスト写真")) { importFixture() }
+                        Button(LAACopy.chatFixturePhoto) { importFixture() }
                             .accessibilityIdentifier("background.fixture.photo")
                     }
                     #endif
-                    if loading { ProgressView(String("写真を読み込み中")) }
+                    if loading { ProgressView(LAACopy.chatLoadingPhoto) }
                 }
                 if value.kind == .photo {
                     Section {
                         Slider(value: Binding(get: { value.dim }, set: { value.dim = $0; persist() }), in: 0...0.6)
-                            .accessibilityLabel(Text(verbatim: "写真の減光"))
+                            .accessibilityLabel(Text(verbatim: LAACopy.chatPhotoDim))
                             .accessibilityIdentifier("background.photo.dim")
-                        Text(verbatim: "減光 \(Int((value.dim * 100).rounded()))%")
+                        Text(verbatim: "\(LAACopy.chatPhotoDim) \(Int((value.dim * 100).rounded()))%")
                         Slider(value: Binding(get: { value.blur }, set: { value.blur = $0; persist() }), in: 0...20)
-                            .accessibilityLabel(Text(verbatim: "写真のぼかし"))
+                            .accessibilityLabel(Text(verbatim: LAACopy.chatPhotoBlur))
                             .accessibilityIdentifier("background.photo.blur")
-                        Text(verbatim: "ぼかし \(Int(value.blur.rounded())) pt")
+                        Text(verbatim: "\(LAACopy.chatPhotoBlur) \(Int(value.blur.rounded())) pt")
                         if value.safeDim > value.dim + 0.005 {
                             Text(verbatim: "読みやすさのため減光を自動で追加します。")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
-                    } header: { Text(verbatim: "写真の調整") }
+                    } header: { Text(verbatim: LAACopy.chatPhotoAdjustments) }
                 }
                 if let error { Text(error).foregroundStyle(.red) }
             }
-            .navigationTitle(Text(verbatim: "背景"))
+            .navigationTitle(Text(verbatim: LAACopy.chatBackground))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LAACopy.chatDone) { dismiss() } } }
             .onAppear { value = store.setting(for: key) }
             .onChange(of: photo) { _, item in
                 guard let item else { return }
@@ -255,7 +261,12 @@ struct LAABackgroundPicker: View {
     }
 
     private func label(_ kind: LAABackground.Kind) -> String {
-        switch kind { case .paper: return "紙"; case .tealNight: return "青緑の夜"; case .ink: return "墨"; case .photo: return "端末の写真" }
+        switch kind {
+        case .paper: return LAACopy.chatPaper
+        case .tealNight: return LAACopy.chatTealNight
+        case .ink: return LAACopy.chatInk
+        case .photo: return LAACopy.chatDevicePhoto
+        }
     }
 
     #if DEBUG
@@ -268,13 +279,10 @@ struct LAABackgroundPicker: View {
 }
 
 private struct LAAAssistantSurface: ViewModifier {
-    @Environment(\.laaBackgroundKind) private var kind
-    @ViewBuilder func body(content: Content) -> some View {
-        if kind == .paper { content }
-        else {
-            content.padding(14)
-                .background(LAAColors.surface, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
-        }
+    func body(content: Content) -> some View {
+        content.padding(LAASpacing.x4)
+            .foregroundStyle(LAAColor.text)
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
     }
 }
 private struct LAAPhotoSupportingText: ViewModifier {

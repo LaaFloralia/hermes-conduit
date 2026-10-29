@@ -44,11 +44,18 @@ struct GroupChatView: View {
     var body: some View {
         Group {
             if isV2 {
+#if LAA_BUILD
+                VStack(spacing: 0) {
+                    transcript
+                    bottomBar
+                }
+#else
                 transcript
                     .v2EdgeBar(.bottom) {
                         bottomBar
                             .modifier(V2LegacyScrollEdge(edge: .bottom))
                     }
+#endif
             } else {
                 VStack(spacing: 0) {
                     transcript
@@ -57,6 +64,9 @@ struct GroupChatView: View {
             }
         }
         .laaConversationBackground()
+#if LAA_BUILD
+        .environment(\.laaChatDesign, true)
+#endif
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         // Each bot's color, for its name, bubble, tags and "To" chip.
         .environment(\.groupMemberTints, appState.groupMemberTints(members))
@@ -148,6 +158,10 @@ struct GroupChatView: View {
                             members: members,
                             continuesRun: previous.map { GroupEventRow.sameSpeaker($0, event) } ?? false
                         )
+#if LAA_BUILD
+                        .laaChatDaySection(date: event.createdAt > 0 ? Date(timeIntervalSince1970: event.createdAt) : nil,
+                            previous: previous.flatMap { $0.createdAt > 0 ? Date(timeIntervalSince1970: $0.createdAt) : nil })
+#endif
                         .reportsGroupRoomRowFrame(id: event.id)
                     }
                     if let pending = appState.pendingRoomMessage {
@@ -196,6 +210,9 @@ struct GroupChatView: View {
                 .padding(.top, 14)
                 .padding(.bottom, 18)
             }
+#if LAA_BUILD
+            .accessibilityIdentifier("room.transcript")
+#endif
             .id(transcriptScrollID)
             .onPreferenceChange(GroupRoomRowFramesPreferenceKey.self) { frames in
                 let lostARow = followFlag.rowFrames.keys.contains { frames[$0] == nil }
@@ -330,6 +347,18 @@ struct GroupChatView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+#if LAA_BUILD
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {} label: {
+                Image(systemName: "phone")
+                    .foregroundStyle(LAAColor.secondaryText)
+            }
+            .disabled(true)
+            .accessibilityLabel(Text(verbatim: LAACopy.chatCall))
+            .accessibilityHint(Text(verbatim: LAACopy.chatGroupCallUnavailable))
+            .accessibilityIdentifier("room.call.unavailable")
+        }
+#endif
         if !isV2 {
             // V2 pushes the room like a chat and keeps the system Back
             // button, so the edge swipe leaves it too (V2Shell closes the
@@ -680,6 +709,26 @@ private struct GroupMessageFiles: View {
 
     var body: some View {
         ForEach(files) { file in
+#if LAA_BUILD
+            Button {} label: {
+            HStack(spacing: LAASpacing.x2) {
+                Image(systemName: AttachmentTypePolicy.symbolName(for: file))
+                    .laaTextStyle(.body)
+                    .frame(width: LAASpacing.x8, height: LAASpacing.x8)
+                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                    Text(verbatim: file.name).lineLimit(1).truncationMode(.middle)
+                    Text(verbatim: LAACopy.chatFileUnavailable).laaTextStyle(.secondary)
+                }
+            }
+            .foregroundStyle(onAccent ? LAAColor.ownBubbleText : LAAColor.text)
+            .padding(LAASpacing.x2)
+            .background(onAccent ? LAAColor.ownBubble : LAAColor.subtleSurface,
+                        in: RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
+            .accessibilityElement(children: .combine)
+            }
+            .buttonStyle(.plain)
+            .disabled(true)
+#else
             HStack(spacing: 8) {
                 Image(systemName: AttachmentTypePolicy.symbolName(for: file))
                     .font(.callout)
@@ -696,6 +745,7 @@ private struct GroupMessageFiles: View {
             .foregroundStyle(onAccent ? Color.white : Color.primary)
             .accessibilityElement(children: .combine)
             .accessibilityLabel(Text(AppLocalization.string("Attached: \(file.name)")))
+#endif
         }
     }
 }
@@ -715,7 +765,9 @@ struct GroupUserBubble<Footer: View>: View {
         let reply = GroupRoomReplyQuote.parse(parts.text)
         let ownText = reply?.message ?? parts.text
         HStack {
+#if !LAA_BUILD
             Spacer(minLength: 48)
+#endif
             VStack(alignment: .trailing, spacing: 2) {
                 VStack(alignment: .leading, spacing: 8) {
                     GroupMessageFiles(files: parts.files, onAccent: true)
@@ -732,6 +784,10 @@ struct GroupUserBubble<Footer: View>: View {
                         }
                     }
                 }
+#if LAA_BUILD
+                .padding(LAASpacing.x4)
+                .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+#else
                 .padding(.horizontal, 15)
                 .padding(.vertical, 10)
                 .background(
@@ -747,6 +803,7 @@ struct GroupUserBubble<Footer: View>: View {
                         .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
                 }
                 .shadow(color: Color.conduitAccent.opacity(0.16), radius: 14, y: 6)
+#endif
                 HStack(spacing: 2) {
                     footer
                     if let timestamp {
@@ -761,6 +818,9 @@ struct GroupUserBubble<Footer: View>: View {
                     }
                 }
             }
+#if LAA_BUILD
+            .laaChatColumn(.trailing)
+#endif
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
     }
@@ -832,8 +892,12 @@ struct GroupMemberBubble: View {
                         }
                     }
                 }
+#if LAA_BUILD
+                .padding(LAASpacing.x4)
+#else
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
+#endif
                 .groupMemberBubbleSurface(tint: tint)
                 if !parts.text.isEmpty {
                     HStack(spacing: 2) {
@@ -846,7 +910,12 @@ struct GroupMemberBubble: View {
                     .padding(.leading, 4)
                 }
             }
+#if LAA_BUILD
+            .laaChatColumn(.leading)
+#endif
+#if !LAA_BUILD
             Spacer(minLength: 32)
+#endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1219,6 +1288,10 @@ struct GroupMemberMentionButton<Label: View>: View {
 extension View {
     /// A member's bubble: a wash of the bot's color, else the neutral one.
     func groupMemberBubbleSurface(tint: CustomAccentColor?) -> some View {
+#if LAA_BUILD
+        background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+            .foregroundStyle(LAAColor.text)
+#else
         let fill = tint.map { Color(uiColor: $0.readableColor).opacity(0.10) } ?? Color.primary.opacity(0.06)
         let stroke = tint.map { Color(uiColor: $0.readableColor).opacity(0.18) } ?? Color.primary.opacity(0.06)
         return background(fill, in: RoundedRectangle(cornerRadius: 19, style: .continuous))
@@ -1227,6 +1300,7 @@ extension View {
                 RoundedRectangle(cornerRadius: 19, style: .continuous)
                     .strokeBorder(stroke, lineWidth: 1)
             }
+#endif
     }
 }
 

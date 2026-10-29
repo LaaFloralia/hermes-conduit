@@ -373,7 +373,12 @@ struct ComposerBar: View, Equatable {
         case .interrupt: return BusyInputMode.interrupt.symbol
         case .queue: return BusyInputMode.queue.symbol
         case .send: return "arrow.up"
-        case .unavailable: return "lock"
+        case .unavailable:
+#if LAA_BUILD
+            return "arrow.up"
+#else
+            return "lock"
+#endif
         }
     }
 
@@ -419,11 +424,17 @@ struct ComposerBar: View, Equatable {
             }
         }
         // Resting, the voice button keeps its spot on the trailing side.
+#if LAA_BUILD
+        .padding(.horizontal, LAASpacing.x4)
+        .padding(.top, LAASpacing.x2)
+        .padding(.bottom, LAASpacing.x2)
+#else
         .padding(.leading, rests ? 16 : (restsWhenIdle ? 12 : 14))
         // A voice message recorded while the button is held keeps it too.
         .padding(.trailing, rests || voiceMessages.isHeld ? 84 : (restsWhenIdle ? 12 : 14))
         .padding(.top, 8)
         .padding(.bottom, 10)
+#endif
         .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: rests)
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !rests)
         .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(restsWhenIdle: restsWhenIdle, isFocused: isFocused))
@@ -719,6 +730,13 @@ struct ComposerBar: View, Equatable {
                 }
                     .transition(.opacity)
             } else {
+#if LAA_BUILD
+                HStack(alignment: .bottom, spacing: LAASpacing.x2) {
+                    attachmentButton
+                    composerField.laaChatInputSurface()
+                    trailingSlot
+                }
+#else
                 // The field spans the card; every control sits in the row
                 // below it, so a long draft wraps across the full width (#335).
                 // Resting (V2), attach and dictate sit beside the field and the
@@ -755,13 +773,25 @@ struct ComposerBar: View, Equatable {
                     controlsRow
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+#endif
             }
+#if LAA_BUILD
+            // Keep the same voice button mounted while its held recording
+            // replaces the field, so releasing the gesture still ends it.
+            if !rests || showsVoiceMessage {
+                controlsRow.transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+#endif
         }
+#if LAA_BUILD
+        .laaComposerSurface(.clear)
+#else
         .laaComposerSurface(composerFoundation)
         .overlay {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(composerStroke, lineWidth: 1)
         }
+#endif
         .opacity(appState.turnState == .unsupportedGateway ? 0.7 : 1)
         .animation(ConduitMotion.transition, value: action)
         // Send and the mic give way to dictation's Stop, and come back.
@@ -981,7 +1011,11 @@ struct ComposerBar: View, Equatable {
     /// voice/send slot on the right, like the Codex composer (#335).
     /// The round controls match the context ring, leaving the model chip
     /// more width (#466).
+#if LAA_BUILD
+    static let controlSize: CGFloat = LAASpacing.minimumTouchTarget
+#else
     static let controlSize: CGFloat = 32
+#endif
     /// Taps land a little outside each control. Half the row spacing, so
     /// neighbours never overlap.
     static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
@@ -993,7 +1027,9 @@ struct ComposerBar: View, Equatable {
 
     private var controlsRow: some View {
         HStack(spacing: 8) {
+#if !LAA_BUILD
             attachmentButton
+#endif
 
             modelButton
 
@@ -1043,7 +1079,11 @@ struct ComposerBar: View, Equatable {
                 dictateButton
             }
 
+#if LAA_BUILD
+            V2VoiceButton(context: .conversation, style: .toolbar)
+#else
             trailingSlot
+#endif
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -1361,13 +1401,24 @@ struct ComposerBar: View, Equatable {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
+#if LAA_BUILD
+                .foregroundStyle(LAAColor.link)
+#endif
                 .frame(width: Self.controlSize, height: Self.controlSize)
                 .contentShape(Self.controlHitShape)
         }
+#if LAA_BUILD
+        .accessibilityLabel(Text(verbatim: LAACopy.chatAttach))
+#else
         .accessibilityLabel(Text("Attach"))
+#endif
         // Open while Hermes replies: the files go as Queue (#1146).
         .disabled(!appState.composerIsEnabled)
+#if LAA_BUILD
+        .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
+#else
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
+#endif
         .accessibilityShowsLargeContentViewer {
             Label("Attach", systemImage: "plus")
         }
@@ -1399,9 +1450,14 @@ struct ComposerBar: View, Equatable {
 
     @ViewBuilder
     private var trailingSlot: some View {
+#if LAA_BUILD
+        let showsVoice = false
+#else
+        let showsVoice = appState.showsComposerVoiceButton
+#endif
         let control = Self.trailingControl(
             action: action,
-            showsVoiceButton: appState.showsComposerVoiceButton,
+            showsVoiceButton: showsVoice,
             holdsDictation: dictationHoldsSendSlot
         )
         if #available(iOS 26.0, *) {
@@ -1448,6 +1504,7 @@ struct ComposerBar: View, Equatable {
                 }
             }
             .accessibilityLabel(accessibilityLabel)
+            .accessibilityIdentifier("composer.action")
         } else {
             Menu {
                 ForEach(choices) { choice in
@@ -1467,6 +1524,7 @@ struct ComposerBar: View, Equatable {
             .menuIndicator(.hidden)
             .modifier(composerActionChrome)
             .accessibilityLabel(accessibilityLabel)
+            .accessibilityIdentifier("composer.action")
             .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send"))
             .accessibilityAction(named: Text(accessibilityLabel)) {
                 performComposerAction()
@@ -1501,7 +1559,11 @@ struct ComposerBar: View, Equatable {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
+#if LAA_BUILD
+        .foregroundStyle(action == .unavailable ? LAAColor.secondaryText : LAAColor.filledButtonText)
+#else
         .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
+#endif
         .frame(minWidth: actionTitle == nil ? Self.controlSize : 86, minHeight: Self.controlSize)
         .padding(.horizontal, actionTitle == nil ? 0 : 4)
         .contentShape(Self.controlHitShape)
@@ -2814,6 +2876,16 @@ struct ComposerBar: View, Equatable {
     }
 
     private var accessibilityLabel: String {
+#if LAA_BUILD
+        switch action {
+        case .stop: return LAACopy.chatStop
+        case .steer: return LAACopy.chatSteer
+        case .interrupt: return LAACopy.chatInterrupt
+        case .queue: return LAACopy.chatQueue
+        case .send: return LAACopy.chatSend
+        case .unavailable: return LAACopy.chatComposerUnavailable
+        }
+#else
         switch action {
         case .stop: return AppLocalization.string("Stop response")
         case .steer: return AppLocalization.string("Steer with message")
@@ -2822,6 +2894,7 @@ struct ComposerBar: View, Equatable {
         case .send: return AppLocalization.string("Send message")
         case .unavailable: return AppLocalization.string("Composer unavailable")
         }
+#endif
     }
 
     private var modelAccessibilityLabel: String {
@@ -2929,11 +3002,15 @@ private struct ComposerActionChrome: ViewModifier {
     let action: ComposerAction
 
     func body(content: Content) -> some View {
+#if LAA_BUILD
+        content.background(action == .unavailable ? LAAColor.subtleSurface : LAAColor.filledButton, in: Circle())
+#else
         content.conduitGlassControl(
             cornerRadius: ComposerBar.controlSize / 2,
             tint: tint,
             prominent: action == .send,
             interactive: action != .unavailable
         )
+#endif
     }
 }
