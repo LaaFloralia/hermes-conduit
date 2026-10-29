@@ -1,36 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
 
-/// Keep this screen's visual choices together until the shared v2 tokens land.
-private enum LAAUsageStyle {
-    static let background = color(0xF6F2E9, 0x0F1B1C)
-    static let surface = color(0xFFFDF8, 0x172627)
-    static let ink = color(0x213536, 0xECE7DC)
-    static let muted = color(0x596968, 0xA8B7B4)
-    static let accent = color(0x00585E, 0x75C3C3)
-    static let line = color(0xD7D5CC, 0x385052)
-    static let track = color(0xEBE6DC, 0x243638)
-    static let warning = color(0x6C244C, 0xD49AB6)
-    static let title = Font.custom("Georgia", size: 34, relativeTo: .largeTitle)
-    static let number = Font.custom("Georgia", size: 36, relativeTo: .largeTitle).monospacedDigit()
-    static let value = Font.custom("Georgia", size: 20, relativeTo: .body).monospacedDigit()
-    static let body = Font.body
-    static let caption = Font.footnote
-    static let section = Font.system(.caption, design: .default).weight(.bold)
-    static let radius: CGFloat = 16
-    static let inset: CGFloat = 24
-    static let narrowInset: CGFloat = 16
-
-    private static func color(_ light: Int, _ dark: Int) -> Color {
-        Color(uiColor: UIColor { traits in
-            let hex = traits.userInterfaceStyle == .dark ? dark : light
-            return UIColor(red: CGFloat((hex >> 16) & 0xff) / 255,
-                           green: CGFloat((hex >> 8) & 0xff) / 255,
-                           blue: CGFloat(hex & 0xff) / 255, alpha: 1)
-        })
-    }
-}
-
 struct LAAUsageView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @EnvironmentObject private var appState: AppState
@@ -52,9 +22,9 @@ struct LAAUsageView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                LAAUsageStyle.background.ignoresSafeArea()
+                LAAColor.background.ignoresSafeArea()
                 List {
-                    VStack(alignment: .leading, spacing: 32) {
+                    VStack(alignment: .leading, spacing: LAASpacing.section) {
                         header
                         if bridge.status != .paired { connectionCard }
                         if bridge.status == .paired || state.usage.value != nil || state.mac.value != nil {
@@ -66,9 +36,9 @@ struct LAAUsageView: View {
                             macStatus
                         }
                     }
-                    .padding(.horizontal, geometry.size.width < 360 ? LAAUsageStyle.narrowInset : LAAUsageStyle.inset)
-                    .padding(.top, 16)
-                    .padding(.bottom, 32)
+                    .padding(.horizontal, geometry.size.width < 360 ? LAASpacing.compactHorizontal : LAASpacing.horizontal)
+                    .padding(.top, LAASpacing.x4)
+                    .padding(.bottom, LAASpacing.x8)
                     .frame(maxWidth: 720, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .listRowInsets(EdgeInsets())
@@ -80,7 +50,7 @@ struct LAAUsageView: View {
                 .refreshable { await refresh() }
             }
         }
-        .tint(LAAUsageStyle.accent)
+        .tint(LAAColor.link)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .task(id: scope) {
@@ -94,12 +64,12 @@ struct LAAUsageView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
             Text(verbatim: "LAA")
-                .font(LAAUsageStyle.section).foregroundStyle(LAAUsageStyle.accent)
+                .laaTextStyle(.section).fontWeight(.bold).foregroundStyle(LAAColor.link)
             HStack(alignment: .center) {
                 Text(verbatim: "Usage")
-                    .font(LAAUsageStyle.title).foregroundStyle(LAAUsageStyle.ink)
+                    .font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Menu {
@@ -110,7 +80,7 @@ struct LAAUsageView: View {
                     Button(action: onRequestSettings) { Text(verbatim: "設定") }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .frame(width: 44, height: 44)
+                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
                         .contentShape(Circle())
                 }
                 .accessibilityLabel(Text(verbatim: "その他の操作"))
@@ -120,95 +90,95 @@ struct LAAUsageView: View {
                         if state.isRefreshing { ProgressView() }
                         else { Image(systemName: "arrow.clockwise") }
                     }
-                    .frame(width: 44, height: 44)
-                    .background(LAAUsageStyle.surface, in: Circle())
-                    .overlay(Circle().strokeBorder(LAAUsageStyle.line))
+                    .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                    .background(LAAColor.surface, in: Circle())
+                    .overlay(Circle().strokeBorder(LAAColor.separator))
                 }
                 .disabled(state.isRefreshing || bridge.status != .paired)
                 .accessibilityLabel(Text(verbatim: "使用状況を更新"))
                 .accessibilityIdentifier("laa.usage.refresh")
             }
             Text(verbatim: "サービスごとの使用状況")
-                .font(LAAUsageStyle.body).foregroundStyle(LAAUsageStyle.muted)
+                .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
             Text(verbatim: "最終更新 " + time(state.updatedAt))
-                .font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.muted)
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 .accessibilityIdentifier("laa.usage.updated")
         }
     }
 
     private var connectionCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             Label { Text(verbatim: "未接続") } icon: { Image(systemName: "circle") }
-                .foregroundStyle(LAAUsageStyle.muted)
+                .foregroundStyle(LAAColor.secondaryText)
             Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                  ? "この端末の接続が無効になりました。新しいコードで接続してください。"
                  : bridge.status == .keychainError ? LAABridgeError.keychain.japaneseText : LAACopy.bridgeNotPairedBody)
-                .foregroundStyle(LAAUsageStyle.ink)
+                .foregroundStyle(LAAColor.text)
             if bridge.status != .keychainError {
                 Button { showPairing = true } label: { Text(verbatim: "Macに接続する") }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("laa.bridge.openPairing")
             }
         }
-        .padding(16)
+        .padding(LAASpacing.x4)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(LAAUsageStyle.surface, in: RoundedRectangle(cornerRadius: LAAUsageStyle.radius))
+        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
     }
 
     private func sectionTitle(_ title: String) -> some View {
-        Text(verbatim: title).font(LAAUsageStyle.section).foregroundStyle(LAAUsageStyle.muted)
+        Text(verbatim: title).laaTextStyle(.section).fontWeight(.bold).foregroundStyle(LAAColor.secondaryText)
             .accessibilityAddTraits(.isHeader)
     }
 
     private func overviewCard(_ overview: LAAUsageOverview) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             sectionTitle("概要")
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: LAASpacing.x3) {
                 Text(verbatim: overview.label + " · " + overview.window)
-                    .font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.muted)
-                HStack(alignment: .center, spacing: 16) {
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                HStack(alignment: .center, spacing: LAASpacing.x4) {
                     Text(verbatim: value(overview.remainingPercent, unit: "percent"))
-                        .font(LAAUsageStyle.number).foregroundStyle(LAAUsageStyle.ink)
-                    Spacer(minLength: 8)
+                        .font(LAAType.usageValue).foregroundStyle(LAAColor.text)
+                    Spacer(minLength: LAASpacing.x2)
                     ProgressView(value: overview.remainingPercent, total: 100)
-                        .tint(LAAUsageStyle.accent)
+                        .tint(LAAColor.link)
                         .frame(maxWidth: 130)
                         .accessibilityLabel(Text(verbatim: "残りの利用枠"))
                         .accessibilityValue(Text(verbatim: value(overview.remainingPercent, unit: "percent")))
                 }
                 Text(verbatim: "利用枠の残り · 確認時刻 " + time(overview.observedAt))
-                    .font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.muted)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if overview.stale || overview.expired || state.retainedUsageIDs.contains(overview.itemID) {
                     Label { Text(verbatim: overview.expired ? "期限切れ" : "古い値・前回の値") }
                         icon: { Image(systemName: "exclamationmark.triangle") }
-                        .font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.warning)
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                 }
             }
-            .padding(16)
+            .padding(LAASpacing.x4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(LAAUsageStyle.surface, in: RoundedRectangle(cornerRadius: LAAUsageStyle.radius))
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         }
     }
 
     private var services: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             sectionTitle("サービス別")
             sourceError(state.usage.error, previous: state.usage.fetchedAt)
             if let items = state.usage.value {
                 if items.isEmpty { empty("表示できるサービスはありません。") }
                 ForEach(LAAUsageGroup.groups(items)) { group in
-                    Divider().overlay(LAAUsageStyle.line)
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(verbatim: group.label).font(LAAUsageStyle.body.weight(.medium))
-                            .foregroundStyle(LAAUsageStyle.ink)
+                    Divider().overlay(LAAColor.separator)
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        Text(verbatim: group.label).laaTextStyle(.body).fontWeight(.medium)
+                            .foregroundStyle(LAAColor.text)
                         ForEach(group.items) { item in
                             usageItem(item, retained: state.retainedUsageIDs.contains(item.id))
                         }
                     }
-                    .padding(.vertical, 8)
+                    .padding(.vertical, LAASpacing.x2)
                     .accessibilityIdentifier("laa.usage.service.\(group.id)")
                 }
-                if !items.isEmpty { Divider().overlay(LAAUsageStyle.line) }
+                if !items.isEmpty { Divider().overlay(LAAColor.separator) }
             } else if !state.isRefreshing {
                 empty(state.usage.error == nil ? "未取得" : "利用できません。")
             }
@@ -221,7 +191,7 @@ struct LAAUsageView: View {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
                 metric(window.label + " · 残り", item.availability == "available" ? value(window.remainingPercent, unit: "percent") : unavailable(item))
                 Text(verbatim: "更新予定 " + time(LAAUsageItem.date(window.resetsAt)))
-                    .font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.muted)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let reset = LAAUsageItem.date(window.resetsAt), reset < Date(), !item.isExpired() {
                     caption("期限切れ")
                 }
@@ -248,37 +218,37 @@ struct LAAUsageView: View {
     }
 
     private var dashboard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             sectionTitle("Hermesの実利用・費用（30日）")
             sourceError(state.analytics.error, previous: state.analytics.fetchedAt)
             if let rows = state.analytics.value {
                 if rows.isEmpty { empty("実利用の記録はありません。") }
                 ForEach(rows) { row in
-                    Divider().overlay(LAAUsageStyle.line)
-                    VStack(alignment: .leading, spacing: 8) {
+                    Divider().overlay(LAAColor.separator)
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         Text(verbatim: (row.provider ?? "提供元不明") + " · " + row.model)
-                            .font(LAAUsageStyle.body.weight(.medium)).foregroundStyle(LAAUsageStyle.ink)
+                            .laaTextStyle(.body).fontWeight(.medium).foregroundStyle(LAAColor.text)
                         metric("入力", value(row.inputTokens, unit: "tokens"))
                         metric("出力", value(row.outputTokens, unit: "tokens"))
                         metric("費用・記録済み実額", row.actualCost.map { value($0, unit: "usd") } ?? "不明")
                         metric("費用・推計", value(row.estimatedCost, unit: "usd"))
-                    }.padding(.vertical, 8)
+                    }.padding(.vertical, LAASpacing.x2)
                 }
-                if !rows.isEmpty { Divider().overlay(LAAUsageStyle.line) }
+                if !rows.isEmpty { Divider().overlay(LAAColor.separator) }
                 caption("取得時刻 " + time(state.analytics.fetchedAt))
             } else if !state.isRefreshing && state.analytics.error == nil { empty("未取得") }
         }
     }
 
     private var macStatus: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             sectionTitle("Mac mini")
             sourceError(state.mac.error, previous: state.mac.fetchedAt)
             if let items = state.mac.value {
                 if items.isEmpty { empty("Macの状態はありません。") }
                 ForEach(items) { item in
-                    Divider().overlay(LAAUsageStyle.line)
-                    VStack(alignment: .leading, spacing: 8) {
+                    Divider().overlay(LAAColor.separator)
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         metric(item.label, item.availability == "available" ? value(item.availableValue, unit: item.unit) : unavailable(item))
                         if item.kind == "host.memory", let total = item.detail?.totalBytes, item.availableValue != nil {
                             caption("合計 " + value(total, unit: "bytes"))
@@ -288,21 +258,21 @@ struct LAAUsageView: View {
                         }
                         itemFlags(item, retained: state.retainedMacIDs.contains(item.id))
                         caption("確認時刻 " + time(LAAUsageItem.date(item.observedAt)))
-                    }.padding(.vertical, 8)
+                    }.padding(.vertical, LAASpacing.x2)
                 }
-                if !items.isEmpty { Divider().overlay(LAAUsageStyle.line) }
+                if !items.isEmpty { Divider().overlay(LAAColor.separator) }
             } else if !state.isRefreshing { empty(state.mac.error == nil ? "未取得" : "利用できません。") }
         }
     }
 
     private func metric(_ label: String, _ result: String) -> some View {
         let isStatus = result == "未取得" || result == "不明" || result.hasPrefix("利用不可")
-        return HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(verbatim: label).font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.muted)
+        return HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x3) {
+            Text(verbatim: label).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            Text(verbatim: result).font(isStatus ? LAAUsageStyle.caption : LAAUsageStyle.value)
-                .foregroundStyle(isStatus ? LAAUsageStyle.muted : LAAUsageStyle.ink)
+            Spacer(minLength: LAASpacing.x2)
+            Text(verbatim: result).laaTextStyle(isStatus ? .secondary : .body).monospacedDigit()
+                .foregroundStyle(isStatus ? LAAColor.secondaryText : LAAColor.text)
                 .multilineTextAlignment(.trailing)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -315,7 +285,7 @@ struct LAAUsageView: View {
             if !flags.isEmpty {
                 Label { Text(verbatim: flags.joined(separator: "・")).fixedSize(horizontal: false, vertical: true) }
                     icon: { Image(systemName: "exclamationmark.triangle") }
-                    .font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.warning)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
         }
     }
@@ -327,13 +297,13 @@ struct LAAUsageView: View {
                 Text(verbatim: problem.message + (previous.map { " 前回取得 " + time($0) } ?? ""))
                     .fixedSize(horizontal: false, vertical: true)
             } icon: { Image(systemName: "exclamationmark.triangle") }
-            .font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.warning)
+            .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             .accessibilityIdentifier("laa.usage.error")
         }
     }
 
     private func caption(_ text: String) -> some View {
-        Text(verbatim: text).font(LAAUsageStyle.caption).foregroundStyle(LAAUsageStyle.muted)
+        Text(verbatim: text).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
     }
 
     private func empty(_ text: String) -> some View { caption(text) }
