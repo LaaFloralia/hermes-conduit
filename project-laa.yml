@@ -89,6 +89,15 @@ targets:
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWatch.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
+    postBuildScripts:
+      # The Watch app names its phone app, and upstream's Info.plist says
+      # com.milim.relay: App Store Connect refuses the upload ("Invalid
+      # WKCompanionAppBundleIdentifier", 2026-10-29) unless it is this
+      # build's parent, com.laa-inc.laa.
+      - name: LAA watch companion
+        basedOnDependencyAnalysis: false
+        script: |
+          /usr/libexec/PlistBuddy -c "Set :WKCompanionAppBundleIdentifier com.laa-inc.laa" "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
   ConduitWatchWidgets:
     settings:
       base:
