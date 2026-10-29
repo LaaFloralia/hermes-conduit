@@ -93,6 +93,13 @@ Tailscaleは輸送の前提で、認証の代替にしない（BRIDGE.md §1）�
 3. **R2 usage同期の再開**：Consoleの非表示で `--cloud-sync-usage` と `aiUsage` が落ち、snapshotは 2026-10-29T04:50:20Z で止まった。iPhone向けにR2経由の履歴が要るなら別作業で再開を決める（本仕様は依存しない）。
 4. **保持期間**：`/v1/usage` は現在値を返すのみ。履歴・日次系列を返すかは未決（analyticsの `daily` をそのまま返す案がある）。
 
+### 親の決定（2026-10-29）
+
+1. 費用・トークンはv1では `/v1/usage` に含めず、アプリが現行どおりdashboardを直接読む。新しい資格情報を増やさないため。
+2. CPU・メモリはBridgeプロセス内のサンプラ（10秒キャッシュ）で返す。常駐は増やさない。
+3. R2のusage同期は再開しない（社長指示でConsoleのAI Usageは停止）。
+4. v1は現在値のみ返す。日次系列はdashboardの `daily` をアプリが直接表示する。
+
 ## 7. 受入（09での照合）
 
 - `/v1/usage` の quota/balance 項目を `curl 127.0.0.1:8081/widget` の `providers[].windows[].remaining`・`resetsAt` と1件ずつ照合する。欠測IDが `unavailable` で、値が null であることを確認する。
