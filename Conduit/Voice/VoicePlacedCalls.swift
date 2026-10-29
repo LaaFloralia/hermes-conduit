@@ -389,9 +389,10 @@ final class VoicePlacedCalls {
 
     private func follow() {
         stopFollowing()
+        let interval = followInterval
         followTask = Task { [weak self] in
             while !Task.isCancelled {
-                do { try await Task.sleep(for: self.followInterval) } catch { return }
+                do { try await Task.sleep(for: interval) } catch { return }
                 guard let self, !Task.isCancelled else { return }
                 self.followOnce()
             }
