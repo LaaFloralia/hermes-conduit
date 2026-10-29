@@ -3467,9 +3467,9 @@ notification encryption · calls on the same profile pairing · LAA Settings
 and rollback instructions · the upstream App Store build
 
 **Code**
-- Run and Settings controls: `Conduit/LAA/LAANotificationPairAll.swift`, `Conduit/LAA/LAANotificationPairAllView.swift`, `Conduit/Views/AuxiliaryViews.swift`
+- Run and Settings controls: `Conduit/LAA/NotificationPairing/LAANotificationPairAll.swift`, `Conduit/LAA/NotificationPairing/LAANotificationPairAllView.swift`, `Conduit/Views/AuxiliaryViews.swift`
 - Existing pairing: `Conduit/Services/AppState+NotifierPluginUpdate.swift`, `Conduit/Services/AppState.swift`, `Conduit/Services/PushNotificationService.swift`
-- Tests and instructions: `ConduitTests/LAANotificationPairAllTests.swift`, `ConduitUITests/LAANotificationPairAllUITests.swift`, `Conduit/LAA/LAANotificationPairAllFixture.swift`, `docs/LAA_BUILD.md`
+- Tests and instructions: `ConduitTests/LAANotificationPairAllTests.swift`, `ConduitUITests/LAANotificationPairAllUITests.swift`, `Conduit/LAA/NotificationPairing/LAANotificationPairAllFixture.swift`, `docs/LAA_BUILD.md`
 
 **Rulings**
 - Read the current dashboard's roster, check each profile's notification
