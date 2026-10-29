@@ -8,17 +8,30 @@ enum LAACopy {
     /// The tab and navigation titles, in the order the bar shows them.
     static func tabTitle(_ tab: LAATab) -> String {
         switch tab {
-        case .chats: return "会話"
-        case .work: return "仕事"
+        case .chats: return "Chats"
+        case .work: return "Work"
         case .brain: return "Brain"
-        case .source: return "素材"
+        case .source: return "Assets"
         case .usage: return "Usage"
         }
     }
 
     // MARK: Shared controls
 
-    static let settings = "設定"
+    static let settings = "Settings"
+    static let plugin = "Conduit plugin"
+    static let pluginVersion = "Version"
+    static let pluginDashboard = "Dashboard"
+    static let pluginConnection = "Connection"
+    static let pluginConnected = "Connected"
+    static let pluginNotConnected = "Not connected"
+    static let pluginUnavailable = "Unavailable"
+    static let pluginChecking = "Checking…"
+    static let pluginNotChecked = "Not checked yet"
+    static let pluginNotificationsUnavailable = "Notifications are unavailable for this dashboard's plugin."
+    static let pluginCardsUnavailable = "Approval and clarify cards are unavailable for this profile."
+    static let pluginEncryptionUnavailable = "Not end-to-end encrypted, so notifications from this host show only generic text and don't open the chat."
+    static let pluginRotationUnavailable = "End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Automatic key rotation is unavailable."
     static let loading = "読み込み中"
     static let notFetched = "未取得"
     static let needsAttention = "要確認"
@@ -35,8 +48,8 @@ enum LAACopy {
 
     static func segments(_ tab: LAATab) -> [String] {
         switch tab {
-        case .work: return ["セッション", "Project", "タスク", "ルーティン"]
-        case .brain: return ["最近", "フォルダ", "タグ"]
+        case .work: return ["Sessions", "Projects", "Tasks", "Routines"]
+        case .brain: return ["Recent", "Folders", "Tags"]
         case .source: return ["Drive", "Inspiration", "Studio"]
         case .chats, .usage: return []
         }

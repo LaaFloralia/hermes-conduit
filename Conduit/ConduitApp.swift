@@ -284,11 +284,14 @@ struct ConduitApp: App {
                 HermesCallNotifications.registerCategory()
             }
             .preferredColorScheme(appState.themePreference.colorScheme)
+            #if LAA_BUILD
+            .tint(LAAColor.link)
+            #else
             .tint(.conduitAccent)
-            // The accent colours resolve the choice from this trait, so a
-            // new pick redraws in place: no view is rebuilt.
-            .environment(\.conduitAccent, accentChoice)
             .background(WindowAccentTint(choice: accentChoice))
+            #endif
+            // The accent trait remains available to existing Conduit screens.
+            .environment(\.conduitAccent, accentChoice)
             // Notes touches app-wide so the backdrop can rest when idle.
             .background(InteractionIdleTouchProbe())
             // The Watch app draws in the same accent. Shared once a pick

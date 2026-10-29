@@ -81,6 +81,11 @@ enum NotifierPluginFeature: CaseIterable {
 }
 
 /// Settings > Conduit plugin.
+#if LAA_BUILD
+struct ConduitPluginSettingsDetail: View {
+    var body: some View { LAAPluginStatusView() }
+}
+#else
 struct ConduitPluginSettingsDetail: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
@@ -274,6 +279,7 @@ struct ConduitPluginSettingsDetail: View {
         }
     }
 }
+#endif
 
 extension View {
     /// Asks before the plugin update runs: Hermes restarts its gateway and

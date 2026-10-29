@@ -75,8 +75,14 @@ extension AppState {
     /// The card shows while connected to a dashboard still finishing setup,
     /// never over a saved copy of the chats.
     var showsFinishSetup: Bool {
+        #if LAA_BUILD
+        // The Conduit setup card offers a plugin update from the Chats root.
+        // LAA keeps plugin state in Settings and leaves updates to the host.
+        return false
+        #else
         guard isConnected, offlineChatPresentation == nil, let id = activeDashboardID else { return false }
         return dashboardsFinishingSetup.contains(id)
+        #endif
     }
 
     /// Not now, or every step done: the card doesn't come back for the

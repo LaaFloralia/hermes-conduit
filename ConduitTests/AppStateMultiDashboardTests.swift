@@ -1131,7 +1131,11 @@ extension AppStateMultiDashboardTests {
         // Only a connected dashboard shows the card.
         XCTAssertFalse(appState.showsFinishSetup)
         appState.isConnected = true
+        #if LAA_BUILD
+        XCTAssertFalse(appState.showsFinishSetup)
+        #else
         XCTAssertTrue(appState.showsFinishSetup)
+        #endif
 
         appState.endFinishSetup()
         XCTAssertTrue(appState.dashboardsFinishingSetup.isEmpty)

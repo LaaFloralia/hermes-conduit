@@ -5,6 +5,7 @@ import SwiftUI
 /// remaining tabs share the LAA Bridge connection independently of Hermes.
 struct LAAAppShell: View {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let onRequestSettings: () -> Void
 
     @StateObject private var bridge = LAABridgeSession()
@@ -20,6 +21,17 @@ struct LAAAppShell: View {
         selectedTab == .chats && chatsPath.last == .conversation
     }
 
+    private var callCoveringTabs: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CALL_COVERS_TABS") { return true }
+        #endif
+        return LAATabBarVisibility.isCovered(
+            legacyCallPresented: appState.isVoiceCallScreenPresented,
+            employeeCallActive: employeeCalls.snapshot != nil,
+            employeeCallPresented: employeeCalls.isShowingCall
+        )
+    }
+
     var body: some View {
         bar
             .overlay(alignment: .top) {
@@ -32,7 +44,8 @@ struct LAAAppShell: View {
             .environmentObject(bridge)
             .environmentObject(employeeCalls)
             .modifier(LAACallPresentation(calls: employeeCalls))
-            .tint(LAAColors.teal)
+            .tint(LAAColor.link)
+            .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
             .environment(\.v2Shell, V2ShellContext(
                 pickProfile: { profile in
@@ -81,6 +94,11 @@ struct LAAAppShell: View {
             .onChange(of: requiresLogin) { _, needsLogin in
                 if needsLogin { chatsPath.removeAll() }
             }
+            .onAppear {
+                #if DEBUG
+                LAAPluginUITestFixture.seedStatusIfEnabled(appState)
+                #endif
+            }
             .onDisappear { appState.showSidebar = false }
     }
 
@@ -91,6 +109,9 @@ struct LAAAppShell: View {
             LAANotificationPairAllFixtureScreen()
         } else if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BACKGROUND") {
             LAABackgroundUITestFixtureScreen()
+        } else if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+                  ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_PLUGIN_CATALOG") {
+            LAAPluginCatalogUITestScreen()
         } else {
             normalBar
         }
@@ -103,14 +124,19 @@ struct LAAAppShell: View {
     private var normalBar: some View {
         if #available(iOS 26.0, *) {
             tabs.tabBarMinimizeBehavior(.onScrollDown)
+        } else if reduceTransparency {
+            tabs.toolbarBackground(LAAColor.surface, for: .tabBar)
+                .toolbarBackground(.visible, for: .tabBar)
         } else {
-            tabs
+            tabs.toolbarBackground(.ultraThinMaterial, for: .tabBar)
+                .toolbarBackground(.visible, for: .tabBar)
         }
     }
 
     private var tabs: some View {
         TabView(selection: $selectedTab) {
             chatsTab
+                .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
                 .tabItem { Label(LAATab.chats.title, systemImage: LAATab.chats.symbol) }
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
@@ -123,12 +149,19 @@ struct LAAAppShell: View {
                                 LAAUsageView(onRequestSettings: onRequestSettings)
                             } else if tab == .work {
                                 LAAWorkView(onRequestSettings: onRequestSettings)
+                                    .toolbar {
+                                        ToolbarItem(placement: .principal) {
+                                            Text(verbatim: tab.title)
+                                                .accessibilityAddTraits(.isHeader)
+                                        }
+                                    }
                             } else {
                                 LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
                             }
                         }
                     }
                 }
+                .modifier(LAAHideTabBarForCall(isPresented: callCoveringTabs))
                 .tabItem { Label(tab.title, systemImage: tab.symbol) }
                 .tag(tab)
             }
@@ -168,6 +201,31 @@ struct LAAAppShell: View {
 
     private func closeConversation() {
         if chatsPath.last == .conversation { chatsPath.removeLast() }
+    }
+}
+
+enum LAATabBarVisibility {
+    static func isCovered(legacyCallPresented: Bool, employeeCallActive: Bool,
+                          employeeCallPresented: Bool) -> Bool {
+        employeeCallActive ? employeeCallPresented : legacyCallPresented
+    }
+}
+
+private struct LAAHideTabBarForCall: ViewModifier {
+    let isPresented: Bool
+
+    func body(content: Content) -> some View {
+        // Emit the preference without replacing the tab content or overriding
+        // a detail screen's own hidden preference when the call is dismissed.
+        content.overlay(alignment: .topLeading) {
+            if isPresented {
+                Color.clear
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .toolbar(.hidden, for: .tabBar)
+            }
+        }
     }
 }
 #endif
