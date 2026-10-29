@@ -731,16 +731,17 @@ extension AppState {
     /// sound to let go, as it does in the car: off screen (locked, or in
     /// another app) there's no Listen to tap, and the call would stay
     /// silent. In the car CarPlay restarts it; on screen the sheet's
-    /// Listen is there.
+    /// Listen is there. A call placed from Conduit (LAA fork) is the same
+    /// call to CallKit, so its conversation comes back the same way.
     func hermesCallAudioActivated(after delay: Duration = .milliseconds(800)) {
-        guard isNativeHermesCallAnswered, showVoiceSheet, hermesCallVoiceRunning(),
+        guard isCallKitCallAnswered, showVoiceSheet, callKitCallVoiceRunning,
               !CarPlayVoiceCoordinator.shared.isConnected, !hermesCallPhoneOnScreen() else { return }
         let controller = voiceConversationController
         guard Self.listensAgainAfterInterruption(controller) else { return }
         Task { [weak self] in
             try? await Task.sleep(for: delay)
             // Still the same call's conversation, and nothing moved it on.
-            guard let self, self.isNativeHermesCallAnswered, self.showVoiceSheet,
+            guard let self, self.isCallKitCallAnswered, self.showVoiceSheet,
                   !self.isNativeHermesCallMuted, !self.hermesCallPhoneOnScreen(),
                   !CarPlayVoiceCoordinator.shared.isConnected,
                   self.voiceConversationController === controller,
@@ -757,6 +758,16 @@ extension AppState {
         guard controller.failedForAudioInterruption, case .failed = controller.state else { return false }
         return true
     }
+
+    /// A CallKit call the user picked up or placed is on: one from Hermes
+    /// answered here, or one placed from Conduit.
+    var isCallKitCallAnswered: Bool { isNativeHermesCallAnswered || isPlacedPhoneCallActive }
+
+    /// The CallKit call's own voice runs, so a restart after an interruption
+    /// is the call's and not a conversation from before it: an answered call
+    /// from Hermes says so itself, and a call placed here carries the
+    /// conversation that placed it.
+    private var callKitCallVoiceRunning: Bool { isPlacedPhoneCallActive || hermesCallVoiceRunning() }
 
     /// The user hung up the CallKit call: the voice conversation it opened
     /// ends as its End button would, and one still opening doesn't open.
@@ -867,5 +878,30 @@ extension AppState {
                 Task { await voiceConversationController.resumeMicrophone() }
             }
         }
+    }
+
+    // MARK: Calls placed from Conduit (LAA fork)
+
+    /// A call the user placed from Conduit (VoicePlacedCalls) is on the
+    /// system's call screen, or has left it. Like an answered call from
+    /// Hermes, it keeps the conversation it carries presenting while the
+    /// phone is locked or Conduit is in another app, and its own Mute
+    /// starts from off.
+    func setPlacedPhoneCallActive(_ active: Bool) {
+        if !active {
+            // The call's mute belongs to the call: the next one starts
+            // unmuted, as a phone call does. A conversation that carries on
+            // after the call was not muted by leaving it.
+            isNativeHermesCallMuted = false
+        }
+        guard isPlacedPhoneCallActive != active else { return }
+        isPlacedPhoneCallActive = active
+        reassertVoiceSurfaceGate()
+    }
+
+    /// The user hung up on the system's call screen, or CallKit reset it:
+    /// the conversation it carried ends as the app's End would.
+    func endVoiceForPlacedCall() {
+        endVoiceOfNativeCall()
     }
 }

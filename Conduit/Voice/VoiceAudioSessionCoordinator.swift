@@ -213,7 +213,7 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
     /// must release leases on every terminal path (stop, cancellation,
     /// failure) — a lease still held at service deinit would leave a
     /// permanent owner entry here.
-    static let shared = VoiceAudioSessionCoordinator(earpieceCalls: { VoiceEarpieceCalls.isOn })
+    static let shared = VoiceAudioSessionCoordinator(phoneCalls: { VoicePhoneCalls.isOn })
 
     /// The session policy currently applied to the system session, or nil
     /// while no audio intent is active. Nil means Conduit holds nothing, not
@@ -236,11 +236,12 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
     /// screens, which leave the Speaker button to CallKit then.
     @Published private(set) var isInNativeCall = false
 
-    /// "Hold calls to your ear" (VoiceEarpieceCalls): a conversation the
+    /// "Place calls as phone calls" (VoicePhoneCalls): a conversation the
     /// user starts plays like a phone call, on the earpiece, rather than
-    /// the loudspeaker. Read at each transition, so a change applies from
-    /// the next one. A call from Hermes is always phone-style.
-    private let earpieceCalls: () -> Bool
+    /// the loudspeaker — the call CallKit places from it, and the same call
+    /// with CallKit out of reach. Read at each transition, so a change
+    /// applies from the next one. A call from Hermes is always phone-style.
+    private let phoneCalls: () -> Bool
 
     /// The call screen's Speaker button in a phone-style conversation the
     /// user started: on, the conversation plays on the loudspeaker until
@@ -298,14 +299,14 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
     /// Optional injection instead of a default-constructed argument: default
     /// parameter values are evaluated in a nonisolated context, which cannot
     /// construct the MainActor-isolated `SystemVoiceAudioSession`.
-    init(session: VoiceAudioSessionControlling? = nil, earpieceCalls: @escaping () -> Bool = { false }) {
+    init(session: VoiceAudioSessionControlling? = nil, phoneCalls: @escaping () -> Bool = { false }) {
         self.session = session ?? SystemVoiceAudioSession()
-        self.earpieceCalls = earpieceCalls
+        self.phoneCalls = phoneCalls
     }
 
     /// Plays like a phone call: on the earpiece, the loudspeaker only by a
     /// Speaker button (CallKit's, or the call screen's).
-    private var isPhoneStyleConversation: Bool { isInNativeCall || earpieceCalls() }
+    private var isPhoneStyleConversation: Bool { isInNativeCall || phoneCalls() }
 
     /// The conversation's session configuration. WebRTC applies it itself
     /// for GPT-Live, so it reads the same choice.
@@ -398,7 +399,7 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
     /// speaker it does nothing: an override posts a route change of its own.
     func ensureConversationSpeaker() {
         guard appliedPolicy == .conversation, !isInNativeCall,
-              !earpieceCalls() || conversationSpeakerChosen,
+              !phoneCalls() || conversationSpeakerChosen,
               leases.values.contains(.conversationPlayback),
               session.isOutputOnBuiltInReceiver else { return }
         do {
@@ -441,11 +442,13 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
         conversationSpeakerChosen = false
     }
 
-    /// A call from Hermes answered in CallKit (#449): CallKit activates the
-    /// session itself, so it only gets the call's category now. The voice
-    /// conversation's acquire then applies it in full on the session
-    /// CallKit activated.
-    func configureForIncomingCall() {
+    /// A CallKit call is on: one answered from Hermes (#449), or one the
+    /// user placed from Conduit (LAA fork, VoicePlacedCalls). CallKit
+    /// activates the session itself, so it only gets the call's category
+    /// now. The voice conversation's acquire then applies it in full on the
+    /// session CallKit activated, and a conversation already holding the
+    /// session moves onto the call's policy here.
+    func configureForNativeCall() {
         isInNativeCall = true
         isNativeCallAudioActive = false
         // Raised first: a conversation already holding the session must
@@ -455,7 +458,7 @@ final class VoiceAudioSessionCoordinator: ObservableObject {
         do {
             try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
         } catch {
-            audioSessionLogger.error("incoming call category failed: \(LogRedaction.describing(error), privacy: .public)")
+            audioSessionLogger.error("call category failed: \(LogRedaction.describing(error), privacy: .public)")
         }
     }
 

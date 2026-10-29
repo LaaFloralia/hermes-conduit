@@ -472,10 +472,10 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertGreaterThanOrEqual(notifications, 2)
     }
 
-    // MARK: Calls held to the ear (VoiceEarpieceCalls)
+    // MARK: Calls held to the ear (VoicePhoneCalls)
 
     private func makeEarpieceCoordinator() -> VoiceAudioSessionCoordinator {
-        VoiceAudioSessionCoordinator(session: session, earpieceCalls: { true })
+        VoiceAudioSessionCoordinator(session: session, phoneCalls: { true })
     }
 
     func testCallsOffKeepTheLoudspeakerPolicy() throws {
@@ -605,7 +605,7 @@ extension VoiceAudioSessionCoordinatorTests {
 
     func testSpeakerButtonLeavesACallFromHermesToCallKit() throws {
         let coordinator = makeEarpieceCoordinator()
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         _ = try coordinator.acquire(.conversationCapture)
 
         coordinator.setConversationSpeaker(true)
@@ -658,7 +658,7 @@ extension VoiceAudioSessionCoordinatorTests {
             inNativeCall: Bool = false,
             playsElsewhere: Bool = false
         ) -> Bool {
-            VoiceEarpieceCalls.monitorsProximity(
+            VoicePhoneCalls.monitorsProximity(
                 enabled: enabled,
                 callOnPhone: callOnPhone,
                 speakerChosen: speakerChosen,
@@ -675,18 +675,18 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testHeadphonesBluetoothAndTheCarPlayElsewhere() {
-        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([.builtInReceiver]))
-        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([.builtInSpeaker]))
-        XCTAssertFalse(VoiceEarpieceCalls.playsElsewhere([]))
-        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.headphones]))
-        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.bluetoothHFP]))
-        XCTAssertTrue(VoiceEarpieceCalls.playsElsewhere([.carAudio]))
+        XCTAssertFalse(VoicePhoneCalls.playsElsewhere([.builtInReceiver]))
+        XCTAssertFalse(VoicePhoneCalls.playsElsewhere([.builtInSpeaker]))
+        XCTAssertFalse(VoicePhoneCalls.playsElsewhere([]))
+        XCTAssertTrue(VoicePhoneCalls.playsElsewhere([.headphones]))
+        XCTAssertTrue(VoicePhoneCalls.playsElsewhere([.bluetoothHFP]))
+        XCTAssertTrue(VoicePhoneCalls.playsElsewhere([.carAudio]))
     }
 
     // MARK: Calls from Hermes in CallKit
 
     func testNativeCallDropsDefaultToSpeakerSoTheSpeakerButtonCanTurnItOff() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         _ = try coordinator.acquire(.conversationCapture)
 
         XCTAssertFalse(session.categoryCalls.contains { $0.options.contains(.defaultToSpeaker) },
@@ -701,7 +701,7 @@ extension VoiceAudioSessionCoordinatorTests {
         // A conversation before the call had moved to the loudspeaker.
         try session.overrideOutputToSpeaker()
         session.resetRecordings()
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
         _ = try coordinator.acquire(.conversationPlayback)
@@ -711,7 +711,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testReactivatedCallAudioLeavesTheEarpieceTheUserChose() {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         // The Speaker button turned the speaker off, then an interruption
         // ended and CallKit activated the audio again.
@@ -726,7 +726,7 @@ extension VoiceAudioSessionCoordinatorTests {
 
     func testCallAnsweredOnHeadphonesStaysOnThem() {
         session.isOutputOnBuiltInReceiver = false
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
 
         XCTAssertEqual(session.speakerOverrides, 0, "the override would take the call off the headset")
@@ -739,7 +739,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testReapplyInANativeCallKeepsTheSpeakerWhileItIsOn() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
         session.speakerButtonTurnedOn()
@@ -752,7 +752,7 @@ extension VoiceAudioSessionCoordinatorTests {
 
     func testReassertAfterTheSpeakerButtonDoesNotLoop() throws {
         session.reportsCurrentCategory = true
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
         session.speakerButtonTurnedOn()
@@ -769,7 +769,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testReapplyThatLeavesTheSpeakerOnDoesNotOverrideAgain() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         session.isOutputOnBuiltInReceiver = false
         // On the speaker without an override to clear (as if the category
         // change didn't touch it).
@@ -782,7 +782,7 @@ extension VoiceAudioSessionCoordinatorTests {
     func testOptionsTheSystemAddsStillCountAsTheCallsCategory() throws {
         session.reportsCurrentCategory = true
         session.systemAddedOptions = [.allowBluetoothA2DP]
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
         session.resetRecordings()
@@ -796,7 +796,7 @@ extension VoiceAudioSessionCoordinatorTests {
     func testASpeakerDefaultReportedByTheSessionIsNotTheCallsCategory() throws {
         session.reportsCurrentCategory = true
         session.systemAddedOptions = [.defaultToSpeaker]
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         let before = session.categoryCalls.count
 
         _ = try coordinator.acquire(.conversationCapture)
@@ -805,7 +805,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testReapplyInANativeCallLeavesTheEarpieceTheUserChose() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
         // The Speaker button turned the speaker off.
@@ -824,7 +824,7 @@ extension VoiceAudioSessionCoordinatorTests {
     /// while the sound stayed on the loudspeaker.
     func testActiveCallAudioIsLeftToCallKit() throws {
         session.reportsCurrentCategory = true
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         session.resetRecordings()
 
@@ -839,7 +839,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testConversationActivatesBeforeCallKitHas() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         session.resetRecordings()
 
         _ = try coordinator.acquire(.conversationCapture)
@@ -848,7 +848,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testConversationActivatesAgainOnceCallKitTookTheAudioBack() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         _ = try coordinator.acquire(.conversationCapture)
         coordinator.nativeCallAudioDeactivated()
@@ -860,7 +860,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testCallEndingUnderALiveConversationRestoresItsOwnPolicy() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         _ = try coordinator.acquire(.conversationCapture)
         session.resetRecordings()
 
@@ -871,7 +871,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testCallEndingWithNoOwnersLeavesTheSessionAlone() {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         session.resetRecordings()
 
         coordinator.nativeCallEnded()
@@ -884,7 +884,7 @@ extension VoiceAudioSessionCoordinatorTests {
     /// stays up, so the Speaker button's choice survives to the reply.
     func testLastOwnerLeavingInANativeCallKeepsTheSessionAndTheSpeaker() throws {
         session.reportsCurrentCategory = true
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         coordinator.nativeCallAudioActivated()
         let capture = try coordinator.acquire(.conversationCapture)
         session.speakerButtonTurnedOn()
@@ -905,7 +905,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testLastOwnerLeavingAfterTheCallEndedDeactivates() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         let capture = try coordinator.acquire(.conversationCapture)
         coordinator.nativeCallEnded()
         session.resetRecordings()
@@ -920,7 +920,7 @@ extension VoiceAudioSessionCoordinatorTests {
     func testFailedCallCategoryStillReappliesOnTheNextTransition() throws {
         _ = try coordinator.acquire(.conversationCapture)
         session.categoryError = VoiceAudioSessionMockError.configurationFailed
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         session.categoryError = nil
         session.resetRecordings()
 
@@ -971,7 +971,7 @@ extension VoiceAudioSessionCoordinatorTests {
     }
 
     func testAReplyInACallFromHermesLeavesTheSpeakerToTheCall() throws {
-        coordinator.configureForIncomingCall()
+        coordinator.configureForNativeCall()
         _ = try coordinator.acquire(.conversationCapture)
         _ = try coordinator.acquire(.conversationPlayback)
         coordinator.ensureConversationSpeaker()

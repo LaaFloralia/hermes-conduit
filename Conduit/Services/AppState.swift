@@ -4619,13 +4619,14 @@ final class AppState: ObservableObject {
             || isNativeCallVoiceSurfaceActive
     }
 
-    /// A call from Hermes the user answered in CallKit presents the classic
-    /// Voice it opened, with the phone locked or Conduit in the background
-    /// (#558): answering was the user's go-ahead, and the CallKit screen
-    /// keeps mute and hang-up in reach. Only while that Voice sheet is open;
-    /// hanging up closes it.
+    /// A CallKit call presents the classic Voice it carries, with the phone
+    /// locked or Conduit in the background: a call from Hermes the user
+    /// answered here (#558), or one the user placed from Conduit (LAA fork,
+    /// `isPlacedPhoneCallActive`). Answering or placing was the user's
+    /// go-ahead, and the system's call screen keeps mute and hang-up in
+    /// reach. Only while that Voice sheet is open; hanging up closes it.
     var isNativeCallVoiceSurfaceActive: Bool {
-        isNativeHermesCallAnswered && showVoiceSheet
+        (isNativeHermesCallAnswered || isPlacedPhoneCallActive) && showVoiceSheet
     }
 
     /// Off screen, nobody can tap Listen: the conversation keeps listening
@@ -5001,7 +5002,8 @@ final class AppState: ObservableObject {
     /// left a socket lost during suspension dead for the whole drive and
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
-        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
+        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive
+            || isNativeHermesCallActive || isPlacedPhoneCallActive
     }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
@@ -7030,6 +7032,11 @@ final class AppState: ObservableObject {
     /// The call's CallKit mute: a classic voice the call opens while muted
     /// doesn't start listening on its own.
     var isNativeHermesCallMuted = false
+    /// A call the user placed from Conduit is on the system's call screen
+    /// (LAA fork, VoicePlacedCalls): like an answered call from Hermes, it
+    /// keeps the conversation it carries running with the phone locked or
+    /// Conduit in the background. See `isNativeCallVoiceSurfaceActive`.
+    @Published private(set) var isPlacedPhoneCallActive = false
     /// A profile's call settings on the host (AppState+HermesCalls), for
     /// the dashboard and profile in `hermesCallsStatusKey`.
     @Published var hermesCallsStatus: HermesCallsStatus?
@@ -8998,6 +9005,20 @@ final class AppState: ObservableObject {
     /// dictation steps aside.
     var isVoiceInUse: Bool {
         showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasLiveVoiceSession
+    }
+
+    /// A voice conversation the user started on this phone: the one a call
+    /// placed from Conduit carries (LAA fork, VoicePlacedCalls). One CarPlay
+    /// or the Watch runs is theirs, and the car's or the wrist's call screen
+    /// already runs it.
+    var isPhoneVoiceCallRunning: Bool {
+        isVoiceInUse && !isCarPlayVoiceSurfaceActive && !isWatchVoiceCallActive
+    }
+
+    /// Who a call placed from here says it is calling: the profile's name,
+    /// as a call from Hermes names it.
+    var placedCallName: String {
+        HermesCallerName.name(profile: activeProfile, mainName: profileDisplayName(activeProfile))
     }
 
     /// A call runs somewhere: on this screen or minimised, in CarPlay, on
@@ -35305,9 +35326,11 @@ final class AppState: ObservableObject {
     /// transitions cannot keep a dead gateway on a fixed 0.1s retry.
     func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
         // A conversation kept running while locked relies on the transport
-        // the same way, and so do a call the Apple Watch started and a call
-        // from Hermes answered in CallKit.
-        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive,
+        // the same way, and so do a call the Apple Watch started, a call
+        // from Hermes answered in CallKit, and a call the user placed from
+        // Conduit (LAA fork) that the system's call screen keeps running.
+        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
+                || isPlacedPhoneCallActive,
               !isSceneActive,
               connection != nil,
               !isConnected,

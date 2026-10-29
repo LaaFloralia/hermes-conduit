@@ -2,10 +2,11 @@
 //  EarpieceCallControls.swift
 //  Conduit
 //
-//  "Hold calls to your ear" (VoiceEarpieceCalls): a voice conversation the
-//  user starts plays from the earpiece like a phone call. The call screens'
-//  Speaker button and the proximity sensor that turns the screen off
-//  against the ear.
+//  "Place calls as phone calls" (VoicePhoneCalls), where CallKit isn't
+//  placing the call: a voice conversation the user starts plays from the
+//  earpiece like a phone call. The call screens' own Speaker button and the
+//  proximity sensor that turns the screen off against the ear. With CallKit
+//  placing the call, iOS's call screen owns both.
 //
 
 import AVFAudio
@@ -15,13 +16,14 @@ import UIKit
 
 /// The call screen's Speaker button: moves a call the user started from
 /// the earpiece to the loudspeaker and back. Draws nothing with the setting
-/// off, or in a call from Hermes, whose Speaker button is CallKit's.
+/// off, or in a CallKit call, whose Speaker button is the system's: one from
+/// Hermes, or one placed here.
 struct LiveVoiceCallSpeakerButton: View {
     @ObservedObject private var audio = VoiceAudioSessionCoordinator.shared
-    @AppStorage(VoiceEarpieceCalls.preferenceKey) private var earpieceCalls = VoiceEarpieceCalls.defaultValue
+    @AppStorage(VoicePhoneCalls.preferenceKey) private var phoneCalls = VoicePhoneCalls.defaultValue
 
     var body: some View {
-        if earpieceCalls, !audio.isInNativeCall {
+        if phoneCalls, !audio.isInNativeCall {
             let isOn = audio.conversationSpeakerChosen
             LiveVoiceCallButton(
                 symbol: "speaker.wave.3.fill",
@@ -40,7 +42,7 @@ struct LiveVoiceCallSpeakerButton: View {
 struct EarpieceCallProximity: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var audio = VoiceAudioSessionCoordinator.shared
-    @AppStorage(VoiceEarpieceCalls.preferenceKey) private var earpieceCalls = VoiceEarpieceCalls.defaultValue
+    @AppStorage(VoicePhoneCalls.preferenceKey) private var phoneCalls = VoicePhoneCalls.defaultValue
     /// Headphones, Bluetooth or the car hold the audio: nothing to hold to
     /// the ear. Posted off the main thread, so read on it.
     @State private var playsElsewhere = false
@@ -50,8 +52,8 @@ struct EarpieceCallProximity: ViewModifier {
         .receive(on: DispatchQueue.main)
 
     private var monitorsProximity: Bool {
-        VoiceEarpieceCalls.monitorsProximity(
-            enabled: earpieceCalls,
+        VoicePhoneCalls.monitorsProximity(
+            enabled: phoneCalls,
             callOnPhone: appState.isVoiceInUse || appState.minimisedLiveVoice != nil,
             speakerChosen: audio.conversationSpeakerChosen,
             inNativeCall: audio.isInNativeCall,
@@ -60,7 +62,7 @@ struct EarpieceCallProximity: ViewModifier {
     }
 
     private func readRoute() {
-        playsElsewhere = VoiceEarpieceCalls.playsElsewhere(
+        playsElsewhere = VoicePhoneCalls.playsElsewhere(
             AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
         )
     }
