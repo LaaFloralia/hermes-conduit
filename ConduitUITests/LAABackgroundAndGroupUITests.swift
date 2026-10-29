@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class LAABackgroundAndGroupUITests: XCTestCase {
     #if LAA_BUILD
@@ -62,7 +63,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
 
     func testUnpairedBridgeExplainsPairingAndRejectsEmptyCode() {
         let app = XCUIApplication()
-        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_UI_TEST_REAL_BRIDGE"]
+        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_UI_TEST_REAL_BRIDGE", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
         XCTAssertTrue(app.staticTexts["fixture.bridge.status"].waitForExistence(timeout: 20))
         XCTAssertEqual(app.staticTexts["fixture.bridge.status"].label, "未接続")
@@ -113,6 +114,47 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertTrue(openCreate.waitForExistence(timeout: 15))
         openCreate.tap()
         XCTAssertTrue(app.textFields["groups.create.name"].waitForExistence(timeout: 5))
+    }
+
+    func testWhitePhotoIsDrawnAndAutomaticallyDimmedInChat() throws {
+        try assertWhitePhotoIsDrawn(surface: "chat")
+    }
+
+    func testWhitePhotoIsDrawnAndAutomaticallyDimmedInGroup() throws {
+        try assertWhitePhotoIsDrawn(surface: "group")
+    }
+
+    private func assertWhitePhotoIsDrawn(surface: String, file: StaticString = #filePath, line: UInt = #line) throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_CAPTURE_SURFACE", surface,
+                               "-LAA_CAPTURE_KIND", "photo", "-LAA_CAPTURE_WHITE"]
+        app.launch()
+        defer { app.terminate() }
+        XCTAssertTrue(app.buttons["conversation.menu"].waitForExistence(timeout: 20), file: file, line: line)
+        let deadline = Date().addingTimeInterval(15)
+        var sample: Double = -1
+        repeat {
+            sample = try pixelBrightness(app.screenshot().image, x: 0.5, y: 0.67)
+            if (0.35...0.47).contains(sample) { break }
+            Thread.sleep(forTimeInterval: 0.5)
+        } while Date() < deadline
+        XCTAssertGreaterThan(sample, 0.35, "The white photo must reach the \(surface) surface", file: file, line: line)
+        XCTAssertLessThanOrEqual(sample, 0.47, "A white photo with dim=0 must be automatically darkened", file: file, line: line)
+        let luminance = sample <= 0.04045 ? sample / 12.92 : pow((sample + 0.055) / 1.055, 2.4)
+        XCTAssertGreaterThanOrEqual(1.05 / (luminance + 0.05), 4.5, file: file, line: line)
+    }
+
+    private func pixelBrightness(_ image: UIImage, x: Double, y: Double) throws -> Double {
+        let cg = try XCTUnwrap(image.cgImage)
+        let pixel = try XCTUnwrap(cg.cropping(to: CGRect(x: Int(Double(cg.width) * x), y: Int(Double(cg.height) * y), width: 1, height: 1)))
+        var bytes = [UInt8](repeating: 0, count: 4)
+        try bytes.withUnsafeMutableBytes { buffer in
+            let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+            let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8,
+                bytesPerRow: 4, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        return Double(max(bytes[0], bytes[1], bytes[2])) / 255
     }
     #else
     func testOnlyAvailableInLAABuild() throws { throw XCTSkip("LAA build only") }

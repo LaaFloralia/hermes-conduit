@@ -14273,6 +14273,9 @@ final class AppState: ObservableObject {
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
+        #if LAA_BUILD
+        try? LAABackgroundStore.shared.removeAll(dashboardID: id)
+        #endif
         forgetRelayGatewayIDs(of: id)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)

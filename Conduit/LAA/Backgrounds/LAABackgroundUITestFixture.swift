@@ -145,8 +145,9 @@ struct LAABackgroundUITestFixtureScreen: View {
             if argument("-LAA_CAPTURE_SURFACE") == "group" { await fake.openGroup() }
             if let raw = argument("-LAA_CAPTURE_KIND"), let kind = LAABackground.Kind(rawValue: raw),
                let key = LAAConversationScope.current(fake.state) {
-                if kind == .photo, let data = LAABackgroundFixturePhoto.data() {
-                    try? LAABackgroundStore.shared.savePhoto(data, for: key, dim: 0.2, blur: 8)
+                if kind == .photo, let data = LAABackgroundFixturePhoto.data(white: args.contains("-LAA_CAPTURE_WHITE")) {
+                    let white = args.contains("-LAA_CAPTURE_WHITE")
+                    try? LAABackgroundStore.shared.savePhoto(data, for: key, dim: white ? 0 : 0.2, blur: white ? 0 : 8)
                 } else {
                     try? LAABackgroundStore.shared.save(LAABackground(kind: kind), for: key)
                 }
@@ -156,7 +157,12 @@ struct LAABackgroundUITestFixtureScreen: View {
 }
 
 enum LAABackgroundFixturePhoto {
-    static func data() -> Data? {
+    static func data(white: Bool = false) -> Data? {
+        if white {
+            return UIGraphicsImageRenderer(size: CGSize(width: 100, height: 200)).image { context in
+                UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 100, height: 200))
+            }.pngData()
+        }
         let fixture = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("background-fixture.jpg")
         if let data = try? Data(contentsOf: fixture) { return data }

@@ -73,7 +73,7 @@ struct LAABackgroundCanvas: View {
                     if let image {
                         Image(uiImage: image).resizable().scaledToFill()
                             .frame(width: geometry.size.width, height: geometry.size.height)
-                            .blur(radius: value.blur)
+                            .blur(radius: value.blur, opaque: true)
                             .clipped()
                         Color.black.opacity(value.safeDim)
                         // Clear controls over a photo have a dimmed backing.
@@ -277,6 +277,16 @@ private struct LAAAssistantSurface: ViewModifier {
         }
     }
 }
+private struct LAAPhotoSupportingText: ViewModifier {
+    @Environment(\.laaBackgroundKind) private var kind
+    @ViewBuilder func body(content: Content) -> some View {
+        if kind == .photo {
+            content.foregroundStyle(.white)
+                .padding(.horizontal, 5).padding(.vertical, 2)
+                .background(.black.opacity(0.82), in: Capsule())
+        } else { content }
+    }
+}
 private struct LAAGroupSurface: ViewModifier {
     @Environment(\.laaBackgroundKind) private var kind
     @ViewBuilder func body(content: Content) -> some View {
@@ -328,6 +338,7 @@ extension View {
     func laaConversationBackground() -> some View { modifier(LAAConversationBackgroundModifier()) }
     func laaConversationFeatures() -> some View { modifier(LAAConversationFeaturesModifier()) }
     func laaAssistantSurface() -> some View { modifier(LAAAssistantSurface()) }
+    func laaPhotoSupportingText() -> some View { modifier(LAAPhotoSupportingText()) }
     func laaGroupSurface() -> some View { modifier(LAAGroupSurface()) }
     func laaComposerSurface(_ foundation: Color) -> some View { modifier(LAAComposerSurface(foundation: foundation)) }
     func laaComposerGlassScope() -> some View { modifier(LAAPhotoGlassScope()) }
@@ -340,6 +351,7 @@ extension View {
     func laaConversationBackground() -> some View { self }
     func laaConversationFeatures() -> some View { self }
     func laaAssistantSurface() -> some View { self }
+    func laaPhotoSupportingText() -> some View { self }
     func laaGroupSurface() -> some View { self }
     func laaComposerSurface(_ foundation: Color) -> some View {
         background(foundation, in: RoundedRectangle(cornerRadius: 30, style: .continuous))

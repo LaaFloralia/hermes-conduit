@@ -490,6 +490,7 @@ struct GroupRoomTitle: View {
                     .lineLimit(1)
                 Text(subtitle)
                     .font(.caption2)
+                    .laaPhotoSupportingText()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .contentTransition(.opacity)
@@ -751,6 +752,7 @@ struct GroupUserBubble<Footer: View>: View {
                     if let timestamp {
                         Text(GroupBubbleTime.text(timestamp))
                             .font(.caption2)
+                            .laaPhotoSupportingText()
                             .foregroundStyle(.conduitTertiary)
                     }
                     // Like a chat, Copy takes only what the user wrote.
@@ -811,11 +813,13 @@ struct GroupMemberBubble: View {
                     HStack(spacing: 6) {
                         Text(name)
                             .font(.caption.weight(.semibold))
+                            .laaPhotoSupportingText()
                             .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                             .lineLimit(1)
                         if let timestamp {
                             Text(GroupBubbleTime.text(timestamp))
                                 .font(.caption2)
+                                .laaPhotoSupportingText()
                                 .foregroundStyle(.conduitTertiary)
                         }
                     }
@@ -856,6 +860,7 @@ struct GroupSystemEventCaption: View {
     var body: some View {
         Text(caption)
             .font(.caption2)
+            .laaPhotoSupportingText()
             .foregroundStyle(.conduitTertiary)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 2)
@@ -912,6 +917,7 @@ struct GroupRespondingRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(name)
                     .font(.caption.weight(.semibold))
+                    .laaPhotoSupportingText()
                     .foregroundStyle(tint.map { Color(uiColor: $0.readableColor) } ?? .secondary)
                     .lineLimit(1)
                 HStack(spacing: 6) {

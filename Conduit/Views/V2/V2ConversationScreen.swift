@@ -446,6 +446,7 @@ private struct V2ConnectionLine: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
             }
+            .laaPhotoSupportingText()
             .foregroundStyle(connecting ? Color.orange : Color.red)
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             .transition(.opacity)

@@ -166,6 +166,27 @@ struct LAAGroupCreateView: View {
 }
 
 @MainActor
+enum LAAGroupRename {
+    static func isAvailable(_ state: AppState) -> Bool {
+        state.isConnected && state.client != nil && state.groupCapabilities?.supports("groups.rename") == true
+    }
+
+    static func perform(_ state: AppState, surface: AppState.GroupRoomSurface, name: String, eventID: String) async -> Bool {
+        guard isAvailable(state), let client = state.client else { return false }
+        let epoch = state.groupRoomEpoch
+        do {
+            let room = try await client.groupsRename(roomID: surface.room.roomID, eventID: eventID, name: name)
+            guard state.groupRoomEpoch == epoch, state.activeDashboardID == surface.dashboardID,
+                  state.activeRoomSurface?.room.roomID == surface.room.roomID else { return false }
+            await state.refreshGroupRooms()
+            guard state.groupRoomEpoch == epoch, state.activeDashboardID == surface.dashboardID else { return false }
+            await state.openGroupRoom(room)
+            return true
+        } catch { return false }
+    }
+}
+
+@MainActor
 struct LAAGroupSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -174,19 +195,8 @@ struct LAAGroupSettingsView: View {
         NavigationStack {
             if let surface = appState.activeRoomSurface {
                 LAAGroupSettingsContent(room: surface.room,
-                    canRename: appState.isConnected && appState.groupCapabilities?.supports("groups.rename") == true) { name, eventID in
-                    guard let client = appState.client, appState.isConnected,
-                          appState.groupCapabilities?.supports("groups.rename") == true else { return false }
-                    let epoch = appState.groupRoomEpoch
-                    do {
-                        let room = try await client.groupsRename(roomID: surface.room.roomID, eventID: eventID, name: name)
-                        guard appState.groupRoomEpoch == epoch, appState.activeDashboardID == surface.dashboardID,
-                              appState.activeRoomSurface?.room.roomID == surface.room.roomID else { return false }
-                        await appState.refreshGroupRooms()
-                        guard appState.groupRoomEpoch == epoch, appState.activeDashboardID == surface.dashboardID else { return false }
-                        await appState.openGroupRoom(room)
-                        return true
-                    } catch { return false }
+                    canRename: LAAGroupRename.isAvailable(appState)) { name, eventID in
+                    await LAAGroupRename.perform(appState, surface: surface, name: name, eventID: eventID)
                 }
             } else { Text(verbatim: "グループが開かれていません。") }
         }

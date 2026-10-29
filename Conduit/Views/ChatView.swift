@@ -3098,6 +3098,7 @@ private struct MessageTimestampLabel: View {
         if let label = MessageTimestampFormatter.displayString(for: timestamp) {
             Text(label)
                 .font(.caption2.weight(.medium))
+                .laaPhotoSupportingText()
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
                 .monospacedDigit()
                 .accessibilityLabel(AppLocalization.string("Sent \(label)"))

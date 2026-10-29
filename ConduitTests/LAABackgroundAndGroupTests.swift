@@ -47,9 +47,97 @@ final class LAABackgroundAndGroupTests: XCTestCase {
         XCTAssertEqual(saved.kind, .photo)
         XCTAssertEqual(saved.dim, 0.2, accuracy: 0.001)
         XCTAssertEqual(saved.blur, 12, accuracy: 0.001)
+        XCTAssertEqual(saved.brightestComponent, 1.0, accuracy: 0.00001)
         XCTAssertLessThanOrEqual(try XCTUnwrap(reopened.image(for: key())).size.width, 1600)
         try FileManager.default.removeItem(at: directory.appendingPathComponent(try XCTUnwrap(saved.photoID) + ".jpg"))
         XCTAssertEqual(reopened.setting(for: key()).kind, .paper)
+    }
+
+    func testReplacingAndResettingPhotosKeepsSharedReferences() throws {
+        let store = LAABackgroundStore(directory: directory)
+        let first = key("first"), second = key("second", surface: .group)
+        let white = UIGraphicsImageRenderer(size: CGSize(width: 30, height: 30)).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 30, height: 30))
+        }.pngData()!
+        let red = UIGraphicsImageRenderer(size: CGSize(width: 30, height: 30)).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 30, height: 30))
+        }.pngData()!
+        try store.savePhoto(white, for: first, dim: 0, blur: 0)
+        let whiteID = try XCTUnwrap(store.setting(for: first).photoID)
+        let whiteURL = directory.appendingPathComponent(whiteID + ".jpg")
+        try store.savePhoto(white, for: second, dim: 0, blur: 0)
+        XCTAssertEqual(store.setting(for: second).photoID, whiteID)
+        try store.save(LAABackground(kind: .paper, photoID: whiteID), for: first)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: whiteURL.path))
+        XCTAssertNil(store.setting(for: first).photoID)
+        try store.savePhoto(red, for: second, dim: 0, blur: 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: whiteURL.path))
+        let redID = try XCTUnwrap(store.setting(for: second).photoID)
+        let redURL = directory.appendingPathComponent(redID + ".jpg")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: redURL.path))
+        try store.save(LAABackground(kind: .ink), for: second)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: redURL.path))
+    }
+
+    func testRemovingDashboardKeepsOtherDashboardAndExcludesBackup() throws {
+        let store = LAABackgroundStore(directory: directory)
+        let other = UUID()
+        let first = key("first"), second = key("second", surface: .group, dashboard: other)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 20)).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+        }.pngData()!
+        try store.savePhoto(image, for: first, dim: 0, blur: 0)
+        try store.savePhoto(image, for: second, dim: 0, blur: 0)
+        let photoID = try XCTUnwrap(store.setting(for: first).photoID)
+        XCTAssertEqual(try directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+        try store.removeAll(dashboardID: dashboard)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(first.fileID + ".json").path))
+        XCTAssertEqual(store.setting(for: second).kind, .photo)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent(photoID + ".jpg").path))
+        try store.removeAll(dashboardID: other)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.appendingPathComponent(photoID + ".jpg").path))
+    }
+
+    func testAppStateRemovingDashboardRemovesOnlyItsBackgrounds() throws {
+        let one = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://background-one.invalid")
+        let two = SavedDashboard(id: UUID(), label: "Two", normalizedURL: "https://background-two.invalid")
+        let first = key("one", dashboard: one.id), second = key("two", dashboard: two.id)
+        let store = LAABackgroundStore.shared
+        defer { try? store.removeAll(dashboardID: one.id); try? store.removeAll(dashboardID: two.id) }
+        let white = UIGraphicsImageRenderer(size: CGSize(width: 29, height: 23)).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 29, height: 23))
+        }
+        let red = UIGraphicsImageRenderer(size: CGSize(width: 29, height: 23)).image { context in
+            UIColor.red.setFill(); context.fill(CGRect(x: 0, y: 0, width: 29, height: 23))
+        }
+        try store.savePhoto(XCTUnwrap(white.pngData()), for: first, dim: 0, blur: 0)
+        try store.savePhoto(XCTUnwrap(red.pngData()), for: second, dim: 0, blur: 0)
+        let removedPhotoID = try XCTUnwrap(store.setting(for: second).photoID)
+        let photoURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("LAAConversationBackgrounds", isDirectory: true)
+            .appendingPathComponent(removedPhotoID + ".jpg")
+        let suite = "LAABackgroundDashboardTests-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: one.id, dashboards: [one, two]),
+            clearSessionPresentationCache: {})
+        state.removeDashboard(two.id)
+        XCTAssertEqual(store.setting(for: second).kind, .paper)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: photoURL.path))
+        XCTAssertEqual(store.setting(for: first).kind, .photo)
+        XCTAssertNotNil(store.image(for: first))
+    }
+
+    func testCorruptRecordsPreventDeletingUnknownReferences() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = LAABackgroundStore(directory: directory)
+        let photoID = String(repeating: "a", count: 64)
+        let photo = directory.appendingPathComponent(photoID + ".jpg")
+        try Data([1]).write(to: photo)
+        try Data("broken".utf8).write(to: directory.appendingPathComponent("unknown.json"))
+        try store.save(LAABackground(kind: .paper), for: key())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photo.path))
     }
 
     func testContrastDimmingForEveryBrightnessAndClamping() {
