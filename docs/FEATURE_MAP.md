@@ -3611,7 +3611,7 @@ and rollback instructions · the upstream App Store build
 
 ## LAA employee widget
 
-**Siblings:** LAA Home Screen small widget · Lock Screen circular widget · the existing widget URL router and voice start · LAA shell's error notice · the upstream launcher widgets (unchanged)
+**Siblings:** LAA Home Screen small widget · Lock Screen rectangular and circular widgets · the existing widget URL router and voice start · LAA shell's error notice · the upstream launcher widgets (unchanged)
 
 **Code**
 - Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
@@ -3620,14 +3620,14 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
 
 **Rulings**
-- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate round Call and Chat links; the circular Lock Screen widget opens a call. Medium is not offered, and no live status is shown.
+- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. Medium is not offered, and no live status is shown.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing profile voice path. A missing dashboard or profile is explained in Japanese.
-- Only the LAA extension bundles the resized staff hero images. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
+- Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-10-29, based on 5d712c50 and the LAA task 12b changes.
+**Checked:** 2026-10-30, widget routing and configuration tests before the final image-position adjustment. The final Home Screen render and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 

@@ -145,6 +145,10 @@ targets:
     sources:
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
         buildPhase: resources
+      - path: Conduit/LAA/Design/LAATokens.swift
+      - path: Conduit/LAA/LAAColors.swift
+      - path: Conduit/LAA/LAACopy.swift
+      - path: Conduit/LAA/LAATab.swift
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
