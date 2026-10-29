@@ -177,7 +177,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（89 tests、約1秒。Driveはfake APIで検証）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（91 tests、約1秒。Driveはfake APIで検証）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。

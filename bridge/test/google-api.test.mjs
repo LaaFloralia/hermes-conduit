@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, describe, it } from 'node:test';
+import { startBridge } from './helpers.mjs';
 import {
   DriveAuthError,
   DriveNotConfiguredError,
@@ -254,5 +255,48 @@ describe('item mapping', () => {
     assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf', size: '12' }).size, 12);
     assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf' }).size, null);
     assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf' }).downloadable, true);
+  });
+});
+
+// End-to-end over the real adapter: undici returns a web ReadableStream, and
+// the route pipes it to the HTTP response. This pins that the web stream,
+// the forwarded Range and the abort signal all survive the whole path.
+describe('google drive api adapter through the bridge', () => {
+  let fake;
+  let bridge;
+  let token;
+
+  before(async () => {
+    fake = fakeDriveApi();
+    await new Promise((resolve) => fake.server.listen(0, '127.0.0.1', resolve));
+    const adapter = createGoogleDriveApiAdapter({
+      getAccessToken: async () => ACCESS_TOKEN,
+      baseUrl: `http://127.0.0.1:${fake.server.address().port}/drive/v3`,
+    });
+    bridge = await startBridge({ drive: adapter });
+    const { code } = await bridge.pair();
+    token = (await bridge.enroll(code)).body.data.token;
+  });
+  after(async () => {
+    await bridge.close();
+    await new Promise((resolve) => fake.server.close(resolve));
+  });
+
+  it('relays a 206 and the bytes from files.get?alt=media', async () => {
+    const response = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
+      headers: { authorization: `Bearer ${token}`, range: 'bytes=1000-1099' },
+    });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get('content-range'), `bytes 1000-1099/${VIDEO.length}`);
+    assert.equal(response.headers.get('content-length'), '100');
+    assert.ok(Buffer.from(await response.arrayBuffer()).equals(VIDEO.subarray(1000, 1100)));
+  });
+
+  it('serves the whole file when no Range is sent', async () => {
+    const response = await fetch(`${bridge.base}/v1/drive/files/file_video_1/content`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.status, 200);
+    assert.equal((await response.arrayBuffer()).byteLength, VIDEO.length);
   });
 });
