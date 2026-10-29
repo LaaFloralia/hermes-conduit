@@ -12,6 +12,15 @@ final class LAABrainUITests: XCTestCase {
         return app
     }
 
+    private func dismissKeyboard(_ app: XCUIApplication) {
+        let keyboard = app.keyboards.firstMatch
+        guard keyboard.exists else { return }
+        let dismiss = app.buttons["laa.brain.fixture.dismissKeyboard"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 10))
+        dismiss.tap()
+        XCTAssertTrue(keyboard.waitForNonExistence(timeout: 10))
+    }
+
     func testBrowseReadRawAndSearch() {
         let app = launch("normal")
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
@@ -53,7 +62,9 @@ final class LAABrainUITests: XCTestCase {
         let editor = app.textViews["laa.brain.newContent"]
         editor.tap()
         editor.typeText("Hello")
+        dismissKeyboard(app)
         app.swipeUp()
+        XCTAssertEqual(editor.value as? String, "Hello")
         let save = app.buttons["laa.brain.save"]
         XCTAssertTrue(save.waitForExistence(timeout: 10))
         XCTAssertTrue(save.isEnabled)
@@ -61,6 +72,32 @@ final class LAABrainUITests: XCTestCase {
         let createdPath = app.staticTexts["laa.brain.createdPath"]
         XCTAssertTrue(createdPath.waitForExistence(timeout: 10))
         XCTAssertEqual(createdPath.label, "Inbox/Test 2.md")
+    }
+
+    func testCreateWhileJapaneseTextIsMarked() {
+        let app = launch("marked")
+        let create = app.buttons["laa.brain.create"]
+        XCTAssertTrue(create.waitForExistence(timeout: 30))
+        create.tap()
+        let name = app.textFields["laa.brain.newName"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        name.tap()
+        name.typeText("Marked")
+        let editor = app.textViews["laa.brain.newContent"]
+        editor.tap()
+        editor.typeText("Before ")
+        app.buttons["laa.brain.fixture.compose"].tap()
+        let didMark = app.staticTexts["laa.brain.fixture.didMark"]
+        XCTAssertTrue(didMark.waitForExistence(timeout: 10))
+        XCTAssertEqual(didMark.label, "marked")
+        let save = app.buttons["laa.brain.save"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        let markedAtSave = app.staticTexts["laa.brain.fixture.markedAtSave"]
+        XCTAssertTrue(markedAtSave.waitForExistence(timeout: 10))
+        XCTAssertEqual(markedAtSave.label, "marked")
+        XCTAssertEqual(app.staticTexts["laa.brain.fixture.submittedContent"].label, "Before かな")
     }
 
     func testMarkdownWikiLinkAndFrontmatter() {
@@ -101,6 +138,7 @@ final class LAABrainUITests: XCTestCase {
         let editor = app.textViews["laa.brain.newContent"]
         editor.tap()
         editor.typeText("Hello")
+        dismissKeyboard(app)
         app.swipeUp()
         let save = app.buttons["laa.brain.save"]
         XCTAssertTrue(save.waitForExistence(timeout: 10))
@@ -108,6 +146,8 @@ final class LAABrainUITests: XCTestCase {
         save.tap()
         let acknowledge = app.buttons["Inboxを確認して新しく作る"]
         XCTAssertTrue(acknowledge.waitForExistence(timeout: 10))
+        app.swipeUp()
+        XCTAssertTrue(save.waitForExistence(timeout: 10))
         XCTAssertTrue(save.isEnabled)
         save.tap()
         XCTAssertTrue(app.staticTexts["以前の保存結果を確定できません。Inboxを確認してから次の操作を行ってください。"].waitForExistence(timeout: 10))

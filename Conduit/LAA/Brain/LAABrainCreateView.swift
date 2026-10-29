@@ -1,5 +1,8 @@
 #if LAA_BUILD
 import SwiftUI
+#if DEBUG
+import UIKit
+#endif
 
 struct LAABrainCreateView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -14,6 +17,9 @@ struct LAABrainCreateView: View {
     @State private var failure: String?
     @State private var created: LAABrainCreated?
     @State private var pendingLoaded = false
+    #if DEBUG
+    @State private var fixtureDidMark = false
+    #endif
     private let pendingStore = LAABrainPendingStore()
 
     init(pending: Binding<LAABrainPending?>, open: @escaping (LAABrainCreated) -> Void) {
@@ -34,6 +40,14 @@ struct LAABrainCreateView: View {
                         if created.suffixApplied { Text(verbatim: "同名のメモがあるため、別の名前で保存しました。") }
                         Button { open(created) } label: { Text(verbatim: "メモを開く") }
                     }
+                    #if DEBUG
+                    if LAABrainData.isMarkedTextFixture {
+                        Text(verbatim: LAABrainData.fixtureMarkedAtSave ? "marked" : "unmarked")
+                            .accessibilityIdentifier("laa.brain.fixture.markedAtSave")
+                        Text(verbatim: LAABrainData.fixtureSubmittedContent ?? "missing")
+                            .accessibilityIdentifier("laa.brain.fixture.submittedContent")
+                    }
+                    #endif
                 } else {
                     Section {
                         TextField(text: $name) { Text(verbatim: "メモの名前") }
@@ -64,7 +78,14 @@ struct LAABrainCreateView: View {
                         }
                     }
                     Section {
-                        Button { Task { await save() } } label: {
+                        Button {
+                            #if DEBUG
+                            if LAABrainData.isMarkedTextFixture {
+                                LAABrainData.fixtureMarkedAtSave = LAABrainMarkedTextFixture.hasMarkedText()
+                            }
+                            #endif
+                            Task { await save() }
+                        } label: {
                             if saving { ProgressView() }
                             else { Text(verbatim: pending == nil ? "新規保存" : "同じ操作を再確認") }
                         }
@@ -72,6 +93,12 @@ struct LAABrainCreateView: View {
                                   (pending == nil && (scopeAllowed != true || LAABrainCreateBody.make(name: name, content: content) == nil)))
                         .accessibilityIdentifier("laa.brain.save")
                     }
+                    #if DEBUG
+                    if LAABrainData.isMarkedTextFixture {
+                        Text(verbatim: fixtureDidMark ? "marked" : "unmarked")
+                            .accessibilityIdentifier("laa.brain.fixture.didMark")
+                    }
+                    #endif
                 }
             }
             .navigationTitle(Text(verbatim: "新規メモ"))
@@ -80,6 +107,21 @@ struct LAABrainCreateView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button { dismiss() } label: { Text(verbatim: "閉じる") }.disabled(saving)
                 }
+                #if DEBUG
+                ToolbarItemGroup(placement: .primaryAction) {
+                    if LAABrainData.isTestFixture {
+                        Button {
+                            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        } label: { Text(verbatim: "Dismiss keyboard") }
+                        .accessibilityIdentifier("laa.brain.fixture.dismissKeyboard")
+                    }
+                    if LAABrainData.isMarkedTextFixture {
+                        Button { fixtureDidMark = LAABrainMarkedTextFixture.compose() }
+                            label: { Text(verbatim: "Compose") }
+                            .accessibilityIdentifier("laa.brain.fixture.compose")
+                    }
+                }
+                #endif
             }
             .interactiveDismissDisabled(saving)
             .tint(LAAColors.teal)
@@ -161,4 +203,36 @@ struct LAABrainCreateView: View {
         catch { failure = LAABridgeError.keychain.japaneseText; return false }
     }
 }
+
+#if DEBUG
+/// Exercises the same UITextInput marked range that an IME uses, without a
+/// particular simulator keyboard layout or a live vault.
+@MainActor private enum LAABrainMarkedTextFixture {
+    private static func activeTextView(in view: UIView) -> UITextView? {
+        if view.isFirstResponder { return view as? UITextView }
+        for child in view.subviews {
+            if let found = activeTextView(in: child) { return found }
+        }
+        return nil
+    }
+
+    private static func activeTextView() -> UITextView? {
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            for window in scene.windows {
+                if let found = activeTextView(in: window) { return found }
+            }
+        }
+        return nil
+    }
+
+    static func compose() -> Bool {
+        guard let view = activeTextView() else { return false }
+        view.setMarkedText("かな", selectedRange: NSRange(location: 2, length: 0))
+        view.delegate?.textViewDidChange?(view)
+        return view.markedTextRange != nil
+    }
+
+    static func hasMarkedText() -> Bool { activeTextView()?.markedTextRange != nil }
+}
+#endif
 #endif
