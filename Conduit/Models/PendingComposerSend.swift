@@ -112,7 +112,8 @@ extension ComposerDraft {
         ComposerDraft(
             text: Self.joined(restored.text, text),
             attachments: attachments + restored.attachments,
-            replyReference: replyReference ?? restored.replyReference
+            replyReference: replyReference ?? restored.replyReference,
+            roomRecipients: roomRecipients?.isEmpty == false ? roomRecipients : restored.roomRecipients
         )
     }
 }

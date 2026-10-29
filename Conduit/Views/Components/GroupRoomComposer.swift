@@ -67,6 +67,7 @@ struct GroupRoomComposer: View {
             // it explicitly (same event id) or it stays visible — a NEW
             // message typed meanwhile would be silently swallowed.
             && appState.pendingRoomMessage == nil
+            && unavailableRecipients.isEmpty
             && appState.groupCapabilities?.supports("groups.send") == true
             && surface?.room.isDisbanded == false
     }
@@ -127,7 +128,7 @@ struct GroupRoomComposer: View {
                 .padding(.top, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            if !rests, !pickableMembers.isEmpty {
+            if !rests, !pickableMembers.isEmpty || !unavailableRecipients.isEmpty {
                 recipientRow
                     .padding(.top, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -175,6 +176,9 @@ struct GroupRoomComposer: View {
         .onAppear {
             replaceDraft(appState.activeRoomDraft())
             attachments = appState.activeRoomAttachments()
+            let metadata = appState.activeRoomComposerMetadata()
+            replyReference = metadata.replyReference
+            recipients = metadata.roomRecipients ?? []
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
         }
@@ -196,10 +200,11 @@ struct GroupRoomComposer: View {
         .onChange(of: appState.roomRecipientRequest) { _, request in
             applyRecipientRequest(request)
         }
-        // A picked bot that leaves drops off the To row, so the row shows
-        // who the next message actually goes to.
-        .onChange(of: pickableHandles) { _, handles in
-            recipients.removeAll { !handles.contains($0.lowercased()) }
+        .onChange(of: replyReference) { _, reply in
+            appState.saveActiveRoomReplyReference(reply)
+        }
+        .onChange(of: recipients) { _, picked in
+            appState.saveActiveRoomRecipients(picked)
         }
         .onChange(of: draft) { _, text in
             appState.saveActiveRoomDraft(text)
@@ -273,6 +278,13 @@ struct GroupRoomComposer: View {
                             .padding(.horizontal, 14)
                             .padding(.top, 8)
                     }
+                    if let unavailableRecipientNotice {
+                        Label(unavailableRecipientNotice, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 14)
+                            .padding(.top, 8)
+                    }
                     if !attachments.isEmpty { attachmentStrip }
                 },
                 dictateButton: {
@@ -291,6 +303,9 @@ struct GroupRoomComposer: View {
     private var notices: some View {
         if appState.composerDraftStore.persistenceFailed {
             notice(AppLocalization.string("Could not save your draft. Keep the app open and try again."), color: .red)
+        }
+        if let unavailableRecipientNotice {
+            notice(unavailableRecipientNotice, color: .red)
         }
         if appState.activeRoomSendInFlight, appState.pendingRoomMessage == nil {
             // A poll can show the message delivered before the send's own
@@ -609,13 +624,16 @@ struct GroupRoomComposer: View {
                 defer { isRegisteringSend = false }
                 let remainingText = !typed.isEmpty && draft.hasPrefix(typed)
                     ? String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines) : draft
-                let submitted = ComposerDraft(text: typed, attachments: [], replyReference: sendsReply ? reply : nil)
-                let remaining = ComposerDraft(text: remainingText, attachments: attachments)
+                let submitted = ComposerDraft(text: typed, attachments: [], replyReference: sendsReply ? reply : nil,
+                                              roomRecipients: sendsRecipients ? picked : nil)
+                let remaining = ComposerDraft(text: remainingText, attachments: attachments,
+                                              replyReference: sendsReply && replyReference == reply ? nil : replyReference,
+                                              roomRecipients: sendsRecipients && recipients == picked ? nil : recipients)
                 _ = await appState.sendGroupRoomMessage(text, submittedDraft: submitted, remainingDraft: remaining) {
                     replaceDraft(remaining.text)
                     appState.saveActiveRoomDraft(remaining.text)
-                    if sendsReply { replyReference = nil }
-                    if sendsRecipients { recipients = [] }
+                    replyReference = remaining.replyReference
+                    recipients = remaining.roomRecipients ?? []
                 }
             }
             return
@@ -642,15 +660,18 @@ struct GroupRoomComposer: View {
             let remainingText = !typed.isEmpty && draft.hasPrefix(typed)
                 ? String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines) : draft
             let remainingFiles = attachments.filter { file in !files.contains { $0.id == file.id } }
-            let submitted = ComposerDraft(text: typed, attachments: files, replyReference: sendsReply ? reply : nil)
-            let remaining = ComposerDraft(text: remainingText, attachments: remainingFiles)
+            let submitted = ComposerDraft(text: typed, attachments: files, replyReference: sendsReply ? reply : nil,
+                                          roomRecipients: sendsRecipients ? picked : nil)
+            let remaining = ComposerDraft(text: remainingText, attachments: remainingFiles,
+                                          replyReference: sendsReply && replyReference == reply ? nil : replyReference,
+                                          roomRecipients: sendsRecipients && recipients == picked ? nil : recipients)
             let registered = await appState.sendGroupRoomMessage(message, submittedDraft: submitted, remainingDraft: remaining) {
                 replaceDraft(remaining.text)
                 attachments = remaining.attachments
                 appState.saveActiveRoomDraft(remaining.text)
                 appState.saveActiveRoomAttachments(remaining.attachments)
-                if sendsReply { replyReference = nil }
-                if sendsRecipients { recipients = [] }
+                replyReference = remaining.replyReference
+                recipients = remaining.roomRecipients ?? []
             }
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
@@ -662,8 +683,13 @@ struct GroupRoomComposer: View {
 
     private var pickableMembers: [GroupMember] { GroupRoomRecipients.pickable(members) }
 
-    private var pickableHandles: Set<String> {
-        Set(pickableMembers.compactMap { $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() })
+    private var unavailableRecipients: [String] {
+        GroupRoomRecipients.unavailable(recipients, members: members)
+    }
+
+    private var unavailableRecipientNotice: String? {
+        guard !unavailableRecipients.isEmpty else { return nil }
+        return AppLocalization.string("Unavailable") + ": " + unavailableRecipients.map { "@" + $0 }.joined(separator: ", ")
     }
 
     /// "To" and a chip per bot: tap to address the next message to it.
@@ -676,6 +702,19 @@ struct GroupRoomComposer: View {
                     .accessibilityHidden(true)
                 ForEach(pickableMembers, id: \.identityKey) { member in
                     recipientChip(member)
+                }
+                ForEach(unavailableRecipients, id: \.self) { handle in
+                    Button {
+                        recipients.removeAll { $0.caseInsensitiveCompare(handle) == .orderedSame }
+                    } label: {
+                        Label("@" + handle, systemImage: "xmark.circle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .padding(.horizontal, 10)
+                            .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(AppLocalization.string("Remove") + " @" + handle)
                 }
             }
             .padding(.horizontal, 12)

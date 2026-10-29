@@ -11275,6 +11275,28 @@ final class AppState: ObservableObject {
         ComposerDraftKey(profile: "", sessionID: "\u{1f}room:\(roomID)", dashboardID: dashboardID)
     }
 
+    /// The reply and recipient picks belong to this room's persisted draft.
+    func activeRoomComposerMetadata() -> ComposerDraft {
+        guard let surface = activeRoomSurface else { return .empty }
+        return composerDraftStore.draft(for: Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID))
+    }
+
+    func saveActiveRoomReplyReference(_ reply: ComposerReplyReference?) {
+        guard let surface = activeRoomSurface else { return }
+        let key = Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        var kept = composerDraftStore.draft(for: key)
+        kept.replyReference = reply
+        composerDraftStore.save(kept, for: key)
+    }
+
+    func saveActiveRoomRecipients(_ recipients: [String]) {
+        guard let surface = activeRoomSurface else { return }
+        let key = Self.roomComposerKey(dashboardID: surface.dashboardID, roomID: surface.room.roomID)
+        var kept = composerDraftStore.draft(for: key)
+        kept.roomRecipients = recipients.isEmpty ? nil : recipients
+        composerDraftStore.save(kept, for: key)
+    }
+
     /// Keep the open room's composer text so leaving and reopening the room
     /// restores it. Empty text drops the entry.
     func saveActiveRoomDraft(_ text: String) {
@@ -11641,6 +11663,13 @@ final class AppState: ObservableObject {
               !activeRoomSendInFlight else { return false }
         guard surface.room.isDisbanded == false else { return false }
         guard !composerDraftStore.persistenceFailed else { return false }
+        if let recipients = submittedDraft?.roomRecipients {
+            let unavailable = GroupRoomRecipients.unavailable(recipients, members: surface.room.members)
+            guard unavailable.isEmpty else {
+                showRoomSendError(AppLocalization.string("Unavailable") + ": " + unavailable.map { "@" + $0 }.joined(separator: ", "))
+                return false
+            }
+        }
         // A pending (ambiguous-outcome) message owns the composer: the SAME
         // text retries with the same event id; DIFFERENT text is refused so
         // no message is ever silently swallowed or silently replaced.

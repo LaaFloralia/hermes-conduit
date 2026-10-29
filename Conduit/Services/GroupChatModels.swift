@@ -747,6 +747,15 @@ enum GroupRoomMentions {
 /// message: the gateway routes on tags in the text, and a message with none
 /// goes to every member.
 enum GroupRoomRecipients {
+    /// Keep missing picks visible and block a new send instead of routing it
+    /// to every bot when a previously selected recipient leaves the room.
+    static func unavailable(_ handles: [String], members: [GroupMember]) -> [String] {
+        let routable = Set(pickable(members).compactMap {
+            $0.handle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        })
+        return handles.filter { !routable.contains($0.lowercased()) }
+    }
+
     /// `text` addressed to `handles` as well: each one the text doesn't
     /// already tag goes in front, in the order picked.
     static func addressing(_ text: String, to handles: [String], members: [GroupMember]) -> String {

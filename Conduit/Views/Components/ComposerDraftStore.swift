@@ -6,11 +6,14 @@ struct ComposerDraft: Codable, Equatable {
     var attachments: [Attachment]
     /// A whole reply attached with its Quote button (#385).
     var replyReference: ComposerReplyReference? = nil
+    /// A group room's explicitly selected recipients, in selection order.
+    /// Optional so drafts saved by older builds remain readable.
+    var roomRecipients: [String]? = nil
 
     static let empty = ComposerDraft(text: "", attachments: [])
 
     var isEmpty: Bool {
-        text.isEmpty && attachments.isEmpty && replyReference == nil
+        text.isEmpty && attachments.isEmpty && replyReference == nil && (roomRecipients?.isEmpty ?? true)
     }
 }
 
