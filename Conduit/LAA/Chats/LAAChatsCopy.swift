@@ -1,0 +1,27 @@
+#if LAA_BUILD
+extension LAACopy {
+    static let chatsTitle = "Chats"
+    static let chatsSearch = "Search conversations"
+    static let chatsNew = "New chat"
+    static let chatsCiel = "Ciel"
+    static let chatsEmployees = "Employees"
+    static let chatsGroups = "Groups"
+    static let chatsRecent = "Recent"
+    static let chatsSeeAll = "See all"
+    static let chatsSeeLess = "See less"
+    static let chatsNewGroup = "New group"
+    static let chatsSettings = "Settings"
+    static let chatsRetry = "Try again"
+    static let chatsCancel = "Cancel"
+    static let chatsNoResults = "一致する項目がありません。"
+    static let chatsLoading = "読み込み中…"
+    static let chatsOffline = "Hermesに接続できません。保存済みの会話は表示できます。"
+    static let chatsIncomplete = "一部の項目を検索できません。接続を確認してください。"
+    static let chatsNoGroups = "グループはまだありません。"
+    static let chatsNoRecent = "会話はまだありません。"
+    static let chatsNoEmployees = "社員のプロフィールを取得できていません。"
+    static let chatsGroupUnsupported = "この接続先はグループに対応していません。"
+    static let chatsUnavailable = "Hermesに接続し、社員のプロフィールを確認してください。"
+    static let chatsNewUnavailable = "現在は会話を作成できません。接続や処理の完了を確認してください。"
+}
+#endif
