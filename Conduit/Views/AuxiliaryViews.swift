@@ -1774,6 +1774,8 @@ private struct ComposerTextSizeSettings: View {
                 value: Binding(get: { Double(selected.rawValue) }, set: { raw = Int($0.rounded()) }),
                 in: 0...Double(ChatTextSize.allCases.count - 1), step: 1
             )
+            // Keep the smallest setting's thumb clear of the sheet's back-swipe edge.
+            .padding(.horizontal, 16)
             .tint(.conduitAccent)
             .accessibilityLabel("Input text size")
             .accessibilityIdentifier("settings.input-text-size")
