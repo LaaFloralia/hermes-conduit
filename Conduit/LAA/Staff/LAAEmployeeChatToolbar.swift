@@ -2,6 +2,7 @@
 import SwiftUI
 
 struct LAAEmployeeChatToolbar: ToolbarContent {
+    var compactMenu: AnyView? = nil
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
@@ -32,18 +33,54 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         return appState.isBusy ? "● 応答中" : "● 待機中"
     }
 
-    var body: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
-                              status: status, isObscured: calls.isShowingCall)
-                .laaPhotoGlassScope()
+    private var header: some View {
+        LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
+                          status: status, isObscured: calls.isShowingCall)
+            .laaPhotoGlassScope()
+    }
+
+    private var callButton: some View {
+        LAAEmployeeCallButton(reason: reason) {
+            if sameCall { calls.showCall() }
+            else { calls.start(profile: profile, name: name, conversationID: appState.activeSessionId) }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            LAAEmployeeCallButton(reason: reason) {
-                if sameCall { calls.showCall() }
-                else { calls.start(profile: profile, name: name, conversationID: appState.activeSessionId) }
+    }
+
+    @ToolbarContentBuilder var body: some ToolbarContent {
+        if let compactMenu {
+            ToolbarItem(placement: .principal) {
+                LAACompactConversationToolbar {
+                    header
+                } controls: {
+                    callButton
+                    compactMenu
+                }
             }
+        } else {
+            ToolbarItem(placement: .principal) { header }
+            ToolbarItem(placement: .topBarTrailing) { callButton }
         }
+    }
+}
+
+/// Keep the same controls in the header when the system would otherwise
+/// place trailing toolbar items in the Duo's side rail.
+struct LAACompactConversationToolbar<Title: View, Controls: View>: View {
+    @ViewBuilder let title: Title
+    @ViewBuilder let controls: Controls
+
+    var body: some View {
+        HStack(spacing: LAASpacing.x1) {
+            title
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
+            HStack(spacing: LAASpacing.x1) { controls }
+                .padding(.horizontal, LAASpacing.x1)
+                .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
+                .laaPhotoGlassScope()
+                .fixedSize()
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -111,6 +148,9 @@ private struct LAAEmployeeHeaderGlass: ViewModifier {
                 .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.06), interactive: false)
         } else {
             content
+                .padding(.horizontal, LAASpacing.x2)
+                .padding(.vertical, LAASpacing.x1)
+                .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.06), interactive: false)
         }
     }
 }

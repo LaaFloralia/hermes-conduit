@@ -11,12 +11,13 @@ final class LAACompactChatSnapshotTests: XCTestCase {
     private let canvas = CGRect(x: 0, y: 0, width: 440, height: 956)
 
     func testCompactChatLightAndDark() throws {
-        for style in [UIUserInterfaceStyle.light, .dark] {
-            try capture(style: style)
-        }
+        let light = try capture(style: .light)
+        let dark = try capture(style: .dark)
+        XCTAssertGreaterThan(averageBrightness(light), averageBrightness(dark) + 0.15,
+                             "Light and dark snapshots must render their respective appearance")
     }
 
-    private func capture(style: UIUserInterfaceStyle) throws {
+    private func capture(style: UIUserInterfaceStyle) throws -> UIImage {
         let languageStore = AppLanguageStore.shared
         let previousLanguage = languageStore.selection
         let previousLanguageValue = UserDefaults.standard.string(forKey: AppLanguageStore.defaultsKey)
@@ -30,9 +31,12 @@ final class LAACompactChatSnapshotTests: XCTestCase {
             }
         }
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
-        let fixture = LAABackgroundFixture(chatFixtureOverride: "rich", defaultsSuiteName: suiteName)
+        let fixture = LAABackgroundFixture(chatFixtureOverride: "rich", defaultsSuiteName: suiteName,
+                                           conversationID: "compact-snapshot-\(UUID().uuidString)")
         fixture.state.adoptProfileHermesNames([(profile: "laa-ciel", displayName: "Ciel")])
         fixture.state.themePreference = style == .dark ? .dark : .light
+        let backgroundKey = try XCTUnwrap(LAAConversationScope.current(fixture.state))
+        XCTAssertEqual(LAABackgroundStore.shared.setting(for: backgroundKey).kind, .paper)
         XCTAssertEqual(fixture.state.composerPlaceholder, "Cielにメッセージを送信…")
         let bridge = LAABridgeSession(statusForTesting: .unpaired)
         let calls = LAAEmployeeCallCoordinator(control: SnapshotCallControl())
@@ -44,6 +48,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         .environmentObject(bridge)
         .environmentObject(calls)
         .environment(\.locale, Locale(identifier: "ja"))
+        .preferredColorScheme(style == .dark ? .dark : .light)
         .overlay {
             SizeClassProbe { swiftUISizeClass = $0 }
                 .frame(width: 0, height: 0)
@@ -92,6 +97,9 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         XCTAssertEqual(host.traitCollection.userInterfaceStyle, style)
         XCTAssertFalse(ChatSidePanel.fits(width: canvas.width))
         XCTAssertFalse(V2SplitLayout.isSplit(width: canvas.width))
+        XCTAssertTrue(LAACompactHeaderLayout.isInline(width: canvas.width, sizeClass: .compact))
+        XCTAssertFalse(LAACompactHeaderLayout.isInline(width: 466, sizeClass: .compact))
+        XCTAssertFalse(LAACompactHeaderLayout.isInline(width: canvas.width, sizeClass: .regular))
         XCTAssertTrue(textHosts(in: host.view).contains { $0.displayedText.contains("優先すること") },
                       "The real rich-message content must be mounted")
         let editor = try XCTUnwrap(firstView(in: host.view, matching: ImagePasteTextView.self))
@@ -114,6 +122,7 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         attachment.name = "compact-440x956-\(style == .dark ? "dark" : "light")"
         attachment.lifetime = .keepAlways
         add(attachment)
+        return image
     }
 
     private func firstView<T: UIView>(in root: UIView, matching type: T.Type) -> T? {
@@ -147,6 +156,24 @@ final class LAACompactChatSnapshotTests: XCTestCase {
                 brightest = max(brightest, value)
             }
             return brightest > 40 && Int(brightest) - Int(darkest) > 20
+        }
+    }
+
+    private func averageBrightness(_ image: UIImage) -> Double {
+        guard let cgImage = image.cgImage else { return 0 }
+        let width = 32, height = 64, bytesPerPixel = 4
+        var pixels = [UInt8](repeating: 0, count: width * height * bytesPerPixel)
+        return pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * bytesPerPixel,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                            | CGBitmapInfo.byteOrder32Big.rawValue) else { return 0 }
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            let total = stride(from: 0, to: buffer.count, by: bytesPerPixel).reduce(0) { sum, offset in
+                sum + Int(buffer[offset]) + Int(buffer[offset + 1]) + Int(buffer[offset + 2])
+            }
+            return Double(total) / Double(width * height * 3 * 255)
         }
     }
 }

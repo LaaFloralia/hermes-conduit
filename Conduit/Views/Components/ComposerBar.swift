@@ -808,8 +808,16 @@ struct ComposerBar: View, Equatable {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
                 Text(appState.composerPlaceholder)
+#if LAA_BUILD
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+#endif
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
+#if LAA_BUILD
+                    // Leave room for the expand control at compact widths.
+                    .padding(.trailing, showsFullEditorButton ? LAASpacing.x8 + LAASpacing.x2 : 0)
+#endif
                     .padding(.vertical, 12)
                     // Gone with the first keystroke. The send button's
                     // spring would otherwise fade it out under the words

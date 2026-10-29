@@ -6,6 +6,9 @@ import UIKit
 /// while the gateway's driver owns every member turn. The composer never
 /// waits on a bot; the room updates as polled events arrive.
 struct GroupChatView: View {
+#if LAA_BUILD
+    var compactMenu: AnyView? = nil
+#endif
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     /// Set by V2's conversation screen: the composer floats over the
@@ -348,16 +351,21 @@ struct GroupChatView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
 #if LAA_BUILD
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {} label: {
-                Image(systemName: "phone")
-                    .foregroundStyle(LAAColor.secondaryText)
+        if let compactMenu {
+            ToolbarItem(placement: .principal) {
+                LAACompactConversationToolbar {
+                    roomTitle
+                } controls: {
+                    roomCallButton
+                    compactMenu
+                }
             }
-            .disabled(true)
-            .accessibilityLabel(Text(verbatim: LAACopy.chatCall))
-            .accessibilityHint(Text(verbatim: LAACopy.chatGroupCallUnavailable))
-            .accessibilityIdentifier("room.call.unavailable")
+        } else {
+            ToolbarItem(placement: .topBarTrailing) { roomCallButton }
+            ToolbarItem(placement: .principal) { roomTitle }
         }
+#else
+        ToolbarItem(placement: .principal) { roomTitle }
 #endif
         if !isV2 {
             // V2 pushes the room like a chat and keeps the system Back
@@ -372,14 +380,6 @@ struct GroupChatView: View {
                 }
                 .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
             }
-        }
-        ToolbarItem(placement: .principal) {
-            GroupRoomTitle(
-                name: surface?.room.name ?? "",
-                subtitle: memberSummary,
-                members: members,
-                picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }
-            )
         }
         if !isV2 {
             // V2's conversation menu carries these with the gateway's state.
@@ -397,6 +397,29 @@ struct GroupChatView: View {
             }
         }
     }
+
+    private var roomTitle: some View {
+        GroupRoomTitle(
+            name: surface?.room.name ?? "",
+            subtitle: memberSummary,
+            members: members,
+            picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }
+        )
+    }
+
+#if LAA_BUILD
+    private var roomCallButton: some View {
+        Button {} label: {
+            Image(systemName: "phone")
+                .foregroundStyle(LAAColor.secondaryText)
+                .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+        }
+        .disabled(true)
+        .accessibilityLabel(Text(verbatim: LAACopy.chatCall))
+        .accessibilityHint(Text(verbatim: LAACopy.chatGroupCallUnavailable))
+        .accessibilityIdentifier("room.call.unavailable")
+    }
+#endif
 
     // MARK: - Approvals
 

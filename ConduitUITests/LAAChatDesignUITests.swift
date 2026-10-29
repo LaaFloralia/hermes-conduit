@@ -45,6 +45,40 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertTrue((field.value as? String ?? "").contains("second line"))
     }
 
+    func testCompactHeadersKeepTheirControlsTogether() {
+        let app = launch(["-LAA_FORCE_COMPACT_CHAT"])
+        let header = app.buttons["laa.employee.header"]
+        let call = app.buttons["laa.employee.call"]
+        let menu = app.buttons["conversation.menu"]
+        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        let employeeRow = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            header.exists && call.exists && menu.exists
+                && abs(header.frame.midY - call.frame.midY) < 30
+                && abs(call.frame.midY - menu.frame.midY) < 30
+                && menu.frame.midX > header.frame.midX
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [employeeRow], timeout: 10), .completed)
+        XCTAssertTrue(menu.isHittable)
+        menu.tap()
+        XCTAssertTrue(app.buttons["conversation.background"].waitForExistence(timeout: 5))
+        app.terminate()
+
+        let groupApp = launch(["-LAA_FORCE_COMPACT_CHAT"])
+        groupApp.buttons["fixture.group"].tap()
+        let groupCall = groupApp.buttons["room.call.unavailable"]
+        let groupMenu = groupApp.buttons["conversation.menu"]
+        XCTAssertTrue(groupCall.waitForExistence(timeout: 20))
+        let groupRow = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            groupMenu.exists && abs(groupCall.frame.midY - groupMenu.frame.midY) < 30
+                && groupCall.frame.midY < 100
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [groupRow], timeout: 10), .completed)
+        XCTAssertFalse(groupCall.isEnabled)
+        XCTAssertTrue(groupMenu.isHittable)
+        groupMenu.tap()
+        XCTAssertTrue(groupApp.buttons["room.call.reason"].waitForExistence(timeout: 5))
+    }
+
     func testGroupUsesSameRichCardsAndSendsThroughFake() {
         let app = launch()
         app.buttons["fixture.group"].tap()

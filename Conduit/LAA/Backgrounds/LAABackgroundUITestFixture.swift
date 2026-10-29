@@ -9,7 +9,8 @@ final class LAABackgroundFixture: ObservableObject {
     let bots: [BotProfile]
     @Published var createdName: String?
 
-    init(chatFixtureOverride: String? = nil, defaultsSuiteName: String = "LAABackgroundUITestFixture") {
+    init(chatFixtureOverride: String? = nil, defaultsSuiteName: String = "LAABackgroundUITestFixture",
+         conversationID: String = "fixture-chat") {
         let members = [
             GroupMember(memberID: "laa-ciel", profile: "laa-ciel", handle: "ciel", displayName: "Ciel", target: nil, extra: [:]),
             GroupMember(memberID: "laa-cto", profile: "laa-cto", handle: "ada", displayName: "Ada", target: nil, extra: [:]),
@@ -72,7 +73,7 @@ final class LAABackgroundFixture: ObservableObject {
         app.client = HermesClient(connection: HermesConnection(baseUrl: "https://background-ui-test.invalid", ticket: "fixture"), profile: "laa-ciel")
         app.isConnected = mode != "offline"
         _ = app.adoptDashboard(forNormalizedURL: "https://background-ui-test.invalid")
-        app.activeSessionId = "fixture-chat"
+        app.activeSessionId = conversationID
         app.messages = [
             ChatMessage(id: "user", role: .user, content: "今日の予定を教えてください。", timestamp: "1"),
             ChatMessage(id: "assistant", role: .assistant, content: "是。予定を確認して、必要な情報をお伝えします。", timestamp: "2")
@@ -167,7 +168,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                     }
                 }
                 if let name = fake.createdName { Text(verbatim: "作成済み：\(name)").accessibilityIdentifier("fixture.created") }
-                V2ConversationScreen().environmentObject(fake.state)
+                conversationScreen.environmentObject(fake.state)
             }
             .sheet(item: $sheet) { selected in
                 switch selected {
@@ -242,6 +243,16 @@ struct LAABackgroundUITestFixtureScreen: View {
                     return
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var conversationScreen: some View {
+        if ProcessInfo.processInfo.arguments.contains("-LAA_FORCE_COMPACT_CHAT") {
+            V2ConversationScreen()
+                .frame(width: 440)
+                .environment(\.horizontalSizeClass, .compact)
+        } else {
+            V2ConversationScreen()
         }
     }
 

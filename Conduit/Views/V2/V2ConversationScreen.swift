@@ -48,6 +48,9 @@ struct V2ConversationScreen: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
+#if LAA_BUILD
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+#endif
     @State private var composerExpanded = false
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
@@ -70,6 +73,13 @@ struct V2ConversationScreen: View {
     @State private var screenWidth: CGFloat = 0
 
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
+#if LAA_BUILD
+    private var usesCompactHeader: Bool {
+        LAACompactHeaderLayout.isInline(width: screenWidth, sizeClass: horizontalSizeClass)
+    }
+
+    private var compactMenu: AnyView? { usesCompactHeader ? AnyView(conversationMenu) : nil }
+#endif
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil
     }
@@ -83,9 +93,15 @@ struct V2ConversationScreen: View {
     @ViewBuilder private var conversation: some View {
         if appState.activeRoomSurface != nil {
             // Keyed by room: another room starts with its own draft.
+#if LAA_BUILD
+            GroupChatView(compactMenu: compactMenu)
+                .id(appState.activeRoomSurface?.room.roomID)
+                .environment(\.v2ComposerRests, true)
+#else
             GroupChatView()
                 .id(appState.activeRoomSurface?.room.roomID)
                 .environment(\.v2ComposerRests, true)
+#endif
         } else {
             ChatView()
                 .environment(\.v2ComposerRests, true)
@@ -244,7 +260,7 @@ struct V2ConversationScreen: View {
         // Session-only controls: an open room owns the title and actions.
         if appState.activeRoomSurface == nil {
 #if LAA_BUILD
-            LAAEmployeeChatToolbar()
+            LAAEmployeeChatToolbar(compactMenu: compactMenu)
 #else
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
@@ -291,15 +307,13 @@ struct V2ConversationScreen: View {
             }
         }
 #endif
-        ToolbarItem(placement: .topBarTrailing) {
-            V2ConversationMenu(
-                onRename: { chatTitlePendingRename = $0 },
-                onDelete: { chatTitlePendingDeletion = $0 },
-                onDisbandRoom: { confirmsRoomDisband = true },
-                onChooseRoomPicture: { choosesRoomPicture = $0 },
-                onArtifacts: { openArtifacts(tab: .made) }
-            )
+#if LAA_BUILD
+        if !usesCompactHeader {
+            ToolbarItem(placement: .topBarTrailing) { conversationMenu }
         }
+#else
+        ToolbarItem(placement: .topBarTrailing) { conversationMenu }
+#endif
         // Artifacts beside the chat, on a window with room for both.
         if fitsSidePanel, appState.activeRoomSurface == nil {
             ToolbarItem(placement: .topBarTrailing) {
@@ -324,7 +338,25 @@ struct V2ConversationScreen: View {
             }
         }
     }
+
+    private var conversationMenu: some View {
+        V2ConversationMenu(
+            onRename: { chatTitlePendingRename = $0 },
+            onDelete: { chatTitlePendingDeletion = $0 },
+            onDisbandRoom: { confirmsRoomDisband = true },
+            onChooseRoomPicture: { choosesRoomPicture = $0 },
+            onArtifacts: { openArtifacts(tab: .made) }
+        )
+    }
 }
+
+#if LAA_BUILD
+enum LAACompactHeaderLayout {
+    static func isInline(width: CGFloat, sizeClass: UserInterfaceSizeClass?) -> Bool {
+        sizeClass == .compact && width > 0 && width < 460
+    }
+}
+#endif
 
 /// The conversation's rename sheet, delete alert, room picture picker and
 /// disband confirmation.

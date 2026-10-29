@@ -3630,7 +3630,8 @@ and rollback instructions · the upstream App Store build
 - Chat colours, columns and date separators: `Conduit/LAA/Chat/LAAChatStyle.swift`, `Conduit/LAA/Design/LAATokens.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift`
 - Rich text and media: `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/MarkdownProseRun.swift`
 - Composers: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
-- Tests: `ConduitTests/LAAChatDesignTests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`
+- Compact employee and group toolbar placement: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/GroupChatView.swift`
+- Tests: `ConduitTests/LAAChatDesignTests.swift`, `ConduitTests/LAACompactChatSnapshotTests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`
 
 **Rulings**
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
