@@ -53,6 +53,14 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa
+        # The LAA icon (design, on master): Conduit/Resources/AppIcon-LAA.icon,
+        # an Icon Composer bundle for iOS 26+, with the matching appiconset in
+        # Assets.xcassets as the fallback for older Xcode and OS versions. The
+        # App Store build keeps upstream's AppIcon. The asset catalog compiler
+        # rewrites Info.plist's legacy CFBundleIcons on its own — verified in
+        # the built app: CFBundlePrimaryIcon.CFBundleIconName is AppIcon-LAA —
+        # so no post-build step is needed.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-LAA
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/Conduit.entitlements
         # Automatic signing: a named profile would be the App Store app's.
         PROVISIONING_PROFILE_SPECIFIER: ""

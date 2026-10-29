@@ -39,6 +39,7 @@ spending a build number.
 | Notification App Group | `group.com.laa-inc.laa.notifications` |
 | Launcher App Group | `group.com.laa-inc.laa.launcher` |
 | Signing | automatic, App Store Connect API key, `-allowProvisioningUpdates` |
+| Icon | `AppIcon-LAA` (Icon Composer `.icon` for iOS 26+, the appiconset in Assets.xcassets below it) |
 | Relay | `https://mac-mini.tailc9b8e7.ts.net:9443` (scripts/laa/relay-install.sh) |
 
 Entitlements live in `scripts/laa/entitlements/`, not beside the App Store
