@@ -6,7 +6,7 @@ final class LAAAssetsUITests: XCTestCase {
 
     private func launch(_ mode: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "source"]
+        app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         if let mode { app.launchArguments += ["-laa-assets-fixture", mode] }
         app.launch()
         return app

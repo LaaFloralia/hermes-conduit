@@ -6,7 +6,7 @@ final class LAABrainUITests: XCTestCase {
 
     private func launch(_ mode: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "brain"]
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         if let mode { app.launchArguments += ["-laa-brain-fixture", mode] }
         app.launch()
         return app
