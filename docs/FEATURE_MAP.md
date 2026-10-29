@@ -408,7 +408,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 **Code**
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
-- Brain: `Conduit/LAA/Brain/`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
+- Brain: `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
@@ -448,7 +448,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-29, laa/bridge-client-shared-25i (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
+**Checked:** 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
 ## Voice beside the tabs
 
