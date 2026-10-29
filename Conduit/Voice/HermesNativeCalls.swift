@@ -1255,6 +1255,7 @@ extension HermesNativeCalls: VoicePlacedCallKit {
     private func finishPlacedCall(_ id: UUID, reason: CXCallEndedReason) {
         guard let call = placedCall, call.id == id else { return }
         placedCall = nil
+        nativeCallsLogger.info("the placed call ended (\(Self.traceLabel(reason), privacy: .public))")
         // Only the screen's own End hangs the conversation up; an end asked
         // for here is the conversation already gone.
         onPlacedCallEnded?(!call.endingRequested)
