@@ -1,0 +1,44 @@
+name: LAA bridge
+
+# The Bridge is a dependency-free Node service under bridge/. This job is the
+# cheap gate for it: no npm install (there are no dependencies), no macOS
+# runner, a few seconds on ubuntu-latest. The app's own gate stays ci.yml.
+on:
+  push:
+    branches: [master, 'laa/**']
+    paths:
+      - 'bridge/**'
+      - '.github/workflows/laa-bridge.yml'
+  pull_request:
+    paths:
+      - 'bridge/**'
+      - '.github/workflows/laa-bridge.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: laa-bridge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Bridge tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Syntax check
+        run: for f in src/*.mjs; do node --check "$f"; done
+
+      - name: Unit tests
+        run: npm test

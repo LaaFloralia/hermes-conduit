@@ -1,0 +1,17 @@
+{
+  "name": "laa-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mac-side LAA Bridge skeleton: device auth, health, idempotency.",
+  "type": "module",
+  "bin": {
+    "laa-bridge": "./bin/laa-bridge"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "start": "node src/main.mjs serve",
+    "test": "node --test \"test/**/*.test.mjs\""
+  }
+}
