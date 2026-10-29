@@ -96,19 +96,28 @@ if (command === 'wait-build') {
     if (state === 'VALID') {
       // A group with access to every build is assigned on its own; ask, so a
       // build nobody can install is a failure here and not a surprise later.
-      const groups = await call('GET', `/v1/builds/${buildId}/betaGroups?fields[betaGroups]=name&limit=50`);
-      if (groups.status !== 200) {
-        console.error(`asc: listing the build's groups answered ${groups.status}`);
+      // The key may not list a build's groups (GET /v1/builds/{id}/betaGroups
+      // answered 403, 2026-10-29), so ask the group instead.
+      const group = await call('GET',
+        `/v1/betaGroups/${groupId}?fields[betaGroups]=name,isInternalGroup,hasAccessToAllBuilds`);
+      if (group.status !== 200) {
+        console.error(`asc: reading group ${groupId} answered ${group.status}`);
         process.exit(1);
       }
-      const names = (groups.body?.data ?? []).map((group) => `${group.attributes.name} (${group.id})`);
-      if (!names.some((name) => name.includes(groupId))) {
-        console.error(`asc: build ${buildNumber} is VALID but ${groupId} is not among its groups: ` +
-          `${names.join(', ') || 'none'}`);
+      const { name, isInternalGroup, hasAccessToAllBuilds } = group.body.data.attributes;
+      let available = Boolean(isInternalGroup && hasAccessToAllBuilds);
+      if (!available) {
+        const linked = await call('GET', `/v1/betaGroups/${groupId}/relationships/builds?limit=200`);
+        available = linked.status === 200 && (linked.body?.data ?? []).some((b) => b.id === buildId);
+      }
+      if (!available) {
+        console.error(`asc: build ${buildNumber} is VALID but not available to ${name} (${groupId})`);
         console.error('asc: add the build to the group in App Store Connect, then upload again');
         process.exit(1);
       }
-      console.log(`build ${buildNumber} is VALID and available to ${names.find((n) => n.includes(groupId))}`);
+      const detail = await call('GET', `/v1/builds/${buildId}/buildBetaDetail`);
+      const internal = detail.body?.data?.attributes?.internalBuildState ?? 'unknown';
+      console.log(`build ${buildNumber} is VALID and available to ${name} (${groupId}); internal state ${internal}`);
       process.exit(0);
     }
     if (state === 'INVALID' || state === 'FAILED') {
