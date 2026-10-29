@@ -13,17 +13,17 @@ struct LAAWorkTaskDetailView: View {
 
     var body: some View {
         ZStack {
-            LAAColors.paper.ignoresSafeArea()
+            LAAColor.background.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
                     if let error {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(LAAColors.plum)
-                        Button(LAAWorkPresentation.japanese("もう一度読み込む")) { Task { await load() } }
+                            .foregroundStyle(LAAColor.attention)
+                        Button(LAACopy.WorkTab.retry) { Task { await load() } }
                     } else if let task {
-                        Text(verbatim: task.title).font(.title2.bold()).foregroundStyle(LAAColors.ink)
-                        Text(verbatim: "Linearのタスク · 閲覧のみ").font(.caption).foregroundStyle(LAAColors.muted)
-                        VStack(alignment: .leading, spacing: 8) {
+                        Text(verbatim: task.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                        Text(verbatim: "Linearのタスク · 閲覧のみ").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        VStack(alignment: .leading, spacing: LAASpacing.x2) {
                             Text(verbatim: "状態: \(task.status?.name ?? "未確認")")
                             Text(verbatim: "担当: \(task.owner?.name ?? "未設定")")
                             Text(verbatim: "実行: \(task.executor?.name ?? "未設定")")
@@ -31,18 +31,19 @@ struct LAAWorkTaskDetailView: View {
                             Text(verbatim: "更新: \(LAAWorkPresentation.date(task.updatedAt))")
                         }.workCard()
                         if let description = task.description, !description.isEmpty {
-                            MarkdownText(source: description, foregroundStyle: LAAColors.ink).workCard()
+                            MarkdownText(source: description, foregroundStyle: LAAColor.text).workCard()
                         }
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
-                            Link("Linearで開く", destination: url).buttonStyle(.bordered)
+                            Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
                         }
                     } else {
                         ProgressView().accessibilityLabel(Text(verbatim: "読み込み中"))
                     }
-                }.padding(16).frame(maxWidth: 720, alignment: .leading)
+                }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).frame(maxWidth: 720, alignment: .leading)
             }
         }
-        .navigationTitle(Text(verbatim: "タスク"))
+        .navigationTitle(Text(verbatim: LAACopy.WorkTab.task))
+        .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task { await load() }

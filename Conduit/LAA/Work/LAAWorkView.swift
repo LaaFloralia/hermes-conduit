@@ -3,7 +3,6 @@ import SwiftUI
 
 struct LAAWorkView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let onRequestSettings: () -> Void
 
     @StateObject private var drafts = ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
@@ -30,44 +29,37 @@ struct LAAWorkView: View {
 
     var body: some View {
         ZStack {
-            LAAColors.paper.ignoresSafeArea()
+            LAAColor.background.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    Text(verbatim: "仕事").font(LAAFont.largeHeading).foregroundStyle(LAAColors.ink)
+                VStack(alignment: .leading, spacing: LAASpacing.x6) {
+                    header
                     segmentPicker
-                    if bridge.status != .paired {
+                    if section == 3 {
+                        routinePlaceholder
+                    } else if bridge.status != .paired {
                         connection
                     } else {
                         content
                     }
                 }
-                .padding(.horizontal, LAASpacing.x4)
+                .padding(.horizontal, LAASpacing.horizontal)
                 .padding(.top, LAASpacing.x2)
                 .padding(.bottom, LAASpacing.x8)
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .laaTextStyle(.body).foregroundStyle(LAAColor.text)
             }
             .refreshable { await load() }
         }
-        .navigationTitle(Text(verbatim: "仕事"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if bridge.status == .paired && section == 0 {
-                    Button { showNewSession = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel(Text(verbatim: "新しいセッション"))
-                        .disabled(!sessionContextReady || isLoading)
-                }
-                if bridge.status == .paired && section == 1 {
-                    Button { showNewProject = true } label: { Image(systemName: "plus") }
-                        .accessibilityLabel(Text(verbatim: "新しいプロジェクト"))
-                }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button(action: onRequestSettings) { Image(systemName: "gearshape") }
-                    .accessibilityLabel(Text(verbatim: "設定"))
+                    .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.settings))
             }
         }
-        .tint(LAAColors.teal)
+        .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .sheet(isPresented: $showNewSession, onDismiss: { refreshID += 1 }) {
             LAAWorkNewSessionView(projects: projects, workspaces: workspaces, drafts: drafts).environmentObject(bridge)
@@ -78,32 +70,78 @@ struct LAAWorkView: View {
         .task(id: "\(bridge.revision)-\(section)-\(refreshID)") { await load() }
     }
 
-    @ViewBuilder private var segmentPicker: some View {
-        let picker = Picker(selection: $section, label: Text(verbatim: "仕事の種類")) {
-            Text(verbatim: "セッション").tag(0)
-            Text(verbatim: "プロジェクト").tag(1)
-            Text(verbatim: "タスク").tag(2)
-            Text(verbatim: "ルーティン").tag(3)
+    private var header: some View {
+        HStack(alignment: .center, spacing: LAASpacing.x4) {
+            VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
+                Text(verbatim: LAACopy.WorkTab.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                Text(verbatim: LAACopy.WorkTab.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
+            Spacer(minLength: LAASpacing.x2)
+            if section == 0 || section == 1 {
+                Button {
+                    if section == 0 { showNewSession = true } else { showNewProject = true }
+                } label: {
+                    Image(systemName: "plus")
+                        .foregroundStyle(LAAColor.link)
+                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                        .background(LAAColor.surface, in: Circle())
+                        .overlay(Circle().stroke(LAAColor.separator))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text(verbatim: section == 0 ? LAACopy.WorkTab.newSession : LAACopy.WorkTab.newProject))
+                .accessibilityHint(Text(verbatim: bridge.status != .paired ? "Macへの接続が必要です。" : ""))
+                .disabled(bridge.status != .paired || (section == 0 && (!sessionContextReady || isLoading)))
+            }
+        }
+    }
+
+    private var segmentPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: LAASpacing.x2) {
+                ForEach(LAACopy.WorkTab.segments.indices, id: \.self) { index in
+                    Button { section = index } label: {
+                        Text(verbatim: LAACopy.WorkTab.segments[index])
+                            .laaTextStyle(.secondary).fontWeight(section == index ? .semibold : .regular)
+                            .foregroundStyle(section == index ? LAAColor.filledButtonText : LAAColor.secondaryText)
+                            .padding(.horizontal, LAASpacing.x3)
+                            .padding(.vertical, LAASpacing.x2)
+                            .background(section == index ? LAAColor.filledButton : LAAColor.subtleSurface,
+                                        in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                            .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(section == index ? .isSelected : [])
+                }
+            }
         }
         .accessibilityIdentifier("work.segment")
-        if dynamicTypeSize.isAccessibilitySize { picker.pickerStyle(.menu) }
-        else { picker.pickerStyle(.segmented) }
+    }
+
+    private var routinePlaceholder: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: "準備中").laaTextStyle(.body).fontWeight(.semibold)
+            Text(verbatim: "習慣の原本との連携はまだ利用できません。")
+                .foregroundStyle(LAAColor.secondaryText)
+        }.workCard()
     }
 
     private var connection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if bridge.status == .keychainError {
                 Label(LAAWorkPresentation.japanese("接続情報を読み取れません"), systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(LAAColors.plum)
+                    .foregroundStyle(LAAColor.attention)
                 Text(verbatim: "端末の接続情報を確認してください。")
-                Button(LAAWorkPresentation.japanese("設定を確認"), action: onRequestSettings).buttonStyle(.bordered)
+                Button(LAACopy.WorkTab.settings, action: onRequestSettings).buttonStyle(.bordered)
             } else {
                 Label { Text(verbatim: "未接続") } icon: { Image(systemName: "circle") }
-                    .foregroundStyle(LAAColors.muted)
+                    .foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                      ? "この端末の接続が無効です。新しいコードで接続してください。"
                      : "この端末はMacのLAA Bridgeとペアリングされていません。")
-                Button(LAAWorkPresentation.japanese("Macに接続する")) { showPairing = true }.buttonStyle(.borderedProminent)
+                Button(LAACopy.WorkTab.connect) { showPairing = true }
+                    .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                    .foregroundStyle(LAAColor.filledButtonText)
             }
         }
         .workCard()
@@ -111,13 +149,13 @@ struct LAAWorkView: View {
 
     @ViewBuilder private var content: some View {
         if let failure {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 Label(LAAWorkPresentation.japanese("取得できませんでした"), systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(LAAColors.plum)
-                Text(verbatim: failure).foregroundStyle(LAAColors.ink)
+                    .foregroundStyle(LAAColor.attention)
+                Text(verbatim: failure).foregroundStyle(LAAColor.text)
                 Text(verbatim: "残っている一覧は前回取得した内容です。")
-                    .font(.caption).foregroundStyle(LAAColors.muted)
-                Button(LAAWorkPresentation.japanese("もう一度読み込む")) { Task { await load() } }
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Button(LAACopy.WorkTab.retry) { Task { await load() } }
             }.workCard()
         }
         if isLoading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
@@ -125,103 +163,121 @@ struct LAAWorkView: View {
         case 0: sessionList
         case 1: projectList
         case 2: taskList
-        default:
-            VStack(alignment: .leading, spacing: 8) {
-                Text(verbatim: "準備中").font(.headline)
-                Text(verbatim: "習慣の原本との連携はまだ利用できません。")
-                    .foregroundStyle(LAAColors.muted)
-            }.workCard()
+        default: routinePlaceholder
         }
     }
 
     private var sessionList: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                filter("プロジェクト", selection: $projectFilter, values: projects.map { ($0.id, $0.name) })
-                filter("状態", selection: $phaseFilter, values: phaseOptions)
-                Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LAASpacing.x2) {
+                    filter(LAACopy.WorkTab.projectFilter, selection: $projectFilter, values: projects.map { ($0.id, $0.name) })
+                    filter(LAACopy.WorkTab.phaseFilter, selection: $phaseFilter, values: phaseOptions)
+                }
             }
             let rows = LAAWorkPresentation.filteredSessionRows(sessions, projectID: projectFilter, phase: phaseFilter)
+            sectionHeading(LAACopy.WorkTab.sessions.uppercased())
             if rows.isEmpty && !isLoading && failure == nil {
                 Text(verbatim: projectFilter.isEmpty && phaseFilter.isEmpty
                      ? "セッションがありません。＋から始められます。" : "条件に合うセッションはありません。")
-                    .foregroundStyle(LAAColors.muted).workCard()
+                    .foregroundStyle(LAAColor.secondaryText).workCard()
             }
             ForEach(rows) { row in
                 NavigationLink {
                     LAAWorkSessionDetail(id: row.session.id, projects: projects, workspaces: workspaces, drafts: drafts)
                 } label: {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
                         HStack {
-                            Text(verbatim: row.session.name).font(.headline).foregroundStyle(LAAColors.ink)
+                            Text(verbatim: row.session.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
                                 .accessibilityIdentifier("work.session.\(row.session.id)")
                             Spacer()
                             Text(verbatim: LAAWorkPresentation.phaseSymbol(row.session.phase) + " " + LAAWorkPresentation.phase(row.session.phase))
-                                .font(.caption).foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(row.session.phase) ? LAAColors.plum : LAAColors.teal)
+                                .laaTextStyle(.secondary).foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(row.session.phase) ? LAAColor.attention : LAAColor.link)
                         }
                         if row.session.resumedFrom != nil {
-                            Text(verbatim: "後継セッション").font(.caption).foregroundStyle(LAAColors.muted)
+                            Text(verbatim: "後継セッション").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                         if (!projectFilter.isEmpty && row.session.projectId != projectFilter) ||
                             (!phaseFilter.isEmpty && row.session.phase != phaseFilter) {
                             Text(verbatim: "親セッション（階層を表示するため含む）")
-                                .font(.caption).foregroundStyle(LAAColors.muted)
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                         Text(verbatim: projectName(row.session.projectId) + " · " + workspaceName(row.session.workspaceId))
-                            .font(.subheadline).foregroundStyle(LAAColors.muted)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         Text(verbatim: "要求: " + (row.session.requested?.display ?? "未確認"))
-                            .font(.caption).foregroundStyle(LAAColors.muted)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         Text(verbatim: "観測: " + (row.session.observed?.display ?? "未確認"))
-                            .font(.caption).foregroundStyle(row.session.modelMismatch ? LAAColors.plum : LAAColors.muted)
+                            .laaTextStyle(.secondary).foregroundStyle(row.session.modelMismatch ? LAAColor.attention : LAAColor.secondaryText)
                         if row.session.modelMismatch {
                             Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption).foregroundStyle(LAAColors.plum)
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                         } else if row.session.runtimeVerified != true {
-                            Text(verbatim: "○ 実行時のモデルは未確認").font(.caption).foregroundStyle(LAAColors.muted)
+                            Text(verbatim: "○ 実行時のモデルは未確認").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                         Text(verbatim: "最終活動 " + LAAWorkPresentation.date(row.session.updatedAt))
-                            .font(.caption).foregroundStyle(LAAColors.muted)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
-                    .padding(.leading, CGFloat(row.depth) * 12)
-                    .workCard()
+                    .padding(.leading, CGFloat(row.depth) * LAASpacing.x3)
+                    .workListRow()
                 }.buttonStyle(.plain)
+            }
+            let decisions = LAAWorkPresentation.decisionRows(rows, projectID: projectFilter, phase: phaseFilter)
+            if !decisions.isEmpty {
+                sectionHeading(LAACopy.WorkTab.needsDecision).padding(.top, LAASpacing.x6)
+                ForEach(decisions) { row in
+                    NavigationLink {
+                        LAAWorkSessionDetail(id: row.session.id, projects: projects, workspaces: workspaces, drafts: drafts)
+                    } label: {
+                        HStack(spacing: LAASpacing.x3) {
+                            VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                Text(verbatim: row.session.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
+                                Text(verbatim: "内容を開いて確認できます。回答は後続の機能で対応します。")
+                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            }
+                            Spacer(minLength: LAASpacing.x2)
+                            Image(systemName: "chevron.right").foregroundStyle(LAAColor.link)
+                        }.workCard()
+                    }.buttonStyle(.plain)
+                }
             }
         }
         .accessibilityIdentifier("work.sessions")
     }
 
     private var projectList: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if projects.isEmpty && !isLoading && failure == nil {
                 Text(verbatim: "プロジェクトがありません。＋から作成できます。")
-                    .foregroundStyle(LAAColors.muted).workCard()
+                    .foregroundStyle(LAAColor.secondaryText).workCard()
             }
             ForEach(projects) { project in
                 NavigationLink {
                     LAAWorkProjectDetail(project: project, drafts: drafts)
                 } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(verbatim: project.name).font(.headline).foregroundStyle(LAAColors.ink)
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
                         Text(verbatim: "指示版 \(project.instructionVersion.map(String.init) ?? "未確認") · " + (project.instructionHash ?? "ハッシュ未確認"))
-                            .font(.caption).foregroundStyle(LAAColors.muted).lineLimit(2)
-                    }.workCard()
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
+                    }.workListRow()
                 }.buttonStyle(.plain)
             }
         }.accessibilityIdentifier("work.projects")
     }
 
     private var taskList: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
             Text(verbatim: "Linearが現在のタスクの正本です。ここでは閲覧のみできます。")
-                .font(.footnote).foregroundStyle(LAAColors.muted)
-            HStack {
-                filter("担当", selection: $taskOwnerFilter, values: unique(tasks.compactMap { $0.owner?.name }).map { ($0, $0) })
-                filter("状態", selection: $taskStatusFilter, values: unique(tasks.compactMap { $0.status?.name }).map { ($0, $0) })
-                filter("プロジェクト", selection: $taskProjectFilter, values: unique(tasks.compactMap { $0.project?.name }).map { ($0, $0) })
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LAASpacing.x2) {
+                    filter(LAACopy.WorkTab.ownerFilter, selection: $taskOwnerFilter, values: unique(tasks.compactMap { $0.owner?.name }).map { ($0, $0) })
+                    filter(LAACopy.WorkTab.statusFilter, selection: $taskStatusFilter, values: unique(tasks.compactMap { $0.status?.name }).map { ($0, $0) })
+                    filter(LAACopy.WorkTab.projectFilter, selection: $taskProjectFilter, values: unique(tasks.compactMap { $0.project?.name }).map { ($0, $0) })
+                }
             }
             if taskSources.contains(where: { $0.source == "linear" && $0.truncated == true }) {
                 Label(LAAWorkPresentation.japanese("Linearの取得上限を超えています。一部のみ表示しています。"), systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(LAAColors.plum)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
             }
             let visible = tasks.filter {
                 (taskOwnerFilter.isEmpty || $0.owner?.name == taskOwnerFilter) &&
@@ -230,18 +286,18 @@ struct LAAWorkView: View {
             }
             if visible.isEmpty && !isLoading && failure == nil {
                 Text(verbatim: "該当するタスクはありません。")
-                    .foregroundStyle(LAAColors.muted).workCard()
+                    .foregroundStyle(LAAColor.secondaryText).workCard()
             }
             ForEach(visible) { item in
                 NavigationLink { LAAWorkTaskDetailView(id: item.id) } label: {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(verbatim: item.title).font(.headline).foregroundStyle(LAAColors.ink)
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                        Text(verbatim: item.title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
                         Text(verbatim: "\(item.sourceId) · \(item.status?.name ?? "状態未確認") · 担当 \(item.owner?.name ?? "未設定")")
-                            .font(.caption).foregroundStyle(LAAColors.muted)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         if let executor = item.executor?.name {
-                            Text(verbatim: "実行 \(executor)").font(.caption).foregroundStyle(LAAColors.muted)
+                            Text(verbatim: "実行 \(executor)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                    }.workCard()
+                    }.workListRow()
                 }.buttonStyle(.plain)
             }
         }.accessibilityIdentifier("work.tasks")
@@ -249,9 +305,13 @@ struct LAAWorkView: View {
 
     private func filter(_ title: String, selection: Binding<String>, values: [(String, String)]) -> some View {
         Picker(selection: selection, label: Text(verbatim: title)) {
-            Text(verbatim: "\(title): すべて").tag("")
+            Text(verbatim: "\(title): \(LAACopy.WorkTab.all)").tag("")
             ForEach(values.indices, id: \.self) { index in Text(verbatim: values[index].1).tag(values[index].0) }
-        }.pickerStyle(.menu).font(.caption)
+        }.pickerStyle(.menu).laaTextStyle(.secondary)
+    }
+    private func sectionHeading(_ title: String) -> some View {
+        Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
     private func unique(_ values: [String]) -> [String] { Array(Set(values)).sorted() }
     private var phaseOptions: [(String, String)] {
@@ -341,9 +401,22 @@ struct LAAWorkView: View {
 
 private struct LAAWorkCard: ViewModifier {
     func body(content: Content) -> some View {
-        content.padding(16).frame(maxWidth: .infinity, alignment: .leading)
-            .background(LAAColors.surface, in: RoundedRectangle(cornerRadius: 12))
+        content.padding(LAASpacing.x4).frame(maxWidth: .infinity, alignment: .leading)
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .laaTextStyle(.body).foregroundStyle(LAAColor.text)
     }
 }
-extension View { func workCard() -> some View { modifier(LAAWorkCard()) } }
+private struct LAAWorkListRow: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .padding(.vertical, LAASpacing.x4)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+            .overlay(alignment: .bottom) { Divider().overlay(LAAColor.separator) }
+            .contentShape(Rectangle())
+    }
+}
+extension View {
+    func workCard() -> some View { modifier(LAAWorkCard()) }
+    func workListRow() -> some View { modifier(LAAWorkListRow()) }
+}
 #endif

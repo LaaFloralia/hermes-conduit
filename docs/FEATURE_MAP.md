@@ -508,7 +508,8 @@ store · the session and project API · the Linear task read API
 
 **Code**
 - Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
-  `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`
+  `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
+  `Conduit/LAA/Work/LAAWorkCopy.swift`
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`

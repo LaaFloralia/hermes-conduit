@@ -47,6 +47,30 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertTrue(LAAWorkPresentation.filteredSessionRows([parent, child], projectID: "", phase: "error").isEmpty)
     }
 
+    func testDecisionShortcutRequiresReportedPendingWorkOrDecisionPhase() throws {
+        func decode(_ phase: String, pending: Int?) throws -> LAAWorkSession {
+            var json: [String: Any] = ["id": "s", "name": "Session", "requestId": "s", "workspaceId": "ws",
+                                       "profile": "test", "phase": phase, "createdAt": "1", "updatedAt": "1",
+                                       "events": ["lastSeq": 1, "oldestSeq": 1, "cursor": "c"]]
+            if let pending { json["pending"] = ["count": pending] }
+            return try JSONDecoder().decode(LAAWorkSession.self, from: JSONSerialization.data(withJSONObject: json))
+        }
+        XCTAssertTrue(try decode("awaiting_decision", pending: nil).needsDecision)
+        XCTAssertTrue(try decode("running", pending: 1).needsDecision)
+        XCTAssertFalse(try decode("running", pending: 0).needsDecision)
+        XCTAssertFalse(try decode("awaiting_review", pending: nil).needsDecision)
+    }
+
+    func testDecisionShortcutExcludesContextParentsOutsideTheSelectedProject() throws {
+        let parentData = Data(#"{"id":"p","name":"親","requestId":"p","workspaceId":"ws","profile":"test","phase":"awaiting_decision","createdAt":"1","updatedAt":"1","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8)
+        let childData = Data(#"{"id":"c","name":"子｜調査","requestId":"c","parentId":"p","projectId":"target","workspaceId":"ws","profile":"test","phase":"awaiting_decision","createdAt":"2","updatedAt":"2","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8)
+        let decoder = JSONDecoder()
+        let sessions = try [decoder.decode(LAAWorkSession.self, from: parentData), decoder.decode(LAAWorkSession.self, from: childData)]
+        let rows = LAAWorkPresentation.filteredSessionRows(sessions, projectID: "target", phase: "awaiting_decision")
+        XCTAssertEqual(rows.map(\.session.id), ["p", "c"])
+        XCTAssertEqual(LAAWorkPresentation.decisionRows(rows, projectID: "target", phase: "awaiting_decision").map(\.session.id), ["c"])
+    }
+
     func testInstructionEditingRequiresBodyFromServer() throws {
         let old = try JSONDecoder().decode(LAAWorkProject.self, from: Data(#"{"id":"p","name":"旧","etag":"\"1\""}"#.utf8))
         let new = try JSONDecoder().decode(LAAWorkProject.self, from: Data(#"{"id":"p","name":"新","etag":"\"2\"","instructions":"共有"}"#.utf8))
