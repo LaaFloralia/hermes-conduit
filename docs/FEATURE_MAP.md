@@ -379,20 +379,24 @@ build (keeps its own chat and call controls)
 **Code**
 - Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `project-laa.yml`, `project-personal.yml`
 - Chat header and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
-- Call state, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`
+- Call state, existing voice adapter, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`
+- LAA-only native presentation: `Conduit/LAA/Call/LAACallKitPresentation.swift`, `Conduit/Voice/HermesNativeCalls.swift`, `Conduit/Services/AppState.swift`
 - Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
 
 **Rulings**
 - Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
 - The muted loop runs only while visible and active; Reduce Motion, Low Power Mode and scrolling use the still. The loop does not change the audio session.
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
+- Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
+- The native provider uses the bundled LAA mask and staff names for outgoing calls; unknown profiles keep their existing name. On iOS 14 and later the system takes the provider name from the app display name.
 - CallKit recents remain off because a recents entry cannot yet start a call back.
 
 **Open gaps**
-- The production call control is disabled until the outgoing CallKit path and LAA-only provider presentation are integrated. The current UI flows use a fake control.
-- Receiver, speaker, Bluetooth routing and native call presentation still need the requested real-device checks.
+- Receiver, speaker, Bluetooth routing and native call presentation still need the requested real-device checks; the UI flow tests use a fake control because CallKit does not run in the simulator.
+- The photo-background scope and clear header glass depend on Task 10's shared helper and are to be integrated after that work reaches master.
+- If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-10-29, ba78b6af (phase 1; outgoing integration pending).
+**Checked:** 2026-10-29, a3cd48ef (outgoing integration; device checks pending).
 
 ## Switching voice mode in a call
 
