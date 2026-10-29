@@ -452,7 +452,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-30, laa/usage-design-v2-04 based on 64fbe8b4 (Usage); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
+**Checked:** 2026-10-30, laa/usage-design-v2-04-urgent based on aec30021 (Usage); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
 
 ## LAA Work tab
 
