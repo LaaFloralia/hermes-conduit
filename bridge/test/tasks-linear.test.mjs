@@ -315,6 +315,22 @@ test('a completed issue without an agent comment reports completed', async () =>
 });
 
 test('an unknown issue is null, not an error', async () => {
-  const fetchImpl = recordingFetch(() => response({ data: { issue: null } }));
-  assert.equal(await source(fetchImpl).getTask('BUS-404'), null);
+  const bare = recordingFetch(() => response({ data: { issue: null } }));
+  assert.equal(await source(bare).getTask('BUS-404'), null);
+
+  // Linear answers an unknown id with data:null and a user error on `issue`.
+  const entityNotFound = [{
+    message: 'Entity not found: Issue',
+    path: ['issue'],
+    extensions: { code: 'INPUT_ERROR', userError: true, statusCode: 400 },
+  }];
+  const withError = recordingFetch(() => response({ data: null, errors: entityNotFound }));
+  assert.equal(await source(withError).getTask('BUS-404'), null);
+
+  // Any other rejection stays a dependency error, not a 404.
+  const outage = recordingFetch(() => response({
+    data: null,
+    errors: [{ message: 'boom', path: ['issue'], extensions: { code: 'INTERNAL', userError: false } }],
+  }));
+  await assert.rejects(source(outage).getTask('BUS-404'), { code: 'linear_request_rejected' });
 });

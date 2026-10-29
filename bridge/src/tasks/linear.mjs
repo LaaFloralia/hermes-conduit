@@ -130,6 +130,17 @@ export function readTokenViaHelper(helper = DEFAULT_TOKEN_HELPER, { timeoutMs = 
   });
 }
 
+// Linear answers an unknown identifier with data:null and a user error on the
+// `issue` field. Only that shape becomes "not found"; every other rejection
+// stays a dependency error so an outage is never reported as 404.
+function isMissingIssue(errors) {
+  return errors.length > 0 && errors.every((error) => (
+    error?.path?.[0] === 'issue'
+    && error?.extensions?.userError === true
+    && String(error?.extensions?.code ?? '') === 'INPUT_ERROR'
+  ));
+}
+
 export function assertReadOnlyDocument(document) {
   if (
     typeof document !== 'string'
@@ -244,7 +255,7 @@ export function createLinearTaskSource({
     return response;
   }
 
-  async function gql(document, variables = {}) {
+  async function gql(document, variables = {}, { notFoundIsNull = false } = {}) {
     assertReadOnlyDocument(document);
     let response = await post(await token(), document, variables);
     if (response.status === 401) {
@@ -272,9 +283,14 @@ export function createLinearTaskSource({
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
       throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected response body');
     }
+    if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)
+      && Object.hasOwn(payload.data, 'issue') && payload.data.issue === null) {
+      return payload.data;
+    }
     // GraphQL error text can echo the query or its values; only the fact of a
     // rejection is surfaced.
     if (Array.isArray(payload.errors) && payload.errors.length > 0) {
+      if (notFoundIsNull && isMissingIssue(payload.errors)) return { issue: null };
       throw new TaskSourceError('linear_request_rejected', 'Linear rejected the read query');
     }
     if (!payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) {
@@ -366,7 +382,7 @@ export function createLinearTaskSource({
   }
 
   async function getTask(sourceId) {
-    const data = await gql(DETAIL_QUERY, { id: sourceId });
+    const data = await gql(DETAIL_QUERY, { id: sourceId }, { notFoundIsNull: true });
     const issue = data.issue;
     if (!issue) return null;
 
