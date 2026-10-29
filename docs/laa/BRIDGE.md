@@ -1,4 +1,4 @@
-# LAA Bridge 契約・脅威・復旧設計（親レビュー用草案）
+# LAA Bridge 契約・脅威・復旧設計
 
 2026-10-29。実装・接続・権限変更は未実施。仕様の提案であり、採用や安全性の実証ではない。根拠は [ROADMAP.md](ROADMAP.md) と [BASELINE.md](BASELINE.md)。依存先の機能をBridgeで再実装せず、未確認の接続・権限は実装ゲートとする。
 
@@ -105,3 +105,14 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 5. Usageの3系統から画面ごとの採用元、取得不能時の表示、CPU・メモリ取得方法。BASELINEの観測値とHQ文書の鮮度差を解消する。
 6. Google既存認可・Picker・Drive Range、Paseoの履歴／cursor・resume、Linearの条件付き更新、snapshotの実装可能性と権限の確認。
 7. 機微データを含む下書き・競合保全・監査・archiveの保存先、暗号化、保持・削除、障害時の責任者。自動削除や課金・送信等の許可はこの設計から生じない。
+
+## 9. 親の決定（2026-10-29）
+
+本書の案を次の点で簡素化して採用する。ここに書いた内容が上の節と食い違う場合はこの節を優先する。
+
+- 端末認証：要求ごとの署名・nonce台帳は採らない。Tailscale Serve のTLS、tailnetのACL（社長の端末のみ）、端末ごとの256bitランダムトークン（iOS Keychain、ThisDeviceOnly）、変更系の `Idempotency-Key` で足りる。単一利用者の閉じたtailnetで、署名の追加コストに見合う脅威がないため。トークンはBridgeにhashだけを保存する。
+- 登録と失効：Mac側のCLI（`laa-bridge pair` / `revoke`）が10分有効・1回限りのペアリングコードを出し、アプリで入力またはQR読取する。CLIはエージェントも実行してよく、コードはチャット・ログへ出さず、Mac画面かアプリへの直接表示だけにする。
+- 初期scope：社長の端末には `sessions:*`、`tasks:*`、`brain:read`、`media:read`、`photos:select`、`usage:read`、`archives:read`、`archives:create` を付与する。`brain:write`、`gui:operate`、`archives:restore`、`devices:admin` は各ゲートを満たすまで付与しない。
+- 保持：idempotency台帳は7日、event cursorは24時間。期限切れのcursorは410を返し、アプリは全件を再取得する。
+- 未決の3（GUI）と4（Brain書込み）は本書の案どおり、実証まで提供しない。5（Usage）はタスク05の結果で決める。
+
