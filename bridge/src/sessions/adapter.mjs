@@ -152,8 +152,18 @@ export function personalAgentAdapter({
 
   return {
     origin,
-    create({ requestId, profile, cwd, task }) {
-      return call('create', { requestId, profile, cwd, task });
+    // `title` is the Paseo conversation name (HQ PERSONAL-AGENT.md): the Bridge
+    // names its own sessions so the daemon does not show "laa-bridge" as the
+    // owner. The wrapper leaves it out of the request digest, so a title change
+    // is not a different request.
+    create({ requestId, profile, cwd, task, title }) {
+      return call('create', {
+        requestId,
+        profile,
+        cwd,
+        task,
+        ...(title === undefined || title === null ? {} : { title }),
+      });
     },
     status({ requestId }) {
       return call('status', { requestId });

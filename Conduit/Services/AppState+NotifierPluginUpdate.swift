@@ -281,6 +281,9 @@ extension AppState {
     /// pairing (Settings > Notifications offers that), and tries once per
     /// dashboard and profile each launch.
     func pairActiveProfileAutomatically(bridge: DashboardTicketBridge) async {
+        #if LAA_BUILD
+        guard !LAANotificationPairAll.shared.isRunning else { return }
+        #endif
         let notifications = PushNotificationService.shared
         guard notifierPlugin.reports("pairing"),
               notifications.isEnabled,
@@ -304,6 +307,13 @@ extension AppState {
             automaticPairingAttempts.remove(attempt)
             return
         }
+        #if LAA_BUILD
+        // A batch can have started while the status read was in flight.
+        guard !LAANotificationPairAll.shared.isRunning else {
+            automaticPairingAttempts.remove(attempt)
+            return
+        }
+        #endif
         let pairing = PushNotificationService.profilePairing(status: status, installationID: installationID)
         if pairing == .thisDevice, let gatewayID = status["gateway_id"] as? String {
             // Pushes through this pairing come from the host on screen, even
@@ -350,6 +360,13 @@ extension AppState {
             recordRelayGatewayID(gatewayID, for: dashboardID, profile: profile)
         }
         // The new pairing gets its key right away, before its first push.
+        #if LAA_BUILD
+        if LAANotificationPairAll.shared.isRunning {
+            // The batch must not modify profiles it has skipped.
+            await provisionNotificationEncryption(bridge: bridge, onlyProfile: profile)
+            return
+        }
+        #endif
         await provisionNotificationEncryption(bridge: bridge)
     }
 }

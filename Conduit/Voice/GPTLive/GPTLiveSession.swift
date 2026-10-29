@@ -195,12 +195,10 @@ final class GPTLiveSession {
                 fail(AppLocalization.string("WidgetLaunch.Expired"))
                 return
             }
-            // `makeOffer` starts the WebRTC audio session and microphone in
-            // its synchronous prefix, before its first suspension. This is
-            // the real capture boundary, not `start()`'s task scheduling.
-            initialCaptureAuthorization?.captureDidStart()
+            // The peer checks and consumes the authorization at its actual
+            // audio-acquire boundary, including after this async call hops.
+            let offer = try await peer.makeOffer(initialCaptureAuthorization: initialCaptureAuthorization)
             initialCaptureAuthorization = nil
-            let offer = try await peer.makeOffer()
             guard isCurrent(peer) else { return }
             let answer = try await client.createSession(offer: offer, history: history, voice: voice, briefing: briefing, greeting: greeting, callOpening: callOpening)
             guard isCurrent(peer) else { return }

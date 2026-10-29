@@ -37,6 +37,9 @@ struct ConduitWidgets: WidgetBundle {
     var body: some Widget {
         NativeLauncherWidget()
         CharacterLauncherWidget()
+        #if LAA_BUILD
+        LAAEmployeeWidget()
+        #endif
         HermesTurnLiveActivity()
     }
 }

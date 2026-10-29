@@ -29,6 +29,34 @@ final class WidgetVoiceCaptureTests: XCTestCase {
         XCTAssertEqual(capture.startCount, 1, "a stale widget lease must not block a later manual Listen")
     }
 
+    func testManualListenAfterExpiredWidgetStillChecksPlacedCallActivation() async {
+        let capture = SuspendedWidgetCapture()
+        let controller = VoiceConversationController(
+            capture: capture, playback: MockPlayback(), gateway: MockGateway(),
+            submit: { _ in true }, interrupt: { true }
+        )
+        controller.beginVoiceTurn(sessionID: "widget-call")
+        var widgetCurrent = true
+        var callCurrent = true
+        let lease = WidgetLaunchLease(isCurrent: { widgetCurrent })
+        let authorization = WidgetInitialCaptureAuthorization(
+            wrapping: lease.initialCaptureAuthorization(), isCurrent: { callCurrent }
+        )
+        controller.installInitialWidgetCaptureAuthorization(authorization)
+        let opening = Task { await controller.startListening() }
+        await capture.permissionRequestEntered.wait()
+        widgetCurrent = false
+        capture.completePermissionRequest(true)
+        await opening.value
+        XCTAssertEqual(capture.startCount, 0)
+
+        callCurrent = false
+        capture.permissionSuspended = false
+        await controller.startListening()
+        XCTAssertEqual(capture.startCount, 0, "manual retry must still honor the placed call's activation")
+        controller.stop()
+    }
+
     func testConsumedCaptureAuthorizationDoesNotExpireEstablishedVoice() {
         var current = true
         let lease = WidgetLaunchLease(isCurrent: { current })
@@ -303,7 +331,13 @@ private final class SuspendedWidgetGPTPeer: GPTLivePeer {
     var onAudioPaused: (@MainActor (Bool) -> Void)?
     let offerEntered = WidgetVoiceGate()
     private(set) var offerCount = 0
-    func makeOffer() async throws -> String { offerCount += 1; await offerEntered.signal(); return "offer" }
+    func makeOffer(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) async throws -> String {
+        guard initialCaptureAuthorization?.mayStartCapture != false else { throw CancellationError() }
+        offerCount += 1
+        initialCaptureAuthorization?.captureDidStart()
+        await offerEntered.signal()
+        return "offer"
+    }
     func acceptAnswer(_ sdp: String) async throws {}
     func send(_ text: String) -> Bool { true }
     func setMicrophoneEnabled(_ enabled: Bool) {}

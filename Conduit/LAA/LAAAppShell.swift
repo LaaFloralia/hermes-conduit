@@ -22,6 +22,13 @@ struct LAAAppShell: View {
 
     var body: some View {
         bar
+            .overlay(alignment: .top) {
+                if let notice = appState.pinSyncNotice {
+                    V2NoticeBanner(notice: notice) { appState.dismissPinSyncNotice(notice.id) }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                }
+            }
             .environmentObject(bridge)
             .environmentObject(employeeCalls)
             .modifier(LAACallPresentation(calls: employeeCalls))
@@ -79,6 +86,19 @@ struct LAAAppShell: View {
 
     @ViewBuilder
     private var bar: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_PAIR_ALL") {
+            LAANotificationPairAllFixtureScreen()
+        } else {
+            normalBar
+        }
+        #else
+        normalBar
+        #endif
+    }
+
+    @ViewBuilder
+    private var normalBar: some View {
         if #available(iOS 26.0, *) {
             tabs.tabBarMinimizeBehavior(.onScrollDown)
         } else {
@@ -92,11 +112,17 @@ struct LAAAppShell: View {
                 .tabItem { Label(LAATab.chats.title, systemImage: LAATab.chats.symbol) }
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
-                NavigationStack {
-                    if tab == .usage {
-                        LAAUsageView(onRequestSettings: onRequestSettings)
+                Group {
+                    if tab == .brain {
+                        LAABrainView(onRequestSettings: onRequestSettings)
                     } else {
-                        LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                        NavigationStack {
+                            if tab == .usage {
+                                LAAUsageView(onRequestSettings: onRequestSettings)
+                            } else {
+                                LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                            }
+                        }
                     }
                 }
                 .tabItem { Label(tab.title, systemImage: tab.symbol) }

@@ -139,8 +139,12 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
   ConduitWidgets:
+    sources:
+      - path: ConduitWidgets/Resources/LAAStaff.xcassets
+        buildPhase: resources
     settings:
       base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""

@@ -19,6 +19,25 @@
 import XCTest
 @testable import Conduit
 
+@MainActor
+private final class PausedVoiceConfigurationRequester: VoiceConfigurationRequesting {
+    private(set) var waiters: [CheckedContinuation<Void, Never>] = []
+    private var released = false
+    private let responses = ImmediateVoiceConfigRequester(mode: .fullSupport)
+
+    func requestJSON(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
+        if !released { await withCheckedContinuation { waiters.append($0) } }
+        return try await responses.requestJSON(path: path, method: method, body: body)
+    }
+
+    func release() {
+        released = true
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending { waiter.resume() }
+    }
+}
+
 // MARK: - Controller-level suspension semantics
 
 @MainActor
@@ -67,7 +86,8 @@ final class VoiceConversationLifecycleSuspensionTests: XCTestCase {
         // recaptures.
         await controller.resumeMicrophone()
         XCTAssertFalse(controller.isMicrophonePaused)
-        XCTAssertEqual(capture.resumeCount, 1, "Listen after a restored pause reacquires capture")
+        XCTAssertEqual(capture.startCount, 2, "Listen after a restored pause opens a new capture window")
+        XCTAssertTrue(capture.activelyRecording)
         XCTAssertEqual(controller.state, .listening)
         XCTAssertFalse(controller.isRuntimeSuspended, "the suspended-runtime gate ends with the recapture")
 
@@ -776,6 +796,468 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         XCTAssertFalse(harness.appState.hasActiveVoiceSurface)
     }
 
+    // MARK: Calls placed from Conduit (LAA fork)
+
+    func testClassicCallAudioTimeoutReleasesSessionAndAllowsNextHermesCall() async {
+        let harness = makeHarness(requesterMode: .fullSupport)
+        harness.appState.activeSessionId = "session-1"
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit, timeout: .milliseconds(80))
+        let opening = Task {
+            await harness.appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "Classic is logically prepared before CallKit activates")
+        kit.onPlacedCallStarted?()
+        let opened = await opening.value
+        XCTAssertFalse(opened)
+        kit.onPlacedCallEnded?(false)
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession, "the cancelled open must release its own session")
+        let incoming = HermesCallRequest(id: "", kind: .done, title: "Next", sessionIDs: ["session-1"])
+        XCTAssertTrue(harness.appState.answerHermesCall(incoming), "the abandoned session must not reject a later call as busy")
+        harness.appState.endVoiceForNativeCall()
+    }
+
+    func testSecondClassicOpenWhileWaitingKeepsFirstSessionUsable() async {
+        let deviceTranscriber = MockDeviceTranscriber(transcript: "")
+        let harness = makeHarness(requesterMode: .fullSupport, deviceTranscriber: deviceTranscriber)
+        harness.appState.activeSessionId = "session-1"
+        // This test submits through the fake Hermes gateway. First-voice setup
+        // otherwise selects on-device recognition on supported simulators.
+        let selectedHermes = await harness.appState.setVoiceTranscriptionMode(.hermes)
+        XCTAssertTrue(selectedHermes)
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
+        let first = Task { await harness.appState.openVoiceConversation(intent) }
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+        let preparedGeneration = harness.controller.voiceSessionGeneration
+        kit.onPlacedCallStarted?()
+
+        let secondOpened = await harness.appState.openVoiceConversation(intent)
+        XCTAssertFalse(secondOpened, "a second launch cannot take the waiting launch's session")
+        kit.onPlacedCallAudioActivated?()
+        let firstOpened = await first.value
+        XCTAssertTrue(firstOpened)
+        XCTAssertTrue(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "the shown sheet must own a live session")
+        XCTAssertEqual(harness.controller.voiceSessionGeneration, preparedGeneration)
+        XCTAssertEqual(harness.controller.activePreferences.resolvedTranscriptionMode, .hermes)
+        guard firstOpened, harness.controller.hasLiveVoiceSession else {
+            kit.onPlacedCallEnded?(false)
+            harness.appState.closeVoiceConversation()
+            return
+        }
+
+        // The same session must accept a reply to a real submitted turn.
+        harness.controller.setGateway(harness.gateway)
+        await harness.controller.startListening()
+        XCTAssertTrue(harness.capture.activelyRecording, "the first session must really be listening")
+        guard harness.capture.activelyRecording else {
+            kit.onPlacedCallEnded?(false)
+            harness.appState.closeVoiceConversation()
+            return
+        }
+        let speechStart = Date()
+        harness.capture.emit(level: 0.1, at: speechStart)
+        let heardSpeech = await harness.controller.waitForMicrophoneLevel(where: { $0 >= 0.1 })
+        XCTAssertTrue(heardSpeech, "the first launch must receive microphone events")
+        guard heardSpeech else {
+            kit.onPlacedCallEnded?(false)
+            harness.appState.closeVoiceConversation()
+            return
+        }
+        harness.capture.emit(level: 0, at: speechStart.addingTimeInterval(1.3))
+        await harness.spy.waitUntilSubmitted(1)
+        XCTAssertEqual(harness.controller.voiceSessionGeneration, preparedGeneration)
+        XCTAssertEqual(harness.capture.finishUtteranceCount, 1)
+        XCTAssertEqual(harness.gateway.transcriptionCount, 1)
+        XCTAssertEqual(deviceTranscriber.transcriptionCount, 0)
+        XCTAssertEqual(harness.spy.texts, ["Question"], "the first launch must submit its utterance")
+        guard harness.spy.texts == ["Question"] else {
+            kit.onPlacedCallEnded?(false)
+            harness.appState.closeVoiceConversation()
+            return
+        }
+        harness.controller.receiveAssistantEvent(.started(sessionID: "session-1"))
+        harness.controller.receiveAssistantEvent(.delta(sessionID: "session-1", text: "Answer."))
+        let speaking = await harness.controller.waitForState(.speaking)
+        XCTAssertTrue(speaking, "the first launch must retain assistant-event ownership")
+        kit.onPlacedCallEnded?(false)
+        harness.appState.closeVoiceConversation()
+    }
+
+    func testSecondClassicOpenDuringPreparationDoesNotReplaceTheFirst() async {
+        let harness = makeHarness(requesterMode: .fullSupport)
+        harness.appState.activeSessionId = "session-1"
+        let requester = PausedVoiceConfigurationRequester()
+        harness.appState.voiceCapabilityRequesterForTesting = requester
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
+        let first = Task { await harness.appState.openVoiceConversation(intent) }
+        for _ in 0..<1_000 where requester.waiters.isEmpty { await Task.yield() }
+        XCTAssertFalse(requester.waiters.isEmpty)
+
+        var secondFinished = false
+        let second = Task {
+            let opened = await harness.appState.openVoiceConversation(intent)
+            secondFinished = true
+            return opened
+        }
+        for _ in 0..<1_000 where !secondFinished { await Task.yield() }
+        XCTAssertTrue(secondFinished, "the second launch must be rejected before preparation is released")
+        requester.release()
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+
+        let firstOpened = await first.value
+        let secondOpened = await second.value
+        XCTAssertTrue(firstOpened)
+        XCTAssertFalse(secondOpened)
+        XCTAssertTrue(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+        XCTAssertEqual(kit.names.count, 1)
+        kit.onPlacedCallEnded?(false)
+        harness.appState.closeVoiceConversation()
+    }
+
+    func testClassicOpenDoesNotPresentAReplacedSessionAfterActivation() async {
+        let harness = makeHarness(requesterMode: .fullSupport)
+        harness.appState.activeSessionId = "session-1"
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let opening = Task {
+            await harness.appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        harness.controller.beginVoiceTurn(sessionID: "replacement")
+        kit.onPlacedCallAudioActivated?()
+
+        let opened = await opening.value
+        XCTAssertFalse(opened)
+        XCTAssertFalse(harness.appState.showVoiceSheet, "the stale launch cannot present another generation")
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "the replacement is not the stale launch's to close")
+        XCTAssertEqual(kit.endRequests, 1, "the stale launch's CallKit reservation is ended")
+        kit.onPlacedCallEnded?(false)
+        harness.appState.closeVoiceConversation()
+    }
+
+    func testIncomingHermesUnmuteAfterReplyOpensNextRecordingWindow() async {
+        let harness = makeHarness()
+        let kit = FakePlacedCallKit()
+        _ = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        harness.openVoice(session: "session-1")
+        harness.appState.setNativeHermesCallActive(true)
+        await harness.driveToThinking()
+        await harness.driveToSpeaking()
+        harness.appState.setVoiceMutedForNativeCall(true)
+        harness.controller.receiveAssistantEvent(.completed(sessionID: "session-1", content: "Answer."))
+        let settled = await harness.controller.waitForState(.listening)
+        XCTAssertTrue(settled)
+        XCTAssertTrue(harness.controller.isMicrophonePaused)
+        XCTAssertFalse(harness.capture.activelyRecording)
+
+        harness.appState.setVoiceMutedForNativeCall(false)
+        await harness.capture.waitUntilStartCount(2)
+        XCTAssertFalse(harness.controller.isMicrophonePaused)
+        XCTAssertTrue(harness.capture.activelyRecording, "the incoming call must record its next utterance")
+        await harness.speakUtterance("Follow-up", sessionArmed: true)
+        await harness.spy.waitUntilSubmitted(2)
+        XCTAssertEqual(harness.spy.texts, ["Question", "Follow-up"])
+        XCTAssertTrue(kit.names.isEmpty, "an incoming Hermes call must not place an outgoing call")
+        harness.appState.setNativeHermesCallActive(false)
+        harness.appState.closeVoiceConversation()
+    }
+
+    func testDeactivationAndReactivationInvalidateScheduledLiveStart() async {
+        let harness = makeHarness()
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let waiting = Task { await calls.prepareForVoiceStart() }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        let start = await waiting.value
+        XCTAssertTrue(calls.canStartVoice(start))
+
+        let audio = FakeGPTLiveAudio()
+        let link = GPTLiveAudioLink(audio: audio)
+        let peer = FakeGPTLivePeer()
+        peer.offerHook = { try link.start() }
+        let session = GPTLiveSession(client: FakeGPTLiveClient(), makePeer: { peer })
+        let controller = GPTLiveConversationController(
+            makeSession: { session }, availability: { .available(model: "test", voice: nil) },
+            supervisor: harness.appState.voiceBackgroundJobSupervisor, requestPermission: { true }
+        )
+        harness.appState.gptLiveController = controller
+        XCTAssertTrue(harness.appState.openGPTLiveConversation())
+        kit.onPlacedCallAudioDeactivated?()
+        kit.onPlacedCallAudioActivated?()
+        for _ in 0..<200 { await Task.yield() }
+        XCTAssertFalse(controller.isActive, "a later activation cannot authorize a start reserved for the old one")
+        XCTAssertTrue(audio.events.isEmpty, "the delayed offer must not acquire audio")
+        harness.appState.closeGPTLiveConversation()
+        kit.onPlacedCallEnded?(false)
+        link.stop()
+    }
+
+    func testDeactivationDuringLiveAvailabilityCannotStartOldAudioAfterReactivation() async {
+        let harness = makeHarness()
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let waiting = Task { await calls.prepareForVoiceStart() }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        let start = await waiting.value
+        XCTAssertTrue(calls.canStartVoice(start))
+        let audio = FakeGPTLiveAudio()
+        let link = GPTLiveAudioLink(audio: audio)
+        let peer = FakeGPTLivePeer()
+        peer.offerHook = { try link.start() }
+        let session = GPTLiveSession(client: FakeGPTLiveClient(), makePeer: { peer })
+        var availability: CheckedContinuation<GPTLiveAvailability, Error>?
+        let controller = GPTLiveConversationController(
+            makeSession: { session },
+            availability: { try await withCheckedThrowingContinuation { availability = $0 } },
+            supervisor: harness.appState.voiceBackgroundJobSupervisor, requestPermission: { true }
+        )
+        harness.appState.gptLiveController = controller
+        XCTAssertTrue(harness.appState.openGPTLiveConversation())
+        for _ in 0..<200 where availability == nil { await Task.yield() }
+        XCTAssertNotNil(availability, "the controller started and is waiting for the host")
+        kit.onPlacedCallAudioDeactivated?()
+        kit.onPlacedCallAudioActivated?()
+        availability?.resume(returning: .available(model: "test", voice: nil))
+        for _ in 0..<200 { await Task.yield() }
+        XCTAssertFalse(controller.isActive)
+        XCTAssertTrue(audio.events.isEmpty, "the old activation cannot authorize the delayed offer")
+        harness.appState.closeGPTLiveConversation()
+        kit.onPlacedCallEnded?(false)
+        link.stop()
+    }
+
+    func testTimedOutClassicOpenDoesNotCloseAReplacementSession() async {
+        let harness = makeHarness(requesterMode: .fullSupport)
+        harness.appState.activeSessionId = "session-1"
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit, timeout: .milliseconds(80))
+        let opening = Task {
+            await harness.appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        harness.controller.beginVoiceTurn(sessionID: "replacement")
+        let opened = await opening.value
+        XCTAssertFalse(opened)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "the stale open does not own the replacement")
+        kit.onPlacedCallEnded?(false)
+        harness.appState.closeVoiceConversation()
+    }
+
+    func testClassicDeferredListenRejectsAReplacedCallKitActivation() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        harness.appState.showVoiceSheet = false
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let opening = Task {
+            await harness.appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        let opened = await opening.value
+        XCTAssertTrue(opened)
+        kit.onPlacedCallAudioDeactivated?()
+        kit.onPlacedCallAudioActivated?()
+        harness.appState.startDeferredVoiceSheetAutoListen()
+        for _ in 0..<200 where harness.appState.showVoiceSheet { await Task.yield() }
+        XCTAssertEqual(harness.capture.startCount, 0, "a listen scheduled for the old activation cannot acquire audio")
+        XCTAssertEqual(kit.endRequests, 1)
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+        kit.onPlacedCallEnded?(false)
+        harness.appState.closeVoiceConversation()
+    }
+
+    func testPlacedCallTestHostReleasesAppStateAndFinishesMonitor() async throws {
+        var harness: Harness? = makeHarness()
+        let kit = FakePlacedCallKit()
+        harness?.appState.showVoiceSheet = true
+        var calls: VoicePlacedCalls? = makePlacedCallsForTesting(appState: harness!.appState, kit: kit, followInterval: .milliseconds(20))
+        calls?.voiceChanged(running: true)
+        kit.onPlacedCallStarted?()
+        let monitor = try XCTUnwrap(calls?.followTaskForTesting)
+        weak var weakApp = harness?.appState
+        weak var weakCalls = calls
+        calls = nil
+        harness = nil
+        for _ in 0..<100 where weakApp != nil || weakCalls != nil { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertNil(weakApp, "the fake host must not retain AppState")
+        XCTAssertNil(weakCalls, "AppState and the bridge must both be released")
+        var monitorFinished = false
+        let waiter = Task { await monitor.value; monitorFinished = true }
+        for _ in 0..<100 where !monitorFinished { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertTrue(monitorFinished, "the monitor ends when its owner is released, even without a fake End")
+        kit.onPlacedCallEnded?(false)
+        waiter.cancel()
+    }
+
+    /// A conversation placed as a call that can't start (a refused
+    /// microphone) ends its call instead of leaving it on the system's
+    /// screen: an open sheet is not the conversation's life.
+    func testAClassicConversationThatCannotStartEndsItsPlacedCall() async {
+        let harness = makeHarness()
+        var failures = 0
+        harness.appState.placedCallVoiceStartFailed = { failures += 1 }
+
+        harness.capture.permissionGranted = false
+        harness.appState.showVoiceSheet = true
+        harness.appState.voiceSheetShouldAutoListen = true
+        harness.appState.startDeferredVoiceSheetAutoListen()
+
+        let failed = await harness.controller.waitForFailedState()
+        XCTAssertTrue(failed)
+        for _ in 0..<50 where failures == 0 {
+            await Task.yield()
+        }
+        XCTAssertEqual(failures, 1, "the call placed for it is told the conversation never started")
+        XCTAssertFalse(harness.appState.isPhoneVoiceCallRunning, "a sheet with no conversation carries no call")
+    }
+
+    /// An open sheet with no listening yet still carries its call: the user
+    /// may press Listen, or hold push to talk. What it doesn't survive is a
+    /// failure (the test above).
+    func testAnOpenVoiceSheetCarriesItsCall() {
+        let harness = makeHarness()
+
+        harness.appState.showVoiceSheet = true
+
+        XCTAssertTrue(harness.appState.isPhoneVoiceCallRunning)
+    }
+
+    func testHermesHangupDuringClassicPreparationNeverPlacesAnOutgoingCall() async {
+        let harness = makeHarness(requesterMode: .fullSupport)
+        harness.appState.activeSessionId = "session-1"
+        let requester = PausedVoiceConfigurationRequester()
+        harness.appState.voiceCapabilityRequesterForTesting = requester
+        let kit = FakePlacedCallKit()
+        _ = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let call = HermesCallRequest(id: "", kind: .done, title: "Deploy", sessionIDs: ["session-1"])
+        XCTAssertTrue(harness.appState.answerHermesCall(call))
+        let opening = harness.appState.hermesCallOpenTask
+        for _ in 0..<1_000 where requester.waiters.isEmpty { await Task.yield() }
+        XCTAssertFalse(requester.waiters.isEmpty, "the actual voice preparation is in flight")
+        XCTAssertTrue(kit.names.isEmpty, "an answered Hermes call does not place an outgoing call while preparing")
+        harness.appState.endVoiceForNativeCall()
+        requester.release()
+        await opening?.value
+        XCTAssertTrue(kit.names.isEmpty)
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertEqual(harness.capture.startCount, 0)
+    }
+
+    func testPlacedClassicMuteWhileWaitingSurvivesUntilUnmuted() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        harness.appState.showVoiceSheet = false
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let opening = Task {
+            await harness.appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallMuteChanged?(true)
+        calls.followOnce()
+        XCTAssertTrue(kit.mutedReports.isEmpty, "a prepared session must not unmute CallKit")
+        XCTAssertEqual(harness.capture.startCount, 0)
+        kit.onPlacedCallAudioActivated?()
+        let opened = await opening.value
+        XCTAssertTrue(opened)
+        XCTAssertTrue(harness.controller.isMicrophonePaused)
+        XCTAssertFalse(harness.appState.voiceSheetShouldAutoListen)
+        XCTAssertEqual(harness.capture.startCount, 0)
+        kit.onPlacedCallMuteChanged?(false)
+        for _ in 0..<200 where !harness.capture.activelyRecording { await Task.yield() }
+        XCTAssertFalse(harness.controller.isMicrophonePaused)
+        XCTAssertTrue(harness.capture.activelyRecording)
+        XCTAssertEqual(harness.capture.startCount, 1)
+        XCTAssertEqual(harness.capture.resumeCount, 0)
+    }
+
+    func testPlacedClassicUnmuteBeforeActivationDoesNotOpenMicrophoneEarly() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        harness.appState.showVoiceSheet = false
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let opening = Task {
+            await harness.appState.openVoiceConversation(PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer))
+        }
+        for _ in 0..<200 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallMuteChanged?(true)
+        kit.onPlacedCallMuteChanged?(false)
+        XCTAssertEqual(harness.capture.resumeCount, 0)
+        XCTAssertEqual(harness.capture.startCount, 0)
+        kit.onPlacedCallAudioActivated?()
+        let opened = await opening.value
+        XCTAssertTrue(opened)
+        XCTAssertFalse(harness.controller.isMicrophonePaused)
+        XCTAssertTrue(harness.appState.voiceSheetShouldAutoListen)
+        harness.appState.startDeferredVoiceSheetAutoListen()
+        let listening = await harness.controller.waitForState(.listening)
+        XCTAssertTrue(listening)
+        XCTAssertEqual(harness.capture.startCount, 1)
+    }
+
+    func testNativeHangupClosesClassicVoiceEvenIfAnOldLiveSheetFlagRemains() {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        harness.appState.showGPTLiveSheet = true
+
+        harness.appState.endVoiceForPlacedCall()
+
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+    }
+
+    func testARunningClassicConversationCarriesItsCall() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+
+        await harness.controller.startListening()
+
+        XCTAssertTrue(harness.appState.isPhoneVoiceCallRunning)
+        XCTAssertFalse(harness.appState.voiceCallRunsElsewhere)
+    }
+
+    /// A paused microphone is the call's Mute, not the end: the call stays.
+    func testAPausedMicrophoneKeepsCarryingTheCall() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+
+        harness.controller.pauseMicrophone()
+
+        XCTAssertTrue(harness.appState.isPhoneVoiceCallRunning)
+    }
+
     func testCallEndedBeforeMarkedActiveStillClearsTheAnswer() {
         let harness = makeHarness()
         harness.appState.setNativeHermesCallAnswered(true)
@@ -1396,7 +1878,8 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
 
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
-        requesterMode: ImmediateVoiceConfigRequester.Mode = .failing
+        requesterMode: ImmediateVoiceConfigRequester.Mode = .failing,
+        deviceTranscriber: DeviceSpeechTranscriptionService? = nil
     ) -> Harness {
         let suite = "AppStateVoiceSuspensionTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {
@@ -1440,6 +1923,7 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         let controller = VoiceConversationController(
             capture: capture,
             playback: playback,
+            deviceTranscriber: deviceTranscriber,
             gateway: gateway,
             routePolicyProvider: { .fullDuplex },
             submit: submitAction,

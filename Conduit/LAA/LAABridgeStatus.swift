@@ -21,6 +21,7 @@ final class LAABridgeSession: ObservableObject {
     }
 
     var address: String { credentials?.baseURL.absoluteString ?? LAABridgeEndpoint.defaultAddress }
+    var deviceID: String? { credentials?.deviceID }
 
     func pair(address: String, code: String, name: String) async throws {
         let url = try LAABridgeEndpoint.parse(address)
@@ -49,6 +50,29 @@ final class LAABridgeSession: ObservableObject {
             if current == credentials {
                 if error == .revoked || error == .unauthorized {
                     status = error == .revoked ? .revoked : .unauthorized
+                    revision += 1
+                }
+            }
+            throw error
+        }
+    }
+
+    /// Use wait + 10 seconds as the timeout for a long-poll request.
+    func request<T: Decodable>(method: String, path: String, jsonBody: Data? = nil,
+                               idempotencyKey: LAABridgeIdempotencyKey? = nil, ifMatch: String? = nil,
+                               timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
+        guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
+        do {
+            let result: LAABridgeResponse<T> = try await client.request(
+                method: method, path: path, jsonBody: jsonBody, credentials: current,
+                idempotencyKey: idempotencyKey, ifMatch: ifMatch, timeout: timeout)
+            guard current == credentials, status == .paired else { throw CancellationError() }
+            return result
+        } catch let error as LAABridgeHTTPError {
+            if current == credentials {
+                let legacy = error.legacyError
+                if legacy == .revoked || legacy == .unauthorized {
+                    status = legacy == .revoked ? .revoked : .unauthorized
                     revision += 1
                 }
             }

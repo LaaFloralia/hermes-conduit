@@ -153,22 +153,24 @@ scripts/laa/relay-install.sh uninstall  # the rollback
 - Check it end to end without a phone: `curl -fsS
   http://127.0.0.1:9120/healthz` → `{"ok":true}`.
 
-**The one step left to a Hermes profile.** A profile pairs with exactly one
-relay (its state holds one `relay_url`), so a profile that should notify the
-LAA app must pair with this relay. That moves that profile's pushes off
-`push.milim.dev`, where the App Store app's installation lives — an owner
-decision, so it is not applied here. When it's wanted, on the phone's Settings
-row for the relay: claim a pairing code in the LAA app, then
+**Move notifications to LAA.** A profile pairs with exactly one relay. In the
+LAA app, turn on notifications, connect the dashboard, and use Settings >
+Notifications > 「全社員の通知をこのiPhoneへ」. The app reads that dashboard's
+profile list and pairs one profile at a time, leaving profiles already paired
+to this iPhone alone. It shows each result and offers a retry for failures.
+This moves the selected profiles' notifications and calls from their previous
+phone or relay. To pair a profile manually instead, claim a code in the LAA app
+and run on the Mac:
 
 ```sh
 hermes -p <profile> conduit-push pair --relay-url https://mac-mini.tailc9b8e7.ts.net:9443 <code>
 hermes -p <profile> conduit-push test
 ```
 
-and to undo it, `hermes -p <profile> conduit-push unpair` (the profile falls
-back to its previous pairing; re-pair on `https://push.milim.dev` if it had
-one). Nothing about the relay itself changes, and the eight existing pairings
-are untouched until someone runs the pair command.
+To return a profile's notifications, keep or reinstall the App Store Conduit
+app, open Settings > Notifications there, and pair that profile with the phone.
+The plugin replaces the LAA pairing; the old pairing is not restored
+automatically.
 
 ## When the toolchain fights back
 

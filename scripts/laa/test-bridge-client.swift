@@ -3,12 +3,13 @@ import Foundation
 
 final class BridgeMockProtocol: URLProtocol {
     static var handler: ((URLRequest) throws -> (Int, Data))!
+    static var headers: [String: String] = [:]
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         do {
             let (status, body) = try Self.handler(request)
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: Self.headers)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: body)
             client?.urlProtocolDidFinishLoading(self)
@@ -20,6 +21,33 @@ final class BridgeMockProtocol: URLProtocol {
 @main struct BridgeClientTests {
     static func require(_ condition: @autoclosure () -> Bool, _ name: String) {
         if !condition() { fputs("FAILED: \(name)\n", stderr); exit(1) }
+    }
+    static func body(of request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+    static func timedRequest(_ client: LAABridgeClient, credentials: LAABridgeCredentials,
+                             timeout: TimeInterval?) async -> (TimeInterval, LAABridgeError?) {
+        let start = Date()
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(
+                method: "GET", path: "/v1/timeout-test", credentials: credentials, timeout: timeout)
+            return (Date().timeIntervalSince(start), nil)
+        } catch let error as LAABridgeError {
+            return (Date().timeIntervalSince(start), error)
+        } catch {
+            return (Date().timeIntervalSince(start), .invalidResponse)
+        }
     }
     static func main() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
@@ -66,11 +94,63 @@ final class BridgeMockProtocol: URLProtocol {
             require(request.url?.path == "/v1/example", "request path")
             require(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-token", "auth header")
             require(request.value(forHTTPHeaderField: "Idempotency-Key") == key.value, "idempotency key")
+            require(request.timeoutInterval == 20, "default request timeout")
             require(request.url?.absoluteString.contains("test-token") == false, "token not in URL")
             return (200, Data("{\"data\":{\"items\":[],\"nextCursor\":null},\"requestId\":\"test\"}".utf8))
         }
         let page: LAAUsagePage = try await client.write("/v1/example", method: "POST", body: Data("{}".utf8), credentials: creds, key: key)
         require(page.items.isEmpty, "success envelope")
+        BridgeMockProtocol.headers = ["ETag": "\"4\""]
+        BridgeMockProtocol.handler = { request in
+            require(request.httpMethod == "PATCH", "general method")
+            require(body(of: request) == Data("{\"name\":\"test\"}".utf8), "general JSON body")
+            require(request.value(forHTTPHeaderField: "Content-Type") == "application/json", "JSON content type")
+            require(request.value(forHTTPHeaderField: "Idempotency-Key") == key.value, "general idempotency key")
+            require(request.value(forHTTPHeaderField: "If-Match") == "\"3\"", "If-Match header")
+            require(request.timeoutInterval == 35, "long-poll timeout is not capped at 20 seconds")
+            return (201, Data("{\"data\":{\"items\":[],\"nextCursor\":null},\"requestId\":\"req-test\"}".utf8))
+        }
+        let response: LAABridgeResponse<LAAUsagePage> = try await client.request(
+            method: "PATCH", path: "/v1/example", jsonBody: Data("{\"name\":\"test\"}".utf8),
+            credentials: creds, idempotencyKey: key, ifMatch: "\"3\"", timeout: 35)
+        require(response.data.items.isEmpty && response.requestId == "req-test", "decoded response envelope")
+        require(response.status == 201 && response.etag == "\"4\"", "response status and ETag")
+
+        for (status, code) in [(409, "request_id_conflict"), (409, "idempotency_outcome_unknown"),
+                               (409, "stop_unconfirmed"), (410, "cursor_expired"),
+                               (412, "version_mismatch"), (428, "precondition_required")] {
+            BridgeMockProtocol.headers = ["ETag": "\"5\""]
+            BridgeMockProtocol.handler = { _ in
+                let body = "{\"error\":{\"code\":\"\(code)\",\"message\":\"details\",\"retryable\":false,\"details\":{\"current\":5,\"nested\":[true,null,\"x\"]}},\"requestId\":\"req-error\"}"
+                return (status, Data(body.utf8))
+            }
+            do {
+                let _: LAABridgeResponse<LAAUsagePage> = try await client.request(method: "GET", path: "/v1/example", credentials: creds)
+                require(false, "HTTP \(status) must fail")
+            } catch let error as LAABridgeHTTPError {
+                require(error.status == status && error.code == code, "structured HTTP status and code")
+                require(error.message == "details" && error.retryable == false && error.requestId == "req-error", "error metadata")
+                require(error.details == .object(["current": .number(5), "nested": .array([.bool(true), .null, .string("x")])]), "nested error details")
+                require(error.currentETag == "\"5\"", "ETag on HTTP error")
+            }
+        }
+        BridgeMockProtocol.headers = [:]
+        BridgeMockProtocol.handler = { _ in
+            (412, Data("{\"error\":{\"code\":\"version_mismatch\",\"details\":{\"current\":{\"etag\":\"\\\"17\\\"\",\"version\":17}}},\"requestId\":\"req-current\"}".utf8))
+        }
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(method: "PATCH", path: "/v1/projects/test", credentials: creds)
+            require(false, "stale project must fail")
+        } catch let error as LAABridgeHTTPError {
+            require(error.code == "version_mismatch" && error.currentETag == "\"17\"", "current ETag from server error details")
+        }
+        BridgeMockProtocol.handler = { _ in (412, Data("not-json".utf8)) }
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(method: "GET", path: "/v1/example", credentials: creds)
+            require(false, "malformed error must fail")
+        } catch let error as LAABridgeHTTPError {
+            require(error.status == 412 && error.code == nil && error.currentETag == nil, "status survives malformed error; missing ETag stays nil")
+        }
         BridgeMockProtocol.handler = { _ in (401, Data("{\"error\":{\"code\":\"token_revoked\"}}".utf8)) }
         do { let _: LAAUsagePage = try await client.get("/v1/example", credentials: creds); require(false, "401 must fail") }
         catch let e as LAABridgeError { require(e == .revoked, "401 envelope") }
@@ -80,6 +160,20 @@ final class BridgeMockProtocol: URLProtocol {
         BridgeMockProtocol.handler = { _ in throw URLError(.serverCertificateUntrusted) }
         do { let _: LAAUsagePage = try await client.get("/v1/example", credentials: creds); require(false, "TLS must fail") }
         catch let e as LAABridgeError { require(e == .tlsFailed, "TLS error") }
+        if let address = ProcessInfo.processInfo.environment["LAA_BRIDGE_TIMEOUT_TEST_URL"] {
+            guard let url = URL(string: address), url.scheme == "http", url.host == "127.0.0.1", url.port != nil else {
+                require(false, "timeout test needs a loopback URL")
+                return
+            }
+            let live = LAABridgeClient()
+            let local = LAABridgeCredentials(baseURL: url, deviceID: "dev_test", token: "test-token")
+            async let normal = timedRequest(live, credentials: local, timeout: nil)
+            async let longPoll = timedRequest(live, credentials: local, timeout: 40)
+            let (ordinary, extended) = await (normal, longPoll)
+            require(ordinary.1 == .networkUnreachable && (17...27).contains(ordinary.0), "default timeout near 20 seconds")
+            require(extended.1 == nil && (28...39).contains(extended.0), "40-second timeout survives a 30-second response")
+            print(String(format: "Timeouts: default %.1fs, extended %.1fs", ordinary.0, extended.0))
+        }
         print("Bridge client: fixtures, error mapping, URL policy and request headers passed")
     }
 }

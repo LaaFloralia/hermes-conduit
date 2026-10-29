@@ -424,16 +424,17 @@ mode menu)
 
 ## LAA five-tab shell
 
-The LAA iPhone build's top-level navigation, Bridge pairing and Usage tab.
+The LAA iPhone build's top-level navigation, Bridge pairing, Brain and Usage tabs.
 
 **Siblings:** the existing Chats list, sessions and group rooms · Hermes login
 and offline chats · Conduit Settings and its direct Hermes usage report ·
 notifications and in-app links · the four Bridge-backed tabs · the upstream
-App Store build · the Bridge API and Usage data contract
+App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
-- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`
+- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
+- Brain: `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
@@ -444,21 +445,36 @@ App Store build · the Bridge API and Usage data contract
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
   scope and service failures are distinguished. Other Bridge tabs share the
   connection state and retain their placeholders until their own work lands.
+- The shared Bridge request supports JSON writes, idempotency keys, If-Match
+  and per-request timeouts. It retains response metadata and structured HTTP
+  errors; long-poll callers allow the wait plus ten seconds. Existing reads
+  retain their original error mapping, and writes are never retried by the client.
 - Usage reads quota windows, balances and Mac status from Bridge on entry or
   pull-to-refresh. A missing value is not zero; stale, expired and unavailable
   readings and observation times are shown. Hermes' existing Settings report
   remains the direct path for historical tokens and costs.
+- Brain lists the default permitted areas, optionally adds Inbox on request,
+  searches locally through the Bridge, and opens Markdown or its exact source.
+  Frontmatter remains available, unresolved syntax and image references remain
+  visible, and wiki links resolve only against the permitted listing. New notes
+  use the opt-in `brain:create` scope and the server's conflict-safe name.
+  An uncertain create retains its exact request and key in ThisDeviceOnly
+  Keychain until the same device reconciles it or the user checks Inbox.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
 
 **Open gaps**
-- Work, Brain and Source still need their finished content. The LAA shell uses
+- Work and Source still need their finished content. Brain cannot edit existing
+  notes; relative images are shown as references until Bridge supports them.
+  The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
   are not in this five-tab shell.
 - The existing Hermes Settings report has its own missing-number handling;
   Bridge's Usage data does not replace or claim to fix that report.
+- Project version errors provide the current ETag in the 412 error details;
+  callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-29, laa/usage-tab-09, based on f8f148d1.
+**Checked:** 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
 ## Voice beside the tabs
 
@@ -724,6 +740,7 @@ Pulse (it may call only once the user opts in)
 - Answered on the Watch while the iPhone has a headset on (AirPods, wired), the call stays on the iPhone and plays there, whatever the Watch's voice: the iPhone answers its own ring with its own voice mode, and the Watch's call screen keeps Mute and End, shared through the relay's ring control. Every mute reaches the other device: CallKit's on either call screen, and Conduit's own (the call screen's Mute, the minimised bar, Classic's paused microphone). A relay restart mid-call loses nothing: each device writes its state again and reads on, and a change made while the relay was down is retried. With no headset on the iPhone, or a relay older than 0.17, the Watch takes it as before (Eric 2026-10-24, #1225, notifier #354).
 - In the car, CarPlay rings and the Watch stays quiet (2026-10-14, #602).
 - A call muted in CallKit before its voice is running starts muted in every voice: classic voice since #558, the live modes since #1378 (their controllers' `startsMuted`, from AppState's hermesCallStartsMuted; GPT-Live hands it to GPTLiveSession so the WebRTC track is created disabled).
+- In Classic Voice, unmuting after a reply finished while muted opens a new recording window for the next utterance, for both incoming Hermes calls and calls placed from Conduit.
 - On a profile set to Local Live in agent mode, a call from Hermes opens Local Live, and its fast model says why Hermes called; on Classic's hands-free option it opens Classic, which says it. Since #1194 the call asked for Local Live but the voice start still turned it into Classic (2026-10-27, #1378, from #1376).
 - A call from a cron job rings like one from a chat. Hermes runs a restart-safe cron job in a worker process that exits right after the turn, so the turn's end waits for the call request to reach the relay, up to 3 seconds (the failed turn's alert call and held calls swept then too, all in one wait), and the worker's exit then waits up to 10 more for its retries, and up to 3 after that for the usual push they fall back to (2026-10-26, notifier #389, issue #388).
 
@@ -741,33 +758,39 @@ Where the voice comes out, who owns the audio session, and what mutes what.
 echo-cancelling audio) · GPT-Live (WebRTC) · calls from Hermes (CallKit's
 Speaker button) · CarPlay · AirPods and Bluetooth · Read Aloud · the call
 screen's Mute and Silence · the minimised call bar · a Watch-answered call
-kept on the iPhone's headset (the Watch's Mute and End) · Hold calls to your
-ear (LAA fork: the call screens' Speaker button, the proximity sensor, the
-Voice settings toggle)
+kept on the iPhone's headset (the Watch's Mute and End) · Place calls as
+phone calls (LAA fork: a conversation placed as a CallKit call — the
+system's call screen, its Mute and End — the call screens' own Speaker
+button and the proximity sensor where CallKit isn't placing the call, the
+Voice settings toggle and its caption)
 
 **Code**
-- Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive, conversationConfiguration, setConversationSpeaker), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
-- Hold calls to your ear (LAA fork): `Conduit/Voice/VoiceTypes.swift` (VoiceEarpieceCalls), `Conduit/Views/EarpieceCallControls.swift` (LiveVoiceCallSpeakerButton, EarpieceCallProximity), `Conduit/Views/VoiceConversationSheet.swift` (v2Controls), `Conduit/Views/VoiceSettingsView.swift` (conversationSection)
+- Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive, placedCallRequiresActivation, conversationConfiguration, setConversationSpeaker), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
+- Place calls as phone calls (LAA fork): `Conduit/Voice/VoicePlacedCalls.swift` (VoicePlacedCalls, prepareForVoiceStart, voiceStartFailed, PlacedCallBridge), `Conduit/Voice/HermesNativeCalls.swift` (placeCall, requestPlacedCallEnd, placedCallEndStep, the CXStartCallAction, CXEndCallAction and CXSetMutedCallAction delegates, callKitAvailable), `Conduit/Voice/VoiceTypes.swift` (VoicePhoneCalls), `Conduit/Views/RootView.swift` (PlacedCallBridge), `Conduit/Services/AppState.swift` (openVoiceConversation's prepareForVoiceStart, notePlacedCallVoiceStartFailed, isPhoneVoiceCallRunning, voiceCallRunsElsewhere), `Conduit/Services/AppState+HermesCalls.swift` (setPlacedPhoneCallActive, isCallKitCallAnswered)
+- Where CallKit isn't placing the call (LAA fork): `Conduit/Views/EarpieceCallControls.swift` (LiveVoiceCallSpeakerButton, EarpieceCallProximity), `Conduit/Views/VoiceConversationSheet.swift` (v2Controls), `Conduit/Views/VoiceSettingsView.swift` (conversationSection)
 - Playback: `Conduit/Voice/AVSpeechPlaybackService.swift` (resumeOnFreshEngine), `Conduit/Voice/VoiceAudioEngineRecovery.swift`
-- Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
+- Live audio: `Conduit/Voice/GPTLive/GPTLiveAudioLink.swift`, `Conduit/Voice/GPTLive/GPTLivePeer.swift` (first-capture authorization), `Conduit/Voice/GeminiLive/LiveVoiceEchoCancellingAudio.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`, `Conduit/Services/WidgetLaunchCoordinator.swift` (first-capture authorization)
 - Mute and Silence: `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Voice/HeadsetMicrophoneMute.swift`
 - A Watch answer kept on the iPhone's headset: `Conduit/Voice/HermesNativeCalls.swift` (keepsWatchAnswer, muteOnWatch, inAppMuteChanged), `Conduit/Services/AppState+HermesCalls.swift` (nativeCallVoiceMuted), `ConduitWatch/HermesWatchCalls.swift` (phoneCallMuted)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift`, `Conduit/Views/ReadAloudPlayerBar.swift`
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (HermesNativeCalls' muteOnWatch)
 
 **Rulings**
-- During a call from Hermes, CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148).
-- A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943). LAA fork: with Hold calls to your ear on (the fork's default), a conversation the user starts plays from the earpiece instead; only the call screen's Speaker button moves it, the choice survives the classic turns' deactivations, and the next call starts on the earpiece again (LAA 2026-10-28).
+- During a CallKit call — one from Hermes, or one the user places (LAA fork) — CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148; LAA 2026-10-29).
+- A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943). LAA fork: with Place calls as phone calls on (the fork's default), a conversation the user starts on the phone is placed as a CallKit outgoing call, on the provider calls from Hermes already use: it plays from the earpiece, only the system call screen's Speaker button moves it, and the system's Mute and End act on the conversation (LAA 2026-10-29).
+- LAA fork: the call is placed before the conversation's audio starts, and the conversation opens only once `didActivate` gave the call its audio. If activation does not arrive within 2 s, the call ends and the conversation does not start. If that activation is withdrawn before the first audio starts, an attempt to start it is cancelled and ends the call; a later activation cannot authorize the earlier start. A conversation that never runs — a refused microphone, an engine that couldn't start — ends its call (`voiceStartFailed`, and the phone's `isPhoneVoiceCallRunning`, which excludes a failed minimised call; one the call's own audio took keeps it, since CallKit hands the audio back), and a conversation that begins while the last call is still ending gets its own call when it's gone (LAA 2026-10-29). Where CallKit isn't placing the call, the conversation plays from the earpiece with the call screen's own Speaker button and the proximity sensor, the choice survives the classic turns' deactivations, and the next call starts on the earpiece again (LAA 2026-10-28, kept as the fallback).
+- While a Classic phone launch is being prepared or waiting for CallKit audio, a second phone launch cannot take its session. An ended or replaced session cannot be presented by the waiting launch.
 - Silence mutes the assistant's voice apart from the microphone; its speech is dropped, not held, and job news waits for unmute (2026-10-09, #488).
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
 - A call from Hermes answered on the Watch plays on the iPhone's headset when one is on there (AirPods, wired, never the car's); the Watch's Mute and End control it like a phone call's, and a mute from any of Conduit's own controls reaches the Watch (Eric 2026-10-24, #1225).
 
 **Open gaps**
 - Silence isn't on CarPlay or the minimised bar (#488).
-- LAA fork: the Speaker button isn't on the V1 classic sheet, the minimised bar or the Watch; a phone-style call the user starts isn't a CallKit call, so it has no Dynamic Island or lock-screen call screen.
+- LAA fork: the call screen's own Speaker button (where CallKit isn't placing the call) isn't on the V1 classic sheet, the minimised bar or the Watch. A conversation CarPlay or the Watch runs isn't placed as a call, and neither is one started with CarPlay connected: their own screens run those. What the system's call screen does on a device — the Dynamic Island, the route indicator, a placed call's behaviour over CarPlay or Bluetooth — isn't established by the mocked tests.
+- LAA fork: a call placed here is not listed in the phone's Recents. The one shared provider leaves `includesCallsInRecents` off: tapping a Recents entry would have to start the same call again, which needs an `INStartCallIntent` handler (SiriKit intents), and the provider also rings calls from Hermes, which can't be called back from the Phone app. Enabling it for placed calls alone isn't possible on one provider.
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-10-28, LAA fork laa/earpiece-calls (Hold calls to your ear); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-10-29, LAA fork laa/callkit-outgoing (a conversation the user starts is placed as a CallKit call; the earpiece Speaker button and proximity sensor stay as the fallback); 2026-10-28, LAA fork laa/earpiece-calls; 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Talking over Hermes
 
@@ -3482,3 +3505,54 @@ point at the map and its check
 - If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
 **Checked:** 2026-10-26, #1314.
+
+## LAA all-profile notification pairing
+
+The LAA-only Settings action moves the active dashboard's profile notifications
+and calls to this iPhone; each profile can be paired back from the App Store app.
+
+**Siblings:** single-profile pairing and automatic pairing · relay and
+notification encryption · calls on the same profile pairing · LAA Settings
+and rollback instructions · the upstream App Store build
+
+**Code**
+- Run and Settings controls: `Conduit/LAA/NotificationPairing/LAANotificationPairAll.swift`, `Conduit/LAA/NotificationPairing/LAANotificationPairAllView.swift`, `Conduit/Views/AuxiliaryViews.swift`
+- Existing pairing: `Conduit/Services/AppState+NotifierPluginUpdate.swift`, `Conduit/Services/AppState.swift`, `Conduit/Services/PushNotificationService.swift`
+- Tests and instructions: `ConduitTests/LAANotificationPairAllTests.swift`, `ConduitUITests/LAANotificationPairAllUITests.swift`, `Conduit/LAA/NotificationPairing/LAANotificationPairAllFixture.swift`, `docs/LAA_BUILD.md`
+
+**Rulings**
+- Read the current dashboard's roster, check each profile's notification
+  installation, skip those already on this iPhone, and claim one relay code
+  at a time. Key provisioning during the run is limited to the newly paired
+  profile. Missing or ambiguous status is a failure, not an unpaired profile.
+- Show each outcome and retry only failures, checking their status again first.
+  A dashboard switch or installation change stops the run; an in-flight request
+  may already have reached the old host and must be checked on retry.
+- The App Store build keeps its existing controls. To go back, pair that
+  profile from Settings > Notifications in the App Store app; the plugin
+  replaces the LAA pairing and does not restore the old pairing automatically.
+
+**Open gaps**
+- Simulator push registration and real APNs delivery need a physical iPhone.
+
+**Checked:** 2026-10-29, based on 4cc3a723.
+
+## LAA employee widget
+
+**Siblings:** LAA Home Screen small and medium widgets · Lock Screen circular widget · the existing widget URL router and voice start · LAA shell's error notice · the upstream launcher widgets (unchanged)
+
+**Code**
+- Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
+- Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`
+- Snapshot reload and notice: `Conduit/Services/AppState+Widgets.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/AppState.swift`
+- Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
+
+**Rulings**
+- The LAA build offers eight employees, with Ciel as default. Small opens chat with a separate call link; medium has both actions; the circular Lock Screen widget opens a call. Artwork is static and no live status is shown.
+- The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing profile voice path. A missing dashboard or profile is explained in Japanese.
+- Only the LAA extension bundles the resized staff images. The upstream launcher and its App Store build remain unchanged.
+
+**Open gaps**
+- Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
+
+**Checked:** 2026-10-29, at 2738ed28 (LAA task 12 changes).

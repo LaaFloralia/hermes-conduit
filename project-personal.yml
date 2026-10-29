@@ -9,6 +9,11 @@
 # push). So no notifications, calls from Hermes, widgets or Watch here; the
 # App Store app keeps those. The Watch app and the extensions are left out,
 # as in project-tests.yml.
+#
+# Calls the user places from the app (CallKit, VoicePlacedCalls) need no
+# capability or Info.plist key, so this build places them: UIBackgroundModes
+# (audio, voip) and ConduitHermesCallsRing come unchanged from project.yml's
+# Conduit/Info.plist. Nothing here changes for that.
 include:
   - path: project.yml
 settings:

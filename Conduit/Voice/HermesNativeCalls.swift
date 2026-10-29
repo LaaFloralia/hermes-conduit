@@ -148,9 +148,19 @@ final class HermesNativeCalls: NSObject {
     static var ringingWanted: Bool { UserDefaults.standard.object(forKey: ringsKey) as? Bool ?? true }
     /// Whether "Ring like a phone call" is offered: a build that rings, in
     /// a storefront that allows it.
-    static var offersRinging: Bool {
+    static var offersRinging: Bool { callKitAvailable }
+
+    /// Whether CallKit is used at all in this build and storefront: calls
+    /// from Hermes ring through it, and calls the user places from Conduit
+    /// go through it (VoicePlacedCalls, LAA fork). Off in a run of the test
+    /// host, which launches Conduit, and where the build or the storefront
+    /// leaves CallKit out; the phone's conversations then keep their own
+    /// earpiece controls.
+    static var callKitAvailable: Bool {
+        guard ringingBuilt,
+              ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return false }
         let known = UserDefaults.standard.string(forKey: HermesNativeCallStorefront.defaultsKey)
-        return ringingBuilt && HermesNativeCallStorefront.allowsCalls(known.flatMap { $0.isEmpty ? nil : $0 })
+        return HermesNativeCallStorefront.allowsCalls(known.flatMap { $0.isEmpty ? nil : $0 })
     }
 
     private struct Call {
@@ -188,6 +198,34 @@ final class HermesNativeCalls: NSObject {
     }
     /// Calls reported to CallKit and not ended.
     private var calls: [UUID: Call] = [:]
+
+    /// The call the user placed from Conduit (LAA fork,
+    /// VoicePlacedCalls): one at a time, on the same provider, and apart
+    /// from the calls from Hermes above.
+    private struct PlacedCall {
+        let id: UUID
+        /// When it was placed, for the system's "connecting" report.
+        let placedAt: Date
+        /// Conduit asked CallKit to end it: the end that comes back is ours,
+        /// not the user hanging up.
+        var endingRequested = false
+    }
+    private var placedCall: PlacedCall?
+    #if DEBUG
+    var placedCallEndRequestForTesting: (@MainActor (UUID) async throws -> Void)?
+    var placedCallEndReportForTesting: (@MainActor (UUID, CXCallEndedReason) -> Void)?
+    var placedCallEndRetryDelayForTesting: Duration = .milliseconds(300)
+    func installPlacedCallForTesting(_ id: UUID) {
+        placedCall = PlacedCall(id: id, placedAt: Date())
+    }
+    #endif
+    /// VoicePlacedCalls sets these: the start CallKit performed, its call
+    /// gone, and its Mute tapped on the system's screen.
+    var onPlacedCallStarted: (@MainActor () -> Void)?
+    var onPlacedCallAudioActivated: (@MainActor () -> Void)?
+    var onPlacedCallAudioDeactivated: (@MainActor () -> Void)?
+    var onPlacedCallEnded: (@MainActor (Bool) -> Void)?
+    var onPlacedCallMuteChanged: (@MainActor (Bool) -> Void)?
     /// Each ring's call, for a Watch call that answers it, and the ring, to
     /// store that call's session at the relay.
     private var ringTargets: [String: (target: ConduitNotificationTarget, ring: HermesRing, at: Date)] = [:]
@@ -251,20 +289,7 @@ final class HermesNativeCalls: NSObject {
     private func startRinging() {
         guard !isRinging else { return }
         isRinging = true
-        if provider == nil {
-            let configuration = CXProviderConfiguration()
-            configuration.supportsVideo = false
-            configuration.maximumCallGroups = 1
-            configuration.maximumCallsPerCallGroup = 1
-            configuration.supportedHandleTypes = [.generic]
-            // A Hermes call can't be called back from the Phone app.
-            configuration.includesCallsInRecents = false
-            let provider = CXProvider(configuration: configuration)
-            // On the main queue, like the PushKit registry: the delegate
-            // methods below assume it.
-            provider.setDelegate(self, queue: .main)
-            self.provider = provider
-        }
+        ensureProvider()
         if let registry {
             registry.desiredPushTypes = [.voIP]
             // Ringing again: the token PushKit already gave goes back to
@@ -277,6 +302,30 @@ final class HermesNativeCalls: NSObject {
             self.registry = registry
         }
         nativeCallsLogger.info("Hermes calls ring natively")
+    }
+
+    /// The one provider both directions use, made on first need: a call the
+    /// user places (VoicePlacedCalls) needs one whether or not calls from
+    /// Hermes ring here. Nil where CallKit isn't used at all.
+    @discardableResult
+    private func ensureProvider() -> CXProvider? {
+        guard Self.callKitAvailable else { return nil }
+        if let provider { return provider }
+        let configuration = CXProviderConfiguration()
+        configuration.supportsVideo = false
+        configuration.maximumCallGroups = 1
+        configuration.maximumCallsPerCallGroup = 1
+        configuration.supportedHandleTypes = [.generic]
+        // A Hermes call can't be called back from the Phone app, and the
+        // phone's own recents are the phone app's: a call from Hermes stays
+        // out of them (docs/FEATURE_MAP.md, "Audio route, Speaker and mute").
+        configuration.includesCallsInRecents = false
+        let provider = CXProvider(configuration: configuration)
+        // On the main queue, like the PushKit registry: the delegate
+        // methods below assume it.
+        provider.setDelegate(self, queue: .main)
+        self.provider = provider
+        return provider
     }
 
     /// Calls go back to notifications: the relay forgets the token.
@@ -333,7 +382,7 @@ final class HermesNativeCalls: NSObject {
         // Never created here: reporting comes first.
         let appState = AppStateRuntimeRegistry.shared.existing
         let busy = appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false
-        let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty)
+        let plan = HermesNativeCallPlan.plan(for: call, now: Date(), voiceInUse: busy || !calls.isEmpty || placedCall != nil)
         // Read once, as the call arrives: CarPlay coming up while it rings
         // leaves the Watch ringing too.
         let inCar = CarPlayVoiceCoordinator.shared.isConnected || WakeRoutePolicy.currentRouteIsCarPlay()
@@ -482,7 +531,7 @@ final class HermesNativeCalls: NSObject {
         calls[action.callUUID]?.answered = true
         calls[action.callUUID]?.unanswered?.cancel()
         // CallKit activates the session once the action is fulfilled.
-        VoiceAudioSessionCoordinator.shared.configureForIncomingCall()
+        VoiceAudioSessionCoordinator.shared.configureForNativeCall()
         action.fulfill()
         // Answering is the go-ahead for the call's voice to listen, locked
         // or not.
@@ -815,7 +864,7 @@ final class HermesNativeCalls: NSObject {
               let start = HermesRingHandoff.openStart(sealedStart, key: key, ringID: ring.id),
               let callID = start.watchCallID else { return false }
         // The route as the call would have it.
-        VoiceAudioSessionCoordinator.shared.configureForIncomingCall()
+        VoiceAudioSessionCoordinator.shared.configureForNativeCall()
         let route = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType)
         let watchControls = UserDefaults.standard.bool(forKey: Self.watchControlsKey)
         guard Self.keepsWatchAnswer(watchControls: watchControls, outputs: route) else {
@@ -1074,7 +1123,7 @@ final class HermesNativeCalls: NSObject {
     }
 
     private func settle() {
-        guard calls.isEmpty else { return }
+        guard calls.isEmpty, placedCall == nil else { return }
         stopObservingRoute()
         VoiceAudioSessionCoordinator.shared.nativeCallEnded()
         AppStateRuntimeRegistry.shared.existing?.setNativeHermesCallActive(false)
@@ -1101,6 +1150,156 @@ final class HermesNativeCalls: NSObject {
         }
         guard let request else { return }
         Task { await HermesCallNotifications.post(request) }
+    }
+}
+
+// MARK: - Calls the user places (LAA fork)
+
+/// VoicePlacedCalls' half of the provider: one outgoing call at a time,
+/// reported to the same CallKit provider calls from Hermes use. The system
+/// shows its call screen (lock screen, Dynamic Island, the banner over other
+/// apps), and its Mute and End act on the conversation through the closures
+/// above.
+extension HermesNativeCalls: VoicePlacedCallKit {
+    var isAvailable: Bool { Self.callKitAvailable }
+
+    /// How many times an end CallKit refused is asked for again before the
+    /// call is reported ended instead.
+    static let placedCallEndAttempts = 3
+
+    /// What an end CallKit refused leaves to do. Only "no such call" means
+    /// nothing is on the screen; any other error leaves a call CallKit still
+    /// shows, and forgetting it would strand it there.
+    enum PlacedCallEndStep: Equatable {
+        case retry
+        case reportEnded
+        case gone
+    }
+
+    nonisolated static func placedCallEndStep(
+        for code: CXErrorCodeRequestTransactionError.Code?,
+        attempt: Int,
+        attempts: Int
+    ) -> PlacedCallEndStep {
+        if code == .unknownCallUUID { return .gone }
+        return attempt < attempts ? .retry : .reportEnded
+    }
+
+    func placeCall(named name: String) -> Bool {
+        guard ensureProvider() != nil else { return false }
+        // One call at a time: CallKit keeps one call group here, and a call
+        // from Hermes already owns the screen.
+        guard calls.isEmpty, placedCall == nil else { return false }
+        let id = UUID()
+        let shown = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let handle = CXHandle(type: .generic, value: shown.isEmpty ? HermesCallerName.fallback : shown)
+        let action = CXStartCallAction(call: id, handle: handle)
+        action.isVideo = false
+        placedCall = PlacedCall(id: id, placedAt: Date())
+        Task { [weak self] in
+            do {
+                try await self?.callController.request(CXTransaction(action: action))
+            } catch {
+                self?.placedCallFailed(id, error: error)
+            }
+        }
+        return true
+    }
+
+    func requestPlacedCallEnd() {
+        guard var call = placedCall, !call.endingRequested else { return }
+        call.endingRequested = true
+        placedCall = call
+        let id = call.id
+        Task { [weak self] in
+            var attempt = 1
+            while true {
+                do {
+                    guard let self, self.placedCall?.id == id else { return }
+                    #if DEBUG
+                    if let request = self.placedCallEndRequestForTesting {
+                        try await request(id)
+                    } else {
+                        try await self.callController.request(CXTransaction(action: CXEndCallAction(call: id)))
+                    }
+                    #else
+                    try await self.callController.request(CXTransaction(action: CXEndCallAction(call: id)))
+                    #endif
+                    return
+                } catch {
+                    guard let self, self.placedCall?.id == id else { return }
+                    let code = (error as? CXErrorCodeRequestTransactionError)?.code
+                    nativeCallsLogger.notice(
+                        "ending the placed call failed (attempt \(attempt), code \(code.map { String($0.rawValue) } ?? "none", privacy: .public)): \(LogRedaction.message(error), privacy: .public)"
+                    )
+                    switch Self.placedCallEndStep(for: code, attempt: attempt, attempts: Self.placedCallEndAttempts) {
+                    case .retry:
+                        attempt += 1
+                        #if DEBUG
+                        let retryDelay = self.placedCallEndRetryDelayForTesting
+                        #else
+                        let retryDelay: Duration = .milliseconds(300)
+                        #endif
+                        do { try await Task.sleep(for: retryDelay) } catch { return }
+                    case .gone:
+                        // CallKit has no call to end: none is on the screen,
+                        // so the conversation carries on without one.
+                        self.finishPlacedCall(id, reason: .failed)
+                        return
+                    case .reportEnded:
+                        // It still shows the call and won't take the end:
+                        // reporting it ended is the only way to clear it.
+                        #if DEBUG
+                        if let report = self.placedCallEndReportForTesting {
+                            report(id, .failed)
+                        } else {
+                            self.provider?.reportCall(with: id, endedAt: Date(), reason: .failed)
+                        }
+                        #else
+                        self.provider?.reportCall(with: id, endedAt: Date(), reason: .failed)
+                        #endif
+                        self.finishPlacedCall(id, reason: .failed)
+                        return
+                    }
+                }
+            }
+        }
+    }
+
+    func reportPlacedCallMuted(_ muted: Bool, result: @escaping @MainActor (Bool) -> Void) {
+        guard let call = placedCall else {
+            result(false)
+            return
+        }
+        Task { [weak self] in
+            do {
+                try await self?.callController.request(CXTransaction(action: CXSetMutedCallAction(call: call.id, muted: muted)))
+                result(true)
+            } catch {
+                nativeCallsLogger.notice("the placed call's mute didn't reach CallKit: \(LogRedaction.message(error), privacy: .public)")
+                result(false)
+            }
+        }
+    }
+
+    /// Lets go of the call Conduit placed, whichever way it left the screen.
+    private func finishPlacedCall(_ id: UUID, reason: CXCallEndedReason) {
+        guard let call = placedCall, call.id == id else { return }
+        placedCall = nil
+        nativeCallsLogger.info("the placed call ended (\(Self.traceLabel(reason), privacy: .public))")
+        // Only the screen's own End hangs the conversation up; an end asked
+        // for here is the conversation already gone.
+        onPlacedCallEnded?(!call.endingRequested)
+        settle()
+    }
+
+    /// CallKit refused the start, so no call is on the screen: the
+    /// conversation keeps running with its own earpiece controls.
+    private func placedCallFailed(_ id: UUID, error: Error) {
+        guard let call = placedCall, call.id == id else { return }
+        placedCall = nil
+        nativeCallsLogger.notice("no call placed: \(LogRedaction.message(error), privacy: .public)")
+        onPlacedCallEnded?(false)
     }
 }
 
@@ -1165,6 +1364,12 @@ extension HermesNativeCalls: CXProviderDelegate {
             }
             self.calls = [:]
             self.audioActive = false
+            // A call Conduit placed is gone with the rest: nothing on the
+            // screen can end it, so the conversation it carried does.
+            if self.placedCall != nil {
+                self.placedCall = nil
+                self.onPlacedCallEnded?(true)
+            }
             VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
             self.stopObservingRoute()
             NotificationCenter.default.post(name: .hermesCallAudioDeactivated, object: nil)
@@ -1178,12 +1383,42 @@ extension HermesNativeCalls: CXProviderDelegate {
         MainActor.assumeIsolated { self.answer(action) }
     }
 
+    /// A call Conduit placed: CallKit has it on the screen now. The
+    /// conversation enters the call's session policy before CallKit
+    /// activates the audio (the coordinator ignores a call it hasn't been
+    /// told about), then the call reports itself connecting and connected —
+    /// the voice it carries is already running.
+    nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+        MainActor.assumeIsolated {
+            guard let call = self.placedCall, call.id == action.callUUID else {
+                action.fail()
+                return
+            }
+            self.onPlacedCallStarted?()
+            action.fulfill()
+            provider.reportOutgoingCall(with: call.id, startedConnectingAt: call.placedAt)
+            provider.reportOutgoingCall(with: call.id, connectedAt: Date())
+        }
+    }
+
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        MainActor.assumeIsolated { self.end(action) }
+        MainActor.assumeIsolated {
+            if self.placedCall?.id == action.callUUID {
+                action.fulfill()
+                self.finishPlacedCall(action.callUUID, reason: .remoteEnded)
+                return
+            }
+            self.end(action)
+        }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
         MainActor.assumeIsolated {
+            if let call = self.placedCall, call.id == action.callUUID {
+                self.onPlacedCallMuteChanged?(action.isMuted)
+                action.fulfill()
+                return
+            }
             guard self.calls[action.callUUID]?.answered == true else {
                 action.fail()
                 return
@@ -1198,6 +1433,8 @@ extension HermesNativeCalls: CXProviderDelegate {
         MainActor.assumeIsolated {
             HermesCallTrace.shared.note("CallKit audio on")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioActivated()
+            // A call the user placed opens its conversation only now.
+            if self.placedCall != nil { self.onPlacedCallAudioActivated?() }
             HermesCallTrace.shared.note("Audio route: \(HermesCallAudioRoute.describe(audioSession))")
             self.audioActive = true
             self.observeRoute()
@@ -1209,6 +1446,7 @@ extension HermesNativeCalls: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         MainActor.assumeIsolated {
+            if self.placedCall != nil { self.onPlacedCallAudioDeactivated?() }
             HermesCallTrace.shared.note("CallKit audio off")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
             self.audioActive = false
