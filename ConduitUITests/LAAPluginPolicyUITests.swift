@@ -32,7 +32,7 @@ final class LAAPluginPolicyUITests: XCTestCase {
     func testCatalogSuppressesNotifierUpdateButKeepsOtherPluginUpdate() {
         let app = XCUIApplication()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launchArguments += ["-LAA_UI_TEST_PLUGIN_CATALOG"]
+        app.launchArguments += ["-LAA_UI_TEST_PLUGIN_CATALOG", "-conduit.appLanguage", "en"]
         app.launch()
         let notifier = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "conduit_push")).firstMatch
         XCTAssertTrue(notifier.waitForExistence(timeout: 30))

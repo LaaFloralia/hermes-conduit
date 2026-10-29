@@ -41,22 +41,29 @@ private final class LAAPluginCatalogTestServer: DashboardJSONRequester {
     }
 }
 
-/// Exercises the real capabilities list and detail views against the fixture.
 @MainActor
-struct LAAPluginCatalogUITestScreen: View {
-    @State private var store: CapabilitiesStore
+private final class LAAPluginCatalogTestContext: ObservableObject {
+    // CapabilitiesStore holds its requester weakly, so retain the server for
+    // the entire lifetime of the fixture screen.
     private let server: LAAPluginCatalogTestServer
+    let store: CapabilitiesStore
 
     init() {
         let server = LAAPluginCatalogTestServer()
         let store = CapabilitiesStore()
         store.configure(requester: server, profile: "default")
         self.server = server
-        _store = State(initialValue: store)
+        self.store = store
     }
+}
+
+/// Exercises the real capabilities list and detail views against the fixture.
+@MainActor
+struct LAAPluginCatalogUITestScreen: View {
+    @StateObject private var context = LAAPluginCatalogTestContext()
 
     var body: some View {
-        NavigationStack { CapabilityPluginsTab(store: store, query: "") }
+        NavigationStack { CapabilityPluginsTab(store: context.store, query: "") }
     }
 }
 #endif
