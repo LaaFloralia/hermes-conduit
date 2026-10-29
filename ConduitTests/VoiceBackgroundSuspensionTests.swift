@@ -791,7 +791,8 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         harness.appState.voiceSheetShouldAutoListen = true
         harness.appState.startDeferredVoiceSheetAutoListen()
 
-        XCTAssertTrue(await harness.controller.waitForFailedState())
+        let failed = await harness.controller.waitForFailedState()
+        XCTAssertTrue(failed)
         for _ in 0..<50 where failures == 0 {
             await Task.yield()
         }
