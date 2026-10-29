@@ -28,6 +28,7 @@ struct LAAWorkProjectDetail: View {
                         if current.instructionRef != nil {
                             Text(verbatim: "旧形式の参照・未適用").font(.caption).foregroundStyle(LAAColors.muted)
                             Button("旧参照を消去") { clearLegacyRefOnOpen = true; showEditor = true }
+                                .disabled(!current.hasInstructionBody || current.instructionError != nil)
                         }
                         if current.instructionError != nil {
                             Text(verbatim: "共通指示を読み取れません。内容を確認するまで編集できません。")
@@ -160,7 +161,7 @@ struct LAAWorkProjectEditor: View {
                         Text(verbatim: "旧形式の参照・未適用").font(.caption).foregroundStyle(LAAColors.muted)
                         Button(clearLegacyRef ? "旧参照の消去を取り消す" : "旧参照を消去") {
                             clearLegacyRef.toggle()
-                        }.disabled(pending != nil)
+                        }.disabled(pending != nil || !canEditInstructions)
                         if clearLegacyRef { Text(verbatim: "保存時に旧参照を消去します。").font(.caption) }
                     }
                     if canEditInstructions {
@@ -200,7 +201,7 @@ struct LAAWorkProjectEditor: View {
         guard let key, pending == nil else { return }
         let edited = canEditInstructions && (current == nil || instructions != (current?.instructions ?? ""))
         let body = ChangeSet(name: name, instructions: edited ? instructions : nil,
-                        clearInstructionRef: clearLegacyRef && current?.instructionRef != nil)
+                        clearInstructionRef: canEditInstructions && clearLegacyRef && current?.instructionRef != nil)
         let snapshot = Draft(body: body, baseETag: draftETag)
         guard let bytes = try? JSONEncoder().encode(snapshot), let text = String(data: bytes, encoding: .utf8),
               drafts.save(ComposerDraft(text: text, attachments: []), for: key) else {
@@ -214,14 +215,14 @@ struct LAAWorkProjectEditor: View {
         draftETag = snapshot.baseETag
         name = snapshot.body.name
         instructions = snapshot.body.instructions ?? current?.instructions ?? ""
-        clearLegacyRef = snapshot.body.clearInstructionRef && current?.instructionRef != nil
+        clearLegacyRef = canEditInstructions && snapshot.body.clearInstructionRef && current?.instructionRef != nil
     }
     private func save() {
         guard let key else { return }
         guard current == nil || draftETag != nil else { error = "プロジェクトの版を取得してから保存してください。"; return }
         let edited = canEditInstructions && (current == nil || instructions != (current?.instructions ?? ""))
         let body = ChangeSet(name: name, instructions: edited ? instructions : nil,
-                        clearInstructionRef: clearLegacyRef && current?.instructionRef != nil)
+                        clearInstructionRef: canEditInstructions && clearLegacyRef && current?.instructionRef != nil)
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         guard let bytes = try? encoder.encode(body), let draft = try? encoder.encode(Draft(body: body, baseETag: draftETag)),
               let item = LAAWorkDrafts.reserve(drafts, key: key, text: String(decoding: draft, as: UTF8.self), body: bytes,

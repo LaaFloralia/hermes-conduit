@@ -21,6 +21,7 @@ struct LAAWorkView: View {
     @State private var taskProjectFilter = ""
     @State private var failure: String?
     @State private var isLoading = false
+    @State private var sessionContextReady = false
     @State private var showPairing = false
     @State private var showNewSession = false
     @State private var showNewProject = false
@@ -56,6 +57,7 @@ struct LAAWorkView: View {
                 if bridge.status == .paired && section == 0 {
                     Button { showNewSession = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel(Text(verbatim: "新しいセッション"))
+                        .disabled(!sessionContextReady || isLoading)
                 }
                 if bridge.status == .paired && section == 1 {
                     Button { showNewProject = true } label: { Image(systemName: "plus") }
@@ -272,11 +274,13 @@ struct LAAWorkView: View {
         defer { if loadID == id { isLoading = false } }
         do {
             if selected == 0 || selected == 1 {
+                sessionContextReady = false
                 let projectPage: [LAAWorkProject] = try await loadItems("/v1/projects")
                 let workspacePage: [LAAWorkWorkspace] = try await loadItems("/v1/workspaces")
                 guard !Task.isCancelled, loadID == id else { return }
                 projects = projectPage
                 workspaces = workspacePage
+                sessionContextReady = true
                 if let first = projectPage.first {
                     let detail: LAAWorkProject? = try? await bridge.read("/v1/projects/\(first.id)")
                     guard !Task.isCancelled, loadID == id else { return }

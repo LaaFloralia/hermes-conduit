@@ -13,6 +13,12 @@ final class LAAWorkUITests: XCTestCase {
         return app
     }
 
+    private func waitUntilReady(_ element: XCUIElement, timeout: TimeInterval = 60) -> Bool {
+        guard element.waitForExistence(timeout: timeout) else { return false }
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: element)
+        return XCTWaiter.wait(for: [ready], timeout: timeout) == .completed
+    }
+
     private func enterDedicatedAddress(_ address: XCUIElement) -> Bool {
         guard address.waitForExistence(timeout: 10) else { return false }
         for _ in 0..<4 {
@@ -114,6 +120,7 @@ final class LAAWorkUITests: XCTestCase {
             : "Mac側のサービスを利用できません。"
         XCTAssertTrue(app.staticTexts["取得できませんでした"].waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts[expected].exists)
+        XCTAssertFalse(app.buttons["新しいセッション"].isEnabled)
     }
 
     func testLiveEmptySessionList() throws {
@@ -149,8 +156,9 @@ final class LAAWorkUITests: XCTestCase {
         if app.buttons["Macに接続する"].waitForExistence(timeout: 3) {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
-        XCTAssertTrue(app.buttons["新しいセッション"].waitForExistence(timeout: 30))
-        app.buttons["新しいセッション"].tap()
+        let add = app.buttons["新しいセッション"]
+        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
+        add.tap()
         XCTAssertTrue(app.navigationBars["新しいセッション"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["入力の文字サイズ"].exists)
         XCTAssertTrue(app.buttons["全画面で入力"].exists)
@@ -167,7 +175,7 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
         let add = app.buttons["新しいセッション"]
-        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
         let createWorkspace = app.buttons["作業場所を新しく作る"]
         XCTAssertTrue(createWorkspace.waitForExistence(timeout: 10))
@@ -184,12 +192,7 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
         let add = app.buttons["新しいセッション"]
-        XCTAssertTrue(add.waitForExistence(timeout: 30))
-        let loading = app.progressIndicators["読み込み中"]
-        if loading.exists {
-            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: loading)
-            waitForExpectations(timeout: 30)
-        }
+        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
         app.buttons["作業場所を新しく作る"].tap()
         let picker = app.descendants(matching: .any)["work.workspace.repo"].firstMatch
@@ -204,16 +207,18 @@ final class LAAWorkUITests: XCTestCase {
     // This test creates one named scratch worktree only when explicitly
     // enabled for the dedicated simulator. It must be archived afterwards.
     func testLiveCreateScratchWorkspace() throws {
-        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "workspace" else {
+        let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"]
+        guard stage == "workspace" || stage == "workspace-preflight" else {
             throw XCTSkip("Explicit scratch-workspace creation is not enabled.")
         }
         let app = launchWork()
         let add = app.buttons["新しいセッション"]
-        XCTAssertTrue(add.waitForExistence(timeout: 30))
-        let loading = app.progressIndicators["読み込み中"]
-        if loading.exists {
-            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: loading)
-            waitForExpectations(timeout: 30)
+        guard waitUntilReady(add) else {
+            let known = ["取得できませんでした", "Macからの応答を読み取れませんでした。",
+                         "Macに届きません。TailscaleとMacの接続を確認してください。",
+                         "Mac側のサービスを利用できません。"]
+            XCTFail("Session data did not finish loading: \(known.filter { app.staticTexts[$0].exists }.joined(separator: " / "))")
+            return
         }
         add.tap()
         app.buttons["作業場所を新しく作る"].tap()
@@ -246,6 +251,7 @@ final class LAAWorkUITests: XCTestCase {
             XCTFail("Scratch-workspace creation is not ready.")
             return
         }
+        if stage == "workspace-preflight" { return }
         create.tap()
         let newWorkspace = app.navigationBars["新しい作業場所"]
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: newWorkspace)
@@ -261,12 +267,7 @@ final class LAAWorkUITests: XCTestCase {
         }
         let app = launchWork()
         let add = app.buttons["新しいセッション"]
-        XCTAssertTrue(add.waitForExistence(timeout: 30))
-        let loading = app.progressIndicators["読み込み中"]
-        if loading.exists {
-            expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: loading)
-            waitForExpectations(timeout: 30)
-        }
+        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
         let picker = app.descendants(matching: .any)["work.session.workspace"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
@@ -378,7 +379,7 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
         let add = app.buttons["新しいセッション"]
-        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
         let expand = app.buttons["全画面で入力"]
         XCTAssertTrue(expand.waitForExistence(timeout: 10))
@@ -391,7 +392,7 @@ final class LAAWorkUITests: XCTestCase {
         app.buttons["閉じる"].tap()
         app.terminate()
         app.launch()
-        XCTAssertTrue(add.waitForExistence(timeout: 30))
+        guard waitUntilReady(add) else { XCTFail("Session data did not finish reloading."); return }
         add.tap()
         let restored = app.textViews["work.composer.field"]
         XCTAssertTrue(restored.waitForExistence(timeout: 10))
