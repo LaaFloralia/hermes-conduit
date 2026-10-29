@@ -1,0 +1,80 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "srgb:0.00000,0.34510,0.36863,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.08627,0.21176,0.21961,1.00000",
+          "srgb:0.04314,0.10980,0.11373,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Spiral",
+      "layers": [
+        {
+          "name": "Spiral",
+          "image-name": "Spiral.svg",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": false,
+        "value": 0.0
+      }
+    },
+    {
+      "name": "Quarters",
+      "layers": [
+        {
+          "name": "Quarters",
+          "image-name": "Quarters.svg",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.2
+      }
+    },
+    {
+      "name": "Arcs",
+      "layers": [
+        {
+          "name": "Arcs",
+          "image-name": "Arcs.svg",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.1
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

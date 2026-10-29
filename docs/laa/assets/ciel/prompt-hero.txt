@@ -1,0 +1,16 @@
+Square 1:1 portrait, 1024x1024.
+
+Image 1 is the style reference: match its rendering exactly — a soft, stylized 3D character portrait with matte skin, gentle natural window light from the upper left, realistic fabric textures (wool, crepe) and fine individual hair strands. Do not copy its person, hair colour or clothes.
+
+Image 2 is the character design reference (a flat icon). Translate its character into the Image 1 style:
+- A calm, kind young woman, the company's chief secretary, named Ciel.
+- Long straight hair past the shoulders, very dark ink colour with a faint deep-teal undertone, with soft straight bangs; a small slim brass hair clip on her right side above the temple.
+- Thin round glasses with a muted brass frame; deep teal irises; a gentle closed-mouth smile.
+- A dark charcoal-teal wool coat with a cape-like shoulder, over an ivory blouse with a clean V neckline.
+- A small plum-coloured enamel diamond brooch with an ivory centre where the V neckline meets.
+
+Framing: head and shoulders, facing the camera straight on, eyes looking at the viewer, centred. The top of the hair sits about 8% below the top edge; the shoulders are cut by the bottom edge. Leave equal space left and right.
+
+Background: one plain, flat, even light warm grey (#E6E2DA) with no gradient, no vignette, no floor, no cast shadow, so the figure can be cut out cleanly.
+
+No text, no logo, no star, no props, no hands.
