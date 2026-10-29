@@ -707,7 +707,11 @@ struct GroupRoomComposer: View {
                     Button {
                         recipients.removeAll { $0.caseInsensitiveCompare(handle) == .orderedSame }
                     } label: {
-                        Label("@" + handle, systemImage: "xmark.circle.fill")
+                        Label {
+                            Text(verbatim: "@" + handle)
+                        } icon: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.red)
                             .padding(.horizontal, 10)
