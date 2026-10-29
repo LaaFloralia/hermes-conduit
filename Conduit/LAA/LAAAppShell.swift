@@ -8,6 +8,7 @@ struct LAAAppShell: View {
     let onRequestSettings: () -> Void
 
     @StateObject private var bridge = LAABridgeSession()
+    @StateObject private var employeeCalls = LAAEmployeeCallCoordinator(control: LAAUnavailableCallControl())
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var chatsPath: [V2Route] = []
 
@@ -22,6 +23,8 @@ struct LAAAppShell: View {
     var body: some View {
         bar
             .environmentObject(bridge)
+            .environmentObject(employeeCalls)
+            .modifier(LAACallPresentation(calls: employeeCalls))
             .tint(LAAColors.teal)
             .environment(\.laaSettingsAction, onRequestSettings)
             .environment(\.v2Shell, V2ShellContext(

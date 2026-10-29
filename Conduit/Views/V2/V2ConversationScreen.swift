@@ -135,6 +135,9 @@ struct V2ConversationScreen: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
+#if LAA_BUILD
+        .modifier(LAAInCallBarModifier())
+#endif
         .sheet(item: $artifactSessionIDs) { sheet in
             ChatArtifactsSheet(sessionIDs: sheet.ids, tab: sheet.tab) { artifactSessionIDs?.tab = $0 }
                 .environmentObject(appState)
@@ -237,6 +240,9 @@ struct V2ConversationScreen: View {
         }
         // Session-only controls: an open room owns the title and actions.
         if appState.activeRoomSurface == nil {
+#if LAA_BUILD
+            LAAEmployeeChatToolbar()
+#else
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     ChatTitleControl(
@@ -270,15 +276,18 @@ struct V2ConversationScreen: View {
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.isRecoveringConnection)
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.hidesBriefReconnect)
             }
+#endif
         }
         // The big button does something else: a live call stays one
         // tap away up here.
+#if !LAA_BUILD
         if appState.activeRoomSurface == nil,
            ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton) != .liveCall {
             ToolbarItem(placement: .topBarTrailing) {
                 V2VoiceButton(context: .conversation, style: .toolbar)
             }
         }
+#endif
         ToolbarItem(placement: .topBarTrailing) {
             V2ConversationMenu(
                 onRename: { chatTitlePendingRename = $0 },

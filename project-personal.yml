@@ -18,6 +18,15 @@ settings:
     DEVELOPMENT_TEAM: ""
 targets:
   Conduit:
+    sources:
+      - path: docs/laa/assets/staff
+        type: folder
+        buildPhase: resources
+      - path: docs/laa/assets/ciel
+        type: folder
+        buildPhase: resources
+      - path: docs/laa/assets/callkit-icon-template-120.png
+        buildPhase: resources
     dependencies:REPLACE:
       - package: WebRTC
     settings:
