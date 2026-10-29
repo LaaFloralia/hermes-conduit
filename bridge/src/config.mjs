@@ -40,8 +40,13 @@ export const DEFAULT_SCOPES = Object.freeze([
   'archives:create',
 ]);
 
+// `brain:create` (new files only) is deliberately NOT in DEFAULT_SCOPES: BRIDGE
+// §9 fixes the initial grant set, and docs/laa/BRAIN-WRITE.md §7 only establishes
+// that creating a new path is safe, not that every device should be granted it.
+// It stays opt-in per device: `laa-bridge pair --scopes brain:read,brain:create`.
 export const ALL_SCOPES = Object.freeze([
   ...DEFAULT_SCOPES,
+  'brain:create',
   'brain:write',
   'gui:operate',
   'archives:restore',
@@ -114,4 +119,51 @@ export function resolvePaseoBin(env = process.env) {
     if (existsSync(candidate)) return candidate;
   }
   return 'paseo';
+}
+
+// --- Brain (ROADMAP 25, docs/laa/BRAIN-WRITE.md) ---------------------------
+//
+// Everything below points at material that already exists on this Mac: the
+// Syncthing vault, the area policy owned by the `laa-brain` search CLI, and that
+// CLI itself. The Bridge keeps no copy of the Brain and no extra credential; it
+// reads the Syncthing API key out of Syncthing's own config file for the gate
+// query only (§4-2) and never logs or returns it.
+
+export function resolveBrainRoot(env = process.env) {
+  return resolve(env.LAA_BRIDGE_BRAIN_ROOT || join(homedir(), 'Brain'));
+}
+
+// The installed plugin checkout is what `laa-brain` itself reads
+// (~/.local/share/laa-plugins/dev-main/laa-jev/brain/policy.json).
+export function resolveBrainPolicyPath(env = process.env) {
+  return resolve(env.LAA_BRIDGE_BRAIN_POLICY
+    || join(homedir(), '.local', 'share', 'laa-plugins', 'dev-main', 'laa-jev', 'brain', 'policy.json'));
+}
+
+export function resolveBrainSearchBin(env = process.env) {
+  return resolve(env.LAA_BRIDGE_BRAIN_SEARCH_BIN || join(homedir(), '.local', 'bin', 'laa-brain'));
+}
+
+// New notes are only created under these vault-relative prefixes. The default is
+// the vault's own convention for new notes (Obsidian `newFileFolderPath`), so a
+// phone can add material without being able to edit existing knowledge.
+export function resolveBrainCreatePrefixes(env = process.env) {
+  const raw = env.LAA_BRIDGE_BRAIN_CREATE_PREFIXES;
+  const values = raw === undefined || raw.trim() === ''
+    ? ['Inbox/']
+    : raw.split(',').map((value) => value.trim()).filter((value) => value !== '');
+  return values.map((value) => (value.endsWith('/') ? value : `${value}/`));
+}
+
+export function resolveSyncthingConfigPath(env = process.env) {
+  return resolve(env.LAA_BRIDGE_BRAIN_SYNCTHING_CONFIG
+    || join(homedir(), 'Library', 'Application Support', 'Syncthing', 'config.xml'));
+}
+
+export function resolveSyncthingUrl(env = process.env) {
+  return (env.LAA_BRIDGE_BRAIN_SYNCTHING_URL || 'http://127.0.0.1:8384').replace(/\/+$/, '');
+}
+
+export function resolveBrainFolderId(env = process.env) {
+  return env.LAA_BRIDGE_BRAIN_FOLDER || 'brain';
 }

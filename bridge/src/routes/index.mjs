@@ -18,6 +18,7 @@ import { createProjectRoutes, createProjectStore } from './projects.mjs';
 import { createSessionRoutes } from './sessions.mjs';
 import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOptions } from './workspaces.mjs';
 import { taskRoutes } from './tasks.mjs';
+import { brainRoutes } from './brain.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -45,6 +46,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
 
   return [
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
+    ...brainRoutes({ store, now, options: options.brain ?? {} }),
     ...createProjectRoutes({ projects: projectStore, now }),
     ...createWorkspaceRoutes({
       workspaceStore,

@@ -1,10 +1,10 @@
 # LAA Bridge（Mac側サービスの骨格）
 
-`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・Session（作成／追加入力／停止／再開／イベント再接続／成果物）**で、他の業務エンドポイント（brain / usage …）と iOS クライアントは後続タスク。
+`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）**で、他の業務エンドポイント（usage …）と iOS クライアントは後続タスク。
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
-- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal）
+- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal、`brain-create/journal.jsonl`＝Brain新規作成の intent／committed 記録）
 - 依存: Node.js 20.11+ の標準モジュールのみ（npm install 不要）。`laa-personal-agent`（`hq/harness/personal_agent_bridge.mjs`）と同じ ESM/Node 系に合わせ、外部依存を持たない
 
 ## 設計上の決定
@@ -13,7 +13,7 @@
 |---|---|---|
 | 認証 | 端末ごとの 256bit ランダムトークン（`Authorization: Bearer`）。保存は SHA-256 hash のみ | §9。要求ごとの署名・nonce 台帳は採らない |
 | ペアリング | Mac の CLI が10分有効・1回限りのコードを発行。state には hash のみ保存し、コードは端末に一度だけ表示 | §9。コードはログ・引数・チャットへ出さない |
-| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。`brain:write` `gui:operate` `archives:restore` `devices:admin` は付与しない | §9 |
+| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。`brain:create` `brain:write` `gui:operate` `archives:restore` `devices:admin` は付与しない。`brain:create` は端末ごとの opt-in（`laa-bridge pair --scopes brain:read,brain:create`） | §9・BRAIN-WRITE §7 |
 | 失効 | `laa-bridge revoke` は state を書き換えるだけ。稼働中サーバーは毎リクエスト state を読むため再起動不要で 401 になる | 失効の即時性 |
 | idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は保存応答を再返却、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
 | 失敗時 | state が壊れていたら起動しない（端末・台帳を失ったまま稼働させない） | §7 |
@@ -86,8 +86,13 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `POST /v1/sessions/{id}/messages` | Bearer + `sessions:write` + `Idempotency-Key` | `{message,messageId?}` → 202。実行中・承認待ち・停止中は 409 |
 | `POST /v1/sessions/{id}/stop` | Bearer + `sessions:write` + `Idempotency-Key` | 停止を確認して `phase:"stopped"`。未確認は 409 `stop_unconfirmed` |
 | `POST /v1/sessions/{id}/resume` | Bearer + `sessions:write` + `Idempotency-Key` | `{message,profile?,requestId?}` → 201 後継 session（`resumedFrom`）。停止確認済みのみ |
+| `GET /v1/brain/files?area=&limit=&cursor=` | Bearer + `brain:read` | 許可領域の Markdown ノート一覧（`id,path,area,size,modifiedAt,contentHash,title,status,checked`）。`area` は既定外の領域を明示的に足す |
+| `GET /v1/brain/files/{id}?area=` | Bearer + `brain:read` | `{id,path,text,contentHash,etag,size,status,checked}`。領域外・symlink・不存在は 404 |
+| `GET /v1/brain/search?q=&k=&area=&adopted=&rerank=` | Bearer + `brain:read` | `laa-brain search` の結果を `{found,matchBasis,results[{path,section,lines,status,relevance,text}]}` で返す。既定はローカルのみ（`rerank=1` で Jev 再判定） |
+| `POST /v1/brain/files` | Bearer + `brain:create` + `Idempotency-Key` | `{path,content,onConflict?}` → 201 新規ノート（`id,path,contentHash,size,suffixApplied`）。既存内容は変更しない |
+| `GET /v1/brain/gates` | Bearer + `brain:read` | vault・git・Syncthing・空き容量の事前条件（`ok`／`code`） |
 
-エラーは `{"error":{"code","message","retryable"},"requestId"}`。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
+エラーは `{"error":{"code","message","retryable"},"requestId"}`。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`413` 読取上限超過、`415` テキストでない、`423` 排他中（git同期中・master以外）、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo・Syncthing・vault）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
 
 失敗した要求（4xx）は idempotency 台帳に `in_progress` のまま残る。同じ key での再送は 60 秒は `409 idempotency_key_in_flight`、その後は `409 idempotency_outcome_unknown` になるので、内容を直してやり直すときは**新しい key** を使う（成功の再送だけが保存応答を返す）。
 
@@ -206,6 +211,41 @@ LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
 
 `verify-sessions.mjs` は実 DSH（`deepseek-flash-high`）で create → cursor からの再接続 → 同一 requestId の重複作成 → 追加入力 → 停止 → artifacts を1回で回す。2026-10-29 に実測: create 201（`requested` = dsh / `["opencode-go","deepseek-v4.1-flash"]` / high、`observed` は `sources.model=runtime`）、重複 200 で同一 `ses_`、send 202、stop 200（`daemonStatus=idle`）、artifacts に log 2,035 bytes と結果 "second"、cursor から `session.stopped` を受信。
 
+## Brain（`/v1/brain`）
+
+ROADMAP 25。タスク24の決定（`docs/laa/BRAIN-WRITE.md`）どおり、**既存内容の置換（`brain:write`）は提供しない**。提供するのは一覧・取得・検索と、**新規パスの作成だけ**（`brain:create`、O_EXCL、上書き経路なし）。実装は `src/routes/brain.mjs` と `src/brain/`（policy / vault / gates / journal / search）。
+
+| 項目 | 決定 | 理由 |
+|---|---|---|
+| 領域 | 領域判定は `laa-brain` が読む `policy.json` をそのまま使う（既定 `/Users/laa/.local/share/laa-plugins/dev-main/laa-jev/brain/policy.json`、`LAA_BRIDGE_BRAIN_POLICY` で変更可）。既定は policy の default 領域のみで、`old`・`Inbox`・`Sources`・`Journal`・`Trading/研究資料`・`Trading/Reviews`・`Attachments`・`Templates`・未分類は `?area=` で明示した時だけ足す | 検索CLIと別の一覧を持つと、CLIが検索しないノートがアプリに出る。取り違えを二重実装しない |
+| 検索 | `laa-brain search --json` を1検索1プロセスで呼び、結果を封筒へ写す。**既定は `--no-jev`**（ローカルのみ）。`rerank=1` の時だけCLI本来のJev再判定を通す | 既存の検索経路を再利用する。電話からの検索が既定でBrain抜粋を外部モデルへ送る新しい経路にならないようにする（Jev経由はCLI単体では承認済みだが、Bridgeからの自動送信は社長の明示時だけ）。応答は `matchBasis` と `relevanceStatus` を保持し、未判定を根拠にしない |
+| 取得 | `id` は `bf_` + base64url(vault相対パス)。使う時に再検証する（NFC・`..`なし・`.md`・隠し/予約名/競合コピー拒否・realpath一致）。symlinkは辿らず404 | パスを不透明IDにしても検証を省かない |
+| 作成 | 本文はそのまま書き、書いたバイト列の SHA-256 を返す。`path` は作成許可prefix（既定 `Inbox/`、`LAA_BRIDGE_BRAIN_CREATE_PREFIXES`）内のみ、親フォルダは既存のみ。名前衝突は既定 `onConflict:"suffix"`（`Note 2.md` を O_EXCL で確保）で、`"reject"` なら 409 `path_exists`。rename・上書き・切詰め・削除の経路は無い | BRAIN-WRITE §7「新規pathのみ・unique name・RENAME_EXCL・journal付き」 |
+| 事前条件 | 空き容量64MB以上、gitが `master` かつ `index.lock`/rebase/merge/cherry-pick 無し（423）、Syncthing folder が paused でなく `errors`/`pullErrors` が0（503）。判定は `GET /v1/brain/gates` で見える | §4-2・§5。`state` 語彙は未確定（§8）なので、新規作成では scan 中を理由に拒否しない（CAS窓が無いため） |
+| journal | `~/.local/state/laa-bridge/brain-create/journal.jsonl`（0600）へ `intent` を fsync してから vault を触り、`committed`/`aborted` で閉じる。本文は残さず path・hash・size・requestId・deviceId のみ。書けない時は vault を触らず503 | §4-5。vault外に置くのでSyncthingに書き換えられない |
+| scope | `brain:read` は既定付与。`brain:create` は**既定に含めない**（`laa-bridge pair --scopes brain:read,brain:create`）。§9 の初期集合を変えず、BRAIN-WRITE §7 が「安全」と言うのは作成経路だけのため | 端末ごとのopt-in。`brain:write` は引き続き未付与・未実装 |
+
+```sh
+# 一覧（既定領域）と、Inboxを明示的に足した一覧
+curl -sS -H "Authorization: Bearer $TOKEN" 'http://127.0.0.1:9137/v1/brain/files?limit=20'
+curl -sS -H "Authorization: Bearer $TOKEN" 'http://127.0.0.1:9137/v1/brain/files?area=inbox'
+
+# 検索（ローカルのみ。Jev再判定は rerank=1）
+curl -sS -H "Authorization: Bearer $TOKEN" 'http://127.0.0.1:9137/v1/brain/search?q=デザイン&k=3'
+
+# 新規作成（上書きしない。衝突時は "Note 2.md" になる）
+curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: b1' \
+  -H 'content-type: application/json' \
+  -d '{"path":"Inbox/買い物.md","content":"# 買い物\n\n- 牛乳\n"}' \
+  http://127.0.0.1:9137/v1/brain/files
+```
+
+本文の上限は48KB（`content_too_large`）。HTTPの封筒自体は64KBなので、エスケープの多い本文は封筒側で `payload_too_large` になる。読取は256KBまで（`file_too_large`）で、それを超えるノートは一覧に `contentHash:null` と `unreadable` 付きで残り、一覧全体を落とさない。`baseHash`・`overwrite` など置換を示すフィールドは 400 `unsupported_field` で拒否する。
+
+事前条件の充足は `GET /v1/brain/gates` で確認する。作成の拒否理由は `brain_vault_unavailable`／`brain_vault_no_space`／`brain_git_busy`／`brain_git_branch`／`brain_sync_paused`／`brain_sync_error`／`brain_sync_unavailable`／`brain_journal_unavailable`／`brain_create_area_forbidden`／`path_parent_missing`／`path_exists` で区別する。
+
+検証（2026-10-29、実vault）: `scripts/verify-brain.mjs` で一覧64件・gates ok・検索1件・`Inbox/_bridge-create-verify-*.md` の作成201・読戻し本文一致・hash一致・同名再作成409を確認し、その試験ノートは vault の既定（Obsidian のシステムTrash）に合わせて `~/.Trash/` へ移動した（削除APIは持たない。vaultに `.trash` は無く `trashOption` も未設定のため）。`npm test` の `test/brain.test.mjs` は fake vault・fake search・fake gates で同じ契約を固定する（実 vault・実 Syncthing は触らない）。
+
 ## 停止・再起動・クラッシュ復帰
 
 ```sh
@@ -237,7 +277,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（104 tests、約1.4秒。Drive・sessionsはfakeアダプタで検証）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（130 tests、約2秒。Drive・sessions・brainはfakeアダプタで検証）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。
@@ -247,13 +287,13 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 - ループバックの別プロセスを信頼境界とみなさない。同一 UID は state・監査に触れ得る。
 - Tailscale の到達性は認証ではない。ACL とトークンの両方で絞る。TLS は Serve が終端する。
 - ログは requestId・method・path・status・deviceId・エラーコードのみ。トークン・コード・body は残さない。
-- 実装していない: レート制限の永続化（メモリ内・enroll のみ）、監査ファイル、全体 `/v1/events` stream、GUI 排他、Brain 書込み。
+- 実装していない: レート制限の永続化（メモリ内・enroll のみ）、監査ファイル、全体 `/v1/events` stream、GUI 排他、Brain の既存内容の書換え（`brain:write`）。Brainは新規作成のみで、削除・rename・移動・フォルダ作成を持たない。git の未解決競合は `index.lock`/rebase/merge/cherry-pick のマーカーで判定し、マーカーの無い未解決indexまでは見ない。
 - `/v1/tasks` は Linear の全非アーカイブ課題を 1 リクエスト最大 500 件まで読み、フィルタとページングは Bridge 側で行う。500 件を超えると `sources[].truncated = true`。
 - Drive: 認可が無いため実Driveへは未接続（503 `drive_not_configured`）。`~/Library/CloudStorage` は読まない。書き出し・共有設定・削除は扱わない（読取専用）。認可情報は環境変数のみで受け取り、ログ・URL・応答へ出さない。
 - workspace の一覧は root 配下を毎回 walk する（深さ3、4000 entry、status 5秒キャッシュ）。巨大な root を許可すると遅くなるので、`LAA_BRIDGE_WORKSPACE_ROOTS` は用途の狭いディレクトリにする。
 
 ## 未対応（後続タスク）
 
-iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain 書込み、Usage/Mac 状態、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。§9 の未決3・4（GUI・Brain書込み）は実証まで提供しない。Kanban の読取は親が認証済みラッパーを承認するまで無効。
+iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、Usage/Mac 状態、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。Kanban の読取は親が認証済みラッパーを承認するまで無効。
 
 Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）、Project と指示文書の実体（Brain/Drive）の存在確認。
