@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -8,25 +8,42 @@ import { createProjectStore } from '../src/routes/projects.mjs';
 import { startBridge } from './helpers.mjs';
 
 const BODY = 'Always answer in Japanese.\nKeep it under five lines.';
-const REF = 'Context/aesthetic.md';
-const REF_BODY = 'Be brief.\n';
-
 const sha = (text) => `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
-// Every test gets its own vault: an instructionRef may only point inside it.
 async function boot(t) {
-  const vault = mkdtempSync(join(tmpdir(), 'laa-bridge-vault-'));
-  mkdirSync(join(vault, 'Context'), { recursive: true });
-  writeFileSync(join(vault, REF), REF_BODY, { mode: 0o600 });
-  t.after(() => rmSync(vault, { recursive: true, force: true }));
-  const api = await startBridge({ projects: { brainRoot: vault } });
+  const api = await startBridge();
   t.after(() => api.close());
   const token = await api.token();
-  return { api, token, vault };
+  return { api, token };
 }
 
 async function createProject(api, token, body = { name: 'Trading｜環境認識', instructions: BODY }, key = 'k-create-1') {
   return api.request('/v1/projects', { method: 'POST', token, key, body });
+}
+
+// A record written before instructionRef was refused: it keeps the ref as
+// metadata only. The file it names does not exist, which proves nothing reads it.
+function legacyRecord(overrides = {}) {
+  const iso = '2026-10-01T00:00:00.000Z';
+  return {
+    id: 'prj_bbbbbbbbbbbb',
+    name: 'Trading｜旧ref',
+    nameSource: 'owner',
+    instructionRef: 'Context/aesthetic.md',
+    instructions: null,
+    instructionHash: null,
+    instructionVersion: 0,
+    instructionHistory: [],
+    version: 1,
+    createdAt: iso,
+    updatedAt: iso,
+    createdBy: null,
+    ...overrides,
+  };
+}
+
+function writeProjects(api, projects) {
+  writeFileSync(join(api.stateDir, 'projects.json'), `${JSON.stringify({ schema: 2, projects }, null, 2)}\n`, { mode: 0o600 });
 }
 
 test('a project stores its instruction body, version and hash', async (t) => {
@@ -73,91 +90,84 @@ test('an empty body means no instructions, and the version stays at zero', async
   assert.deepEqual(versions.body.data.items, []);
 });
 
-test('an instructionRef is read from the vault at request time', async (t) => {
-  const { api, token, vault } = await boot(t);
-  const created = await createProject(api, token, { name: 'Trading｜参照', instructionRef: REF }, 'k-ref');
-  assert.equal(created.status, 201);
-  const project = created.body.data;
-  assert.equal(project.instructionRef, REF);
-  assert.equal(project.instructions, REF_BODY);
-  assert.equal(project.instructionHash, sha(REF_BODY));
-  assert.equal(project.instructionVersion, 1);
-
-  // Editing the file changes what the next reader (and session) gets without a
-  // PATCH; the project's own version only moves when its settings change.
-  writeFileSync(join(vault, REF), 'Be very brief.\n', { mode: 0o600 });
-  const reread = await api.request(`/v1/projects/${project.id}`, { token });
-  assert.equal(reread.body.data.instructions, 'Be very brief.\n');
-  assert.equal(reread.body.data.instructionHash, sha('Be very brief.\n'));
-  assert.equal(reread.body.data.instructionVersion, 1);
-  assert.equal(reread.body.data.version, 1);
-});
-
-test('body and ref are mutually exclusive, and setting one clears the other', async (t) => {
+test('instructionRef is refused on write instead of being stored', async (t) => {
   const { api, token } = await boot(t);
 
-  const both = await createProject(api, token, { name: 'x', instructions: BODY, instructionRef: REF }, 'k-both');
-  assert.equal(both.status, 400);
-  assert.equal(both.body.error.code, 'payload_invalid');
+  const created = await createProject(api, token, { name: 'x', instructionRef: 'Context/aesthetic.md' }, 'k-ref');
+  assert.equal(created.status, 400);
+  assert.equal(created.body.error.code, 'instruction_ref_unsupported');
 
-  const project = (await createProject(api, token, { name: 'x', instructions: BODY }, 'k-one')).body.data;
-
-  const bothPatch = await api.request(`/v1/projects/${project.id}`, {
-    method: 'PATCH',
-    token,
-    key: 'k-both-patch',
-    headers: { 'if-match': '"1"' },
-    body: { instructions: BODY, instructionRef: REF },
-  });
-  assert.equal(bothPatch.status, 400);
-
-  const toRef = await api.request(`/v1/projects/${project.id}`, {
-    method: 'PATCH',
-    token,
-    key: 'k-to-ref',
-    headers: { 'if-match': '"1"' },
-    body: { instructionRef: REF },
-  });
-  assert.equal(toRef.status, 200);
-  assert.equal(toRef.body.data.instructionRef, REF);
-  assert.equal(toRef.body.data.instructions, REF_BODY, 'the body now comes from the file');
-  assert.equal(toRef.body.data.instructionVersion, 2);
-
-  const toBody = await api.request(`/v1/projects/${project.id}`, {
-    method: 'PATCH',
-    token,
-    key: 'k-to-body',
-    headers: { 'if-match': '"2"' },
-    body: { instructions: 'Only answer in Japanese.' },
-  });
-  assert.equal(toBody.status, 200);
-  assert.equal(toBody.body.data.instructionRef, null);
-  assert.equal(toBody.body.data.instructions, 'Only answer in Japanese.');
-  assert.equal(toBody.body.data.instructionVersion, 3);
-});
-
-test('an unusable reference is refused instead of stored', async (t) => {
-  const { api, token } = await boot(t);
-
-  for (const [key, ref] of [
-    ['k-missing', 'Context/nope.md'],
-    ['k-absolute', '/etc/passwd'],
-    ['k-traversal', '../etc/passwd'],
-  ]) {
-    const response = await createProject(api, token, { name: 'x', instructionRef: ref }, key);
-    assert.equal(response.status, 400, `${ref} must be refused`);
-  }
+  const withBody = await createProject(api, token, { name: 'x', instructions: BODY, instructionRef: 'a.md' }, 'k-ref-2');
+  assert.equal(withBody.status, 400);
+  assert.equal(withBody.body.error.code, 'instruction_ref_unsupported');
 
   const project = (await createProject(api, token, { name: 'x', instructions: BODY }, 'k-base')).body.data;
-  const missing = await api.request(`/v1/projects/${project.id}`, {
+  for (const [key, ref] of [
+    ['k-ref-patch', 'Context/aesthetic.md'],
+    ['k-ref-absolute', '/etc/passwd'],
+    ['k-ref-traversal', '../etc/passwd'],
+    ['k-ref-empty', ''],
+  ]) {
+    const response = await api.request(`/v1/projects/${project.id}`, {
+      method: 'PATCH',
+      token,
+      key,
+      headers: { 'if-match': '"1"' },
+      body: { instructionRef: ref },
+    });
+    assert.equal(response.status, 400, `${ref} must be refused`);
+    assert.equal(response.body.error.code, 'instruction_ref_unsupported');
+  }
+
+  // `null` is not a ref: it is the explicit "clear legacy metadata" value.
+  const nullRef = await api.request(`/v1/projects/${project.id}`, {
     method: 'PATCH',
     token,
-    key: 'k-missing-patch',
+    key: 'k-ref-null',
     headers: { 'if-match': '"1"' },
-    body: { instructionRef: 'Context/nope.md' },
+    body: { instructionRef: null },
   });
-  assert.equal(missing.status, 400);
-  assert.equal(missing.body.error.code, 'instruction_ref_unavailable');
+  assert.equal(nullRef.status, 200);
+  assert.equal(nullRef.body.data.instructionRef, null);
+  assert.equal(nullRef.body.data.version, 1, 'a no-op must not bump the version');
+});
+
+test('a legacy instructionRef record is metadata only and can be cleared', async (t) => {
+  const { api, token } = await boot(t);
+  writeProjects(api, { prj_bbbbbbbbbbbb: legacyRecord() });
+
+  const fetched = await api.request('/v1/projects/prj_bbbbbbbbbbbb', { token });
+  assert.equal(fetched.status, 200);
+  assert.equal(fetched.body.data.instructionRef, 'Context/aesthetic.md', 'the ref stays visible as metadata');
+  assert.equal(fetched.body.data.instructions, null, 'the Bridge never reads the referenced file');
+  assert.equal(fetched.body.data.instructionVersion, 0);
+
+  const cleared = await api.request('/v1/projects/prj_bbbbbbbbbbbb', {
+    method: 'PATCH',
+    token,
+    key: 'k-legacy-clear',
+    headers: { 'if-match': '"1"' },
+    body: { instructionRef: null },
+  });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.data.instructionRef, null);
+  assert.equal(cleared.body.data.version, 2);
+  assert.equal(cleared.body.data.instructionVersion, 0, 'clearing metadata is not a new instruction version');
+
+  // A legacy record with a ref still accepts an inline body; saving the body
+  // also drops the ref so the record never shows both sources.
+  writeProjects(api, { prj_bbbbbbbbbbbb: legacyRecord({ version: 1 }) });
+  const replaced = await api.request('/v1/projects/prj_bbbbbbbbbbbb', {
+    method: 'PATCH',
+    token,
+    key: 'k-legacy-body',
+    headers: { 'if-match': '"1"' },
+    body: { instructions: 'Only answer in Japanese.' },
+  });
+  assert.equal(replaced.status, 200);
+  assert.equal(replaced.body.data.instructionRef, null);
+  assert.equal(replaced.body.data.instructions, 'Only answer in Japanese.');
+  assert.equal(replaced.body.data.instructionVersion, 1);
 });
 
 test('updates require If-Match and a stale version returns the current side', async (t) => {
@@ -279,7 +289,6 @@ test('the version history keeps the last ten bodies, newest first', async (t) =>
   assert.deepEqual(items.map((item) => item.body), [12, 11, 10, 9, 8, 7, 6, 5, 4, 3].map((n) => `v${n}`));
   for (const item of items) {
     assert.equal(item.hash, sha(item.body));
-    assert.equal(item.instructionRef, null);
     assert.ok(item.updatedAt);
   }
 
@@ -467,7 +476,7 @@ test('a schema-1 project file is converted once without inventing a body', async
         id: 'prj_aaaaaaaaaaaa',
         name: 'Trading｜旧',
         nameSource: 'owner',
-        instructionRef: null,
+        instructionRef: 'Context/aesthetic.md',
         instructionTextHash: 'deadbeef',
         instructionHash: 'sha256:legacy',
         instructionVersion: 4,
@@ -484,9 +493,10 @@ test('a schema-1 project file is converted once without inventing a body', async
   const project = store.get('prj_aaaaaaaaaaaa');
   assert.equal(project.name, 'Trading｜旧');
   assert.equal(project.instructionVersion, 4, 'the version number survives');
+  assert.equal(project.instructionRef, 'Context/aesthetic.md', 'the ref survives as legacy metadata');
   assert.equal(project.instructions, null);
   assert.equal(project.instructionHash, null, 'the old hash covered text the Bridge never kept');
   assert.deepEqual(project.instructionHistory, []);
-  assert.equal(store.instructionsFor(project), null);
+  assert.equal(store.instructionsFor(project), null, 'a ref is never read');
   assert.equal(JSON.parse(readFileSync(file, 'utf8')).schema, 2);
 });

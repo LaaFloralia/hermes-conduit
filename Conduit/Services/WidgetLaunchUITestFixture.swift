@@ -16,6 +16,14 @@ enum WidgetLaunchUITestFixture {
     static let deferredTalkOutcomeID = "widgetUITestTalkDeferred"
     static let recoveryOutcomeID = "widgetUITestRecovery"
     static let diagnosticID = "widgetUITestDiagnostic"
+    #if LAA_BUILD
+    static let voicePathOutcomeID = "widgetUITestVoicePath"
+    private(set) static var voicePathProfile: String?
+    static func noteVoicePath(_ profile: String) {
+        guard ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1" else { return }
+        voicePathProfile = profile
+    }
+    #endif
     /// A draft shared from another app (#812), staged in a scratch inbox
     /// before launch: "resume" for the seeded conversation, "newChat" for a
     /// new one. The app picks it up through the same path as a real share.
@@ -26,7 +34,14 @@ enum WidgetLaunchUITestFixture {
     static let sharedDraftFileName = "shared-note.png"
 
     private static let dashboardID = UUID(uuidString: "8D516B21-6B3C-4F5A-A0D6-6F6E8B73A901")!
-    fileprivate static let profile = "work"
+    fileprivate static var profile: String {
+        #if LAA_BUILD
+        if let url = launchURL(arguments: ProcessInfo.processInfo.arguments),
+           let requested = WidgetLaunchLink(url: url)?.workspace?.profile,
+           LAAWidgetEmployee.forProfile(requested) != nil { return requested }
+        #endif
+        return "work"
+    }
     private static let sessionID = "widget-ui-test-session"
     private static let currentSessionID = "widget-ui-test-current-session"
     private static let resumeMessageID = "widget-ui-test-resume"
@@ -73,6 +88,7 @@ enum WidgetLaunchUITestFixture {
             title: "Widget UI Test Conversation",
             model: "Hermes",
             updatedLabel: "",
+            lastActivityAt: 2,
             profile: profile,
             source: .chat,
             isActive: false,
@@ -86,6 +102,7 @@ enum WidgetLaunchUITestFixture {
             title: "Current UI Test Conversation",
             model: "Hermes",
             updatedLabel: "",
+            lastActivityAt: 1,
             profile: profile,
             source: .chat,
             isActive: false,
@@ -310,6 +327,9 @@ struct WidgetLaunchUITestFixtureModifier: ViewModifier {
     @State private var coldDeliveryStarted = false
     @State private var pendingWidgetRequest = false
     @State private var admissionResult: Bool?
+    #if LAA_BUILD
+    @State private var voicePathProfile: String?
+    #endif
 
     private var arguments: [String] { ProcessInfo.processInfo.arguments }
 
@@ -337,6 +357,9 @@ struct WidgetLaunchUITestFixtureModifier: ViewModifier {
                 .task {
                     while !Task.isCancelled {
                         pendingWidgetRequest = appState.widgetLaunchCoordinator.hasPendingRequest
+                        #if LAA_BUILD
+                        voicePathProfile = WidgetLaunchUITestFixture.voicePathProfile
+                        #endif
                         do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
                     }
                 }
@@ -355,6 +378,11 @@ struct WidgetLaunchUITestFixtureModifier: ViewModifier {
     @ViewBuilder
     private var outcomeElements: some View {
         VStack(alignment: .leading, spacing: 0) {
+            #if LAA_BUILD
+            if let voicePathProfile {
+                WidgetLaunchUITestFixture.accessValue(voicePathProfile, identifier: WidgetLaunchUITestFixture.voicePathOutcomeID)
+            }
+            #endif
             if WidgetLaunchUITestFixture.shouldExposeWorkspace(appState) {
                 WidgetLaunchUITestFixture.accessValue(
                     WidgetLaunchUITestFixture.workspaceValue(appState),

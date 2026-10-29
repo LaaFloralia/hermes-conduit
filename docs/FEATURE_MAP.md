@@ -398,16 +398,17 @@ mode menu)
 
 ## LAA five-tab shell
 
-The LAA iPhone build's top-level navigation, Bridge pairing and Usage tab.
+The LAA iPhone build's top-level navigation, Bridge pairing, Brain and Usage tabs.
 
 **Siblings:** the existing Chats list, sessions and group rooms · Hermes login
 and offline chats · Conduit Settings and its direct Hermes usage report ·
 notifications and in-app links · the four Bridge-backed tabs · the upstream
-App Store build · the Bridge API and Usage data contract
+App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
+- Brain: `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
@@ -426,11 +427,20 @@ App Store build · the Bridge API and Usage data contract
   pull-to-refresh. A missing value is not zero; stale, expired and unavailable
   readings and observation times are shown. Hermes' existing Settings report
   remains the direct path for historical tokens and costs.
+- Brain lists the default permitted areas, optionally adds Inbox on request,
+  searches locally through the Bridge, and opens Markdown or its exact source.
+  Frontmatter remains available, unresolved syntax and image references remain
+  visible, and wiki links resolve only against the permitted listing. New notes
+  use the opt-in `brain:create` scope and the server's conflict-safe name.
+  An uncertain create retains its exact request and key in ThisDeviceOnly
+  Keychain until the same device reconciles it or the user checks Inbox.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
 
 **Open gaps**
-- Work, Brain and Source still need their finished content. The LAA shell uses
+- Work and Source still need their finished content. Brain cannot edit existing
+  notes; relative images are shown as references until Bridge supports them.
+  The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
   are not in this five-tab shell.
 - The existing Hermes Settings report has its own missing-number handling;
@@ -438,7 +448,7 @@ App Store build · the Bridge API and Usage data contract
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-29, laa/bridge-client-shared-25i (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
+**Checked:** 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
 ## LAA Work tab
 
@@ -3529,3 +3539,23 @@ and rollback instructions · the upstream App Store build
 - Simulator push registration and real APNs delivery need a physical iPhone.
 
 **Checked:** 2026-10-29, based on 4cc3a723.
+
+## LAA employee widget
+
+**Siblings:** LAA Home Screen small and medium widgets · Lock Screen circular widget · the existing widget URL router and voice start · LAA shell's error notice · the upstream launcher widgets (unchanged)
+
+**Code**
+- Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
+- Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`
+- Snapshot reload and notice: `Conduit/Services/AppState+Widgets.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/AppState.swift`
+- Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
+
+**Rulings**
+- The LAA build offers eight employees, with Ciel as default. Small opens chat with a separate call link; medium has both actions; the circular Lock Screen widget opens a call. Artwork is static and no live status is shown.
+- The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing profile voice path. A missing dashboard or profile is explained in Japanese.
+- Only the LAA extension bundles the resized staff images. The upstream launcher and its App Store build remain unchanged.
+
+**Open gaps**
+- Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
+
+**Checked:** 2026-10-29, at 2738ed28 (LAA task 12 changes).

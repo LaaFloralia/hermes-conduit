@@ -7,90 +7,41 @@
 //
 // Instructions (BRIDGE.md §9): the owner edits one shared instruction body per
 // project from the phone, and every session started in that project receives
-// it. The body is therefore stored here, in the Bridge's 0600 state file, with
-// a monotonic `instructionVersion`, a `sha256:` hash of the body and the last
-// ten revisions (body, hash, version, time) so two devices can compare and
-// restore instead of silently overwriting each other. Events and logs carry
-// only the version and hash, never the body.
+// it. The body is stored here, in the Bridge's 0600 state file, with a
+// monotonic `instructionVersion`, a `sha256:` hash of the body and the last ten
+// revisions (body, hash, version, time) so two devices can compare and restore
+// instead of silently overwriting each other. Events and logs carry only the
+// version and hash, never the body.
 //
-// `instructionRef` is the alternative source: a vault-relative file under the
-// Brain root that is read at *use* time, so editing the file changes what the
-// next session gets without another PATCH. Body and ref are mutually exclusive;
-// setting one clears the other.
+// Inline bodies only: the Bridge never reads an instruction file. A path would
+// turn `sessions:write` into a read of any file the Bridge process can open
+// (`.git/config`, `.env`) and would need a second, weaker copy of the Brain's
+// path rules; agents already read a repo's AGENTS.md / PROJECT-RULES.md
+// themselves. `instructionRef` is therefore refused on write
+// (400 `instruction_ref_unsupported`). Records written before this decision may
+// still carry a ref: it is returned as legacy metadata, is never read and never
+// applied, and a PATCH with `instructionRef: null` clears it.
 //
 // Naming: `nameSource` records who named the project. `owner` means a human
 // (or the owner's explicit instruction) chose the name and an automatic name
 // can never replace it; `auto` marks a generated name that may be recomputed.
 
 import { createHash, randomBytes } from 'node:crypto';
-import { lstatSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { resolveBrainRoot } from '../config.mjs';
+import { readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { badRequest, BridgeError, conflict, notFound } from '../errors.mjs';
 import { parseCursor, parseLimit, encodeCursor } from './pagination.mjs';
 import { createJsonFile, parseObjectBody } from './state-file.mjs';
 
 const PROJECT_SCHEMA = 2;
 const NAME_MAX = 80;
-const INSTRUCTION_REF_MAX = 300;
 const INSTRUCTIONS_MAX_BYTES = 32 * 1024;
 const INSTRUCTION_HISTORY_LIMIT = 10;
 const INSTRUCTION_TAG = 'project_instructions';
 const NAME_SOURCES = new Set(['owner', 'auto']);
 
-// --- instruction references -------------------------------------------------
-
-// A ref is a vault-relative path under the Brain root: no absolute paths, no
-// `..`, no backslashes and no control characters. Resolution then requires the
-// realpath to stay exactly where the relative path points, so a symlink on any
-// component is refused instead of followed outside the vault.
-export function createInstructionRefResolver({ root = resolveBrainRoot(), maxBytes = INSTRUCTIONS_MAX_BYTES } = {}) {
-  return function resolveInstructionRef(raw) {
-    const rel = parseInstructionRef(raw);
-    if (rel === null) throw badRequest('payload_invalid', 'instructionRef must not be empty');
-    const base = vaultRoot(root);
-    const absolute = join(base, ...rel.split('/'));
-    let target;
-    try {
-      target = realpathSync(absolute);
-    } catch {
-      throw new BridgeError(400, 'instruction_ref_unavailable', `instructionRef ${rel} does not exist`);
-    }
-    if (target !== absolute) {
-      throw new BridgeError(400, 'instruction_ref_unavailable', `instructionRef ${rel} is not addressable`);
-    }
-    const info = lstatSync(target);
-    if (!info.isFile()) {
-      throw new BridgeError(400, 'instruction_ref_unavailable', `instructionRef ${rel} is not a regular file`);
-    }
-    if (info.size > maxBytes) {
-      throw new BridgeError(400, 'instruction_ref_too_large', `instructionRef ${rel} is larger than ${maxBytes} bytes`);
-    }
-    try {
-      return new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(target));
-    } catch {
-      throw new BridgeError(400, 'instruction_ref_unavailable', `instructionRef ${rel} is not UTF-8 text`);
-    }
-  };
-}
-
-function vaultRoot(root) {
-  try {
-    const real = realpathSync(root);
-    if (!statSync(real).isDirectory()) throw new Error('not a directory');
-    return real;
-  } catch {
-    throw new BridgeError(503, 'instruction_vault_unavailable', 'the instruction vault is not available', { retryable: true });
-  }
-}
-
 // --- store ------------------------------------------------------------------
 
-export function createProjectStore({
-  file,
-  now = () => Date.now(),
-  resolveInstructionRef = createInstructionRefResolver(),
-}) {
+export function createProjectStore({ file, now = () => Date.now() }) {
   migrateLegacyProjects(file);
   const state = createJsonFile({ file, schema: PROJECT_SCHEMA, initial: () => ({ projects: {} }) });
 
@@ -100,7 +51,6 @@ export function createProjectStore({
 
   return {
     file,
-    resolveInstructionRef,
     get(id) {
       return all()[id] ?? null;
     },
@@ -113,15 +63,10 @@ export function createProjectStore({
         return fn(doc.projects);
       });
     },
-    // The instructions a session must apply right now: the stored body, or the
-    // referenced file read at this moment. Throws when a ref cannot be read so
-    // the caller can refuse the session instead of running without them.
+    // The instructions a session must apply: the stored body only. A legacy
+    // `instructionRef` is metadata and is deliberately not read.
     instructionsFor(project) {
       if (!project) return null;
-      if (project.instructionRef) {
-        const body = resolveInstructionRef(project.instructionRef);
-        return { body, hash: hashBody(body), version: project.instructionVersion ?? 0, source: 'ref' };
-      }
       if (typeof project.instructions === 'string' && project.instructions.trim() !== '') {
         return {
           body: project.instructions,
@@ -138,8 +83,9 @@ export function createProjectStore({
 
 // Projects written before the body was stored (schema 1) kept only a hash over
 // a reference plus a hash of text the Bridge never kept, so the body cannot be
-// re-derived. They are converted once: identity, name and reference survive,
-// the instruction body starts empty and the app re-saves it from the phone.
+// re-derived. They are converted once: identity, name and reference survive as
+// metadata, the instruction body starts empty and the app re-saves it from the
+// phone.
 function migrateLegacyProjects(file) {
   let raw;
   try {
@@ -181,17 +127,13 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
   }
 
   function detail(project) {
-    const resolved = tryInstructions(project, projects);
     return {
       ...view(project),
-      instructions: resolved.value?.body ?? null,
-      instructionHash: resolved.value?.hash ?? project.instructionHash ?? null,
-      ...(resolved.error === null ? {} : { instructionError: resolved.error }),
+      instructions: project.instructions ?? null,
     };
   }
 
   function mismatch(project) {
-    const resolved = tryInstructions(project, projects);
     return new BridgeError(412, 'version_mismatch', `project is at version ${project.version}; read it again before updating`, {
       details: {
         current: {
@@ -199,9 +141,9 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
           version: project.version,
           etag: etagFor(project.version),
           instructionVersion: project.instructionVersion ?? 0,
-          instructionHash: resolved.value?.hash ?? project.instructionHash ?? null,
+          instructionHash: project.instructionHash ?? null,
           instructionRef: project.instructionRef ?? null,
-          instructions: resolved.value?.body ?? null,
+          instructions: project.instructions ?? null,
         },
       },
     });
@@ -240,12 +182,9 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
     const body = parseObjectBody(rawBody);
     const name = parseName(body.name, { required: true });
     const nameSource = parseNameSource(body.nameSource);
-    const instructionRef = parseInstructionRef(body.instructionRef);
+    rejectInstructionRef(body);
     const instructions = parseInstructions(body.instructions);
-    if (instructionRef !== null && instructions !== null) {
-      throw badRequest('payload_invalid', 'a project has either instructions or an instructionRef, not both');
-    }
-    const instructionHash = instructionHashFor({ instructionRef, instructions }, projects.resolveInstructionRef);
+    const instructionHash = instructions === null ? null : hashBody(instructions);
     const t = now();
     const iso = new Date(t).toISOString();
 
@@ -258,13 +197,13 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
         id,
         name,
         nameSource,
-        instructionRef,
+        instructionRef: null,
         instructions,
         instructionHash,
         instructionVersion: instructionHash === null ? 0 : 1,
         instructionHistory: instructionHash === null
           ? []
-          : [{ version: 1, hash: instructionHash, body: instructions, instructionRef, updatedAt: iso }],
+          : [{ version: 1, hash: instructionHash, body: instructions, updatedAt: iso }],
         version: 1,
         createdAt: iso,
         updatedAt: iso,
@@ -299,36 +238,25 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
       throw conflict('name_source_locked', 'the project name was chosen by the owner and cannot be replaced automatically');
     }
 
-    // Replacing one instruction source clears the other, so a project is never
-    // left with both a body and a ref. Sending both non-empty is a refusal.
-    let nextRef = body.instructionRef === undefined
-      ? (current.instructionRef ?? null)
-      : parseInstructionRef(body.instructionRef);
-    let nextInstructions = body.instructions === undefined
+    // `instructionRef: null` is the only accepted ref value: it clears legacy
+    // metadata written before refs were refused. Any other value is refused.
+    // Saving a body also drops the legacy ref, so a record never shows both.
+    rejectInstructionRef(body);
+    const nextInstructions = body.instructions === undefined
       ? (current.instructions ?? null)
       : parseInstructions(body.instructions);
-    if (body.instructionRef !== undefined && body.instructions !== undefined) {
-      if (nextRef !== null && nextInstructions !== null) {
-        throw badRequest('payload_invalid', 'a project has either instructions or an instructionRef, not both');
-      }
-    } else if (body.instructions !== undefined && nextInstructions !== null) {
-      nextRef = null;
-    } else if (body.instructionRef !== undefined && nextRef !== null) {
-      nextInstructions = null;
-    }
+    const refCleared = (current.instructionRef ?? null) !== null
+      && (body.instructionRef === null || nextInstructions !== null);
 
-    const instructionsChanged = nextRef !== (current.instructionRef ?? null)
-      || nextInstructions !== (current.instructions ?? null);
-    // A ref is only re-read when the instruction source changes: a rename must
-    // not fail because the vault is briefly unavailable.
+    const instructionsChanged = nextInstructions !== (current.instructions ?? null);
     const nextHash = instructionsChanged
-      ? instructionHashFor({ instructionRef: nextRef, instructions: nextInstructions }, projects.resolveInstructionRef)
+      ? (nextInstructions === null ? null : hashBody(nextInstructions))
       : (current.instructionHash ?? null);
     const identityChanged = name !== undefined && name !== current.name;
 
     // A PATCH that names fields identical to the stored state is accepted as a
     // no-op: the caller read the current version, and nothing is bumped.
-    const changed = identityChanged || instructionsChanged;
+    const changed = identityChanged || instructionsChanged || refCleared;
 
     const updated = projects.mutate((all) => {
       const record = all[current.id];
@@ -338,7 +266,7 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
         record.name = name;
         record.nameSource = nameSource ?? 'owner';
       }
-      record.instructionRef = nextRef;
+      if (refCleared) record.instructionRef = null;
       record.instructions = nextInstructions;
       if (instructionsChanged) {
         record.instructionVersion = (record.instructionVersion ?? 0) + 1;
@@ -349,7 +277,6 @@ export function createProjectRoutes({ projects, now = () => Date.now() }) {
             version: record.instructionVersion,
             hash: nextHash,
             body: nextInstructions,
-            instructionRef: nextRef,
             updatedAt: iso,
           },
         ].slice(-INSTRUCTION_HISTORY_LIMIT);
@@ -387,6 +314,8 @@ function view(project) {
     id: project.id,
     name: project.name,
     nameSource: project.nameSource,
+    // Legacy metadata only (see the header). Null for every project written
+    // after refs were refused.
     instructionRef: project.instructionRef ?? null,
     instructionHash: project.instructionHash ?? null,
     instructionVersion: project.instructionVersion ?? 0,
@@ -395,17 +324,6 @@ function view(project) {
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   };
-}
-
-// A GET must not fail because a referenced file moved: it reports
-// `instructionError` and keeps the stored hash instead of returning 500.
-function tryInstructions(project, projects) {
-  try {
-    return { value: projects.instructionsFor(project), error: null };
-  } catch (err) {
-    if (!(err instanceof BridgeError)) throw err;
-    return { value: null, error: err.code };
-  }
 }
 
 function etagFor(version) {
@@ -436,25 +354,14 @@ function parseNameSource(raw) {
   return raw;
 }
 
-function parseInstructionRef(raw) {
-  if (raw === undefined || raw === null) return null;
-  if (typeof raw !== 'string') throw badRequest('payload_invalid', 'instructionRef must be a string');
-  const ref = raw.trim();
-  if (ref === '') return null;
-  if (ref.length > INSTRUCTION_REF_MAX) {
-    throw badRequest('payload_invalid', `instructionRef must be at most ${INSTRUCTION_REF_MAX} characters`);
-  }
-  if (/[\u0000-\u001f\u007f]/.test(ref)) {
-    throw badRequest('payload_invalid', 'instructionRef must not contain control characters');
-  }
-  if (ref.startsWith('/') || ref.includes('\\')) {
-    throw badRequest('payload_invalid', 'instructionRef must be a vault-relative path');
-  }
-  const segments = ref.split('/');
-  if (segments.some((segment) => segment === '' || segment === '.' || segment === '..')) {
-    throw badRequest('payload_invalid', 'instructionRef must not contain empty, "." or ".." segments');
-  }
-  return segments.join('/');
+// A ref would make the Bridge read an arbitrary file for any device allowed to
+// write a project. Only `null` (clear legacy metadata) is accepted.
+function rejectInstructionRef(body) {
+  if (body.instructionRef === undefined || body.instructionRef === null) return;
+  throw badRequest(
+    'instruction_ref_unsupported',
+    'instructionRef is not supported; store the instructions inline (agents read AGENTS.md / PROJECT-RULES.md themselves)',
+  );
 }
 
 // The stored body. An empty or whitespace-only body clears the instructions;
@@ -472,12 +379,6 @@ function parseInstructions(raw) {
     throw badRequest('payload_invalid', `instructions must not contain the </${INSTRUCTION_TAG}> delimiter`);
   }
   return raw;
-}
-
-function instructionHashFor({ instructionRef, instructions }, resolveRef) {
-  if (instructionRef !== null) return hashBody(resolveRef(instructionRef));
-  if (instructions !== null) return hashBody(instructions);
-  return null;
 }
 
 export function hashBody(body) {

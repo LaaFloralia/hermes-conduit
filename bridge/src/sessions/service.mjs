@@ -13,11 +13,15 @@
 // `requested` / `observed` is recorded verbatim.
 //
 // Project instructions (BRIDGE.md §9) are applied here, once, at create time:
-// the project's body (or the file its `instructionRef` points at, read now) is
-// composed into a delimited block ahead of the owner's prompt, and only its
-// version and hash are recorded on the session and its events. A retry of the
-// same requestId after the instructions changed is therefore a conflict, not a
-// second run under a prompt the owner never saw.
+// the project's inline body is composed into a delimited block ahead of the
+// owner's prompt, and only its version and hash are recorded on the session and
+// its events. A retry of the same requestId after the instructions changed is
+// therefore a conflict, not a second run under a prompt the owner never saw.
+//
+// The session's display name is also the Paseo agent title, so the daemon shows
+// "Project｜Session" instead of "Origin / owner: laa-bridge". The title is not
+// part of the request identity: renaming a session must not look like a new
+// request.
 
 import { createHash } from 'node:crypto';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
@@ -29,6 +33,7 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const PROFILE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_TEXT_BYTES = 16_384;
 const MAX_NAME_LENGTH = 100;
+const TITLE_MAX_BYTES = 200;
 const MAX_ARTIFACT_BYTES = 64 * 1024;
 const INSTRUCTION_TAG = 'project_instructions';
 
@@ -68,9 +73,8 @@ export function createSessionService({
     return record;
   }
 
-  // A referenced instruction file is read here, at use time, so an edit in the
-  // vault reaches the next session without another PATCH. An unreadable file
-  // stops the session instead of running it without the shared instructions.
+  // The project's inline body, resolved once per create. A store error stops the
+  // session instead of running it without the shared instructions.
   function resolveInstructions(project) {
     let resolved;
     try {
@@ -108,8 +112,11 @@ export function createSessionService({
 
     // The request identity is bound to its content: the same requestId with a
     // different profile, workspace, parent, prompt or instruction version is a
-    // conflict, not a silent reconcile.
-    const requestDigest = sha(JSON.stringify({
+    // conflict, not a silent reconcile. `legacyRequestDigest` is the same value
+    // without the two instruction fields, which is what records created before
+    // instructions were applied carry; an identical retry of one of those must
+    // still reconcile instead of turning into a 409.
+    const requestBody = {
       profile,
       workspaceId,
       parentId,
@@ -119,13 +126,17 @@ export function createSessionService({
       completion: body.completion ?? null,
       scope: body.scope ?? null,
       returnTo: body.returnTo ?? null,
+    };
+    const requestDigest = sha(JSON.stringify({
+      ...requestBody,
       instructionVersion: instructions?.version ?? null,
       instructionHash: instructions?.hash ?? null,
     }));
+    const legacyRequestDigest = sha(JSON.stringify(requestBody));
 
     const existing = sessionStore.get(id);
     if (existing) {
-      assertSameRequest(existing, { profile, workspaceId, parentId, projectId, requestDigest });
+      assertSameRequest(existing, { profile, workspaceId, parentId, projectId, requestDigest, legacyRequestDigest });
       return { session: existing, created: false };
     }
 
@@ -148,8 +159,14 @@ export function createSessionService({
       prompt: instructions ? composePrompt(project.id, instructions, prompt) : prompt,
     };
 
+    // The Paseo agent title: the project is what the owner recognises in the
+    // daemon, and the session name already carries the child prefix. It is not
+    // part of the request identity (see the header comment). The wrapper takes
+    // at most 200 UTF-8 bytes and refuses an empty title, so the composed value
+    // is normalised and bounded here instead of failing as a 503 downstream.
+    const title = sessionTitle(project ? `${project.name}｜${name}` : name);
     const delegateRequestId = delegateIdFor(requestId);
-    const created = await adapter.create({ requestId: delegateRequestId, profile, cwd: workspace.path, task });
+    const created = await adapter.create({ requestId: delegateRequestId, profile, cwd: workspace.path, task, title });
     if (typeof created?.sessionId !== 'string' || created.sessionId === '') {
       throw new BridgeError(503, 'delegation_inconsistent', 'the delegation path returned no session id');
     }
@@ -563,6 +580,37 @@ function parseApplyProjectInstructions(body) {
   return body.applyProjectInstructions !== false && body.instructions !== null;
 }
 
+// laa-personal-agent rejects a title longer than 200 UTF-8 bytes or one that is
+// empty after its own normalisation (`title_invalid`), and the Bridge has no
+// mapping for that code, so a long project name would surface as a 503. Apply
+// the same normalisation (control, format and whitespace runs become one space)
+// and cut on *grapheme* boundaries: cutting per code point would leave a lone
+// combining mark ("か" + U+3099 losing its dakuten) or half of a ZWJ emoji.
+const TITLE_SEGMENTER = new Intl.Segmenter('ja', { granularity: 'grapheme' });
+
+export function sessionTitle(raw) {
+  // A ZWJ (U+200D) is a format character but it *joins* one grapheme; replacing
+  // it with a space would split an emoji before the cut. Every other control,
+  // format and whitespace run becomes one space.
+  const oneLine = raw
+    .replace(/[\p{Cc}\s]+/gu, ' ')
+    .replace(/\p{Cf}/gu, (character) => (character === '\u200D' ? character : ' '))
+    .replace(/\s+/gu, ' ')
+    .trim();
+  if (oneLine === '') throw badRequest('payload_invalid', 'the session title is empty after removing control characters');
+  let title = '';
+  for (const { segment } of TITLE_SEGMENTER.segment(oneLine)) {
+    if (Buffer.byteLength(title + segment, 'utf8') > TITLE_MAX_BYTES) break;
+    title += segment;
+  }
+  // A single grapheme can be larger than the whole budget (a base character
+  // with many combining marks). Truncating to nothing would hand the wrapper an
+  // empty title, which it rejects as `title_invalid` and the Bridge cannot map,
+  // so refuse the request here with a 400 instead of a 503.
+  if (title === '') throw badRequest('payload_invalid', `the session title does not fit in ${TITLE_MAX_BYTES} bytes`);
+  return title;
+}
+
 // One clearly delimited block, version and hash on the header line, then the
 // owner's own request. The body is the project's shared text verbatim; it was
 // refused at write time (or is refused above) if it could close the delimiter.
@@ -650,10 +698,10 @@ function parseWait(raw) {
   return value;
 }
 
-function assertSameRequest(record, { profile, workspaceId, parentId, projectId, requestDigest }) {
+function assertSameRequest(record, { profile, workspaceId, parentId, projectId, requestDigest, legacyRequestDigest }) {
   if (record.profile !== profile || record.workspaceId !== workspaceId
     || (record.parentId ?? null) !== parentId || (record.projectId ?? null) !== projectId
-    || record.requestDigest !== requestDigest) {
+    || (record.requestDigest !== requestDigest && record.requestDigest !== legacyRequestDigest)) {
     throw conflict('request_id_conflict', 'requestId was already used for a different session request');
   }
 }

@@ -5,6 +5,9 @@ enum WidgetLaunchAction: String, Codable, CaseIterable {
     case resume
     case newChat
     case talk
+    #if LAA_BUILD
+    case employeeChat
+    #endif
 }
 
 struct WidgetLaunchLink: Equatable {
@@ -27,6 +30,11 @@ struct WidgetLaunchLink: Equatable {
             if canonicalReference.kind == .dashboard, canonicalReference.scopeProfile != workspace?.profile { return nil }
         case .newChat, .talk:
             guard workspace != nil, canonicalReference == nil else { return nil }
+        #if LAA_BUILD
+        case .employeeChat:
+            guard let workspace, LAAWidgetEmployee.forProfile(workspace.profile) != nil,
+                  canonicalReference == nil else { return nil }
+        #endif
         }
         guard let encodedURL = Self.makeURL(action: action, workspace: workspace, reference: canonicalReference) else { return nil }
         self.action = action

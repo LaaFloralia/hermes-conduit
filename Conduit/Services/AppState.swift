@@ -810,7 +810,11 @@ final class AppState: ObservableObject {
                 // and the V2 lists or a call's screen cover it, so a notice
                 // says it too, or the tap looks ignored (a call stops a
                 // launch for another workspace). Only V2 draws the notice.
+                #if LAA_BUILD
+                self.showNotice(message, systemImage: "exclamationmark.circle")
+                #else
                 if V2ShellPreference.isOn { self.showNotice(message, systemImage: "exclamationmark.circle") }
+                #endif
             },
             pendingLinkChanged: { [weak self] link in
                 self?.widgetLaunchPendingLinkChanged(link)
@@ -22484,6 +22488,9 @@ final class AppState: ObservableObject {
         }
         let authorization = lease.initialCaptureAuthorization()
         let intent = PendingVoiceIntent(profile: workspace.profile, startsFreshConversation: true, source: .newCall)
+        #if DEBUG && LAA_BUILD
+        WidgetLaunchUITestFixture.noteVoicePath(workspace.profile)
+        #endif
         let opened = await openVoiceConversation(intent, widgetLease: lease, initialCaptureAuthorization: authorization)
         guard lease.isCurrent || authorization.mayStartCapture else { return .deferred }
         return opened ? .handled : .deferred

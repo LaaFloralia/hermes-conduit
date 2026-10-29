@@ -21,6 +21,13 @@ struct LAAAppShell: View {
 
     var body: some View {
         bar
+            .overlay(alignment: .top) {
+                if let notice = appState.pinSyncNotice {
+                    V2NoticeBanner(notice: notice) { appState.dismissPinSyncNotice(notice.id) }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                }
+            }
             .environmentObject(bridge)
             .tint(LAAColors.teal)
             .environment(\.laaSettingsAction, onRequestSettings)
@@ -102,13 +109,19 @@ struct LAAAppShell: View {
                 .tabItem { Label(LAATab.chats.title, systemImage: LAATab.chats.symbol) }
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
-                NavigationStack {
-                    if tab == .usage {
-                        LAAUsageView(onRequestSettings: onRequestSettings)
-                    } else if tab == .work {
-                        LAAWorkView(onRequestSettings: onRequestSettings)
+                Group {
+                    if tab == .brain {
+                        LAABrainView(onRequestSettings: onRequestSettings)
                     } else {
-                        LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                        NavigationStack {
+                            if tab == .usage {
+                                LAAUsageView(onRequestSettings: onRequestSettings)
+                            } else if tab == .work {
+                                LAAWorkView(onRequestSettings: onRequestSettings)
+                            } else {
+                                LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                            }
+                        }
                     }
                 }
                 .tabItem { Label(tab.title, systemImage: tab.symbol) }

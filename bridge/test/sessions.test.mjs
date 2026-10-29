@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { BridgeError } from '../src/errors.mjs';
+import { sessionTitle } from '../src/sessions/service.mjs';
 import { startBridge } from './helpers.mjs';
 
 // Fake delegation path. It mirrors the parts of laa-personal-agent the Bridge
@@ -37,9 +38,26 @@ function fakeDelegation() {
     setPending(requestId, pending) {
       records.get(requestId).pending = pending;
     },
-    async create({ requestId, profile, cwd, task }) {
-      calls.push({ op: 'create', requestId, profile, cwd, task });
+    async create({ requestId, profile, cwd, task, title }) {
+      calls.push({ op: 'create', requestId, profile, cwd, task, title });
       if (adapter.unavailable) throw new BridgeError(503, 'delegation_unavailable', 'down', { retryable: true });
+      // Mirrors laa-personal-agent: the title is capped at 200 UTF-8 bytes and
+      // must be non-empty. The Bridge has no mapping for `title_invalid`, so an
+      // over-long title would surface as a 503; the Bridge must bound it first.
+      // Control/format characters are stricter here than the wrapper (which
+      // strips them), because the Bridge is supposed to remove them.
+      if (title !== undefined) {
+        if (typeof title !== 'string' || title.trim() === '' || title.includes('\0')
+          || Buffer.byteLength(title, 'utf8') > 200) {
+          throw new BridgeError(400, 'title_invalid', 'title is invalid');
+        }
+        // ZWJ is allowed: it joins one grapheme (emoji); everything else in Cc/Cf
+        // must already have been removed by the Bridge.
+        if (/[\p{Cc}\p{Cf}]/u.test(title.replace(/\u200D/gu, ''))) {
+          throw new BridgeError(400, 'title_invalid', 'title contains control characters');
+        }
+      }
+      // Mirrors laa-personal-agent: the title is not part of the request digest.
       const digest = JSON.stringify({ profile, cwd, task });
       const existing = records.get(requestId);
       if (existing) {
@@ -124,10 +142,8 @@ function sessionFixture(t) {
   const repo = join(root, 'repo');
   mkdirSync(join(repo, '.git'), { recursive: true });
   const realRepo = realpathSync(repo);
-  const brain = join(dir, 'brain');
-  mkdirSync(join(brain, 'Context'), { recursive: true });
   const gitRun = async () => '';
-  return { dir, root, brain, repo: realRepo, gitRun, workspaceId: workspaceId(realRepo) };
+  return { dir, root, repo: realRepo, gitRun, workspaceId: workspaceId(realRepo) };
 }
 
 function workspaceId(path) {
@@ -139,7 +155,6 @@ async function boot(t, { adapter = fakeDelegation(), now, sessions = {} } = {}) 
   const bridge = await startBridge({
     now,
     workspace: { roots: [fixture.root], gitRun: fixture.gitRun },
-    projects: { brainRoot: fixture.brain },
     sessions: { adapter, pollMs: 25, ...sessions },
   });
   t.after(() => bridge.close());
@@ -172,6 +187,19 @@ async function createSession(ctx, overrides = {}, key = 'k-create-1') {
     key,
     body: createBody(ctx, overrides),
   });
+}
+
+// Every string value in a payload, decoded. Searching the serialized JSON would
+// miss a body whose newlines are escaped, so the leak checks walk the values.
+function decodedText(value) {
+  const parts = [];
+  const walk = (item) => {
+    if (typeof item === 'string') parts.push(item);
+    else if (Array.isArray(item)) item.forEach(walk);
+    else if (item && typeof item === 'object') Object.values(item).forEach(walk);
+  };
+  walk(value);
+  return parts.join('\n');
 }
 
 test('a session records its request, workspace, parent and resolved model', async (t) => {
@@ -525,6 +553,7 @@ test('a project instruction body is composed into the delegated prompt and recor
   assert.equal(session.instructionsApplied, true);
 
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  assert.equal(create.title, `${project.name}｜${session.name}`, 'the Paseo title names project and session');
   const prompt = create.task.prompt;
   const header = `<project_instructions project="${project.id}" version="1" hash="${project.instructionHash}">`;
   assert.ok(prompt.startsWith(header), prompt.slice(0, 120));
@@ -538,7 +567,77 @@ test('a project instruction body is composed into the delegated prompt and recor
   const createdEvent = events.body.data.items.find((event) => event.type === 'session.created');
   assert.equal(createdEvent.payload.instructionVersion, 1);
   assert.equal(createdEvent.payload.instructionHash, project.instructionHash);
-  assert.equal(JSON.stringify(createdEvent.payload).includes(body), false);
+  assert.equal(decodedText(events.body.data.items).includes(body), false, 'the journal must not carry the body');
+  // The detector is not vacuous: write the body into the same journal and the
+  // same check over the same events must find it.
+  const file = join(ctx.bridge.stateDir, 'sessions.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.streams[session.id].events.push({
+    seq: 9999,
+    type: 'session.debug',
+    version: 2,
+    occurredAt: new Date().toISOString(),
+    payload: { instructions: body },
+  });
+  writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
+  const leaked = await ctx.bridge.request(`/v1/sessions/${session.id}/events?afterSeq=0`, { token: ctx.token });
+  assert.equal(decodedText(leaked.body.data.items).includes(body), true, 'a leaked body must be detected');
+});
+
+test('a long project name is cut to the delegation title limit', async (t) => {
+  const ctx = await boot(t);
+  const longName = 'あ'.repeat(80);
+  const project = await createProject(ctx, { name: longName, instructions: 'Always answer in Japanese.' }, 'k-title-long');
+  const created = await createSession(
+    ctx,
+    { requestId: 'req-title-long', projectId: project.id, name: '確認' },
+    'k-title-long-1',
+  );
+  assert.equal(created.status, 201);
+  const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  const bytes = Buffer.byteLength(create.title, 'utf8');
+  assert.ok(bytes <= 200, `title is ${bytes} bytes, over the delegation limit`);
+  assert.ok(bytes > 190, 'the title should use most of the budget');
+  assert.ok(create.title.startsWith('あ'));
+  assert.equal(created.body.data.name, '確認', 'the session name itself is not truncated');
+});
+
+test('the delegation title is one line without control or format characters', async (t) => {
+  const ctx = await boot(t);
+  const created = await createSession(ctx, { requestId: 'req-title-clean', name: '確認\n\u200e作業' }, 'k-title-clean');
+  assert.equal(created.status, 201);
+  const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  assert.equal(create.title, '確認 作業');
+});
+
+test('a title that normalises to nothing is refused before delegation', async (t) => {
+  const ctx = await boot(t);
+  const created = await createSession(ctx, { requestId: 'req-title-empty', name: '\u200e' }, 'k-title-empty');
+  assert.equal(created.status, 400);
+  assert.equal(created.body.error.code, 'payload_invalid');
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 0);
+});
+
+test('title truncation never splits a combining mark or a ZWJ emoji', () => {
+  const base = 'あ'.repeat(65); // 195 bytes: one more grapheme does not fit
+  assert.equal(sessionTitle(`${base}か\u3099`), base, 'the dakuten must not be left behind');
+  assert.equal(sessionTitle(`${base}👨‍👩‍👧`), base, 'a ZWJ emoji must not be split');
+  assert.equal(sessionTitle('あ'.repeat(66)), 'あ'.repeat(66), 'a whole grapheme that fits is kept');
+  assert.ok(Buffer.byteLength(sessionTitle(`${base}か\u3099`), 'utf8') <= 200);
+});
+
+test('a title whose first grapheme exceeds the budget is refused before delegation', async (t) => {
+  const ctx = await boot(t);
+  // 67 characters and 201 UTF-8 bytes: one grapheme (base + 66 combining
+  // marks), larger than the whole 200-byte budget.
+  const name = `か${'\u3099'.repeat(66)}`;
+  assert.throws(() => sessionTitle(name), { status: 400, code: 'payload_invalid' }, 'the helper must not return an empty title');
+
+  const project = await createProject(ctx, { name, instructions: 'Always answer in Japanese.' }, 'k-title-cluster');
+  const created = await createSession(ctx, { requestId: 'req-title-cluster', projectId: project.id }, 'k-title-cluster-1');
+  assert.equal(created.status, 400);
+  assert.equal(created.body.error.code, 'payload_invalid');
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 0, 'no agent may be started');
 });
 
 test('a session without a project runs with the prompt alone', async (t) => {
@@ -549,6 +648,7 @@ test('a session without a project runs with the prompt alone', async (t) => {
   assert.equal(created.body.data.instructionHash, null);
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
   assert.equal(create.task.prompt, 'Reply with the single word ok.');
+  assert.equal(create.title, created.body.data.name, 'without a project the title is the session name');
 });
 
 test('an explicit override skips the project instructions', async (t) => {
@@ -606,25 +706,72 @@ test('a retry of the same requestId after an instruction edit is a conflict', as
   assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
 });
 
-test('a referenced instruction file is read at create time', async (t) => {
+test('a legacy instructionRef record is never applied', async (t) => {
   const ctx = await boot(t);
-  const ref = join(ctx.brain, 'Context', 'rules.md');
-  writeFileSync(ref, 'Rule one.\n');
-  const project = await createProject(ctx, { name: 'x', instructionRef: 'Context/rules.md' }, 'k-p4');
-  assert.equal(project.instructionVersion, 1);
+  const iso = '2026-10-01T00:00:00.000Z';
+  const legacy = {
+    id: 'prj_cccccccccccc',
+    name: 'Trading｜旧ref',
+    nameSource: 'owner',
+    instructionRef: 'Context/rules.md',
+    instructions: null,
+    instructionHash: null,
+    instructionVersion: 0,
+    instructionHistory: [],
+    version: 1,
+    createdAt: iso,
+    updatedAt: iso,
+    createdBy: null,
+  };
+  writeFileSync(
+    join(ctx.bridge.stateDir, 'projects.json'),
+    `${JSON.stringify({ schema: 2, projects: { [legacy.id]: legacy } }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 
-  // Editing the file after the project was written still reaches the session.
-  writeFileSync(ref, 'Rule two.\n');
-  const created = await createSession(ctx, { projectId: project.id }, 'k-ref-1');
+  // The referenced file does not exist; the session still starts, because a ref
+  // is metadata and is never read.
+  const created = await createSession(ctx, { projectId: legacy.id }, 'k-ref-1');
   assert.equal(created.status, 201);
-  assert.equal(created.body.data.instructionVersion, 1, 'the project version did not change');
-  assert.notEqual(created.body.data.instructionHash, project.instructionHash, 'the applied hash is the file read now');
+  assert.equal(created.body.data.instructionsApplied, false);
+  assert.equal(created.body.data.instructionVersion, null);
   const create = ctx.adapter.calls.find((call) => call.op === 'create');
-  assert.ok(create.task.prompt.includes('Rule two.'));
+  assert.equal(create.task.prompt, 'Reply with the single word ok.');
+  assert.equal(create.title, `${legacy.name}｜${created.body.data.name}`);
+});
 
-  // A missing file stops the session instead of running it without them.
-  rmSync(ref);
-  const missing = await createSession(ctx, { requestId: 'req-ref-2', projectId: project.id }, 'k-ref-2');
-  assert.equal(missing.status, 409);
-  assert.equal(missing.body.error.code, 'instruction_ref_unavailable');
+test('a retry of a record created before instructions still reconciles', async (t) => {
+  const ctx = await boot(t);
+  const first = await createSession(ctx);
+  assert.equal(first.status, 201);
+  const id = first.body.data.id;
+
+  // A record written by the earlier code carries the digest without the two
+  // instruction fields; the same request must still resolve to it, not 409.
+  const legacyDigest = createHash('sha256')
+    .update(JSON.stringify({
+      profile: 'deepseek-flash-high',
+      workspaceId: ctx.workspaceId,
+      parentId: null,
+      projectId: null,
+      prompt: 'Reply with the single word ok.',
+      purpose: null,
+      completion: null,
+      scope: null,
+      returnTo: null,
+    }), 'utf8')
+    .digest('hex');
+  const file = join(ctx.bridge.stateDir, 'sessions.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.sessions[id].requestDigest = legacyDigest;
+  writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
+
+  const retried = await createSession(ctx, {}, 'k-legacy-retry');
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.data.id, id);
+
+  const changed = await createSession(ctx, { prompt: 'different prompt' }, 'k-legacy-changed');
+  assert.equal(changed.status, 409);
+  assert.equal(changed.body.error.code, 'request_id_conflict');
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
 });
