@@ -3605,7 +3605,18 @@ private struct NotificationsSettingsDetail: View {
     @State private var relayDraftInvalid = false
     @State private var pairing = false
     @State private var pairingError: String?
+    #if LAA_BUILD
+    @ObservedObject private var pairAll = LAANotificationPairAll.shared
+    #endif
     @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
+
+    private var pairAllRunning: Bool {
+        #if LAA_BUILD
+        pairAll.isRunning
+        #else
+        false
+        #endif
+    }
 
     private func trimmed(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3618,7 +3629,7 @@ private struct NotificationsSettingsDetail: View {
     private func saveRelay(_ value: String) {
         // Return in the field reaches here too, so this mirrors the
         // disabled buttons: never start a second move mid-move.
-        guard !notifications.isWorking else { return }
+        guard !notifications.isWorking, !pairAllRunning else { return }
         let value = trimmed(value)
         guard PushNotificationService.isValidRelayInput(value) else {
             relayDraftInvalid = true
@@ -3671,7 +3682,7 @@ private struct NotificationsSettingsDetail: View {
                     .padding(.vertical, 6).frame(minHeight: 48)
                     .foregroundStyle(notifications.isEnabled ? Color.primary : Color.white)
                 }
-                .disabled(notifications.isWorking || notifications.isPairing)
+                .disabled(notifications.isWorking || notifications.isPairing || pairAllRunning)
                 .conduitGlassControl(
                     cornerRadius: 17,
                     tint: notifications.isEnabled ? .red.opacity(0.18) : .conduitAccent,
@@ -3794,7 +3805,7 @@ private struct NotificationsSettingsDetail: View {
                             .font(.footnote)
                             // A tap while keys are being set up would only
                             // wait for the next connect.
-                            .disabled(notifications.isProvisioningEncryption)
+                            .disabled(notifications.isProvisioningEncryption || pairAllRunning)
                             Text("Conduit gives this dashboard's hosts new keys by itself every 7 days. The old keys still open notifications already on their way for 7 days.")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
@@ -3880,7 +3891,7 @@ private struct NotificationsSettingsDetail: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 6).frame(minHeight: 46)
                         }
-                        .disabled(notifications.isWorking || notifications.isPairing || appState.activeDashboardID == nil)
+                        .disabled(notifications.isWorking || notifications.isPairing || pairAllRunning || appState.activeDashboardID == nil)
                         .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                         if appState.activeDashboardID == nil {
                             Text("Connect to a dashboard before creating a pairing code.")
@@ -3927,7 +3938,7 @@ private struct NotificationsSettingsDetail: View {
                     .keyboardType(.URL)
                     .submitLabel(.done)
                     .accessibilityLabel(AppLocalization.string("Push relay URL"))
-                    .disabled(notifications.isWorking)
+                    .disabled(notifications.isWorking || pairAllRunning)
                     .onSubmit { saveRelay(relayDraft) }
                     .onChange(of: relayDraft) { _, _ in relayDraftInvalid = false }
                 if relayDraftInvalid {
@@ -3956,7 +3967,7 @@ private struct NotificationsSettingsDetail: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6).frame(minHeight: 44)
                     }
-                    .disabled(notifications.isWorking)
+                    .disabled(notifications.isWorking || pairAllRunning)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                 }
                 // Raw, not trimmed: a whitespace-only value saved by an
@@ -3969,7 +3980,7 @@ private struct NotificationsSettingsDetail: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6).frame(minHeight: 44)
                     }
-                    .disabled(notifications.isWorking)
+                    .disabled(notifications.isWorking || pairAllRunning)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                 }
                 if let notice = notifications.relayNotice {
@@ -4037,10 +4048,13 @@ private struct NotificationsSettingsDetail: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6).frame(minHeight: 46)
         }
-        .disabled(pairing || notifications.isPairing || notifications.isWorking || appState.activeDashboardID == nil
+        .disabled(pairing || notifications.isPairing || notifications.isWorking || pairAllRunning || appState.activeDashboardID == nil
                   || !notifications.isEnabled)
         .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
         .accessibilityIdentifier("notifications.pair")
+        #if LAA_BUILD
+        LAANotificationPairAllView(singlePairing: pairing)
+        #endif
         if !notifications.isEnabled {
             Text("Turn on notifications above to pair this profile.")
                 .font(.footnote)

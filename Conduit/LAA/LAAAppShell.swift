@@ -76,6 +76,19 @@ struct LAAAppShell: View {
 
     @ViewBuilder
     private var bar: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_PAIR_ALL") {
+            LAANotificationPairAllFixtureScreen()
+        } else {
+            normalBar
+        }
+        #else
+        normalBar
+        #endif
+    }
+
+    @ViewBuilder
+    private var normalBar: some View {
         if #available(iOS 26.0, *) {
             tabs.tabBarMinimizeBehavior(.onScrollDown)
         } else {

@@ -41,6 +41,14 @@ settings:
     # app (Watch app and extensions included) gets past the build description.
     EXCLUDED_SOURCE_FILE_NAMES: Info.plist
 targets:
+  ConduitTests:
+    settings:
+      base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+  ConduitUITests:
+    settings:
+      base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
   Conduit:
     # The app embeds the Watch app and the three extensions that sign with
     # the LAA team; the Location Push extension is not among them.
