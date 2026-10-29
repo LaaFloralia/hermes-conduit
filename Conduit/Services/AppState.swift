@@ -1199,8 +1199,12 @@ final class AppState: ObservableObject {
         return compressingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, activeSessionId) })
             || serverCompactingSessionIDs.contains(where: { composerSessionIDsAreEquivalent($0, activeSessionId) })
     }
+    // Include assignments that leave the value unchanged: a newer connection
+    // may take ownership of an already-synchronizing state.
+    private var turnStateAssignmentRevision: UInt64 = 0
     @Published private(set) var turnState: TurnState = .idle {
         didSet {
+            turnStateAssignmentRevision &+= 1
             guard oldValue != turnState else { return }
             // A message waiting for this chat goes once it takes one.
             schedulePendingComposerSendCheck()
@@ -1658,9 +1662,15 @@ final class AppState: ObservableObject {
     private final class BotChatOpenFlight {
         var task: Task<Bool, Never>?
     }
-    private struct BotChatOpenContext {
+    private final class BotChatOpenContext {
         let epoch: Int
         let client: HermesClient
+        var turnStateAssignmentRevision: UInt64?
+
+        init(epoch: Int, client: HermesClient) {
+            self.epoch = epoch
+            self.client = client
+        }
     }
     private var botChatOpenFlights: [String: BotChatOpenFlight] = [:]
     #if DEBUG
@@ -16138,6 +16148,7 @@ final class AppState: ObservableObject {
         reconciliationWasKanbanWorker = false
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
+        botChatOpenContext?.turnStateAssignmentRevision = turnStateAssignmentRevision
         // The resume RPC can overlap a user-initiated config.set. Capture the
         // local-write position before launching either request so a response
         // from the older snapshot cannot clear the newer override.
@@ -23375,7 +23386,9 @@ final class AppState: ObservableObject {
                 }
                 if settled || reconciliation == nil {
                     finishChatViewportTransition(generation: transitionGeneration)
-                    if turnState == .synchronizing {
+                    if turnState == .synchronizing,
+                       let ownedRevision = botChatOpenContext.turnStateAssignmentRevision,
+                       ownedRevision == turnStateAssignmentRevision {
                         turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
                     }
                 }
