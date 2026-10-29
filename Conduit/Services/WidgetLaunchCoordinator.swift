@@ -48,27 +48,46 @@ final class WidgetLaunchLease {
     }
 }
 
-/// A one-shot bridge from a pending widget launch to the voice controller.
-/// It remains revocable until the input actually starts. After that point the
-/// established conversation and its ordinary resume controls are independent
-/// of the launch deadline.
+/// A one-shot authorization for a pending widget launch and, when wrapped,
+/// a placed call's audio activation. It remains revocable until the input
+/// actually starts; ordinary resume controls then belong to the conversation.
 @MainActor
 final class WidgetInitialCaptureAuthorization {
     private weak var lease: WidgetLaunchLease?
+    private let wrapped: WidgetInitialCaptureAuthorization?
+    private let additionalIsCurrent: (() -> Bool)?
     private var captureStarted = false
 
     fileprivate init(lease: WidgetLaunchLease) {
         self.lease = lease
+        wrapped = nil
+        additionalIsCurrent = nil
+    }
+
+    /// A placed call and a widget may both own the first capture.
+    init(wrapping widget: WidgetInitialCaptureAuthorization?, isCurrent: @escaping () -> Bool) {
+        wrapped = widget
+        additionalIsCurrent = isCurrent
     }
 
     var mayStartCapture: Bool {
-        captureStarted || (lease?.isCurrent ?? false)
+        if captureStarted { return true }
+        let widgetIsCurrent = wrapped?.mayStartCapture ?? (lease?.isCurrent ?? (additionalIsCurrent != nil))
+        return widgetIsCurrent && (additionalIsCurrent?() ?? true)
+    }
+
+    /// A later manual listen is independent of an expired widget request but
+    /// must still honor any placed call's audio activation.
+    func authorizationAfterDeniedCapture() -> WidgetInitialCaptureAuthorization? {
+        guard let additionalIsCurrent else { return nil }
+        return WidgetInitialCaptureAuthorization(wrapping: nil, isCurrent: additionalIsCurrent)
     }
 
     func captureDidStart() {
-        guard !captureStarted, let lease, lease.isCurrent else { return }
+        guard !captureStarted, mayStartCapture else { return }
         captureStarted = true
-        lease.consumeInitialCapture()
+        wrapped?.captureDidStart()
+        lease?.consumeInitialCapture()
     }
 }
 

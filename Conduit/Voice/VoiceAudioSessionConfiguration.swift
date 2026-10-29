@@ -15,15 +15,16 @@ struct VoiceAudioSessionConfiguration: Equatable {
         outputChannelCount: 1
     )
 
-    /// The conversation's policy while a call from Hermes is up in CallKit
-    /// (#449): the same as `capture` without `.defaultToSpeaker`. With that
-    /// option iOS sends a cleared override to the loudspeaker, not the
-    /// earpiece, so the call screen's Speaker button could never turn the
-    /// speaker off. The call starts on the earpiece, and only the button
+    /// The conversation's policy while a CallKit call is up: one from Hermes
+    /// answered here (#449), or one the user placed from Conduit (LAA fork,
+    /// VoicePlacedCalls). The same as `capture` without `.defaultToSpeaker`.
+    /// With that option iOS sends a cleared override to the loudspeaker, not
+    /// the earpiece, so the call screen's Speaker button could never turn
+    /// the speaker off. The call starts on the earpiece, and only the button
     /// moves it: CallKit never learns of a move Conduit makes. Also every
-    /// conversation's policy under "Hold calls to your ear"
-    /// (VoiceEarpieceCalls), where the call screen's own Speaker button
-    /// does the moving.
+    /// conversation's policy under "Place calls as phone calls"
+    /// (VoicePhoneCalls), where the call screen's own Speaker button does
+    /// the moving.
     static let nativeCall = Self(
         category: capture.category,
         mode: capture.mode,

@@ -310,6 +310,208 @@ extension VoiceAudioSessionCoordinatorTests {
         )
     }
 
+    func testFirstUnmuteRecordsRealPCMFromInitiallyMutedClassicVoice() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let capture = PermissionGrantedCapture(service: service)
+        let controller = VoiceConversationController(
+            capture: capture, playback: MockPlayback(), gateway: MockGateway(transcript: "hello"),
+            routePolicyProvider: { .fullDuplex }, submit: { _ in true }, interrupt: { true }
+        )
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        controller.pauseMicrophone()
+        XCTAssertFalse(service.activelyRecording)
+
+        await controller.resumeMicrophone()
+
+        XCTAssertTrue(service.activelyRecording, "unmuting the first time must open a real recording window")
+        XCTAssertEqual(capture.permissionRequests, 1, "the first capture must request microphone permission")
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 960
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<960 { samples[i] = 0.25 }
+        service.consume(buffer, generation: service.captureGeneration)
+        XCTAssertFalse(service.recordedPCM16.isEmpty, "a live frame must enter the utterance")
+        let utterance = try service.finishUtterance()
+        XCTAssertFalse(utterance.pcm16Data.isEmpty)
+        controller.endVoiceSession()
+    }
+
+    func testUnmuteAfterReplyStartsARealSecondRecordingWindow() async throws {
+        try await verifyUnmuteAfterReplyRecords(continuous: true)
+        try await verifyUnmuteAfterReplyRecords(continuous: false)
+    }
+
+    private func verifyUnmuteAfterReplyRecords(continuous: Bool) async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let capture = PermissionGrantedCapture(service: service)
+        let gateway = MockGateway(transcript: "hello", startsPlaybackOnOpen: true)
+        let submissions = SubmitSpy()
+        let controller = VoiceConversationController(
+            capture: capture, playback: MockPlayback(), gateway: gateway,
+            routePolicyProvider: { .fullDuplex },
+            submit: { await submissions.submit($0) }, interrupt: { true }
+        )
+        defer { controller.endVoiceSession() }
+        var preferences = VoiceProfilePreferences()
+        preferences.continuousConversation = continuous
+        controller.setProfilePreferences(preferences)
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        await controller.startListening()
+
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 960
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<960 { samples[i] = 0.25 }
+        service.consume(buffer, generation: service.captureGeneration)
+        let firstSpeech = Date()
+        controller.ingestAudioLevel(0.1, at: firstSpeech)
+        controller.ingestAudioLevel(0, at: firstSpeech.addingTimeInterval(1.3))
+        await submissions.waitUntilSubmitted(1)
+        XCTAssertFalse(service.activelyRecording, "the first utterance has finished")
+
+        controller.receiveAssistantEvent(.started(sessionID: "classic"))
+        controller.receiveAssistantEvent(.delta(sessionID: "classic", text: "Answer."))
+        let speaking = await controller.waitForState(.speaking)
+        XCTAssertTrue(speaking)
+        controller.pauseMicrophone()
+        controller.receiveAssistantEvent(.completed(sessionID: "classic", content: "Answer."))
+        let settled = await controller.waitForState(continuous ? .listening : .idle)
+        XCTAssertTrue(settled)
+        XCTAssertTrue(controller.isMicrophonePaused)
+        XCTAssertFalse(service.activelyRecording, "a muted reply must not open a window")
+
+        await controller.resumeMicrophone()
+        XCTAssertTrue(service.activelyRecording, "unmute must open a new recording window")
+        service.consume(buffer, generation: service.captureGeneration)
+        let secondUtterance = try service.finishUtterance()
+        XCTAssertFalse(secondUtterance.pcm16Data.isEmpty, "the next utterance must contain real PCM")
+    }
+
+    func testPausedLifecycleRestoreOpensARealRecordingWindow() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let controller = VoiceConversationController(
+            capture: PermissionGrantedCapture(service: service), playback: MockPlayback(),
+            gateway: MockGateway(), routePolicyProvider: { .fullDuplex },
+            submit: { _ in true }, interrupt: { true }
+        )
+        defer { controller.endVoiceSession() }
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        await controller.startListening()
+        controller.pauseMicrophone()
+        controller.suspendRuntimeForLifecycle()
+        controller.setForegroundActive(true)
+
+        await controller.resumeMicrophone()
+        XCTAssertTrue(service.activelyRecording)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 960
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<960 { samples[i] = 0.25 }
+        service.consume(buffer, generation: service.captureGeneration)
+        let utterance = try service.finishUtterance()
+        XCTAssertFalse(utterance.pcm16Data.isEmpty)
+    }
+
+    func testUnmuteDuringAnUtterancePreservesItsRecordedPCM() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let controller = VoiceConversationController(
+            capture: PermissionGrantedCapture(service: service), playback: MockPlayback(),
+            gateway: MockGateway(), routePolicyProvider: { .fullDuplex },
+            submit: { _ in true }, interrupt: { true }
+        )
+        defer { controller.endVoiceSession() }
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        await controller.startListening()
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 960
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<960 { samples[i] = 0.25 }
+        service.consume(buffer, generation: service.captureGeneration)
+        let firstPCM = service.recordedPCM16
+        XCTAssertFalse(firstPCM.isEmpty)
+
+        controller.pauseMicrophone()
+        await controller.resumeMicrophone()
+        XCTAssertTrue(service.activelyRecording)
+        service.consume(buffer, generation: service.captureGeneration)
+        let utterance = try service.finishUtterance()
+        XCTAssertTrue(utterance.pcm16Data.starts(with: firstPCM), "resume must preserve the open utterance")
+        XCTAssertGreaterThan(utterance.pcm16Data.count, firstPCM.count, "new frames must append after unmute")
+    }
+
+    func testRemuteDuringFirstPermissionRequestDoesNotStartCaptureOrLoseAuthorization() async {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let capture = PermissionGrantedCapture(service: service)
+        capture.suspendPermission = true
+        let controller = VoiceConversationController(
+            capture: capture, playback: MockPlayback(), gateway: MockGateway(),
+            routePolicyProvider: { .fullDuplex }, submit: { _ in true }, interrupt: { true }
+        )
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        var authorizationCurrent = true
+        let lease = WidgetLaunchLease(isCurrent: { authorizationCurrent })
+        controller.installInitialWidgetCaptureAuthorization(lease.initialCaptureAuthorization())
+        controller.pauseMicrophone()
+        let unmuting = Task { await controller.resumeMicrophone() }
+        for _ in 0..<200 where capture.permissionRequests == 0 { await Task.yield() }
+        XCTAssertEqual(capture.permissionRequests, 1)
+        controller.pauseMicrophone()
+        capture.releasePermission()
+        await unmuting.value
+        XCTAssertTrue(controller.isMicrophonePaused)
+        XCTAssertEqual(factory.engines.reduce(0) { $0 + $1.startCount }, 0, "remuting while permission is pending must not start the microphone")
+
+        authorizationCurrent = false
+        await controller.resumeMicrophone()
+        XCTAssertEqual(factory.engines.reduce(0) { $0 + $1.startCount }, 0, "the unconsumed capture authorization must still be checked")
+        controller.endVoiceSession()
+    }
+
+    func testPushToTalkKeepsFirstCaptureAuthorizationUntilPress() async {
+        let factory = FakeCaptureEngineFactory()
+        let capture = PermissionGrantedCapture(service: makeCaptureService(factory))
+        let controller = VoiceConversationController(
+            capture: capture, playback: MockPlayback(), gateway: MockGateway(),
+            routePolicyProvider: { .fullDuplex }, submit: { _ in true }, interrupt: { true },
+            pushToTalkSurfaceAvailable: { true }
+        )
+        var preferences = VoiceProfilePreferences()
+        preferences.pushToTalk = true
+        controller.setProfilePreferences(preferences)
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        var authorizationCurrent = true
+        let lease = WidgetLaunchLease(isCurrent: { authorizationCurrent })
+        controller.installInitialWidgetCaptureAuthorization(lease.initialCaptureAuthorization())
+        await controller.startListening()
+        XCTAssertEqual(factory.engines.reduce(0) { $0 + $1.startCount }, 0)
+
+        authorizationCurrent = false
+        await controller.beginPushToTalk()
+        XCTAssertEqual(factory.engines.reduce(0) { $0 + $1.startCount }, 0, "the first actual capture must still honor its authorization")
+        controller.endVoiceSession()
+    }
+
     func testCaptureBuildsAFreshEngineForEveryStart() throws {
         let factory = FakeCaptureEngineFactory()
         let service = makeCaptureService(factory)
@@ -843,6 +1045,36 @@ private final class AudioEngineProbe: AVAudioEngine {
 
 /// Builds fake capture graphs that share one configuration, and records every
 /// engine it built so tests can inspect each rendering lifetime.
+@MainActor
+private final class PermissionGrantedCapture: AudioCaptureService {
+    let service: AVAudioCaptureService
+    private(set) var permissionRequests = 0
+    var suspendPermission = false
+    private var permissionContinuation: CheckedContinuation<Bool, Never>?
+    init(service: AVAudioCaptureService) { self.service = service }
+    var events: AsyncStream<VoiceCaptureEvent> { service.events }
+    var captureGeneration: UInt64 { service.captureGeneration }
+    var recordedPCM16: Data { service.recordedPCM16 }
+    var isHeldForPlayback: Bool { service.isHeldForPlayback }
+    func requestPermission() async -> Bool {
+        permissionRequests += 1
+        if suspendPermission { return await withCheckedContinuation { permissionContinuation = $0 } }
+        return true
+    }
+    func releasePermission() {
+        suspendPermission = false
+        permissionContinuation?.resume(returning: true)
+        permissionContinuation = nil
+    }
+    func startListening(includePreRoll: Bool) throws { try service.startListening(includePreRoll: includePreRoll) }
+    func beginBargeInMonitoring() throws { try service.beginBargeInMonitoring() }
+    func pause() { service.pause() }
+    func holdForPlayback() { service.holdForPlayback() }
+    func resume() throws { try service.resume() }
+    func finishUtterance() throws -> VoiceCapturedAudio { try service.finishUtterance() }
+    func stop() { service.stop() }
+}
+
 private final class FakeCaptureEngineFactory {
     var hardware = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1)!
     var nodeOutput: AVAudioFormat?
@@ -864,6 +1096,7 @@ private final class FakeCaptureEngineFactory {
 private final class FakeCaptureEngine: VoiceCaptureEngine {
     private unowned let factory: FakeCaptureEngineFactory
     private(set) var isRunning = false
+    private(set) var startCount = 0
     private(set) var hasTap = false
     private(set) var installedTapFormats: [AVAudioFormat?] = []
     private(set) var tapBlock: AVAudioNodeTapBlock?
@@ -886,6 +1119,7 @@ private final class FakeCaptureEngine: VoiceCaptureEngine {
 
     func start() throws {
         if let failure = factory.nextStartFailure() { throw failure }
+        startCount += 1
         isRunning = true
     }
 

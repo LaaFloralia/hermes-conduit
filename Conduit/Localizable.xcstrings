@@ -1,6 +1,170 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Place calls as phone calls" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe als Telefonanrufe führen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Llamadas como llamadas telefónicas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passer des appels comme des appels téléphoniques"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lakukan panggilan sebagai panggilan telepon"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chiamate come chiamate telefoniche"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電話として発信する"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전화 통화로 걸기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia jak połączenia telefoniczne"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fazer chamadas como ligações telefônicas"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки как телефонные вызовы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramaları telefon araması olarak yap"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以电话方式拨打"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以電話方式撥打"
+          }
+        }
+      }
+    },
+    "Voice conversations you start are placed as phone calls, so iOS shows them on its call screen, the lock screen and the Dynamic Island, with Mute and End there. A call plays from the earpiece until the call screen's Speaker turns the loudspeaker on, and holding the phone to your ear turns the screen off. Headphones, Bluetooth and CarPlay keep their own route. Where CallKit isn't available, a call still plays from the earpiece and the call screen's own Speaker button moves it. Applies to this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachgespräche, die du beginnst, werden als Telefonanrufe geführt: iOS zeigt sie auf dem Anrufbildschirm, dem Sperrbildschirm und in der Dynamic Island, mit Stummschalten und Auflegen. Ein Anruf läuft über die Hörmuschel, bis der Lautsprecher-Knopf im Anrufbildschirm auf den Lautsprecher umschaltet; hältst du das Telefon ans Ohr, geht der Bildschirm aus. Kopfhörer, Bluetooth und CarPlay behalten ihre eigene Route. Wo CallKit nicht verfügbar ist, läuft ein Anruf weiterhin über die Hörmuschel, und der Lautsprecher-Knopf im Anrufbildschirm schaltet um. Gilt für dieses Gerät."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las conversaciones de voz que inicias se realizan como llamadas telefónicas, así que iOS las muestra en su pantalla de llamada, en la pantalla de bloqueo y en la Dynamic Island, con Silenciar y Colgar allí. La llamada suena por el auricular hasta que el botón Altavoz de la pantalla de llamada active el altavoz, y al acercarte el teléfono al oído se apaga la pantalla. Los auriculares, el Bluetooth y CarPlay mantienen su propia ruta. Donde CallKit no está disponible, la llamada sigue sonando por el auricular y el botón Altavoz de la pantalla de llamada la mueve. Se aplica a este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les conversations vocales que vous lancez sont passées comme des appels téléphoniques : iOS les affiche sur son écran d'appel, l'écran verrouillé et la Dynamic Island, avec Muet et Raccrocher. L'appel passe par l'écouteur jusqu'à ce que le bouton Haut-parleur de l'écran d'appel active le haut-parleur ; en approchant le téléphone de l'oreille, l'écran s'éteint. Les écouteurs, le Bluetooth et CarPlay gardent leur propre sortie. Là où CallKit n'est pas disponible, l'appel passe toujours par l'écouteur et le bouton Haut-parleur de l'écran d'appel le déplace. S'applique à cet appareil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Percakapan suara yang kamu mulai dilakukan sebagai panggilan telepon, jadi iOS menampilkannya di layar panggilan, layar kunci, dan Dynamic Island, dengan Bisukan dan Akhiri. Panggilan diputar dari earpiece sampai tombol Speaker di layar panggilan menyalakan speaker; menempelkan ponsel ke telinga mematikan layar. Headphone, Bluetooth, dan CarPlay tetap memakai jalurnya sendiri. Di tempat CallKit tidak tersedia, panggilan tetap diputar dari earpiece dan tombol Speaker di layar panggilan yang memindahkannya. Berlaku untuk perangkat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le conversazioni vocali che avvii vengono effettuate come chiamate telefoniche, così iOS le mostra nella schermata di chiamata, nella schermata di blocco e nella Dynamic Island, con Muto e Riaggancia. La chiamata esce dall'auricolare finché il pulsante Altoparlante della schermata di chiamata non attiva l'altoparlante; avvicinando il telefono all'orecchio lo schermo si spegne. Cuffie, Bluetooth e CarPlay mantengono il proprio percorso. Dove CallKit non è disponibile, la chiamata esce comunque dall'auricolare e il pulsante Altoparlante della schermata di chiamata la sposta. Vale per questo dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自分から始めた音声会話は電話として発信され、iOSの通話画面・ロック画面・ダイナミックアイランドに、ミュートと終了のボタン付きで表示されます。通話は受話口から再生され、通話画面のスピーカーボタンでスピーカーに切り替わります。耳に当てると画面が消えます。ヘッドホン・Bluetooth・CarPlayはそれぞれの出力のままです。CallKitが使えない場合は受話口のまま再生され、通話画面のスピーカーボタンで切り替えます。このデバイスに適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "직접 시작한 음성 대화는 전화 통화로 연결되어 iOS의 통화 화면, 잠금 화면, 다이내믹 아일랜드에 음소거와 종료 버튼과 함께 표시됩니다. 통화는 통화 화면의 스피커 버튼으로 스피커를 켜기 전까지 수화부로 재생되고, 휴대폰을 귀에 대면 화면이 꺼집니다. 헤드폰, Bluetooth, CarPlay는 각자의 출력을 유지합니다. CallKit을 쓸 수 없는 곳에서는 수화부로 재생되며 통화 화면의 스피커 버튼으로 전환합니다. 이 기기에 적용됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy głosowe, które rozpoczynasz, są realizowane jako połączenia telefoniczne, więc iOS pokazuje je na ekranie połączenia, ekranie blokady i w Dynamic Island, z Wycisz i Zakończ. Połączenie gra w słuchawce, dopóki przycisk Głośnik na ekranie połączenia nie włączy głośnika; przyłożenie telefonu do ucha wyłącza ekran. Słuchawki, Bluetooth i CarPlay zachowują własną trasę. Tam, gdzie CallKit nie jest dostępny, połączenie nadal gra w słuchawce, a przycisk Głośnik na ekranie połączenia je przenosi. Dotyczy tego urządzenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As conversas por voz que você inicia são feitas como ligações telefônicas, então o iOS as mostra na tela de chamada, na tela de bloqueio e na Dynamic Island, com Silenciar e Desligar. A chamada sai pelo fone até o botão Alto-falante da tela de chamada ativar o alto-falante; encostar o telefone no ouvido apaga a tela. Fones, Bluetooth e CarPlay mantêm a própria saída. Onde o CallKit não está disponível, a chamada continua saindo pelo fone e o botão Alto-falante da tela de chamada a move. Vale para este dispositivo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голосовые разговоры, которые вы начинаете, оформляются как телефонные вызовы: iOS показывает их на экране вызова, экране блокировки и в Dynamic Island с кнопками «Без звука» и «Завершить». Звук идёт в разговорный динамик, пока кнопка «Динамик» на экране вызова не включит громкую связь; при поднесении телефона к уху экран гаснет. Наушники, Bluetooth и CarPlay сохраняют свой маршрут. Там, где CallKit недоступен, звук по-прежнему идёт в разговорный динамик, а кнопка «Динамик» на экране вызова переключает его. Действует для этого устройства."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başlattığın sesli görüşmeler telefon araması olarak yapılır; iOS bunları arama ekranında, kilit ekranında ve Dynamic Island'da Sessiz ve Kapat düğmeleriyle gösterir. Arama ekranındaki Hoparlör düğmesi hoparlörü açana kadar ses kulaklıktan gelir; telefonu kulağına götürdüğünde ekran kapanır. Kulaklıklar, Bluetooth ve CarPlay kendi çıkışını korur. CallKit'in kullanılamadığı yerlerde arama yine kulaklıktan gelir ve arama ekranındaki Hoparlör düğmesi bunu taşır. Bu cihaz için geçerlidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你发起的语音对话会以电话形式拨打，iOS 会在通话界面、锁定屏幕和灵动岛上显示，并提供静音和挂断。通话从听筒播放，直到通话界面的扬声器按钮打开扬声器；把手机贴近耳朵时屏幕会关闭。耳机、蓝牙和 CarPlay 保持各自的输出。CallKit 不可用时，通话仍从听筒播放，由通话界面自带的扬声器按钮切换。适用于此设备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你發起的語音對話會以電話形式撥打，iOS 會在通話畫面、鎖定畫面和動態島上顯示，並提供靜音和掛斷。通話從聽筒播放，直到通話畫面的揚聲器按鈕開啟揚聲器；把手機貼近耳朵時螢幕會關閉。耳機、藍牙和 CarPlay 保持各自的輸出。CallKit 無法使用時，通話仍從聽筒播放，由通話畫面自帶的揚聲器按鈕切換。適用於此裝置。"
+          }
+        }
+      }
+    },
     "%@ is a folder, so it wasn't attached. Drop the files inside it instead." : {
       "localizations" : {
         "de" : {
@@ -161,88 +325,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法將資料夾加入附件。請改為拖放其中的檔案。"
-          }
-        }
-      }
-    },
-    "Hold calls to your ear" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anrufe am Ohr führen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Llamadas al oído"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Appels à l'oreille"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Panggilan di telinga"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chiamate all'orecchio"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "受話口で通話する"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "통화처럼 귀에 대고 듣기"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rozmowy przy uchu"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chamadas no ouvido"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Разговор у уха"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aramaları kulakta dinle"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "像打电话一样贴耳通话"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "像打電話一樣貼耳通話"
           }
         }
       }
@@ -571,88 +653,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 上與這部 iPhone 配對的其他 Hermes 設定檔也可以讀取。你可以在「設定」>「位置」中關閉此項。"
-          }
-        }
-      }
-    },
-    "Voice conversations you start play from the earpiece, like a phone call, so people nearby don't hear them. Hold the phone to your ear and the screen turns off. Speaker in the call switches to the loudspeaker; headphones, Bluetooth and CarPlay keep their own route. Applies to this device." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sprachunterhaltungen, die du startest, laufen wie ein Telefonat über die Hörmuschel, damit niemand in der Nähe mithört. Hältst du das iPhone ans Ohr, schaltet sich der Bildschirm aus. „Lautsprecher“ im Anruf wechselt zum Lautsprecher; Kopfhörer, Bluetooth und CarPlay behalten ihre eigene Ausgabe. Gilt für dieses Gerät."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Las conversaciones de voz que inicias suenan por el auricular, como una llamada, para que nadie cerca las oiga. Al acercar el teléfono a la oreja, la pantalla se apaga. Altavoz, durante la llamada, cambia al altavoz; los auriculares, el Bluetooth y CarPlay mantienen su propia salida. Se aplica a este dispositivo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les conversations vocales que vous lancez passent par l'écouteur, comme un appel, pour que personne autour ne les entende. Portez le téléphone à l'oreille et l'écran s'éteint. Haut-parleur, pendant l'appel, bascule sur le haut-parleur ; les écouteurs, le Bluetooth et CarPlay gardent leur propre sortie. S'applique à cet appareil."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Percakapan suara yang Anda mulai diputar dari speaker telinga, seperti telepon, agar orang di sekitar tidak mendengarnya. Dekatkan ponsel ke telinga dan layar akan mati. Speaker saat panggilan memindahkannya ke pengeras suara; headphone, Bluetooth, dan CarPlay tetap memakai jalurnya sendiri. Berlaku untuk perangkat ini."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le conversazioni vocali che avvii escono dall'auricolare, come una telefonata, così chi è vicino non le sente. Avvicina il telefono all'orecchio e lo schermo si spegne. Altoparlante, durante la chiamata, passa all'altoparlante; cuffie, Bluetooth e CarPlay mantengono la loro uscita. Vale per questo dispositivo."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "自分から始めた音声会話を電話と同じく受話口から流し、周りに聞こえないようにします。耳に当てると画面が消えます。通話中の「スピーカー」でスピーカーに切り替えられます。ヘッドホン・Bluetooth・CarPlayはそれぞれの出力のままです。このデバイスに適用されます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "직접 시작한 음성 대화가 전화처럼 수화부로 재생되어 주변 사람에게 들리지 않습니다. 휴대폰을 귀에 대면 화면이 꺼집니다. 통화 중 스피커를 누르면 스피커로 전환됩니다. 헤드폰, Bluetooth, CarPlay는 각자의 출력을 유지합니다. 이 기기에 적용됩니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Rozmowy głosowe, które zaczynasz, grają z głośnika rozmów, jak połączenie telefoniczne, więc nikt obok ich nie słyszy. Gdy przyłożysz telefon do ucha, ekran się wyłączy. Przycisk Głośnik w rozmowie przełącza na głośnik; słuchawki, Bluetooth i CarPlay zachowują własne wyjście. Dotyczy tego urządzenia."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "As conversas por voz que você inicia tocam no alto-falante de chamada, como uma ligação, para que ninguém por perto ouça. Ao encostar o telefone no ouvido, a tela se apaga. Alto-falante, na chamada, muda para o alto-falante externo; fones, Bluetooth e CarPlay mantêm a própria saída. Vale para este dispositivo."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Голосовые разговоры, которые вы начинаете, звучат из разговорного динамика, как обычный звонок, и окружающие их не слышат. Поднесите телефон к уху — экран погаснет. Кнопка «Динамик» во время разговора включает громкую связь; наушники, Bluetooth и CarPlay сохраняют свой выход. Применяется на этом устройстве."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Başlattığın sesli konuşmalar, bir telefon araması gibi ahizeden çalar; böylece yakındakiler duymaz. Telefonu kulağına götürdüğünde ekran kapanır. Görüşmedeki Hoparlör düğmesi hoparlöre geçirir; kulaklık, Bluetooth ve CarPlay kendi çıkışlarını korur. Bu cihaz için geçerlidir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你发起的语音对话会像打电话一样从听筒播放，旁人听不到。把手机贴近耳朵时屏幕会熄灭。通话中的“扬声器”可切换到扬声器；耳机、蓝牙和 CarPlay 保持各自的输出。仅适用于此设备。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "你發起的語音對話會像打電話一樣從聽筒播放，旁人聽不到。將手機貼近耳朵時螢幕會關閉。通話中的「擴音」可切換為擴音；耳機、藍牙和 CarPlay 會維持各自的輸出。只套用於此裝置。"
           }
         }
       }

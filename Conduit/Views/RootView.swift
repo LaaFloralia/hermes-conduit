@@ -223,7 +223,11 @@ struct MainView: View {
         ) { _, holds in
             UIApplication.shared.isIdleTimerDisabled = holds
         }
-        // "Hold calls to your ear": the screen goes off against the ear.
+        // "Place calls as phone calls": the conversation is placed as a
+        // CallKit call (LAA fork), and the call goes with it.
+        .modifier(PlacedCallBridge())
+        // Where CallKit isn't placing the call: the screen goes off against
+        // the ear.
         .modifier(EarpieceCallProximity())
         // A voice conversation on screen keeps the backdrop drifting, as a
         // running turn does (InteractionIdleState).

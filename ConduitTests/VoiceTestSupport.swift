@@ -297,9 +297,13 @@ final class MockCapture: AudioCaptureService {
     /// `activelyRecording` (which flips false again on barge-in monitoring and
     /// on stop). For a per-window signal use `startCount`/`waitUntilStartCount`.
     var didStart = false
+    /// Mirrors the real capture window: pause preserves it, stop and
+    /// monitoring end it, and resume alone cannot create the first window.
+    private(set) var activelyRecording = false
     var didBeginMonitoring = false
     var didPause = false
     private var mockPaused = false
+    var isPausedForTesting: Bool { mockPaused }
     private(set) var lastStartIncludePreRoll: Bool?
     private(set) var pauseCount = 0
     /// Playback holds keep the running capture (no generation bump), like
@@ -337,6 +341,7 @@ final class MockCapture: AudioCaptureService {
         }
 
         didStart = true
+        activelyRecording = true
         lastStartIncludePreRoll = includePreRoll
         mockPaused = false
         isHeldForPlayback = false
@@ -349,7 +354,7 @@ final class MockCapture: AudioCaptureService {
     func waitUntilStartCount(_ count: Int, timeout: TimeInterval = 10) async {
         await starts.waitUntil(count, timeout: timeout)
     }
-    func beginBargeInMonitoring() throws { didBeginMonitoring = true }
+    func beginBargeInMonitoring() throws { didBeginMonitoring = true; activelyRecording = false }
     func holdForPlayback() {
         guard !mockPaused, !isHeldForPlayback else { return }
         holdCount += 1
@@ -372,10 +377,12 @@ final class MockCapture: AudioCaptureService {
         captureGeneration &+= 1
     }
     func finishUtterance() throws -> VoiceCapturedAudio {
+        activelyRecording = false
         finishUtteranceCount += 1
         return VoiceCapturedAudio(wavData: Data([1]), pcm16Data: Data([1, 0]), sampleRate: 16_000, duration: 0.01)
     }
     func stop() {
+        activelyRecording = false
         mockPaused = false
         isHeldForPlayback = false
         stopCount += 1
