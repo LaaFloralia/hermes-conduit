@@ -17,6 +17,7 @@ struct LAAWorkNewSessionView: View {
     @State private var workspaceItems: [LAAWorkWorkspace]
     @State private var projectID = ""
     @State private var workspaceID = ""
+    @State private var workspaceBranchNotices: [String: String] = [:]
     @State private var profile = ""
     @State private var name = ""
     @State private var prompt = ""
@@ -57,13 +58,16 @@ struct LAAWorkNewSessionView: View {
                         Picker("プロジェクト", selection: $projectID) {
                             Text(verbatim: "プロジェクトなし").tag("")
                             ForEach(projects) { item in Text(verbatim: item.name).tag(item.id) }
-                        }.pickerStyle(.menu)
+                        }.pickerStyle(.menu).accessibilityIdentifier("work.session.project")
                         Picker("作業場所", selection: $workspaceID) {
                             Text(verbatim: "選択してください").tag("")
                             ForEach(workspaceItems) { item in
                                 Text(verbatim: (item.displayPath ?? item.path) + (item.branch.map { " · " + $0 } ?? "")).tag(item.id)
                             }
                         }.pickerStyle(.menu).accessibilityIdentifier("work.session.workspace")
+                        if let notice = workspaceBranchNotices[workspaceID] {
+                            Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
+                        }
                         Button("作業場所を新しく作る") { showWorkspace = true }.disabled(pending != nil || starting)
                         TextField("プロファイル名（例: deepseek-flash-high）", text: $profile)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -92,11 +96,13 @@ struct LAAWorkNewSessionView: View {
                 Button("セッションを開始") { start() }.disabled(!canStart)
                 Button("戻る", role: .cancel) { }
             } message: {
-                Text(verbatim: "プロジェクト: \(projects.first { $0.id == projectID }?.name ?? "なし")\n作業場所: \(workspaceItems.first { $0.id == workspaceID }?.displayPath ?? "未選択")\nプロファイル: \(profile)")
+                let workspace = workspaceItems.first { $0.id == workspaceID }
+                Text(verbatim: "プロジェクト: \(projects.first { $0.id == projectID }?.name ?? "なし")\n作業場所: \(workspace?.displayPath ?? workspace?.path ?? "未選択")\nブランチ: \(workspace?.branch ?? "未確認")\nプロファイル: \(profile)")
             }
             .sheet(isPresented: $showWorkspace) {
-                LAAWorkWorkspaceCreator(repositories: workspaceItems.filter { $0.kind == "repo" }, projectID: projectID, drafts: drafts) { item in
-                    workspaceItems.append(item); workspaceID = item.id; showWorkspace = false
+                LAAWorkWorkspaceCreator(repositories: workspaceItems.filter { $0.kind == "repo" }, projectID: projectID, drafts: drafts) { item, notice in
+                    workspaceItems.append(item); workspaceID = item.id
+                    workspaceBranchNotices[item.id] = notice; showWorkspace = false
                 }.environmentObject(bridge)
             }
             .task(id: bridge.revision) {
@@ -183,13 +189,13 @@ struct LAAWorkNewSessionView: View {
 }
 
 struct LAAWorkWorkspaceCreator: View {
-    private struct Request: Encodable { let repoId: String; let worktreeName: String; let branch: String; let projectId: String? }
+    private struct Request: Codable { let repoId: String; let worktreeName: String; let branch: String; let projectId: String? }
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dismiss) private var dismiss
     let repositories: [LAAWorkWorkspace]
     let projectID: String
     @ObservedObject var drafts: ComposerDraftStore
-    let onSuccess: (LAAWorkWorkspace) -> Void
+    let onSuccess: (LAAWorkWorkspace, String?) -> Void
     @State private var repoID = ""
     @State private var worktreeName = ""
     @State private var branch = ""
@@ -197,6 +203,13 @@ struct LAAWorkWorkspaceCreator: View {
     @State private var error: String?
     private var key: ComposerDraftKey? { bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "new-worktree") } }
     private var pending: ComposerDraftStore.Submission? { key.flatMap { LAAWorkDrafts.pending(drafts, key: $0) } }
+
+    static func branchNotice(requested: String?, actual: String?) -> String? {
+        guard let requested else { return "指定したブランチ名を確認できません。" }
+        guard let actual else { return "作成されたブランチ名を確認できません。" }
+        guard requested != actual else { return nil }
+        return "指定したブランチ「\(requested)」は「\(actual)」として作成されました。"
+    }
 
     var body: some View {
         NavigationStack {
@@ -243,7 +256,8 @@ struct LAAWorkWorkspaceCreator: View {
         do {
             let result: LAAWorkWorkspace = try await LAAWorkHTTP.write(bridge, path: "/v1/workspaces", body: body, key: key)
             guard drafts.finishSubmission(item.id, restoring: false) else { error = "作成結果を保存できません。"; return }
-            onSuccess(result)
+            let requested = (try? JSONDecoder().decode(Request.self, from: body))?.branch
+            onSuccess(result, Self.branchNotice(requested: requested, actual: result.branch))
         } catch let failure as LAABridgeHTTPError {
             if LAAWorkHTTP.outcomeUnknown(failure) { drafts.markSubmissionUnknown(item.id) }
             else { _ = drafts.finishSubmission(item.id, restoring: false) }

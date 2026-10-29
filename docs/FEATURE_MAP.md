@@ -469,6 +469,9 @@ store · the session and project API · the Linear task read API
   key until their outcome is known; the existing composer never sends through
   Hermes for these requests. Event history gaps trigger a detail and artifact
   reread. Requested and observed models stay visible, including mismatches.
+- Closing the full-screen composer refreshes the inline editor immediately.
+  If a created workspace's actual branch differs from the requested name,
+  show both names and the actual branch in the session confirmation.
 - Project instruction edits require a readable body and If-Match. A 412 keeps
   both the user's edit and the current version for an explicit choice. A name
   change alone does not replace shared instructions. Legacy references are

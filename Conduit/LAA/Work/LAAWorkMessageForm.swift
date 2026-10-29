@@ -61,7 +61,8 @@ struct LAAWorkMessageForm: View {
             }
             LAAWorkComposer(text: $text, revision: $revision, placeholder: title,
                             enabled: !sending && pending == nil && !drafts.persistenceFailed, canSend: canStart,
-                            onChange: saveDraft, onSubmit: submit)
+                            onChange: saveDraft, onSubmit: submit,
+                            accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer")
             if drafts.persistenceFailed {
                 Text(verbatim: "下書きを保存できません。送信せず、端末の保存状態を確認してください。")
                     .foregroundStyle(LAAColors.plum).font(.caption)

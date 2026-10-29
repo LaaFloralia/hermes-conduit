@@ -19,6 +19,36 @@ final class LAAWorkUITests: XCTestCase {
         return XCTWaiter.wait(for: [ready], timeout: timeout) == .completed
     }
 
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) -> Bool {
+        for _ in 0..<7 {
+            if element.isHittable { return true }
+            app.scrollViews.firstMatch.swipeUp()
+        }
+        return element.isHittable
+    }
+
+    private func openScratchSession(_ app: XCUIApplication) -> Bool {
+        guard waitUntilReady(app.buttons["新しいセッション"]) else { return false }
+        let row: XCUIElement
+        if let id = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SESSION_ID"], !id.isEmpty {
+            row = app.staticTexts["work.session.\(id)"].firstMatch
+        } else {
+            row = app.staticTexts["LAA 14i validation"].firstMatch
+        }
+        guard row.waitForExistence(timeout: 30), reveal(row, in: app) else { return false }
+        row.tap()
+        return app.navigationBars["LAA 14i validation"].waitForExistence(timeout: 30)
+    }
+
+    private func openScratchProject(_ app: XCUIApplication) -> Bool {
+        guard waitUntilReady(app.buttons["新しいセッション"]) else { return false }
+        app.buttons["プロジェクト"].tap()
+        let row = app.staticTexts["LAA 14i Project Test 20261029"].firstMatch
+        guard row.waitForExistence(timeout: 30), reveal(row, in: app) else { return false }
+        row.tap()
+        return app.navigationBars["プロジェクト"].waitForExistence(timeout: 30)
+    }
+
     private func enterDedicatedAddress(_ address: XCUIElement) -> Bool {
         guard address.waitForExistence(timeout: 10) else { return false }
         for _ in 0..<4 {
@@ -262,25 +292,35 @@ final class LAAWorkUITests: XCTestCase {
     // Separating workspace creation from session creation makes each external
     // write observable before the next one is attempted.
     func testLiveCreateScratchSession() throws {
-        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "session" else {
+        let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"]
+        guard stage == "session" || stage == "session-preflight" else {
             throw XCTSkip("Explicit scratch-session creation is not enabled.")
         }
         let app = launchWork()
         let add = app.buttons["新しいセッション"]
         guard waitUntilReady(add) else { XCTFail("Session data did not finish loading."); return }
         add.tap()
+        let projectPicker = app.descendants(matching: .any)["work.session.project"].firstMatch
+        guard projectPicker.waitForExistence(timeout: 10) else { XCTFail("Project picker unavailable."); return }
+        projectPicker.tap()
+        let testProject = app.buttons["LAA 14i Project Test 20261029"]
+        guard testProject.waitForExistence(timeout: 10) else { XCTFail("Scratch Project unavailable."); return }
+        testProject.tap()
+        guard projectPicker.label.contains("LAA 14i Project Test 20261029") else {
+            XCTFail("Scratch Project was not selected."); return
+        }
         let picker = app.descendants(matching: .any)["work.session.workspace"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
         picker.tap()
         let workspace = app.buttons.matching(
-            NSPredicate(format: "label ENDSWITH %@", " · laa/14i-validation-20261029")
+            NSPredicate(format: "label ENDSWITH %@", " · laa-14i-validation-20261029")
         ).firstMatch
         guard workspace.waitForExistence(timeout: 10) else {
             XCTFail("The designated scratch workspace is unavailable.")
             return
         }
         workspace.tap()
-        guard picker.label.hasSuffix(" · laa/14i-validation-20261029") else {
+        guard picker.label.hasSuffix(" · laa-14i-validation-20261029") else {
             XCTFail("The designated scratch workspace was not selected.")
             return
         }
@@ -293,19 +333,27 @@ final class LAAWorkUITests: XCTestCase {
         let prompt = app.textViews["work.composer.field"]
         XCTAssertTrue(prompt.waitForExistence(timeout: 10))
         let previous = prompt.value as? String ?? ""
-        prompt.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
-        if !previous.isEmpty {
-            prompt.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
+        let expectedPrompt = "Reply exactly 14i-ready. Do not change files."
+        if previous != expectedPrompt {
+            app.buttons["全画面で入力"].tap()
+            let full = app.textViews["work.composer.fullEditor.field"]
+            guard full.waitForExistence(timeout: 10) else { XCTFail("Full editor unavailable."); return }
+            full.tap()
+            if !previous.isEmpty {
+                full.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: previous.count))
+            }
+            guard (full.value as? String ?? "").isEmpty else {
+                XCTFail("The existing scratch-session draft could not be cleared."); return
+            }
+            full.typeText(expectedPrompt)
+            guard full.value as? String == expectedPrompt else { XCTFail("Scratch prompt did not match."); return }
+            app.buttons["composer.collapse-editor"].tap()
         }
-        guard (prompt.value as? String ?? "").isEmpty else {
-            XCTFail("The existing scratch-session draft could not be cleared.")
-            return
-        }
-        prompt.typeText("Reply exactly 14i-ready. Do not change files.")
-        guard profile.value as? String == "deepseek-flash-high",
-              name.value as? String == "LAA 14i validation",
-              prompt.value as? String == "Reply exactly 14i-ready. Do not change files." else {
-            XCTFail("The scratch-session fields do not match their intended values.")
+        let profileMatches = profile.value as? String == "deepseek-flash-high"
+        let nameMatches = name.value as? String == "LAA 14i validation"
+        let promptMatches = prompt.value as? String == expectedPrompt
+        guard profileMatches, nameMatches, promptMatches else {
+            XCTFail("Scratch fields did not match: profile=\(profileMatches), name=\(nameMatches), prompt=\(promptMatches).")
             return
         }
         let confirm = app.buttons["work.composer.send"]
@@ -319,9 +367,179 @@ final class LAAWorkUITests: XCTestCase {
             XCTFail("Scratch-session confirmation did not appear.")
             return
         }
+        if stage == "session-preflight" { return }
         start.tap()
         XCTAssertTrue(app.staticTexts["セッションを開始しました"].waitForExistence(timeout: 120))
         XCTAssertTrue(app.buttons["セッションを開く"].exists)
+    }
+
+    // Each opt-in mutation is isolated so an uncertain result is never retried
+    // as a new write without first reconciling the Bridge state.
+    func testLiveCreateScratchProject() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "project-create" else {
+            throw XCTSkip("Explicit scratch-Project creation is not enabled.")
+        }
+        let app = launchWork()
+        guard waitUntilReady(app.buttons["新しいセッション"]) else { XCTFail("Work did not load."); return }
+        app.buttons["プロジェクト"].tap()
+        let add = app.buttons["新しいプロジェクト"]
+        guard waitUntilReady(add) else { XCTFail("Project creation unavailable."); return }
+        add.tap()
+        let name = app.textFields["プロジェクト名"]
+        guard name.waitForExistence(timeout: 10), ["", "プロジェクト名"].contains(name.value as? String ?? "") else {
+            XCTFail("The scratch Project name field was not empty."); return
+        }
+        name.tap()
+        name.typeText("LAA 14i Project Test 20261029")
+        guard name.value as? String == "LAA 14i Project Test 20261029" else { XCTFail("Wrong Project name."); return }
+        let save = app.buttons["保存"]
+        guard save.isEnabled else { XCTFail("Project creation is not ready."); return }
+        save.tap()
+        XCTAssertTrue(app.staticTexts["LAA 14i Project Test 20261029"].waitForExistence(timeout: 60))
+    }
+
+    func testLiveEditScratchProject() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "project-edit" else {
+            throw XCTSkip("Explicit scratch-Project edit is not enabled.")
+        }
+        let app = launchWork()
+        guard openScratchProject(app), app.staticTexts["共通指示はありません。"].waitForExistence(timeout: 30) else {
+            XCTFail("The scratch Project or its empty instructions did not load."); return
+        }
+        app.buttons["編集"].tap()
+        let instructions = app.textViews["work.project.instructions"]
+        guard instructions.waitForExistence(timeout: 10), (instructions.value as? String ?? "").isEmpty else {
+            XCTFail("The scratch Project instructions were not empty."); return
+        }
+        instructions.tap()
+        instructions.typeText("Reply only as asked. Do not modify files.")
+        guard instructions.value as? String == "Reply only as asked. Do not modify files." else {
+            XCTFail("The scratch instruction body did not match."); return
+        }
+        app.buttons["保存"].tap()
+        XCTAssertTrue(app.staticTexts["Reply only as asked. Do not modify files."].waitForExistence(timeout: 60))
+    }
+
+    func testLiveProjectRealConflict() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "project-stale" else {
+            throw XCTSkip("Explicit scratch-Project conflict is not enabled.")
+        }
+        let app = launchWork()
+        guard openScratchProject(app), app.staticTexts["Reply only as asked. Do not modify files."].waitForExistence(timeout: 30) else {
+            XCTFail("The scratch Project instruction body did not load."); return
+        }
+        app.buttons["編集"].tap()
+        let instructions = app.textViews["work.project.instructions"]
+        guard instructions.waitForExistence(timeout: 10) else { XCTFail("Instruction editor unavailable."); return }
+        instructions.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.1)).tap()
+        instructions.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Reply only as asked. Do not modify files.".count))
+        guard (instructions.value as? String ?? "").isEmpty else { XCTFail("Could not clear test instructions."); return }
+        instructions.typeText("My 14i revision")
+        guard instructions.value as? String == "My 14i revision" else { XCTFail("The test edit did not match."); return }
+        app.buttons["保存"].tap()
+        guard app.staticTexts["現在の指示:"].waitForExistence(timeout: 30) else {
+            XCTFail("The real Bridge conflict was not shown."); return
+        }
+        XCTAssertTrue(app.staticTexts["Reply only as asked. Do not modify files."].exists)
+        XCTAssertTrue(app.staticTexts["My 14i revision"].exists)
+        let adopt = app.buttons["現在の版を採用"]
+        guard adopt.isEnabled else { XCTFail("Conflict choice unavailable."); return }
+        adopt.tap()
+        XCTAssertEqual(instructions.value as? String, "Reply only as asked. Do not modify files.")
+    }
+
+    func testLiveScratchHistoryRecovery() throws {
+        let stage = ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] ?? ""
+        guard ["gap", "expired", "resync"].contains(stage) else { throw XCTSkip("History fault injection is not enabled.") }
+        let app = launchWork()
+        guard openScratchSession(app) else { XCTFail("Scratch session unavailable."); return }
+        let notice = stage == "resync"
+            ? "委譲先を観測できず再同期が必要です。詳細と成果物を読み直しています。"
+            : "記録の取得位置が期限切れか、履歴に欠落しました。詳細と成果物を読み直しました。"
+        XCTAssertTrue(app.staticTexts[notice].waitForExistence(timeout: 40))
+        XCTAssertFalse(app.staticTexts["新着なし"].exists)
+        XCTAssertTrue(app.staticTexts["最新の回答"].exists)
+    }
+
+    func testLiveScratchFollowUp() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "follow-up" else { throw XCTSkip("Follow-up is not enabled.") }
+        let app = launchWork()
+        guard openScratchSession(app), app.staticTexts["○ 確認待ち"].waitForExistence(timeout: 180) else {
+            XCTFail("Scratch session did not reach review."); return
+        }
+        let field = app.textViews["work.composer.field"]
+        guard reveal(field, in: app), (field.value as? String ?? "").isEmpty else { XCTFail("Follow-up draft unavailable or not empty."); return }
+        field.tap()
+        field.typeText("Reply exactly 14i-followup. Do not change files.")
+        guard field.value as? String == "Reply exactly 14i-followup. Do not change files." else { XCTFail("Follow-up text did not match."); return }
+        let send = app.buttons["work.composer.send"]
+        guard send.isEnabled else { XCTFail("Follow-up is not ready."); return }
+        send.tap()
+        XCTAssertTrue(app.staticTexts["追加指示を送信"].waitForExistence(timeout: 180))
+    }
+
+    func testLiveScratchFollowUpReadback() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "follow-up-readback" else { throw XCTSkip("Follow-up readback is not enabled.") }
+        let app = launchWork()
+        guard openScratchSession(app) else { XCTFail("Scratch session unavailable."); return }
+        XCTAssertTrue(app.staticTexts["追加指示を送信"].waitForExistence(timeout: 60))
+        XCTAssertTrue(app.staticTexts["最新の回答"].exists)
+    }
+
+    func testLiveScratchStop() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "stop" else { throw XCTSkip("Stop is not enabled.") }
+        let app = launchWork()
+        guard openScratchSession(app), app.staticTexts["○ 確認待ち"].waitForExistence(timeout: 180) else {
+            XCTFail("Scratch session did not reach review."); return
+        }
+        let stop = app.buttons["停止"]
+        guard reveal(stop, in: app), stop.isEnabled else { XCTFail("Stop unavailable."); return }
+        stop.tap()
+        XCTAssertTrue(app.buttons["続きの指示を入力"].waitForExistence(timeout: 90))
+    }
+
+    func testLiveScratchResume() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "resume" else { throw XCTSkip("Resume is not enabled.") }
+        let app = launchWork()
+        guard openScratchSession(app) else { XCTFail("Scratch session unavailable."); return }
+        let resume = app.buttons["続きの指示を入力"]
+        guard resume.waitForExistence(timeout: 30), reveal(resume, in: app) else { XCTFail("Confirmed stop unavailable."); return }
+        resume.tap()
+        let field = app.textViews["work.resume.composer.field"]
+        guard field.waitForExistence(timeout: 10), (field.value as? String ?? "").isEmpty else { XCTFail("Continuation draft unavailable or not empty."); return }
+        field.tap()
+        field.typeText("Reply exactly 14i-resumed. Do not change files.")
+        guard field.value as? String == "Reply exactly 14i-resumed. Do not change files." else { XCTFail("Continuation text did not match."); return }
+        let send = app.buttons["work.resume.composer.send"]
+        guard send.isEnabled else { XCTFail("Resume is not ready."); return }
+        send.tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "後継:")).firstMatch.waitForExistence(timeout: 120))
+    }
+
+    func testLiveScratchStopSuccessor() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "stop-successor" else { throw XCTSkip("Successor cleanup is not enabled.") }
+        let app = launchWork()
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_SESSION_ID"]?.isEmpty == false,
+              openScratchSession(app),
+              app.staticTexts["○ 確認待ち"].waitForExistence(timeout: 180) else {
+            XCTFail("The designated scratch successor did not reach review."); return
+        }
+        let stop = app.buttons["停止"]
+        guard reveal(stop, in: app), stop.isEnabled else { XCTFail("Successor stop unavailable."); return }
+        stop.tap()
+        XCTAssertTrue(app.buttons["続きの指示を入力"].waitForExistence(timeout: 90))
+    }
+
+    func testLiveScratchScreenshot() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "screenshot" else { throw XCTSkip("Screenshot capture is not enabled.") }
+        let app = launchWork()
+        guard openScratchSession(app), app.staticTexts["最新の回答"].waitForExistence(timeout: 30) else {
+            XCTFail("Scratch session detail did not load."); return
+        }
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "14i-session-detail"
+        shot.lifetime = .keepAlways
+        add(shot)
     }
 
     // The dedicated relay serves a synthetic Project and a 412; no existing
@@ -389,6 +607,8 @@ final class LAAWorkUITests: XCTestCase {
         full.tap()
         full.typeText("Draft survives relaunch")
         app.buttons["composer.collapse-editor"].tap()
+        let inline = app.textViews["work.composer.field"]
+        XCTAssertTrue((inline.value as? String ?? "").contains("Draft survives relaunch"))
         app.buttons["閉じる"].tap()
         app.terminate()
         app.launch()

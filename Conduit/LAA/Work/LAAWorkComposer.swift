@@ -12,6 +12,7 @@ struct LAAWorkComposer: View {
     let onChange: (String) -> Void
     let onSubmit: () -> Void
     var submitLabel = "送信"
+    var accessibilityPrefix = "work.composer"
 
     @State private var focus = false
     @State private var height = ComposerPasteTextView.minimumHeight
@@ -37,7 +38,7 @@ struct LAAWorkComposer: View {
                     .accessibilityLabel(Text(verbatim: "入力の文字サイズ"))
                 Button { fullEditor = true } label: { Image(systemName: "arrow.up.left.and.arrow.down.right") }
                     .accessibilityLabel(Text(verbatim: "全画面で入力"))
-                    .accessibilityIdentifier("work.composer.expand")
+                    .accessibilityIdentifier("\(accessibilityPrefix).expand")
             }
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
@@ -53,7 +54,7 @@ struct LAAWorkComposer: View {
                     programmaticRevision: revision
                 )
                 .frame(height: height)
-                .accessibilityIdentifier("work.composer.field")
+                .accessibilityIdentifier("\(accessibilityPrefix).field")
             }
             .background(LAAColors.surface, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(LAAColors.hairline))
@@ -61,14 +62,14 @@ struct LAAWorkComposer: View {
             HStack {
                 Spacer()
                 Button(submitLabel, action: onSubmit).buttonStyle(.borderedProminent).disabled(!canSubmit)
-                    .accessibilityIdentifier("work.composer.send")
+                    .accessibilityIdentifier("\(accessibilityPrefix).send")
             }
         }
         .onChange(of: text) { _, value in onChange(value) }
-        .sheet(isPresented: $fullEditor) {
+        .sheet(isPresented: $fullEditor, onDismiss: { revision &+= 1 }) {
             ComposerFullEditor(
                 text: $text, placeholder: placeholder, programmaticRevision: revision,
-                fieldIdentifier: "work.composer.fullEditor.field", enabled: enabled,
+                fieldIdentifier: "\(accessibilityPrefix).fullEditor.field", enabled: enabled,
                 onUserEdit: { _ in }, onCollapse: { fullEditor = false },
                 canSubmitFromReturn: false, onSubmitFromReturn: { false },
                 attachments: { EmptyView() }, dictateButton: { EmptyView() },

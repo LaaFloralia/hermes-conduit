@@ -118,7 +118,7 @@ struct LAAWorkSessionDetail: View {
             Text(verbatim: "最新の回答").font(.headline)
             if let answer = artifacts.first(where: { $0.type == "message" }) {
                 if let content = answer.content, !content.isEmpty {
-                    MarkdownText(source: content, foregroundStyle: LAAColors.ink)
+                    MarkdownText(source: content, foregroundStyle: .primary)
                         .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
                     if answer.truncated == true { Text(verbatim: "回答は途中まで表示しています。") .font(.caption).foregroundStyle(LAAColors.plum) }
                 } else {

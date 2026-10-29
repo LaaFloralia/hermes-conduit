@@ -154,9 +154,13 @@ struct LAAWorkView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
                             Text(verbatim: row.session.name).font(.headline).foregroundStyle(LAAColors.ink)
+                                .accessibilityIdentifier("work.session.\(row.session.id)")
                             Spacer()
                             Text(verbatim: LAAWorkPresentation.phaseSymbol(row.session.phase) + " " + LAAWorkPresentation.phase(row.session.phase))
                                 .font(.caption).foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(row.session.phase) ? LAAColors.plum : LAAColors.teal)
+                        }
+                        if row.session.resumedFrom != nil {
+                            Text(verbatim: "後継セッション").font(.caption).foregroundStyle(LAAColors.muted)
                         }
                         if (!projectFilter.isEmpty && row.session.projectId != projectFilter) ||
                             (!phaseFilter.isEmpty && row.session.phase != phaseFilter) {

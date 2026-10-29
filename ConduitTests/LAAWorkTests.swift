@@ -55,6 +55,14 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertEqual(new.instructions, "共有")
     }
 
+    func testWorkspaceBranchNameChangesAreReported() {
+        XCTAssertNil(LAAWorkWorkspaceCreator.branchNotice(requested: "feature", actual: "feature"))
+        let notice = LAAWorkWorkspaceCreator.branchNotice(requested: "laa/example", actual: "laa-example")
+        XCTAssertTrue(notice?.contains("laa/example") == true)
+        XCTAssertTrue(notice?.contains("laa-example") == true)
+        XCTAssertNotNil(LAAWorkWorkspaceCreator.branchNotice(requested: "feature", actual: nil))
+    }
+
     func testLinearTaskDetailDecodesTaskInsideResponse() throws {
         // Bridge data contains a task plus optional comments and links.
         let data = Data(#"{"task":{"id":"linear:BUS-123","source":"linear","sourceId":"BUS-123","title":"依頼","description":"詳細","status":{"name":"Todo","type":"unstarted","category":"open"}},"comments":[],"links":[]}"#.utf8)
