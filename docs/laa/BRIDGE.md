@@ -53,7 +53,7 @@ JSONはUTF-8、時刻はUTC ISO 8601。成功は `{"data":...,"requestId":"..."}
 | `GET /v1/health` | → `{state,dependencies:{name,state,observedAt}}`、機微情報なし | Bridge生存と各依存の障害・停止を区別 |
 | `POST /v1/devices/enroll` | 登録チャレンジ・公開鍵・要求scope → `{deviceId,grantedScopes}`、管理経路 | 期限切れ・再使用・scope拒否・端末鍵保持 |
 | `GET /v1/devices`; `POST /v1/devices/{id}/revoke` | → device状態／失効結果、管理経路 | 他端末維持・接続中stream切断・再登録は新ID |
-| `GET/POST /v1/projects`; `GET/PATCH /v1/projects/{id}` | `{name,instructionRef,instructionHash}` → `{id,version,...}`、Bridge管理候補 | 権限外の指示参照・古いversionを拒否。Projectとworkspace分離 |
+| `GET/POST /v1/projects`; `GET/PATCH /v1/projects/{id}`; `GET /v1/projects/{id}/instructions/versions` | `{name,instructions,instructionRef,instructionVersion,instructionHash}` → `{id,version,etag,...}`、Bridge管理（§9） | 権限外の指示参照・古いversionを拒否し現在版を返す。本文とrefの排他。Projectとworkspace分離 |
 | `GET/POST /v1/workspaces`; `GET /v1/workspaces/{id}` | `{projectId,repoId,worktreeName}` → `{id,path,status}`、既存Paseo/worktree | 正規化・symlink・許可外repo拒否、既存worktree非破壊 |
 | `GET/POST /v1/sessions`; `GET /v1/sessions/{id}` | `{projectId,workspaceId,parentId,requestId,profile,prompt}` → `{id,requestId,status,requested,observed}`、personal-agent/Paseo | 同じrequest ID、親子・名称、実provider/model/effortと認証経路、作成不明の回収 |
 | `POST /v1/sessions/{id}/messages`; `POST /v1/sessions/{id}/stop`; `POST /v1/sessions/{id}/resume` | `{message}`／`{}`／`{message}` → `{operationId,status}`、同上 | 送信不明、停止未確認、停止中再開拒否。resumeは既存のsend相当と確認できる場合のみ |
@@ -114,5 +114,6 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 - 登録と失効：Mac側のCLI（`laa-bridge pair` / `revoke`）が10分有効・1回限りのペアリングコードを出し、アプリで入力またはQR読取する。CLIはエージェントも実行してよく、コードはチャット・ログへ出さず、Mac画面かアプリへの直接表示だけにする。
 - 初期scope：社長の端末には `sessions:*`、`tasks:*`、`brain:read`、`media:read`、`photos:select`、`usage:read`、`archives:read`、`archives:create` を付与する。`brain:write`、`gui:operate`、`archives:restore`、`devices:admin` は各ゲートを満たすまで付与しない。
 - 保持：idempotency台帳は7日、event cursorは24時間。期限切れのcursorは410を返し、アプリは全件を再取得する。
+- Project共通指示（2026-10-29、タスク13b）：Projectごとの指示本文はBridgeのstate（0600、既存state dir配下）に保存する。`instructionVersion`（整数）、`instructionHash`（本文のSHA-256）、ETagを持ち、直近10版（本文・hash・版・時刻）を比較・復元用に保持する。`GET /v1/projects/{id}` は `instructions`（本文）と版・hashを返し、一覧は本文を省略する。`POST` は `instructions` を受け付け、`PATCH` は `If-Match` で置換する（欠落428、不一致412では現在の版・hash・ETag・本文を返し、自動マージしない）。`GET /v1/projects/{id}/instructions/versions` は保持中の版を本文つきで返す。`instructionRef` は任意で、許可済みファイル（Brain root配下の既存パス規則）を指すとき本文を使用時に読んでhash化する。本文とrefは排他（同時指定は400）。`POST /v1/sessions` に `projectId` を渡すと、委譲プロンプトを区切った指示ブロック（版とhashをヘッダ行に含む）＋利用者のプロンプトとして構成し、セッションに `projectId`・`instructionVersion`・`instructionHash` を記録、requestIdの束縛にも含める（指示が変わった再送は409）。作成時に `instructions: null` または `applyProjectInstructions: false` を明示すれば適用しない（社長の明示指定を優先）。イベントは版とhashのみで本文を含めない。旧来の「本文を保存せずhashだけ」の記述はこの項で置き換える。
 - 未決の3（GUI）と4（Brain書込み）は本書の案どおり、実証まで提供しない。5（Usage）はタスク05の結果で決める。
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -124,8 +124,10 @@ function sessionFixture(t) {
   const repo = join(root, 'repo');
   mkdirSync(join(repo, '.git'), { recursive: true });
   const realRepo = realpathSync(repo);
+  const brain = join(dir, 'brain');
+  mkdirSync(join(brain, 'Context'), { recursive: true });
   const gitRun = async () => '';
-  return { dir, root, repo: realRepo, gitRun, workspaceId: workspaceId(realRepo) };
+  return { dir, root, brain, repo: realRepo, gitRun, workspaceId: workspaceId(realRepo) };
 }
 
 function workspaceId(path) {
@@ -137,11 +139,20 @@ async function boot(t, { adapter = fakeDelegation(), now, sessions = {} } = {}) 
   const bridge = await startBridge({
     now,
     workspace: { roots: [fixture.root], gitRun: fixture.gitRun },
+    projects: { brainRoot: fixture.brain },
     sessions: { adapter, pollMs: 25, ...sessions },
   });
   t.after(() => bridge.close());
   const token = await bridge.token();
   return { bridge, token, adapter, ...fixture };
+}
+
+// Creates a project through the API so the session tests use the same record a
+// phone would produce.
+async function createProject(ctx, body, key = 'k-project') {
+  const response = await ctx.bridge.request('/v1/projects', { method: 'POST', token: ctx.token, key, body });
+  assert.equal(response.status, 201, JSON.stringify(response.body));
+  return response.body.data;
 }
 
 function createBody(fixture, overrides = {}) {
@@ -498,4 +509,122 @@ test('scope, authentication, filters and 404s are enforced', async (t) => {
   const badLimit = await ctx.bridge.request('/v1/sessions?limit=1000', { token: ctx.token });
   assert.equal(badLimit.status, 400);
   assert.equal(badLimit.body.error.code, 'limit_invalid');
+});
+
+test('a project instruction body is composed into the delegated prompt and recorded', async (t) => {
+  const ctx = await boot(t);
+  const body = 'Always answer in Japanese.\nStart every answer with the word 承知.';
+  const project = await createProject(ctx, { name: 'Trading｜環境認識', instructions: body }, 'k-p1');
+
+  const created = await createSession(ctx, { projectId: project.id });
+  assert.equal(created.status, 201);
+  const session = created.body.data;
+  assert.equal(session.projectId, project.id);
+  assert.equal(session.instructionVersion, 1);
+  assert.equal(session.instructionHash, project.instructionHash);
+  assert.equal(session.instructionsApplied, true);
+
+  const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  const prompt = create.task.prompt;
+  const header = `<project_instructions project="${project.id}" version="1" hash="${project.instructionHash}">`;
+  assert.ok(prompt.startsWith(header), prompt.slice(0, 120));
+  assert.ok(prompt.includes(body));
+  assert.ok(prompt.endsWith('</user_request>'));
+  assert.ok(prompt.includes('<user_request>\nReply with the single word ok.\n</user_request>'));
+  assert.ok(prompt.indexOf(body) < prompt.indexOf('Reply with the single word ok.'), 'the instructions come first');
+
+  // The journal carries the identity only, never the body.
+  const events = await ctx.bridge.request(`/v1/sessions/${session.id}/events?afterSeq=0`, { token: ctx.token });
+  const createdEvent = events.body.data.items.find((event) => event.type === 'session.created');
+  assert.equal(createdEvent.payload.instructionVersion, 1);
+  assert.equal(createdEvent.payload.instructionHash, project.instructionHash);
+  assert.equal(JSON.stringify(createdEvent.payload).includes(body), false);
+});
+
+test('a session without a project runs with the prompt alone', async (t) => {
+  const ctx = await boot(t);
+  const created = await createSession(ctx);
+  assert.equal(created.body.data.instructionsApplied, false);
+  assert.equal(created.body.data.instructionVersion, null);
+  assert.equal(created.body.data.instructionHash, null);
+  const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  assert.equal(create.task.prompt, 'Reply with the single word ok.');
+});
+
+test('an explicit override skips the project instructions', async (t) => {
+  const ctx = await boot(t);
+  const project = await createProject(ctx, { name: 'x', instructions: 'Always answer in Japanese.' }, 'k-p2');
+
+  const skipped = await createSession(ctx, { requestId: 'req-skip', projectId: project.id, instructions: null }, 'k-skip');
+  assert.equal(skipped.status, 201);
+  assert.equal(skipped.body.data.instructionsApplied, false);
+  assert.equal(skipped.body.data.instructionVersion, null);
+  let create = ctx.adapter.calls.filter((call) => call.op === 'create').at(-1);
+  assert.equal(create.task.prompt, 'Reply with the single word ok.');
+
+  const skippedFlag = await createSession(
+    ctx,
+    { requestId: 'req-skip-2', projectId: project.id, applyProjectInstructions: false },
+    'k-skip-2',
+  );
+  assert.equal(skippedFlag.status, 201);
+  assert.equal(skippedFlag.body.data.instructionsApplied, false);
+
+  const inline = await createSession(
+    ctx,
+    { requestId: 'req-inline', projectId: project.id, instructions: 'inline text' },
+    'k-inline',
+  );
+  assert.equal(inline.status, 400);
+  assert.equal(inline.body.error.code, 'payload_invalid');
+});
+
+test('a retry of the same requestId after an instruction edit is a conflict', async (t) => {
+  const ctx = await boot(t);
+  const project = await createProject(ctx, { name: 'x', instructions: 'v1 text' }, 'k-p3');
+
+  const first = await createSession(ctx, { projectId: project.id }, 'k-bind-1');
+  assert.equal(first.status, 201);
+
+  const retried = await createSession(ctx, { projectId: project.id }, 'k-bind-2');
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.data.id, first.body.data.id);
+
+  const patched = await ctx.bridge.request(`/v1/projects/${project.id}`, {
+    method: 'PATCH',
+    token: ctx.token,
+    key: 'k-bind-patch',
+    headers: { 'if-match': '"1"' },
+    body: { instructions: 'v2 text' },
+  });
+  assert.equal(patched.status, 200);
+  assert.equal(patched.body.data.instructionVersion, 2);
+
+  const changed = await createSession(ctx, { projectId: project.id }, 'k-bind-3');
+  assert.equal(changed.status, 409);
+  assert.equal(changed.body.error.code, 'request_id_conflict');
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
+});
+
+test('a referenced instruction file is read at create time', async (t) => {
+  const ctx = await boot(t);
+  const ref = join(ctx.brain, 'Context', 'rules.md');
+  writeFileSync(ref, 'Rule one.\n');
+  const project = await createProject(ctx, { name: 'x', instructionRef: 'Context/rules.md' }, 'k-p4');
+  assert.equal(project.instructionVersion, 1);
+
+  // Editing the file after the project was written still reaches the session.
+  writeFileSync(ref, 'Rule two.\n');
+  const created = await createSession(ctx, { projectId: project.id }, 'k-ref-1');
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.instructionVersion, 1, 'the project version did not change');
+  assert.notEqual(created.body.data.instructionHash, project.instructionHash, 'the applied hash is the file read now');
+  const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  assert.ok(create.task.prompt.includes('Rule two.'));
+
+  // A missing file stops the session instead of running it without them.
+  rmSync(ref);
+  const missing = await createSession(ctx, { requestId: 'req-ref-2', projectId: project.id }, 'k-ref-2');
+  assert.equal(missing.status, 409);
+  assert.equal(missing.body.error.code, 'instruction_ref_unavailable');
 });

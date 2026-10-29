@@ -20,7 +20,7 @@
 | ルート追加 | 各領域は `src/routes/<area>.mjs` が `{method,path|pattern,scope,handler,headers?}` の配列を返し、`src/http.mjs` の `ROUTES` へ1行で登録する。ストリーム応答は handler が `res` を直接書き、`undefined` を返す | 並行作業の衝突を1行に閉じる |
 | 版 | 変更系は `Idempotency-Key` 必須。Project の更新は加えて `If-Match`（ETag は `"<version>"`）必須。欠落は 428、不一致は 412 | §3。2台の端末が黙って上書きしない |
 | 命名 | Project は `nameSource` を持つ。`owner`（人・社長の指定）の名前は自動命名で置換できない（409 `name_source_locked`）。子セッションは `parentId` を持つと表示名の先頭が「子｜」になり、指定名にも付く。Paseo 側の表示名は委譲経路が変更 API を持たないため、Bridge が記録する名前が正 | §3、`hq/tools/PASEO-HERMES.md`「会話とワークスペースの命名」 |
-| 指示版 | 指示本文は保存せず、`instructionRef` と本文の hash から `instructionHash` を作り、変更ごとに `instructionVersion` と履歴（20件）を残す | Brain / Drive の内容を Bridge に複製しない |
+| 指示版 | 指示本文は Project ごとに Bridge の state（0600）へ保存し、`instructionHash` は本文そのものの SHA-256、変更ごとに `instructionVersion` と直近10版の履歴（本文・hash・版・時刻）を残す。`instructionRef` は Brain root 配下のファイルを**使用時**に読む代替で、本文とは排他。イベント・ログへ本文は出さない | §9。iPhone から編集し、全セッションへ同じ版を適用する |
 | workspace | 既存の repo / worktree を許可 root（既定 `~/dev`・`~/.paseo/worktrees`）から読取専用で棚卸し、branch と `git status` を返す。作成は `paseo worktree create` のみ。削除・rename・archive・force は持たない | §4。既存 worktree を壊さない |
 | session | 実体は既存 `laa-personal-agent`（create/status/send/stop）。Bridge の `ses_<16hex>` は requestId から決定論的に導出し、委譲先の requestId も同じく決定論的なので、結果不明の再送は二重起動せず同じ agent に戻る。要求した profile は変更も代替もしない | §4・§9。二重実行防止を2層（Bridge の Idempotency-Key と委譲先の requestId）で持つ |
 | session event | セッション記録と journal を同じ JSON に置き、状態変化とイベントを同時に commit する。seq は prune 後も進み、24時間を超えた cursor は 410、journal が届かない cursor も 410 | §5・§9。欠落を「新着なし」と偽らない |
@@ -71,15 +71,16 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
-| `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。`limit`（1–100、既定50）と `cursor` |
-| `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructionRef?,instructions?}` → `{id,version,etag,instructionHash,instructionVersion,…}`（201） |
-| `GET /v1/projects/{id}` | Bearer + `sessions:read` | Project と `ETag`。範囲外・不存在は 404 |
-| `PATCH /v1/projects/{id}` | Bearer + `sessions:write` + `Idempotency-Key` + `If-Match` | 部分更新。`If-Match` 欠落 428、版不一致 412、owner 名への自動改名 409 |
+| `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。本文は含めない。`limit`（1–100、既定50）と `cursor` |
+| `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructions?,instructionRef?}` → `{id,version,etag,instructions,instructionHash,instructionVersion,…}`（201）。本文と ref の同時指定は 400 |
+| `GET /v1/projects/{id}` | Bearer + `sessions:read` | Project と `ETag`。`instructions`（ref なら使用時に読んだ本文）・`instructionVersion`・`instructionHash`。範囲外・不存在は 404、ref が読めないときは `instructionError` 付きで 200 |
+| `PATCH /v1/projects/{id}` | Bearer + `sessions:write` + `Idempotency-Key` + `If-Match` | 部分更新。`If-Match` 欠落 428、版不一致 412（`error.details.current` に現在の版・hash・ETag・本文）、owner 名への自動改名 409 |
+| `GET /v1/projects/{id}/instructions/versions` | Bearer + `sessions:read` | 直近10版の `{items:[{version,hash,body,instructionRef,updatedAt}]}`（新しい順） |
 | `GET /v1/workspaces` | Bearer + `sessions:read` | 許可 root 配下の repo / worktree。`{path,displayPath,kind,branch,head,status,projectId}` |
 | `POST /v1/workspaces` | Bearer + `sessions:write` + `Idempotency-Key` | `{repoId,worktreeName,branch?,base?,projectId?}` → `paseo worktree create`（branch-off）で作成（201）、既存 branch は 409 |
 | `GET /v1/workspaces/{id}` | Bearer + `sessions:read` | 1件と `ETag`。`id` は実パスから導出する `ws_<16hex>` |
 | `GET /v1/sessions?projectId=&workspaceId=&parentId=&requestId=&phase=&limit=&cursor=` | Bearer + `sessions:read` | 新しい順の `{items,nextCursor}`。`parentId=root` は親なし |
-| `POST /v1/sessions` | Bearer + `sessions:write` + `Idempotency-Key` | `{workspaceId,requestId,profile,prompt,name?,parentId?,projectId?,purpose?,completion?,scope?,returnTo?}` → session（201）、同じ requestId の再送は既存を 200 |
+| `POST /v1/sessions` | Bearer + `sessions:write` + `Idempotency-Key` | `{workspaceId,requestId,profile,prompt,name?,parentId?,projectId?,purpose?,completion?,scope?,returnTo?,applyProjectInstructions?,instructions?}` → session（201）、同じ requestId の再送は既存を 200。`projectId` の共通指示は委譲プロンプト先頭のブロックとして適用し、`instructionVersion`/`instructionHash` を記録。`instructions:null` か `applyProjectInstructions:false` でその回だけ省略 |
 | `GET /v1/sessions/{id}` | Bearer + `sessions:read` | session と `observation:{available,code}`。委譲先が落ちていても記録は 200 で返す |
 | `GET /v1/sessions/{id}/events?cursor=&afterSeq=&wait=&limit=` | Bearer + `sessions:read` | `{items,nextCursor,oldestSeq,headSeq,resyncRequired,resyncReason}`。`wait` は最大25秒の long-poll |
 | `GET /v1/sessions/{id}/artifacts` | Bearer + `sessions:read` | `{items}`。`log`（journal の JSONL）・`message`（最新の assistant 応答）・`decision`（承認待ち） |
@@ -94,7 +95,7 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `GET /v1/usage` | Bearer + `usage:read` | CodexBar proxy の利用枠・残高を `{items,nextCursor}` で返す。欠測は `unavailable`＋`value:null`、proxy が5秒を超えたら直前の成功値を元の `observedAt` で返す |
 | `GET /v1/mac/status` | Bearer + `usage:read` | `host.cpu`・`host.memory`・`host.disk.free` の3件。CPU・メモリは Bridge 内サンプラ（10秒キャッシュ）、空き容量は storage-guard の状態ファイル |
 
-エラーは `{"error":{"code","message","retryable"},"requestId"}`。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`413` 読取上限超過、`415` テキストでない、`423` 排他中（git同期中・master以外）、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo・Syncthing・vault）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
+エラーは `{"error":{"code","message","retryable"},"requestId"}`（412 のみ `error.details.current` に現在の Project を返す）。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`413` 読取上限超過、`415` テキストでない、`423` 排他中（git同期中・master以外）、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo・Syncthing・vault）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
 
 失敗した要求（4xx）は idempotency 台帳に `in_progress` のまま残る。同じ key での再送は 60 秒は `409 idempotency_key_in_flight`、その後は `409 idempotency_outcome_unknown` になるので、内容を直してやり直すときは**新しい key** を使う（成功の再送だけが保存応答を返す）。
 
@@ -103,16 +104,20 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 Project は「ジャンル＋共通指示」で、パスを持たない。workspace は repo / worktree の実体で、`projectId` は作成時に Bridge が記録するだけの任意の紐付け。同じ Project を別の workspace で使えるため、ジャンルと作業場所が混ざらない。
 
 ```sh
-# Project（作成は owner 名として記録される）
+# Project（作成は owner 名として記録される）。共通指示は本文か ref のどちらか一方
 curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: p1' \
   -H 'content-type: application/json' \
-  -d '{"name":"Trading｜環境認識","instructionRef":"Brain/Context/aesthetic.md"}' \
+  -d '{"name":"Trading｜環境認識","instructions":"常に日本語で答える。根拠と反証条件を添える。"}' \
   http://127.0.0.1:9137/v1/projects
 
-# 更新は ETag 必須（version 2 を期待）
+# 更新は ETag 必須（version 2 を期待）。古い If-Match は 412 で現在の本文を返す
 curl -sS -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: p2' -H 'If-Match: "1"' \
-  -H 'content-type: application/json' -d '{"name":"Trading｜環境認識 v2"}' \
+  -H 'content-type: application/json' -d '{"instructions":"常に日本語で答える。結論を先に書く。"}' \
   http://127.0.0.1:9137/v1/projects/prj_xxxxxxxxxxxx
+
+# 版の比較・復元用（直近10版、本文つき、新しい順）
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:9137/v1/projects/prj_xxxxxxxxxxxx/instructions/versions
 
 # 既存の repo / worktree の棚卸し
 curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/workspaces
@@ -124,10 +129,24 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: w1' \
   http://127.0.0.1:9137/v1/workspaces
 ```
 
+- 共通指示は Project ごとに1つ。`instructions`（本文を Bridge が保存）か `instructionRef`（Brain root 配下のファイルを**使用時**に読む）のどちらかで、両方の同時指定は 400。片方を PATCH すると他方は消える。本文は 32 KiB まで、`</project_instructions>` を含む本文は区切りを壊すため 400。
+- `instructionHash` は本文そのものの `sha256:`。`instructionVersion` は 0（未設定）から始まり、本文/ref が変わるたびに1つ進む。直近10版を `instructions/versions` で返す。ref のファイルを編集した場合は版を進めず、次の GET・セッションで新しい本文と hash を読む（Project の設定は変わっていないため）。
+- `POST /v1/sessions` に `projectId` を渡すと、委譲プロンプトは `<project_instructions project="…" version="…" hash="…">` ブロック＋`<user_request>` の順で構成する。セッションと `session.created` イベントには版と hash だけを記録し、本文は残さない。同じ requestId で指示が変わっていれば 409 `request_id_conflict`。`instructions:null` か `applyProjectInstructions:false` でその回だけ省略できる（inline の指示文は受け付けない）。resume は新しい試行として現在の版を適用する。
 - 許可 root は `LAA_BRIDGE_WORKSPACE_ROOTS`（`:` 区切り）で差し替えられる。既定は `~/dev` と `~/.paseo/worktrees`。symlink は辿らず、realpath が root の外になる path は一覧・作成の両方で拒否する。
 - 一覧は `git status --porcelain=v2 --branch`（`GIT_OPTIONAL_LOCKS=0`）を1回だけ呼び、branch・ahead/behind・staged/modified/untracked/conflicted を返す。状態は5秒キャッシュ。Paseo daemon が落ちていても一覧は動く。
 - 作成は `paseo worktree create --mode branch-off` のみ。`git worktree remove`・`archive`・`--force`・rename は実装しない。Paseo が失敗したら 503 を返し、既存の worktree には触らない。作成後の path が許可 root の外なら 503（記録もしない）。
 - `projectId` の紐付けは `workspaces.json` に残る。worktree を消してもこの記録は自動削除しない（削除 API を持たない方針に合わせる）。
+
+### 検証
+
+```sh
+cd bridge
+npm test    # fake vault と fake adapter で契約を固定
+LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
+  LAA_BRIDGE_VERIFY_WORKSPACE=ws_… node scripts/verify-project-instructions.mjs
+```
+
+`verify-project-instructions.mjs` は Project 作成 → 編集 → 古い `If-Match` の 412（現在の版・ETag・本文）→ 版履歴 → 実セッションへの適用 → 停止を1回で回す。2026-10-29 に loopback で実測: 作成 201（`instructionVersion` 1）、編集 200（2）、stale 412 の `details.current` に版2・ETag `"2"`・本文、履歴2件（本文つき）、セッションは `instructionVersion=2` と hash を記録し、DSH の応答が指示ヘッダの hash（71文字）をそのまま返した（＝指示ブロックが委譲プロンプトに届いた）。journal に本文は入らず、版と hash だけ。検証用の端末は失効、Project・セッション・作業用 worktree は削除した。
 
 ## Drive（一覧・metadata・Range配信）
 
@@ -170,12 +189,12 @@ ROADMAP 14。実体は既存の Mac 委譲経路 `/Users/laa/.local/bin/laa-pers
 ### 同一性と二重実行防止
 
 - `ses_<16hex>` は `sha256("laa-bridge|" + requestId)` の先頭16桁。委譲先の requestId も `laa-bridge-<sha256(requestId)>` で決まる。したがって、Bridge が応答を返す前に落ちても、**同じ requestId + 新しい Idempotency-Key** で再送すれば、委譲先は同じ agent を返し（`reused`）、Bridge は同じ session を 200 で返す。新しい agent は作らない。
-- requestId は要求内容（profile・workspace・parent・prompt など）に束縛する。同じ requestId で内容が違えば 409 `request_id_conflict`。同じ Idempotency-Key で内容が違えば従来どおり 409 `idempotency_key_conflict`、実行中は 409 `idempotency_key_in_flight`、60秒を超えた未完了は 409 `idempotency_outcome_unknown`（自動再実行しない）。
+- requestId は要求内容（profile・workspace・parent・prompt・適用した共通指示の版と hash など）に束縛する。同じ requestId で内容が違えば 409 `request_id_conflict`。同じ Idempotency-Key で内容が違えば従来どおり 409 `idempotency_key_conflict`、実行中は 409 `idempotency_key_in_flight`、60秒を超えた未完了は 409 `idempotency_outcome_unknown`（自動再実行しない）。
 - 作成・送信・停止・再開はすべて `Idempotency-Key` 必須。送信の `messageId` は省略時に Idempotency-Key から導出するので、Bridge と委譲先の重複判定が一致する。
 
 ### 記録する値
 
-`profile`（要求した名前）、`requested`（委譲先が解決した provider/model/effort）、`observed`（agent が実際に報告した値と `sources`）、`runtimeVerified`、`modelCheck`、`parentId`、`requestId`、`workspaceId`、`cwd`、`projectId`、`delegateSessionId`。**要求した model を書き換えたり、別 profile に代替したりしない**。resume で別 profile を渡すと 400 `model_change_rejected`。
+`profile`（要求した名前）、`requested`（委譲先が解決した provider/model/effort）、`observed`（agent が実際に報告した値と `sources`）、`runtimeVerified`、`modelCheck`、`parentId`、`requestId`、`workspaceId`、`cwd`、`projectId`、`instructionVersion`・`instructionHash`・`instructionsApplied`（適用した共通指示の版と hash。本文は持たない）、`delegateSessionId`。**要求した model を書き換えたり、別 profile に代替したりしない**。resume で別 profile を渡すと 400 `model_change_rejected`。
 
 ### イベントと再接続
 
@@ -323,4 +342,4 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 
 iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。Kanban の読取は親が認証済みラッパーを承認するまで無効。
 
-Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）、Project と指示文書の実体（Brain/Drive）の存在確認。
+Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）。共通指示の本文は保存・版管理・適用まで実装済みで、`instructionRef` の実体は Brain root 配下に限る（Drive 参照は未対応）。

@@ -97,15 +97,25 @@ targets:
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWatch.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
-    postBuildScripts:
+        # Written by the script below from upstream's ConduitWatch/Info.plist.
+        INFOPLIST_FILE: "$(DERIVED_FILE_DIR)/LAA-Info.plist"
+    preBuildScripts:
       # The Watch app names its phone app, and upstream's Info.plist says
       # com.milim.relay: App Store Connect refuses the upload ("Invalid
-      # WKCompanionAppBundleIdentifier", 2026-10-29) unless it is this
-      # build's parent, com.laa-inc.laa.
+      # WKCompanionAppBundleIdentifier", 2026-10-29) and the simulator the
+      # install unless it is this build's parent, com.laa-inc.laa. The copy
+      # is made before Info.plist processing, so the phone app embeds the
+      # right value; patching the built Info.plist afterwards raced that
+      # embed in unsigned simulator builds.
       - name: LAA watch companion
-        basedOnDependencyAnalysis: false
+        inputFiles:
+          - "$(SRCROOT)/ConduitWatch/Info.plist"
+        outputFiles:
+          - "$(DERIVED_FILE_DIR)/LAA-Info.plist"
         script: |
-          /usr/libexec/PlistBuddy -c "Set :WKCompanionAppBundleIdentifier com.laa-inc.laa" "$TARGET_BUILD_DIR/$INFOPLIST_PATH"
+          mkdir -p "$DERIVED_FILE_DIR"
+          cp "$SCRIPT_INPUT_FILE_0" "$SCRIPT_OUTPUT_FILE_0"
+          /usr/libexec/PlistBuddy -c "Set :WKCompanionAppBundleIdentifier com.laa-inc.laa" "$SCRIPT_OUTPUT_FILE_0"
   ConduitWatchWidgets:
     settings:
       base:

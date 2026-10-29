@@ -14,7 +14,7 @@
 import { personalAgentAdapter } from '../sessions/adapter.mjs';
 import { createSessionService } from '../sessions/service.mjs';
 import { createSessionStore } from '../sessions/store.mjs';
-import { createProjectRoutes, createProjectStore } from './projects.mjs';
+import { createInstructionRefResolver, createProjectRoutes, createProjectStore } from './projects.mjs';
 import { createSessionRoutes } from './sessions.mjs';
 import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOptions } from './workspaces.mjs';
 import { taskRoutes } from './tasks.mjs';
@@ -22,7 +22,16 @@ import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
-  const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
+  const projectOptions = options.projects ?? {};
+  // The Brain vault is the only place an instructionRef may point at, and the
+  // same resolver is used when a project is written and when a session applies
+  // it, so "read at use time" cannot drift from the write-time check.
+  const projectStore = createProjectStore({
+    file: `${store.dir}/projects.json`,
+    now,
+    resolveInstructionRef: projectOptions.resolveInstructionRef
+      ?? createInstructionRefResolver({ root: projectOptions.brainRoot }),
+  });
   const workspaceStore = createWorkspaceStore({ file: `${store.dir}/workspaces.json`, now });
   const workspaceOptions = options.workspaces ?? {};
   // Sessions resolve their cwd through the same inventory the workspace
@@ -42,6 +51,8 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     adapter: sessionOptions.adapter ?? personalAgentAdapter(),
     findWorkspace: sessionOptions.findWorkspace ?? ((id) => workspaceService.find(id)),
     findProject: sessionOptions.findProject ?? ((id) => projectStore.get(id)),
+    resolveProjectInstructions: sessionOptions.resolveProjectInstructions
+      ?? ((project) => projectStore.instructionsFor(project)),
     now,
   });
 
