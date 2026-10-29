@@ -32,10 +32,10 @@ enum LAAUsageProblem: Error, Equatable {
     var message: String {
         switch self {
         case .bridge(let error): return error.japaneseText
-        case .dashboardNotConnected: return "Hermesに未接続のため、実利用と費用を取得できません。"
-        case .dashboardSignIn: return "Hermesへの再ログインが必要です。"
-        case .dashboardUnsupported: return "このHermesでは実利用と費用に対応していません。"
-        case .dashboardFailed: return "Hermesの実利用と費用を取得できませんでした。"
+        case .dashboardNotConnected: return AppLocalization.string("Connect to Hermes to see usage.")
+        case .dashboardSignIn: return AppLocalization.string("Sign in to this dashboard again to see usage.")
+        case .dashboardUnsupported: return AppLocalization.string("This Hermes doesn't report usage. Update Hermes to see it here.")
+        case .dashboardFailed: return AppLocalization.string("Couldn't load usage. Pull down to try again.")
         }
     }
 }
