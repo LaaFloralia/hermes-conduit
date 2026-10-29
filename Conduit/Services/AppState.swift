@@ -7007,11 +7007,12 @@ final class AppState: ObservableObject {
     private var chatCallTranscriptRequest: UUID?
     /// A call Hermes made (#449) that the live call now connecting answers.
     var pendingHermesCall: HermesCallOpening?
-    /// A call from Hermes muted in CallKit before its live voice was
-    /// running: that voice starts muted, as classic voice does (#558).
+    /// A CallKit call muted before its live voice runs starts muted.
     var hermesCallStartsMuted: Bool {
-        (liveHermesCall != nil || pendingHermesCall != nil) && isNativeHermesCallMuted
+        (liveHermesCall != nil || pendingHermesCall != nil || isPlacedPhoneCallActive) && isNativeHermesCallMuted
     }
+    /// The outgoing call bridge; injectable for a voice-open integration test.
+    var voicePlacedCalls: VoicePlacedCalls = .shared
     /// Opens the voice of a call answered in CallKit; the CallKit call's
     /// end cancels it.
     var hermesCallOpenTask: Task<Void, Never>?
@@ -9035,7 +9036,7 @@ final class AppState: ObservableObject {
     /// already runs it.
     var isPhoneVoiceCallRunning: Bool {
         guard !voiceCallRunsElsewhere else { return false }
-        if isLiveVoiceCallActive || minimisedLiveVoice != nil { return true }
+        if isLiveVoiceCallActive { return true }
         guard showVoiceSheet else { return false }
         if case .failed = voiceConversationController.state,
            !voiceConversationController.failedForAudioInterruption { return false }
@@ -9095,7 +9096,7 @@ final class AppState: ObservableObject {
         let openChat = activeSessionId
         let context = await voiceResumeContext(sessionID: sessionID, profile: profile)
         // Another chat or server opened meanwhile: that isn't this call's.
-        guard profile == activeProfile, dashboard == activeDashboardID, openChat == activeSessionId,
+        guard !Task.isCancelled, profile == activeProfile, dashboard == activeDashboardID, openChat == activeSessionId,
               canResumeVoiceCall else { return false }
         // Without the saved turns the call still continues the row.
         pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
@@ -9104,7 +9105,13 @@ final class AppState: ObservableObject {
         // The same precedence as every other route (configuredLiveVoiceEngine).
         // The call comes first, so the resumed engine starts on the session
         // CallKit activated (LAA fork).
-        await VoicePlacedCalls.shared.prepareForVoiceStart()
+        let start = await voicePlacedCalls.prepareForVoiceStart()
+        guard voicePlacedCalls.canStartVoice(start), profile == activeProfile,
+              dashboard == activeDashboardID, openChat == activeSessionId, canResumeVoiceCall else {
+            voicePlacedCalls.cancelVoiceStart(start)
+            pendingVoiceResume = nil
+            return false
+        }
         let started: Bool
         switch configuredLiveVoiceEngine(profile: profile) {
         case .qwenLive: started = openQwenLiveConversation(attachingTo: thread)
@@ -35093,7 +35100,7 @@ final class AppState: ObservableObject {
         widgetLease: WidgetLaunchLease? = nil,
         initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil
     ) async -> Bool {
-        guard isConnected else { return false }
+        guard isConnected, !Task.isCancelled else { return false }
         guard widgetLease?.isCurrent != false else { return false }
         if widgetLease != nil, isVoiceCallInProgress {
             errorMessage = AppLocalization.string("End the call before starting another voice conversation.")
@@ -35148,7 +35155,15 @@ final class AppState: ObservableObject {
             }
             // The call comes first, so the engine starts on the session
             // CallKit activated (LAA fork).
-            await VoicePlacedCalls.shared.prepareForVoiceStart()
+            if intent.source != .hermesCall {
+                let start = await voicePlacedCalls.prepareForVoiceStart()
+                guard voicePlacedCalls.canStartVoice(start), widgetLease?.isCurrent != false,
+                      isConnected, targetProfile == activeProfile else {
+                    voicePlacedCalls.cancelVoiceStart(start)
+                    return false
+                }
+            }
+            guard !Task.isCancelled else { return false }
             let opened: Bool
             switch liveEngine {
             case .geminiLive: opened = openGeminiLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
@@ -35170,7 +35185,7 @@ final class AppState: ObservableObject {
             startsFreshConversation: intent.startsFreshConversation,
             widgetLease: widgetLease
         )
-        guard widgetLease?.isCurrent != false else { return false }
+        guard widgetLease?.isCurrent != false, !Task.isCancelled else { return false }
         switch outcome {
         case .deferred:
             return false
@@ -35191,12 +35206,23 @@ final class AppState: ObservableObject {
         // A connected car shows its voice screen before the sheet's
         // auto-listen opens the microphone.
         CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
-        // A call muted in CallKit before its voice opened keeps the mic off.
-        voiceSheetShouldAutoListen = !(intent.source == .hermesCall && isNativeHermesCallMuted)
         // The call comes first, and the sheet's auto-listen waits for its
         // audio (LAA fork). A placement that fails leaves the conversation
         // on the earpiece controls, as before.
-        await VoicePlacedCalls.shared.prepareForVoiceStart()
+        if intent.source != .hermesCall {
+            let start = await voicePlacedCalls.prepareForVoiceStart()
+            guard voicePlacedCalls.canStartVoice(start), widgetLease?.isCurrent != false,
+                  isConnected, targetProfile == activeProfile else {
+                voicePlacedCalls.cancelVoiceStart(start)
+                return false
+            }
+        }
+        guard !Task.isCancelled else { return false }
+        // Read after activation: the system may have muted while we waited.
+        voiceSheetShouldAutoListen = !((intent.source == .hermesCall || isPlacedPhoneCallActive) && isNativeHermesCallMuted)
+        if isPlacedPhoneCallActive, isNativeHermesCallMuted {
+            voiceConversationController.pauseMicrophone()
+        }
         showVoiceSheet = true
         // The sheet is now the presenting Voice surface: re-assert the gate
         // before the sheet's auto-listen runs (with CarPlay absent the gate
@@ -35278,7 +35304,7 @@ final class AppState: ObservableObject {
             guard widgetLease?.isCurrent != false else { return .deferred }
         }
         await refreshVoiceCapabilities()
-        guard widgetLease?.isCurrent != false else { return .deferred }
+        guard widgetLease?.isCurrent != false, !Task.isCancelled else { return .deferred }
         guard canStartVoiceConversation else {
             errorMessage = voiceUnavailableReason
             return .failed(voiceUnavailableReason ?? AppLocalization.string("Voice is unavailable."))
@@ -35287,7 +35313,7 @@ final class AppState: ObservableObject {
         classicVoiceChatToArchive = nil
         if startsFreshConversation || activeSessionId == nil {
             let created = await createNewSession(widgetLease: widgetLease)
-            guard widgetLease?.isCurrent != false else { return .deferred }
+            guard widgetLease?.isCurrent != false, !Task.isCancelled else { return .deferred }
             // Only the chat this creation opened, while it is still open,
             // is the call's own: a chat another creation opened meanwhile
             // is neither filed under Voice nor archived with the call.

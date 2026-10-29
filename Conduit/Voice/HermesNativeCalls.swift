@@ -211,10 +211,19 @@ final class HermesNativeCalls: NSObject {
         var endingRequested = false
     }
     private var placedCall: PlacedCall?
+    #if DEBUG
+    var placedCallEndRequestForTesting: (@MainActor (UUID) async throws -> Void)?
+    var placedCallEndReportForTesting: (@MainActor (UUID, CXCallEndedReason) -> Void)?
+    var placedCallEndRetryDelayForTesting: Duration = .milliseconds(300)
+    func installPlacedCallForTesting(_ id: UUID) {
+        placedCall = PlacedCall(id: id, placedAt: Date())
+    }
+    #endif
     /// VoicePlacedCalls sets these: the start CallKit performed, its call
     /// gone, and its Mute tapped on the system's screen.
     var onPlacedCallStarted: (@MainActor () -> Void)?
     var onPlacedCallAudioActivated: (@MainActor () -> Void)?
+    var onPlacedCallAudioDeactivated: (@MainActor () -> Void)?
     var onPlacedCallEnded: (@MainActor (Bool) -> Void)?
     var onPlacedCallMuteChanged: (@MainActor (Bool) -> Void)?
     /// Each ring's call, for a Watch call that answers it, and the ring, to
@@ -1206,7 +1215,16 @@ extension HermesNativeCalls: VoicePlacedCallKit {
             var attempt = 1
             while true {
                 do {
-                    try await self?.callController.request(CXTransaction(action: CXEndCallAction(call: id)))
+                    guard let self, self.placedCall?.id == id else { return }
+                    #if DEBUG
+                    if let request = self.placedCallEndRequestForTesting {
+                        try await request(id)
+                    } else {
+                        try await self.callController.request(CXTransaction(action: CXEndCallAction(call: id)))
+                    }
+                    #else
+                    try await self.callController.request(CXTransaction(action: CXEndCallAction(call: id)))
+                    #endif
                     return
                 } catch {
                     guard let self, self.placedCall?.id == id else { return }
@@ -1217,7 +1235,12 @@ extension HermesNativeCalls: VoicePlacedCallKit {
                     switch Self.placedCallEndStep(for: code, attempt: attempt, attempts: Self.placedCallEndAttempts) {
                     case .retry:
                         attempt += 1
-                        try? await Task.sleep(for: .milliseconds(300))
+                        #if DEBUG
+                        let retryDelay = self.placedCallEndRetryDelayForTesting
+                        #else
+                        let retryDelay: Duration = .milliseconds(300)
+                        #endif
+                        do { try await Task.sleep(for: retryDelay) } catch { return }
                     case .gone:
                         // CallKit has no call to end: none is on the screen,
                         // so the conversation carries on without one.
@@ -1226,7 +1249,15 @@ extension HermesNativeCalls: VoicePlacedCallKit {
                     case .reportEnded:
                         // It still shows the call and won't take the end:
                         // reporting it ended is the only way to clear it.
+                        #if DEBUG
+                        if let report = self.placedCallEndReportForTesting {
+                            report(id, .failed)
+                        } else {
+                            self.provider?.reportCall(with: id, endedAt: Date(), reason: .failed)
+                        }
+                        #else
                         self.provider?.reportCall(with: id, endedAt: Date(), reason: .failed)
+                        #endif
                         self.finishPlacedCall(id, reason: .failed)
                         return
                     }
@@ -1415,6 +1446,7 @@ extension HermesNativeCalls: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
         MainActor.assumeIsolated {
+            if self.placedCall != nil { self.onPlacedCallAudioDeactivated?() }
             HermesCallTrace.shared.note("CallKit audio off")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioDeactivated()
             self.audioActive = false

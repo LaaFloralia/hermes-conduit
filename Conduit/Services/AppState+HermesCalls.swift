@@ -861,6 +861,10 @@ extension AppState {
         // session is prepared yet; `openVoiceConversation` reads the mute
         // for a voice that opens after it.
         if muted { voiceSheetShouldAutoListen = false }
+        // The classic session can already be prepared while CallKit's audio
+        // is pending. Neither mute nor unmute may start or change its capture
+        // until activation; the opening applies the final mute afterwards.
+        if voicePlacedCalls.isWaitingForCallAudio { return }
         if isQwenLiveActive {
             qwenLiveController.setMicrophoneMuted(muted)
         } else if isGeminiLiveActive {
