@@ -4,12 +4,15 @@
 //
 //  A voice conversation the user starts on the phone, placed as a CallKit
 //  call (LAA fork, "Place calls as phone calls"). These assert the state
-//  machine alone — CallKit and the app are seams here — so every way out of
-//  a call is checked: the app's own end, the system call screen's End and
-//  Mute, a request CallKit refuses, and an end that arrives twice.
+//  machine alone — CallKit and the app are seams here — so every way into
+//  and out of a call is checked: the start gate on CallKit's audio, the
+//  app's own end, the system call screen's End and Mute, a request CallKit
+//  refuses, an end that arrives twice, a conversation that never starts,
+//  and a conversation that begins while the last call is still leaving.
 //
 
 import AVFAudio
+import CallKit
 import XCTest
 @testable import Conduit
 
@@ -23,17 +26,35 @@ final class VoicePlacedCallsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        makeCalls()
+    }
+
+    /// A bridge with test-sized clocks: the tests don't wait seconds for a
+    /// timeout or a follow tick.
+    private func makeCalls(
+        callAudioTimeout: Duration = .seconds(2),
+        voiceStartTimeout: Duration = .seconds(30)
+    ) {
         kit = FakePlacedCallKit()
         session = PlacedCallAudioSession()
         audio = VoiceAudioSessionCoordinator(session: session, phoneCalls: { true })
         host = FakePlacedCallHost()
-        calls = VoicePlacedCalls(callKit: kit, audio: audio, host: host.callHost)
+        calls = VoicePlacedCalls(
+            callKit: kit,
+            audio: audio,
+            host: host.callHost,
+            callAudioTimeout: callAudioTimeout,
+            voiceStartTimeout: voiceStartTimeout,
+            followInterval: .milliseconds(20)
+        )
     }
 
-    /// A conversation is running and CallKit has shown its call.
+    /// A conversation is already running and CallKit has shown and activated
+    /// its call.
     private func startAPlacedCall() {
         calls.voiceChanged(running: true)
         kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
     }
 
     // MARK: Placing
@@ -98,6 +119,92 @@ final class VoicePlacedCallsTests: XCTestCase {
         XCTAssertTrue(kit.names.isEmpty)
     }
 
+    func testNoCallForAConversationCarPlayOrTheWatchRuns() {
+        host.elsewhere = true
+
+        calls.voiceChanged(running: true)
+
+        XCTAssertEqual(calls.phase, .idle)
+        XCTAssertTrue(kit.names.isEmpty, "the car's or the wrist's call screen runs it")
+    }
+
+    // MARK: The start gate
+
+    /// The conversation waits for CallKit's audio: an engine that starts
+    /// before it would run on a session CallKit is about to take.
+    func testTheConversationOpensOnlyAfterTheCallsAudio() async {
+        let opening = Task { await calls.prepareForVoiceStart() }
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(calls.phase, .placing, "the call was placed before any audio")
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+
+        kit.onPlacedCallStarted?()
+        XCTAssertEqual(calls.phase, .running)
+        XCTAssertTrue(calls.isWaitingForCallAudio, "CallKit has the call but hasn't activated its audio")
+
+        kit.onPlacedCallAudioActivated?()
+
+        let activated = await opening.value
+        XCTAssertTrue(activated)
+        XCTAssertFalse(calls.isWaitingForCallAudio)
+        XCTAssertTrue(audio.isInNativeCall)
+    }
+
+    /// CallKit's audio that never comes must not hold the conversation
+    /// forever: it opens, as a call from Hermes' voice does when the audio is
+    /// late (#1145).
+    func testAConversationOpensWhenTheCallsAudioNeverComes() async {
+        makeCalls(callAudioTimeout: .milliseconds(60))
+
+        let opening = Task { await calls.prepareForVoiceStart() }
+        await Task.yield()
+        await Task.yield()
+        kit.onPlacedCallStarted?()
+
+        let activated = await opening.value
+
+        XCTAssertFalse(activated)
+        XCTAssertFalse(calls.isWaitingForCallAudio)
+        XCTAssertEqual(calls.phase, .running, "the call stays on the screen")
+    }
+
+    func testAPlacementCallKitRefusesOpensTheConversationAtOnce() async {
+        kit.placeResult = false
+
+        let activated = await calls.prepareForVoiceStart()
+
+        XCTAssertFalse(activated)
+        XCTAssertEqual(calls.phase, .idle)
+        XCTAssertFalse(calls.isWaitingForCallAudio)
+    }
+
+    /// A conversation that ends as the next one opens leaves its call on the
+    /// screen for a moment: the new call waits for it, then is placed.
+    func testAPlacementWaitsForTheLastCallToLeave() async {
+        startAPlacedCall()
+        calls.voiceChanged(running: false)
+        XCTAssertEqual(calls.phase, .ending)
+        host.running = false
+
+        let opening = Task { await calls.prepareForVoiceStart() }
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(kit.names.count, 1, "no second call while the first is still on its way out")
+
+        kit.onPlacedCallEnded?(false)
+        try? await Task.sleep(for: .milliseconds(120))
+
+        XCTAssertEqual(kit.names.count, 2, "the new conversation gets its own call")
+        XCTAssertEqual(calls.phase, .placing)
+
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        let activated = await opening.value
+        XCTAssertTrue(activated)
+    }
+
     // MARK: A start that doesn't happen
 
     func testACallCallKitRefusesLeavesTheConversationAlone() {
@@ -121,6 +228,52 @@ final class VoicePlacedCallsTests: XCTestCase {
         XCTAssertFalse(audio.isInNativeCall)
         XCTAssertEqual(host.endVoiceCount, 0, "the conversation is not the call's to end")
         XCTAssertEqual(host.callActiveValues, [], "it never was on the screen")
+        XCTAssertEqual(kit.names.count, 1, "a placement that never showed isn't tried again")
+    }
+
+    /// A conversation that failed to start — a refused microphone, an engine
+    /// that couldn't — ends its call instead of leaving it alone on the
+    /// system's screen.
+    func testAFailedStartEndsItsPlacedCall() {
+        calls.voiceChanged(running: true)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+
+        calls.voiceStartFailed()
+
+        XCTAssertEqual(calls.phase, .ending)
+        XCTAssertEqual(kit.endRequests, 1)
+    }
+
+    func testAFailureAfterTheConversationRanIsLeftToItsOwnEnd() {
+        startAPlacedCall()
+        // The conversation ran, then something else went wrong: that is an
+        // end the follow loop or the app reports, not a start failure.
+        host.running = false
+        calls.followOnce()
+        XCTAssertEqual(kit.endRequests, 1)
+
+        calls.voiceStartFailed()
+
+        XCTAssertEqual(kit.endRequests, 1, "no second request for the same call")
+    }
+
+    /// The last resort behind `voiceStartFailed`: a call placed ahead of a
+    /// conversation that never arrives doesn't stay on the screen.
+    func testACallForAConversationThatNeverStartsEndsAtItsDeadline() async {
+        makeCalls(voiceStartTimeout: .milliseconds(60))
+
+        let opening = Task { await calls.prepareForVoiceStart() }
+        await Task.yield()
+        await Task.yield()
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        _ = await opening.value
+
+        try? await Task.sleep(for: .milliseconds(150))
+
+        XCTAssertEqual(calls.phase, .ending)
+        XCTAssertEqual(kit.endRequests, 1)
     }
 
     // MARK: Ending
@@ -180,6 +333,38 @@ final class VoicePlacedCallsTests: XCTestCase {
         XCTAssertEqual(host.endVoiceCount, 1)
     }
 
+    /// A conversation that begins while the last call is still ending gets
+    /// its own call once that call is gone.
+    func testACallStartedWhileTheLastOneEndsIsPlacedAfterIt() {
+        startAPlacedCall()
+        calls.voiceChanged(running: false)
+        XCTAssertEqual(calls.phase, .ending)
+
+        calls.voiceChanged(running: true)
+        XCTAssertEqual(calls.phase, .ending, "the new call waits for the old one")
+        XCTAssertEqual(kit.names.count, 1)
+
+        kit.onPlacedCallEnded?(false)
+
+        XCTAssertEqual(kit.names.count, 2)
+        XCTAssertEqual(calls.phase, .placing)
+    }
+
+    func testAConversationCarriedByACallFromHermesKeepsItsOwnScreen() {
+        // An answered call from Hermes ends while a conversation it opened
+        // keeps running: the phone places no second call for it.
+        startAPlacedCall()
+        calls.voiceChanged(running: false)
+        kit.onPlacedCallEnded?(true)
+        host.running = true
+        audio.configureForNativeCall()
+
+        calls.voiceChanged(running: true)
+
+        XCTAssertEqual(kit.names.count, 1)
+        XCTAssertEqual(calls.phase, .idle)
+    }
+
     // MARK: Mute
 
     func testTheScreensMuteMutesTheVoice() {
@@ -200,6 +385,28 @@ final class VoicePlacedCallsTests: XCTestCase {
 
         XCTAssertEqual(kit.mutedReports, [true])
         XCTAssertEqual(host.mutedValues, [], "the mute was the app's: it isn't set back")
+    }
+
+    /// A mute CallKit refused is sent again: otherwise the app's microphone
+    /// and the system's screen disagree for the rest of the call.
+    func testARefusedMuteIsSentAgainUntilCallKitTakesIt() {
+        startAPlacedCall()
+        kit.muteTakes = [false, true]
+        host.muted = true
+
+        calls.followOnce()
+
+        XCTAssertEqual(kit.mutedReports, [true])
+        XCTAssertEqual(calls.reportedMuted, false, "a refused mute isn't what the screen shows")
+
+        calls.followOnce()
+
+        XCTAssertEqual(kit.mutedReports, [true, true])
+        XCTAssertEqual(calls.reportedMuted, true)
+
+        calls.followOnce()
+
+        XCTAssertEqual(kit.mutedReports, [true, true], "taken: no more requests")
     }
 
     func testACallPlacedMutedSaysSoOnTheScreen() {
@@ -238,16 +445,44 @@ final class VoicePlacedCallsTests: XCTestCase {
     }
 }
 
+// MARK: - What an end CallKit refused leaves to do
+
+final class VoicePlacedCallEndStepTests: XCTestCase {
+    /// "No such call" is the only error that means nothing is on the screen.
+    func testAnUnknownCallIsGone() {
+        XCTAssertEqual(HermesNativeCalls.placedCallEndStep(for: .unknownCallUUID, attempt: 1, attempts: 3), .gone)
+    }
+
+    /// Any other refusal leaves a call CallKit still shows: ask again first.
+    func testATransientRefusalIsRetried() {
+        XCTAssertEqual(HermesNativeCalls.placedCallEndStep(for: .maximumCallGroupsReached, attempt: 1, attempts: 3), .retry)
+        XCTAssertEqual(HermesNativeCalls.placedCallEndStep(for: nil, attempt: 1, attempts: 3), .retry)
+    }
+
+    /// Out of attempts, the call is reported ended: forgetting it would
+    /// leave it on the screen with nothing behind it.
+    func testTheLastAttemptReportsTheCallEnded() {
+        XCTAssertEqual(
+            HermesNativeCalls.placedCallEndStep(for: .maximumCallGroupsReached, attempt: 3, attempts: 3),
+            .reportEnded
+        )
+        XCTAssertEqual(HermesNativeCalls.placedCallEndStep(for: nil, attempt: 4, attempts: 3), .reportEnded)
+    }
+}
+
 // MARK: - Seams
 
 @MainActor
 private final class FakePlacedCallKit: VoicePlacedCallKit {
     var isAvailable = true
     var placeResult = true
+    /// What each mute request answers, in order; empty answers "taken".
+    var muteTakes: [Bool] = []
     private(set) var names: [String] = []
     private(set) var endRequests = 0
     private(set) var mutedReports: [Bool] = []
     var onPlacedCallStarted: (@MainActor () -> Void)?
+    var onPlacedCallAudioActivated: (@MainActor () -> Void)?
     var onPlacedCallEnded: (@MainActor (Bool) -> Void)?
     var onPlacedCallMuteChanged: (@MainActor (Bool) -> Void)?
 
@@ -260,8 +495,9 @@ private final class FakePlacedCallKit: VoicePlacedCallKit {
         endRequests += 1
     }
 
-    func reportPlacedCallMuted(_ muted: Bool) {
+    func reportPlacedCallMuted(_ muted: Bool, result: @escaping @MainActor (Bool) -> Void) {
         mutedReports.append(muted)
+        result(muteTakes.isEmpty ? true : muteTakes.removeFirst())
     }
 }
 
@@ -270,6 +506,7 @@ private final class FakePlacedCallKit: VoicePlacedCallKit {
 private final class FakePlacedCallHost {
     var isSettingOn = true
     var running = true
+    var elsewhere = false
     var name = "Ciel"
     var muted: Bool?
     private(set) var mutedValues: [Bool] = []
@@ -287,7 +524,8 @@ private final class FakePlacedCallHost {
                 self.muted = muted
                 self.mutedValues.append(muted)
             },
-            setCallActive: { @MainActor active in self.callActiveValues.append(active) }
+            setCallActive: { @MainActor active in self.callActiveValues.append(active) },
+            runsElsewhere: { @MainActor in self.elsewhere }
         )
     }
 }

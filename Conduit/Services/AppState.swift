@@ -4539,7 +4539,22 @@ final class AppState: ObservableObject {
         Task { [weak self] in
             guard let self, self.showVoiceSheet, self.consumeVoiceSheetAutoListenIfPresenting() else { return }
             await self.voiceConversationController.startListening()
+            // A refused microphone or a start that failed carries no call:
+            // the sheet stays open with its message, the call screen goes.
+            // One the call's own audio took keeps it: CallKit hands the
+            // audio back and this conversation listens again.
+            if case .failed = self.voiceConversationController.state,
+               !self.voiceConversationController.failedForAudioInterruption {
+                self.notePlacedCallVoiceStartFailed()
+            }
         }
+    }
+
+    /// A conversation placed as a call never started: the call ends (LAA
+    /// fork, VoicePlacedCalls). The bridge ignores this when no call of its
+    /// own is on the screen.
+    func notePlacedCallVoiceStartFailed() {
+        placedCallVoiceStartFailed()
     }
 
     /// The profile the voice conversation controller's current session was
@@ -9009,13 +9024,35 @@ final class AppState: ObservableObject {
         showVoiceSheet || isLiveVoiceCallActive || voiceConversationController.hasLiveVoiceSession
     }
 
-    /// A voice conversation the user started on this phone: the one a call
-    /// placed from Conduit carries (LAA fork, VoicePlacedCalls). One CarPlay
-    /// or the Watch runs is theirs, and the car's or the wrist's call screen
+    /// The phone's voice conversation is alive: the one a call placed from
+    /// Conduit carries (LAA fork, VoicePlacedCalls). A conversation that
+    /// failed is over, and so is its call — a refused microphone, a gateway
+    /// that couldn't start — while one the call's own audio took (an alarm,
+    /// another call) is not: CallKit hands the audio back and Conduit
+    /// listens again. A paused microphone is the call's Mute, and a sheet
+    /// waiting for a press (push to talk) is still the call. One CarPlay or
+    /// the Watch runs is theirs, and the car's or the wrist's call screen
     /// already runs it.
     var isPhoneVoiceCallRunning: Bool {
-        isVoiceInUse && !isCarPlayVoiceSurfaceActive && !isWatchVoiceCallActive
+        guard !voiceCallRunsElsewhere else { return false }
+        if isLiveVoiceCallActive || minimisedLiveVoice != nil { return true }
+        guard showVoiceSheet else { return false }
+        if case .failed = voiceConversationController.state,
+           !voiceConversationController.failedForAudioInterruption { return false }
+        return true
     }
+
+    /// CarPlay or the Watch has this conversation's own call screen: none is
+    /// placed from the phone for it. A connected car is left alone too: a
+    /// call placed from the phone reaches CarPlay, which this build doesn't
+    /// change.
+    var voiceCallRunsElsewhere: Bool {
+        isCarPlayVoiceSurfaceActive || isWatchVoiceCallActive || CarPlayVoiceCoordinator.shared.isConnected
+    }
+
+    /// A conversation placed as a call failed before it ran: the call ends
+    /// instead of sitting on the system's screen alone. Test seam.
+    var placedCallVoiceStartFailed: @MainActor () -> Void = { VoicePlacedCalls.shared.voiceStartFailed() }
 
     /// Who a call placed from here says it is calling: the profile's name,
     /// as a call from Hermes names it.
@@ -9065,6 +9102,9 @@ final class AppState: ObservableObject {
         // A call started from a chat goes back to that chat.
         let thread = voiceCallChatLinks.latest(forCall: sessionID, profile: profile)?.thread
         // The same precedence as every other route (configuredLiveVoiceEngine).
+        // The call comes first, so the resumed engine starts on the session
+        // CallKit activated (LAA fork).
+        await VoicePlacedCalls.shared.prepareForVoiceStart()
         let started: Bool
         switch configuredLiveVoiceEngine(profile: profile) {
         case .qwenLive: started = openQwenLiveConversation(attachingTo: thread)
@@ -9072,6 +9112,7 @@ final class AppState: ObservableObject {
         case .grokLive: started = openGrokLiveConversation(attachingTo: thread)
         case .gptLive, .localLive, nil: started = openGPTLiveConversation(attachingTo: thread)
         }
+        if !started { notePlacedCallVoiceStartFailed() }
         // Starting the call took it; a call already running didn't, and a
         // later unrelated call must not.
         pendingVoiceResume = nil
@@ -35105,13 +35146,20 @@ final class AppState: ObservableObject {
                 }
                 guard isConnected else { return false }
             }
+            // The call comes first, so the engine starts on the session
+            // CallKit activated (LAA fork).
+            await VoicePlacedCalls.shared.prepareForVoiceStart()
+            let opened: Bool
             switch liveEngine {
-            case .geminiLive: return openGeminiLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
-            case .qwenLive: return openQwenLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
-            case .gptLive: return openGPTLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
-            case .grokLive: return openGrokLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
-            case .localLive: return openLocalLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .geminiLive: opened = openGeminiLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .qwenLive: opened = openQwenLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .gptLive: opened = openGPTLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .grokLive: opened = openGrokLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
+            case .localLive: opened = openLocalLiveConversation(attachingTo: thread, initialCaptureAuthorization: initialCaptureAuthorization)
             }
+            // A call whose conversation never opened carries nothing.
+            if !opened { notePlacedCallVoiceStartFailed() }
+            return opened
         }
         // Mutual exclusion: the voice conversation owns playback while its
         // sheet is open, so a read aloud started before must not continue.
@@ -35145,6 +35193,10 @@ final class AppState: ObservableObject {
         CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
         // A call muted in CallKit before its voice opened keeps the mic off.
         voiceSheetShouldAutoListen = !(intent.source == .hermesCall && isNativeHermesCallMuted)
+        // The call comes first, and the sheet's auto-listen waits for its
+        // audio (LAA fork). A placement that fails leaves the conversation
+        // on the earpiece controls, as before.
+        await VoicePlacedCalls.shared.prepareForVoiceStart()
         showVoiceSheet = true
         // The sheet is now the presenting Voice surface: re-assert the gate
         // before the sheet's auto-listen runs (with CarPlay absent the gate

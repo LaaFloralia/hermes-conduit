@@ -214,6 +214,7 @@ final class HermesNativeCalls: NSObject {
     /// VoicePlacedCalls sets these: the start CallKit performed, its call
     /// gone, and its Mute tapped on the system's screen.
     var onPlacedCallStarted: (@MainActor () -> Void)?
+    var onPlacedCallAudioActivated: (@MainActor () -> Void)?
     var onPlacedCallEnded: (@MainActor (Bool) -> Void)?
     var onPlacedCallMuteChanged: (@MainActor (Bool) -> Void)?
     /// Each ring's call, for a Watch call that answers it, and the ring, to
@@ -306,7 +307,9 @@ final class HermesNativeCalls: NSObject {
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
         configuration.supportedHandleTypes = [.generic]
-        // A Hermes call can't be called back from the Phone app.
+        // A Hermes call can't be called back from the Phone app, and the
+        // phone's own recents are the phone app's: a call from Hermes stays
+        // out of them (docs/FEATURE_MAP.md, "Audio route, Speaker and mute").
         configuration.includesCallsInRecents = false
         let provider = CXProvider(configuration: configuration)
         // On the main queue, like the PushKit registry: the delegate
@@ -1151,6 +1154,28 @@ final class HermesNativeCalls: NSObject {
 extension HermesNativeCalls: VoicePlacedCallKit {
     var isAvailable: Bool { Self.callKitAvailable }
 
+    /// How many times an end CallKit refused is asked for again before the
+    /// call is reported ended instead.
+    static let placedCallEndAttempts = 3
+
+    /// What an end CallKit refused leaves to do. Only "no such call" means
+    /// nothing is on the screen; any other error leaves a call CallKit still
+    /// shows, and forgetting it would strand it there.
+    enum PlacedCallEndStep: Equatable {
+        case retry
+        case reportEnded
+        case gone
+    }
+
+    nonisolated static func placedCallEndStep(
+        for code: CXErrorCodeRequestTransactionError.Code?,
+        attempt: Int,
+        attempts: Int
+    ) -> PlacedCallEndStep {
+        if code == .unknownCallUUID { return .gone }
+        return attempt < attempts ? .retry : .reportEnded
+    }
+
     func placeCall(named name: String) -> Bool {
         guard ensureProvider() != nil else { return false }
         // One call at a time: CallKit keeps one call group here, and a call
@@ -1173,31 +1198,67 @@ extension HermesNativeCalls: VoicePlacedCallKit {
     }
 
     func requestPlacedCallEnd() {
-        guard var call = placedCall else { return }
+        guard var call = placedCall, !call.endingRequested else { return }
         call.endingRequested = true
         placedCall = call
+        let id = call.id
         Task { [weak self] in
-            do {
-                try await self?.callController.request(CXTransaction(action: CXEndCallAction(call: call.id)))
-            } catch {
-                guard let self, self.placedCall?.id == call.id else { return }
-                // CallKit has no call to end: none is on the screen, so the
-                // conversation carries on without one.
-                self.placedCall = nil
-                self.onPlacedCallEnded?(false)
+            var attempt = 1
+            while true {
+                do {
+                    try await self?.callController.request(CXTransaction(action: CXEndCallAction(call: id)))
+                    return
+                } catch {
+                    guard let self, self.placedCall?.id == id else { return }
+                    let code = (error as? CXErrorCodeRequestTransactionError)?.code
+                    nativeCallsLogger.notice(
+                        "ending the placed call failed (attempt \(attempt), code \(code.map { String($0.rawValue) } ?? "none", privacy: .public)): \(LogRedaction.message(error), privacy: .public)"
+                    )
+                    switch Self.placedCallEndStep(for: code, attempt: attempt, attempts: Self.placedCallEndAttempts) {
+                    case .retry:
+                        attempt += 1
+                        try? await Task.sleep(for: .milliseconds(300))
+                    case .gone:
+                        // CallKit has no call to end: none is on the screen,
+                        // so the conversation carries on without one.
+                        self.finishPlacedCall(id, reason: .failed)
+                        return
+                    case .reportEnded:
+                        // It still shows the call and won't take the end:
+                        // reporting it ended is the only way to clear it.
+                        self.provider?.reportCall(with: id, endedAt: Date(), reason: .failed)
+                        self.finishPlacedCall(id, reason: .failed)
+                        return
+                    }
+                }
             }
         }
     }
 
-    func reportPlacedCallMuted(_ muted: Bool) {
-        guard let call = placedCall else { return }
+    func reportPlacedCallMuted(_ muted: Bool, result: @escaping @MainActor (Bool) -> Void) {
+        guard let call = placedCall else {
+            result(false)
+            return
+        }
         Task { [weak self] in
             do {
                 try await self?.callController.request(CXTransaction(action: CXSetMutedCallAction(call: call.id, muted: muted)))
+                result(true)
             } catch {
                 nativeCallsLogger.notice("the placed call's mute didn't reach CallKit: \(LogRedaction.message(error), privacy: .public)")
+                result(false)
             }
         }
+    }
+
+    /// Lets go of the call Conduit placed, whichever way it left the screen.
+    private func finishPlacedCall(_ id: UUID, reason: CXCallEndedReason) {
+        guard let call = placedCall, call.id == id else { return }
+        placedCall = nil
+        // Only the screen's own End hangs the conversation up; an end asked
+        // for here is the conversation already gone.
+        onPlacedCallEnded?(!call.endingRequested)
+        settle()
     }
 
     /// CallKit refused the start, so no call is on the screen: the
@@ -1310,13 +1371,9 @@ extension HermesNativeCalls: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         MainActor.assumeIsolated {
-            if let call = self.placedCall, call.id == action.callUUID {
-                self.placedCall = nil
+            if self.placedCall?.id == action.callUUID {
                 action.fulfill()
-                // Only the screen's own End hangs the conversation up; an
-                // end asked for here is the conversation already gone.
-                self.onPlacedCallEnded?(!call.endingRequested)
-                self.settle()
+                self.finishPlacedCall(action.callUUID, reason: .remoteEnded)
                 return
             }
             self.end(action)
@@ -1344,6 +1401,8 @@ extension HermesNativeCalls: CXProviderDelegate {
         MainActor.assumeIsolated {
             HermesCallTrace.shared.note("CallKit audio on")
             VoiceAudioSessionCoordinator.shared.nativeCallAudioActivated()
+            // A call the user placed opens its conversation only now.
+            if self.placedCall != nil { self.onPlacedCallAudioActivated?() }
             HermesCallTrace.shared.note("Audio route: \(HermesCallAudioRoute.describe(audioSession))")
             self.audioActive = true
             self.observeRoute()

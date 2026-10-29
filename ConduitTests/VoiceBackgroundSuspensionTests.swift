@@ -776,6 +776,61 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         XCTAssertFalse(harness.appState.hasActiveVoiceSurface)
     }
 
+    // MARK: Calls placed from Conduit (LAA fork)
+
+    /// A conversation placed as a call that can't start (a refused
+    /// microphone) ends its call instead of leaving it on the system's
+    /// screen: an open sheet is not the conversation's life.
+    func testAClassicConversationThatCannotStartEndsItsPlacedCall() async {
+        let harness = makeHarness()
+        var failures = 0
+        harness.appState.placedCallVoiceStartFailed = { failures += 1 }
+
+        harness.capture.permissionGranted = false
+        harness.appState.showVoiceSheet = true
+        harness.appState.voiceSheetShouldAutoListen = true
+        harness.appState.startDeferredVoiceSheetAutoListen()
+
+        XCTAssertTrue(await harness.controller.waitForFailedState())
+        for _ in 0..<50 where failures == 0 {
+            await Task.yield()
+        }
+        XCTAssertEqual(failures, 1, "the call placed for it is told the conversation never started")
+        XCTAssertFalse(harness.appState.isPhoneVoiceCallRunning, "a sheet with no conversation carries no call")
+    }
+
+    /// An open sheet with no listening yet still carries its call: the user
+    /// may press Listen, or hold push to talk. What it doesn't survive is a
+    /// failure (the test above).
+    func testAnOpenVoiceSheetCarriesItsCall() {
+        let harness = makeHarness()
+
+        harness.appState.showVoiceSheet = true
+
+        XCTAssertTrue(harness.appState.isPhoneVoiceCallRunning)
+    }
+
+    func testARunningClassicConversationCarriesItsCall() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+
+        await harness.controller.startListening()
+
+        XCTAssertTrue(harness.appState.isPhoneVoiceCallRunning)
+        XCTAssertFalse(harness.appState.voiceCallRunsElsewhere)
+    }
+
+    /// A paused microphone is the call's Mute, not the end: the call stays.
+    func testAPausedMicrophoneKeepsCarryingTheCall() async {
+        let harness = makeHarness()
+        harness.openVoice(session: "session-1")
+        await harness.controller.startListening()
+
+        harness.controller.pauseMicrophone()
+
+        XCTAssertTrue(harness.appState.isPhoneVoiceCallRunning)
+    }
+
     func testCallEndedBeforeMarkedActiveStillClearsTheAnswer() {
         let harness = makeHarness()
         harness.appState.setNativeHermesCallAnswered(true)
