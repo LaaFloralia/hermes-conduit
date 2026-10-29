@@ -853,8 +853,23 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
             harness.appState.closeVoiceConversation()
             return
         }
-        await harness.speakUtterance("Question", sessionArmed: true)
+        let speechStart = Date()
+        harness.capture.emit(level: 0.1, at: speechStart)
+        let heardSpeech = await harness.controller.waitForMicrophoneLevel(where: { $0 >= 0.1 })
+        XCTAssertTrue(heardSpeech, "the first launch must receive microphone events")
+        guard heardSpeech else {
+            kit.onPlacedCallEnded?(false)
+            harness.appState.closeVoiceConversation()
+            return
+        }
+        harness.capture.emit(level: 0, at: speechStart.addingTimeInterval(1.3))
         await harness.spy.waitUntilSubmitted(1)
+        XCTAssertEqual(harness.spy.texts, ["Question"], "the first launch must submit its utterance")
+        guard harness.spy.texts == ["Question"] else {
+            kit.onPlacedCallEnded?(false)
+            harness.appState.closeVoiceConversation()
+            return
+        }
         harness.controller.receiveAssistantEvent(.started(sessionID: "session-1"))
         harness.controller.receiveAssistantEvent(.delta(sessionID: "session-1", text: "Answer."))
         let speaking = await harness.controller.waitForState(.speaking)
