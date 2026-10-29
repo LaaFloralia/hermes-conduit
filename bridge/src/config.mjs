@@ -167,3 +167,37 @@ export function resolveSyncthingUrl(env = process.env) {
 export function resolveBrainFolderId(env = process.env) {
   return env.LAA_BRIDGE_BRAIN_FOLDER || 'brain';
 }
+
+// --- Usage and Mac status (ROADMAP 09, docs/laa/USAGE.md) -------------------
+//
+// Both sources already exist on this Mac and are read, not started: the
+// CodexBar usage proxy on loopback, and the status file the daily
+// `laa-storage-guard` launchd job writes. The Bridge never runs the guard's
+// full scan and never adds a credential for the dashboard (USAGE.md §6).
+
+export function resolveUsageFeedUrl(env = process.env) {
+  return env.LAA_BRIDGE_USAGE_FEED_URL || 'http://127.0.0.1:8081/widget';
+}
+
+// USAGE.md §4: live/local readings go stale after 20 minutes.
+export function resolveUsageAutoStaleMs(env = process.env) {
+  const raw = env.LAA_BRIDGE_USAGE_AUTO_STALE_MS;
+  if (raw === undefined || raw === '') return 20 * 60 * 1000;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : 20 * 60 * 1000;
+}
+
+// The proxy answers from its own 20 s upstream budget; the Bridge caps the wait
+// so a slow CodexBar never holds the app. The existing Console collector also
+// uses 5 s. Raise it only to diagnose the proxy.
+export function resolveUsageFeedTimeoutMs(env = process.env) {
+  const raw = env.LAA_BRIDGE_USAGE_FEED_TIMEOUT_MS;
+  if (raw === undefined || raw === '') return 5000;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 100 && value <= 60000 ? value : 5000;
+}
+
+export function resolveStorageStatusFile(env = process.env) {
+  return resolve(env.LAA_BRIDGE_STORAGE_STATUS
+    || join(homedir(), '.local', 'state', 'laa-storage-guard', 'status.json'));
+}

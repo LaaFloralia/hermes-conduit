@@ -1,6 +1,6 @@
 # LAA Bridge（Mac側サービスの骨格）
 
-`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）**で、他の業務エンドポイント（usage …）と iOS クライアントは後続タスク。
+`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）・Usage と Mac 状態（読取のみ）**で、他の業務エンドポイントと iOS クライアントは後続タスク。
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
@@ -91,6 +91,8 @@ laa-bridge revoke dev_ab12… --reason "lost phone"
 | `GET /v1/brain/search?q=&k=&area=&adopted=&rerank=` | Bearer + `brain:read` | `laa-brain search` の結果を `{found,matchBasis,results[{path,section,lines,status,relevance,text}]}` で返す。既定はローカルのみ（`rerank=1` で Jev 再判定） |
 | `POST /v1/brain/files` | Bearer + `brain:create` + `Idempotency-Key` | `{path,content,onConflict?}` → 201 新規ノート（`id,path,contentHash,size,suffixApplied`）。既存内容は変更しない |
 | `GET /v1/brain/gates` | Bearer + `brain:read` | vault・git・Syncthing・空き容量の事前条件（`ok`／`code`） |
+| `GET /v1/usage` | Bearer + `usage:read` | CodexBar proxy の利用枠・残高を `{items,nextCursor}` で返す。欠測は `unavailable`＋`value:null` |
+| `GET /v1/mac/status` | Bearer + `usage:read` | `host.cpu`・`host.memory`・`host.disk.free` の3件。CPU・メモリは Bridge 内サンプラ（10秒キャッシュ）、空き容量は storage-guard の状態ファイル |
 
 エラーは `{"error":{"code","message","retryable"},"requestId"}`。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`413` 読取上限超過、`415` テキストでない、`423` 排他中（git同期中・master以外）、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo・Syncthing・vault）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
 
@@ -246,6 +248,30 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: b1' \
 
 検証（2026-10-29、実vault）: `scripts/verify-brain.mjs` で一覧64件・gates ok・検索1件・`Inbox/_bridge-create-verify-*.md` の作成201・読戻し本文一致・hash一致・同名再作成409を確認し、その試験ノートは vault の既定（Obsidian のシステムTrash）に合わせて `~/.Trash/` へ移動した（削除APIは持たない。vaultに `.trash` は無く `trashOption` も未設定のため）。`npm test` の `test/brain.test.mjs` は fake vault・fake search・fake gates で同じ契約を固定する（実 vault・実 Syncthing は触らない）。
 
+## Usage と Mac 状態（`/v1/usage`・`/v1/mac/status`）
+
+ROADMAP 09。契約は `docs/laa/USAGE.md` §4、応答例は `docs/laa/fixtures/usage/`。実装は `src/routes/usage.mjs` と `src/usage/`（items / proxy / host）。読取専用で `usage:read` だけを要求し、資格情報・請求データ・provider の URL・cookie・エラー原文は返さない。
+
+| 項目 | 決定 | 理由 |
+|---|---|---|
+| 利用枠・残高 | `http://127.0.0.1:8081/widget`（version 1）を読む。`provider.<id>.quota` / `.balance` / `.credits` / `.usage` の16件を固定順で返す | USAGE.md §1。Console collector と同じ表示射影（code-owned の id・ラベル・単位）で、provider 側の任意テキストは通さない |
+| 欠測 | フィードに無い provider も `unavailable`＋`value:null`＋`nullReason:"fetch_failed"` で並べる。proxy 停止・タイムアウト・不正 JSON・`fetchedAt` が60秒超未来、は全件 unavailable の **200** | §4。0 で埋めない。Bridge の障害と「値が無い」を混ぜない |
+| 鮮度 | `live`/`local`/`codexbar-cli` は provider `updatedAt` と `fetchedAt` の古い方から20分（`LAA_BRIDGE_USAGE_AUTO_STALE_MS`）で `stale`。`source:"verified"` は画面確認値なので stale にしない | §4。verified は `observedAt` と期限で鮮度を示す |
+| 期限切れ | quota は `value` を決めた窓の `resetsAt` 経過、balance は `expiresOnUtc` 経過（日付は当日UTC末まで有効）または残高のある component が全期限切れ、で `expired:true`。値は保持する | §4。`claude-api` のような「一部だけ期限到来」は期限切れと呼ばない |
+| 費用・トークン | v1 には含めない（`profile.*` の item を作らない）。アプリは現行どおり dashboard を直接読む | USAGE.md §6 親の決定1。新しい読取チケットを増やさない。dashboard は実測401で、Bridge専用の認可が未決のため |
+| CPU・メモリ | Bridge プロセス内のサンプラ。CPU は `os.cpus()` のtick差分、メモリは `vm_stat` のページ数と `sysctl vm.swapusage`（`host_statistics64` と同じカーネル値）。10秒キャッシュで、常駐は増やさない | §6 親の決定2。`os.freemem()` だけだと reclaim 可能なキャッシュを「使用中」に見せる。非Darwin・取得失敗は `unsupported`／`fetch_failed` で null |
+| 空き容量 | `~/.local/state/laa-storage-guard/status.json` を読むだけ（`LAA_BRIDGE_STORAGE_STATUS`）。`checked_at` が26時間超で `stale`、ファイル無しは `not_configured`、JSON不正は `fetch_failed` | §4。`laa-storage-guard status` は約50秒かかるので起動しない |
+| 対象外 | proxy の `clef`（kind `status`＝テキスト）と `codex` の `credits` は v1 の4種類の item に載せない。`antigravity` の `extraWindows` は `windows` に合算して最小値を採る | 値の意味を変えて見せない。追加はアプリ側の表示要件が決まってから |
+
+```sh
+curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/usage
+curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/mac/status
+```
+
+`items[]` は `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。`availability:"unavailable"` の時だけ `value:null`・`nullReason` が付き、`observedAt` は null になる。`availability:"available"` は `value` が数値（0 も実値）。`detail` は quota=`{windows[{label,remainingPercent,resetsAt,windowMinutes?}]}`、balance=`{currency,components[]?,expiresOnUtc?}`、credits=`{renewsAt?,grantedAmount?,monthlyGrantedAmount?,dailyRemaining?,dailyGrantedAmount?}`、usage=`{periodDays,models[{model,inputTokens,outputTokens}]}`、CPU=`{windowSeconds,userPercent,systemPercent}`、メモリ=`{totalBytes,availableBytes,swapUsedBytes?}`、disk=`{volume,totalGb,level?,findings[]}`。
+
+検証: `npm test` の `test/usage.test.mjs` は HTTP 経由で fixture と同じ読みを1件ずつ照合し、`test/usage-sources.test.mjs` は射影・鮮度・期限・サニタイズ・10秒キャッシュ・状態ファイルの異常を固定する。実機は `node bridge/scripts/verify-usage.mjs`（proxy と状態ファイルを直接読み、独立計算と突き合わせる。資格情報なし）。
+
 ## 停止・再起動・クラッシュ復帰
 
 ```sh
@@ -277,7 +303,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（130 tests、約2秒。Drive・sessions・brainはfakeアダプタで検証）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（153 tests、約2秒。Drive・sessions・brain・usageはfakeアダプタで検証）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。
@@ -294,6 +320,6 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 
 ## 未対応（後続タスク）
 
-iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、Usage/Mac 状態、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。Kanban の読取は親が認証済みラッパーを承認するまで無効。
+iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。Kanban の読取は親が認証済みラッパーを承認するまで無効。
 
 Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）、Project と指示文書の実体（Brain/Drive）の存在確認。
