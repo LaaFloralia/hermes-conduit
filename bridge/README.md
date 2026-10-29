@@ -137,6 +137,17 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: w1' \
 - 作成は `paseo worktree create --mode branch-off` のみ。`git worktree remove`・`archive`・`--force`・rename は実装しない。Paseo が失敗したら 503 を返し、既存の worktree には触らない。作成後の path が許可 root の外なら 503（記録もしない）。
 - `projectId` の紐付けは `workspaces.json` に残る。worktree を消してもこの記録は自動削除しない（削除 API を持たない方針に合わせる）。
 
+### 検証
+
+```sh
+cd bridge
+npm test    # fake vault と fake adapter で契約を固定
+LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
+  LAA_BRIDGE_VERIFY_WORKSPACE=ws_… node scripts/verify-project-instructions.mjs
+```
+
+`verify-project-instructions.mjs` は Project 作成 → 編集 → 古い `If-Match` の 412（現在の版・ETag・本文）→ 版履歴 → 実セッションへの適用 → 停止を1回で回す。2026-10-29 に loopback で実測: 作成 201（`instructionVersion` 1）、編集 200（2）、stale 412 の `details.current` に版2・ETag `"2"`・本文、履歴2件（本文つき）、セッションは `instructionVersion=2` と hash を記録し、DSH の応答が指示ヘッダの hash（71文字）をそのまま返した（＝指示ブロックが委譲プロンプトに届いた）。journal に本文は入らず、版と hash だけ。検証用の端末は失効、Project・セッション・作業用 worktree は削除した。
+
 ## Drive（一覧・metadata・Range配信）
 
 `/v1/drive/files` は Google Drive API v3 を直接呼び、`files.list`・`files.get`・`files.get?alt=media` へクライアントの `Range` をそのまま中継する（`src/drive/google-api.mjs`、外部依存なし）。Driveデスクトップの同期フォルダ（`~/Library/CloudStorage`）は**読まない**。macOSのTCCがnodeプロセスへDrive管理ファイル全体の読取りを求め、許可するとnodeで動く全スクリプトに権限が広がること、オンライン専用ファイルは丸ごと取得しないと読めずRange再生に合わないことが理由（launchd配下では実際に `readdir` が許可待ちで停止した）。
