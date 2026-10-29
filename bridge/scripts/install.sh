@@ -17,7 +17,9 @@ PLIST_DST="$HOME/Library/LaunchAgents/$LABEL.plist"
 CLI_LINK="$HOME/.local/bin/laa-bridge"
 LOG_DIR="$HOME/Library/Logs"
 
-NODE=${LAA_BRIDGE_NODE:-$(python3 -c 'import os,shutil; print(os.path.realpath(shutil.which("node") or ""))')}
+# Keep the PATH shim (e.g. /opt/homebrew/bin/node) rather than its versioned
+# Cellar target, so a node upgrade does not orphan the LaunchAgent.
+NODE=${LAA_BRIDGE_NODE:-$(python3 -c 'import shutil; print(shutil.which("node") or "")')}
 if [ -z "$NODE" ] || [ ! -x "$NODE" ]; then
   echo "node not found; set LAA_BRIDGE_NODE to an absolute node binary" >&2
   exit 1
