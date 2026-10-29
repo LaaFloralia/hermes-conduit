@@ -134,11 +134,6 @@ struct LAAPlaceholderScreen: View {
                     .font(LAAFont.row)
                     .foregroundStyle(LAAColors.ink)
                     .fixedSize(horizontal: false, vertical: true)
-                divider
-                Text(verbatim: LAACopy.emptyReason(tab))
-                    .font(LAAFont.caption)
-                    .foregroundStyle(LAAColors.muted)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         case .loading:
             card {
@@ -181,12 +176,6 @@ struct LAAPlaceholderScreen: View {
                 .font(LAAFont.caption.weight(.medium))
                 .foregroundStyle(colour)
         }
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(LAAColors.hairline)
-            .frame(height: 1)
     }
 
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {

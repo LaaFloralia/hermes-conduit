@@ -51,9 +51,9 @@ enum LAACopy {
     /// empty screen explains what belongs there.
     static func emptyReason(_ tab: LAATab) -> String {
         switch tab {
-        case .chats: return "まだ会話がありません。下の＋から新しい会話を始めます。"
+        case .chats: return "まだ会話がありません。"
         case .work: return "Projectやタスクを作ると、ここに並びます。"
-        case .brain: return "まだ同期していません。Brainの最近・フォルダ・タグがここに出ます。"
+        case .brain: return "Brainに項目がありません。保存するとここに並びます。"
         case .source: return "まだ素材がありません。Drive・Inspiration・Studioの項目がここに並びます。"
         case .usage: return "利用枠・実利用・費用・Macの状態を、更新時刻と一緒に出します。"
         }
