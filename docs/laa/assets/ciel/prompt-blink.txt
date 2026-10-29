@@ -1,0 +1,1 @@
+Image 1 is the source image. Change only her eyes: both eyes gently closed in a natural, relaxed blink, the upper lids down and the lashes resting on the lower lids. Keep everything else unchanged and pixel-aligned: the same framing, size and position, face shape, glasses, hair, clip, clothes, brooch, light and the plain background. Same 1:1 canvas.

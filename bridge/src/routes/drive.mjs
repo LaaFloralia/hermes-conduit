@@ -1,26 +1,32 @@
-// /v1/drive/files — listing, metadata and byte-range streaming for the owner's
-// existing Google Drive authorization (see src/drive/drivefs.mjs).
+// /v1/drive/files — listing, metadata and byte-range streaming through the
+// Google Drive API (see src/drive/google-api.mjs).
 //
-// The content endpoint relays a single HTTP Range to a local file read, so
-// AVPlayer can start playback and seek inside a large video without the Bridge
-// buffering the file or holding a Google token:
-//   200 full body, 206 partial with Content-Range, 416 unsatisfiable,
-//   Content-Length/MIME/Accept-Ranges, and the read is cancelled when the
-//   client disconnects.
-// Workspace documents (Docs/Sheets/Slides) are placeholders on disk, so they
+// The content endpoint forwards the client's Range header to
+// files.get?alt=media and relays Drive's status, Content-Range, length and MIME
+// to AVPlayer, so playback and seeking happen on Drive's own byte ranges. The
+// upstream request is aborted when the client disconnects.
+// Workspace documents (Docs/Sheets/Slides) have no streamable bytes; they
 // answer 409 export_required with the formats the Drive API would export,
-// instead of pretending to be streamable bytes.
+// instead of pretending to be a binary download.
 
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import { createHash } from 'node:crypto';
 import { BridgeError } from '../errors.mjs';
-import { fingerprint } from '../drive/drivefs.mjs';
 
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_QUERY_LENGTH = 200;
 const CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
 const ID_PATTERN = /^[A-Za-z0-9_-]{5,200}$/;
+const RELAYED_HEADERS = [
+  'content-type',
+  'content-length',
+  'content-range',
+  'accept-ranges',
+  'etag',
+  'last-modified',
+];
 
 const badRequest = (code, message) => new BridgeError(400, code, message);
 
@@ -52,8 +58,12 @@ export function parseRange(header, size) {
   return { kind: 'range', start, end };
 }
 
-function encodeCursor({ offset, filter, issuedAt }) {
-  return Buffer.from(JSON.stringify({ v: 1, o: offset, f: filter, t: issuedAt }), 'utf8').toString('base64url');
+function fingerprint(parts) {
+  return createHash('sha256').update(parts.join('\u0000')).digest('hex').slice(0, 16);
+}
+
+function encodeCursor({ pageToken, filter, issuedAt }) {
+  return Buffer.from(JSON.stringify({ v: 1, p: pageToken, f: filter, t: issuedAt }), 'utf8').toString('base64url');
 }
 
 function decodeCursor(raw, filter, now) {
@@ -63,21 +73,27 @@ function decodeCursor(raw, filter, now) {
   } catch {
     throw badRequest('cursor_invalid', 'cursor is not a value returned by this endpoint');
   }
-  if (!parsed || parsed.v !== 1 || typeof parsed.o !== 'number' || parsed.f !== filter) {
+  if (!parsed || parsed.v !== 1 || typeof parsed.p !== 'string' || parsed.p === '' || parsed.f !== filter) {
     throw badRequest('cursor_invalid', 'cursor does not match this query');
   }
   if (typeof parsed.t !== 'number' || now - parsed.t > CURSOR_TTL_MS) {
     throw new BridgeError(410, 'cursor_expired', 'cursor has expired; list again from the start');
   }
-  return parsed.o;
+  return parsed.p;
 }
 
 function driveError(error) {
   if (error instanceof BridgeError) return error;
-  if (error && error.code === 'drive_unavailable') {
-    return new BridgeError(503, 'drive_unavailable', 'the Mac-side Google Drive client is not available', { retryable: true });
+  switch (error?.code) {
+    case 'drive_not_configured':
+      return new BridgeError(503, 'drive_not_configured', 'no Google Drive authorization is configured for the Bridge');
+    case 'drive_auth_failed':
+      return new BridgeError(503, 'drive_auth_failed', 'the Google Drive authorization was refused; reauthorize the Mac-side credential');
+    case 'drive_upstream_failed':
+      return new BridgeError(503, 'drive_unavailable', 'the Google Drive API request failed', { retryable: true });
+    default:
+      return error;
   }
-  return error;
 }
 
 function defaultDriveLog() {
@@ -87,8 +103,26 @@ function defaultDriveLog() {
   };
 }
 
-export function driveRoutes({ adapter, now = () => Date.now(), log = defaultDriveLog() } = {}) {
-  if (!adapter) throw new Error('driveRoutes needs a Drive adapter');
+function sendJsonError(res, requestId, status, code, message, headers = {}) {
+  const payload = `${JSON.stringify({ error: { code, message, retryable: false }, requestId })}\n`;
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(payload),
+    'x-request-id': requestId,
+    'x-content-type-options': 'nosniff',
+    'cache-control': 'no-store',
+    ...headers,
+  });
+  res.end(payload);
+}
+
+export function driveRoutes({ adapter = null, now = () => Date.now(), log = defaultDriveLog() } = {}) {
+  function requireAdapter() {
+    if (!adapter) {
+      throw new BridgeError(503, 'drive_not_configured', 'no Google Drive authorization is configured for the Bridge');
+    }
+    return adapter;
+  }
 
   async function listFiles({ req }) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
@@ -107,16 +141,17 @@ export function driveRoutes({ adapter, now = () => Date.now(), log = defaultDriv
     }
     const filter = fingerprint([query, folderId ?? '', String(pageSize)]);
     const rawCursor = url.searchParams.get('cursor');
-    const offset = rawCursor === null ? 0 : decodeCursor(rawCursor, filter, now());
+    const pageToken = rawCursor === null ? null : decodeCursor(rawCursor, filter, now());
 
     let page;
     try {
-      page = await adapter.list({ query, folderId, pageSize, offset });
+      page = await requireAdapter().list({ query, folderId, pageSize, pageToken });
     } catch (error) {
       throw driveError(error);
     }
-    const nextOffset = offset + page.items.length;
-    const nextCursor = nextOffset < page.total ? encodeCursor({ offset: nextOffset, filter, issuedAt: now() }) : null;
+    const nextCursor = page.nextPageToken
+      ? encodeCursor({ pageToken: page.nextPageToken, filter, issuedAt: now() })
+      : null;
     return { status: 200, data: { items: page.items, nextCursor } };
   }
 
@@ -124,7 +159,7 @@ export function driveRoutes({ adapter, now = () => Date.now(), log = defaultDriv
     const id = params[0];
     let found;
     try {
-      found = await adapter.get(id);
+      found = await requireAdapter().get(id);
     } catch (error) {
       throw driveError(error);
     }
@@ -132,12 +167,38 @@ export function driveRoutes({ adapter, now = () => Date.now(), log = defaultDriv
     return { status: 200, data: found.item };
   }
 
+  function contentHeaders({ requestId, item, status, upstream, size, start, end }) {
+    const headers = {
+      'content-type': upstream?.get('content-type') ?? item.mimeType,
+      'accept-ranges': 'bytes',
+      'cache-control': 'private, max-age=0, must-revalidate',
+      'x-content-type-options': 'nosniff',
+      'x-request-id': requestId,
+      'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(item.name)}`,
+    };
+    const etag = upstream?.get('etag');
+    if (etag) headers.etag = etag;
+    if (upstream) {
+      for (const name of RELAYED_HEADERS) {
+        const value = upstream.get(name);
+        if (value) headers[name] = value;
+      }
+    } else if (status === 206) {
+      headers['content-range'] = `bytes ${start}-${end}/${size}`;
+      headers['content-length'] = String(end - start + 1);
+    } else {
+      headers['content-length'] = String(size);
+    }
+    return headers;
+  }
+
   async function fileContent({ req, res, requestId, params }) {
     const id = params[0];
     const started = now();
+    const drive = requireAdapter();
     let found;
     try {
-      found = await adapter.get(id);
+      found = await drive.get(id);
     } catch (error) {
       throw driveError(error);
     }
@@ -154,58 +215,32 @@ export function driveRoutes({ adapter, now = () => Date.now(), log = defaultDriv
     }
 
     const size = item.size ?? 0;
-    const parsed = parseRange(req.headers.range, size);
-    if (parsed.kind === 'unsatisfiable') {
-      const payload = `${JSON.stringify({
-        error: { code: 'range_not_satisfiable', message: `requested range is outside 0-${Math.max(0, size - 1)}`, retryable: false },
-        requestId,
-      })}\n`;
-      res.writeHead(416, {
-        'content-type': 'application/json; charset=utf-8',
-        'content-length': Buffer.byteLength(payload),
-        'content-range': `bytes */${size}`,
-        'accept-ranges': 'bytes',
-        'x-request-id': requestId,
-        'x-content-type-options': 'nosniff',
-        'cache-control': 'no-store',
-      });
-      res.end(payload);
-      return undefined;
-    }
+    const rangeHeader = req.headers.range;
 
-    const start = parsed.kind === 'range' ? parsed.start : 0;
-    const end = parsed.kind === 'range' ? parsed.end : (size > 0 ? size - 1 : undefined);
-    const status = parsed.kind === 'range' ? 206 : 200;
-    const headers = {
-      'content-type': item.mimeType,
-      'content-length': String(parsed.kind === 'range' ? end - start + 1 : size),
-      'accept-ranges': 'bytes',
-      etag: found.etag,
-      'cache-control': 'private, max-age=0, must-revalidate',
-      'x-content-type-options': 'nosniff',
-      'x-request-id': requestId,
-      'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(item.name)}`,
-    };
-    if (parsed.kind === 'range') headers['content-range'] = `bytes ${start}-${end}/${size}`;
-
+    // HEAD never touches the media endpoint: metadata plus the same range
+    // arithmetic is enough for a player to decide what to request next.
     if (req.method === 'HEAD') {
-      res.writeHead(status, headers);
+      const parsed = parseRange(rangeHeader, size);
+      if (parsed.kind === 'unsatisfiable') {
+        sendJsonError(res, requestId, 416, 'range_not_satisfiable', `requested range is outside 0-${Math.max(0, size - 1)}`, {
+          'content-range': `bytes */${size}`,
+          'accept-ranges': 'bytes',
+        });
+        return undefined;
+      }
+      const status = parsed.kind === 'range' ? 206 : 200;
+      res.writeHead(status, contentHeaders({
+        requestId,
+        item,
+        status,
+        size,
+        start: parsed.kind === 'range' ? parsed.start : 0,
+        end: parsed.kind === 'range' ? parsed.end : size - 1,
+      }));
       res.end();
       return undefined;
     }
 
-    let opened;
-    try {
-      opened = await adapter.open(id, { start, end });
-    } catch (error) {
-      throw driveError(error);
-    }
-    if (!opened || opened.kind !== 'binary') {
-      throw new BridgeError(404, 'not_found', 'the file disappeared before it could be read');
-    }
-
-    // Open before the status line so a file that vanished between get() and
-    // open() still gets a clean JSON error instead of headers without a body.
     const abort = new AbortController();
     let aborted = false;
     const onClose = () => {
@@ -215,7 +250,41 @@ export function driveRoutes({ adapter, now = () => Date.now(), log = defaultDriv
       }
     };
     res.on('close', onClose);
-    res.writeHead(status, headers);
+
+    let opened;
+    try {
+      opened = await drive.open(id, { range: rangeHeader ?? null, signal: abort.signal });
+    } catch (error) {
+      res.off('close', onClose);
+      if (error?.name === 'AbortError') return undefined;
+      throw driveError(error);
+    }
+    if (!opened) {
+      res.off('close', onClose);
+      throw new BridgeError(404, 'not_found', 'the file is no longer readable');
+    }
+
+    if (opened.status === 416) {
+      res.off('close', onClose);
+      const contentRange = opened.headers?.get('content-range') ?? `bytes */${size}`;
+      sendJsonError(res, requestId, 416, 'range_not_satisfiable', 'Drive refused the requested range', {
+        'content-range': contentRange,
+        'accept-ranges': 'bytes',
+      });
+      return undefined;
+    }
+
+    const status = opened.status === 206 ? 206 : 200;
+    res.writeHead(status, contentHeaders({
+      requestId,
+      item,
+      status,
+      upstream: opened.headers,
+      size,
+      start: 0,
+      end: size - 1,
+    }));
+
     let sent = 0;
     const counter = new Transform({
       transform(chunk, _encoding, callback) {
