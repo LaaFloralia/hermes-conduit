@@ -9,6 +9,7 @@ struct LAAEmployeeVoiceStatus: Equatable {
     var speaker = false
     var nativeRoute = false
     var level: Float?
+    var voiceNote: String? = nil
 }
 
 enum LAAEmployeeVoiceOpenResult {
@@ -125,7 +126,8 @@ final class LAAEmployeeVoiceControl: LAAEmployeeCallControlling {
         if case .connected = phase, connectedAt == nil { connectedAt = Date() }
         let next = LAAEmployeeCallSnapshot(context: context, phase: phase, connectedAt: connectedAt,
                                            muted: status.muted, speaker: status.speaker,
-                                           usesSystemRoutePicker: status.nativeRoute, audioLevel: status.level)
+                                           usesSystemRoutePicker: status.nativeRoute, audioLevel: status.level,
+                                           voiceNote: status.voiceNote)
         guard next != lastSnapshot else { return }
         lastSnapshot = next
         onUpdate?(next)
@@ -140,7 +142,8 @@ private extension LAAEmployeeVoiceHost {
                 guard let app else { return "通話を準備中です" }
                 return app.isVoiceCallInProgress ? "別の通話を終了してください" : nil
             },
-            consent: { [weak app] _ in
+            consent: { [weak app] context in
+                if LAAStaff(profile: context.profile) != nil { return LiveVoiceProviderConsent.missing(.gptLive) }
                 guard let app, let engine = app.configuredLiveVoiceEngine(profile: app.activeProfile),
                       let mode = mode(for: engine) else { return nil }
                 return LiveVoiceProviderConsent.missing(mode)
@@ -155,9 +158,15 @@ private extension LAAEmployeeVoiceHost {
                     if active { nativeCallWasActive = true }
                 }
                 defer { nativeCallObservation.cancel() }
+                let employeePlan = app.laaEmployeeCallPlan(profile: context.profile)
+                app.laaEmployeeGPTLivePlan = employeePlan
                 let started = await app.openVoiceConversation(PendingVoiceIntent(
                     profile: app.activeProfile, startsFreshConversation: false, source: .composer))
-                guard !Task.isCancelled else { return .ended }
+                if !started, app.laaEmployeeGPTLivePlan == employeePlan { app.laaEmployeeGPTLivePlan = nil }
+                guard !Task.isCancelled else {
+                    if app.laaEmployeeGPTLivePlan == employeePlan { app.laaEmployeeGPTLivePlan = nil }
+                    return .ended
+                }
                 if !started, nativeCallWasActive, !app.isPlacedPhoneCallActive { return .ended }
                 guard started, app.isVoiceCallScreenPresented,
                       app.conversationIdentityProfile == context.profile,
@@ -166,6 +175,7 @@ private extension LAAEmployeeVoiceHost {
                         app.endVoiceForPlacedCall()
                         app.voicePlacedCalls.voiceChanged(running: false)
                     }
+                    if app.laaEmployeeGPTLivePlan == employeePlan { app.laaEmployeeGPTLivePlan = nil }
                     return .failed
                 }
                 return .opened(LAAEmployeeCallContext(id: context.id, profile: context.profile, name: context.name,
@@ -194,6 +204,7 @@ private extension LAAEmployeeVoiceHost {
                 guard let app else { return }
                 app.endVoiceForPlacedCall()
                 app.voicePlacedCalls.voiceChanged(running: false)
+                app.laaEmployeeGPTLivePlan = nil
             }
         )
     }
@@ -234,7 +245,8 @@ private extension LAAEmployeeVoiceHost {
         }
         return LAAEmployeeVoiceStatus(phase: phase, muted: app.nativeCallVoiceMuted ?? false,
                                       speaker: audio.conversationSpeakerChosen,
-                                      nativeRoute: audio.isInNativeCall, level: level)
+                                      nativeRoute: audio.isInNativeCall, level: level,
+                                      voiceNote: app.showGPTLiveSheet ? app.gptLiveController.voiceNote : nil)
     }
 
     static func livePhase(_ phase: GeminiLiveConversationController.Phase, scheduled: Bool) -> LAAEmployeeCallPhase {
@@ -253,7 +265,7 @@ private extension LAAEmployeeVoiceHost {
         case .connecting: return .connecting
         case .listening, .speaking, .paused: return .connected
         case .ending: return .ending
-        case .failed: return .failed("音声に接続できませんでした")
+        case .failed(let reason): return .failed(reason)
         }
     }
 }

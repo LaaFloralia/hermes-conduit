@@ -18,8 +18,10 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         if appState.isVoiceCallInProgress { return "別の通話を終了してください" }
         if let reason = LAAEmployeeCallAvailability.bridgeReason(bridge.status) { return reason }
         guard appState.isConnected else { return "Hermesに接続してください" }
-        guard appState.canStartPhoneVoiceConversation else {
-            return LAAEmployeeCallAvailability.voiceReason(appState.voiceSetupIssue)
+        if let voiceReason = LAAEmployeeCallAvailability.voiceReason(
+            profile: profile, canStart: appState.canStartPhoneVoiceConversation, issue: appState.voiceSetupIssue
+        ) {
+            return voiceReason
         }
         return calls.unavailableReason
     }
@@ -35,7 +37,8 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
-                              status: status, isObscured: calls.isShowingCall)
+                              status: status, isObscured: calls.isShowingCall,
+                              voiceSetting: voiceSetting(for: profile), voiceSettingEnabled: appState.isConnected)
                 .laaPhotoGlassScope()
         }
         ToolbarItem(placement: .topBarTrailing) {
@@ -45,9 +48,20 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
             }
         }
     }
+
+    private func voiceSetting(for profile: String) -> Binding<String>? {
+        guard let staff = LAAStaff(profile: profile) else { return nil }
+        return Binding(get: { appState.laaEmployeeVoice(profile: profile) ?? staff.defaultGPTLiveVoice },
+                       set: { appState.setLAAEmployeeVoice($0, profile: profile) })
+    }
 }
 
 enum LAAEmployeeCallAvailability {
+    static func voiceReason(profile: String, canStart: Bool, issue: VoiceSetupIssue?) -> String? {
+        guard LAAStaff(profile: profile) == nil, !canStart else { return nil }
+        return voiceReason(issue)
+    }
+
     static func bridgeReason(_ status: LAABridgeSession.Status) -> String? {
         switch status {
         case .paired: return nil
@@ -75,6 +89,8 @@ struct LAAEmployeeHeader: View {
     var avatarURL: URL? = nil
     let status: String
     var isObscured = false
+    var voiceSetting: Binding<String>? = nil
+    var voiceSettingEnabled = true
     @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
 
@@ -92,7 +108,8 @@ struct LAAEmployeeHeader: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showDetails) {
-            LAAStaffDetailView(profile: profile, name: name, avatarURL: avatarURL, status: status)
+            LAAStaffDetailView(profile: profile, name: name, avatarURL: avatarURL, status: status,
+                               voiceSetting: voiceSetting, voiceSettingEnabled: voiceSettingEnabled)
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("laa.employee.header")
@@ -120,6 +137,8 @@ private struct LAAStaffDetailView: View {
     let name: String
     let avatarURL: URL?
     let status: String
+    let voiceSetting: Binding<String>?
+    let voiceSettingEnabled: Bool
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -129,6 +148,20 @@ private struct LAAStaffDetailView: View {
                 Text(name).font(.custom("Georgia", size: 26, relativeTo: .title))
                 if let role = LAAStaff(profile: profile)?.role { Text(role).font(.subheadline) }
                 Text(status).font(.caption).foregroundStyle(.secondary)
+                if let voiceSetting {
+                    Picker(selection: voiceSetting) {
+                        ForEach(GPTLiveVoice.all) { voice in Text(voice.label).tag(voice.name) }
+                    } label: {
+                        Text(verbatim: "通話の声")
+                    }
+                    .pickerStyle(.menu)
+                    .disabled(!voiceSettingEnabled)
+                    .accessibilityIdentifier("laa.employee.voice-setting")
+                    .padding(.horizontal, LAASpacing.horizontal)
+                    Text(verbatim: "ChatGPT の声を社員ごとに設定します")
+                        .laaTextStyle(.secondary)
+                        .foregroundStyle(LAAColor.secondaryText)
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle(Text(verbatim: "社員の詳細"))

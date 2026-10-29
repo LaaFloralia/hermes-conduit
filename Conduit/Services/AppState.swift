@@ -3113,6 +3113,31 @@ final class AppState: ObservableObject {
     /// sheets: no two voice modes run at once.
     @Published var showGPTLiveSheet = false
 
+    #if LAA_BUILD
+    /// The employee identity is independent of the chat's workspace profile.
+    /// It belongs to one call, including its pending CallKit activation.
+    var laaEmployeeGPTLivePlan: LAAEmployeeGPTLivePlan?
+
+    func laaEmployeeVoice(profile: String) -> String? {
+        LAAEmployeeGPTLivePlan.make(profile: profile,
+            savedVoice: loadVoiceProfilePreferences(profile: profile).gptLiveVoice)?.voice
+    }
+
+    func setLAAEmployeeVoice(_ voice: String, profile: String) {
+        guard LAAStaff(profile: profile) != nil, GPTLiveVoice.all.contains(where: { $0.name == voice }) else { return }
+        var preferences = loadVoiceProfilePreferences(profile: profile)
+        guard preferences.gptLiveVoice != voice else { return }
+        objectWillChange.send()
+        preferences.gptLiveVoice = voice
+        saveVoiceProfilePreferences(preferences, profile: profile)
+    }
+
+    func laaEmployeeCallPlan(profile: String) -> LAAEmployeeGPTLivePlan? {
+        LAAEmployeeGPTLivePlan.make(profile: profile,
+            savedVoice: loadVoiceProfilePreferences(profile: profile).gptLiveVoice)
+    }
+    #endif
+
     /// GPT-Live on the host's ChatGPT subscription: an opt-in, per-profile
     /// Voice mode (off by default), never on together with Gemini Live.
     var isGPTLiveEnabled: Bool {
@@ -3183,6 +3208,13 @@ final class AppState: ObservableObject {
     /// calls for those too: nobody is billed for a call they didn't start
     /// without having said so.
     var gptLiveCallBilling: GPTLiveBilling {
+        #if LAA_BUILD
+        if let plan = laaEmployeeGPTLivePlan { return plan.billing }
+        // A call in an employee conversation must never inherit another
+        // workspace's API-key preference, even after an earlier call ended.
+        if liveHermesCall == nil, pendingHermesCall == nil,
+           LAAStaff(profile: conversationIdentityProfile) != nil { return .subscription }
+        #endif
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
         guard preferences.resolvedGPTLiveBilling == .api else { return .subscription }
         let hermesPlacedCall = liveHermesCall != nil || pendingHermesCall != nil
@@ -3192,7 +3224,10 @@ final class AppState: ObservableObject {
 
     /// The voice for the next call, from the list of the path it's billed on.
     var gptLiveCallVoice: String? {
-        gptLiveCallBilling == .api ? gptLiveAPIVoice : gptLiveVoice
+        #if LAA_BUILD
+        if let plan = laaEmployeeGPTLivePlan { return plan.voice }
+        #endif
+        return gptLiveCallBilling == .api ? gptLiveAPIVoice : gptLiveVoice
     }
 
     var gptLiveAPIVoice: String? {
@@ -3301,6 +3336,12 @@ final class AppState: ObservableObject {
 
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
+    #if LAA_BUILD
+    lazy var gptLiveClient = laaGPTLiveClient(request: { [weak self] path, method, body, timeout in
+        guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+    })
+    #else
     lazy var gptLiveClient = GPTLiveClient(profile: { [weak self] in
         self?.activeProfile ?? "default"
     }, billing: { [weak self] in
@@ -3310,6 +3351,7 @@ final class AppState: ObservableObject {
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
     })
+    #endif
 
     /// Built on first use only, like Gemini Live's.
     private var gptLiveControllerCreated = false
@@ -3323,7 +3365,14 @@ final class AppState: ObservableObject {
         gptLiveControllerCreated = true
         let client = gptLiveClient
         // Memory and persona come from the same host routes Gemini Live reads.
+        #if LAA_BUILD
+        let hostContext = laaGPTLiveHostContext(request: { [weak self] path, method, body, timeout in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        })
+        #else
         let hostContext = geminiLiveTokenClient
+        #endif
         let controller = GPTLiveConversationController(
             makeSession: { [weak self] in
                 GPTLiveSession(
@@ -3343,8 +3392,24 @@ final class AppState: ObservableObject {
                     // Off only when the user turned web lookups off.
                     let wantsLookUps = self.geminiLiveSearchMode != .off
                     async let lookUps = wantsLookUps ? hostContext.webSearchAvailable() : false
+                    #if LAA_BUILD
+                    let employeePlan = self.laaEmployeeGPTLivePlan
+                    let wantsMemory = employeePlan.map {
+                        self.loadVoiceProfilePreferences(profile: $0.profile).gptLiveMemory ?? false
+                    } ?? self.gptLiveMemoryEnabled
+                    let wantsPersonality = employeePlan != nil || self.gptLivePersonalityEnabled
+                    let memory = wantsMemory ? await hostContext.memoryContext() : nil
+                    let personality = wantsPersonality ? await hostContext.personality() : nil
+                    guard self.laaEmployeeGPTLivePlan == employeePlan else { throw CancellationError() }
+                    if employeePlan != nil, personality == nil {
+                        return .unavailable(reason: "社員の人格設定を読み込めません。Hermes のプロフィールを確認してください。")
+                    }
+                    self.gptLiveMemoryContext = memory
+                    self.gptLivePersonality = personality
+                    #else
                     self.gptLiveMemoryContext = self.gptLiveMemoryEnabled ? await hostContext.memoryContext() : nil
                     self.gptLivePersonality = self.gptLivePersonalityEnabled ? await hostContext.personality() : nil
+                    #endif
                     await self.prepareVoiceHostTools(for: .gptLive)
                     self.gptLiveWebLookUps = await lookUps
                 }
@@ -3480,6 +3545,9 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         voiceBackgroundJobSupervisor.detachLiveThread()
         dropGPTLiveHostContext()
+        #if LAA_BUILD
+        laaEmployeeGPTLivePlan = nil
+        #endif
         if voiceCallRecorder?.engine == .gptLive { finishVoiceCallRecording() }
     }
 
@@ -9160,7 +9228,8 @@ final class AppState: ObservableObject {
     var placedCallName: String {
         let fallback = HermesCallerName.name(profile: activeProfile, mainName: profileDisplayName(activeProfile))
         #if LAA_BUILD
-        return LAACallKitPresentation.callerName(profile: conversationIdentityProfile, fallback: fallback)
+        let callerProfile = laaEmployeeGPTLivePlan?.profile ?? conversationIdentityProfile
+        return LAACallKitPresentation.callerName(profile: callerProfile, fallback: fallback)
         #else
         return fallback
         #endif
@@ -9218,7 +9287,17 @@ final class AppState: ObservableObject {
             return false
         }
         let started: Bool
-        switch configuredLiveVoiceEngine(profile: profile) {
+        #if LAA_BUILD
+        if let plan = laaEmployeeGPTLivePlan, conversationIdentityProfile != plan.profile {
+            voicePlacedCalls.cancelVoiceStart(start)
+            pendingVoiceResume = nil
+            return false
+        }
+        let resumeEngine = laaVoiceResumeEngine(profile: profile)
+        #else
+        let resumeEngine = configuredLiveVoiceEngine(profile: profile)
+        #endif
+        switch resumeEngine {
         case .qwenLive: started = openQwenLiveConversation(attachingTo: thread)
         case .geminiLive: started = openGeminiLiveConversation(attachingTo: thread)
         case .grokLive: started = openGrokLiveConversation(attachingTo: thread)
@@ -22675,12 +22754,24 @@ final class AppState: ObservableObject {
         guard !isVoiceCallInProgress else {
             return .failed(AppLocalization.string("End the call before starting another voice conversation."))
         }
+        #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == nil else {
+            return .failed("社員との通話を終了してください")
+        }
+        #endif
         let authorization = lease.initialCaptureAuthorization()
         let intent = PendingVoiceIntent(profile: workspace.profile, startsFreshConversation: true, source: .newCall)
+        #if LAA_BUILD
+        let employeePlan = laaEmployeeCallPlan(profile: workspace.profile)
+        laaEmployeeGPTLivePlan = employeePlan
+        #endif
         #if DEBUG && LAA_BUILD
         WidgetLaunchUITestFixture.noteVoicePath(workspace.profile)
         #endif
         let opened = await openVoiceConversation(intent, widgetLease: lease, initialCaptureAuthorization: authorization)
+        #if LAA_BUILD
+        if !opened, laaEmployeeGPTLivePlan == employeePlan { laaEmployeeGPTLivePlan = nil }
+        #endif
         guard lease.isCurrent || authorization.mayStartCapture else { return .deferred }
         return opened ? .handled : .deferred
     }
@@ -35131,7 +35222,11 @@ final class AppState: ObservableObject {
 
     /// The mode a voice screen's call is in, for its mode menu: the engine
     /// it runs on (nil for classic voice).
-    func voiceModeSwitch(for engine: VoiceCallEngine?) -> VoiceModeSwitch {
+    func voiceModeSwitch(for engine: VoiceCallEngine?) -> VoiceModeSwitch? {
+        #if LAA_BUILD
+        // Employee calls are fixed to GPT-Live on the ChatGPT plan.
+        if laaEmployeeGPTLivePlan != nil { return nil }
+        #endif
         // Read only for Local Live: the call screens ask on every redraw.
         let localAgent = engine == .localLive ? isLocalLiveAgent : true
         let current = VoiceModeChoice(engine: engine, localAgent: localAgent)
@@ -35216,6 +35311,9 @@ final class AppState: ObservableObject {
     /// call hangs up and starts again in the new mode, in the chat it was
     /// working in.
     func switchVoiceMode(to choice: VoiceModeChoice) async {
+        #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == nil else { return }
+        #endif
         guard case .proceed(let thread) = await handOffVoiceMode(to: choice) else { return }
         if choice.engine != nil {
             let profile = activeProfile
@@ -35307,6 +35405,15 @@ final class AppState: ObservableObject {
         let startsInOpenChat = intent.source == .composer || intent.source == .screenQuestion || intent.source == .hermesCall
         let thread = startsInOpenChat && targetProfile == activeProfile ? liveVoiceThreadForOpenChat() : nil
         var liveEngine = configuredLiveVoiceEngine(profile: targetProfile)
+        #if LAA_BUILD
+        if let plan = laaEmployeeGPTLivePlan {
+            let employeeChat = intent.source == .composer && targetProfile == activeProfile
+                && conversationIdentityProfile == plan.profile
+            let employeeWidget = intent.source == .newCall && widgetLease != nil && targetProfile == plan.profile
+            guard employeeChat || employeeWidget else { return false }
+            liveEngine = plan.engine
+        }
+        #endif
         // Voice from a saved call's row picks that call up: the same row,
         // not another one beside it.
         if liveEngine != nil, targetProfile == activeProfile,

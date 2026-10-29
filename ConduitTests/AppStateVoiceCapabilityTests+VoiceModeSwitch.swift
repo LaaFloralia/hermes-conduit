@@ -114,16 +114,16 @@ extension AppStateVoiceCapabilityTests {
         appState.closeQwenLiveConversation()
     }
 
-    func testAHandsFreeLocalCallCanMoveToClassic() {
+    func testAHandsFreeLocalCallCanMoveToClassic() throws {
         let appState = makeModeSwitchAppState()
         appState.setLocalLiveEnabled(true)
         appState.setLocalLiveAgent(false)
 
-        let handsFree = appState.voiceModeSwitch(for: .localLive)
+        let handsFree = try XCTUnwrap(appState.voiceModeSwitch(for: .localLive))
         XCTAssertEqual(handsFree.current, .classic, "listed as Settings lists it")
         XCTAssertTrue(handsFree.moves(to: .classic), "the call isn't classic voice yet")
 
-        let classic = appState.voiceModeSwitch(for: nil)
+        let classic = try XCTUnwrap(appState.voiceModeSwitch(for: nil))
         XCTAssertFalse(classic.moves(to: .classic), "a classic call stays as it is")
         XCTAssertTrue(classic.moves(to: .gpt))
     }
@@ -158,7 +158,7 @@ extension AppStateVoiceCapabilityTests {
         await gptController.start()
         gptSession.becomeReady()
         XCTAssertTrue(gptController.isActive)
-        XCTAssertEqual(appState.voiceModeSwitch(for: .gptLive).current, .gpt)
+        XCTAssertEqual(appState.voiceModeSwitch(for: .gptLive)?.current, .gpt)
 
         await appState.switchVoiceMode(to: .gemini)
 
