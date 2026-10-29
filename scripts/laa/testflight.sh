@@ -54,6 +54,15 @@ xcodebuild -version >/dev/null 2>&1 || fail \
 command -v xcodegen >/dev/null || fail "xcodegen is missing: brew install xcodegen"
 command -v node >/dev/null || fail "node is missing: the App Store Connect calls in scripts/laa/asc.mjs need it"
 
+# SwiftPM fetches the WebRTC package from a public repository, so nothing in
+# this build needs a GitHub credential — and the login keychain must not be
+# consulted: a git credential helper pops a password dialog the machine can't
+# answer (2026-10-29). These make such a request fail instead of prompting.
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/usr/bin/false
+export SSH_ASKPASS=/usr/bin/false
+export GIT_CONFIG_GLOBAL=/dev/null
+
 mkdir -p "$work"
 build_number="${CURRENT_PROJECT_VERSION:-$(date -u +%y%m%d%H%M)}"
 case "$build_number" in
@@ -116,6 +125,21 @@ echo "Generating Conduit.xcodeproj from $(basename "$spec") (build $build_number
 # Written at the repository root whatever the spec's own place: source paths
 # resolve against the file that declares them, and -project expects it here.
 xcodegen generate --spec "$spec" --project "$repo" >/dev/null
+
+# Resolve SwiftPM's package once, through the system git and the credential-free
+# environment above: a private-repository prompt fails here, in the open, and
+# the archive that follows finds the packages already checked out.
+if [ -z "${LAA_WEBRTC_XCFRAMEWORK:-}" ]; then
+  echo "Resolving Swift packages (no credentials consulted)..."
+  if ! xcodebuild -resolvePackageDependencies \
+      -project Conduit.xcodeproj \
+      -scheme Conduit \
+      -scmProvider system \
+      -derivedDataPath "$work/DerivedData" > "$work/resolve.log" 2>&1; then
+    grep -E "error:|could not|failed" "$work/resolve.log" | head -n 10 || true
+    fail "Swift package resolution failed; see $work/resolve.log (nothing prompted for a password)"
+  fi
+fi
 
 archive="$work/LAA.xcarchive"
 rm -rf "$archive" "$work/export"

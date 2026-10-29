@@ -176,6 +176,13 @@ are untouched until someone runs the pair command.
 
 ## When the toolchain fights back
 
+- **A GitHub password dialog during the build.** Nothing in this build needs a
+  credential: the WebRTC package is public. `scripts/laa/testflight.sh` exports
+  `GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/usr/bin/false` and
+  `GIT_CONFIG_GLOBAL=/dev/null` for the whole run, and resolves the package
+  through the system git (`-scmProvider system`) before archiving, so a
+  credential request fails in `build/laa/resolve.log` instead of reaching the
+  login keychain.
 - **SwiftPM stalls on the WebRTC artifact** (`Checking out 153.0.0 of package
   'WebRTC'` and no bytes arrive, 2026-10-29 on this Mac). Download release
   153.0.0 by hand, check its sha256 is
