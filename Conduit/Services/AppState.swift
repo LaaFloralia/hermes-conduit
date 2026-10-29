@@ -3134,7 +3134,7 @@ final class AppState: ObservableObject {
 
     func laaEmployeeCallPlan(profile: String) -> LAAEmployeeGPTLivePlan? {
         LAAEmployeeGPTLivePlan.make(profile: profile,
-            savedVoice: loadVoiceProfilePreferences(profile: profile).gptLiveVoice)
+            savedVoice: loadVoiceProfilePreferences(profile: profile).gptLiveVoice, dashboardID: activeDashboardID)
     }
     #endif
 
@@ -3379,10 +3379,24 @@ final class AppState: ObservableObject {
         #else
         let hostContext = geminiLiveTokenClient
         #endif
+        #if LAA_BUILD
+        // The session follows the plan that passed availability, even if the
+        // plan is replaced while microphone permission is being requested.
+        var preparedEmployeePlan: LAAEmployeeGPTLivePlan?
+        #endif
         let controller = GPTLiveConversationController(
             makeSession: { [weak self] in
-                GPTLiveSession(
-                    client: client,
+                #if LAA_BUILD
+                let sessionClient = preparedEmployeePlan.map { plan in
+                    client.captured(profile: plan.profile, billing: plan.billing, isCurrent: { [weak self] in
+                        self?.laaEmployeeGPTLivePlan == plan && self?.activeDashboardID == plan.dashboardID
+                    })
+                } ?? client
+                #else
+                let sessionClient = client
+                #endif
+                return GPTLiveSession(
+                    client: sessionClient,
                     history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
                     voice: self?.gptLiveCallVoice,
                     briefing: self?.gptLiveBriefing() ?? GPTLiveConversationController.briefing(),
@@ -3393,31 +3407,74 @@ final class AppState: ObservableObject {
                 )
             },
             availability: { [weak self] in
-                let status = try await client.availability()
+                #if LAA_BUILD
+                let employeePlan = self?.laaEmployeeGPTLivePlan
+                let isCurrent: @MainActor () -> Bool = { [weak self] in
+                    guard let self else { return false }
+                    return self.laaEmployeeGPTLivePlan == employeePlan
+                        && (employeePlan == nil || self.activeDashboardID == employeePlan?.dashboardID)
+                }
+                let scopedClient = employeePlan.map {
+                    client.captured(profile: $0.profile, billing: $0.billing, isCurrent: isCurrent)
+                } ?? client
+                let scopedContext = employeePlan.map { hostContext.captured(profile: $0.profile, isCurrent: isCurrent) } ?? hostContext
+                #else
+                let scopedClient = client
+                let scopedContext = hostContext
+                #endif
+                let status = try await scopedClient.availability()
                 if status.isAvailable, let self {
                     // Off only when the user turned web lookups off.
                     let wantsLookUps = self.geminiLiveSearchMode != .off
-                    async let lookUps = wantsLookUps ? hostContext.webSearchAvailable() : false
+                    async let lookUps = wantsLookUps ? scopedContext.webSearchAvailable() : false
                     #if LAA_BUILD
-                    let employeePlan = self.laaEmployeeGPTLivePlan
+                    guard isCurrent() else { throw CancellationError() }
                     let wantsMemory = employeePlan.map {
                         self.loadVoiceProfilePreferences(profile: $0.profile).gptLiveMemory ?? false
                     } ?? self.gptLiveMemoryEnabled
                     let wantsPersonality = employeePlan != nil || self.gptLivePersonalityEnabled
-                    let memory = wantsMemory ? await hostContext.memoryContext() : nil
-                    let personality = wantsPersonality ? await hostContext.personality() : nil
-                    guard self.laaEmployeeGPTLivePlan == employeePlan else { throw CancellationError() }
-                    if employeePlan != nil, personality == nil {
-                        return .unavailable(reason: "社員の人格設定を読み込めません。Hermes のプロフィールを確認してください。")
+                    let memory = wantsMemory ? await scopedContext.memoryContext() : nil
+                    let personality: String?
+                    if let employeePlan {
+                        let result = await self.laaEmployeePersonality(scopedContext, plan: employeePlan)
+                        guard isCurrent() else { throw CancellationError() }
+                        switch result {
+                        case .available(let text): personality = text
+                        case .missingRoute:
+                            return .unavailable(reason: "Hermes のプラグインを更新してください。社員の人格を読み込めません。")
+                        case .missingPersona:
+                            return .unavailable(reason: "社員の人格が見つかりません。Hermes のプロフィールを確認してください。")
+                        case .unavailable:
+                            return .unavailable(reason: "社員の人格を読み込めません。Hermes の接続を確認してください。")
+                        }
+                    } else {
+                        personality = wantsPersonality ? await scopedContext.personality() : nil
                     }
+                    guard isCurrent() else { throw CancellationError() }
                     self.gptLiveMemoryContext = memory
                     self.gptLivePersonality = personality
                     #else
                     self.gptLiveMemoryContext = self.gptLiveMemoryEnabled ? await hostContext.memoryContext() : nil
                     self.gptLivePersonality = self.gptLivePersonalityEnabled ? await hostContext.personality() : nil
                     #endif
+                    #if LAA_BUILD
+                    if employeePlan != nil {
+                        await self.prepareVoiceHostTools(for: .gptLive, scope: self.laaGPTLiveToolScope, isCurrent: isCurrent)
+                    } else {
+                        await self.prepareVoiceHostTools(for: .gptLive)
+                    }
+                    guard isCurrent() else { throw CancellationError() }
+                    #else
                     await self.prepareVoiceHostTools(for: .gptLive)
-                    self.gptLiveWebLookUps = await lookUps
+                    #endif
+                    let availableLookUps = await lookUps
+                    #if LAA_BUILD
+                    guard isCurrent() else { throw CancellationError() }
+                    #endif
+                    self.gptLiveWebLookUps = availableLookUps
+                    #if LAA_BUILD
+                    preparedEmployeePlan = employeePlan
+                    #endif
                 }
                 return status
             },
@@ -3429,8 +3486,7 @@ final class AppState: ObservableObject {
             webSearch: hostContext,
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
-                guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
+                self?.gptLiveEndConversationPhrases ?? []
             }
         )
         // A hands-free goodbye closes the sheet like the Close button.
@@ -3447,14 +3503,28 @@ final class AppState: ObservableObject {
     /// then this call's own blocks. One builder for the session request and
     /// the context a host that doesn't take briefings gets, so both fit the
     /// plugin's size limit the same way.
+    var gptLiveEndConversationPhrases: [String] {
+        #if LAA_BUILD
+        let profile = laaGPTLiveProfile
+        #else
+        let profile = activeProfile
+        #endif
+        return loadVoiceProfilePreferences(profile: profile).resolvedSpokenEndConversationPhrases
+    }
+
     func gptLiveBriefing() -> String {
-        GPTLiveConversationController.briefing(
+        #if LAA_BUILD
+        let phoneHint = phoneVoiceSettingHint(for: .gptLive, scope: laaGPTLiveToolScope)
+        #else
+        let phoneHint = phoneVoiceSettingHint(for: .gptLive)
+        #endif
+        return GPTLiveConversationController.briefing(
             memory: gptLiveMemoryContext,
             personality: gptLivePersonality,
             answerLength: liveVoiceStyle.answerLength,
             followedBy: (liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                 + liveHermesCallInstructions(delegation: true)
-                + liveVoiceThreadInstructions(delegation: true) + phoneVoiceSettingHint(for: .gptLive)
+                + liveVoiceThreadInstructions(delegation: true) + phoneHint
                 + hermesCallsInstructions(delegation: true)
                 + VoiceHostTool.gptLiveRules(voiceBackgroundJobSupervisor.hostTools)
                 + GPTLiveConversationController.jobApprovalRule
@@ -7070,6 +7140,11 @@ final class AppState: ObservableObject {
         voiceCallRecorder?.jobSessionIDs += jobs
     }
 
+    var voiceCallRecorderProfileForTesting: String? { voiceCallRecorder?.profile }
+    #if LAA_BUILD
+    var voiceResumeContextReaderForTesting: ((String, String) async -> VoiceResumeContext?)?
+    #endif
+
     /// Test seam: the running call's checkpoint, as the 15-second timer
     /// takes it, once `turns` have settled.
     func checkpointVoiceCallForTesting(adding turns: [VoiceConversationTranscriptEntry] = []) {
@@ -7320,7 +7395,12 @@ final class AppState: ObservableObject {
 
     /// How live calls sound on this profile (#290).
     var liveVoiceStyle: LiveVoiceStyle {
-        loadVoiceProfilePreferences(profile: activeProfile).liveVoiceStyle
+        #if LAA_BUILD
+        let profile = laaGPTLiveProfile
+        #else
+        let profile = activeProfile
+        #endif
+        return loadVoiceProfilePreferences(profile: profile).liveVoiceStyle
     }
 
     /// Applies from the next call. `profile` defaults to the active one.
@@ -7572,13 +7652,19 @@ final class AppState: ObservableObject {
         noteVoiceCallStartedForLocation()
         // Read now, so "call me when it's done" knows whether Hermes can.
         if supportsHermesCalls { Task { await refreshHermesCallsStatus() } }
-        guard voiceCallSavingEnabled else {
+        #if LAA_BUILD
+        let profile = engine == .gptLive ? laaGPTLiveProfile : activeProfile
+        let saveCall = engine == .gptLive ? (loadVoiceProfilePreferences(profile: profile).saveVoiceCalls ?? true) : voiceCallSavingEnabled
+        #else
+        let profile = activeProfile
+        let saveCall = voiceCallSavingEnabled
+        #endif
+        guard saveCall else {
             lastChatCall = nil
             return
         }
         voiceCallCheckpointedTurns = 0
         voiceCallCheckpointedAt = .distantPast
-        let profile = activeProfile
         let callDashboard = (id: activeDashboardID?.uuidString ?? "-", owner: currentDashboardRuntimeOwner())
         let owner = callDashboard.owner
         let thread = voiceBackgroundJobSupervisor.liveThread
@@ -8520,7 +8606,12 @@ final class AppState: ObservableObject {
     /// Whether Resume Call has a live voice mode to resume with.
     var canResumeVoiceCall: Bool {
         // With saving off, a resumed call couldn't add to the row.
-        isConnected && voiceCallSavingEnabled && (isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled) && !isLiveVoiceCallActive
+        #if LAA_BUILD
+        if let plan = laaEmployeeGPTLivePlan {
+            return isConnected && (loadVoiceProfilePreferences(profile: plan.profile).saveVoiceCalls ?? true) && !isLiveVoiceCallActive
+        }
+        #endif
+        return isConnected && voiceCallSavingEnabled && (isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled) && !isLiveVoiceCallActive
     }
 
     /// A live call is already running; opening another would only surface it.
@@ -9271,13 +9362,31 @@ final class AppState: ObservableObject {
         keepVoiceFromHermesCallCleanup()
         isPreparingVoiceResume = true
         defer { isPreparingVoiceResume = false }
-        let profile = activeProfile
+        let workspaceProfile = activeProfile
+        #if LAA_BUILD
+        let employeePlan = laaEmployeeGPTLivePlan
+        let profile = employeePlan?.profile ?? workspaceProfile
+        #else
+        let profile = workspaceProfile
+        #endif
         let dashboard = activeDashboardID
         let openChat = activeSessionId
+        #if DEBUG && LAA_BUILD
+        let context: VoiceResumeContext?
+        if let reader = voiceResumeContextReaderForTesting {
+            context = await reader(sessionID, profile)
+        } else {
+            context = await voiceResumeContext(sessionID: sessionID, profile: profile)
+        }
+        #else
         let context = await voiceResumeContext(sessionID: sessionID, profile: profile)
+        #endif
         // Another chat or server opened meanwhile: that isn't this call's.
-        guard !Task.isCancelled, profile == activeProfile, dashboard == activeDashboardID, openChat == activeSessionId,
+        guard !Task.isCancelled, workspaceProfile == activeProfile, dashboard == activeDashboardID, openChat == activeSessionId,
               canResumeVoiceCall else { return false }
+        #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == employeePlan, employeePlan == nil || employeePlan?.dashboardID == dashboard else { return false }
+        #endif
         // Without the saved turns the call still continues the row.
         pendingVoiceResume = (sessionID, context ?? VoiceResumeContext(summary: nil, recent: []))
         // A call started from a chat goes back to that chat.
@@ -9286,7 +9395,7 @@ final class AppState: ObservableObject {
         // The call comes first, so the resumed engine starts on the session
         // CallKit activated (LAA fork).
         let start = await voicePlacedCalls.prepareForVoiceStart()
-        guard voicePlacedCalls.canStartVoice(start), profile == activeProfile,
+        guard voicePlacedCalls.canStartVoice(start), workspaceProfile == activeProfile,
               dashboard == activeDashboardID, openChat == activeSessionId, canResumeVoiceCall else {
             voicePlacedCalls.cancelVoiceStart(start)
             pendingVoiceResume = nil
@@ -9294,6 +9403,11 @@ final class AppState: ObservableObject {
         }
         let started: Bool
         #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == employeePlan else {
+            voicePlacedCalls.cancelVoiceStart(start)
+            pendingVoiceResume = nil
+            return false
+        }
         if let plan = laaEmployeeGPTLivePlan, conversationIdentityProfile != plan.profile {
             voicePlacedCalls.cancelVoiceStart(start)
             pendingVoiceResume = nil

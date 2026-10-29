@@ -203,6 +203,9 @@ private extension LAAEmployeeVoiceHost {
             end: { [weak app] in
                 guard let app else { return }
                 app.endVoiceForPlacedCall()
+                // A failed GPT-Live call is neither active nor scheduled, but
+                // its sheet and personal context still need the full teardown.
+                if app.showGPTLiveSheet { app.closeGPTLiveConversation() }
                 app.voicePlacedCalls.voiceChanged(running: false)
                 app.laaEmployeeGPTLivePlan = nil
             }

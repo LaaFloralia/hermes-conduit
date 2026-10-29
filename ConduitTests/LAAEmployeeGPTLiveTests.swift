@@ -125,6 +125,195 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         XCTAssertEqual(app.gptLiveCallBilling, .subscription)
     }
 
+    func testEmployeeScopeDoesNotInheritWorkspaceHealthOrPhoneGrants() async throws {
+        let suite = "LAAEmployeeScope.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Test", normalizedURL: "https://example.com")
+        let app = AppState(defaults: defaults, loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]))
+        app.phoneSync = PhoneSyncEngine(calendarSource: EventKitPhoneSource(), statusSource: DevicePhoneStatusSource(), defaults: defaults)
+        let workspace = VoiceHostToolScope(dashboardID: dashboard.id, profile: "default")
+        let employee = VoiceHostToolScope(dashboardID: dashboard.id, profile: "laa-cfo")
+        let otherDashboard = VoiceHostToolScope(dashboardID: UUID(), profile: "laa-cfo")
+        let workspaceDestination = HealthSyncDestination(dashboardID: dashboard.id, profile: "default", host: "example.com")
+        let employeeDestination = HealthSyncDestination(dashboardID: dashboard.id, profile: "laa-cfo", host: "example.com")
+        var health = HealthSyncPreferences()
+        health.destination = workspaceDestination
+        health.categories = [.sleep]
+        health.setVoiceRead(.gptLive, allowed: true)
+        app.healthSyncPreferences = health
+        XCTAssertTrue(app.voiceReadableKeys(for: .gptLive, scope: workspace).contains("health"))
+        XCTAssertFalse(app.voiceReadableKeys(for: .gptLive, scope: employee).contains("health"))
+        let healthTool = VoiceHostTool(name: "conduit_health", description: "", parameters: [:], key: "health")
+        let deniedHealth = await app.callVoiceHostTool(healthTool, arguments: [:], mode: .gptLive, scope: employee)
+        XCTAssertNotNil(deniedHealth["error"])
+
+        var phone = PhoneSyncPreferences()
+        phone.destination = workspaceDestination
+        phone.calendar = .full
+        app.phoneSync.savePreferences(phone)
+        XCTAssertFalse(app.phoneVoiceSettingHint(for: .gptLive, scope: workspace).isEmpty)
+        XCTAssertTrue(app.phoneVoiceSettingHint(for: .gptLive, scope: employee).isEmpty)
+        phone.setVoiceUse(.gptLive, allowed: true)
+        app.phoneSync.savePreferences(phone)
+        let phoneTool = VoiceHostTool(name: "conduit_phone", description: "", parameters: [:], key: "phone")
+        let deniedPhone = await app.callVoiceHostTool(phoneTool, arguments: [:], mode: .gptLive, scope: employee)
+        XCTAssertNotNil(deniedPhone["error"])
+        phone.destination = employeeDestination
+        phone.setVoiceUse(.gptLive, allowed: false)
+        app.phoneSync.savePreferences(phone)
+        XCTAssertFalse(app.phoneVoiceSettingHint(for: .gptLive, scope: employee).isEmpty)
+        XCTAssertTrue(app.phoneVoiceSettingHint(for: .gptLive, scope: workspace).isEmpty)
+
+        health.destination = employeeDestination
+        app.healthSyncPreferences = health
+        XCTAssertTrue(app.voiceReadableKeys(for: .gptLive, scope: employee).contains("health"))
+        XCTAssertFalse(app.voiceReadableKeys(for: .gptLive, scope: workspace).contains("health"))
+        XCTAssertFalse(app.voiceReadableKeys(for: .gptLive, scope: otherDashboard).contains("health"))
+        XCTAssertFalse(employee.matches(employeeDestination, currentDashboardID: UUID()))
+    }
+
+    func testEmployeeToolPreparationClearsOldToolsAndExpiresTheirRunner() async throws {
+        let suite = "LAAEmployeeTools.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Test", normalizedURL: "https://example.com")
+        let app = AppState(defaults: defaults, loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]))
+        app.healthSyncPreferences = HealthSyncPreferences()
+        app.phoneSync = PhoneSyncEngine(calendarSource: EventKitPhoneSource(), statusSource: DevicePhoneStatusSource(), defaults: defaults)
+        let supervisor = app.voiceBackgroundJobSupervisor
+        supervisor.hostToolsMode = .gptLive
+        supervisor.hostTools = [VoiceHostTool(name: "conduit_health", description: "", parameters: [:], key: "health")]
+        var current = true
+        await app.prepareVoiceHostTools(for: .gptLive,
+            scope: VoiceHostToolScope(dashboardID: dashboard.id, profile: "laa-cfo"), isCurrent: { current })
+        XCTAssertFalse(supervisor.hostTools.contains { $0.key == "health" })
+        XCTAssertTrue(supervisor.hostTools.contains { $0.key == MapsVoiceTool.key })
+        current = false
+        let expired = await supervisor.callHostTool(MapsVoiceTool.tool, arguments: [:])
+        XCTAssertNotNil(expired["error"])
+    }
+
+    func testEmployeeClientFencesPlanChangesBeforeAndDuringRequests() async throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        let original = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cfo"))
+        let replacement = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-ciel"))
+        app.laaEmployeeGPTLivePlan = original
+        var paths: [String] = []
+        var pending: CheckedContinuation<[String: Any], Never>?
+        let client = app.laaGPTLiveClient { path, _, _, _ in
+            paths.append(path)
+            return await withCheckedContinuation { pending = $0 }
+        }.captured(profile: original.profile, billing: original.billing, isCurrent: {
+            app.laaEmployeeGPTLivePlan == original
+        })
+        app.laaEmployeeGPTLivePlan = replacement
+        do {
+            _ = try await client.createSession(offer: "offer", history: [])
+            XCTFail("An expired call must not start a request")
+        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+        XCTAssertTrue(paths.isEmpty)
+
+        app.laaEmployeeGPTLivePlan = original
+        let request = Task { try await client.createSession(offer: "offer", history: []) }
+        for _ in 0..<1_000 where pending == nil { await Task.yield() }
+        guard let pending else {
+            app.laaEmployeeGPTLivePlan = nil
+            request.cancel()
+            XCTFail("The fake request did not start")
+            return
+        }
+        XCTAssertEqual(paths, [DashboardPath.withProfile(GPTLiveClient.sessionPath, profile: "laa-cfo")])
+        app.laaEmployeeGPTLivePlan = replacement
+        pending.resume(returning: ["ok": true, "auth": "subscription", "transport": ["type": "webrtc", "sdp": "answer"]])
+        do {
+            _ = try await request.value
+            XCTFail("A late response must not revive an expired call")
+        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
+    }
+
+    func testEmployeePersonalityRetriesTransientFailureAndExplainsMissingData() async throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        let plan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cfo"))
+        app.laaEmployeeGPTLivePlan = plan
+        var paths: [String] = []
+        let transient = app.laaGPTLiveHostContext { path, _, _, _ in
+            paths.append(path)
+            if paths.count == 1 { throw URLError(.timedOut) }
+            return ["ok": true, "available": true, "text": "Morgan persona"]
+        }.captured(profile: plan.profile)
+        let loaded = await app.laaEmployeePersonality(transient, plan: plan)
+        XCTAssertEqual(loaded, .available("Morgan persona"))
+        XCTAssertEqual(paths, Array(repeating: DashboardPath.withProfile(GeminiLiveTokenClient.personalityPath, profile: "laa-cfo"), count: 2))
+
+        let missingRoute = app.laaGPTLiveHostContext { _, _, _, _ in
+            throw DashboardTicketBridgeError.http(status: 404, detail: "")
+        }.captured(profile: plan.profile)
+        let missingRouteResult = await app.laaEmployeePersonality(missingRoute, plan: plan)
+        XCTAssertEqual(missingRouteResult, .missingRoute)
+        let noPersona = app.laaGPTLiveHostContext { _, _, _, _ in
+            ["ok": true, "available": false]
+        }.captured(profile: plan.profile)
+        let noPersonaResult = await app.laaEmployeePersonality(noPersona, plan: plan)
+        XCTAssertEqual(noPersonaResult, .missingPersona)
+        var stoppedRequests = 0
+        let stopped = app.laaGPTLiveHostContext { _, _, _, _ in
+            stoppedRequests += 1
+            app.laaEmployeeGPTLivePlan = nil
+            throw URLError(.timedOut)
+        }.captured(profile: plan.profile)
+        _ = await app.laaEmployeePersonality(stopped, plan: plan)
+        XCTAssertEqual(stoppedRequests, 1)
+    }
+
+    func testEmployeeStylePhrasesRecordingAndResumeUseEmployeeProfile() async throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        app.setActiveProfileForTesting("default")
+        app.setLiveVoiceStyle(LiveVoiceStyle(greeting: "workspace"), profile: "default")
+        XCTAssertTrue(app.setSpokenEndConversationPhrases(["workspace goodbye"]))
+        app.setActiveProfileForTesting("laa-cfo")
+        let employeeStyle = LiveVoiceStyle(tone: .professional, greeting: "Morgan", asksBeforeSending: true)
+        app.setLiveVoiceStyle(employeeStyle, profile: "laa-cfo")
+        XCTAssertTrue(app.setSpokenEndConversationPhrases(["Morgan goodbye"]))
+        app.setActiveProfileForTesting("default")
+        app.noteBotChatSessionForTesting("staff-chat", profile: "laa-cfo")
+        app.activeSessionId = "staff-chat"
+        app.laaEmployeeGPTLivePlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cfo"))
+        XCTAssertEqual(app.liveVoiceStyle, employeeStyle)
+        XCTAssertEqual(app.gptLiveEndConversationPhrases, ["Morgan goodbye"])
+        app.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertEqual(app.voiceCallRecorderProfileForTesting, "laa-cfo")
+        XCTAssertTrue(app.voiceBackgroundJobSupervisor.asksBeforeSending)
+
+        var readProfile: String?
+        app.voiceResumeContextReaderForTesting = { _, profile in
+            readProfile = profile
+            app.laaEmployeeGPTLivePlan = nil
+            return nil
+        }
+        let resumed = await app.resumeVoiceCall(sessionID: "saved-call")
+        app.voiceResumeContextReaderForTesting = nil
+        XCTAssertEqual(readProfile, "laa-cfo")
+        XCTAssertFalse(resumed, "A changed plan must not resume a stale call")
+        XCTAssertEqual(app.liveVoiceStyle.greeting, "workspace")
+        XCTAssertEqual(app.gptLiveEndConversationPhrases, ["workspace goodbye"])
+        app.closeGPTLiveConversation()
+    }
+
     func testHeaderUsesCallKitThenGPTLiveForBotChatWithoutSwitchingWorkspace() async {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
@@ -165,9 +354,28 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         await app.switchVoiceMode(to: .gemini)
         XCTAssertTrue(app.showGPTLiveSheet)
         XCTAssertFalse(app.showGeminiLiveSheet)
+        for _ in 0..<1_000 {
+            if case .failed = app.gptLiveController.phase { break }
+            await Task.yield()
+        }
+        guard case .failed = app.gptLiveController.phase else {
+            calls.end()
+            kit.onPlacedCallEnded?(false)
+            XCTFail("The fake GPT-Live failure did not arrive")
+            return
+        }
+        XCTAssertFalse(app.isGPTLiveActive)
+        XCTAssertFalse(app.hasScheduledLiveVoiceStart)
+        app.installLiveVoiceHostContextForTesting()
+        XCTAssertNotNil(app.voiceCallRecorderProfileForTesting)
         calls.end()
         XCTAssertEqual(app.activeSessionId, "staff-chat")
         XCTAssertNil(app.laaEmployeeGPTLivePlan)
+        XCTAssertFalse(app.showGPTLiveSheet)
+        XCTAssertNil(app.voiceCallRecorderProfileForTesting)
+        XCTAssertFalse(app.liveVoiceHostContextForTesting.contains("gptMemory"))
+        XCTAssertFalse(app.liveVoiceHostContextForTesting.contains("gptPersona"))
+        XCTAssertNil(app.voiceBackgroundJobSupervisor.liveThread)
         XCTAssertEqual(kit.endRequests, 1)
         kit.onPlacedCallEnded?(false)
     }

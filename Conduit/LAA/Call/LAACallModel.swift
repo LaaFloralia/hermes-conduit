@@ -87,6 +87,20 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
         voiceControl.bind(appState)
     }
 
+    /// Both chat call buttons use the same employee identity and call surface.
+    @discardableResult
+    func startEmployeeConversation(_ appState: AppState) -> Bool {
+        let profile = appState.conversationIdentityProfile
+        guard let employee = LAAStaff(profile: profile) else { return false }
+        if let context = snapshot?.context, context.profile == profile,
+           context.conversationID == appState.activeSessionId {
+            showCall()
+        } else {
+            start(profile: profile, name: employee.name, conversationID: appState.activeSessionId)
+        }
+        return true
+    }
+
     func start(profile: String, name: String, conversationID: String?) {
         guard control.unavailableReason == nil, snapshot == nil,
               consentRequest == nil, pendingContext == nil else { return }

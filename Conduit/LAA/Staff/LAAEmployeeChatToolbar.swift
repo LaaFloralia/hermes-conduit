@@ -14,16 +14,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         calls.snapshot?.context.profile == profile && calls.snapshot?.context.conversationID == appState.activeSessionId
     }
     private var reason: String? {
-        if calls.snapshot != nil { return sameCall ? nil : "別の会話の通話を確認してください" }
-        if appState.isVoiceCallInProgress { return "別の通話を終了してください" }
-        if let reason = LAAEmployeeCallAvailability.bridgeReason(bridge.status) { return reason }
-        guard appState.isConnected else { return "Hermesに接続してください" }
-        if let voiceReason = LAAEmployeeCallAvailability.voiceReason(
-            profile: profile, canStart: appState.canStartPhoneVoiceConversation, issue: appState.voiceSetupIssue
-        ) {
-            return voiceReason
-        }
-        return calls.unavailableReason
+        LAAEmployeeCallAvailability.reason(appState: appState, bridge: bridge.status, calls: calls)
     }
     private var status: String {
         if let reason { return reason }
@@ -57,6 +48,21 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
 }
 
 enum LAAEmployeeCallAvailability {
+    @MainActor
+    static func reason(appState: AppState, bridge: LAABridgeSession.Status, calls: LAAEmployeeCallCoordinator) -> String? {
+        let profile = appState.conversationIdentityProfile
+        if let snapshot = calls.snapshot {
+            return snapshot.context.profile == profile && snapshot.context.conversationID == appState.activeSessionId
+                ? nil : "別の会話の通話を確認してください"
+        }
+        if appState.isVoiceCallInProgress { return "別の通話を終了してください" }
+        if let reason = bridgeReason(bridge) { return reason }
+        guard appState.isConnected else { return "Hermesに接続してください" }
+        if let reason = voiceReason(profile: profile, canStart: appState.canStartPhoneVoiceConversation,
+                                    issue: appState.voiceSetupIssue) { return reason }
+        return calls.unavailableReason
+    }
+
     static func voiceReason(profile: String, canStart: Bool, issue: VoiceSetupIssue?) -> String? {
         guard LAAStaff(profile: profile) == nil, !canStart else { return nil }
         return voiceReason(issue)

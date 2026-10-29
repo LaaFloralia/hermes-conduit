@@ -40,6 +40,10 @@ struct V2VoiceButton: View {
     var style: Style = .circle
     /// Faded out (the expanded composer): its bars stop redrawing unseen.
     var isHidden = false
+    #if LAA_BUILD
+    var employeeCall: (() -> Void)? = nil
+    var employeeCallReason: String? = nil
+    #endif
     @EnvironmentObject private var appState: AppState
     /// What the big button beside a chat does, app-wide (Settings >
     /// Appearance); a profile can override it.
@@ -67,7 +71,12 @@ struct V2VoiceButton: View {
     /// A minimised call: the button is the way back to it.
     private var returnsToCall: Bool { appState.minimisedLiveVoice != nil }
     /// Voice is off for this profile: the button opens its setup instead.
-    private var needsSetup: Bool { !appState.showsComposerVoiceButton }
+    private var needsSetup: Bool {
+        #if LAA_BUILD
+        if employeeCall != nil { return false }
+        #endif
+        return !appState.showsComposerVoiceButton
+    }
 
     /// The big button beside a chat's composer: its tap is the chosen
     /// action, and touch and hold offers the others.
@@ -93,6 +102,11 @@ struct V2VoiceButton: View {
             return appState.composerIsEnabled && !appState.isVoiceInUse
                 && (!voiceMessages.isActive || voiceMessages.isHeld)
         }
+        #if LAA_BUILD
+        if employeeCall != nil, !returnsToCall {
+            return employeeCallReason == nil && !isStarting && !appState.isPreparingVoiceResume
+        }
+        #endif
         if returnsToCall || needsSetup { return true }
         guard !isStarting, !appState.isPreparingVoiceResume,
               appState.canStartPhoneVoiceConversation, !appState.isVoiceInUse else { return false }
@@ -168,7 +182,12 @@ struct V2VoiceButton: View {
                 ? AppLocalization.string("Records a voice message. Or touch and hold to record, and let go to send.")
                 : nil
         }
-        if !canAct { return appState.phoneVoiceUnavailableReason }
+        if !canAct {
+            #if LAA_BUILD
+            if let employeeCallReason { return employeeCallReason }
+            #endif
+            return appState.phoneVoiceUnavailableReason
+        }
         if showsChatMenu { return AppLocalization.string("Touch and hold to dictate instead") }
         return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations") : nil
     }
@@ -395,6 +414,14 @@ struct V2VoiceButton: View {
             appState.settingsLinkRequest = .voice
             return
         }
+        #if LAA_BUILD
+        if let employeeCall {
+            guard employeeCallReason == nil else { return }
+            Haptics.medium()
+            employeeCall()
+            return
+        }
+        #endif
         guard !isStarting else { return }
         Haptics.medium()
         isStarting = true

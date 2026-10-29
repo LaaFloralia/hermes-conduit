@@ -95,6 +95,35 @@ final class GeminiLiveTokenClient: GeminiLiveTokenProviding, GeminiLiveWebSearch
         self.request = request
     }
 
+    #if LAA_BUILD
+    enum EmployeePersonality: Equatable {
+        case available(String), missingRoute, missingPersona, unavailable
+    }
+
+    func captured(profile: String, isCurrent: @escaping @MainActor () -> Bool = { true }) -> GeminiLiveTokenClient {
+        let request = self.request
+        return GeminiLiveTokenClient(profile: { profile }, provider: provider, request: { path, method, body, timeout in
+            guard isCurrent() else { throw CancellationError() }
+            let response = try await request(path, method, body, timeout)
+            guard isCurrent() else { throw CancellationError() }
+            return response
+        })
+    }
+
+    /// Keep the reason distinct when an employee's required persona is absent.
+    func employeePersonality() async -> EmployeePersonality {
+        do {
+            let response = try await fetch(scoped(Self.personalityPath), "GET", nil)
+            if let personality = Self.personality(from: response) { return .available(personality) }
+            return response["ok"] as? Bool == true ? .missingPersona : .unavailable
+        } catch let error as DashboardTicketBridgeError where Self.isMissingRoute(error) {
+            return .missingRoute
+        } catch {
+            return .unavailable
+        }
+    }
+    #endif
+
     convenience init(bridge: DashboardTicketBridge, profile: @escaping @MainActor () -> String) {
         self.init(profile: profile, request: { [weak bridge] path, method, body, timeout in
             guard let bridge else { throw DashboardTicketBridgeError.notReady }

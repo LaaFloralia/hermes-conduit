@@ -998,7 +998,15 @@ struct ComposerBar: View, Equatable {
             modelButton
 
             if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
+                #if LAA_BUILD
+                // Staff calls resume through the employee header or the big
+                // chat voice button, which first creates the employee plan.
+                if LAAStaff(profile: appState.conversationIdentityProfile) == nil {
+                    resumeVoiceCallButton(callID)
+                }
+                #else
                 resumeVoiceCallButton(callID)
+                #endif
             }
 
             Button {
