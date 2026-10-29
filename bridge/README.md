@@ -199,7 +199,7 @@ Paseo の生タイムラインは取得しない。`paseo logs --json` は JSON 
 
 ```sh
 cd bridge
-npm test                                    # fake adapter で契約を固定（14 tests）
+npm test                                    # fake adapter で契約を固定（13 tests）
 LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
   LAA_BRIDGE_VERIFY_WORKSPACE=ws_… node scripts/verify-sessions.mjs
 ```
