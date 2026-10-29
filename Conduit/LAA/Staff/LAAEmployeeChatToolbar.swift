@@ -60,7 +60,9 @@ enum LAAEmployeeCallAvailability {
             return snapshot.context.profile == profile && snapshot.context.conversationID == appState.activeSessionId
                 ? nil : "別の会話の通話を確認してください"
         }
-        if appState.isVoiceCallInProgress { return "別の通話を終了してください" }
+        if appState.isVoiceCallInProgress || appState.laaEmployeeGPTLivePlan != nil {
+            return "別の通話を終了してください"
+        }
         if let reason = bridgeReason(bridge) { return reason }
         guard appState.isConnected else { return "Hermesに接続してください" }
         if let reason = voiceReason(profile: profile, canStart: appState.canStartPhoneVoiceConversation,

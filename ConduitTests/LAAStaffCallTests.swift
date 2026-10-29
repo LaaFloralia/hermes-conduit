@@ -91,11 +91,14 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(control.context?.conversationID, "morgan-chat")
         XCTAssertEqual(app.activeProfile, "default")
         let first = control.context?.id
+        app.laaEmployeeGPTLivePlan = app.laaEmployeeCallPlan(profile: "laa-cfo")
         calls.showChat()
+        XCTAssertNil(LAAEmployeeCallAvailability.reason(appState: app, bridge: .paired, calls: calls))
         XCTAssertTrue(calls.startEmployeeConversation(app))
         XCTAssertTrue(calls.isShowingCall)
         XCTAssertEqual(control.context?.id, first)
         calls.end()
+        app.laaEmployeeGPTLivePlan = nil
         app.activeSessionId = nil
         XCTAssertFalse(calls.startEmployeeConversation(app))
     }

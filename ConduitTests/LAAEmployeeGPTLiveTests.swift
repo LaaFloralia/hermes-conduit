@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import Combine
 import XCTest
 @testable import Conduit
 
@@ -451,6 +452,19 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         XCTAssertEqual(app.laaEmployeeGPTLivePlan?.profile, "laa-cto")
         XCTAssertEqual(app.laaEmployeeGPTLivePlan?.voice, "vale")
         XCTAssertEqual(app.gptLiveCallBilling, .subscription)
+        let widgetPlan = app.laaEmployeeGPTLivePlan
+        app.noteBotChatSessionForTesting("morgan-chat", profile: "laa-cfo")
+        app.activeSessionId = "morgan-chat"
+        let control = LAAEmployeeVoiceControl()
+        control.bind(app)
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        XCTAssertFalse(app.isVoiceCallInProgress, "CallKit is still waiting for audio")
+        XCTAssertEqual(LAAEmployeeCallAvailability.reason(appState: app, bridge: .paired, calls: calls),
+                       "別の通話を終了してください")
+        XCTAssertFalse(calls.startEmployeeConversation(app))
+        XCTAssertNil(calls.snapshot)
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, widgetPlan)
+        XCTAssertTrue(placed.isWaitingForCallAudio)
         kit.onPlacedCallStarted?()
         kit.onPlacedCallAudioActivated?()
         let outcome = await launch.value
@@ -459,6 +473,89 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         app.closeGPTLiveConversation()
         XCTAssertNil(app.laaEmployeeGPTLivePlan)
         kit.onPlacedCallEnded?(false)
+    }
+
+    func testPhoneOpenCannotTakeOrEndAPlanCreatedBeforeItsAsyncStart() async throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let previousConsent = LiveVoiceProviderConsent.isGranted(.gptLive)
+        LiveVoiceProviderConsent.setGranted(true, for: .gptLive)
+        defer { LiveVoiceProviderConsent.setGranted(previousConsent, for: .gptLive) }
+        let app = harness.appState
+        app.setActiveProfileForTesting("default")
+        app.noteBotChatSessionForTesting("morgan-chat", profile: "laa-cfo")
+        app.activeSessionId = "morgan-chat"
+        let kit = FakePlacedCallKit()
+        _ = makePlacedCallsForTesting(appState: app, kit: kit)
+        let control = LAAEmployeeVoiceControl()
+        control.bind(app)
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        XCTAssertTrue(calls.startEmployeeConversation(app))
+        // The phone's Task has not run yet; a widget/Siri launch takes the
+        // plan before that Task enters the real AppState host.
+        let widgetPlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cto"))
+        app.laaEmployeeGPTLivePlan = widgetPlan
+        for _ in 0..<1_000 {
+            if case .failed? = calls.snapshot?.phase { break }
+            await Task.yield()
+        }
+        if case .failed? = calls.snapshot?.phase {} else {
+            XCTFail("The later phone open must be rejected")
+        }
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, widgetPlan)
+        calls.end()
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, widgetPlan)
+        XCTAssertEqual(kit.endRequests, 0)
+        XCTAssertFalse(app.showGPTLiveSheet)
+        kit.onPlacedCallEnded?(false)
+    }
+
+    func testComposerUpdatesWhenAnEmployeePlanAppearsAndClears() async throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        let updates = ComposerUpdates(app)
+        let initial = updates.inputs
+        let appeared = expectation(description: "pending call makes the composer update")
+        let first = updates.objectWillChange.sink { _ in appeared.fulfill() }
+        app.laaEmployeeGPTLivePlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cto"))
+        await fulfillment(of: [appeared], timeout: 5)
+        first.cancel()
+        XCTAssertNotEqual(updates.inputs, initial)
+        let cleared = expectation(description: "cleared call makes the composer update")
+        let second = updates.objectWillChange.sink { _ in cleared.fulfill() }
+        app.laaEmployeeGPTLivePlan = nil
+        await fulfillment(of: [cleared], timeout: 5)
+        second.cancel()
+        XCTAssertEqual(updates.inputs, initial)
+    }
+
+    func testConsentCannotStartASecondCallWhileAWidgetPlanWaits() throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let previousConsent = LiveVoiceProviderConsent.isGranted(.gptLive)
+        LiveVoiceProviderConsent.setGranted(false, for: .gptLive)
+        defer { LiveVoiceProviderConsent.setGranted(previousConsent, for: .gptLive) }
+        let app = harness.appState
+        app.noteBotChatSessionForTesting("morgan-chat", profile: "laa-cfo")
+        app.activeSessionId = "morgan-chat"
+        let control = LAAEmployeeVoiceControl()
+        control.bind(app)
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        XCTAssertTrue(calls.startEmployeeConversation(app))
+        XCTAssertNotNil(calls.consentRequest)
+        let widgetPlan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cto"))
+        app.laaEmployeeGPTLivePlan = widgetPlan
+        calls.answerConsent(true)
+        calls.consentDidDismiss()
+        XCTAssertNil(calls.snapshot)
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, widgetPlan)
     }
 }
 #endif

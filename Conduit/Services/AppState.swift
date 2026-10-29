@@ -3122,7 +3122,7 @@ final class AppState: ObservableObject {
     #if LAA_BUILD
     /// The employee identity is independent of the chat's workspace profile.
     /// It belongs to one call, including its pending CallKit activation.
-    var laaEmployeeGPTLivePlan: LAAEmployeeGPTLivePlan?
+    @Published var laaEmployeeGPTLivePlan: LAAEmployeeGPTLivePlan?
 
     func laaEmployeeVoice(profile: String) -> String? {
         LAAEmployeeGPTLivePlan.make(profile: profile,
@@ -3368,6 +3368,11 @@ final class AppState: ObservableObject {
     /// Built on first use only, like Gemini Live's.
     private var gptLiveControllerCreated = false
 
+    #if DEBUG && LAA_BUILD
+    var gptLiveHostRequestForTesting: GeminiLiveTokenClient.Request?
+    var gptLiveSessionFactoryForTesting: (([[String: Any]], String?, String) -> GPTLiveSessionControlling)?
+    #endif
+
     /// Whether a GPT-Live conversation is running, without creating one.
     var isGPTLiveActive: Bool {
         gptLiveControllerCreated && gptLiveController.isActive
@@ -3379,6 +3384,11 @@ final class AppState: ObservableObject {
         // Memory and persona come from the same host routes Gemini Live reads.
         #if LAA_BUILD
         let hostContext = laaGPTLiveHostContext(request: { [weak self] path, method, body, timeout in
+            #if DEBUG
+            if let request = self?.gptLiveHostRequestForTesting {
+                return try await request(path, method, body, timeout)
+            }
+            #endif
             guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
         })
@@ -3401,11 +3411,19 @@ final class AppState: ObservableObject {
                 #else
                 let sessionClient = client
                 #endif
+                let history = self?.liveVoiceResumeContext?.gptLiveHistory ?? []
+                let voice = self?.gptLiveCallVoice
+                let briefing = self?.gptLiveBriefing() ?? GPTLiveConversationController.briefing()
+                #if DEBUG && LAA_BUILD
+                if let factory = self?.gptLiveSessionFactoryForTesting {
+                    return factory(history, voice, briefing)
+                }
+                #endif
                 return GPTLiveSession(
                     client: sessionClient,
-                    history: self?.liveVoiceResumeContext?.gptLiveHistory ?? [],
-                    voice: self?.gptLiveCallVoice,
-                    briefing: self?.gptLiveBriefing() ?? GPTLiveConversationController.briefing(),
+                    history: history,
+                    voice: voice,
+                    briefing: briefing,
                     // A call Hermes made opens with its brief instead (#449),
                     // spoken first rather than waiting for the user (#544).
                     greeting: self?.liveHermesCall == nil ? self?.liveVoiceStyle.greeting : nil,
@@ -7160,6 +7178,7 @@ final class AppState: ObservableObject {
     var voiceCallRecorderProfileForTesting: String? { voiceCallRecorder?.profile }
     #if LAA_BUILD
     var voiceResumeContextReaderForTesting: ((String, String) async -> VoiceResumeContext?)?
+    var voiceCallRecorderSessionIDForTesting: String? { voiceCallRecorder?.sessionID }
     #endif
 
     /// Test seam: the running call's checkpoint, as the 15-second timer

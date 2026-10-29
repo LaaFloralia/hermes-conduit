@@ -57,29 +57,73 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Cedar")).firstMatch.exists)
     }
 
-    func testExpandedComposerWaveformCallsTheEmployeeForNewAndSavedCalls() {
-        for arguments in [["-laa-composer-fixture"], ["-laa-composer-fixture", "-laa-saved-call"]] {
-            let app = launch(arguments)
-            if arguments.contains("-laa-saved-call") {
-                XCTAssertTrue(app.staticTexts["laa.fixture.saved-call"].waitForExistence(timeout: 10))
-            }
-            let field = app.textViews["composer.field"]
-            XCTAssertTrue(field.waitForExistence(timeout: 10))
-            field.tap()
-            let waveform = app.buttons["composer.voice"]
-            XCTAssertTrue(waveform.waitForExistence(timeout: 5))
-            XCTAssertTrue(waveform.isEnabled)
-            waveform.tap()
-            let name = app.staticTexts["laa.call.name"]
-            XCTAssertTrue(name.waitForExistence(timeout: 10))
-            XCTAssertEqual(name.label, "Morgan")
-            XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "GPT-Live")
-            app.buttons["laa.call.chat"].tap()
-            let context = app.staticTexts["laa.fixture.call-context"]
-            XCTAssertTrue(context.waitForExistence(timeout: 5))
-            XCTAssertEqual(context.label, "laa-cfo|fixture-conversation")
-            app.terminate()
-        }
+    func testExpandedComposerWaveformCallsTheEmployee() {
+        let app = launch("-laa-composer-fixture")
+        let field = app.textViews["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        let waveform = app.buttons["composer.voice"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 5))
+        XCTAssertTrue(waveform.isEnabled)
+        waveform.tap()
+        let name = app.staticTexts["laa.call.name"]
+        XCTAssertTrue(name.waitForExistence(timeout: 10))
+        XCTAssertEqual(name.label, "Morgan")
+        XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "GPT-Live")
+        app.buttons["laa.call.chat"].tap()
+        let context = app.staticTexts["laa.fixture.call-context"]
+        XCTAssertTrue(context.waitForExistence(timeout: 5))
+        XCTAssertEqual(context.label, "laa-cfo|fixture-conversation")
+    }
+
+    func testExpandedComposerWaveformResumesSavedEmployeeCallWithPersona() {
+        // The argument domain supplies consent only to this test process.
+        let app = launch("-laa-composer-fixture", "-laa-saved-call",
+                         "-conduit.liveVoiceProviderConsent.gpt-live", "YES")
+        XCTAssertTrue(app.staticTexts["laa.fixture.saved-call"].waitForExistence(timeout: 10))
+        let field = app.textViews["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        let waveform = app.buttons["composer.voice"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 5))
+        XCTAssertTrue(waveform.isEnabled)
+        waveform.tap()
+        XCTAssertTrue(app.staticTexts["laa.call.name"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.staticTexts["laa.call.name"].label, "Morgan")
+        assertLabel(app, "laa.fixture.resume-evidence",
+                    "fixture-conversation|laa-cfo|fixture-conversation|laa-cfo")
+        assertLabel(app, "laa.fixture.status-path",
+                    "/api/plugins/conduit_push/gpt-live/status?profile=laa-cfo")
+        assertLabel(app, "laa.fixture.persona-path",
+                    "/api/plugins/conduit_push/personality?profile=laa-cfo")
+        // These are the actual session factory arguments, including the
+        // saved turn, summary, employee voice and employee persona.
+        assertLabel(app, "laa.fixture.session-evidence", "spruce|true|true|true|true")
+        app.buttons["laa.call.chat"].tap()
+        let context = app.staticTexts["laa.fixture.call-context"]
+        XCTAssertTrue(context.waitForExistence(timeout: 5))
+        XCTAssertEqual(context.label, "laa-cfo|fixture-conversation")
+    }
+
+    func testExpandedComposerWaveformIsDisabledWhileWidgetCallWaits() {
+        let app = launch("-laa-composer-fixture", "-laa-pending-call")
+        let pending = app.buttons["laa.fixture.pending-call"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        pending.tap()
+        let field = app.textViews["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        let waveform = app.buttons["composer.voice"]
+        XCTAssertTrue(waveform.waitForExistence(timeout: 5))
+        XCTAssertFalse(waveform.isEnabled)
+        XCTAssertFalse(app.staticTexts["laa.call.name"].exists)
+    }
+
+    private func assertLabel(_ app: XCUIApplication, _ identifier: String, _ label: String) {
+        let matching = app.staticTexts.matching(identifier: identifier)
+            .matching(NSPredicate(format: "label == %@", label)).firstMatch
+        XCTAssertTrue(matching.waitForExistence(timeout: 10),
+                      "\(identifier) was \(app.staticTexts[identifier].label)")
     }
 
     func testUnavailableBridgeExplainsDisabledCallAndClassicVoiceIsNotRequired() {
