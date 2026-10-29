@@ -440,6 +440,42 @@ App Store build · the Bridge API and Usage data contract
 
 **Checked:** 2026-10-29, laa/bridge-client-shared-25i (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
+## LAA Work tab
+
+The LAA build's Bridge-backed session, project and read-only Linear task views.
+
+**Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
+store · the session and project API · the Linear task read API
+
+**Code**
+- Work UI, request journal and model presentation: `Conduit/LAA/Work/`
+- Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
+  `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
+- Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
+- Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitUITests/LAAWorkUITests.swift`
+
+**Rulings**
+- Session and successor writes keep the exact body, request ID and idempotency
+  key until their outcome is known; the existing composer never sends through
+  Hermes for these requests. Event history gaps trigger a detail and artifact
+  reread. Requested and observed models stay visible, including mismatches.
+- Project instruction edits require a readable body and If-Match. A 412 keeps
+  both the user's edit and the current version for an explicit choice. A name
+  change alone does not replace shared instructions. Legacy references are
+  shown as unapplied metadata and can only be explicitly cleared.
+- Linear is the source of truth and tasks are read-only. Pending decisions are
+  read-only until Task 15; routines remain a placeholder.
+
+**Open gaps**
+- Decision replies, child-session creation and provider parity belong to Tasks
+  15 and 16; preflight model resolution is unavailable in the current API.
+
+**Checked:** 2026-10-29, targeted Work unit tests and signed Simulator UI
+checks for pairing, sections, workspace entry, durable composer draft, empty,
+503 and offline states. A synthetic 412 verifies both instruction versions and
+the explicit choice. Live session writes and the Project contract remain to be
+verified against the updated Bridge.
+
 ## Voice beside the tabs
 
 The gold button beside the tab bar, and where voice goes when it is swapped
