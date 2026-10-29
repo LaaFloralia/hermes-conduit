@@ -251,7 +251,11 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         view.adjustsFontForContentSizeCategory = false
         view.backgroundColor = .clear
         view.textColor = .label
+#if LAA_BUILD
+        view.tintColor = UIColor(LAAColor.link)
+#else
         view.tintColor = .systemOrange
+#endif
         view.textContainer.lineFragmentPadding = 0
         view.textContainerInset = textInsets
         view.keyboardDismissMode = .interactive
