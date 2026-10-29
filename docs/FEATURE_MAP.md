@@ -398,33 +398,41 @@ mode menu)
 
 ## LAA five-tab shell
 
-The LAA iPhone build's top-level navigation and its Bridge placeholders.
+The LAA iPhone build's top-level navigation, Bridge pairing and Usage tab.
 
 **Siblings:** the existing Chats list, sessions and group rooms · Hermes login
-and offline chats · Conduit Settings · notifications and in-app links · the
-four Bridge-backed tabs · the upstream App Store build
+and offline chats · Conduit Settings and its direct Hermes usage report ·
+notifications and in-app links · the four Bridge-backed tabs · the upstream
+App Store build · the Bridge API and Usage data contract
 
 **Code**
-- Shell and states: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
-- Integration: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `project-personal.yml`
+- Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
+- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`
+- Integration and contracts: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
 - Only the LAA overlay enables the shell. Chats uses Conduit's existing list,
   conversation and room screens; an individual chat hides the system tab bar.
   The other tabs remain accessible while Hermes is unpaired.
-- Bridge pairing and transport are not implemented here: the four screens say
-  Bridge not paired, and Usage shows unknown values rather than zeroes.
-  Loading, empty and error appearances are available to DEBUG previews only.
+- The Mac Bridge is paired by a one-time code. The device token and its address
+  are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
+  scope and service failures are distinguished. Other Bridge tabs share the
+  connection state and retain their placeholders until their own work lands.
+- Usage reads quota windows, balances and Mac status from Bridge on entry or
+  pull-to-refresh. A missing value is not zero; stale, expired and unavailable
+  readings and observation times are shown. Hermes' existing Settings report
+  remains the direct path for historical tokens and costs.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
 
 **Open gaps**
-- The TestFlight signing overlay must add the LAA_BUILD flag. Bridge pairing,
-  data, and the finished content of these tabs belong to later work.
-- The LAA shell uses a single-column chat even on a wide iPad window.
-- The upstream Bots and Tasks tabs are not in this five-tab skeleton.
+- Work, Brain and Source still need their finished content. The LAA shell uses
+  a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
+  are not in this five-tab shell.
+- The existing Hermes Settings report has its own missing-number handling;
+  Bridge's Usage data does not replace or claim to fix that report.
 
-**Checked:** 2026-10-29, laa/tabs-07, based on d3021ea5.
+**Checked:** 2026-10-29, laa/usage-tab-09, based on f8f148d1.
 
 ## Voice beside the tabs
 

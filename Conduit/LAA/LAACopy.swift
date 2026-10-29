@@ -27,11 +27,8 @@ enum LAACopy {
     static let noItems = "0件"
     static let never = "—"
 
-    // MARK: Bridge (Mac-side LAA Bridge; pairing is a later task)
+    // MARK: Bridge
 
-    /// The state the task asks for by name, so it stays in English here and
-    /// the body explains it in Japanese.
-    static let bridgeNotPairedTitle = "Bridge not paired"
     static let bridgeNotPairedBody = "この端末はMacのLAA Bridgeとペアリングされていません。"
 
     // MARK: Segments
@@ -58,10 +55,6 @@ enum LAACopy {
         case .usage: return "利用枠・実利用・費用・Macの状態を、更新時刻と一緒に出します。"
         }
     }
-
-    // MARK: Usage rows
-
-    static let usageRows = ["利用枠", "実利用", "費用", "Macの状態"]
 
     // MARK: Failures
 

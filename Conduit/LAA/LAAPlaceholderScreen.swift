@@ -4,6 +4,9 @@ import SwiftUI
 
 struct LAAPlaceholderScreen: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @EnvironmentObject private var bridge: LAABridgeSession
+    @State private var showPairing = false
+    @State private var connectionError: LAABridgeError?
     let tab: LAATab
     let onRequestSettings: () -> Void
 
@@ -11,7 +14,10 @@ struct LAAPlaceholderScreen: View {
     /// switch is part of the final screen, but every segment shows the same
     /// state until the Bridge has data.
     @State private var segment = 0
-    private var state: LAAScreenState { .current }
+    private var state: LAAScreenState {
+        if bridge.status == .paired && connectionError != nil { return .failed }
+        return .current(bridge.status)
+    }
 
     private var segments: [String] { LAACopy.segments(tab) }
 
@@ -23,9 +29,6 @@ struct LAAPlaceholderScreen: View {
                     heading
                     if !segments.isEmpty {
                         segmentSwitch
-                    }
-                    if tab == .usage {
-                        usageRows
                     }
                     stateBody
                 }
@@ -48,6 +51,20 @@ struct LAAPlaceholderScreen: View {
             }
         }
         .tint(LAAColors.teal)
+        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
+        .task(id: bridge.revision) { await verifyConnection() }
+    }
+
+    private func verifyConnection() async {
+        guard bridge.status == .paired else { connectionError = nil; return }
+        do {
+            try await bridge.verify()
+            connectionError = nil
+        } catch let error as LAABridgeError {
+            connectionError = error
+        } catch is CancellationError {
+            return
+        } catch { connectionError = .networkUnreachable }
     }
 
     // MARK: - Heading and switch
@@ -59,11 +76,6 @@ struct LAAPlaceholderScreen: View {
                 .font(LAAFont.largeHeading)
                 .foregroundStyle(LAAColors.ink)
                 .accessibilityAddTraits(.isHeader)
-            if tab == .usage {
-                Text(verbatim: LAACopy.refreshedAt + " " + LAACopy.never)
-                    .font(LAAFont.caption)
-                    .foregroundStyle(LAAColors.muted)
-            }
         }
     }
 
@@ -85,40 +97,6 @@ struct LAAPlaceholderScreen: View {
         .accessibilityLabel(Text(verbatim: tab.title))
     }
 
-    // MARK: - Usage: unknown is distinct from zero
-
-    private var usageRows: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(LAACopy.usageRows.enumerated()), id: \.offset) { index, row in
-                HStack(spacing: LAASpacing.x3) {
-                    Text(verbatim: row)
-                        .font(LAAFont.row)
-                        .foregroundStyle(LAAColors.ink)
-                    Spacer(minLength: LAASpacing.x2)
-                    Image(systemName: "circle")
-                        .font(.caption)
-                        .foregroundStyle(LAAColors.muted)
-                    Text(verbatim: LAACopy.notFetched)
-                        .font(LAAFont.row)
-                        .foregroundStyle(LAAColors.muted)
-                        .monospacedDigit()
-                }
-                .padding(.vertical, LAASpacing.x3)
-                if index < LAACopy.usageRows.count - 1 {
-                    Rectangle()
-                        .fill(LAAColors.hairline)
-                        .frame(height: 1)
-                }
-            }
-        }
-        .padding(.horizontal, LAASpacing.x4)
-        .background(LAAColors.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(LAAColors.hairline, lineWidth: 1)
-        )
-    }
-
     // MARK: - State
 
     @ViewBuilder
@@ -127,13 +105,25 @@ struct LAAPlaceholderScreen: View {
         case .bridgeNotPaired:
             card {
                 stateLine(symbol: "circle", word: LAACopy.notConnected, colour: LAAColors.muted)
-                Text(verbatim: LAACopy.bridgeNotPairedTitle)
-                    .font(.headline)
-                    .foregroundStyle(LAAColors.ink)
                 Text(verbatim: LAACopy.bridgeNotPairedBody)
                     .font(LAAFont.row)
                     .foregroundStyle(LAAColors.ink)
                     .fixedSize(horizontal: false, vertical: true)
+                Button { showPairing = true } label: { Text(verbatim: "Macに接続する") }
+                    .buttonStyle(.borderedProminent)
+            }
+        case .revoked:
+            card {
+                stateLine(symbol: "circle", word: LAACopy.notConnected, colour: LAAColors.muted)
+                Text(verbatim: "この端末の接続が無効になりました。新しいコードで接続してください。")
+                    .foregroundStyle(LAAColors.ink)
+                Button { showPairing = true } label: { Text(verbatim: "Macに接続する") }
+                    .buttonStyle(.borderedProminent)
+            }
+        case .connected:
+            card {
+                Text(verbatim: "この画面は準備中です。")
+                    .foregroundStyle(LAAColors.muted)
             }
         case .loading:
             card {
@@ -159,10 +149,13 @@ struct LAAPlaceholderScreen: View {
                 Text(verbatim: LAACopy.failureTitle)
                     .font(.headline)
                     .foregroundStyle(LAAColors.ink)
-                Text(verbatim: LAACopy.failureBody)
+                Text(verbatim: connectionError?.japaneseText ?? LAACopy.failureBody)
                     .font(LAAFont.row)
                     .foregroundStyle(LAAColors.ink)
                     .fixedSize(horizontal: false, vertical: true)
+                if connectionError != nil {
+                    Button { Task { await verifyConnection() } } label: { Text(verbatim: "もう一度確認") }
+                }
             }
         }
     }

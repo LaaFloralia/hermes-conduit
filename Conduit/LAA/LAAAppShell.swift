@@ -2,11 +2,12 @@
 import SwiftUI
 
 /// The LAA tabs reuse Conduit's chat list and conversation screens. The
-/// remaining tabs have no Bridge transport until pairing is implemented.
+/// remaining tabs share the LAA Bridge connection independently of Hermes.
 struct LAAAppShell: View {
     @EnvironmentObject private var appState: AppState
     let onRequestSettings: () -> Void
 
+    @StateObject private var bridge = LAABridgeSession()
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var chatsPath: [V2Route] = []
 
@@ -20,6 +21,7 @@ struct LAAAppShell: View {
 
     var body: some View {
         bar
+            .environmentObject(bridge)
             .tint(LAAColors.teal)
             .environment(\.laaSettingsAction, onRequestSettings)
             .environment(\.v2Shell, V2ShellContext(
@@ -88,7 +90,11 @@ struct LAAAppShell: View {
                 .tag(LAATab.chats)
             ForEach(LAATab.destinations.filter { $0 != .chats }) { tab in
                 NavigationStack {
-                    LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                    if tab == .usage {
+                        LAAUsageView(onRequestSettings: onRequestSettings)
+                    } else {
+                        LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                    }
                 }
                 .tabItem { Label(tab.title, systemImage: tab.symbol) }
                 .tag(tab)
