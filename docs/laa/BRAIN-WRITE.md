@@ -93,7 +93,27 @@ atomic_write(path, data + b'BRIDGE\n')  # 4 古い読み取りを元に rename
 - タスク20：daily原本への追記はCAS窓と10件上限の両方に触れるため保留。代替は Bridge専有の sidecar（例 `daily journal/_bridge/YYYY-MM-DD.md`、単一writer）へ追記し、人が原本へ移す運用。
 - タスク25の受入「同時書込・中断・オフラインで両版保持」は、§4の手順と§5の停止条件で**検知と保全**まで到達する。無損失を保証できるのは新規作成だけ。
 
-## 8. 未確認
+## 8. タスク25の実装（2026-10-29）
+
+§7の判定どおり `brain:write` は無効のまま、`brain:read` と新規作成専用 `brain:create` をBridgeへ実装した。端点は `GET /v1/brain/files`、`GET /v1/brain/files/{id}`、`GET /v1/brain/search`、`POST /v1/brain/files`（作成のみ）、`GET /v1/brain/gates`。コードは `bridge/src/routes/brain.mjs` と `bridge/src/brain/`。
+
+- 作成の順序: 空き容量64MB以上 → git（`master`・`index.lock`/rebase/merge/cherry-pick無し）→ Syncthing（paused・`errors`・`pullErrors`）→ journal `intent`（fsync）→ 親フォルダ検証 → `O_EXCL` で作成 → 本文fsync・ディレクトリfsync → 読戻しで長さとhashを照合 → journal `committed`。どこかで止まれば vault は不変か、作成済みなら `brain_create_unverified`／`brain_journal_incomplete` として人へ渡す。
+- 名前衝突: 既定は `onConflict:"suffix"`（`Note 2.md` を `O_EXCL` で確保）。`"reject"` は 409 `path_exists`。上書き・rename・切詰め・削除の経路は持たない。
+- `brain:create` は**既定scopeに加えない**。§9の初期集合を変えず、端末ごとに `laa-bridge pair --scopes brain:read,brain:create` で付与する。§7が「安全」とするのは新規作成経路だけで、全端末へ広げる根拠にはならないため。
+- 領域は `laa-brain` の `policy.json` をそのまま読み、既定は default 領域のみ。旧資料・Inbox・Sources・日記・研究/振り返り・添付・Templates・未分類は `?area=` で明示した時だけ足す。検索は `laa-brain search --json` を再利用し、既定は `--no-jev`（ローカル順位のみ）、`rerank=1` の時だけJev再判定を通す。電話からの検索を、既定でBrain抜粋を外部モデルへ送る新しい経路にしないため。
+
+§5との差分（意図的）:
+
+| §5の条件 | タスク25での扱い | 理由 |
+|---|---|---|
+| Syncthing `state ≠ idle` で拒否 | 新規作成では `paused`・`errors`・`pullErrors` のみ拒否 | 新規pathにはCAS窓が無く、scan中でも失う版が無い。`state` 語彙は§9のとおり未確定 |
+| 同一pathの競合コピーが30分以内／8件以上 | 新規作成では判定しない | 対象pathが存在しないため。既存内容の置換を実装する時の条件 |
+| `.bridge-tmp` へ書いて `os.replace` | 使わない | 新規作成は `O_EXCL` で直接置くので rename が無い。`.stignore`・git除外の変更も不要 |
+| 依存状態を `health` に出す | `GET /v1/brain/gates` で出す | 共有の `/v1/health` を他領域と同時に触らない |
+
+検証: `bridge/scripts/verify-brain.mjs` を実vaultへ1回実行し、一覧64件、gates（git `master`・Syncthing `idle`/errors 0）、検索1件、`Inbox/_bridge-create-verify-20261029-….md` の作成201、読戻し本文・hash一致、同名再作成409、`onConflict:"reject"` 409を確認した。試験ノートは削除せず vault の既定に合わせて `~/.Trash/` へ移動した（vaultに `.trash` は無く、Obsidianの `trashOption` も未設定＝システムTrashが既定）。検証用の端末は実行後に失効させ、stateから消した。テストは `bridge/test/brain.test.mjs`（fake vault・fake search・fake gates）で同じ契約を固定し、`npm test` 130件が通る。iPhone側writerと `maxConflicts` の挙動は§9（未確認）のままで、新規作成の安全性は「既存内容を壊さない」ことに限る。
+
+## 9. 未確認
 
 - iPhone側writerの実体（SyncTrainの版・保存方式・競合コピーの扱い）。
 - Obsidianの保存がatomicか、file-recoveryの間隔と保持数。
