@@ -259,6 +259,82 @@ final class ComposerReturnKeyTests: XCTestCase {
 
     // MARK: - Room and full editor field: text sync
 
+    func testFullEditorInputSizeChangeWaitsForMarkedTextToCommit() {
+        var editor = ReturnKeyTextEditor(
+            text: .constant(""), isFocused: .constant(false), accessibilityLabel: "Message",
+            inputTextSize: .smallest, canSubmitFromReturn: false, onSubmitFromReturn: { false }
+        )
+        let field = ReturnKeyTextView()
+        editor.updateTypography(field)
+        let originalFont = field.font
+        field.setMarkedText("にほん", selectedRange: NSRange(location: 2, length: 0))
+        XCTAssertNotNil(field.markedTextRange)
+        let originalText = field.text
+        let originalSelection = field.selectedRange
+
+        editor.inputTextSize = .largest
+        editor.updateTypography(field)
+        XCTAssertEqual(field.font, originalFont)
+        XCTAssertEqual(field.text, originalText)
+        XCTAssertEqual(field.selectedRange, originalSelection)
+
+        field.unmarkText()
+        editor.makeCoordinator().textDidChange(in: field, hasMarkedText: false)
+        XCTAssertGreaterThan(field.font!.pointSize, originalFont!.pointSize)
+        XCTAssertEqual(field.text, originalText)
+    }
+
+    func testFullEditorIgnoresStaleBindingDuringComposition() {
+        var stored = "old"
+        let editor = ReturnKeyTextEditor(
+            text: Binding(get: { stored }, set: { stored = $0 }), isFocused: .constant(true),
+            accessibilityLabel: "Message", programmaticRevision: 7,
+            canSubmitFromReturn: false, onSubmitFromReturn: { false }
+        )
+        let coordinator = editor.makeCoordinator()
+        let field = ReturnKeyTextView()
+        field.text = "old"
+        field.setMarkedText("にほん", selectedRange: NSRange(location: 2, length: 0))
+        XCTAssertNotNil(field.markedTextRange)
+        let originalText = field.text
+        let originalSelection = field.selectedRange
+
+        coordinator.apply(text: "stale", to: field, hasMarkedText: true)
+        XCTAssertNil(coordinator.pendingText)
+        XCTAssertEqual(field.text, originalText)
+        XCTAssertEqual(field.selectedRange, originalSelection)
+        field.unmarkText()
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        XCTAssertEqual(stored, originalText)
+    }
+
+    func testFullEditorDefersIntentionalReplacementDuringComposition() {
+        var stored = "old"
+        var editor = ReturnKeyTextEditor(
+            text: Binding(get: { stored }, set: { stored = $0 }), isFocused: .constant(true),
+            accessibilityLabel: "Message", programmaticRevision: 7,
+            canSubmitFromReturn: false, onSubmitFromReturn: { false }
+        )
+        let coordinator = editor.makeCoordinator()
+        let field = ReturnKeyTextView()
+        field.text = "old"
+        field.setMarkedText("にほん", selectedRange: NSRange(location: 2, length: 0))
+        XCTAssertNotNil(field.markedTextRange)
+        let originalText = field.text
+        let originalSelection = field.selectedRange
+        editor.programmaticRevision = 8
+        coordinator.parent = editor
+        coordinator.apply(text: "replacement", to: field, hasMarkedText: true)
+        XCTAssertEqual(field.text, originalText)
+        XCTAssertEqual(field.selectedRange, originalSelection)
+        coordinator.apply(text: "stale echo", to: field, hasMarkedText: true)
+        XCTAssertEqual(coordinator.pendingText, "replacement")
+        field.unmarkText()
+        coordinator.textDidChange(in: field, hasMarkedText: false)
+        XCTAssertEqual(field.text, "replacement")
+        XCTAssertEqual(stored, "replacement")
+    }
+
     private func editorCoordinator(text: Binding<String>) -> ReturnKeyTextEditor.Coordinator {
         ReturnKeyTextEditor(
             text: text,

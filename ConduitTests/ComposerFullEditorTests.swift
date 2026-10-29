@@ -37,13 +37,8 @@ final class ComposerFullEditorTests: XCTestCase {
         XCTAssertFalse(AppState.voiceWaitsForRunningTurn(isBusy: false, liveEngine: nil))
     }
 
-    func testShortDraftsHaveNoExpandButton() {
-        XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.minimumHeight))
-        XCTAssertFalse(ComposerBar.showsFullEditorButton(measuredHeight: 60), "two lines read fine in place")
-    }
-
-    func testLongDraftsOfferTheFullEditor() {
-        XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerBar.fullEditorThreshold))
+    func testTheFullEditorIsAvailableForShortAndLongDrafts() {
+        XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.minimumHeight))
         XCTAssertTrue(ComposerBar.showsFullEditorButton(measuredHeight: ComposerPasteTextView.maximumHeight))
     }
 

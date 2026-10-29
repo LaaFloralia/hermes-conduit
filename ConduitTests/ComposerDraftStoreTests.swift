@@ -4,6 +4,116 @@ import XCTest
 
 @MainActor
 final class ComposerDraftStoreTests: XCTestCase {
+    func testOlderDraftsDecodeAndRecipientOnlyDraftSurvivesRelaunch() throws {
+        let older = try JSONDecoder().decode(ComposerDraft.self, from: Data(#"{"text":"old","attachments":[]}"#.utf8))
+        XCTAssertEqual(older.text, "old")
+        XCTAssertNil(older.roomRecipients)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let key = ComposerDraftKey(profile: "", sessionID: "room", dashboardID: UUID())
+        let draft = ComposerDraft(text: "", attachments: [], roomRecipients: ["research-buddy"])
+        XCTAssertTrue(ComposerDraftStore(fileURL: url).save(draft, for: key))
+        XCTAssertEqual(ComposerDraftStore(fileURL: url).draft(for: key), draft)
+    }
+
+    func testDraftsAreRestoredPerConversationAndDashboardAfterRelaunch() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let first = ComposerDraftKey(profile: "work", sessionID: "chat", dashboardID: UUID())
+        let second = ComposerDraftKey(profile: "work", sessionID: "chat", dashboardID: UUID())
+        let store = ComposerDraftStore(capacity: .max, fileURL: url)
+        XCTAssertTrue(store.save(ComposerDraft(text: "日本語", attachments: []), for: first))
+        XCTAssertTrue(store.save(ComposerDraft(text: "other", attachments: []), for: second))
+        let restored = ComposerDraftStore(capacity: .max, fileURL: url)
+        XCTAssertEqual(restored.draft(for: first).text, "日本語")
+        XCTAssertEqual(restored.draft(for: second).text, "other")
+    }
+
+    func testAnInterruptedSendIsUnknownAndNeverAutomaticallyRestored() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let dashboard = UUID()
+        let key = ComposerDraftKey(profile: "work", sessionID: "chat", dashboardID: dashboard)
+        let draft = ComposerDraft(text: "sent?", attachments: [])
+        let submission = ComposerDraftStore.Submission(id: UUID(), key: key, dashboardID: dashboard, draft: draft, pendingSendID: nil)
+        let store = ComposerDraftStore(capacity: .max, fileURL: url)
+        XCTAssertTrue(store.save(draft, for: key))
+        XCTAssertTrue(store.beginSubmission(submission, clearingDraft: true))
+        XCTAssertTrue(store.unknownSubmissions.isEmpty)
+        XCTAssertTrue(store.save(ComposerDraft(text: "new draft", attachments: []), for: key))
+
+        let relaunched = ComposerDraftStore(capacity: .max, fileURL: url)
+        XCTAssertEqual(relaunched.unknownSubmissions, [submission])
+        XCTAssertEqual(relaunched.draft(for: key).text, "new draft")
+        XCTAssertTrue(relaunched.finishSubmission(submission.id, restoring: true))
+        XCTAssertEqual(relaunched.draft(for: key).text, "sent?\n\nnew draft")
+        XCTAssertTrue(ComposerDraftStore(capacity: .max, fileURL: url).unknownSubmissions.isEmpty)
+    }
+
+    func testUnreadableSnapshotIsNotOverwritten() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let original = Data("not a snapshot".utf8)
+        try original.write(to: url)
+        let store = ComposerDraftStore(capacity: .max, fileURL: url)
+        XCTAssertTrue(store.persistenceFailed)
+        XCTAssertFalse(store.save(ComposerDraft(text: "new", attachments: []), for: ComposerDraftKey(profile: "work", sessionID: "chat")))
+        XCTAssertEqual(try Data(contentsOf: url), original)
+    }
+
+    func testNewChatSubmissionIsReboundBeforeNetworkSend() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let dashboard = UUID()
+        let original = ComposerDraftKey(profile: "work", sessionID: ComposerDraftKey.newConversationSessionID, dashboardID: dashboard)
+        let created = ComposerDraftKey(profile: "work", sessionID: "created-chat", dashboardID: dashboard)
+        let id = UUID()
+        let store = ComposerDraftStore(fileURL: url)
+        XCTAssertTrue(store.beginSubmission(.init(id: id, key: original, dashboardID: dashboard,
+                                                  draft: .init(text: "hello", attachments: []), pendingSendID: nil), clearingDraft: true))
+        XCTAssertTrue(store.rebindSubmission(id, to: created))
+        let relaunched = ComposerDraftStore(fileURL: url)
+        XCTAssertEqual(relaunched.unknownSubmissions.first?.key, created)
+        XCTAssertEqual(relaunched.unknownSubmissions.first?.draft.text, "hello")
+    }
+
+    func testAttachmentCopySurvivesTheStagingFileBeingRemoved() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = directory.appendingPathComponent("photo.jpg")
+        try Data("photo".utf8).write(to: original)
+        let item = Attachment(id: "photo", name: "photo.jpg", uri: original.absoluteString, mimeType: "image/jpeg", kind: .image)
+        let key = ComposerDraftKey(profile: "work", sessionID: "chat", dashboardID: UUID())
+        let url = directory.appendingPathComponent("drafts.json")
+        XCTAssertTrue(ComposerDraftStore(fileURL: url).save(.init(text: "", attachments: [item]), for: key))
+        try FileManager.default.removeItem(at: original)
+        let restored = ComposerDraftStore(fileURL: url).draft(for: key)
+        let copy = try XCTUnwrap(restored.attachments.first.flatMap { URL(string: $0.uri) })
+        XCTAssertEqual(try Data(contentsOf: copy), Data("photo".utf8))
+    }
+
+    func testWaitingMessageRestoreIsIdempotentAcrossAnInterruptedTransfer() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        let key = ComposerDraftKey(profile: "work", sessionID: "chat", dashboardID: UUID())
+        let pendingID = UUID()
+        let first = ComposerDraftStore(fileURL: url)
+        XCTAssertTrue(first.saveRestoredPending(pendingID, draft: .init(text: "waiting\n\nnew words", attachments: []), for: key))
+        // The pending file still exists if the process died before removing it.
+        let second = ComposerDraftStore(fileURL: url)
+        XCTAssertTrue(second.hasRestoredPending(pendingID))
+        XCTAssertTrue(second.saveRestoredPending(pendingID, draft: .init(text: "waiting\n\nwaiting\n\nnew words", attachments: []), for: key))
+        XCTAssertEqual(second.draft(for: key).text, "waiting\n\nnew words")
+    }
+
     func testProgrammaticRestoredSlashDraftKeepsSuggestionsHidden() {
         XCTAssertFalse(
             ComposerBar.shouldShowSlashSuggestions(

@@ -8,6 +8,39 @@ import XCTest
 
 @MainActor
 final class ComposerPasteTextViewTests: XCTestCase {
+    func testInputSizeChangeWaitsForMarkedTextToCommit() {
+        let view = ImagePasteTextView()
+        var editor = ComposerPasteTextView(
+            text: .constant(""), isFocused: .constant(false), measuredHeight: .constant(0),
+            enabled: true, onPastedImage: { _ in }, onPastedImageError: { _ in }, editorIdentity: UUID()
+        )
+        editor.inputTextSize = .smallest
+        editor.updateTypography(view)
+        let originalFont = view.font
+        view.setMarkedText("にほん", selectedRange: NSRange(location: 2, length: 0))
+        XCTAssertNotNil(view.markedTextRange)
+        let originalText = view.text
+        let originalSelection = view.selectedRange
+
+        editor.inputTextSize = .largest
+        editor.updateTypography(view)
+        XCTAssertEqual(view.font, originalFont)
+        XCTAssertEqual(view.text, originalText)
+        XCTAssertEqual(view.selectedRange, originalSelection)
+
+        view.unmarkText()
+        editor.updateTypography(view)
+        XCTAssertGreaterThan(view.font!.pointSize, originalFont!.pointSize)
+        XCTAssertEqual(view.text, originalText)
+    }
+
+    func testComposerHeightTracksThreeThroughEightScaledLines() {
+        let font = ChatTypography.inputFont(for: nil, size: .larger)
+        XCTAssertEqual(ComposerPasteTextView.minimumHeight(for: nil, size: .larger), ceil(font.lineHeight * 3) + 16)
+        XCTAssertEqual(ComposerPasteTextView.maximumHeight(for: nil, size: .larger), ceil(font.lineHeight * 8) + 16)
+        XCTAssertGreaterThan(ComposerPasteTextView.minimumHeight(for: nil, size: .largest), ComposerPasteTextView.minimumHeight(for: nil, size: .smallest))
+    }
+
     // Tests that mutate UIPasteboard.general wrap their body in
     // withClearedGeneralPasteboard so they start from a known-empty clipboard
     // and leave nothing behind. A suite-wide setUp()/tearDown()
@@ -280,6 +313,9 @@ final class ComposerPasteTextViewTests: XCTestCase {
         )
         XCTAssertNotEqual(textView.text, "replaced")
         XCTAssertEqual(userEditCount, 0)
+
+        // An old binding echo during the same revision cannot displace it.
+        coordinator.apply(text: "に", programmaticRevision: 1, editorIdentity: editorIdentity, to: textView)
 
         // Composition ends without a user edit; the next revision-gated pass
         // lands the deferred replacement through the programmatic path.

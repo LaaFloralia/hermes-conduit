@@ -23,14 +23,17 @@ final class GroupChatSessionSafetyTests: XCTestCase {
 
     private struct TestError: Error {}
 
-    private func makeAppState(operations: GroupChatLifecycleOperations) -> AppState {
+    private func makeAppState(operations: GroupChatLifecycleOperations, store: ComposerDraftStore? = nil,
+                              registry: SavedDashboardRegistry? = nil) -> AppState {
         AppState(
             defaults: defaults,
             loadSavedConnection: false,
+            dashboardRegistry: registry,
             clearSessionPresentationCache: {},
             chatResumeLifecycleOperations: .live,
             groupChatOperations: operations,
-            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            composerDraftStore: store
         )
     }
 
@@ -173,6 +176,99 @@ final class GroupChatSessionSafetyTests: XCTestCase {
     }
 
     // MARK: - Send retry key
+
+    func testRoomDraftAndAmbiguousSendSurviveRelaunchWithTheSameRetryID() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("drafts.json")
+        final class Recorder { var ids: [String] = [] }
+        let recorder = Recorder()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, eventID, _, _ in
+                recorder.ids.append(eventID)
+                if recorder.ids.count == 1 { throw TestError() }
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let first = makeAppState(operations: operations, store: ComposerDraftStore(fileURL: url))
+        connect(first)
+        await first.refreshGroupChatSupport()
+        await first.openGroupRoom(room)
+        first.saveActiveRoomDraft("hello room\nnew thought")
+        let originalReply = ComposerReplyReference(authorName: "Research Buddy", text: "earlier")
+        let laterReply = ComposerReplyReference(authorName: "Research Buddy", text: "later")
+        first.saveActiveRoomReplyReference(originalReply)
+        first.saveActiveRoomRecipients(["research-buddy"])
+        let submitted = ComposerDraft(text: "hello room", attachments: [], replyReference: originalReply,
+                                      roomRecipients: ["research-buddy"])
+        let remaining = ComposerDraft(text: "new thought", attachments: [], replyReference: laterReply,
+                                      roomRecipients: ["research-buddy"])
+        let registered = await first.sendGroupRoomMessage("hello room", submittedDraft: submitted, remainingDraft: remaining) {
+            first.saveActiveRoomDraft(remaining.text)
+        }
+        XCTAssertTrue(registered)
+        let eventID = try XCTUnwrap(first.pendingRoomMessage?.eventID)
+        first.closeGroupRoom()
+
+        let second = makeAppState(operations: operations, store: ComposerDraftStore(fileURL: url), registry: first.savedDashboardRegistry)
+        connect(second)
+        await second.refreshGroupChatSupport()
+        await second.openGroupRoom(room)
+        XCTAssertEqual(second.activeRoomDraft(), "new thought")
+        XCTAssertEqual(second.activeRoomComposerMetadata().replyReference, laterReply)
+        XCTAssertEqual(second.activeRoomComposerMetadata().roomRecipients, ["research-buddy"])
+        XCTAssertEqual(second.composerDraftStore.submissions.first?.draft.replyReference, originalReply)
+        XCTAssertEqual(second.composerDraftStore.submissions.first?.draft.roomRecipients, ["research-buddy"])
+        XCTAssertEqual(second.pendingRoomMessage?.eventID, eventID)
+        XCTAssertEqual(recorder.ids, [eventID], "Relaunch must not send automatically")
+        let retried = await second.sendGroupRoomMessage("hello room")
+        XCTAssertTrue(retried)
+        XCTAssertEqual(recorder.ids, [eventID, eventID])
+        XCTAssertNil(second.pendingRoomMessage)
+        XCTAssertTrue(second.composerDraftStore.submissions.isEmpty)
+        second.closeGroupRoom()
+    }
+
+    func testMissingRoomRecipientBlocksSendInsteadOfAddressingEveryone() async {
+        final class Recorder { var sends = 0 }
+        let recorder = Recorder()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            },
+            send: { _, roomID, _, _, _ in
+                recorder.sends += 1
+                return self.sendResult(roomID: roomID, seq: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        appState.saveActiveRoomDraft("private message")
+        appState.saveActiveRoomRecipients(["departed"])
+        let draft = appState.activeRoomComposerMetadata()
+        XCTAssertEqual(GroupRoomRecipients.unavailable(["RESEARCH-BUDDY", "departed"], members: room.members), ["departed"])
+        let registered = await appState.sendGroupRoomMessage("private message", submittedDraft: draft)
+        XCTAssertFalse(registered)
+        XCTAssertEqual(recorder.sends, 0)
+        XCTAssertEqual(appState.activeRoomComposerMetadata().roomRecipients, ["departed"])
+        XCTAssertEqual(appState.activeRoomDraft(), "private message")
+        appState.closeGroupRoom()
+    }
 
     func testAmbiguousSendFailureReusesTheSameEventIDOnRetry() async {
         final class SendRecorder {
@@ -467,9 +563,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
-    /// A room that leaves the room list (disbanded elsewhere) drops its
-    /// parked send and draft.
-    func testRoomLeavingTheListDropsItsParkedSendAndDraft() async {
+    /// A room absent from the list must not erase an unresolved send or draft.
+    func testRoomLeavingTheListKeepsItsParkedSendAndDraft() async {
         final class ListBox {
             var rooms: [GroupRoom] = []
         }
@@ -498,15 +593,14 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.refreshGroupRooms()
 
         await appState.openGroupRoom(room)
-        XCTAssertNil(appState.pendingRoomMessage)
-        XCTAssertEqual(appState.activeRoomDraft(), "")
+        XCTAssertNotNil(appState.pendingRoomMessage)
+        XCTAssertEqual(appState.activeRoomDraft(), "half a thought")
         appState.closeGroupRoom()
     }
 
     /// A room's staged files are kept with its text: leaving and reopening
-    /// brings them back, and a room that leaves the list deletes their
-    /// local copies.
-    func testRoomDraftKeepsItsStagedFilesUntilTheRoomIsGone() async throws {
+    /// brings them back, even when a room is absent from a refreshed list.
+    func testRoomDraftKeepsItsStagedFilesWhenTheRoomIsGone() async throws {
         final class ListBox {
             var rooms: [GroupRoom] = []
         }
@@ -544,10 +638,10 @@ final class GroupChatSessionSafetyTests: XCTestCase {
 
         box.rooms = []
         await appState.refreshGroupRooms()
-        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "the gone room's file is deleted")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path), "a missing room must not erase its draft's file")
 
         await appState.openGroupRoom(room)
-        XCTAssertEqual(appState.activeRoomAttachments(), [])
+        XCTAssertEqual(appState.activeRoomAttachments(), [file])
         appState.closeGroupRoom()
     }
 

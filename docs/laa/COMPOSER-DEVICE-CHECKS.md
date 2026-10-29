@@ -11,7 +11,10 @@ an iPhone with the LAA build. Use a test conversation where sending is safe.
    both fields and message bubbles, including a long draft and the full editor.
 3. Leave different drafts in two conversations, force-quit the app from the
    app switcher, reopen it, and check that each draft and attachment returns
-   to its own conversation.
+   to its own conversation. In a group room, check that its quoted reply and
+   selected recipients return too. If a selected bot leaves the room, check
+   that the unavailable pick remains visible and sending is blocked until it
+   is removed.
 4. In a test conversation, interrupt the connection or force-quit while a send
    is awaiting its result. Reopen and check for the delivery-unknown notice;
    verify the conversation before confirming delivery or restoring the draft.
@@ -20,6 +23,11 @@ an iPhone with the LAA build. Use a test conversation where sending is safe.
 5. For a group-room unknown send, use its explicit retry and confirm the
    conversation contains one message, including when the first attempt landed.
 
-The automated marked-text regression tests cover deferred replacement, cursor
-and selection preservation, and deferred font changes in both UIKit bridges;
-they do not prove Simeji's on-device behavior.
+On the iOS 27.1 simulator with the LAA personal overlay, Japanese Romaji input
+produced `にほん`, selected `日本`, added `ご` in the full editor, selected
+`語`, and restored `日本語` after termination and relaunch.
+
+The marked-text regression tests in `ComposerPasteTextViewTests` and
+`ComposerReturnKeyTests` cover deferred replacement, cursor and selection
+preservation, and deferred font changes in both UIKit bridges. They do not
+prove Simeji's on-device behavior.

@@ -1486,10 +1486,39 @@ Watch and CarPlay (not needed: neither shows a transcript)
 
 **Checked:** 2026-10-27, #1404.
 
+## Composer editor and text size
+
+The LAA composer starts at three lines and can open a full-height editor even
+for a short draft. Settings > Chat offers separate input and response text
+sizes, each applied on top of the system's text size.
+
+**Siblings:** chat composer · group room composer · both full editors ·
+Settings > Chat · chat and group responses · Japanese input methods
+
+**Code**
+- Fields and IME composition: `Conduit/Views/Components/ComposerPasteTextView.swift`, `Conduit/Views/Components/ReturnKeyTextView.swift`
+- Editors: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/Components/ComposerFullEditor.swift`
+- Preferences and font scaling: `Conduit/Views/Components/ChatTypography.swift`, `Conduit/Views/AuxiliaryViews.swift`
+- Tests: `ConduitTests/ComposerPasteTextViewTests.swift`, `ConduitTests/ComposerReturnKeyTests.swift`, `ConduitTests/ComposerFullEditorTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`
+
+**Rulings**
+- An unchanged binding revision never replaces the text or selection while an
+  input method is composing. An intentional replacement or font change waits
+  until marked text commits. LAA asks for three lines and independent input
+  and response sizes (2026-10-29, Task 08).
+
+**Open gaps**
+- Simeji must be checked on a physical iPhone; the simulator cannot install it.
+  The marked-text tests exercise the UIKit bridge but cannot reproduce every
+  third-party keyboard behavior. Device steps: `docs/laa/COMPOSER-DEVICE-CHECKS.md`.
+
+**Checked:** 2026-10-29, d7e98a56 (LAA Task 08).
+
 ## Composer drafts
 
 Unsent words, files and a quoted reply wait in the composer they were typed
-in until they're sent, whichever way the user leaves.
+in. The LAA build keeps drafts across app termination by dashboard, profile
+and conversation. Local file attachments have protected, separate copies.
 
 **Siblings:** chat composer (chats, project chats, Bot Chat) · New Chat ·
 a saved copy's composer and its waiting message ("Sends when connected") ·
@@ -1498,32 +1527,40 @@ the composer's Sending… while a send checks Hermes
 
 | Leaving by | Chat composer | Group room |
 |---|---|---|
-| Back, or another chat from the list | text, files and quote kept | text and files kept |
-| A room opened over the chat | kept | not applicable |
-| Leaving while a send is on its way | back in its draft if it doesn't go | held by the room's pending message |
-| Sign-out or another server | dropped | dropped, files deleted |
-| The room disbanded or left the list | not applicable | dropped, files deleted |
+| Back, another chat, app termination | text, files and quote kept | text, files, quote and recipient picks kept |
+| Another server | kept under the original dashboard | kept under the original dashboard |
+| Send outcome not known | held for review; no automatic resend | pending message keeps its retry ID |
+| Sign-out | dropped for that dashboard | dropped for that dashboard |
+| The room disbanded or left the list | not applicable | retained on disk but no longer shown |
 
 **Code**
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (loadDraft, saveDraft, handoffComposer, onDisappear, draftKeyToKeep, restoreSubmittedDraftIfNeeded, applyComposerRestoreRequests, sendingNotice, composerInUse), `Conduit/Views/Components/ComposerUpdates.swift` (isCheckingSend), `Conduit/Views/Components/ComposerDraftStore.swift` (clearCount)
-- A send that didn't go: `Conduit/Services/AppState+PendingSend.swift` (returnFailedComposerSubmission, restoreFailedPendingComposerSend's mayHaveGone), `Conduit/Services/AppState.swift` (composerSubmissionStoppedQuietly, takeComposerSubmissionOfUnknownDelivery); its checks before the message shows: `Conduit/Services/AppState.swift` (checkingBeforeSend, composerSendIsChecking: the stale-idle probe, the transcript freshness read, starting a chat from the empty canvas)
-- Waiting message: `Conduit/Services/AppState+PendingSend.swift` (returnPendingComposerSendToDraft, restoreFailedPendingComposerSend, pendingComposerSendNotice), `Conduit/Services/AppState.swift` (conversationIsGone), `Conduit/Models/PendingComposerSend.swift`
-- Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Services/AppState.swift` (activeRoomDraft, activeRoomAttachments, pruneRoomStores)
-- Tests: `ConduitTests/ComposerDraftStoreTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/AppStateChatResumeTests.swift`, `ConduitTests/AppStateForegroundLifecycleTests.swift` (the Sending… line, leaving mid-send)
+- Durable drafts and send journal: `Conduit/Views/Components/ComposerDraftStore.swift`
+- Chat composer and review: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Services/AppState+PendingSend.swift`, `Conduit/Services/OfflineChatCache.swift`, `Conduit/Models/PendingComposerSend.swift`
+- Group drafts and idempotent retry: `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/GroupChatView.swift`, `Conduit/Services/AppState.swift`, `Conduit/Services/GroupChatModels.swift`
+- Tests: `ConduitTests/ComposerDraftStoreTests.swift`, `ConduitTests/GroupChatSessionSafetyTests.swift`, `ConduitTests/OfflineChatCacheTests.swift`, `ConduitTests/AppStateChatResumeTests.swift`, `ConduitTests/AppStateForegroundLifecycleTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`
 
 **Rulings**
-- Drafts live in memory per (profile, chat), and a sign-out or server switch clears them on purpose; nothing the composer held before the clear goes back in after it: not when it goes away, hands off to another chat or a room, nor when a send that was on its way fails (2026-10-24, #1185).
-- A send's words leave the field when Send is tapped. If it doesn't go, they come back through AppState's restore requests, never through the composer that sent them: leaving the chat mid-send replaces that composer, and words put back into it were lost, so the user had to type them again. The composer on screen puts them in its field when they're its chat's, otherwise in their chat's stored draft. A send that stopped with no error to say so (its chat was left before its message showed) leaves the waiting message's notice: back in the composer, or back in that chat's draft, by name, and only while its dashboard and profile are on screen. One whose reply was lost after its chat was left may have reached Hermes, so its words come back without that notice, a waiting message's included. Sending… keeps the V2 composer open, as other notices do (2026-10-27, #1403, from #1401).
-- Until a send's message shows in the transcript, the composer says "Sending…" in the chat it was sent from: on a slow or dropped connection the checks before it (whether Hermes is still busy, whether the transcript is current, starting the chat) can take seconds, and an emptied field with nothing else read as a message that went nowhere (2026-10-27, #1403, from #1401).
-- A waiting message is never sent on its own after it's handed back. When Hermes says its chat is gone, its words go into the composer on screen, unsent, with a notice saying so (2026-10-24, #1185).
+- LAA replaces the memory-only and server-switch-clear ruling of #1185 with a
+  protected persistent draft per dashboard and conversation. Sign-out still
+  clears that dashboard's drafts (2026-10-29, Task 08).
+- Before a chat message is sent, its content is journaled. A surviving entry
+  means delivery is unknown, not necessarily failed. The user checks the chat
+  and explicitly confirms delivery or restores the message; new words remain
+  separate. A room retry retains its original event ID so Hermes can deduplicate
+  it. Neither path automatically resends after a restart (2026-10-29, Task 08).
+- A waiting message handed back is never automatically sent again. Sending…
+  remains visible while the normal send checks Hermes (#1403).
+- Room recipient picks survive relaunch. A pick that no longer names a room
+  member remains visible and blocks sending until removed, preventing a
+  message intended for one bot from reaching all bots (2026-10-29, Task 08).
 
 **Open gaps**
-- Drafts don't outlive Conduit being stopped; only a waiting message does (as a file).
-- A waiting message left from an earlier run whose chat is gone still goes back into that chat's draft: the gone chats are only known for this run.
-- A room's quoted message and its "To" picks aren't kept when the room is left.
-- A room that's disbanded while another dashboard is in use keeps its staged files until that dashboard is opened again or the user signs out.
+- A waiting message left from an earlier run whose chat is gone still goes
+  back into that chat's draft: the gone chats are only known for this run.
+- A disbanded room's saved draft and staged copies remain until sign-out or
+  later cleanup; the room cannot be opened to recover them.
 
-**Checked:** 2026-10-27, #1403 (failed sends' words outlast the composer; Sending… before the message shows); 2026-10-24, at #1185; a failed '/command' put back without its suggestion list over it at #1191 (#891 review).
+**Checked:** 2026-10-29, d7e98a56 (LAA Task 08); 2026-10-27, #1403.
 
 ## A new chat that something waits on
 
@@ -3301,13 +3338,13 @@ on top
 **Rulings**
 - Widths follow the window, not the device (2026-10-19, #949).
 - A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
-- A wider chat column shows bigger text rather than longer lines: the column's text goes up one system text size for each size whose lines still hold as many words as the 760 pt column does (none beside the list on an iPad, two with an iPad's list hidden, three on a maximized Mac). Everything in the column steps together, its chrome (timestamps, the reply's buttons, banners) with its text so they keep their proportions: transcript, thinking, step rows, cards, the composer and group rooms, on top of the user's Dynamic Type and Chat text size (which group rooms now follow too, size and style, as chats do); it stops at the largest standard size, so an accessibility size stays as set. The list beside the chat and the top bar keep their size: the list's column doesn't widen (Eric, 2026-10-27, #1393: maximized on a Mac the chat looked small in a big empty space).
+- A wider chat column shows bigger text rather than longer lines: the column's text goes up one system text size for each size whose lines still hold as many words as the 760 pt column does (none beside the list on an iPad, two with an iPad's list hidden, three on a maximized Mac). Everything in the column steps together, its chrome (timestamps, the reply's buttons, banners) with its text so they keep their proportions: transcript, thinking, step rows, cards, the composer and group rooms, on top of the user's Dynamic Type and the relevant chat or input text-size setting (group responses follow the chat setting, while composer fields use the separate input setting); it stops at the largest standard size, so an accessibility size stays as set. The list beside the chat and the top bar keep their size: the list's column doesn't widen (Eric, 2026-10-27, #1393: maximized on a Mac the chat looked small in a big empty space).
 - Settings (720 pt), a list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
 
 **Open gaps**
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
+**Checked:** 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
 ## Voice on a profile the dashboard didn't start with
 
