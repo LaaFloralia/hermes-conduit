@@ -24,40 +24,49 @@ import { pathToFileURL } from 'node:url';
 const V1 = 'Reply with exactly the hash shown in your instructions header, and nothing else.';
 const V2 = 'Reply with exactly the hash shown in your instructions header, and nothing else. Use the current wording.';
 
-export function journalEvents(journal) {
+// The journal artifact is JSONL. A line that does not parse is a failure, not
+// something to skip: the rest of that line (possibly a leaked body) is unknown.
+export function parseJournal(journal) {
   const events = [];
+  const invalid = [];
   for (const line of String(journal ?? '').split('\n')) {
     if (line.trim() === '') continue;
     try {
       events.push(JSON.parse(line));
     } catch {
-      events.push(null);
+      invalid.push(line);
     }
   }
-  return events;
+  return { events, invalid };
 }
 
-// Every string inside the journal, decoded. A body written into an event is
-// JSON-escaped, so searching the raw line would miss it.
-export function journalStrings(journal) {
+// Every string inside the parsed events, decoded. A body written into an event
+// is JSON-escaped, so searching the raw line would miss it.
+export function journalStrings(events) {
   const parts = [];
   const walk = (value) => {
     if (typeof value === 'string') parts.push(value);
     else if (Array.isArray(value)) value.forEach(walk);
     else if (value && typeof value === 'object') Object.values(value).forEach(walk);
   };
-  walk(journalEvents(journal));
+  walk(events);
   return parts.join('\n');
 }
 
-export function evaluateVerification({ project, session, result, journal, hash, body }) {
-  const events = journalEvents(journal);
+// `ok` requires all of: the session recorded the project's version and hash,
+// the agent's answer is exactly the header hash (surrounding whitespace only),
+// the journal is complete and parseable, it carries the version but not the
+// body, and the agent answered without an error.
+export function evaluateVerification({ project, session, result, journal, journalTruncated = false, hash, body }) {
+  const { events, invalid } = parseJournal(journal);
+  const intact = journalTruncated !== true && invalid.length === 0 && events.length > 0;
   const carriesVersion = events.some((event) => event?.payload?.instructionVersion === project?.instructionVersion);
   const checks = {
     identity: session?.instructionVersion === project?.instructionVersion
       && session?.instructionHash === hash,
-    applied: typeof result === 'string' && result.includes(hash),
-    noLeak: events.length > 0 && carriesVersion && !journalStrings(journal).includes(body),
+    applied: typeof result === 'string' && result.trim() === hash,
+    journalIntact: intact,
+    noLeak: intact && carriesVersion && !journalStrings(events).includes(body),
     answered: typeof result === 'string' && result.trim() !== '' && session?.phase !== 'error',
   };
   return { ok: Object.values(checks).every(Boolean), checks };
@@ -164,13 +173,16 @@ async function run() {
 
   const artifacts = (await ok('GET', `/v1/sessions/${record.id}/artifacts`)).body.data.items;
   const result = artifacts.find((item) => item.type === 'message')?.content ?? '';
-  const journal = artifacts.find((item) => item.type === 'log')?.content ?? '';
+  const log = artifacts.find((item) => item.type === 'log');
+  const journal = log?.content ?? '';
+  const journalTruncated = log?.truncated === true;
 
   const verdict = evaluateVerification({
     project: { instructionVersion: 2, instructionHash: edited.body.data.instructionHash },
     session: detail,
     result,
     journal,
+    journalTruncated,
     hash: edited.body.data.instructionHash,
     body: V2,
   });
@@ -178,6 +190,7 @@ async function run() {
     step: 'checks',
     ok: verdict.ok,
     ...verdict.checks,
+    journalTruncated,
     resultChars: result.trim().length,
     journalChars: journal.length,
   });

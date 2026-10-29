@@ -40,6 +40,18 @@ function fakeDelegation() {
     async create({ requestId, profile, cwd, task, title }) {
       calls.push({ op: 'create', requestId, profile, cwd, task, title });
       if (adapter.unavailable) throw new BridgeError(503, 'delegation_unavailable', 'down', { retryable: true });
+      // Mirrors laa-personal-agent: the title is capped at 200 UTF-8 bytes and
+      // must be non-empty. The Bridge has no mapping for `title_invalid`, so an
+      // over-long title would surface as a 503; the Bridge must bound it first.
+      // Control/format characters are stricter here than the wrapper (which
+      // strips them), because the Bridge is supposed to remove them.
+      if (title !== undefined) {
+        if (typeof title !== 'string' || title.trim() === '' || title.includes('\0')
+          || Buffer.byteLength(title, 'utf8') > 200) {
+          throw new BridgeError(400, 'title_invalid', 'title is invalid');
+        }
+        if (/[\p{Cc}\p{Cf}]/u.test(title)) throw new BridgeError(400, 'title_invalid', 'title contains control characters');
+      }
       // Mirrors laa-personal-agent: the title is not part of the request digest.
       const digest = JSON.stringify({ profile, cwd, task });
       const existing = records.get(requestId);
@@ -565,6 +577,40 @@ test('a project instruction body is composed into the delegated prompt and recor
   writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`, { mode: 0o600 });
   const leaked = await ctx.bridge.request(`/v1/sessions/${session.id}/events?afterSeq=0`, { token: ctx.token });
   assert.equal(decodedText(leaked.body.data.items).includes(body), true, 'a leaked body must be detected');
+});
+
+test('a long project name is cut to the delegation title limit', async (t) => {
+  const ctx = await boot(t);
+  const longName = 'あ'.repeat(80);
+  const project = await createProject(ctx, { name: longName, instructions: 'Always answer in Japanese.' }, 'k-title-long');
+  const created = await createSession(
+    ctx,
+    { requestId: 'req-title-long', projectId: project.id, name: '確認' },
+    'k-title-long-1',
+  );
+  assert.equal(created.status, 201);
+  const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  const bytes = Buffer.byteLength(create.title, 'utf8');
+  assert.ok(bytes <= 200, `title is ${bytes} bytes, over the delegation limit`);
+  assert.ok(bytes > 190, 'the title should use most of the budget');
+  assert.ok(create.title.startsWith('あ'));
+  assert.equal(created.body.data.name, '確認', 'the session name itself is not truncated');
+});
+
+test('the delegation title is one line without control or format characters', async (t) => {
+  const ctx = await boot(t);
+  const created = await createSession(ctx, { requestId: 'req-title-clean', name: '確認\n\u200e作業' }, 'k-title-clean');
+  assert.equal(created.status, 201);
+  const create = ctx.adapter.calls.find((call) => call.op === 'create');
+  assert.equal(create.title, '確認 作業');
+});
+
+test('a title that normalises to nothing is refused before delegation', async (t) => {
+  const ctx = await boot(t);
+  const created = await createSession(ctx, { requestId: 'req-title-empty', name: '\u200e' }, 'k-title-empty');
+  assert.equal(created.status, 400);
+  assert.equal(created.body.error.code, 'payload_invalid');
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 0);
 });
 
 test('a session without a project runs with the prompt alone', async (t) => {

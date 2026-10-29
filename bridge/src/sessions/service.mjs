@@ -33,6 +33,7 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const PROFILE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_TEXT_BYTES = 16_384;
 const MAX_NAME_LENGTH = 100;
+const TITLE_MAX_BYTES = 200;
 const MAX_ARTIFACT_BYTES = 64 * 1024;
 const INSTRUCTION_TAG = 'project_instructions';
 
@@ -160,8 +161,10 @@ export function createSessionService({
 
     // The Paseo agent title: the project is what the owner recognises in the
     // daemon, and the session name already carries the child prefix. It is not
-    // part of the request identity (see the header comment).
-    const title = project ? `${project.name}｜${name}` : name;
+    // part of the request identity (see the header comment). The wrapper takes
+    // at most 200 UTF-8 bytes and refuses an empty title, so the composed value
+    // is normalised and bounded here instead of failing as a 503 downstream.
+    const title = sessionTitle(project ? `${project.name}｜${name}` : name);
     const delegateRequestId = delegateIdFor(requestId);
     const created = await adapter.create({ requestId: delegateRequestId, profile, cwd: workspace.path, task, title });
     if (typeof created?.sessionId !== 'string' || created.sessionId === '') {
@@ -575,6 +578,22 @@ function parseApplyProjectInstructions(body) {
     throw badRequest('payload_invalid', 'applyProjectInstructions must be a boolean');
   }
   return body.applyProjectInstructions !== false && body.instructions !== null;
+}
+
+// laa-personal-agent rejects a title longer than 200 UTF-8 bytes or one that is
+// empty after its own normalisation (`title_invalid`), and the Bridge has no
+// mapping for that code, so a long project name would surface as a 503. Apply
+// the same normalisation (control, format and whitespace runs become one space)
+// and cut on character boundaries, never inside a multi-byte character.
+function sessionTitle(raw) {
+  const oneLine = raw.replace(/[\p{Cc}\p{Cf}\s]+/gu, ' ').trim();
+  if (oneLine === '') throw badRequest('payload_invalid', 'the session title is empty after removing control characters');
+  let title = '';
+  for (const character of oneLine) {
+    if (Buffer.byteLength(title + character, 'utf8') > TITLE_MAX_BYTES) break;
+    title += character;
+  }
+  return title;
 }
 
 // One clearly delimited block, version and hash on the header line, then the
