@@ -450,6 +450,46 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 **Checked:** 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
+## LAA Work tab
+
+The LAA build's Bridge-backed session, project and read-only Linear task views.
+
+**Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
+store · the session and project API · the Linear task read API
+
+**Code**
+- Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
+  `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`
+- Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
+  `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
+- Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
+- Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitUITests/LAAWorkUITests.swift`
+
+**Rulings**
+- Session and successor writes keep the exact body, request ID and idempotency
+  key until their outcome is known; the existing composer never sends through
+  Hermes for these requests. Event history gaps trigger a detail and artifact
+  reread. Requested and observed models stay visible, including mismatches.
+- Closing the full-screen composer refreshes the inline editor immediately.
+  If a created workspace's actual branch differs from the requested name,
+  show both names and the actual branch in the session confirmation.
+- Project instruction edits require a readable body and If-Match. A 412 keeps
+  both the user's edit and the current version for an explicit choice. A name
+  change alone does not replace shared instructions. Legacy references are
+  shown as unapplied metadata and can only be explicitly cleared.
+- Linear is the source of truth and tasks are read-only. Pending decisions are
+  read-only until Task 15; routines remain a placeholder.
+
+**Open gaps**
+- Decision replies, child-session creation and provider parity belong to Tasks
+  15 and 16; preflight model resolution is unavailable in the current API.
+
+**Checked:** 2026-10-29, 67166210. Signed Simulator tests covered pairing,
+sections, workspace entry, durable composer draft, empty, 503 and offline
+states. Against the real Bridge, a scratch session was created, messaged,
+stopped and resumed; artifacts and a stale If-Match 412 were read back.
+Injected event-history gaps and resynchronization also reread the snapshot.
+
 ## Voice beside the tabs
 
 The gold button beside the tab bar, and where voice goes when it is swapped
