@@ -158,8 +158,10 @@ struct MainView: View {
         .overlay(alignment: .top) {
             VStack(spacing: 0) {
                 AgentSettingsBanner(sync: appState.agentSettings)
+                #if !LAA_BUILD
                 // A newer Conduit plugin for this dashboard's host.
                 NotifierPluginUpdateBanner()
+                #endif
                 // Calendar changes Hermes asked for (AppState+PhoneSync.swift);
                 // a call's screen shows them over the call.
                 if !appState.isVoiceCallScreenPresented {

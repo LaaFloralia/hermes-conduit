@@ -407,14 +407,19 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
+- Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Brain: `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
-- Integration and contracts: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
+- Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
 - Only the LAA overlay enables the shell. Chats uses Conduit's existing list,
-  conversation and room screens; an individual chat hides the system tab bar.
-  The other tabs remain accessible while Hermes is unpaired.
+  conversation and room screens; individual chats, calls and documents hide the
+  system tab bar. The other tabs remain accessible while Hermes is unpaired.
+  Design v2 uses English top-level labels, retaining the `source` identifier.
+  iOS 26+ uses the system Liquid Glass tab bar; earlier versions use Material
+  or an opaque surface when Reduce Transparency is on. The Conduit plugin
+  update banner is not shown above the LAA shell; settings review remains.
 - The Mac Bridge is paired by a one-time code. The device token and its address
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
   scope and service failures are distinguished. Other Bridge tabs share the
@@ -438,6 +443,11 @@ App Store build · the Bridge API, Brain and Usage data contracts
   Chats list; the App Store build keeps its existing shell.
 
 **Open gaps**
+- Screen-specific v2 restyling and action labels belong to their screen tasks.
+  Some existing filled buttons use the link color and white text, which does
+  not have sufficient contrast in dark mode; their screen tasks should use the
+  semantic filled-button color pair. The existing Hermes login retains its
+  Conduit backdrop.
 - Work and Source still need their finished content. Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
   The LAA shell uses
@@ -448,7 +458,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
+**Checked:** 2026-10-30, laa/v2-shell (design v2 common shell); 2026-10-29, f58f5896 (Brain); 3ab4a362 (general Bridge requests); laa/usage-tab-09, based on f8f148d1.
 
 ## LAA Work tab
 
