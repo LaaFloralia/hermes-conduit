@@ -52,6 +52,7 @@ struct LAAWorkNewSessionView: View {
                         NavigationLink(LAACopy.WorkTab.openSession) {
                             LAAWorkSessionDetail(id: created.id, projects: projects, workspaces: workspaceItems, drafts: drafts)
                         }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                            .foregroundStyle(LAAColor.filledButtonText)
                     } else {
                         if let pending { unknownBanner(pending) }
                         if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention) }

@@ -67,7 +67,9 @@ struct LAAWorkComposer: View {
             if let warning { Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
             HStack {
                 Spacer()
-                Button(submitLabel, action: onSubmit).buttonStyle(.borderedProminent).tint(LAAColor.filledButton).disabled(!canSubmit)
+                Button(submitLabel, action: onSubmit)
+                    .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                    .foregroundStyle(LAAColor.filledButtonText).disabled(!canSubmit)
                     .accessibilityIdentifier("\(accessibilityPrefix).send")
             }
         }
@@ -81,7 +83,8 @@ struct LAAWorkComposer: View {
                 attachments: { EmptyView() }, dictateButton: { EmptyView() },
                 actionButton: {
                     Button(submitLabel) { fullEditor = false; onSubmit() }
-                        .buttonStyle(.borderedProminent).tint(LAAColor.filledButton).disabled(!canSubmit)
+                        .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                        .foregroundStyle(LAAColor.filledButtonText).disabled(!canSubmit)
                 }
             )
         }

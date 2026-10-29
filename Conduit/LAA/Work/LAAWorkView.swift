@@ -140,7 +140,9 @@ struct LAAWorkView: View {
                 Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                      ? "この端末の接続が無効です。新しいコードで接続してください。"
                      : "この端末はMacのLAA Bridgeとペアリングされていません。")
-                Button(LAACopy.WorkTab.connect) { showPairing = true }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                Button(LAACopy.WorkTab.connect) { showPairing = true }
+                    .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                    .foregroundStyle(LAAColor.filledButtonText)
             }
         }
         .workCard()

@@ -168,7 +168,9 @@ struct LAAWorkSessionDetail: View {
             } else if session.phase == "stopped" {
                 Text(verbatim: "再開は同じ作業場所・プロファイルの後継セッションです。履歴は自動では引き継がれません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Button(LAACopy.WorkTab.resume) { showResume = true }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                Button(LAACopy.WorkTab.resume) { showResume = true }
+                    .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                    .foregroundStyle(LAAColor.filledButtonText)
             } else {
                 Button(LAACopy.WorkTab.stop) { beginStop() }.buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
             }
