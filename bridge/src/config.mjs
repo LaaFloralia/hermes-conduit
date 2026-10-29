@@ -187,7 +187,7 @@ export function resolveUsageAutoStaleMs(env = process.env) {
   return Number.isFinite(value) && value > 0 ? value : 20 * 60 * 1000;
 }
 
-// The proxy answers from its own 20 s upstream budget; the Bridge caps the wait
+// The proxy answers from its own 30 s upstream budget; the Bridge caps the wait
 // so a slow CodexBar never holds the app. The existing Console collector also
 // uses 5 s. Raise it only to diagnose the proxy.
 export function resolveUsageFeedTimeoutMs(env = process.env) {
