@@ -9,6 +9,7 @@ struct LAAAppShell: View {
     let onRequestSettings: () -> Void
 
     @StateObject private var bridge = LAABridgeSession()
+    @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var chatsPath: [V2Route] = []
 
@@ -24,7 +25,11 @@ struct LAAAppShell: View {
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_CALL_COVERS_TABS") { return true }
         #endif
-        return appState.isVoiceCallScreenPresented
+        return LAATabBarVisibility.isCovered(
+            legacyCallPresented: appState.isVoiceCallScreenPresented,
+            employeeCallActive: employeeCalls.snapshot != nil,
+            employeeCallPresented: employeeCalls.isShowingCall
+        )
     }
 
     var body: some View {
@@ -37,6 +42,8 @@ struct LAAAppShell: View {
                 }
             }
             .environmentObject(bridge)
+            .environmentObject(employeeCalls)
+            .modifier(LAACallPresentation(calls: employeeCalls))
             .tint(LAAColor.link)
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
@@ -186,6 +193,13 @@ struct LAAAppShell: View {
 
     private func closeConversation() {
         if chatsPath.last == .conversation { chatsPath.removeLast() }
+    }
+}
+
+enum LAATabBarVisibility {
+    static func isCovered(legacyCallPresented: Bool, employeeCallActive: Bool,
+                          employeeCallPresented: Bool) -> Bool {
+        employeeCallActive ? employeeCallPresented : legacyCallPresented
     }
 }
 

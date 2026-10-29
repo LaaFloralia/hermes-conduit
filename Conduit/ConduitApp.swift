@@ -241,11 +241,21 @@ struct ConduitApp: App {
 #if DEBUG
             // The fixture is compiled out of release builds, so the launch
             // argument branch must be too.
+#if LAA_BUILD
+            if ProcessInfo.processInfo.arguments.contains(LAAStaffCallFixture.launchArgument) {
+                LAAStaffCallFixture()
+            } else if ProcessInfo.processInfo.arguments.contains(SelectionFixtureView.launchArgument) {
+                SelectionFixtureView()
+            } else {
+                rootContent
+            }
+#else
             if ProcessInfo.processInfo.arguments.contains(SelectionFixtureView.launchArgument) {
                 SelectionFixtureView()
             } else {
                 rootContent
             }
+#endif
 #else
             rootContent
 #endif

@@ -115,6 +115,9 @@ struct RootView: View {
 
 struct MainView: View {
     @EnvironmentObject var appState: AppState
+#if LAA_BUILD
+    @StateObject private var employeeCalls = LAAEmployeeCallCoordinator(control: LAAEmployeeVoiceControl())
+#endif
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
     /// Conduit V2's tab shell (V2Shell.swift). Off brings back the drawer
     /// shell, the fallback while V2 is on its branch.
@@ -242,7 +245,7 @@ struct MainView: View {
             InteractionIdleState.shared.setVoiceConversationShown(false)
         }
         // Swiping a running call away minimises it; End hangs up.
-        .sheet(isPresented: $appState.showGeminiLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.geminiLive) }) {
+        .sheet(isPresented: voicePresentation($appState.showGeminiLiveSheet), onDismiss: { appState.liveVoiceSheetDismissed(.geminiLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.geminiLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
@@ -256,7 +259,7 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $appState.showQwenLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.qwenLive) }) {
+        .sheet(isPresented: voicePresentation($appState.showQwenLiveSheet), onDismiss: { appState.liveVoiceSheetDismissed(.qwenLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.qwenLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
@@ -271,7 +274,7 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $appState.showGrokLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.grokLive) }) {
+        .sheet(isPresented: voicePresentation($appState.showGrokLiveSheet), onDismiss: { appState.liveVoiceSheetDismissed(.grokLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.grokLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
@@ -286,7 +289,7 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $appState.showLocalLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.localLive) }) {
+        .sheet(isPresented: voicePresentation($appState.showLocalLiveSheet), onDismiss: { appState.liveVoiceSheetDismissed(.localLive) }) {
             GeminiLiveVoiceSheet(
                 controller: appState.localLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
@@ -301,7 +304,7 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $appState.showGPTLiveSheet, onDismiss: { appState.liveVoiceSheetDismissed(.gptLive) }) {
+        .sheet(isPresented: voicePresentation($appState.showGPTLiveSheet), onDismiss: { appState.liveVoiceSheetDismissed(.gptLive) }) {
             GPTLiveVoiceSheet(
                 controller: appState.gptLiveController,
                 jobs: appState.voiceBackgroundJobSupervisor,
@@ -325,7 +328,7 @@ struct MainView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $appState.showVoiceSheet, onDismiss: appState.closeVoiceConversation) {
+        .sheet(isPresented: voicePresentation($appState.showVoiceSheet), onDismiss: appState.closeVoiceConversation) {
             VoiceConversationSheet(
                 controller: appState.voiceConversationController,
                 backgroundJobs: appState.voiceBackgroundJobSupervisor,
@@ -432,6 +435,17 @@ struct MainView: View {
         }
     }
 
+    /// The LAA call surface owns presentation while the existing Voice flags
+    /// remain true, because those flags also keep its engine alive.
+    private func voicePresentation(_ binding: Binding<Bool>) -> Binding<Bool> {
+#if LAA_BUILD
+        Binding(get: { binding.wrappedValue && employeeCalls.snapshot == nil },
+                set: { if employeeCalls.snapshot == nil { binding.wrappedValue = $0 } })
+#else
+        binding
+#endif
+    }
+
     /// An in-app settings link (`conduit://settings/calls` or `/voice`, in a reply):
     /// Settings opens at that page. Settings already open stays as it is,
     /// and so does a voice or other sheet: closing a voice sheet ends its
@@ -477,7 +491,8 @@ struct MainView: View {
     /// (calls, approvals, settings, the model picker) still wraps it.
     private var laaShell: AnyView? {
         #if LAA_BUILD
-        AnyView(LAAAppShell(onRequestSettings: presentSettings))
+        AnyView(LAAAppShell(onRequestSettings: presentSettings, employeeCalls: employeeCalls)
+            .onAppear { employeeCalls.bindVoiceControl(appState) })
         #else
         nil
         #endif

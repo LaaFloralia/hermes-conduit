@@ -106,6 +106,14 @@ final class LAATabModelTests: XCTestCase {
         XCTAssertNil(LAATab(rawValue: "assets"))
         XCTAssertEqual(LAACopy.settings, "Settings")
     }
+
+    func testCallVisibilityFollowsTheVisibleEmployeeScreen() {
+        XCTAssertFalse(LAATabBarVisibility.isCovered(legacyCallPresented: false, employeeCallActive: false, employeeCallPresented: false))
+        XCTAssertTrue(LAATabBarVisibility.isCovered(legacyCallPresented: true, employeeCallActive: false, employeeCallPresented: false))
+        XCTAssertTrue(LAATabBarVisibility.isCovered(legacyCallPresented: true, employeeCallActive: true, employeeCallPresented: true))
+        // Employee voice flags stay active after Chat minimises its call screen.
+        XCTAssertFalse(LAATabBarVisibility.isCovered(legacyCallPresented: true, employeeCallActive: true, employeeCallPresented: false))
+    }
 }
 /// Opt-in cleanup for the dedicated live-Bridge simulator only.
 final class LAABridgeSimulatorCleanupTests: XCTestCase {

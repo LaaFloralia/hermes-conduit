@@ -311,7 +311,11 @@ final class HermesNativeCalls: NSObject {
     private func ensureProvider() -> CXProvider? {
         guard Self.callKitAvailable else { return nil }
         if let provider { return provider }
+        #if LAA_BUILD
+        let configuration = LAACallKitPresentation.configuration()
+        #else
         let configuration = CXProviderConfiguration()
+        #endif
         configuration.supportsVideo = false
         configuration.maximumCallGroups = 1
         configuration.maximumCallsPerCallGroup = 1
@@ -1396,6 +1400,9 @@ extension HermesNativeCalls: CXProviderDelegate {
             }
             self.onPlacedCallStarted?()
             action.fulfill()
+            #if LAA_BUILD
+            provider.reportCall(with: call.id, updated: LAACallKitPresentation.outgoingUpdate(name: action.handle.value))
+            #endif
             provider.reportOutgoingCall(with: call.id, startedConnectingAt: call.placedAt)
             provider.reportOutgoingCall(with: call.id, connectedAt: Date())
         }

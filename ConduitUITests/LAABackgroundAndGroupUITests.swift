@@ -142,6 +142,17 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         XCTAssertLessThanOrEqual(sample, 0.47, "A white photo with dim=0 must be automatically darkened", file: file, line: line)
         let luminance = sample <= 0.04045 ? sample / 12.92 : pow((sample + 0.055) / 1.055, 2.4)
         XCTAssertGreaterThanOrEqual(1.05 / (luminance + 0.05), 4.5, file: file, line: line)
+        if surface == "chat" {
+            let header = app.buttons["laa.employee.header"]
+            XCTAssertTrue(header.waitForExistence(timeout: 5), file: file, line: line)
+            XCTAssertTrue(app.buttons["laa.employee.call"].exists, file: file, line: line)
+            let attachment = XCTAttachment(screenshot: app.screenshot())
+            attachment.name = "staff-chat-photo-white"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            header.tap()
+            XCTAssertTrue(app.staticTexts["社長秘書・総合アドバイザー"].waitForExistence(timeout: 5), file: file, line: line)
+        }
     }
 
     private func pixelBrightness(_ image: UIImage, x: Double, y: Double) throws -> Double {

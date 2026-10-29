@@ -2153,6 +2153,51 @@ extension AppStateVoiceCapabilityTests {
         return (controller, session)
     }
 
+    #if LAA_BUILD
+    func testLAAHeaderControlUsesExistingGPTLiveCall() async {
+        let key = LiveVoiceProviderConsent.key(for: .gptLive)
+        let previousConsent = UserDefaults.standard.object(forKey: key)
+        LiveVoiceProviderConsent.setGranted(true, for: .gptLive)
+        defer {
+            if let previousConsent { UserDefaults.standard.set(previousConsent, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        let appState = makeGPTLiveAppState()
+        appState.noteBotChatSessionForTesting("session-1", profile: "laa-cso")
+        appState.activeSessionId = "session-1"
+        appState.setGPTLiveEnabled(true)
+        let (controller, session) = installFakeGPTLive(in: appState)
+        let kit = FakePlacedCallKit()
+        let placed = makePlacedCallsForTesting(appState: appState, kit: kit)
+        let control = LAAEmployeeVoiceControl()
+        let calls = LAAEmployeeCallCoordinator(control: control)
+        calls.bindVoiceControl(appState)
+        calls.start(profile: "laa-cso", name: "Talos", conversationID: "session-1")
+        await settle(until: { placed.isWaitingForCallAudio })
+        XCTAssertTrue(placed.isWaitingForCallAudio)
+        XCTAssertEqual(session.started, 0)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        await settle(until: { session.started == 1 })
+        XCTAssertEqual(session.started, 1)
+        session.becomeReady()
+        await settle(until: { calls.snapshot?.phase == .connected })
+        XCTAssertEqual(calls.snapshot?.phase, .connected)
+        XCTAssertNil(calls.snapshot?.audioLevel)
+        XCTAssertEqual(calls.snapshot?.context.conversationID, "session-1")
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread?.runtimeSessionID, "session-1")
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.liveThread?.profile, "laa-cso")
+        calls.toggleMute()
+        XCTAssertTrue(controller.isMicrophoneMuted)
+        XCTAssertEqual(session.microphoneEnabled, false)
+        calls.end()
+        XCTAssertNil(calls.snapshot)
+        XCTAssertEqual(appState.activeSessionId, "session-1")
+        XCTAssertEqual(kit.endRequests, 1)
+        kit.onPlacedCallEnded?(false)
+    }
+    #endif
+
     func testPlacedCallWaitsForAudioAndStartsLiveMuted() async {
         let appState = makeGPTLiveAppState()
         appState.setGPTLiveEnabled(true)
