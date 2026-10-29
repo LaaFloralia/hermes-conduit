@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import XCTest
+import UIKit
 
 final class LAAStaffCallUITests: XCTestCase {
     func testCallChatReturnAndEnd() {
@@ -12,6 +13,10 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.call.chat"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["laa.call.name"].exists)
         XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "GPT-Live")
+        app.buttons["laa.call.back"].tap()
+        XCTAssertTrue(app.buttons["laa.call.return"].waitForExistence(timeout: 5))
+        app.buttons["laa.call.return"].tap()
+        XCTAssertTrue(app.buttons["laa.call.chat"].waitForExistence(timeout: 5))
         app.buttons["laa.call.chat"].tap()
         XCTAssertTrue(app.staticTexts["laa.fixture.conversation"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["laa.call.return"].waitForExistence(timeout: 5))
@@ -71,7 +76,7 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertTrue(button.isEnabled)
     }
 
-    func testLightDarkAndReduceMotionScreenshots() {
+    func testLightDarkAndReduceMotionScreenshots() throws {
         for (name, args) in [("light", [String]()), ("dark", ["-laa-dark"]),
                              ("reduce-motion", ["-laa-reduce-motion"])] {
             let app = launch(args)
@@ -81,6 +86,12 @@ final class LAAStaffCallUITests: XCTestCase {
             call.tap()
             XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))
             attachScreenshot(name: "staff-call-\(name)")
+            let background = try callBackgroundPixel()
+            if name == "dark" {
+                XCTAssertLessThan(background.max() ?? 255, 64, "Dark call background must use the dark token")
+            } else {
+                XCTAssertGreaterThan(background.min() ?? 0, 200, "Light call background must use the light token")
+            }
             app.terminate()
         }
     }
@@ -101,6 +112,25 @@ final class LAAStaffCallUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func callBackgroundPixel() throws -> [UInt8] {
+        let image = try XCTUnwrap(UIImage(data: XCUIScreen.main.screenshot().pngRepresentation)?.cgImage)
+        // A point at the side avoids the centred avatar, text and controls.
+        let pixel = try XCTUnwrap(image.cropping(to: CGRect(x: image.width / 100, y: image.height / 2,
+                                                           width: 1, height: 1)))
+        var rgba = [UInt8](repeating: 0, count: 4)
+        let rendered = rgba.withUnsafeMutableBytes { bytes -> Bool in
+            guard let context = CGContext(data: bytes.baseAddress, width: 1, height: 1,
+                                          bitsPerComponent: 8, bytesPerRow: 4,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue |
+                                            CGBitmapInfo.byteOrder32Big.rawValue) else { return false }
+            context.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        XCTAssertTrue(rendered)
+        return Array(rgba.prefix(3))
     }
 
     private func launch(_ arguments: String...) -> XCUIApplication { launch(arguments) }
