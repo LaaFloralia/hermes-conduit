@@ -122,7 +122,7 @@ final class VoicePlacedCalls {
     }
 
     enum StartResult: Equatable {
-        case call(UUID)
+        case call(UUID, UUID)
         case withoutCall
         case cancelled
     }
@@ -154,6 +154,7 @@ final class VoicePlacedCalls {
     private let voiceStartTimeout: Duration
     private let followInterval: Duration
     private var followTask: Task<Void, Never>?
+    var followTaskForTesting: Task<Void, Never>? { followTask }
     /// The conversation was seen running since the call was placed. An end
     /// before that is a conversation that never started, not one that ended.
     private var sawVoice = false
@@ -163,6 +164,8 @@ final class VoicePlacedCalls {
     /// CallKit activated the current call's audio. Kept, because it can
     /// arrive before the conversation's open asks for it.
     private var isCallAudioActive = false
+    /// Each didActivate owns a different start; deactivation revokes it.
+    private var audioGeneration: UUID?
     private var callWasShown = false
     private var callGeneration: UUID?
     private var pendingMuteReport: UUID?
@@ -189,10 +192,12 @@ final class VoicePlacedCalls {
         self.followInterval = followInterval
         callKit.onPlacedCallStarted = { [weak self] in self?.started() }
         callKit.onPlacedCallAudioActivated = { [weak self] in self?.audioActivated() }
-        callKit.onPlacedCallAudioDeactivated = { [weak self] in self?.isCallAudioActive = false }
+        callKit.onPlacedCallAudioDeactivated = { [weak self] in self?.audioDeactivated() }
         callKit.onPlacedCallEnded = { [weak self] bySystem in self?.ended(bySystem: bySystem) }
         callKit.onPlacedCallMuteChanged = { [weak self] muted in self?.muteChanged(muted) }
     }
+
+    deinit { followTask?.cancel() }
 
     // MARK: Starting
 
@@ -219,8 +224,8 @@ final class VoicePlacedCalls {
     func canStartVoice(_ result: StartResult) -> Bool {
         guard !Task.isCancelled else { return false }
         switch result {
-        case .call(let generation):
-            return callGeneration == generation && phase == .running && isCallAudioActive
+        case .call(let generation, let activation):
+            return callGeneration == generation && audioGeneration == activation && phase == .running && isCallAudioActive
         case .withoutCall:
             return phase == .idle
         case .cancelled:
@@ -229,8 +234,34 @@ final class VoicePlacedCalls {
     }
 
     func cancelVoiceStart(_ result: StartResult) {
-        guard case .call(let generation) = result, callGeneration == generation else { return }
+        guard case .call(let generation, _) = result, callGeneration == generation else { return }
         endFromApp()
+    }
+
+    /// Snapshot at the scheduling boundary; another activation cannot reuse it.
+    var currentVoiceStart: StartResult {
+        if phase == .idle { return .withoutCall }
+        guard phase == .running, isCallAudioActive, let callGeneration, let audioGeneration else { return .cancelled }
+        return .call(callGeneration, audioGeneration)
+    }
+
+    func captureAuthorization(
+        _ widget: WidgetInitialCaptureAuthorization?,
+        for start: StartResult,
+        onInvalid: @escaping @MainActor () -> Void = {}
+    ) -> WidgetInitialCaptureAuthorization? {
+        guard case .call(let generation, _) = start else { return widget }
+        var notified = false
+        return WidgetInitialCaptureAuthorization(wrapping: widget) { [weak self] in
+            guard let self else { return false }
+            let current = self.canStartVoice(start)
+            if !current, !notified, self.callGeneration == generation {
+                notified = true
+                self.cancelVoiceStart(start)
+                onInvalid()
+            }
+            return current
+        }
     }
 
     /// The phone's voice conversation started or ended. The root view calls
@@ -291,7 +322,7 @@ final class VoicePlacedCalls {
         phase = .running
         callWasShown = true
         isCallAudioActive = false
-        audio.configureForNativeCall()
+        audio.configureForNativeCall(onlyWhenActivated: true)
         host.setCallActive(true)
         // CallKit's screen starts unmuted. A conversation that is already
         // muted (a paused microphone) reaches it on the follow loop's next
@@ -303,14 +334,23 @@ final class VoicePlacedCalls {
     /// resume on it.
     private func audioActivated() {
         guard phase == .running, let generation = callGeneration else { return }
+        if !isCallAudioActive { audioGeneration = UUID() }
         isCallAudioActive = true
-        resumeCallAudioWaiters(.call(generation))
+        audio.nativeCallAudioActivated()
+        guard let audioGeneration else { return }
+        resumeCallAudioWaiters(.call(generation, audioGeneration))
+    }
+
+    private func audioDeactivated() {
+        isCallAudioActive = false
+        audioGeneration = nil
+        audio.nativeCallAudioDeactivated()
     }
 
     private func waitForCallAudio() async -> StartResult {
         guard (phase == .placing || phase == .running), let generation = callGeneration else { return .cancelled }
         // CallKit can activate it while the start is being fulfilled.
-        if isCallAudioActive { return .call(generation) }
+        if isCallAudioActive, let audioGeneration { return .call(generation, audioGeneration) }
         isWaitingForCallAudio = true
         defer { isWaitingForCallAudio = false }
         let timeout = Task { [weak self] in
@@ -375,6 +415,7 @@ final class VoicePlacedCalls {
         callWasShown = false
         sawVoice = false
         isCallAudioActive = false
+        audioGeneration = nil
         voiceStartDeadline = nil
         resumeCallAudioWaiters(startResult)
         // The conversation ends first, as a call from Hermes does: it lets
@@ -447,8 +488,8 @@ final class VoicePlacedCalls {
         followTask = Task { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(for: interval) } catch { return }
-                guard let self, !Task.isCancelled else { return }
-                self.followOnce()
+                guard !Task.isCancelled, self != nil else { return }
+                self?.followOnce()
             }
         }
     }

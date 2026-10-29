@@ -502,6 +502,18 @@ final class VoicePlacedCallsTests: XCTestCase {
         XCTAssertEqual(kit.endRequests, 1)
     }
 
+    func testPlacedCallCannotAcquireAudioUntilCallKitReactivatesIt() throws {
+        startAPlacedCall()
+        kit.onPlacedCallAudioDeactivated?()
+        let activations = session.activations
+        XCTAssertThrowsError(try audio.acquire(.conversationCapture))
+        XCTAssertEqual(session.activations, activations, "CallKit owns the deactivated session")
+        kit.onPlacedCallAudioActivated?()
+        let lease = try audio.acquire(.conversationCapture)
+        XCTAssertTrue(audio.hasCaptureOwner)
+        audio.release(lease)
+    }
+
     func testACallPlacedMutedSaysSoOnTheScreen() {
         host.muted = true
 
@@ -615,19 +627,19 @@ final class VoicePlacedCallEndStepTests: XCTestCase {
 // MARK: - Seams
 
 @MainActor
-func makePlacedCallsForTesting(appState: AppState, kit: FakePlacedCallKit, timeout: Duration = .seconds(2)) -> VoicePlacedCalls {
+func makePlacedCallsForTesting(appState: AppState, kit: FakePlacedCallKit, timeout: Duration = .seconds(2), followInterval: Duration = .milliseconds(500)) -> VoicePlacedCalls {
     let audio = VoiceAudioSessionCoordinator(session: PlacedCallAudioSession(), phoneCalls: { true })
     let host = VoicePlacedCallHost(
         isSettingOn: { true },
-        isVoiceRunning: { appState.isPhoneVoiceCallRunning },
+        isVoiceRunning: { [weak appState] in appState?.isPhoneVoiceCallRunning ?? false },
         displayName: { "Ciel" },
-        endVoice: { appState.endVoiceForPlacedCall() },
-        voiceMuted: { appState.nativeCallVoiceMuted },
-        setVoiceMuted: { appState.setVoiceMutedForNativeCall($0) },
-        setCallActive: { appState.setPlacedPhoneCallActive($0) },
+        endVoice: { [weak appState] in appState?.endVoiceForPlacedCall() },
+        voiceMuted: { [weak appState] in appState?.nativeCallVoiceMuted },
+        setVoiceMuted: { [weak appState] in appState?.setVoiceMutedForNativeCall($0) },
+        setCallActive: { [weak appState] in appState?.setPlacedPhoneCallActive($0) },
         runsElsewhere: { false }
     )
-    let calls = VoicePlacedCalls(callKit: kit, audio: audio, host: host, callAudioTimeout: timeout)
+    let calls = VoicePlacedCalls(callKit: kit, audio: audio, host: host, callAudioTimeout: timeout, followInterval: followInterval)
     appState.voicePlacedCalls = calls
     return calls
 }

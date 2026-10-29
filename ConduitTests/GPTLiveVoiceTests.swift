@@ -50,6 +50,7 @@ final class FakeGPTLivePeer: GPTLivePeer {
     var onConnectionInterrupted: (@MainActor (Bool) -> Void)?
     var onAudioPaused: (@MainActor (Bool) -> Void)?
     var offerError: Error?
+    var offerHook: (@MainActor () throws -> Void)?
     var channelOpen = true
     /// Sends fail once this many have gone out (nil: never).
     var sendsBeforeFailure: Int?
@@ -60,9 +61,12 @@ final class FakeGPTLivePeer: GPTLivePeer {
     private(set) var speakerEnabled = true
     private(set) var closed = false
 
-    func makeOffer() async throws -> String {
+    func makeOffer(initialCaptureAuthorization: WidgetInitialCaptureAuthorization?) async throws -> String {
+        guard initialCaptureAuthorization?.mayStartCapture != false else { throw CancellationError() }
         microphoneEnabledAtOffer = microphoneEnabled
         if let offerError { throw offerError }
+        try offerHook?()
+        initialCaptureAuthorization?.captureDidStart()
         return "v=0 offer"
     }
 

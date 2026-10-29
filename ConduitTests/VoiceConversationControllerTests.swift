@@ -2392,13 +2392,12 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
 
         // Audio interruption. The explicit user pause deliberately survives
-        // a fresh startListening (capture stays paused), so no level event
-        // publishes here; the interruption itself is what must land.
+        // a fresh startListening without opening another capture window, so
+        // no level event publishes here; the interruption itself must land.
+        let startsBeforePausedListen = capture.startCount
         await controller.startListening()
-        XCTAssertEqual(
-            capture.pauseCount, 2,
-            "the fresh capture window must be re-paused: the explicit user pause stays authoritative"
-        )
+        XCTAssertEqual(capture.startCount, startsBeforePausedListen)
+        XCTAssertTrue(capture.isPausedForTesting, "a muted listen must leave the microphone paused")
         capture.emit(.interrupted(generation: capture.captureGeneration))
         let failed = await controller.waitForFailedState()
         XCTAssertTrue(failed, "the interruption failed the session")
@@ -3327,12 +3326,15 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
 
         await Self.driveToSpeaking(controller, gateway: gateway)
         controller.pauseMicrophone()
+        let startsBeforePausedListen = capture.startCount
         controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Done."))
         let relistened = await controller.waitForState(.listening)
-        XCTAssertTrue(relistened, "the drained turn relistens under the user's pause")
+        XCTAssertTrue(relistened, "the drained turn settles to listening under the user's pause")
 
         XCTAssertEqual(controller.state, .listening)
         XCTAssertTrue(controller.isMicrophonePaused)
+        XCTAssertTrue(capture.isPausedForTesting)
+        XCTAssertEqual(capture.startCount, startsBeforePausedListen, "settling must not reopen the microphone")
         XCTAssertEqual(capture.resumeCount, 0)
     }
 

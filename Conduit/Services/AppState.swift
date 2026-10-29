@@ -2871,14 +2871,17 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .geminiLive { minimisedLiveVoice = nil }
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
-            geminiLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            let callStart = voicePlacedCalls.currentVoiceStart
+            let scheduled = scheduleLiveVoiceStart(.geminiLive, callStart: callStart)
+            geminiLiveController.installInitialWidgetCaptureAuthorization(voicePlacedCalls.captureAuthorization(initialCaptureAuthorization, for: callStart) { [weak self] in
+                self?.cancelInvalidLiveVoiceStart(.geminiLive, id: scheduled)
+            })
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .geminiLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.geminiLive)
-            let scheduled = scheduleLiveVoiceStart(.geminiLive)
             Task {
                 guard takeScheduledLiveVoiceStart(.geminiLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
@@ -2985,14 +2988,17 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .qwenLive { minimisedLiveVoice = nil }
         showQwenLiveSheet = true
         if !qwenLiveController.isActive {
-            qwenLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            let callStart = voicePlacedCalls.currentVoiceStart
+            let scheduled = scheduleLiveVoiceStart(.qwenLive, callStart: callStart)
+            qwenLiveController.installInitialWidgetCaptureAuthorization(voicePlacedCalls.captureAuthorization(initialCaptureAuthorization, for: callStart) { [weak self] in
+                self?.cancelInvalidLiveVoiceStart(.qwenLive, id: scheduled)
+            })
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .qwenLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.qwenLive)
-            let scheduled = scheduleLiveVoiceStart(.qwenLive)
             Task {
                 guard takeScheduledLiveVoiceStart(.qwenLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
@@ -3384,14 +3390,17 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .gptLive { minimisedLiveVoice = nil }
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
-            gptLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            let callStart = voicePlacedCalls.currentVoiceStart
+            let scheduled = scheduleLiveVoiceStart(.gptLive, callStart: callStart)
+            gptLiveController.installInitialWidgetCaptureAuthorization(voicePlacedCalls.captureAuthorization(initialCaptureAuthorization, for: callStart) { [weak self] in
+                self?.cancelInvalidLiveVoiceStart(.gptLive, id: scheduled)
+            })
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
             beginVoiceCallRecording(engine: .gptLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.gptLive)
-            let scheduled = scheduleLiveVoiceStart(.gptLive)
             Task {
                 guard takeScheduledLiveVoiceStart(.gptLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
@@ -3698,7 +3707,11 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .grokLive { minimisedLiveVoice = nil }
         showGrokLiveSheet = true
         if !grokLiveController.isActive {
-            grokLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            let callStart = voicePlacedCalls.currentVoiceStart
+            let scheduled = scheduleLiveVoiceStart(.grokLive, callStart: callStart)
+            grokLiveController.installInitialWidgetCaptureAuthorization(voicePlacedCalls.captureAuthorization(initialCaptureAuthorization, for: callStart) { [weak self] in
+                self?.cancelInvalidLiveVoiceStart(.grokLive, id: scheduled)
+            })
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -3708,7 +3721,6 @@ final class AppState: ObservableObject {
             beginVoiceCallRecording(engine: .grokLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.grokLive)
-            let scheduled = scheduleLiveVoiceStart(.grokLive)
             Task {
                 guard takeScheduledLiveVoiceStart(.grokLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
@@ -4115,7 +4127,11 @@ final class AppState: ObservableObject {
         if minimisedLiveVoice == .localLive { minimisedLiveVoice = nil }
         showLocalLiveSheet = true
         if !localLiveController.isActive {
-            localLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            let callStart = voicePlacedCalls.currentVoiceStart
+            let scheduled = scheduleLiveVoiceStart(.localLive, callStart: callStart)
+            localLiveController.installInitialWidgetCaptureAuthorization(voicePlacedCalls.captureAuthorization(initialCaptureAuthorization, for: callStart) { [weak self] in
+                self?.cancelInvalidLiveVoiceStart(.localLive, id: scheduled)
+            })
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -4124,7 +4140,6 @@ final class AppState: ObservableObject {
             beginVoiceCallRecording(engine: .localLive)
             CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
             let waited = liveCallOpens(.localLive)
-            let scheduled = scheduleLiveVoiceStart(.localLive)
             Task {
                 guard takeScheduledLiveVoiceStart(.localLive, id: scheduled) else { return }
                 // Not if it was called off on its waiting screen meanwhile.
@@ -7028,26 +7043,56 @@ final class AppState: ObservableObject {
     }
     /// The outgoing call bridge; injectable for a voice-open integration test.
     var voicePlacedCalls: VoicePlacedCalls = .shared
+    /// The latest phone open owns a prepared Classic session until it presents it.
+    private var pendingClassicPhoneOpen: (id: UUID, sessionGeneration: UInt64)?
+    private var classicPhoneOpenID: UUID?
 
     // An opened screen starts its controller on the next main-actor turn.
     // A hang-up before that turn must cancel this exact scheduled start.
-    private var scheduledLiveVoiceStart: (engine: VoiceCallEngine, id: UUID)?
+    private var scheduledLiveVoiceStart: (engine: VoiceCallEngine, id: UUID, callStart: VoicePlacedCalls.StartResult)?
+    private var liveVoiceOpen: (engine: VoiceCallEngine, id: UUID)?
     var hasScheduledLiveVoiceStart: Bool { scheduledLiveVoiceStart != nil }
 
-    private func scheduleLiveVoiceStart(_ engine: VoiceCallEngine) -> UUID {
+    private func scheduleLiveVoiceStart(_ engine: VoiceCallEngine, callStart: VoicePlacedCalls.StartResult) -> UUID {
         let id = UUID()
-        scheduledLiveVoiceStart = (engine, id)
+        scheduledLiveVoiceStart = (engine, id, callStart)
+        liveVoiceOpen = (engine, id)
         return id
     }
 
     private func takeScheduledLiveVoiceStart(_ engine: VoiceCallEngine, id: UUID) -> Bool {
-        guard scheduledLiveVoiceStart?.engine == engine, scheduledLiveVoiceStart?.id == id else { return false }
+        guard let scheduled = scheduledLiveVoiceStart, scheduled.engine == engine, scheduled.id == id else { return false }
         scheduledLiveVoiceStart = nil
+        guard voicePlacedCalls.canStartVoice(scheduled.callStart) else {
+            voicePlacedCalls.cancelVoiceStart(scheduled.callStart)
+            switch engine {
+            case .geminiLive: closeGeminiLiveConversation()
+            case .qwenLive: closeQwenLiveConversation()
+            case .gptLive: closeGPTLiveConversation()
+            case .grokLive: closeGrokLiveConversation()
+            case .localLive: closeLocalLiveConversation()
+            }
+            return false
+        }
         return true
     }
 
     private func cancelScheduledLiveVoiceStart(_ engine: VoiceCallEngine) {
         if scheduledLiveVoiceStart?.engine == engine { scheduledLiveVoiceStart = nil }
+        if liveVoiceOpen?.engine == engine { liveVoiceOpen = nil }
+    }
+
+    private func cancelInvalidLiveVoiceStart(_ engine: VoiceCallEngine, id: UUID) {
+        Task { @MainActor [weak self] in
+            guard let self, self.liveVoiceOpen?.engine == engine, self.liveVoiceOpen?.id == id else { return }
+            switch engine {
+            case .geminiLive: self.closeGeminiLiveConversation()
+            case .qwenLive: self.closeQwenLiveConversation()
+            case .gptLive: self.closeGPTLiveConversation()
+            case .grokLive: self.closeGrokLiveConversation()
+            case .localLive: self.closeLocalLiveConversation()
+            }
+        }
     }
     /// Opens the voice of a call answered in CallKit; the CallKit call's
     /// end cancels it.
@@ -35231,11 +35276,36 @@ final class AppState: ObservableObject {
         // sheet is open, so a read aloud started before must not continue.
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
+        let previousVoiceSession = voiceConversationController.voiceSessionGeneration
+        let classicOpenID = UUID()
+        if intent.source != .hermesCall {
+            classicPhoneOpenID = classicOpenID
+            if let pending = pendingClassicPhoneOpen {
+                pendingClassicPhoneOpen = (classicOpenID, pending.sessionGeneration)
+            }
+        }
         let outcome = await prepareVoiceConversation(
             profile: intent.profile,
             startsFreshConversation: intent.startsFreshConversation,
             widgetLease: widgetLease
         )
+        let preparedVoiceSession = voiceConversationController.voiceSessionGeneration
+        let ownsPreparedSession = intent.source != .hermesCall && classicPhoneOpenID == classicOpenID && outcome == .handled
+            && (preparedVoiceSession != previousVoiceSession
+                || pendingClassicPhoneOpen?.sessionGeneration == preparedVoiceSession)
+        if ownsPreparedSession {
+            pendingClassicPhoneOpen = (classicOpenID, preparedVoiceSession)
+        }
+        var presentedVoice = false
+        defer {
+            if pendingClassicPhoneOpen?.id == classicOpenID {
+                pendingClassicPhoneOpen = nil
+                if !presentedVoice, voiceConversationController.voiceSessionGeneration == preparedVoiceSession,
+                   !showVoiceSheet, !voiceCallRunsElsewhere, !isNativeHermesCallActive {
+                    closeVoiceConversation()
+                }
+            }
+        }
         guard widgetLease?.isCurrent != false, !Task.isCancelled else { return false }
         switch outcome {
         case .deferred:
@@ -35253,13 +35323,13 @@ final class AppState: ObservableObject {
         // attachToLiveVoiceConversation instead and never mutates
         // these presentation flags.
         showSidebar = false
-        voiceConversationController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
         // A connected car shows its voice screen before the sheet's
         // auto-listen opens the microphone.
         CarPlayVoiceCoordinator.shared.conversationStartingOnPhone(in: self)
         // The call comes first, and the sheet's auto-listen waits for its
         // audio (LAA fork). A placement that fails leaves the conversation
         // on the earpiece controls, as before.
+        var callStart: VoicePlacedCalls.StartResult = .withoutCall
         if intent.source != .hermesCall {
             let start = await voicePlacedCalls.prepareForVoiceStart()
             guard voicePlacedCalls.canStartVoice(start), widgetLease?.isCurrent != false,
@@ -35267,14 +35337,25 @@ final class AppState: ObservableObject {
                 voicePlacedCalls.cancelVoiceStart(start)
                 return false
             }
+            callStart = start
         }
         guard !Task.isCancelled else { return false }
+        voiceConversationController.installInitialWidgetCaptureAuthorization(
+            voicePlacedCalls.captureAuthorization(initialCaptureAuthorization, for: callStart) { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self, self.classicPhoneOpenID == classicOpenID,
+                          self.voiceConversationController.voiceSessionGeneration == preparedVoiceSession else { return }
+                    self.closeVoiceConversation()
+                }
+            }
+        )
         // Read after activation: the system may have muted while we waited.
         voiceSheetShouldAutoListen = !((intent.source == .hermesCall || isPlacedPhoneCallActive) && isNativeHermesCallMuted)
         if isPlacedPhoneCallActive, isNativeHermesCallMuted {
             voiceConversationController.pauseMicrophone()
         }
         showVoiceSheet = true
+        presentedVoice = true
         // The sheet is now the presenting Voice surface: re-assert the gate
         // before the sheet's auto-listen runs (with CarPlay absent the gate
         // was false while the sheet was closed).
@@ -36165,6 +36246,8 @@ final class AppState: ObservableObject {
     }
 
     func closeVoiceConversation() {
+        classicPhoneOpenID = nil
+        pendingClassicPhoneOpen = nil
         // Explicit Close (button, swipe, spoken End Conversation) beats any
         // lifecycle suspension: the conversation is not restorable.
         suspendedVoiceConversation = nil
