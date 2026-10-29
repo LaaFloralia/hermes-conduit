@@ -107,6 +107,14 @@ Xcode is the one path that also assigns the App Groups to the four App IDs:
    nobody else can do this step).
 2. `scripts/laa/testflight.sh`. The first archive then registers the App IDs'
    capabilities and the App Groups, and creates the profiles.
+Without a sign-in, the App Groups can be assigned by hand, which is what
+automatic signing would have done: developer.apple.com > Certificates,
+Identifiers & Profiles > Identifiers > App Groups, select
+`group.com.laa-inc.laa.notifications` and `group.com.laa-inc.laa.launcher`,
+Configure, and tick all four App IDs (`com.laa-inc.laa`, `.widgets`,
+`.NotificationService`, `.ShareExtension`). The portal also needs HealthKit
+enabled on `com.laa-inc.laa` (Capabilities) if the build is to keep it.
+
 3. Check the upload landed with entitlements:
    `codesign -d --entitlements :- build/laa/export/Conduit.ipa` (or on the
    exported `Payload/Conduit.app`) should list `aps-environment` = `production`
