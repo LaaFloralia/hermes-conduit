@@ -626,6 +626,20 @@ test('title truncation never splits a combining mark or a ZWJ emoji', () => {
   assert.ok(Buffer.byteLength(sessionTitle(`${base}か\u3099`), 'utf8') <= 200);
 });
 
+test('a title whose first grapheme exceeds the budget is refused before delegation', async (t) => {
+  const ctx = await boot(t);
+  // 67 characters and 201 UTF-8 bytes: one grapheme (base + 66 combining
+  // marks), larger than the whole 200-byte budget.
+  const name = `か${'\u3099'.repeat(66)}`;
+  assert.throws(() => sessionTitle(name), { status: 400, code: 'payload_invalid' }, 'the helper must not return an empty title');
+
+  const project = await createProject(ctx, { name, instructions: 'Always answer in Japanese.' }, 'k-title-cluster');
+  const created = await createSession(ctx, { requestId: 'req-title-cluster', projectId: project.id }, 'k-title-cluster-1');
+  assert.equal(created.status, 400);
+  assert.equal(created.body.error.code, 'payload_invalid');
+  assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 0, 'no agent may be started');
+});
+
 test('a session without a project runs with the prompt alone', async (t) => {
   const ctx = await boot(t);
   const created = await createSession(ctx);

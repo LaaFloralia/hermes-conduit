@@ -603,6 +603,11 @@ export function sessionTitle(raw) {
     if (Buffer.byteLength(title + segment, 'utf8') > TITLE_MAX_BYTES) break;
     title += segment;
   }
+  // A single grapheme can be larger than the whole budget (a base character
+  // with many combining marks). Truncating to nothing would hand the wrapper an
+  // empty title, which it rejects as `title_invalid` and the Bridge cannot map,
+  // so refuse the request here with a 400 instead of a 503.
+  if (title === '') throw badRequest('payload_invalid', `the session title does not fit in ${TITLE_MAX_BYTES} bytes`);
   return title;
 }
 
