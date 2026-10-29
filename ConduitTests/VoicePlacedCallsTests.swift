@@ -502,6 +502,34 @@ final class VoicePlacedCallsTests: XCTestCase {
         XCTAssertEqual(kit.endRequests, 1)
     }
 
+    func testCancellingAnOldStartDoesNotEndItsReplacementCall() async {
+        host.running = false
+        let firstOpening = Task { await calls.prepareForVoiceStart() }
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        let first = await firstOpening.value
+        XCTAssertTrue(calls.canStartVoice(first))
+
+        calls.voiceChanged(running: false)
+        kit.onPlacedCallEnded?(false)
+        let secondOpening = Task { await calls.prepareForVoiceStart() }
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+        let second = await secondOpening.value
+        XCTAssertTrue(calls.canStartVoice(second))
+
+        calls.cancelVoiceStart(first)
+        XCTAssertEqual(kit.endRequests, 1, "the stale opener must not end the replacement")
+        XCTAssertEqual(calls.phase, .running)
+        XCTAssertTrue(calls.canStartVoice(second))
+        calls.voiceChanged(running: false)
+        kit.onPlacedCallEnded?(false)
+    }
+
     func testPlacedCallCannotAcquireAudioUntilCallKitReactivatesIt() throws {
         startAPlacedCall()
         kit.onPlacedCallAudioDeactivated?()

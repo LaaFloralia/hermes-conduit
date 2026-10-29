@@ -863,6 +863,43 @@ final class AppStateVoiceSuspensionTests: XCTestCase {
         harness.appState.closeVoiceConversation()
     }
 
+    func testSecondClassicOpenDuringPreparationDoesNotReplaceTheFirst() async {
+        let harness = makeHarness(requesterMode: .fullSupport)
+        harness.appState.activeSessionId = "session-1"
+        let requester = PausedVoiceConfigurationRequester()
+        harness.appState.voiceCapabilityRequesterForTesting = requester
+        let kit = FakePlacedCallKit()
+        let calls = makePlacedCallsForTesting(appState: harness.appState, kit: kit)
+        let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .composer)
+        let first = Task { await harness.appState.openVoiceConversation(intent) }
+        for _ in 0..<1_000 where requester.waiters.isEmpty { await Task.yield() }
+        XCTAssertFalse(requester.waiters.isEmpty)
+
+        var secondFinished = false
+        let second = Task {
+            let opened = await harness.appState.openVoiceConversation(intent)
+            secondFinished = true
+            return opened
+        }
+        for _ in 0..<1_000 where !secondFinished { await Task.yield() }
+        XCTAssertTrue(secondFinished, "the second launch must be rejected before preparation is released")
+        requester.release()
+        for _ in 0..<1_000 where !calls.isWaitingForCallAudio { await Task.yield() }
+        XCTAssertTrue(calls.isWaitingForCallAudio)
+        kit.onPlacedCallStarted?()
+        kit.onPlacedCallAudioActivated?()
+
+        let firstOpened = await first.value
+        let secondOpened = await second.value
+        XCTAssertTrue(firstOpened)
+        XCTAssertFalse(secondOpened)
+        XCTAssertTrue(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession)
+        XCTAssertEqual(kit.names.count, 1)
+        kit.onPlacedCallEnded?(false)
+        harness.appState.closeVoiceConversation()
+    }
+
     func testClassicOpenDoesNotPresentAReplacedSessionAfterActivation() async {
         let harness = makeHarness(requesterMode: .fullSupport)
         harness.appState.activeSessionId = "session-1"

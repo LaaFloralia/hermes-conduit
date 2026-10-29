@@ -3338,6 +3338,28 @@ final class ContinuousConversationPreferenceTests: XCTestCase {
         XCTAssertEqual(capture.resumeCount, 0)
     }
 
+    func testUnmuteDuringReplyOpensTheNextWindowOnlyAfterReplyCompletes() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
+        let controller = VoiceConversationController(
+            capture: capture, playback: MockPlayback(), gateway: gateway,
+            routePolicyProvider: { .fullDuplex }, submit: { _ in true }, interrupt: { true }
+        )
+        defer { controller.endVoiceSession() }
+        controller.setProfilePreferences(Self.preferences(continuous: true))
+        await Self.driveToSpeaking(controller, gateway: gateway)
+        XCTAssertFalse(capture.activelyRecording)
+        controller.pauseMicrophone()
+        await controller.resumeMicrophone()
+        XCTAssertFalse(capture.activelyRecording, "the reply has not finished")
+        XCTAssertEqual(controller.state, .speaking)
+
+        controller.receiveAssistantEvent(.completed(sessionID: "session", content: "Answer."))
+        let listening = await controller.waitForState(.listening)
+        XCTAssertTrue(listening)
+        XCTAssertTrue(capture.activelyRecording, "the next utterance must have a recording window")
+    }
+
     func testUserPauseThenListenAfterContinuousOffResumeTurn() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)

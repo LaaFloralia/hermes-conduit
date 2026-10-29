@@ -424,6 +424,37 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertFalse(utterance.pcm16Data.isEmpty)
     }
 
+    func testUnmuteDuringAnUtterancePreservesItsRecordedPCM() async throws {
+        let factory = FakeCaptureEngineFactory()
+        let service = makeCaptureService(factory)
+        let controller = VoiceConversationController(
+            capture: PermissionGrantedCapture(service: service), playback: MockPlayback(),
+            gateway: MockGateway(), routePolicyProvider: { .fullDuplex },
+            submit: { _ in true }, interrupt: { true }
+        )
+        defer { controller.endVoiceSession() }
+        controller.setForegroundActive(true)
+        controller.setApplicationForegroundActive(true)
+        controller.beginVoiceTurn(sessionID: "classic")
+        await controller.startListening()
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 960))
+        buffer.frameLength = 960
+        let samples = try XCTUnwrap(buffer.floatChannelData?[0])
+        for i in 0..<960 { samples[i] = 0.25 }
+        service.consume(buffer, generation: service.captureGeneration)
+        let firstPCM = service.recordedPCM16
+        XCTAssertFalse(firstPCM.isEmpty)
+
+        controller.pauseMicrophone()
+        await controller.resumeMicrophone()
+        XCTAssertTrue(service.activelyRecording)
+        service.consume(buffer, generation: service.captureGeneration)
+        let utterance = try service.finishUtterance()
+        XCTAssertTrue(utterance.pcm16Data.starts(with: firstPCM), "resume must preserve the open utterance")
+        XCTAssertGreaterThan(utterance.pcm16Data.count, firstPCM.count, "new frames must append after unmute")
+    }
+
     func testRemuteDuringFirstPermissionRequestDoesNotStartCaptureOrLoseAuthorization() async {
         let factory = FakeCaptureEngineFactory()
         let service = makeCaptureService(factory)
