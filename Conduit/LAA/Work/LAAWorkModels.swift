@@ -163,6 +163,9 @@ struct LAAWorkTask: Decodable, Identifiable, Hashable {
     let description: String?
 }
 enum LAAWorkPresentation {
+    // LAA uses Japanese interface copy regardless of the device language.
+    static func japanese(_ text: String) -> String { text }
+
     struct SessionRow: Identifiable {
         let session: LAAWorkSession
         let depth: Int

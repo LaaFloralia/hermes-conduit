@@ -458,7 +458,8 @@ The LAA build's Bridge-backed session, project and read-only Linear task views.
 store · the session and project API · the Linear task read API
 
 **Code**
-- Work UI, request journal and model presentation: `Conduit/LAA/Work/`
+- Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
+  `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
@@ -483,11 +484,11 @@ store · the session and project API · the Linear task read API
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
 
-**Checked:** 2026-10-29, targeted Work unit tests and signed Simulator UI
-checks for pairing, sections, workspace entry, durable composer draft, empty,
-503 and offline states. A synthetic 412 verifies both instruction versions and
-the explicit choice. Live session writes and the Project contract remain to be
-verified against the updated Bridge.
+**Checked:** 2026-10-29, 67166210. Signed Simulator tests covered pairing,
+sections, workspace entry, durable composer draft, empty, 503 and offline
+states. Against the real Bridge, a scratch session was created, messaged,
+stopped and resumed; artifacts and a stale If-Match 412 were read back.
+Injected event-history gaps and resynchronization also reread the snapshot.
 
 ## Voice beside the tabs
 

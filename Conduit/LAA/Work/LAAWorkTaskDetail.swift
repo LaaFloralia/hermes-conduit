@@ -19,7 +19,7 @@ struct LAAWorkTaskDetailView: View {
                     if let error {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(LAAColors.plum)
-                        Button("もう一度読み込む") { Task { await load() } }
+                        Button(LAAWorkPresentation.japanese("もう一度読み込む")) { Task { await load() } }
                     } else if let task {
                         Text(verbatim: task.title).font(.title2.bold()).foregroundStyle(LAAColors.ink)
                         Text(verbatim: "Linearのタスク · 閲覧のみ").font(.caption).foregroundStyle(LAAColors.muted)

@@ -46,20 +46,20 @@ struct LAAWorkNewSessionView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let created {
-                        Label("セッションを開始しました", systemImage: "checkmark.circle").foregroundStyle(LAAColors.teal)
+                        Label(LAAWorkPresentation.japanese("セッションを開始しました"), systemImage: "checkmark.circle").foregroundStyle(LAAColors.teal)
                         Text(verbatim: "要求: " + (created.requested?.display ?? "未確認"))
                         Text(verbatim: "観測: " + (created.observed?.display ?? "未確認"))
-                        NavigationLink("セッションを開く") {
+                        NavigationLink(LAAWorkPresentation.japanese("セッションを開く")) {
                             LAAWorkSessionDetail(id: created.id, projects: projects, workspaces: workspaceItems, drafts: drafts)
                         }.buttonStyle(.borderedProminent)
                     } else {
                         if let pending { unknownBanner(pending) }
                         if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum) }
-                        Picker("プロジェクト", selection: $projectID) {
+                        Picker(LAAWorkPresentation.japanese("プロジェクト"), selection: $projectID) {
                             Text(verbatim: "プロジェクトなし").tag("")
                             ForEach(projects) { item in Text(verbatim: item.name).tag(item.id) }
                         }.pickerStyle(.menu).accessibilityIdentifier("work.session.project")
-                        Picker("作業場所", selection: $workspaceID) {
+                        Picker(LAAWorkPresentation.japanese("作業場所"), selection: $workspaceID) {
                             Text(verbatim: "選択してください").tag("")
                             ForEach(workspaceItems) { item in
                                 Text(verbatim: (item.displayPath ?? item.path) + (item.branch.map { " · " + $0 } ?? "")).tag(item.id)
@@ -68,12 +68,12 @@ struct LAAWorkNewSessionView: View {
                         if let notice = workspaceBranchNotices[workspaceID] {
                             Label(notice, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
                         }
-                        Button("作業場所を新しく作る") { showWorkspace = true }.disabled(pending != nil || starting)
-                        TextField("プロファイル名（例: deepseek-flash-high）", text: $profile)
+                        Button(LAAWorkPresentation.japanese("作業場所を新しく作る")) { showWorkspace = true }.disabled(pending != nil || starting)
+                        TextField(LAAWorkPresentation.japanese("プロファイル名（例: deepseek-flash-high）"), text: $profile)
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
                             .textFieldStyle(.roundedBorder)
                             .accessibilityIdentifier("work.session.profile")
-                        TextField("セッション名（任意）", text: $name).textFieldStyle(.roundedBorder)
+                        TextField(LAAWorkPresentation.japanese("セッション名（任意）"), text: $name).textFieldStyle(.roundedBorder)
                             .accessibilityIdentifier("work.session.name")
                         Text(verbatim: "実際のモデルは開始後に確認できます。")
                             .font(.caption).foregroundStyle(LAAColors.muted)
@@ -91,10 +91,10 @@ struct LAAWorkNewSessionView: View {
             .background(LAAColors.paper)
             .navigationTitle(Text(verbatim: "新しいセッション"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("閉じる") { dismiss() } } }
-            .confirmationDialog("この内容で開始しますか？", isPresented: $showConfirm, titleVisibility: .visible) {
-                Button("セッションを開始") { start() }.disabled(!canStart)
-                Button("戻る", role: .cancel) { }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAAWorkPresentation.japanese("閉じる")) { dismiss() } } }
+            .confirmationDialog(LAAWorkPresentation.japanese("この内容で開始しますか？"), isPresented: $showConfirm, titleVisibility: .visible) {
+                Button(LAAWorkPresentation.japanese("セッションを開始")) { start() }.disabled(!canStart)
+                Button(LAAWorkPresentation.japanese("戻る"), role: .cancel) { }
             } message: {
                 let workspace = workspaceItems.first { $0.id == workspaceID }
                 Text(verbatim: "プロジェクト: \(projects.first { $0.id == projectID }?.name ?? "なし")\n作業場所: \(workspace?.displayPath ?? workspace?.path ?? "未選択")\nブランチ: \(workspace?.branch ?? "未確認")\nプロファイル: \(profile)")
@@ -113,11 +113,11 @@ struct LAAWorkNewSessionView: View {
 
     private func unknownBanner(_ item: ComposerDraftStore.Submission) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("開始結果は未確認", systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
+            Label(LAAWorkPresentation.japanese("開始結果は未確認"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
             Text(verbatim: "同じ依頼とIDで再照合します。新しいセッションを重複して開始しません。")
             Text(verbatim: item.draft.text).font(.caption).lineLimit(4)
-            Button("開始済みか確認") { Task { await reconcile(item) } }.disabled(starting)
-            Button("同じ要求を再照合") { Task { await perform(item) } }.disabled(starting)
+            Button(LAAWorkPresentation.japanese("開始済みか確認")) { Task { await reconcile(item) } }.disabled(starting)
+            Button(LAAWorkPresentation.japanese("同じ要求を再照合")) { Task { await perform(item) } }.disabled(starting)
         }.workCard()
     }
     private func saveDraft(_ text: String) {
@@ -215,26 +215,26 @@ struct LAAWorkWorkspaceCreator: View {
         NavigationStack {
             Form {
                 if let pending {
-                    Section("作成結果は未確認") {
+                    Section(LAAWorkPresentation.japanese("作成結果は未確認")) {
                         Text(verbatim: "同じ要求を再照合します。別の作業場所は作りません。")
-                        Button("同じ要求を再照合") { Task { await perform(pending) } }.disabled(busy)
+                        Button(LAAWorkPresentation.japanese("同じ要求を再照合")) { Task { await perform(pending) } }.disabled(busy)
                     }
                 }
                 if let error { Text(verbatim: error).foregroundStyle(LAAColors.plum) }
-                Picker("元のリポジトリ", selection: $repoID) {
+                Picker(LAAWorkPresentation.japanese("元のリポジトリ"), selection: $repoID) {
                     Text(verbatim: "選択してください").tag("")
                     ForEach(repositories) { item in Text(verbatim: item.displayPath ?? item.path).tag(item.id) }
                 }.accessibilityIdentifier("work.workspace.repo")
-                TextField("作業場所の名前", text: $worktreeName).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField(LAAWorkPresentation.japanese("作業場所の名前"), text: $worktreeName).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityIdentifier("work.workspace.name")
-                TextField("ブランチ名", text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField(LAAWorkPresentation.japanese("ブランチ名"), text: $branch).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .accessibilityIdentifier("work.workspace.branch")
-                Button("作成") { start() }
+                Button(LAAWorkPresentation.japanese("作成")) { start() }
                     .disabled(repoID.isEmpty || worktreeName.isEmpty || branch.isEmpty || busy || pending != nil || drafts.persistenceFailed)
                     .accessibilityIdentifier("work.workspace.create")
             }
             .navigationTitle(Text(verbatim: "新しい作業場所"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("閉じる") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAAWorkPresentation.japanese("閉じる")) { dismiss() } } }
         }
     }
     private func start() {

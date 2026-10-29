@@ -29,7 +29,7 @@ struct LAAWorkComposer: View {
                 Text(verbatim: placeholder).font(.headline)
                 Spacer()
                 Menu {
-                    Picker("入力の文字", selection: $inputSize) {
+                    Picker(LAAWorkPresentation.japanese("入力の文字"), selection: $inputSize) {
                         ForEach(ChatTextSize.allCases, id: \.rawValue) { size in
                             Text(verbatim: size.displayName).tag(size.rawValue)
                         }

@@ -42,7 +42,7 @@ struct LAAWorkSessionDetail: View {
                         if let failure {
                             VStack(alignment: .leading) {
                                 Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
-                                Button("接続を再確認") { observationEpoch += 1 }
+                                Button(LAAWorkPresentation.japanese("接続を再確認")) { observationEpoch += 1 }
                             }.workCard()
                         }
                         if (session.pending?.count ?? 0) > 0 || session.phase == "awaiting_decision" { decisionBanner }
@@ -55,7 +55,7 @@ struct LAAWorkSessionDetail: View {
                         }
                     } else if let failure {
                         Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
-                        Button("もう一度読み込む") { observationEpoch += 1 }
+                        Button(LAAWorkPresentation.japanese("もう一度読み込む")) { observationEpoch += 1 }
                     } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                 }
                 .padding(16).frame(maxWidth: 720, alignment: .leading)
@@ -90,7 +90,7 @@ struct LAAWorkSessionDetail: View {
             Text(verbatim: "要求: " + (session.requested?.display ?? "未確認"))
             Text(verbatim: "観測: " + (session.observed?.display ?? "未確認"))
             if session.modelMismatch {
-                Label("要求と観測が一致しません", systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
+                Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColors.plum)
             } else if session.runtimeVerified != true {
                 Text(verbatim: "○ 実行時のモデルは未確認です。系統や設定の一致だけでは確定しません。")
                     .foregroundStyle(LAAColors.muted)
@@ -105,7 +105,7 @@ struct LAAWorkSessionDetail: View {
 
     private var decisionBanner: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("判断待ち", systemImage: "exclamationmark.triangle.fill").font(.headline)
+            Label(LAAWorkPresentation.japanese("判断待ち"), systemImage: "exclamationmark.triangle.fill").font(.headline)
             Text(verbatim: "内容を表示しています。回答は後続の機能で対応します。")
             if let decision = artifacts.first(where: { $0.type == "decision" })?.content {
                 Text(verbatim: decision).font(.caption).textSelection(.enabled)
@@ -153,28 +153,28 @@ struct LAAWorkSessionDetail: View {
     private func actions(_ session: LAAWorkSession) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             if pendingStop != nil {
-                Label("停止要求の結果は未確認です。状態を確認してから同じ要求を再照合できます。", systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("停止要求の結果は未確認です。状態を確認してから同じ要求を再照合できます。"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColors.plum)
-                Button("停止状態を確認") { Task { await refreshSnapshot() } }.disabled(stopping)
-                Button("同じ停止要求を再照合") { if let pendingStop { Task { await performStop(pendingStop) } } }
+                Button(LAAWorkPresentation.japanese("停止状態を確認")) { Task { await refreshSnapshot() } }.disabled(stopping)
+                Button(LAAWorkPresentation.japanese("同じ停止要求を再照合")) { if let pendingStop { Task { await performStop(pendingStop) } } }
                     .disabled(stopping)
             } else if session.phase == "stop_unconfirmed" {
-                Label("停止はまだ確認できていません。", systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("停止はまだ確認できていません。"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColors.plum)
-                Button("停止をもう一度確認") { Task { await refreshSnapshot() } }
+                Button(LAAWorkPresentation.japanese("停止をもう一度確認")) { Task { await refreshSnapshot() } }
             } else if session.phase == "stopped" {
                 Text(verbatim: "再開は同じ作業場所・プロファイルの後継セッションです。履歴は自動では引き継がれません。")
                     .font(.caption).foregroundStyle(LAAColors.muted)
-                Button("続きの指示を入力") { showResume = true }.buttonStyle(.borderedProminent)
+                Button(LAAWorkPresentation.japanese("続きの指示を入力")) { showResume = true }.buttonStyle(.borderedProminent)
             } else {
-                Button("停止") { beginStop() }.buttonStyle(.bordered).disabled(stopping)
+                Button(LAAWorkPresentation.japanese("停止")) { beginStop() }.buttonStyle(.bordered).disabled(stopping)
             }
             if let next = successor {
-                NavigationLink("後継: \(next.name)") {
+                NavigationLink(LAAWorkPresentation.japanese("後継: \(next.name)")) {
                     LAAWorkSessionDetail(id: next.id, projects: projects, workspaces: workspaces, drafts: drafts)
                 }
             } else if let nextID = session.resumedTo {
-                NavigationLink("後継セッションを開く") {
+                NavigationLink(LAAWorkPresentation.japanese("後継セッションを開く")) {
                     LAAWorkSessionDetail(id: nextID, projects: projects, workspaces: workspaces, drafts: drafts)
                 }
             }

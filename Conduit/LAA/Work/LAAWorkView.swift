@@ -93,17 +93,17 @@ struct LAAWorkView: View {
     private var connection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if bridge.status == .keychainError {
-                Label("接続情報を読み取れません", systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("接続情報を読み取れません"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColors.plum)
                 Text(verbatim: "端末の接続情報を確認してください。")
-                Button("設定を確認", action: onRequestSettings).buttonStyle(.bordered)
+                Button(LAAWorkPresentation.japanese("設定を確認"), action: onRequestSettings).buttonStyle(.bordered)
             } else {
                 Label { Text(verbatim: "未接続") } icon: { Image(systemName: "circle") }
                     .foregroundStyle(LAAColors.muted)
                 Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                      ? "この端末の接続が無効です。新しいコードで接続してください。"
                      : "この端末はMacのLAA Bridgeとペアリングされていません。")
-                Button("Macに接続する") { showPairing = true }.buttonStyle(.borderedProminent)
+                Button(LAAWorkPresentation.japanese("Macに接続する")) { showPairing = true }.buttonStyle(.borderedProminent)
             }
         }
         .workCard()
@@ -112,12 +112,12 @@ struct LAAWorkView: View {
     @ViewBuilder private var content: some View {
         if let failure {
             VStack(alignment: .leading, spacing: 8) {
-                Label("取得できませんでした", systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("取得できませんでした"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColors.plum)
                 Text(verbatim: failure).foregroundStyle(LAAColors.ink)
                 Text(verbatim: "残っている一覧は前回取得した内容です。")
                     .font(.caption).foregroundStyle(LAAColors.muted)
-                Button("もう一度読み込む") { Task { await load() } }
+                Button(LAAWorkPresentation.japanese("もう一度読み込む")) { Task { await load() } }
             }.workCard()
         }
         if isLoading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
@@ -174,7 +174,7 @@ struct LAAWorkView: View {
                         Text(verbatim: "観測: " + (row.session.observed?.display ?? "未確認"))
                             .font(.caption).foregroundStyle(row.session.modelMismatch ? LAAColors.plum : LAAColors.muted)
                         if row.session.modelMismatch {
-                            Label("要求と観測が一致しません", systemImage: "exclamationmark.triangle.fill")
+                            Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption).foregroundStyle(LAAColors.plum)
                         } else if row.session.runtimeVerified != true {
                             Text(verbatim: "○ 実行時のモデルは未確認").font(.caption).foregroundStyle(LAAColors.muted)
@@ -220,7 +220,7 @@ struct LAAWorkView: View {
                 filter("プロジェクト", selection: $taskProjectFilter, values: unique(tasks.compactMap { $0.project?.name }).map { ($0, $0) })
             }
             if taskSources.contains(where: { $0.source == "linear" && $0.truncated == true }) {
-                Label("Linearの取得上限を超えています。一部のみ表示しています。", systemImage: "exclamationmark.triangle")
+                Label(LAAWorkPresentation.japanese("Linearの取得上限を超えています。一部のみ表示しています。"), systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(LAAColors.plum)
             }
             let visible = tasks.filter {

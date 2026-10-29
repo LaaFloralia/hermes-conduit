@@ -27,7 +27,7 @@ struct LAAWorkProjectDetail: View {
                         Text(verbatim: "共通指示").font(.headline)
                         if current.instructionRef != nil {
                             Text(verbatim: "旧形式の参照・未適用").font(.caption).foregroundStyle(LAAColors.muted)
-                            Button("旧参照を消去") { clearLegacyRefOnOpen = true; showEditor = true }
+                            Button(LAAWorkPresentation.japanese("旧参照を消去")) { clearLegacyRefOnOpen = true; showEditor = true }
                                 .disabled(!current.hasInstructionBody || current.instructionError != nil)
                         }
                         if current.instructionError != nil {
@@ -41,7 +41,7 @@ struct LAAWorkProjectDetail: View {
                                 .foregroundStyle(LAAColors.muted)
                         }
                     }.workCard()
-                    Button("編集") { clearLegacyRefOnOpen = false; showEditor = true }.buttonStyle(.bordered)
+                    Button(LAAWorkPresentation.japanese("編集")) { clearLegacyRefOnOpen = false; showEditor = true }.buttonStyle(.bordered)
                 }.padding(16).frame(maxWidth: 720, alignment: .leading)
             }
         }
@@ -123,7 +123,7 @@ struct LAAWorkProjectEditor: View {
             Form {
                 if let error { Text(verbatim: error).foregroundStyle(LAAColors.plum) }
                 if let remote, let pending {
-                    Section("現在の版とあなたの変更") {
+                    Section(LAAWorkPresentation.japanese("現在の版とあなたの変更")) {
                         Text(verbatim: "現在の版 \(remote.version.map(String.init) ?? "未確認")")
                         Text(verbatim: "現在の名前: \(remote.name)")
                         Text(verbatim: "現在の指示:").font(.headline)
@@ -137,29 +137,29 @@ struct LAAWorkProjectEditor: View {
                         if !confirmedConflict {
                             Text(verbatim: "前の保存結果は未確認です。結果を確定するまで選択できません。")
                                 .foregroundStyle(LAAColors.plum)
-                            Button("同じ要求を再照合") { Task { await perform(pending) } }.disabled(busy)
+                            Button(LAAWorkPresentation.japanese("同じ要求を再照合")) { Task { await perform(pending) } }.disabled(busy)
                         }
-                        Button("現在の版を採用") { chooseRemote(remote, pending: pending) }
+                        Button(LAAWorkPresentation.japanese("現在の版を採用")) { chooseRemote(remote, pending: pending) }
                             .disabled(!confirmedConflict)
-                        Button("自分の変更をこの版に保存") { chooseMine(remote, pending: pending) }
+                        Button(LAAWorkPresentation.japanese("自分の変更をこの版に保存")) { chooseMine(remote, pending: pending) }
                             .disabled(!confirmedConflict || (canEditInstructions && (!remote.hasInstructionBody || remote.instructionError != nil)))
                     }
                 } else if let pending {
-                    Section("保存結果は未確認") {
+                    Section(LAAWorkPresentation.japanese("保存結果は未確認")) {
                         Text(verbatim: "保存先の状態を確認し、同じ要求を再照合できます。")
                         if !confirmedConflict {
-                            Button("同じ要求を再照合") { Task { await perform(pending) } }.disabled(busy)
+                            Button(LAAWorkPresentation.japanese("同じ要求を再照合")) { Task { await perform(pending) } }.disabled(busy)
                         }
                         if current != nil {
-                            Button("現在の版と比べる") { Task { await loadConflict() } }.disabled(busy)
+                            Button(LAAWorkPresentation.japanese("現在の版と比べる")) { Task { await loadConflict() } }.disabled(busy)
                         }
                     }
                 }
-                Section("名前") { TextField("プロジェクト名", text: $name).disabled(pending != nil) }
-                Section("共通指示") {
+                Section(LAAWorkPresentation.japanese("名前")) { TextField(LAAWorkPresentation.japanese("プロジェクト名"), text: $name).disabled(pending != nil) }
+                Section(LAAWorkPresentation.japanese("共通指示")) {
                     if current?.instructionRef != nil {
                         Text(verbatim: "旧形式の参照・未適用").font(.caption).foregroundStyle(LAAColors.muted)
-                        Button(clearLegacyRef ? "旧参照の消去を取り消す" : "旧参照を消去") {
+                        Button(clearLegacyRef ? LAAWorkPresentation.japanese("旧参照の消去を取り消す") : LAAWorkPresentation.japanese("旧参照を消去")) {
                             clearLegacyRef.toggle()
                         }.disabled(pending != nil || !canEditInstructions)
                         if clearLegacyRef { Text(verbatim: "保存時に旧参照を消去します。").font(.caption) }
@@ -172,7 +172,7 @@ struct LAAWorkProjectEditor: View {
                             .foregroundStyle(LAAColors.muted)
                     }
                 }
-                Button("保存") { save() }
+                Button(LAAWorkPresentation.japanese("保存")) { save() }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy || pending != nil || drafts.persistenceFailed)
             }
             .onChange(of: name) { _, _ in saveDraft() }
@@ -190,7 +190,7 @@ struct LAAWorkProjectEditor: View {
                 }
             }
             .navigationTitle(Text(verbatim: current == nil ? "新しいプロジェクト" : "プロジェクトを編集"))
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("閉じる") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAAWorkPresentation.japanese("閉じる")) { dismiss() } } }
         }
     }
     private func draftBody(_ item: ComposerDraftStore.Submission) -> ChangeSet? {
