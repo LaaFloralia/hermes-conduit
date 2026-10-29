@@ -45,6 +45,28 @@ struct LAAStaffCallFixture: View {
     }
 
     var body: some View {
+        if args.contains("-laa-gpt-live-settings") {
+            settingsFixture
+        } else {
+            callFixture
+        }
+    }
+
+    private var settingsFixture: some View {
+        ScrollView {
+            GPTLiveSettingsSection(model: GPTLiveSettingsModel(
+                enabled: true,
+                setEnabled: { _ in },
+                checkAvailability: { .success(.available(model: "fixture", voice: "vale")) },
+                voice: "vale",
+                billing: .api,
+                apiVoice: "cedar"
+            ))
+            .padding()
+        }
+    }
+
+    private var callFixture: some View {
         NavigationStack {
             VStack {
                 Text(verbatim: "元の会話")

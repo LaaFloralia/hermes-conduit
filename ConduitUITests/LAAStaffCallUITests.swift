@@ -40,6 +40,18 @@ final class LAAStaffCallUITests: XCTestCase {
         attachScreenshot(name: "employee-gpt-live-call")
     }
 
+    func testGeneralGPTLiveSettingsHideAPIBillingEvenWithAnOldPreference() {
+        let app = launch("-laa-gpt-live-settings")
+        let voice = app.descendants(matching: .any)["laa.gptlive.subscription-voice"]
+        XCTAssertTrue(voice.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["laa.gptlive.billing"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["laa.gptlive.api-hermes-calls"].exists)
+        voice.tap()
+        let subscriptionVoice = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Arbor")).firstMatch
+        XCTAssertTrue(subscriptionVoice.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Cedar")).firstMatch.exists)
+    }
+
     func testUnavailableBridgeExplainsDisabledCallAndClassicVoiceIsNotRequired() {
         for (argument, reason) in [("-laa-unpaired", "端末を接続すると通話できます"),
                                    ("-laa-revoked", "端末を再接続してください"),

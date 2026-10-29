@@ -3187,14 +3187,21 @@ final class AppState: ObservableObject {
 
     // MARK: GPT-Live billing (#559)
 
-    /// Who pays for this profile's GPT-Live calls, as chosen in Settings.
+    /// The billing path offered in Settings; LAA only uses the subscription.
     var gptLiveBilling: GPTLiveBilling {
+        #if LAA_BUILD
+        return .subscription
+        #else
         loadVoiceProfilePreferences(profile: activeProfile).resolvedGPTLiveBilling
+        #endif
     }
 
     /// Applies from the next GPT-Live conversation. Settings only calls it
     /// with `.api` after the user confirmed per-minute billing.
     func setGPTLiveBilling(_ billing: GPTLiveBilling) {
+        #if LAA_BUILD
+        guard billing == .subscription else { return }
+        #endif
         var preferences = loadVoiceProfilePreferences(profile: activeProfile)
         let stored: GPTLiveBilling? = billing == .subscription ? nil : billing
         guard preferences.gptLiveBilling != stored else { return }
@@ -3209,17 +3216,16 @@ final class AppState: ObservableObject {
     /// without having said so.
     var gptLiveCallBilling: GPTLiveBilling {
         #if LAA_BUILD
-        if let plan = laaEmployeeGPTLivePlan { return plan.billing }
-        // A call in an employee conversation must never inherit another
-        // workspace's API-key preference, even after an earlier call ended.
-        if liveHermesCall == nil, pendingHermesCall == nil,
-           LAAStaff(profile: conversationIdentityProfile) != nil { return .subscription }
-        #endif
+        // Saved preferences from another build must never put an LAA call on
+        // the API key, including a call initiated by Hermes.
+        return .subscription
+        #else
         let preferences = loadVoiceProfilePreferences(profile: activeProfile)
         guard preferences.resolvedGPTLiveBilling == .api else { return .subscription }
         let hermesPlacedCall = liveHermesCall != nil || pendingHermesCall != nil
         if hermesPlacedCall, preferences.gptLiveAPIHermesCalls != true { return .subscription }
         return .api
+        #endif
     }
 
     /// The voice for the next call, from the list of the path it's billed on.

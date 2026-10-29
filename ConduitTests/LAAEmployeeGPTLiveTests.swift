@@ -33,6 +33,45 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         XCTAssertEqual(app.laaEmployeeCallPlan(profile: "laa-cfo")?.voice, "spruce")
     }
 
+    func testPreviouslySavedAPIBillingCannotChangeAnLAACall() async throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        app.setActiveProfileForTesting("default")
+        let key = "conduit.voice.preferences.v1.https://example.com.default"
+        var previous = VoiceProfilePreferences()
+        previous.gptLiveBilling = .api
+        previous.gptLiveAPIHermesCalls = true
+        previous.gptLiveVoice = "ember"
+        previous.gptLiveAPIVoice = "cedar"
+        harness.defaults.set(try JSONEncoder().encode(previous), forKey: key)
+
+        XCTAssertEqual(app.activeProfileVoicePreferences.gptLiveBilling, .api)
+        XCTAssertEqual(app.gptLiveBilling, .subscription)
+        XCTAssertEqual(app.gptLiveCallBilling, .subscription)
+        XCTAssertEqual(app.gptLiveCallVoice, "ember")
+        app.pendingHermesCall = HermesCallOpening(kind: nil, title: nil, result: nil)
+        XCTAssertEqual(app.gptLiveCallBilling, .subscription)
+        app.pendingHermesCall = nil
+
+        var requestBody: [String: Any]?
+        let client = app.laaGPTLiveClient { _, _, body, _ in
+            requestBody = body
+            return ["ok": true, "auth": "subscription", "transport": ["type": "webrtc", "sdp": "v=0 answer"]]
+        }
+        _ = try await client.createSession(offer: "v=0 offer", history: [], voice: app.gptLiveCallVoice, briefing: nil)
+        XCTAssertEqual(requestBody?["billing"] as? String, "subscription")
+        XCTAssertEqual(requestBody?["voice"] as? String, "ember")
+        XCTAssertEqual(app.activeProfileVoicePreferences.gptLiveBilling, .api, "The saved setting is retained")
+
+        harness.defaults.removeObject(forKey: key)
+        app.setGPTLiveBilling(.api)
+        XCTAssertNil(app.storedActiveVoicePreferencesData, "LAA cannot opt in to API billing")
+        XCTAssertEqual(app.gptLiveCallBilling, .subscription)
+    }
+
     func testClientAndPersonaUseCapturedEmployeeAndSubscription() async throws {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
@@ -40,7 +79,7 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         }
         let app = harness.appState
         app.setActiveProfileForTesting("default")
-        app.setGPTLiveBilling(.api) // An unrelated workspace preference must never bill this call.
+        app.setGPTLiveBilling(.api) // The LAA build does not opt in to API billing.
         app.setGeminiLiveEnabled(true)
         XCTAssertEqual(app.laaVoiceResumeEngine(profile: "default"), .geminiLive)
         app.setLAAEmployeeVoice("spruce", profile: "laa-cfo")
@@ -80,10 +119,10 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         XCTAssertEqual(app.gptLiveCallBilling, .subscription)
         app.setGPTLiveAPIHermesCalls(true)
         app.pendingHermesCall = HermesCallOpening(kind: nil, title: nil, result: nil)
-        XCTAssertEqual(app.gptLiveCallBilling, .api, "an unrelated incoming Hermes call keeps its existing policy")
+        XCTAssertEqual(app.gptLiveCallBilling, .subscription, "Hermes calls also use the ChatGPT plan")
         app.pendingHermesCall = nil
         app.activeSessionId = nil
-        XCTAssertEqual(app.gptLiveCallBilling, .api)
+        XCTAssertEqual(app.gptLiveCallBilling, .subscription)
     }
 
     func testHeaderUsesCallKitThenGPTLiveForBotChatWithoutSwitchingWorkspace() async {

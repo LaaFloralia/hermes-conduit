@@ -4633,6 +4633,7 @@ extension VoiceConversationControllerTests {
 
 @MainActor
 extension AppStateVoiceCapabilityTests {
+    #if !LAA_BUILD
     func testGPTLiveAPIBillingIsChosenPerProfileAndCallsFromHermesStayOnTheSubscription() {
         let appState = makeGPTLiveAppState()
         XCTAssertEqual(appState.gptLiveBilling, .subscription)
@@ -4657,6 +4658,7 @@ extension AppStateVoiceCapabilityTests {
         appState.setGPTLiveAPIMaxMinutes(0)
         XCTAssertEqual(appState.gptLiveAPIMaxMinutes, 0)
     }
+    #endif
 }
 
 /// The call's record of the user's words, for the delegation bridge alone.
