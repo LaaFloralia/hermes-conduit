@@ -1,0 +1,55 @@
+{
+ "data": {
+  "items": [
+   {
+    "id": "host.cpu",
+    "kind": "host.cpu",
+    "label": "CPU",
+    "value": null,
+    "unit": "percent",
+    "source": "bridge-host-sampler",
+    "observedAt": null,
+    "availability": "unavailable",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "nullReason": "unsupported"
+   },
+   {
+    "id": "host.memory",
+    "kind": "host.memory",
+    "label": "メモリ",
+    "value": null,
+    "unit": "bytes",
+    "source": "bridge-host-sampler",
+    "observedAt": null,
+    "availability": "unavailable",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "nullReason": "unsupported"
+   },
+   {
+    "id": "host.disk.free",
+    "kind": "host.disk",
+    "label": "空き容量",
+    "value": 166.6,
+    "unit": "gb",
+    "source": "laa-storage-guard",
+    "observedAt": "2026-10-28T05:32:00Z",
+    "availability": "available",
+    "stale": true,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "volume": "/",
+     "totalGb": 460.4,
+     "level": "warn",
+     "findings": ["workに30日以上更新のない23件・計0.6GB", "~/.cache 9.0GB（上限8GB）"]
+    }
+   }
+  ],
+  "nextCursor": null
+ },
+ "requestId": "mac-status-unavailable-fixture"
+}
