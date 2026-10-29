@@ -1,0 +1,204 @@
+{
+ "data": {
+  "items": [
+   {
+    "id": "provider.claude.quota",
+    "kind": "quota",
+    "label": "Claude",
+    "value": 62,
+    "unit": "percent",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-29T04:49:23Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "windows": [
+      {
+       "label": "Session",
+       "remainingPercent": 62,
+       "resetsAt": "2026-10-29T09:00:00Z",
+       "windowMinutes": 300
+      },
+      {
+       "label": "Weekly",
+       "remainingPercent": 71,
+       "resetsAt": "2026-11-02T00:00:00Z"
+      }
+     ]
+    }
+   },
+   {
+    "id": "provider.codex.quota",
+    "kind": "quota",
+    "label": "Codex",
+    "value": 48,
+    "unit": "percent",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-29T04:49:12Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "windows": [
+      {
+       "label": "Weekly",
+       "remainingPercent": 48,
+       "resetsAt": "2026-11-01T00:00:00Z"
+      }
+     ]
+    }
+   },
+   {
+    "id": "provider.deepseek.balance",
+    "kind": "balance",
+    "label": "DeepSeek",
+    "value": null,
+    "unit": "usd",
+    "source": "codexbar-usage-proxy",
+    "observedAt": null,
+    "availability": "unavailable",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "nullReason": "fetch_failed"
+   },
+   {
+    "id": "provider.jev.balance",
+    "kind": "balance",
+    "label": "Jev",
+    "value": 12.4,
+    "unit": "usd",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-23T10:34:25Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "currency": "USD",
+     "components": [
+      {
+       "kind": "monthly",
+       "amount": 10.0,
+       "grantedAmount": 20.0
+      },
+      {
+       "kind": "purchased",
+       "amount": 2.4
+      }
+     ]
+    }
+   },
+   {
+    "id": "provider.gemini.balance",
+    "kind": "balance",
+    "label": "Gemini API",
+    "value": 0,
+    "unit": "usd",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-11T09:14:00Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": true,
+    "detail": {
+     "currency": "USD",
+     "expiresOnUtc": "2026-10-25"
+    }
+   },
+   {
+    "id": "provider.google-flow.credits",
+    "kind": "balance",
+    "label": "Google Flow",
+    "value": 250,
+    "unit": "credits",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-18T13:55:00Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "renewsAt": "2026-11-01T00:00:00Z",
+     "monthlyGrantedAmount": 1000
+    }
+   },
+   {
+    "id": "provider.liquid.usage",
+    "kind": "usage",
+    "label": "Liquid",
+    "value": 184000,
+    "unit": "tokens",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-29T04:49:24Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "periodDays": 7,
+     "models": [
+      {
+       "model": "d1-ultra",
+       "inputTokens": 140000,
+       "outputTokens": 44000
+      }
+     ]
+    }
+   },
+   {
+    "id": "profile.laa-ciel.usage.30d",
+    "kind": "usage",
+    "label": "Ciel 実利用（30日）",
+    "value": 4820000,
+    "unit": "tokens",
+    "source": "hermes-dashboard-analytics",
+    "observedAt": "2026-10-29T04:52:00Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "periodDays": 30,
+     "models": [
+      {
+       "provider": "anthropic",
+       "model": "claude-sonnet",
+       "inputTokens": 2900000,
+       "outputTokens": 820000
+      },
+      {
+       "provider": "deepseek",
+       "model": "deepseek-v4.1-flash",
+       "inputTokens": 900000,
+       "outputTokens": 200000
+      }
+     ]
+    }
+   },
+   {
+    "id": "profile.laa-ciel.cost.30d",
+    "kind": "cost",
+    "label": "Ciel 費用（30日）",
+    "value": 41.83,
+    "unit": "usd",
+    "source": "hermes-dashboard-analytics",
+    "observedAt": "2026-10-29T04:52:00Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": true,
+    "expired": false,
+    "detail": {
+     "periodDays": 30,
+     "actualUsd": 12.5,
+     "estimatedUsd": 29.33
+    }
+   }
+  ],
+  "nextCursor": null
+ },
+ "requestId": "usage-normal-fixture"
+}

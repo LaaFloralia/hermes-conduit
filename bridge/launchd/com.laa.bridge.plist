@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- Template: scripts/install.sh substitutes the placeholders below and writes
+     the result to ~/Library/LaunchAgents/com.laa.bridge.plist. -->
+<dict>
+	<key>Label</key>
+	<string>com.laa.bridge</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>@@NODE@@</string>
+		<string>@@BRIDGE_DIR@@/src/main.mjs</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HOME</key>
+		<string>@@HOME@@</string>
+		<key>LAA_BRIDGE_PORT</key>
+		<string>@@PORT@@</string>
+		<key>LAA_BRIDGE_STATE_DIR</key>
+		<string>@@STATE_DIR@@</string>
+		<key>PATH</key>
+		<string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>WorkingDirectory</key>
+	<string>@@BRIDGE_DIR@@</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>StandardOutPath</key>
+	<string>@@HOME@@/Library/Logs/com.laa.bridge.log</string>
+	<key>StandardErrorPath</key>
+	<string>@@HOME@@/Library/Logs/com.laa.bridge.error.log</string>
+</dict>
+</plist>

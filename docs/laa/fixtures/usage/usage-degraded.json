@@ -1,0 +1,96 @@
+{
+ "data": {
+  "items": [
+   {
+    "id": "provider.claude.quota",
+    "kind": "quota",
+    "label": "Claude",
+    "value": 62,
+    "unit": "percent",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-29T03:10:00Z",
+    "availability": "available",
+    "stale": true,
+    "estimated": false,
+    "expired": false,
+    "detail": {
+     "windows": [
+      { "label": "Session", "remainingPercent": 62, "resetsAt": "2026-10-29T09:00:00Z", "windowMinutes": 300 }
+     ]
+    }
+   },
+   {
+    "id": "provider.codex.quota",
+    "kind": "quota",
+    "label": "Codex",
+    "value": null,
+    "unit": "percent",
+    "source": "codexbar-usage-proxy",
+    "observedAt": null,
+    "availability": "unavailable",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "nullReason": "fetch_failed"
+   },
+   {
+    "id": "provider.deepseek.balance",
+    "kind": "balance",
+    "label": "DeepSeek",
+    "value": null,
+    "unit": "usd",
+    "source": "codexbar-usage-proxy",
+    "observedAt": null,
+    "availability": "unavailable",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "nullReason": "fetch_failed"
+   },
+   {
+    "id": "provider.jev.balance",
+    "kind": "balance",
+    "label": "Jev",
+    "value": 12.4,
+    "unit": "usd",
+    "source": "codexbar-usage-proxy",
+    "observedAt": "2026-10-23T10:34:25Z",
+    "availability": "available",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "detail": { "currency": "USD" }
+   },
+   {
+    "id": "profile.laa-ciel.usage.30d",
+    "kind": "usage",
+    "label": "Ciel 実利用（30日）",
+    "value": null,
+    "unit": "tokens",
+    "source": "hermes-dashboard-analytics",
+    "observedAt": null,
+    "availability": "unavailable",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "nullReason": "auth_required"
+   },
+   {
+    "id": "profile.laa-ciel.cost.30d",
+    "kind": "cost",
+    "label": "Ciel 費用（30日）",
+    "value": null,
+    "unit": "usd",
+    "source": "hermes-dashboard-analytics",
+    "observedAt": null,
+    "availability": "unavailable",
+    "stale": false,
+    "estimated": false,
+    "expired": false,
+    "nullReason": "auth_required"
+   }
+  ],
+  "nextCursor": null
+ },
+ "requestId": "usage-degraded-fixture"
+}
