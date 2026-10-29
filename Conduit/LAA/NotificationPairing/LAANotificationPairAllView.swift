@@ -18,7 +18,6 @@ struct LAANotificationPairAllView: View {
             source: { appState.laaNotificationPairSource() },
             displayName: { appState.profileDisplayName($0) }
         )
-        .onChange(of: appState.activeDashboardID) { _, id in model.dashboardChanged(to: id) }
     }
 }
 
@@ -40,6 +39,7 @@ struct LAANotificationPairAllControls: View {
             Label {
                 Text(verbatim: model.isRunning ? "設定中…" : "全社員の通知をこのiPhoneへ")
             } icon: { Image(systemName: "person.2.badge.key") }
+                .foregroundStyle(LAAColors.paper)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6).frame(minHeight: 46)
         }

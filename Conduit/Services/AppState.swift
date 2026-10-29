@@ -697,6 +697,9 @@ final class AppState: ObservableObject {
     @Published private(set) var savedDashboardRegistry: SavedDashboardRegistry {
         didSet {
             if oldValue.activeDashboardID != savedDashboardRegistry.activeDashboardID {
+                #if LAA_BUILD
+                LAANotificationPairAll.shared.dashboardChanged(to: savedDashboardRegistry.activeDashboardID)
+                #endif
                 composerNotice = nil
                 widgetSettledCatalogOwner = nil
                 let selectedDashboard = savedDashboardRegistry.activeDashboardID
