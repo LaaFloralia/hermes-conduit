@@ -10,7 +10,7 @@
 | [Apple HIG App icons](https://developer.apple.com/design/human-interface-guidelines/app-icons) | 1024の背景層と前景層、6つの外観（標準・ダーク・クリア明暗・ティント明暗）、文字を入れない、角丸を描き込まない | 主印を3層に分けた `.icon` | 影・光沢の描き込み |
 | [Recent — App Icons](https://recent.design/app-icons) | 強いアイコンは単色の地に主役が1つ、面積の6割前後 | 青緑の地に円弧の主印だけ | 立体の物体・場面を描く作例 |
 
-社員像の画風は、Studio「LAA — CSO / Forest Atelier & Slack Portraits」の7人の肖像に合わせた（社内の採用素材）。Dots（OpenAI）の社員ごとの3Dキャラクターと通話は社長の要件として扱い、画面の実物比較は未了。
+社員像は、HPで採用済みの3Dモデル（8人）を同じカメラ・照明でレンダーしたものを使う（2026-10-29に社長が採用）。旧2.5DのCielは予備として残す。Dots（OpenAI）の社員ごとの3Dキャラクターと通話は社長の要件として扱う。公式ページはこの環境から取得できず（403）、画面の実物比較は未了。
 
 ## トークン
 
@@ -58,7 +58,7 @@
 |---|---|
 | 画面遷移・シート | システム既定 |
 | 送信・通話開始などの状態変化 | spring（response 0.35、dampingFraction 0.85） |
-| 社員像の待機ループ | 2.0秒・30fps、呼吸1回・首の小さな揺れ・瞬き1回（約120ms） |
+| 社員像の待機ループ | 2.0秒・30fps、呼吸1回・首の小さな揺れ（骨で動かす）。瞬きは、瞼の骨・ブレンドシェイプを持つモデルが来るまで入れない |
 | 通話の音量リング | 音量で1.00〜1.08倍、120msで平滑化 |
 | ウィジェット | 動かさない（静止画） |
 
@@ -95,8 +95,8 @@
 
 | サイズ | 構成 | タップ |
 |---|---|---|
-| systemSmall | 社員の静止画（`ciel-hero-1024.png` を縮小）、Georgiaの名前、右下に電話の丸 | 全体で会話、電話の丸で通話 |
-| systemMedium | 左に顔の静止画（`ciel-avatar-512.png`）、右に名前・役割と「電話」「チャット」 | 各ボタンで通話・会話 |
+| systemSmall | 社員の静止画（`<id>-hero-1024.png` を縮小）、Georgiaの名前、右下に電話の丸 | 全体で会話、電話の丸で通話 |
+| systemMedium | 左に顔の静止画（`<id>-avatar-512.png`）、右に名前・役割と「電話」「チャット」 | 各ボタンで通話・会話 |
 | accessoryCircular（ロック画面） | 単色の社員シルエットかLAA主印 | 通話 |
 
 - 画像は用途の寸法へ縮小して同梱し、拡張のメモリ上限に収める。ホーム画面のティント・クリアでは画像を `widgetAccentedRenderingMode` で単色にし、文字を読める状態に保つ。
@@ -116,25 +116,28 @@
 - 有効にするには、LAA用の署名overlayでConduitターゲットに `ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-LAA` を指定する。上流の `AppIcon` と、別アイコンの選択（`AppIconChoice`）は変えない。
 - 検証：`ictool` で6外観を書き出し、`actool` で両方がエラーなくコンパイルされた。ホーム画面での見え方は実機で確かめる。
 
-## 社員像の素材（Ciel）
+## 社員像の素材
 
-`docs/laa/assets/ciel/` に置く。アプリへの同梱は実装時に行う。
+2026-10-29に社長が実3Dのレンダーを8人の社員像に採用した。`docs/laa/assets/staff/<id>/` に置き、一覧と検証結果は [assets/staff/README.md](assets/staff/README.md)。アプリへの同梱は実装時に行う。
 
 | ファイル | 用途 |
 |---|---|
-| `ciel-hero-1024.png` | 透過の静止画。ウィジェット、連絡先の写真、通話の待機前 |
-| `ciel-avatar-512.png` | ループの1コマ目。一覧、ウィジェットmedium、動きを止める時 |
-| `ciel-idle-512.mov` | 2.0秒の待機ループ。HEVCアルファ付き（hvc1、512²、30fps） |
+| `<id>-hero-1024.png` | 透過の静止画（胸から上）。ウィジェット、連絡先の写真、通話の待機前 |
+| `<id>-avatar-512.png` | ループの1コマ目。一覧、ウィジェットmedium、動きを止める時 |
+| `<id>-idle-512.mov` | 2.0秒の待機ループ。HEVCアルファ付き（hvc1、512²、30fps）。チャット上部（36〜40pt）と通話画面（270pt） |
 
-画風は2.5D（3D調の肖像を変形した動き）で、RealityKitの3Dモデルではない。本物の3D（顔の向き・口の動き）は手順8で判断する。
+idは `ciel`・`argus`・`cfo`（Morgan）・`cio`（Sherlock）・`cmo`（Monet）・`cos`（Merlin）・`cto`（Ada）・`cso`（Talos）。Talosの原本は骨がないため、静止画とごく小さな動きのループとして扱い、作り直さない。
 
-## 社員3Dの制作手順（残り7人）
+`docs/laa/assets/ciel/` の2.5D（肖像を変形した動き）は既定から外し、3Dの素材が読めない時の予備として残す。作り方は `scripts/laa/staff_avatar.py`。
 
-1. 原本：Studio「LAA — AI社員アイコン / 2026.10」の平面アイコン（特徴）と、7人の肖像（人物）。
-2. 生成：Codex内蔵 image_gen（ChatGPTサブスク）。Image 1を本人の肖像、Image 2を平面アイコンにし、「同じ人物・髪・服のまま、胸から上・正面・中央、頭頂は上端から8%、無地の `#E6E2DA` の背景、1:1」で作る。Cielの指示文は `assets/ciel/prompt-hero.txt` と `prompt-blink.txt`。
-3. 瞬き：同じ画像を編集し「目だけ閉じる、他は変えない」。目の周り以外の差が小さいことを確かめる。
-4. 切抜き：Studioの `studio_image_cutout`（ローカルBiRefNet）か、同等の人物用モデル。髪の縁を青緑・墨・写真の上で確認する。
-5. 動き：`scripts/laa/staff_avatar.py`（Pillow・numpyが必要）に目の中心・首の付け根・顎の線・切出し範囲を渡す。Cielの値は `--eyes 537,490,745,490 --pivot 627,800 --chin 860 --crop 252,66,750`（1254²の原画）。
-6. 書出し：`ffmpeg -framerate 30 -i loop/idle-%03d.png -c:v hevc_videotoolbox -alpha_quality 0.9 -q:v 70 -tag:v hvc1 -pix_fmt bgra <name>-idle-512.mov`。AVFoundationでアルファ付きか確かめる。
-7. 確認：44ptと270pt、紙・青緑・墨・写真の背景で見る。瞬きの残像、ループのつなぎ目、首と髪のゆがみ、1コマ目の静止画を確認する。
-8. 本物の3D：Studioのローカル3D（Pixal3D）はCSOの試作で顔が崩れ、10月12日に重みの不一致で停止した。RealityKitで動かすには、頭のボーンと瞬き・口のブレンドシェイプを持つモデルが必要。外注かBlenderでの制作かは社長の判断とする。
+## 社員3Dの制作手順
+
+原本はHPの採用済みGLB（読むだけ。HP側を書き換えない）。7人は `hp/public/models/characters/fal-20260922/<id>-rigged.glb`（24骨、Meshy生成に骨とウェイトを転写）、Talosは `local-20261012/cso-masked.glb`（骨なし）。
+
+1. テクスチャの読める形へ：rigged版はKTX2（Basis）で、Blenderが読めない。6人は同じ形状・骨・ウェイトのWebP版 `<id>-rigged-web.glb` を使う。CielはWebP版がないため、`scripts/laa/staff_3d/ktx2_to_png_glb.mjs` でKTX2をPNGに書き換えた作業用コピーを作る（形状・骨・動きのバイトは変えない。HPの `public/three/basis/` の変換器を使う）。
+2. レンダー：`Blender -b --factory-startup -P scripts/laa/staff_3d/render.py -- --glb <glb> --out <dir> --id <id> --frame-h 0.55`（Blender 5.2、Cycles・Metal、64サンプル＋ノイズ除去、Standard表示、透過）。全員で同じ正射影カメラ・照明を使う。ループは縦0.55m、静止画は0.66mの範囲を写し、頭頂を上端から8%に合わせる（画像上で実測して補正）。照明は左上の柔らかい主光、右の弱い補助光、後ろの冷たい縁取り光で、紙・青緑・墨の上で輪郭が読めるようにした。
+3. 姿勢：原本の頭は下向き・横に傾いているため、首と頭の骨で傾きを水平に戻し（`head_end` から自動計算）、目線を8度上げる。モデル自体は変えない。
+4. 動き：同じ骨で、呼吸1回（背骨3本と肩を余弦で）、首と頭の小さな揺れ（位相をずらした正弦）を60コマに付ける。0コマ目と60コマ目が一致するので継ぎ目なく回る。骨のないTalosには、レンダー用の場面だけに4本の骨（高さで重みを付ける）を足して同じ動きを付ける。瞬きは、どのモデルにも瞼の骨・ブレンドシェイプがないため入れない。
+5. 書出し：`ffmpeg -framerate 30 -i idle-%03d.png -c:v hevc_videotoolbox -alpha_quality 0.9 -q:v 70 -tag:v hvc1 -pix_fmt bgra <id>-idle-512.mov`。アルファは `swift scripts/laa/staff_3d/verify_alpha.swift <mov>` で確かめる（AVFoundationの `ContainsAlphaChannel` と、復号した1コマ目の角のアルファ0）。
+6. 確認：44pt・270ptの円で、紙・青緑・墨・写真の上に並べる。継ぎ目、首と髪のゆがみ、1コマ目の静止画を見る。
+7. RealityKit用：`Blender -b -P scripts/laa/staff_3d/to_usdz.py -- <PNG版glb> <id>.usdz` で骨付きUSDZ（約11〜13MB、`usdchecker --arkit` 合格）を作れる。容量が大きいためrepoには置かない。口の動き・表情には、口と瞼のブレンドシェイプを持つモデルが必要で、作るかどうかは社長の判断とする。
