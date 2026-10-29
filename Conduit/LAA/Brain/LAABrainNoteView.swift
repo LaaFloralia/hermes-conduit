@@ -13,25 +13,25 @@ struct LAABrainNoteView: View {
 
     var body: some View {
         ZStack {
-            LAAColors.paper.ignoresSafeArea()
+            LAAColor.background.ignoresSafeArea()
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text(verbatim: reference.path).font(.footnote).foregroundStyle(LAAColors.muted)
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    Text(verbatim: reference.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if loading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                     else if let error {
-                        Text(verbatim: error.japaneseText).foregroundStyle(LAAColors.plum)
-                        Button { Task { await load() } } label: { Text(verbatim: "再読み込み") }
+                        Text(verbatim: error.japaneseText).foregroundStyle(LAAColor.attention)
+                        Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }
                     } else if let note {
                         if raw {
-                            Text(verbatim: note.text).font(.system(.body, design: .monospaced))
+                            Text(verbatim: note.text).laaTextStyle(.body).monospaced()
                                 .textSelection(.enabled).accessibilityIdentifier("laa.brain.raw")
                         } else {
                             let document = LAABrainDocument(note.text)
                             if let frontmatter = document.frontmatter {
                                 DisclosureGroup {
-                                    Text(verbatim: frontmatter).font(.system(.footnote, design: .monospaced))
+                                    Text(verbatim: frontmatter).laaTextStyle(.secondary).monospaced()
                                         .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-                                } label: { Text(verbatim: "メタデータ（frontmatter）") }
+                                } label: { Text(verbatim: LAACopy.Brain.frontmatter) }
                             }
                             ForEach(Array(document.parts(currentPath: note.path, files: files).enumerated()), id: \.offset) { _, part in
                                 switch part {
@@ -40,13 +40,13 @@ struct LAABrainNoteView: View {
                                     // text styles by surface; use its default style.
                                     MarkdownText(source: source)
                                 case .raw(let source):
-                                    Text(verbatim: source).font(.system(.body, design: .monospaced))
+                                    Text(verbatim: source).laaTextStyle(.body).monospaced()
                                         .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                                 case .image(let source):
-                                    VStack(alignment: .leading, spacing: 4) {
+                                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
                                         Label { Text(verbatim: "画像はこの接続では表示できません") } icon: { Image(systemName: "photo") }
-                                            .foregroundStyle(LAAColors.muted)
-                                        Text(verbatim: source).font(.system(.footnote, design: .monospaced))
+                                            .foregroundStyle(LAAColor.secondaryText)
+                                        Text(verbatim: source).laaTextStyle(.secondary).monospaced()
                                             .textSelection(.enabled)
                                     }.frame(maxWidth: .infinity, alignment: .leading)
                                 }
@@ -54,9 +54,12 @@ struct LAABrainNoteView: View {
                         }
                     }
                 }
-                .padding(16).frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .foregroundStyle(LAAColors.ink)
+                .padding(LAASpacing.horizontal)
+                .frame(maxWidth: 720, alignment: .leading)
+                .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                .padding(.horizontal, LAASpacing.horizontal)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .foregroundStyle(LAAColor.text)
             }
         }
         .navigationTitle(Text(verbatim: reference.path.split(separator: "/").last.map(String.init) ?? reference.path))
@@ -65,11 +68,11 @@ struct LAABrainNoteView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { if !path.isEmpty { path.removeLast() } } label: {
-                    Label { Text(verbatim: "戻る") } icon: { Image(systemName: "chevron.left") }
+                    Label { Text(verbatim: LAACopy.Brain.back) } icon: { Image(systemName: "chevron.left") }
                 }.accessibilityIdentifier("laa.brain.back")
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { raw.toggle() } label: { Text(verbatim: raw ? "表示" : "原文") }
+                Button { raw.toggle() } label: { Text(verbatim: raw ? LAACopy.Brain.formatted : LAACopy.Brain.raw) }
                     .accessibilityIdentifier("laa.brain.rawToggle")
             }
         }

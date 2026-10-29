@@ -21,7 +21,15 @@ struct LAAPlaceholderScreen: View {
 
     private var segments: [String] { LAACopy.segments(tab) }
 
-    var body: some View {
+    @ViewBuilder var body: some View {
+        if tab == .source {
+            LAAAssetsView(onRequestSettings: onRequestSettings)
+        } else {
+            placeholderBody
+        }
+    }
+
+    private var placeholderBody: some View {
         ZStack {
             LAAColors.paper.ignoresSafeArea()
             ScrollView {
