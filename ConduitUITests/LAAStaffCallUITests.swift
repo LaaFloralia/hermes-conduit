@@ -57,6 +57,31 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Cedar")).firstMatch.exists)
     }
 
+    func testExpandedComposerWaveformCallsTheEmployeeForNewAndSavedCalls() {
+        for arguments in [["-laa-composer-fixture"], ["-laa-composer-fixture", "-laa-saved-call"]] {
+            let app = launch(arguments)
+            if arguments.contains("-laa-saved-call") {
+                XCTAssertTrue(app.staticTexts["laa.fixture.saved-call"].waitForExistence(timeout: 10))
+            }
+            let field = app.textViews["composer.field"]
+            XCTAssertTrue(field.waitForExistence(timeout: 10))
+            field.tap()
+            let waveform = app.buttons["composer.voice"]
+            XCTAssertTrue(waveform.waitForExistence(timeout: 5))
+            XCTAssertTrue(waveform.isEnabled)
+            waveform.tap()
+            let name = app.staticTexts["laa.call.name"]
+            XCTAssertTrue(name.waitForExistence(timeout: 10))
+            XCTAssertEqual(name.label, "Morgan")
+            XCTAssertEqual(app.staticTexts["laa.call.engine"].label, "GPT-Live")
+            app.buttons["laa.call.chat"].tap()
+            let context = app.staticTexts["laa.fixture.call-context"]
+            XCTAssertTrue(context.waitForExistence(timeout: 5))
+            XCTAssertEqual(context.label, "laa-cfo|fixture-conversation")
+            app.terminate()
+        }
+    }
+
     func testUnavailableBridgeExplainsDisabledCallAndClassicVoiceIsNotRequired() {
         for (argument, reason) in [("-laa-unpaired", "端末を接続すると通話できます"),
                                    ("-laa-revoked", "端末を再接続してください"),

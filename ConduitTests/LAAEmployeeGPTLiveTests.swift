@@ -339,6 +339,15 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         XCTAssertTrue(placed.isWaitingForCallAudio)
         XCTAssertEqual(app.laaEmployeeGPTLivePlan?.profile, "laa-cfo")
         XCTAssertFalse(app.showGPTLiveSheet)
+        let pendingPlan = app.laaEmployeeGPTLivePlan
+        let threadBeforeCarPlay = app.voiceBackgroundJobSupervisor.liveThread
+        let carThread = VoiceThreadTarget(runtimeSessionID: "car-chat", storedSessionID: nil, title: "Car")
+        await app.startGPTLiveForCarPlay(attachingTo: carThread)
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, pendingPlan)
+        XCTAssertEqual(app.voiceBackgroundJobSupervisor.liveThread, threadBeforeCarPlay)
+        XCTAssertNil(app.voiceCallRecorderProfileForTesting)
+        XCTAssertFalse(app.isGPTLiveActive)
+        XCTAssertTrue(placed.isWaitingForCallAudio)
         let unrelatedIncoming = await app.openVoiceConversation(PendingVoiceIntent(
             profile: "default", startsFreshConversation: false, source: .hermesCall))
         XCTAssertFalse(unrelatedIncoming)
@@ -378,6 +387,41 @@ final class LAAEmployeeGPTLiveTests: XCTestCase {
         XCTAssertNil(app.voiceBackgroundJobSupervisor.liveThread)
         XCTAssertEqual(kit.endRequests, 1)
         kit.onPlacedCallEnded?(false)
+    }
+
+    func testCarPlayDoesNotTakeAPlanCreatedWhileItsStartWaits() async throws {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let previousConsent = LiveVoiceProviderConsent.isGranted(.gptLive)
+        LiveVoiceProviderConsent.setGranted(true, for: .gptLive)
+        defer { LiveVoiceProviderConsent.setGranted(previousConsent, for: .gptLive) }
+        let app = harness.appState
+        app.setGPTLiveEnabled(true)
+        app.gptLiveClient = app.laaGPTLiveClient { _, _, _, _ in
+            ["ok": true, "available": false, "auth": "subscription", "reason": "fake offline"]
+        }
+        let plan = try XCTUnwrap(app.laaEmployeeCallPlan(profile: "laa-cfo"))
+        let originalThread = VoiceThreadTarget(runtimeSessionID: "phone-chat", storedSessionID: nil, title: "Phone")
+        app.voiceBackgroundJobSupervisor.attachLiveThread(originalThread)
+        harness.coordinator.handleConnect(harness.spy)
+        defer { harness.coordinator.handleDisconnect() }
+        await harness.coordinator.waitForPresentation()
+        harness.coordinator.liveCallStartGate = { app.laaEmployeeGPTLivePlan = plan }
+        await harness.coordinator.establishVoice(generation: harness.coordinator.connectionGeneration)
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, plan)
+        XCTAssertEqual(app.voiceBackgroundJobSupervisor.liveThread, originalThread)
+        XCTAssertNil(app.voiceCallRecorderProfileForTesting)
+        XCTAssertFalse(app.isGPTLiveActive)
+
+        let row = CarPlayChatRow(sessionID: "car-chat", storedSessionID: nil, title: "Car", detail: "")
+        await harness.coordinator.performOpenChat(row, generation: harness.coordinator.connectionGeneration)
+        XCTAssertNil(harness.coordinator.chosenChat)
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, plan)
+        XCTAssertEqual(app.voiceBackgroundJobSupervisor.liveThread, originalThread)
+        harness.coordinator.endTapped()
+        XCTAssertEqual(app.laaEmployeeGPTLivePlan, plan)
     }
 
     func testEmployeeWidgetUsesItsProfileAndTheSameCallKitPath() async {

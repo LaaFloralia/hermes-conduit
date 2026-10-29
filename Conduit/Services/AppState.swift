@@ -2914,6 +2914,9 @@ final class AppState: ObservableObject {
     /// no phone sheet opens; the classic conversation and read aloud stop
     /// first, as on the phone.
     func startGeminiLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == nil else { return }
+        #endif
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -3031,6 +3034,9 @@ final class AppState: ObservableObject {
     /// no phone sheet opens; the classic conversation and read aloud stop
     /// first, as on the phone.
     func startQwenLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == nil else { return }
+        #endif
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -3574,6 +3580,11 @@ final class AppState: ObservableObject {
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
     func startGPTLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        #if LAA_BUILD
+        // The phone may be waiting for CallKit audio before its call starts.
+        // CarPlay must not acquire that call's employee identity or thread.
+        guard laaEmployeeGPTLivePlan == nil else { return }
+        #endif
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -3897,6 +3908,9 @@ final class AppState: ObservableObject {
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
     func startGrokLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == nil else { return }
+        #endif
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -4316,6 +4330,9 @@ final class AppState: ObservableObject {
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
     func startLocalLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        #if LAA_BUILD
+        guard laaEmployeeGPTLivePlan == nil else { return }
+        #endif
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -23272,6 +23289,13 @@ final class AppState: ObservableObject {
     func noteBotChatSessionForTesting(_ sessionID: String, profile: String) {
         noteBotChatSession(sessionID, profile: profile)
     }
+
+    #if LAA_BUILD
+    func noteSavedVoiceCallForTesting(_ sessionID: String, profile: String) {
+        voiceSessionTagsByKey[voiceHistoryKey(profile: profile), default: [:]][sessionID] =
+            VoiceSessionTag(kind: .call, engine: VoiceCallEngine.gptLive.rawValue)
+    }
+    #endif
 
     /// The bot profile a conversation is scoped to, or nil for an ordinary
     /// conversation. Test-only read of the in-memory registry, so a test can

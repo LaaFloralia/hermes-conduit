@@ -87,7 +87,7 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
         voiceControl.bind(appState)
     }
 
-    /// Both chat call buttons use the same employee identity and call surface.
+    /// Every employee chat call button uses the same identity and call surface.
     @discardableResult
     func startEmployeeConversation(_ appState: AppState) -> Bool {
         let profile = appState.conversationIdentityProfile

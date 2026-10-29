@@ -59,6 +59,10 @@ struct ComposerInputs: Equatable {
     let canResumeVoiceCall: Bool
     let isPreparingVoiceResume: Bool
     let chatVoiceButtonOverride: String?
+    #if LAA_BUILD
+    let conversationIdentityProfile: String
+    let isVoiceCallInProgress: Bool
+    #endif
 
     @MainActor
     init(_ appState: AppState) {
@@ -114,6 +118,10 @@ struct ComposerInputs: Equatable {
         canResumeVoiceCall = appState.canResumeVoiceCall
         isPreparingVoiceResume = appState.isPreparingVoiceResume
         chatVoiceButtonOverride = appState.chatVoiceButtonOverride
+        #if LAA_BUILD
+        conversationIdentityProfile = appState.conversationIdentityProfile
+        isVoiceCallInProgress = appState.isVoiceCallInProgress
+        #endif
     }
 }
 

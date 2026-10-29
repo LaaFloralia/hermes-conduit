@@ -26,6 +26,20 @@ private final class LAAFixtureCallControl: LAAEmployeeCallControlling {
     private func publish() { if let snapshot { onUpdate?(snapshot) } }
 }
 
+/// Even a regressed composer bypass stays away from the system call provider.
+@MainActor
+private final class LAAFixturePlacedCallKit: VoicePlacedCallKit {
+    let isAvailable = false
+    var onPlacedCallStarted: (@MainActor () -> Void)?
+    var onPlacedCallAudioActivated: (@MainActor () -> Void)?
+    var onPlacedCallAudioDeactivated: (@MainActor () -> Void)?
+    var onPlacedCallEnded: (@MainActor (Bool) -> Void)?
+    var onPlacedCallMuteChanged: (@MainActor (Bool) -> Void)?
+    func placeCall(named name: String) -> Bool { false }
+    func requestPlacedCallEnd() {}
+    func reportPlacedCallMuted(_ muted: Bool, result: @escaping @MainActor (Bool) -> Void) { result(false) }
+}
+
 struct LAAStaffCallFixture: View {
     static let launchArgument = "-laa-staff-call-fixture"
     @StateObject private var calls = LAAEmployeeCallCoordinator(control: LAAFixtureCallControl())
@@ -47,6 +61,8 @@ struct LAAStaffCallFixture: View {
     var body: some View {
         if args.contains("-laa-gpt-live-settings") {
             settingsFixture
+        } else if args.contains("-laa-composer-fixture") {
+            LAAEmployeeComposerFixture(calls: calls, savedCall: args.contains("-laa-saved-call"))
         } else {
             callFixture
         }
@@ -99,6 +115,72 @@ struct LAAStaffCallFixture: View {
         // SwiftUI exposes the read-only public environment value; its writable
         // backing key is used only in this DEBUG fixture for a still screenshot.
         .environment(\._accessibilityReduceMotion, args.contains("-laa-reduce-motion"))
+    }
+}
+
+/// Exercises ComposerBar's actual expanded waveform with a fake call control.
+@MainActor
+private struct LAAEmployeeComposerFixture: View {
+    @ObservedObject var calls: LAAEmployeeCallCoordinator
+    @StateObject private var appState: AppState
+    @StateObject private var bridge = LAABridgeSession(statusForTesting: .paired)
+    private let savedCall: Bool
+
+    init(calls: LAAEmployeeCallCoordinator, savedCall: Bool) {
+        self.calls = calls
+        self.savedCall = savedCall
+        _appState = StateObject(wrappedValue: Self.makeApp(savedCall: savedCall))
+    }
+
+    private static func makeApp(savedCall: Bool) -> AppState {
+        let defaults = UserDefaults(suiteName: "LAAEmployeeComposerFixture.\(UUID().uuidString)")!
+        let app = AppState(defaults: defaults, loadSavedConnection: false)
+        app.connection = HermesConnection(baseUrl: "https://example.invalid", ticket: "fixture")
+        app.isConnected = true
+        let host = VoicePlacedCallHost(isSettingOn: { false }, isVoiceRunning: { false }, displayName: { "Fixture" },
+                                      endVoice: {}, voiceMuted: { nil }, setVoiceMuted: { _ in },
+                                      setCallActive: { _ in }, runsElsewhere: { false })
+        app.voicePlacedCalls = VoicePlacedCalls(callKit: LAAFixturePlacedCallKit(), host: host)
+        app.gptLiveClient = app.laaGPTLiveClient { _, _, _, _ in
+            ["ok": true, "available": false, "auth": "subscription", "reason": "fixture offline"]
+        }
+        app.voiceResumeContextReaderForTesting = { _, _ in nil }
+        if savedCall {
+            app.setActiveProfileForTesting("laa-cfo")
+            app.sessions = [SessionSummary(id: "fixture-conversation", alternateIds: [], title: "Saved call",
+                                           model: "Hermes", updatedLabel: "", profile: "laa-cfo",
+                                           source: .chat, isActive: false, isArchived: false)]
+            app.noteSavedVoiceCallForTesting("fixture-conversation", profile: "laa-cfo")
+        } else {
+            app.setActiveProfileForTesting("default")
+            app.noteBotChatSessionForTesting("fixture-conversation", profile: "laa-cfo")
+        }
+        app.setGPTLiveEnabled(true)
+        app.activeSessionId = "fixture-conversation"
+        return app
+    }
+
+    var body: some View {
+        VStack {
+            Text(verbatim: "元の会話")
+                .accessibilityIdentifier("laa.fixture.conversation")
+            if savedCall && appState.openChatCallToResume != nil {
+                Text(verbatim: "保存した通話")
+                    .accessibilityIdentifier("laa.fixture.saved-call")
+            }
+            if let context = calls.snapshot?.context {
+                Text(verbatim: "\(context.profile)|\(context.conversationID ?? "")")
+                    .accessibilityIdentifier("laa.fixture.call-context")
+            }
+            Spacer()
+            ComposerBar(appState: appState)
+                .environment(\.v2ComposerRests, true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .environmentObject(appState)
+        .environmentObject(bridge)
+        .environmentObject(calls)
+        .modifier(LAACallPresentation(calls: calls))
     }
 }
 #endif

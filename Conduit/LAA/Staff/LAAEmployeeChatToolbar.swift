@@ -34,8 +34,13 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         }
         ToolbarItem(placement: .topBarTrailing) {
             LAAEmployeeCallButton(reason: reason) {
-                if sameCall { calls.showCall() }
-                else { calls.start(profile: profile, name: name, conversationID: appState.activeSessionId) }
+                if LAAStaff(profile: profile) != nil {
+                    _ = calls.startEmployeeConversation(appState)
+                } else if sameCall {
+                    calls.showCall()
+                } else {
+                    calls.start(profile: profile, name: name, conversationID: appState.activeSessionId)
+                }
             }
         }
     }
