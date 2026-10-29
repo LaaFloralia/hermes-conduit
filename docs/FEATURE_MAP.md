@@ -368,6 +368,32 @@ entry)
 
 **Checked:** 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
+## LAA staff avatars and in-app calls
+
+The LAA build's employee chat header, avatar and in-app call presentation.
+
+**Siblings:** employee chat header · call screen · return-to-call bar ·
+Classic and Live voice · native CallKit presentation · the upstream App Store
+build (keeps its own chat and call controls)
+
+**Code**
+- Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `project-laa.yml`, `project-personal.yml`
+- Chat header and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
+- Call state, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`
+- Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
+
+**Rulings**
+- Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
+- The muted loop runs only while visible and active; Reduce Motion, Low Power Mode and scrolling use the still. The loop does not change the audio session.
+- The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
+- CallKit recents remain off because a recents entry cannot yet start a call back.
+
+**Open gaps**
+- The production call control is disabled until the outgoing CallKit path and LAA-only provider presentation are integrated. The current UI flows use a fake control.
+- Receiver, speaker, Bluetooth routing and native call presentation still need the requested real-device checks.
+
+**Checked:** 2026-10-29, ba78b6af (phase 1; outgoing integration pending).
+
 ## Switching voice mode in a call
 
 The voice mode menu on a call screen: it ends the call and starts again in the
