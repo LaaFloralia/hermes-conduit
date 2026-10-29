@@ -438,6 +438,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 **Code**
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
 - Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
+- Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/LAAUsageModels.swift`, `Conduit/LAA/LAAUsageView.swift`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Brain: `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
@@ -448,8 +449,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   system tab bar. The other tabs remain accessible while Hermes is unpaired.
   Design v2 uses English top-level labels, retaining the `source` identifier.
   iOS 26+ uses the system Liquid Glass tab bar; earlier versions use Material
-  or an opaque surface when Reduce Transparency is on. The Conduit plugin
-  update banner is not shown above the LAA shell; settings review remains.
+  or an opaque surface when Reduce Transparency is on. For the Conduit
+  notifier only, LAA shows version and connection as read-only status and
+  suppresses update prompts and actions in the shell, Settings and plugin
+  catalog; the server decides updates. The Conduit finish-setup card is also
+  hidden in LAA, with notification and voice settings still reachable in
+  Settings. Other plugins retain their controls.
 - The Mac Bridge is paired by a one-time code. The device token and its address
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
   scope and service failures are distinguished. Other Bridge tabs share the

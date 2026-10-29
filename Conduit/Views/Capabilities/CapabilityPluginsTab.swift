@@ -45,7 +45,8 @@ struct CapabilityPluginsTab: View {
             }
             return Rows(
                 installed: installed,
-                catalog: CapabilityPluginFilter.catalog(input.catalog, query: input.query),
+                catalog: CapabilityPluginFilter.catalog(input.catalog, query: input.query)
+                    .filter { !PluginStyle.isServerManaged(name: $0.name) },
                 entries: entries
             )
         }
@@ -187,6 +188,14 @@ struct CapabilityPluginsTab: View {
 }
 
 enum PluginStyle {
+    static func isServerManaged(name: String, folderName: String? = nil) -> Bool {
+        #if LAA_BUILD
+        LAAPluginPolicy.isNotifier(name: name, folderName: folderName)
+        #else
+        false
+        #endif
+    }
+
     static func tierPill(_ tier: String) -> CapabilityPillModel {
         tier == "official"
             ? CapabilityPillModel(text: AppLocalization.string("Official"), tint: .conduitAura)
@@ -219,7 +228,7 @@ private struct AgentPluginListRow: View {
 
     private var pills: [CapabilityPillModel] {
         var pills = [PluginStyle.sourcePill(plugin, catalogEntry: catalogEntry)].compactMap { $0 }
-        if catalogEntry?.updateAvailable == true {
+        if catalogEntry?.updateAvailable == true, !PluginStyle.isServerManaged(name: plugin.name, folderName: plugin.folderName) {
             pills.append(CapabilityPillModel(text: AppLocalization.string("Update available"), tint: .conduitAccent))
         }
         if plugin.authRequired {
@@ -244,7 +253,9 @@ private struct AgentPluginListRow: View {
                 )
             }
             .buttonStyle(.plain)
-            if store.pluginBusy.contains(plugin.name) {
+            if PluginStyle.isServerManaged(name: plugin.name, folderName: plugin.folderName) {
+                EmptyView()
+            } else if store.pluginBusy.contains(plugin.name) {
                 ProgressView().controlSize(.small)
             } else {
                 Toggle(isOn: Binding(
@@ -329,6 +340,7 @@ struct AgentPluginDetailPage: View {
             if let plugin {
                 let catalogEntry = PluginCatalogEntry.entry(for: plugin, in: store.pluginCatalog)
                 let busy = store.pluginBusy.contains(plugin.name)
+                let serverManaged = PluginStyle.isServerManaged(name: plugin.name, folderName: plugin.folderName)
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
                         Text(verbatim: plugin.name)
@@ -354,24 +366,26 @@ struct AgentPluginDetailPage: View {
                             .foregroundStyle(.orange)
                             .textSelection(.enabled)
                     }
-                    Toggle(isOn: Binding(
-                        get: { plugin.isEnabled },
-                        set: { enabled in
-                            message = nil
-                            Task {
-                                do {
-                                    try await store.setPluginEnabled(plugin, enabled: enabled)
-                                } catch {
-                                    message = UserFacingError.message(for: error)
+                    if !serverManaged {
+                        Toggle(isOn: Binding(
+                            get: { plugin.isEnabled },
+                            set: { enabled in
+                                message = nil
+                                Task {
+                                    do {
+                                        try await store.setPluginEnabled(plugin, enabled: enabled)
+                                    } catch {
+                                        message = UserFacingError.message(for: error)
+                                    }
                                 }
                             }
+                        )) {
+                            Text("Turned on")
+                                .font(.subheadline.weight(.semibold))
                         }
-                    )) {
-                        Text("Turned on")
-                            .font(.subheadline.weight(.semibold))
+                        .tint(.conduitAccent)
+                        .disabled(!canManage || busy)
                     }
-                    .tint(.conduitAccent)
-                    .disabled(!canManage || busy)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -387,7 +401,7 @@ struct AgentPluginDetailPage: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
-                if canManage, plugin.canUpdate {
+                if canManage, !serverManaged, plugin.canUpdate {
                     Button {
                         update(plugin, accept: false)
                     } label: {
@@ -403,7 +417,7 @@ struct AgentPluginDetailPage: View {
                     .disabled(busy)
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
                 }
-                if canManage, plugin.canRemove {
+                if canManage, !serverManaged, plugin.canRemove {
                     Button(role: .destructive) {
                         confirmingRemove = true
                     } label: {
@@ -415,7 +429,7 @@ struct AgentPluginDetailPage: View {
                     .disabled(busy)
                     .conduitGlassControl(cornerRadius: 16, tint: .red.opacity(0.12))
                 }
-                if !canManage {
+                if !canManage, !serverManaged {
                     Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)

@@ -1158,12 +1158,14 @@ private struct SettingsHome: View {
             }
             ScrollView {
                 VStack(spacing: v2Layout ? 24 : 14) {
+                    #if !LAA_BUILD
                     if appState.notifierPlugin.needsAttention {
                         NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel) {
                             Haptics.selection()
                             path.append(.conduitPlugin)
                         }
                     }
+                    #endif
                     if v2Layout {
                         v2Sections
                     } else {
@@ -1186,7 +1188,7 @@ private struct SettingsHome: View {
                     homeSection(AppLocalization.string("Connection"), tint: .conduitAura) {
                         settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
                         settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
-                        settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
+                        settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: notifierPluginSummary, identifier: "settings.conduit-plugin")
                         settingsLink(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
                         settingsActionRow(
                             icon: "checkmark.circle",
@@ -1393,7 +1395,7 @@ private struct SettingsHome: View {
         }
         v2Group(AppLocalization.string("Server"), symbol: "server.rack") {
             v2Link(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards", first: true)
-            v2Link(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
+            v2Link(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: notifierPluginSummary, identifier: "settings.conduit-plugin")
             v2Action(
                 icon: "checkmark.circle",
                 title: AppLocalization.string("Connection Setup"),
@@ -1504,6 +1506,14 @@ private struct SettingsHome: View {
         guard let server = snapshot.server, !server.isEmpty else { return state }
         let host = URL(string: server)?.host ?? server
         return "\(state) · \(host)"
+    }
+
+    private var notifierPluginSummary: String {
+        #if LAA_BUILD
+        LAAPluginPolicy.summary(appState.notifierPlugin)
+        #else
+        NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate)
+        #endif
     }
 
     /// The active dashboard's name when several are saved, so the update
@@ -3754,12 +3764,14 @@ private struct NotificationsSettingsDetail: View {
                     }
                     // The plugin itself has its own page; here only a way there
                     // when it needs attention.
+                    #if !LAA_BUILD
                     if appState.notifierPlugin.needsAttention {
                         // Missing, or on the host but not running: nothing to update.
                         pluginPageLink(appState.notifierPlugin.offersInstall || appState.notifierPlugin.isNotServed
                             ? AppLocalization.string("Open Conduit plugin")
                             : AppLocalization.string("Update the Conduit plugin"))
                     }
+                    #endif
                     if notifications.isFetchingMeta {
                         Text("Checking compatibility…")
                             .font(.footnote)
@@ -3814,10 +3826,12 @@ private struct NotificationsSettingsDetail: View {
                         // pairings are behind. The host row above already
                         // offers them when the plugin itself reports it is
                         // behind.
+                        #if !LAA_BUILD
                         if !appState.notifierPlugin.needsAttention,
                            pairings.thisDashboard.contains(where: Self.isOutdated) {
                             pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
                         }
+                        #endif
                         ForEach(pairings.unscoped) { gateway in
                             compatibilityRow(
                                 title: gateway.name,
@@ -3863,6 +3877,12 @@ private struct NotificationsSettingsDetail: View {
                         oneTapPairing
                     } else {
                         // Installed but not running: installing again can't help.
+                        #if LAA_BUILD
+                        Text(verbatim: LAACopy.pluginNotificationsUnavailable)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        pluginPageLink(AppLocalization.string("Open Conduit plugin"))
+                        #else
                         if appState.notifierPlugin.isNotServed {
                             Text("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
                                 .font(.footnote)
@@ -3874,6 +3894,7 @@ private struct NotificationsSettingsDetail: View {
                                 .foregroundStyle(.secondary)
                             pluginPageLink(AppLocalization.string("Install or update the Conduit plugin"))
                         }
+                        #endif
                         Button {
                             Task {
                                 // Pairings are bound to the active dashboard
@@ -4081,17 +4102,28 @@ private struct NotificationsSettingsDetail: View {
     private func gatewayRow(_ gateway: RelayMetaInfo.Gateway) -> some View {
         let isSupported = gateway.supportsApprovalCards && gateway.supportsClarifyCards
         let isOutdated = Self.isOutdated(gateway)
+        #if LAA_BUILD
+        let detail = isSupported
+            ? AppLocalization.string("Notifier supports approval and clarify cards")
+            : isOutdated
+                ? LAACopy.pluginCardsUnavailable
+                : AppLocalization.string("Waiting for the first notification from this profile")
+        let mark: CompatibilityMark = isSupported ? .supported : (isOutdated ? .actionNeeded : .unknown)
+        #else
+        let detail = isSupported
+            ? AppLocalization.string("Notifier supports approval and clarify cards")
+            : gateway.hasSentEventsButNeverReported
+                ? AppLocalization.string("This profile's notifier predates decision cards — update it to receive them")
+                : gateway.pluginVersion == nil
+                    ? AppLocalization.string("Waiting for the first notification from this profile")
+                    : AppLocalization.string("Notifier update available — approval and clarify cards need a newer plugin")
+        let mark: CompatibilityMark = isSupported ? .supported : (isOutdated ? .updateNeeded : .unknown)
+        #endif
         compatibilityRow(
             title: gateway.name,
             version: gateway.pluginVersion,
-            mark: isSupported ? .supported : (isOutdated ? .updateNeeded : .unknown),
-            detail: isSupported
-                ? AppLocalization.string("Notifier supports approval and clarify cards")
-                : gateway.hasSentEventsButNeverReported
-                    ? AppLocalization.string("This profile's notifier predates decision cards — update it to receive them")
-                    : gateway.pluginVersion == nil
-                        ? AppLocalization.string("Waiting for the first notification from this profile")
-                        : AppLocalization.string("Notifier update available — approval and clarify cards need a newer plugin")
+            mark: mark,
+            detail: detail
         )
         // #431: whether this pairing's notifications are sealed so the relay
         // can't read them. Keys are set up automatically over the dashboard
@@ -4107,13 +4139,18 @@ private struct NotificationsSettingsDetail: View {
                 .foregroundStyle(.orange)
         } else if case .ensured(let createdAt, let rotates, let quantumSafe) = assurance {
             let date = createdAt.formatted(date: .abbreviated, time: .omitted)
+            #if LAA_BUILD
+            let noRotation = LAACopy.pluginRotationUnavailable
+            #else
+            let noRotation = AppLocalization.string("End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Update this host's notifier so the key changes every 7 days.")
+            #endif
             // The shield replaces the padlock once the key came from an
             // ML-KEM rotation: quantum-safe end to end.
             Label(
                 quantumSafe
                     ? AppLocalization.string("End-to-end encrypted and quantum-safe, with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days.")
                     : !rotates
-                        ? AppLocalization.string("End-to-end encrypted. Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. Update this host's notifier so the key changes every 7 days.")
+                        ? noRotation
                         : NotificationKeyRotation.supportsPQ
                             ? AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days.")
                             : AppLocalization.string("End-to-end encrypted with a key from \(date). Only this iPhone can read these notifications; the relay sees when they arrive, not what they say. The key changes every 7 days; update to iOS 26 to make it quantum-safe."),
@@ -4146,9 +4183,19 @@ private struct NotificationsSettingsDetail: View {
             // These shared settings aren't observable; the row re-renders
             // because every change to them also changes encryptedGatewayIDs
             // or relayMeta.
+            #if LAA_BUILD
+            Label {
+                Text(verbatim: LAACopy.pluginEncryptionUnavailable)
+            } icon: {
+                Image(systemName: "lock.open")
+            }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            #else
             Label(AppLocalization.string("Not end-to-end encrypted, so notifications from this host show only generic text and don't open the chat. Update this host's notifier to turn encryption on."), systemImage: "lock.open")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            #endif
         } else {
             Label(AppLocalization.string("Not end-to-end encrypted yet, so the relay can read these notifications. Conduit turns encryption on by itself once notifications are on and this host's notifier supports it."), systemImage: "lock.open")
                 .font(.footnote)

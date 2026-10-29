@@ -94,6 +94,11 @@ struct LAAAppShell: View {
             .onChange(of: requiresLogin) { _, needsLogin in
                 if needsLogin { chatsPath.removeAll() }
             }
+            .onAppear {
+                #if DEBUG
+                LAAPluginUITestFixture.seedStatusIfEnabled(appState)
+                #endif
+            }
             .onDisappear { appState.showSidebar = false }
     }
 
@@ -104,6 +109,9 @@ struct LAAAppShell: View {
             LAANotificationPairAllFixtureScreen()
         } else if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BACKGROUND") {
             LAABackgroundUITestFixtureScreen()
+        } else if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+                  ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_PLUGIN_CATALOG") {
+            LAAPluginCatalogUITestScreen()
         } else {
             normalBar
         }
