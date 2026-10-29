@@ -26,6 +26,11 @@ targets:
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_ENTITLEMENTS: ""
         PROVISIONING_PROFILE_SPECIFIER: ""
+        # The LAA build's own screens (Conduit/LAA/: the five tabs of
+        # docs/laa/DESIGN.md) are behind this flag, so the App Store build
+        # from project.yml never compiles them and upstream stays unchanged.
+        # The TestFlight signing overlay must adopt the same setting.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
     postBuildScripts:
       # The home screen name, so it isn't mistaken for the App Store app.
       - name: Personal build name

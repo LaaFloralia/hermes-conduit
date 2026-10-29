@@ -16,6 +16,11 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
+            #if LAA_BUILD
+            // The other LAA tabs remain accessible before Hermes is paired.
+            // The Chats tab presents the existing login when necessary.
+            MainView()
+            #else
             // A cold launch that could not reach the server yet still shows
             // the app shell over the read-only saved copy (#99).
             if appState.showLogin
@@ -26,6 +31,7 @@ struct RootView: View {
                 MainView()
                     .transition(.opacity)
             }
+            #endif
 
             if let bridge = appState.dashboardTicketBridge {
                 DashboardTicketBridgeView(bridge: bridge)
@@ -131,7 +137,15 @@ struct MainView: View {
         )
     }
 
-    private var isPersistentSidebarActive: Bool { !useV2Shell && sidebarPresentation == .persistent }
+    private var isLAABuild: Bool {
+        #if LAA_BUILD
+        true
+        #else
+        false
+        #endif
+    }
+
+    private var isPersistentSidebarActive: Bool { !isLAABuild && !useV2Shell && sidebarPresentation == .persistent }
 
     private var isVoiceConversationShown: Bool {
         appState.showVoiceSheet || appState.showQwenLiveSheet || appState.showGeminiLiveSheet || appState.showGPTLiveSheet
@@ -399,7 +413,7 @@ struct MainView: View {
         }
         .onChange(of: appState.settingsLinkRequest) { _, page in
             // V2 opens the page in its Settings tab (V2Shell).
-            guard !useV2Shell, let page else { return }
+            guard (isLAABuild || !useV2Shell), let page else { return }
             appState.settingsLinkRequest = nil
             openSettings(at: page)
         }
@@ -407,7 +421,7 @@ struct MainView: View {
         // Artifacts; a group room (no Artifacts) and the drawer shell
         // show the Folder on its own.
         .onChange(of: appState.workspaceReveal?.id) { _, id in
-            guard id != nil, !useV2Shell || appState.activeRoomSurface != nil else { return }
+            guard id != nil, (!isLAABuild && !useV2Shell) || appState.activeRoomSurface != nil else { return }
             appState.showWorkspaceSheet = true
         }
     }
@@ -432,7 +446,7 @@ struct MainView: View {
         case .location: settingsOpensAt = appState.showsLocationSettings ? page : nil
         case .phone: settingsOpensAt = appState.showsPhoneSettings ? page : nil
         }
-        if appState.showSidebar, !isPersistentSidebarActive {
+        if !isLAABuild, appState.showSidebar, !isPersistentSidebarActive {
             presentSettingsFromDrawer()
         } else {
             presentSettings()
@@ -450,13 +464,28 @@ struct MainView: View {
         )
     }
 
+    /// The LAA build's five-tab shell (Conduit/LAA/LAAAppShell.swift), or nil.
+    /// Only the LAA overlay defines `LAA_BUILD`, so the App Store build never
+    /// compiles the shell and this stays nil: its chat shells below are the
+    /// only ones it has. Everything MainView presents for the app as a whole
+    /// (calls, approvals, settings, the model picker) still wraps it.
+    private var laaShell: AnyView? {
+        #if LAA_BUILD
+        AnyView(LAAAppShell(onRequestSettings: presentSettings))
+        #else
+        nil
+        #endif
+    }
+
     /// Routes the sidebar between its two presentations: the existing chat
     /// shell with the modal drawer, or — on wide iPad windows with the
     /// Appearance opt-in — the same SidebarView as a persistent leading
     /// column beside the chat.
     @ViewBuilder
     private var sidebarLayoutContent: some View {
-        if useV2Shell {
+        if let laaShell {
+            laaShell
+        } else if useV2Shell {
             // V2 always opens on the Chats list (Eric, 2026-10-15); a chat
             // a notification or widget opens is pushed over it.
             V2Shell()
@@ -651,7 +680,7 @@ struct MainView: View {
             PhoneChangeOverlay(engine: appState.phoneSync)
                 .environmentObject(appState)
             // Only V2 draws notices, as its shell does under the call.
-            if useV2Shell, let notice = appState.pinSyncNotice {
+            if (isLAABuild || useV2Shell), let notice = appState.pinSyncNotice {
                 V2NoticeBanner(notice: notice) { appState.dismissPinSyncNotice(notice.id) }
                     .padding(.horizontal, 16)
                     .padding(.top, 6)

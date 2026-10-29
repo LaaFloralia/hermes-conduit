@@ -13,6 +13,13 @@ import SwiftUI
 struct V2ProjectPage: View {
     @EnvironmentObject private var appState: AppState
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    private var usesFloatingNewChat: Bool {
+        #if LAA_BUILD
+        false
+        #else
+        mainButtonNewChat
+        #endif
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @Environment(\.v2OpenBeside) private var openBeside
@@ -108,7 +115,7 @@ struct V2ProjectPage: View {
         .navigationTitle(project.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if mainButtonNewChat {
+            if usesFloatingNewChat {
                 // The gold button beside the tabs makes this project's new
                 // chats instead (Settings > Appearance): voice sits here,
                 // unless a chat beside the list shows its own.
@@ -127,6 +134,13 @@ struct V2ProjectPage: View {
                     .macTooltip(newConversationLabel)
                 }
             }
+            #if LAA_BUILD
+            if !shell.hasChatVoiceBeside {
+                ToolbarItem(placement: .topBarTrailing) {
+                    V2VoiceButton(context: .project(project), style: .toolbar)
+                }
+            }
+            #endif
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()

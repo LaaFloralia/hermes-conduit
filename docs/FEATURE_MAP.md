@@ -396,6 +396,36 @@ mode menu)
 
 **Checked:** 2026-10-27, added at #1355 (Switch voice on a failed call is a round button).
 
+## LAA five-tab shell
+
+The LAA iPhone build's top-level navigation and its Bridge placeholders.
+
+**Siblings:** the existing Chats list, sessions and group rooms · Hermes login
+and offline chats · Conduit Settings · notifications and in-app links · the
+four Bridge-backed tabs · the upstream App Store build
+
+**Code**
+- Shell and states: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
+- Integration: `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `project-personal.yml`
+
+**Rulings**
+- Only the LAA overlay enables the shell. Chats uses Conduit's existing list,
+  conversation and room screens; an individual chat hides the system tab bar.
+  The other tabs remain accessible while Hermes is unpaired.
+- Bridge pairing and transport are not implemented here: the four screens say
+  Bridge not paired, and Usage shows unknown values rather than zeroes.
+  Loading, empty and error appearances are available to DEBUG previews only.
+- Settings opens from the gear. New chat and voice remain reachable from the
+  Chats list; the App Store build keeps its existing shell.
+
+**Open gaps**
+- The TestFlight signing overlay must add the LAA_BUILD flag. Bridge pairing,
+  data, and the finished content of these tabs belong to later work.
+- The LAA shell uses a single-column chat even on a wide iPad window.
+- The upstream Bots and Tasks tabs are not in this five-tab skeleton.
+
+**Checked:** 2026-10-29, laa/tabs-07, based on d3021ea5.
+
 ## Voice beside the tabs
 
 The gold button beside the tab bar, and where voice goes when it is swapped

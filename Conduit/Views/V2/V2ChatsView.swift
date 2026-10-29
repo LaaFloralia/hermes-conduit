@@ -278,6 +278,11 @@ struct V2ChatsView: View, Equatable {
     /// while a chat or a page covers the list or another tab is up.
     private let appState: AppState
     @StateObject private var updates: V2ShownUpdates
+    #if LAA_BUILD
+    /// The LAA shell's "open Settings" action (Conduit/LAA/LAASettingsAction.swift).
+    /// Absent in every other build, where this bar keeps its own controls only.
+    @Environment(\.laaSettingsAction) private var laaSettingsAction
+    #endif
     @Environment(\.v2Shell) private var shell
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -398,7 +403,12 @@ struct V2ChatsView: View, Equatable {
     }
 
     private var mainButtonNewChat: Bool {
+        #if LAA_BUILD
+        // The LAA tab bar has no floating New Chat button.
+        return false
+        #else
         updates.defaults.object(forKey: V2MainButtonPreference.key) as? Bool ?? V2MainButtonPreference.defaultValue
+        #endif
     }
     /// Parsed once per change of the store, not once per parent row.
     @State private var expansionCache = V2NestExpansionCache()
@@ -504,7 +514,11 @@ struct V2ChatsView: View, Equatable {
         // layouts.
         let waitingApprovalCount = self.waitingApprovalCount
         ZStack {
+            #if LAA_BUILD
+            LAAColors.paper.ignoresSafeArea()
+            #else
             V2Backdrop(isTabRoot: true)
+            #endif
             // Projects sits behind the folder button on the right, so it
             // slides in from the trailing side and Sessions comes back from
             // the leading one. Keyed on the stored value: the tap's
@@ -522,15 +536,19 @@ struct V2ChatsView: View, Equatable {
             .v2ProfileSwitchContent()
         }
         .v2EdgeBar(.top) {
-            V2TopBar(lowerLeading: { stackedLeading(waitingApprovalCount: waitingApprovalCount) }) { stacked in
-                if !(stacked && showsBarSearch) {
-                    trailingControls(stacked: stacked, waitingApprovalCount: waitingApprovalCount)
-                        .onAppear { if !stacked { barUnstacked() } }
-                }
+            #if LAA_BUILD
+            VStack(alignment: .leading, spacing: 0) {
+                Text(verbatim: LAATab.chats.title)
+                    .font(LAAFont.largeHeading)
+                    .foregroundStyle(LAAColors.ink)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .accessibilityAddTraits(.isHeader)
+                chatsTopBar(waitingApprovalCount: waitingApprovalCount)
             }
-                .withAllProfilesChip()
-                .withoutScrollEdge()
-                .modifier(V2LegacyScrollEdge())
+            #else
+            chatsTopBar(waitingApprovalCount: waitingApprovalCount)
+            #endif
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
@@ -662,6 +680,18 @@ struct V2ChatsView: View, Equatable {
 
     // MARK: - Top bar controls
 
+    private func chatsTopBar(waitingApprovalCount: Int) -> some View {
+        V2TopBar(lowerLeading: { stackedLeading(waitingApprovalCount: waitingApprovalCount) }) { stacked in
+            if !(stacked && showsBarSearch) {
+                trailingControls(stacked: stacked, waitingApprovalCount: waitingApprovalCount)
+                    .onAppear { if !stacked { barUnstacked() } }
+            }
+        }
+        .withAllProfilesChip()
+        .withoutScrollEdge()
+        .modifier(V2LegacyScrollEdge())
+    }
+
     /// One glass capsule: Sessions/Projects toggle, Artifacts, Filter (amber
     /// dot while approvals wait), New chat. Under a row of profiles
     /// (`stacked`) Filter leaves it for the labeled pill on the left.
@@ -730,6 +760,23 @@ struct V2ChatsView: View, Equatable {
                 .accessibilityLabel(AppLocalization.string("New Chat"))
                 .macTooltip(AppLocalization.string("New Chat"))
             }
+
+            #if LAA_BUILD
+            V2VoiceButton(context: .home, style: .capsule)
+            // The LAA build reaches Conduit's settings from this bar: its
+            // five tabs have no Settings tab of their own.
+            if let laaSettingsAction {
+                Button {
+                    Haptics.selection()
+                    laaSettingsAction()
+                } label: {
+                    V2CapsuleIcon(systemImage: "gearshape")
+                }
+                .buttonStyle(PressableButtonStyle())
+                .accessibilityLabel(Text(verbatim: LAACopy.settings))
+                .macTooltip(LAACopy.settings)
+            }
+            #endif
         }
     }
 
