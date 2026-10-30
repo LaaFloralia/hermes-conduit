@@ -1434,17 +1434,17 @@ struct ComposerBar: View, Equatable {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-#if LAA_BUILD
+        #if LAA_BUILD
                 .foregroundStyle(LAAColor.link)
-#endif
+        #endif
                 .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
                 .contentShape(ComposerShared.controlHitShape)
         }
-#if LAA_BUILD
+        #if LAA_BUILD
         .accessibilityLabel(Text(verbatim: LAACopy.chatAttach))
-#else
+        #else
         .accessibilityLabel(Text("Attach"))
-#endif
+        #endif
         // Open while Hermes replies: the files go as Queue (#1146).
         .disabled(!appState.composerIsEnabled)
 #if LAA_BUILD

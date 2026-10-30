@@ -438,11 +438,11 @@ struct GroupRoomComposer: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-#if LAA_BUILD
+                    #if LAA_BUILD
                     .accessibilityLabel(Text(verbatim: LAACopy.chatExpandEditor))
-#else
+                    #else
                     .accessibilityLabel(Text(AppLocalization.string("Expand editor")))
-#endif
+                    #endif
                     .transition(.opacity)
                 }
             }
@@ -515,19 +515,19 @@ struct GroupRoomComposer: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-#if LAA_BUILD
+        #if LAA_BUILD
                 .foregroundStyle(canAttach ? LAAColor.link : LAAColor.secondaryText)
-#else
+        #else
                 .foregroundStyle(canAttach ? Color.primary : Color.secondary)
-#endif
+        #endif
                 .frame(width: controlSize, height: controlSize)
                 .contentShape(ComposerShared.controlHitShape)
         }
-#if LAA_BUILD
+        #if LAA_BUILD
         .accessibilityLabel(Text(verbatim: LAACopy.chatAttach))
-#else
+        #else
         .accessibilityLabel(Text(AppLocalization.string("Attach")))
-#endif
+        #endif
         .disabled(isUploading)
 #if LAA_BUILD
         .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
