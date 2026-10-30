@@ -8,4 +8,5 @@
 - On Duo, the known local smoke baselines are five `ConnectionSetupUITests` failures caused by a saved profile and one `ProfilePickerUITests` failure caused by a probe outside the window. New failures block the merge.
 - If GitHub Actions is unavailable, gate on the local master-based smoke with no new failures and a local personal Release build: generate `project-personal.yml` and build for generic iOS with `CODE_SIGNING_ALLOWED=NO`.
 - The parent session runs TestFlight uploads because it holds the required secrets.
+- Install launchd services such as the push relay (`scripts/laa/relay-install.sh`) only from the main checkout `/Users/laa/dev/hermes-conduit`, never from a worktree; worktrees are removed after merges.
 - Conduit plugin updates are decided by the daily HQ routine in `hq/tools/CONDUIT-UPDATE.md`. The LAA build shows no plugin update notices.
