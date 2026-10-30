@@ -160,9 +160,6 @@ struct LAAAssetsView: View {
                 LazyVGrid(columns: columns, spacing: LAASpacing.x2) {
                     ForEach(items.filter(filter.contains)) { item in card(item) }
                 }
-                if items.filter(filter.contains).contains(where: { !$0.isFolder }) {
-                    Text(verbatim: LAACopy.Assets.previewUnavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                }
             }
             if filter != .all { Text(verbatim: LAACopy.Assets.loadedOnly).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
             if cursor != nil {
@@ -173,23 +170,34 @@ struct LAAAssetsView: View {
     }
 
     private func card(_ item: LAADriveItem) -> some View {
-        Button {
-            if item.isFolder { folders.append(item); query = "" }
-        } label: {
+        Group {
+            if item.isFolder {
+                Button { folders.append(item); query = "" } label: { cardContent(item) }
+            } else {
+                NavigationLink { LAADriveDetailView(item: item) } label: { cardContent(item) }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("laa.assets.item.\(item.id)")
+    }
+
+    private func cardContent(_ item: LAADriveItem) -> some View {
             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                 ZStack {
                     RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface)
-                    Image(systemName: item.symbol).laaTextStyle(.body).foregroundStyle(LAAColor.link)
+                    if let url = LAADriveThumbnail.safeURL(item.thumbnailLink) {
+                        AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: {
+                            Image(systemName: item.symbol).foregroundStyle(LAAColor.link)
+                        }.clipShape(RoundedRectangle(cornerRadius: LAARadius.card))
+                    } else {
+                        Image(systemName: item.symbol).laaTextStyle(.body).foregroundStyle(LAAColor.link)
+                    }
                 }.aspectRatio(1, contentMode: .fit)
                 Text(verbatim: item.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
                 Text(verbatim: item.kindTitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             .padding(LAASpacing.x3).frame(maxWidth: .infinity, alignment: .leading)
             .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-        }
-        .buttonStyle(.plain).disabled(!item.isFolder)
-        .accessibilityIdentifier("laa.assets.item.\(item.id)")
-        .accessibilityHint(Text(verbatim: item.isFolder ? item.name : LAACopy.Assets.previewUnavailable))
     }
 
     @MainActor private func reload(_ requested: AssetsLoadKey) async {

@@ -156,6 +156,9 @@ private final class LAANoRedirects: NSObject, URLSessionTaskDelegate {
 struct LAABridgeClient {
     private let session: URLSession
 
+    // Drive's bounded byte-range reader uses the same ephemeral, no-redirect session.
+    var rangeSession: URLSession { session }
+
     init(session: URLSession? = nil) {
         if let session { self.session = session; return }
         let config = URLSessionConfiguration.ephemeral
