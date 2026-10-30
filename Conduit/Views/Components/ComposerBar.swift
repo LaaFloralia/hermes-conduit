@@ -13,6 +13,23 @@ import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 
+/// Shared composer layout and staged-file helpers, usable without constructing a composer.
+enum ComposerShared {
+    static let controlSize: CGFloat = 32
+    /// Taps land a little outside each control, without overlapping its neighbours.
+    static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
+
+    nonisolated static func discardStagedFile(_ attachment: Attachment) {
+        guard let url = URL(string: attachment.uri), url.isFileURL else { return }
+        // A restored draft can point to the journal's durable copy. That
+        // copy may still be needed by an unresolved submission; only remove
+        // temporary staging files here.
+        let temporary = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().path + "/"
+        guard url.resolvingSymlinksInPath().path.hasPrefix(temporary) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+}
+
 /// Equatable by AppState identity, and mounted with `.equatable()`: its
 /// StateObject would otherwise make every ChatView redraw rebuild it.
 /// It redraws on its own for what it shows (ComposerUpdates), its state
@@ -981,15 +998,6 @@ struct ComposerBar: View, Equatable {
         }
     }
 
-    /// Attach, model and session status on the left; dictate and the
-    /// voice/send slot on the right, like the Codex composer (#335).
-    /// The round controls match the context ring, leaving the model chip
-    /// more width (#466).
-    static let controlSize: CGFloat = 32
-    /// Taps land a little outside each control. Half the row spacing, so
-    /// neighbours never overlap.
-    static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
-
     /// "42%", for the context ring's large content viewer.
     private var contextPercentLabel: String {
         "\(Int(appState.runtime.contextPercent.rounded()))%"
@@ -1018,8 +1026,8 @@ struct ComposerBar: View, Equatable {
                 appState.showContextSheet = true
             } label: {
                 ContextRingView(percent: appState.runtime.contextPercent)
-                    .frame(width: Self.controlSize, height: Self.controlSize)
-                    .contentShape(Self.controlHitShape)
+                    .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
+                    .contentShape(ComposerShared.controlHitShape)
             }
             .buttonStyle(.plain)
             .accessibilityShowsLargeContentViewer {
@@ -1038,8 +1046,8 @@ struct ComposerBar: View, Equatable {
                     Label("\(appState.activeAgents)", systemImage: "person.2")
                         .font(.caption.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.conduitAccent)
-                        .frame(minWidth: Self.controlSize, minHeight: Self.controlSize)
-                        .contentShape(Self.controlHitShape)
+                        .frame(minWidth: ComposerShared.controlSize, minHeight: ComposerShared.controlSize)
+                        .contentShape(ComposerShared.controlHitShape)
                 }
                 .buttonStyle(.plain)
                 .accessibilityShowsLargeContentViewer {
@@ -1311,7 +1319,7 @@ struct ComposerBar: View, Equatable {
                         canRemove: appState.composerIsEnabled
                     ) {
                         attachments.removeAll { $0.id == attachment.id }
-                        Self.discardStagedFile(attachment)
+                        ComposerShared.discardStagedFile(attachment)
                     }
                 }
             }
@@ -1373,13 +1381,13 @@ struct ComposerBar: View, Equatable {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .medium))
-                .frame(width: Self.controlSize, height: Self.controlSize)
-                .contentShape(Self.controlHitShape)
+                .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
+                .contentShape(ComposerShared.controlHitShape)
         }
         .accessibilityLabel(Text("Attach"))
         // Open while Hermes replies: the files go as Queue (#1146).
         .disabled(!appState.composerIsEnabled)
-        .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
+        .conduitGlassControl(cornerRadius: ComposerShared.controlSize / 2, tint: .conduitAccent.opacity(0.08))
         .accessibilityShowsLargeContentViewer {
             Label("Attach", systemImage: "plus")
         }
@@ -1514,9 +1522,9 @@ struct ComposerBar: View, Equatable {
             }
         }
         .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
-        .frame(minWidth: actionTitle == nil ? Self.controlSize : 86, minHeight: Self.controlSize)
+        .frame(minWidth: actionTitle == nil ? ComposerShared.controlSize : 86, minHeight: ComposerShared.controlSize)
         .padding(.horizontal, actionTitle == nil ? 0 : 4)
-        .contentShape(Self.controlHitShape)
+        .contentShape(ComposerShared.controlHitShape)
         .animation(ConduitMotion.transition, value: action)
     }
 
@@ -1881,12 +1889,12 @@ struct ComposerBar: View, Equatable {
             }
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.conduitAccent)
-            .frame(width: Self.controlSize, height: Self.controlSize)
-            .contentShape(Self.controlHitShape)
+            .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
+            .contentShape(ComposerShared.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(appState.isPreparingVoiceResume || appState.voiceWaitsForRunningTurn)
-        .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
+        .conduitGlassControl(cornerRadius: ComposerShared.controlSize / 2, tint: .conduitAura.opacity(0.14), interactive: true)
         .accessibilityShowsLargeContentViewer {
             Label(AppLocalization.string("Resume call"), systemImage: "phone.arrow.up.right")
         }
@@ -1905,13 +1913,13 @@ struct ComposerBar: View, Equatable {
             Image(systemName: voiceAvailable ? "waveform" : "waveform.slash")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(canOpenVoice ? Color.accentColor : Color.secondary)
-                .frame(width: Self.controlSize, height: Self.controlSize)
-                .contentShape(Self.controlHitShape)
+                .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
+                .contentShape(ComposerShared.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(!canOpenVoice)
         .conduitGlassControl(
-            cornerRadius: Self.controlSize / 2,
+            cornerRadius: ComposerShared.controlSize / 2,
             tint: voiceAvailable ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
             interactive: canOpenVoice
         )
@@ -1956,13 +1964,13 @@ struct ComposerBar: View, Equatable {
                 // permission or the microphone shows it's in flight.
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
                 .contentTransition(.symbolEffect(.replace))
-                .frame(width: Self.controlSize, height: Self.controlSize)
-                .contentShape(Self.controlHitShape)
+                .frame(width: ComposerShared.controlSize, height: ComposerShared.controlSize)
+                .contentShape(ComposerShared.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(!canDictate && !isActive)
         .conduitGlassControl(
-            cornerRadius: Self.controlSize / 2,
+            cornerRadius: ComposerShared.controlSize / 2,
             tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
             interactive: canDictate || isActive
         )
@@ -2604,7 +2612,7 @@ struct ComposerBar: View, Equatable {
                     await Self.stagePickedItem(item, ordinal: index + 1, limitMegabytes: limitMegabytes)
                 }.value
                 guard shouldAcceptPhotoPickerCompletion(openedIn: origin) else {
-                    if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                    if case .staged(let attachment) = outcome { ComposerShared.discardStagedFile(attachment) }
                     break
                 }
                 record(outcome, in: &tally)
@@ -2681,16 +2689,6 @@ struct ComposerBar: View, Equatable {
         }
     }
 
-    nonisolated static func discardStagedFile(_ attachment: Attachment) {
-        guard let url = URL(string: attachment.uri), url.isFileURL else { return }
-        // A restored draft can point to the journal's durable copy. That
-        // copy may still be needed by an unresolved submission; only remove
-        // temporary staging files here.
-        let temporary = FileManager.default.temporaryDirectory.resolvingSymlinksInPath().path + "/"
-        guard url.resolvingSymlinksInPath().path.hasPrefix(temporary) else { return }
-        try? FileManager.default.removeItem(at: url)
-    }
-
     private func reportImportProblems(oversized: [String], failed: [String], folders: [String]? = nil, limitMegabytes: Int) {
         var messages: [String] = []
         if !oversized.isEmpty {
@@ -2748,7 +2746,7 @@ struct ComposerBar: View, Equatable {
                     Self.stageDocument(at: url, limitMegabytes: limitMegabytes)
                 }.value
                 guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
-                    if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                    if case .staged(let attachment) = outcome { ComposerShared.discardStagedFile(attachment) }
                     break
                 }
                 record(outcome, in: &tally)
@@ -2778,7 +2776,7 @@ struct ComposerBar: View, Equatable {
                 guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else { break }
                 let outcome = await AttachmentDrop.stage(provider, ordinal: index + 1, limitMegabytes: limitMegabytes)
                 guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
-                    if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                    if case .staged(let attachment) = outcome { ComposerShared.discardStagedFile(attachment) }
                     break
                 }
                 record(outcome, in: &tally)
@@ -2814,7 +2812,7 @@ struct ComposerBar: View, Equatable {
                 Self.stageCapturedPhoto(image, limitMegabytes: limitMegabytes)
             }.value
             guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
-                if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                if case .staged(let attachment) = outcome { ComposerShared.discardStagedFile(attachment) }
                 return
             }
             var tally = ImportTally()
@@ -2854,7 +2852,7 @@ struct ComposerBar: View, Equatable {
                 return AttachmentStaging.finishStaging(fileAt: url, name: name, type: type, limitMegabytes: limitMegabytes)
             }.value
             guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin) else {
-                if case .staged(let attachment) = outcome { Self.discardStagedFile(attachment) }
+                if case .staged(let attachment) = outcome { ComposerShared.discardStagedFile(attachment) }
                 return
             }
             var tally = ImportTally()
@@ -2980,7 +2978,7 @@ private struct ComposerActionChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content.conduitGlassControl(
-            cornerRadius: ComposerBar.controlSize / 2,
+            cornerRadius: ComposerShared.controlSize / 2,
             tint: tint,
             prominent: action == .send,
             interactive: action != .unavailable

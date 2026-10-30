@@ -50,7 +50,7 @@ struct GroupRoomComposer: View {
     @AppStorage(AttachmentSizeLimit.preferenceKey) private var attachmentLimitMegabytes = AttachmentSizeLimit.defaultMegabytes
     @AppStorage(ChatTypography.inputPreferenceKey) private var inputTextSizeRaw = ChatTypography.defaultInputSize.rawValue
 
-    private let controlSize = ComposerBar.controlSize
+    private let controlSize = ComposerShared.controlSize
 
     private var surface: AppState.GroupRoomSurface? { appState.activeRoomSurface }
 
@@ -434,7 +434,7 @@ struct GroupRoomComposer: View {
                 ForEach(attachments) { attachment in
                     ComposerAttachmentChip(attachment: attachment, canRemove: !isUploading) {
                         attachments.removeAll { $0.id == attachment.id }
-                        ComposerBar.discardStagedFile(attachment)
+                        ComposerShared.discardStagedFile(attachment)
                     }
                 }
             }
@@ -478,7 +478,7 @@ struct GroupRoomComposer: View {
                 .font(.system(size: 16, weight: .medium))
                 .foregroundStyle(canAttach ? Color.primary : Color.secondary)
                 .frame(width: controlSize, height: controlSize)
-                .contentShape(ComposerBar.controlHitShape)
+                .contentShape(ComposerShared.controlHitShape)
         }
         .accessibilityLabel(Text(AppLocalization.string("Attach")))
         .disabled(isUploading)
@@ -513,7 +513,7 @@ struct GroupRoomComposer: View {
                 .symbolEffect(.pulse, isActive: isDictationActive && !reduceMotion)
                 .contentTransition(.symbolEffect(.replace))
                 .frame(width: controlSize, height: controlSize)
-                .contentShape(ComposerBar.controlHitShape)
+                .contentShape(ComposerShared.controlHitShape)
         }
         .buttonStyle(.plain)
         .disabled(!canDictate && !isDictationActive)
@@ -564,7 +564,7 @@ struct GroupRoomComposer: View {
             }
             .foregroundStyle(canSend || isUploading ? Color.white : Color.secondary.opacity(0.48))
             .frame(width: controlSize, height: controlSize)
-            .contentShape(ComposerBar.controlHitShape)
+            .contentShape(ComposerShared.controlHitShape)
         }
         .disabled(!canSend)
         .conduitGlassControl(
@@ -675,7 +675,7 @@ struct GroupRoomComposer: View {
                 recipients = remaining.roomRecipients ?? []
             }
             if registered {
-                files.forEach(ComposerBar.discardStagedFile)
+                files.forEach(ComposerShared.discardStagedFile)
             }
         }
     }
@@ -1041,7 +1041,7 @@ struct GroupRoomComposer: View {
         // so their local copies are dropped.
         guard appState.activeRoomSurface?.room.roomID == roomID else {
             for case .staged(let attachment) in outcomes {
-                ComposerBar.discardStagedFile(attachment)
+                ComposerShared.discardStagedFile(attachment)
             }
             return
         }

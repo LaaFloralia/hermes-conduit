@@ -20,15 +20,15 @@ struct ComposerDictationStopButton: View {
                 .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: face)
                 .foregroundStyle(waits ? Color.secondary : Color.white)
                 // One width for every face, so the row keeps its layout.
-                .frame(width: 112, height: ComposerBar.controlSize)
+                .frame(width: 112, height: ComposerShared.controlSize)
                 .padding(.horizontal, 4)
-                .contentShape(ComposerBar.controlHitShape)
+                .contentShape(ComposerShared.controlHitShape)
         }
         .buttonStyle(.plain)
         // Its last words are on their way: stopping now would lose them.
         .disabled(waits)
         .conduitGlassControl(
-            cornerRadius: ComposerBar.controlSize / 2,
+            cornerRadius: ComposerShared.controlSize / 2,
             tint: waits ? Color.primary.opacity(0.025) : Color.red,
             prominent: !waits,
             interactive: !waits
