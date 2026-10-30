@@ -250,8 +250,10 @@ private struct LAAEmployeeComposerContent: View {
                     .accessibilityIdentifier("laa.fixture.saved-call")
             }
             if ProcessInfo.processInfo.arguments.contains("-laa-pending-call") {
-                Button("Wait for widget call") {
+                Button {
                     appState.laaEmployeeGPTLivePlan = appState.laaEmployeeCallPlan(profile: "laa-cto")
+                } label: {
+                    Text(verbatim: "Wait for widget call")
                 }
                 .accessibilityIdentifier("laa.fixture.pending-call")
             }

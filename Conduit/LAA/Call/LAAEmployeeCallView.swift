@@ -73,7 +73,11 @@ struct LAAEmployeeCallView: View {
                 .foregroundStyle(LAAColor.secondaryText)
             HStack {
                 Button(action: calls.showChat) {
-                    Label("チャット", systemImage: "chevron.left")
+                    Label {
+                        Text(verbatim: "チャット")
+                    } icon: {
+                        Image(systemName: "chevron.left")
+                    }
                 }
                 .foregroundStyle(LAAColor.link)
                 .disabled(!snapshot.phase.isOngoing)
