@@ -1108,7 +1108,12 @@ struct ComposerBar: View, Equatable {
             }
 
 #if LAA_BUILD
-            V2VoiceButton(context: .conversation, style: .toolbar)
+            if isEmployeeConversation {
+                // Staff calls, including saved resumes, must create the employee plan first.
+                voiceButton
+            } else {
+                V2VoiceButton(context: .conversation, style: .toolbar)
+            }
 #else
             trailingSlot
 #endif
