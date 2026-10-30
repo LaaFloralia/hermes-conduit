@@ -10,7 +10,6 @@ extension LAACopy {
         static let studio = "Studio"
         static let search = "Search assets"
         static let unavailable = "Inspiration and Studio are not available yet."
-        static let previewUnavailable = "File previews are not available yet."
         static let configureDrive = "Drive authorization is not configured on the Mac."
         static let scope = "This device needs the media:read permission."
         static let empty = "No items found."
@@ -35,18 +34,31 @@ struct LAADriveItem: Decodable, Identifiable, Hashable {
     let name: String
     let mimeType: String
     let kind: String
+    let size: Int64?
+    let modifiedAt: String?
+    let downloadable: Bool?
+    let exportFormats: [String]?
+    let thumbnailLink: URL?
+    let owners: [LAADriveOwner]?
 
     var isFolder: Bool { kind == "folder" }
     var isImage: Bool { mimeType.hasPrefix("image/") }
+    var isMedia: Bool { mimeType.hasPrefix("video/") || mimeType.hasPrefix("audio/") }
+    var isPDF: Bool { mimeType == "application/pdf" }
+    var isWorkspace: Bool { kind == "workspace_document" }
     var isDocument: Bool {
         !isFolder && (mimeType.hasPrefix("text/") || mimeType == "application/pdf" ||
                       mimeType == "application/msword" || mimeType.hasPrefix("application/vnd.openxmlformats-officedocument.") ||
                       kind == "workspace_document")
     }
-    var symbol: String { isFolder ? "folder" : isImage ? "photo" : "doc.text" }
+    var symbol: String { isFolder ? "folder" : isImage ? "photo" : isMedia ? "play.rectangle" : "doc.text" }
     var kindTitle: String {
         isFolder ? LAACopy.Assets.folder : isImage ? LAACopy.Assets.image : isDocument ? LAACopy.Assets.document : LAACopy.Assets.file
     }
+}
+
+struct LAADriveOwner: Decodable, Hashable {
+    let displayName: String?
 }
 
 struct LAADrivePage: Decodable {
@@ -89,7 +101,9 @@ enum LAADriveData {
     }
 
     #if DEBUG
-    private static var fixture: String? {
+    static var snapshotFixture: String?
+    static var fixture: String? {
+        if let snapshotFixture { return snapshotFixture }
         let args = ProcessInfo.processInfo.arguments
         guard let index = args.firstIndex(of: "-laa-assets-fixture"), index + 1 < args.count else { return nil }
         return args[index + 1]
@@ -107,6 +121,10 @@ enum LAADriveData {
         #if DEBUG
         if let fixture {
             if fixture == "offline" { throw LAABridgeError.networkUnreachable }
+            if fixture == "error" {
+                throw LAABridgeHTTPError(status: 500, code: "fetch_failed", message: nil,
+                                         retryable: false, details: nil, requestId: nil, currentETag: nil)
+            }
             if fixture == "unconfigured" {
                 throw LAABridgeHTTPError(status: 503, code: "drive_not_configured", message: nil,
                                          retryable: false, details: nil, requestId: nil, currentETag: nil)
@@ -124,7 +142,9 @@ enum LAADriveData {
             ] : [
                 ["id": "folder1", "name": "Projects", "mimeType": "application/vnd.google-apps.folder", "kind": "folder"],
                 ["id": "image1", "name": "Portrait", "mimeType": "image/png", "kind": "file"],
-                ["id": "doc1", "name": "Notes", "mimeType": "application/pdf", "kind": "file"]
+                ["id": "doc1", "name": "Notes", "mimeType": "application/pdf", "kind": "file"],
+                ["id": "video1", "name": "Sample video", "mimeType": "video/quicktime", "kind": "file"],
+                ["id": "workspace1", "name": "Workspace document", "mimeType": "application/vnd.google-apps.document", "kind": "workspace_document"]
             ]
             if fixture == "paged" {
                 objects = cursor == nil ? Array(objects.prefix(1)) : Array(objects.dropFirst(1))
@@ -136,6 +156,22 @@ enum LAADriveData {
         }
         #endif
         let result: LAABridgeResponse<LAADrivePage> = try await bridge.request(method: "GET", path: path)
+        return result.data
+    }
+
+    @MainActor static func metadata(_ item: LAADriveItem, bridge: LAABridgeSession) async throws -> LAADriveItem {
+        #if DEBUG
+        if fixture != nil {
+            let data = try JSONSerialization.data(withJSONObject: [
+                "id": item.id, "name": item.name, "mimeType": item.mimeType, "kind": item.kind,
+                "size": 1024, "modifiedAt": "2026-10-25T13:00:00.000Z", "downloadable": !item.isWorkspace,
+                "exportFormats": item.isWorkspace ? ["application/pdf"] : []
+            ])
+            return try JSONDecoder().decode(LAADriveItem.self, from: data)
+        }
+        #endif
+        let path = try LAADrivePaths.metadata(item.id)
+        let result: LAABridgeResponse<LAADriveItem> = try await bridge.request(method: "GET", path: path)
         return result.data
     }
 }

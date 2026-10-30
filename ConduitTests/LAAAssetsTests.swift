@@ -29,5 +29,19 @@ final class LAAAssetsTests: XCTestCase {
         XCTAssertFalse(LAADriveFilter.documents.contains(unknown))
         XCTAssertTrue([folder, image, unknown].allSatisfy(LAADriveFilter.all.contains))
     }
+
+    func testMetadataAndUnsupportedReasonsUseOnlyReturnedValues() throws {
+        let json = """
+        {"id":"document01","name":"Doc","mimeType":"application/vnd.google-apps.document", "kind":"workspace_document", "size":null, "modifiedAt":"2026-10-25T13:00:00Z", "downloadable":false, "exportFormats":["application/pdf"]}
+        """
+        let document = try JSONDecoder().decode(LAADriveItem.self, from: Data(json.utf8))
+        XCTAssertNil(document.size)
+        XCTAssertNil(document.owners)
+        XCTAssertNil(document.thumbnailLink)
+        XCTAssertEqual(document.exportFormats, ["application/pdf"])
+        XCTAssertEqual(LAADrivePresentation.reason(document), LAACopy.Drive.workspace)
+        let unknown = try item("unknown", mime: "application/octet-stream", kind: "file")
+        XCTAssertEqual(LAADrivePresentation.reason(unknown), LAACopy.Drive.downloadUnknown)
+    }
 }
 #endif

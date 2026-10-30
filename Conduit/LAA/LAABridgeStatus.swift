@@ -27,10 +27,33 @@ final class LAABridgeSession: ObservableObject {
         self.client = .init()
         self.status = statusForTesting
     }
+
+    /// In-memory credentials for a local HTTP fixture; never written to Keychain.
+    init(credentialsForTesting: LAABridgeCredentials) {
+        self.keychain = .init()
+        self.client = .init()
+        self.credentials = credentialsForTesting
+        self.status = .paired
+    }
     #endif
 
     var address: String { credentials?.baseURL.absoluteString ?? LAABridgeEndpoint.defaultAddress }
     var deviceID: String? { credentials?.deviceID }
+
+    func driveRange(path: String, offset: Int64, length: Int) async throws -> LAADriveRangeResponse {
+        guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
+        do {
+            let result = try await client.driveRange(path: path, credentials: current, offset: offset, length: length)
+            guard current == credentials, status == .paired else { throw CancellationError() }
+            return result
+        } catch let error as LAABridgeHTTPError {
+            if current == credentials, error.status == 401 {
+                status = error.code == "token_revoked" ? .revoked : .unauthorized
+                revision += 1
+            }
+            throw error
+        }
+    }
 
     func pair(address: String, code: String, name: String) async throws {
         let url = try LAABridgeEndpoint.parse(address)
