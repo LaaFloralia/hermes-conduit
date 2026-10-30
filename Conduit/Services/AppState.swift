@@ -11558,7 +11558,7 @@ final class AppState: ObservableObject {
     /// local copies.
     private func dropRoomAttachments(where isDropped: (String) -> Bool) {
         for (key, files) in groupRoomAttachments where isDropped(key) {
-            files.forEach(ComposerBar.discardStagedFile)
+            files.forEach(ComposerShared.discardStagedFile)
             groupRoomAttachments.removeValue(forKey: key)
         }
     }
