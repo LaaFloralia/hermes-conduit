@@ -145,6 +145,20 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         self.request = request
     }
 
+    #if LAA_BUILD
+    /// A WebRTC session must keep the profile and billing it began with.
+    func captured(profile: String, billing: GPTLiveBilling,
+                  isCurrent: @escaping @MainActor () -> Bool = { true }) -> GPTLiveClient {
+        let request = self.request
+        return GPTLiveClient(profile: { profile }, billing: { billing }, request: { path, method, body, timeout in
+            guard isCurrent() else { throw CancellationError() }
+            let response = try await request(path, method, body, timeout)
+            guard isCurrent() else { throw CancellationError() }
+            return response
+        })
+    }
+    #endif
+
     private func scoped(_ path: String) -> String {
         DashboardPath.withProfile(path, profile: profile())
     }

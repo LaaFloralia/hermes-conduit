@@ -87,6 +87,21 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
         voiceControl.bind(appState)
     }
 
+    /// Every employee chat call button uses the same identity and call surface.
+    @discardableResult
+    func startEmployeeConversation(_ appState: AppState) -> Bool {
+        let profile = appState.conversationIdentityProfile
+        guard let employee = LAAStaff(profile: profile) else { return false }
+        if let context = snapshot?.context, context.profile == profile,
+           context.conversationID == appState.activeSessionId {
+            showCall()
+        } else {
+            guard appState.laaEmployeeGPTLivePlan == nil else { return false }
+            start(profile: profile, name: employee.name, conversationID: appState.activeSessionId)
+        }
+        return true
+    }
+
     func start(profile: String, name: String, conversationID: String?) {
         guard control.unavailableReason == nil, snapshot == nil,
               consentRequest == nil, pendingContext == nil else { return }
@@ -115,6 +130,8 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
     }
 
     private func start(_ context: LAAEmployeeCallContext) {
+        // Another entry point may have started while consent was on screen.
+        guard control.unavailableReason == nil, snapshot == nil else { return }
         snapshot = LAAEmployeeCallSnapshot(context: context, phase: .connecting)
         isShowingCall = true
         control.start(context)

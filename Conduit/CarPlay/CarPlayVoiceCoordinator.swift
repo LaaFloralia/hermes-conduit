@@ -1366,6 +1366,11 @@ final class CarPlayVoiceCoordinator {
     /// in a car), so the open waits for it rather than failing at once.
     func performOpenChat(_ row: CarPlayChatRow, generation: UInt64) async {
         guard isCurrent(generation), isConnected else { return }
+        let appState = lastBoundAppState ?? appStateProvider()
+        #if LAA_BUILD
+        // Ending the prior CarPlay call here must not clear a pending phone call.
+        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        #endif
         chosenChat = row
         chatOpenRequest &+= 1
         let request = chatOpenRequest
@@ -1375,7 +1380,6 @@ final class CarPlayVoiceCoordinator {
             isCurrent(generation) && isConnected
                 && chatOpenRequest == request && voiceStartRequest == startRequest
         }
-        let appState = lastBoundAppState ?? appStateProvider()
         observeCurrentVoiceMode(appState)
         let mode = CarPlayVoiceMode.current(in: appState)
         if let liveMode = CarPlayLiveVoiceMode(mode) {
@@ -1621,6 +1625,9 @@ final class CarPlayVoiceCoordinator {
             }
             return
         }
+        #if LAA_BUILD
+        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        #endif
         let startRequest = voiceStartRequest
         let controller = appState.voiceConversationController
         var outcome = AppState.VoiceConversationPrepareOutcome.handled
@@ -1784,6 +1791,10 @@ final class CarPlayVoiceCoordinator {
         // the phone kept.
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
+        #if LAA_BUILD
+        // CarPlay has no call to end while the phone is waiting on CallKit.
+        guard appState.laaEmployeeGPTLivePlan == nil || appState.showGPTLiveSheet || appState.isGPTLiveActive else { return }
+        #endif
         switch CarPlayVoiceMode.current(in: appState) {
         case .classic: appState.closeVoiceConversation()
         case .geminiLive: appState.closeGeminiLiveConversation()
@@ -1922,6 +1933,9 @@ final class CarPlayVoiceCoordinator {
             await establishLiveVoice(.localLive, appState: appState, generation: generation)
             return
         }
+        #if LAA_BUILD
+        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        #endif
         let controller = appState.voiceConversationController
         if controller.hasLiveVoiceSession {
             guard appState.attachToLiveVoiceConversation() else {
@@ -1955,8 +1969,18 @@ final class CarPlayVoiceCoordinator {
         // tapped meanwhile starts nothing.
         guard isCurrent(generation), isConnected, voiceStartRequest == startRequest,
               CarPlayVoiceMode.current(in: appState) == mode.voiceMode else { return }
+        #if LAA_BUILD
+        guard appState.laaEmployeeGPTLivePlan == nil else { forward(.ready); return }
+        #endif
         appState.keepVoiceFromHermesCallCleanup()
         if let liveCallStartGate { await liveCallStartGate() }
+        #if LAA_BUILD
+        // The phone may begin while the car's start is suspended.
+        guard appState.laaEmployeeGPTLivePlan == nil else {
+            if isCurrent(generation), isConnected, voiceStartRequest == startRequest { forward(.ready) }
+            return
+        }
+        #endif
         switch mode {
         case .geminiLive:
             await appState.startGeminiLiveForCarPlay(attachingTo: thread)
@@ -2033,7 +2057,12 @@ final class CarPlayVoiceCoordinator {
         // leaves the car to that mode, started on the next tap as in
         // establishLiveVoice: the old start must not stop the new mode's
         // call, or carry on into a classic listening turn.
-        func stillClassic() -> Bool { CarPlayVoiceMode.current(in: appState) == .classic }
+        func stillClassic() -> Bool {
+            #if LAA_BUILD
+            guard appState.laaEmployeeGPTLivePlan == nil else { return false }
+            #endif
+            return CarPlayVoiceMode.current(in: appState) == .classic
+        }
         // A prepare that armed classic Voice before the switch landed
         // closes what it armed, as an End meanwhile does; one that only
         // attached to a conversation already open leaves it. Unlike

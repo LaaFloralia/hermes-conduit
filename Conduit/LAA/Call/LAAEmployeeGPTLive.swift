@@ -7,14 +7,15 @@ struct LAAEmployeeGPTLivePlan: Equatable {
     let id: UUID = UUID()
     let profile: String
     let voice: String
+    let dashboardID: UUID?
     let engine: VoiceCallEngine = .gptLive
     let billing: GPTLiveBilling = .subscription
 
-    static func make(profile: String, savedVoice: String?) -> Self? {
+    static func make(profile: String, savedVoice: String?, dashboardID: UUID? = nil) -> Self? {
         guard let staff = LAAStaff(profile: profile) else { return nil }
         let voices = Set(GPTLiveVoice.all.map(\.name))
         let voice = savedVoice.flatMap { voices.contains($0) ? $0 : nil } ?? staff.defaultGPTLiveVoice
-        return Self(profile: profile, voice: voice)
+        return Self(profile: profile, voice: voice, dashboardID: dashboardID)
     }
 }
 
@@ -36,6 +37,19 @@ extension LAAStaff {
 
 @MainActor
 extension AppState {
+    var laaGPTLiveProfile: String { laaEmployeeGPTLivePlan?.profile ?? activeProfile }
+
+    var laaGPTLiveToolScope: VoiceHostToolScope? {
+        laaEmployeeGPTLivePlan.map { VoiceHostToolScope(dashboardID: $0.dashboardID, profile: $0.profile) }
+    }
+
+    /// Retry a transient host failure once, while the same call still owns it.
+    func laaEmployeePersonality(_ context: GeminiLiveTokenClient, plan: LAAEmployeeGPTLivePlan) async -> GeminiLiveTokenClient.EmployeePersonality {
+        let first = await context.employeePersonality()
+        guard first == .unavailable, !Task.isCancelled, laaEmployeeGPTLivePlan == plan else { return first }
+        return await context.employeePersonality()
+    }
+
     func laaVoiceResumeEngine(profile: String) -> VoiceCallEngine? {
         laaEmployeeGPTLivePlan?.engine ?? configuredLiveVoiceEngine(profile: profile)
     }

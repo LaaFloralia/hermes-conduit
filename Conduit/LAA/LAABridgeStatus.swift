@@ -20,6 +20,15 @@ final class LAABridgeSession: ObservableObject {
         } catch { status = .keychainError }
     }
 
+    #if DEBUG
+    /// An in-memory status for UI fixtures; no Keychain or network access.
+    init(statusForTesting: Status) {
+        self.keychain = .init()
+        self.client = .init()
+        self.status = statusForTesting
+    }
+    #endif
+
     var address: String { credentials?.baseURL.absoluteString ?? LAABridgeEndpoint.defaultAddress }
     var deviceID: String? { credentials?.deviceID }
 

@@ -137,10 +137,13 @@ final class LAAEmployeeVoiceControl: LAAEmployeeCallControlling {
 private extension LAAEmployeeVoiceHost {
     static func appState(_ app: AppState) -> LAAEmployeeVoiceHost {
         let audio = VoiceAudioSessionCoordinator.shared
+        var ownsVoiceStart = false
+        var ownedPlan: LAAEmployeeGPTLivePlan?
         return LAAEmployeeVoiceHost(
             unavailable: { [weak app] in
                 guard let app else { return "通話を準備中です" }
-                return app.isVoiceCallInProgress ? "別の通話を終了してください" : nil
+                return app.isVoiceCallInProgress || app.laaEmployeeGPTLivePlan != nil
+                    ? "別の通話を終了してください" : nil
             },
             consent: { [weak app] context in
                 if LAAStaff(profile: context.profile) != nil { return LiveVoiceProviderConsent.missing(.gptLive) }
@@ -150,7 +153,8 @@ private extension LAAEmployeeVoiceHost {
             },
             grant: { [weak app] in app?.setLiveVoiceConsent(true, for: $0) },
             open: { [weak app] context in
-                guard let app, app.isConnected, !app.isVoiceCallInProgress,
+                ownsVoiceStart = false
+                guard let app, app.isConnected, !app.isVoiceCallInProgress, app.laaEmployeeGPTLivePlan == nil,
                       app.conversationIdentityProfile == context.profile,
                       app.activeSessionId == context.conversationID else { return .failed }
                 var nativeCallWasActive = false
@@ -159,6 +163,8 @@ private extension LAAEmployeeVoiceHost {
                 }
                 defer { nativeCallObservation.cancel() }
                 let employeePlan = app.laaEmployeeCallPlan(profile: context.profile)
+                ownedPlan = employeePlan
+                ownsVoiceStart = true
                 app.laaEmployeeGPTLivePlan = employeePlan
                 let started = await app.openVoiceConversation(PendingVoiceIntent(
                     profile: app.activeProfile, startsFreshConversation: false, source: .composer))
@@ -201,8 +207,15 @@ private extension LAAEmployeeVoiceHost {
             mute: { [weak app] in app?.setVoiceMutedForNativeCall($0) },
             speaker: { audio.setConversationSpeaker($0) },
             end: { [weak app] in
-                guard let app else { return }
+                guard let app, ownsVoiceStart else { return }
+                ownsVoiceStart = false
+                // An unsuccessful or superseded open must never end a call
+                // that another entry point owns.
+                guard app.laaEmployeeGPTLivePlan == nil || app.laaEmployeeGPTLivePlan == ownedPlan else { return }
                 app.endVoiceForPlacedCall()
+                // A failed GPT-Live call is neither active nor scheduled, but
+                // its sheet and personal context still need the full teardown.
+                if app.showGPTLiveSheet { app.closeGPTLiveConversation() }
                 app.voicePlacedCalls.voiceChanged(running: false)
                 app.laaEmployeeGPTLivePlan = nil
             }

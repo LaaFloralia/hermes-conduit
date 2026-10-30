@@ -46,6 +46,10 @@ struct V2ComposerTypingKey: PreferenceKey {
 
 struct V2ConversationScreen: View {
     @EnvironmentObject private var appState: AppState
+    #if LAA_BUILD
+    @EnvironmentObject private var employeeCalls: LAAEmployeeCallCoordinator
+    @EnvironmentObject private var laaBridge: LAABridgeSession
+    #endif
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var composerExpanded = false
@@ -176,7 +180,7 @@ struct V2ConversationScreen: View {
                     if appState.activeRoomSurface == nil {
                         // Beside the resting composer; it slides aside,
                         // shrinks and fades while the composer is expanded.
-                        V2VoiceButton(context: .conversation, isHidden: hidesVoiceButton)
+                        composerVoiceButton
                             .scaleEffect(hidesVoiceButton && !reduceMotion ? 0.4 : 1)
                             .offset(x: hidesVoiceButton && !reduceMotion ? 30 : 0)
                             .opacity(hidesVoiceButton ? 0 : 1)
@@ -194,6 +198,27 @@ struct V2ConversationScreen: View {
                 .readableChatColumn()
         }
     }
+
+    @ViewBuilder private var composerVoiceButton: some View {
+        #if LAA_BUILD
+        V2VoiceButton(context: .conversation, isHidden: hidesVoiceButton,
+                      employeeCall: employeeComposerCall, employeeCallReason: employeeComposerCallReason)
+        #else
+        V2VoiceButton(context: .conversation, isHidden: hidesVoiceButton)
+        #endif
+    }
+
+    #if LAA_BUILD
+    private var employeeComposerCall: (() -> Void)? {
+        guard LAAStaff(profile: appState.conversationIdentityProfile) != nil else { return nil }
+        return { _ = employeeCalls.startEmployeeConversation(appState) }
+    }
+
+    private var employeeComposerCallReason: String? {
+        guard employeeComposerCall != nil else { return nil }
+        return LAAEmployeeCallAvailability.reason(appState: appState, bridge: laaBridge.status, calls: employeeCalls)
+    }
+    #endif
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {

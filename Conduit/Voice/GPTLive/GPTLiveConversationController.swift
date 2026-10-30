@@ -311,6 +311,9 @@ final class GPTLiveConversationController: ObservableObject {
     private let bridge: GPTLiveDelegationBridge
     private let supervisor: GeminiLiveJobSupervising
     private let requestPermission: @MainActor () async -> Bool
+    #if DEBUG && LAA_BUILD
+    var requestPermissionForTesting: (@MainActor () async -> Bool)?
+    #endif
     private let now: () -> Date
     private let endConversationPhrases: @MainActor () -> [String]
     private let headsetMute: HeadsetMicrophoneMute
@@ -498,7 +501,12 @@ final class GPTLiveConversationController: ObservableObject {
             phase = .failed(UserFacingError.message(for: error))
             return
         }
-        guard await requestPermission() else {
+        #if DEBUG && LAA_BUILD
+        let permissionGranted = await (requestPermissionForTesting ?? requestPermission)()
+        #else
+        let permissionGranted = await requestPermission()
+        #endif
+        guard permissionGranted else {
             guard isStarting(attempt) else { return }
             phase = .failed(VoiceAudioError.microphonePermissionDenied.localizedDescription)
             return

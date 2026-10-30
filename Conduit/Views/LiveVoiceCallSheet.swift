@@ -64,6 +64,14 @@ struct LiveVoiceCallSheet: View {
     /// Allow on that question; Not Now hangs up, as End does.
     var onAllowConsent: () -> Void = {}
 
+    private var callProfile: String {
+        #if LAA_BUILD
+        return appState.laaGPTLiveProfile
+        #else
+        return appState.activeProfile
+        #endif
+    }
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -235,7 +243,7 @@ struct LiveVoiceCallSheet: View {
                             jobs: jobs,
                             // The mode menu under the title names the engine.
                             engine: modeSwitch == nil ? title : "",
-                            profile: appState.profileDisplayName(appState.activeProfile),
+                            profile: appState.profileDisplayName(callProfile),
                             onOpenChat: openAttachedChat
                         )
                     } else {

@@ -25,6 +25,10 @@ struct ComposerBar: View, Equatable {
     private var appState: AppState { updates.appState }
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    #if LAA_BUILD
+    @EnvironmentObject private var employeeCalls: LAAEmployeeCallCoordinator
+    @EnvironmentObject private var laaBridge: LAABridgeSession
+    #endif
     @State private var text = ""
     @State private var composerTextHeight = ComposerPasteTextView.minimumHeight
     @State private var attachments: [Attachment] = []
@@ -998,7 +1002,15 @@ struct ComposerBar: View, Equatable {
             modelButton
 
             if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
+                #if LAA_BUILD
+                // Staff calls resume through the employee header or either
+                // chat voice button, which first creates the employee plan.
+                if LAAStaff(profile: appState.conversationIdentityProfile) == nil {
+                    resumeVoiceCallButton(callID)
+                }
+                #else
                 resumeVoiceCallButton(callID)
+                #endif
             }
 
             Button {
@@ -1886,10 +1898,11 @@ struct ComposerBar: View, Equatable {
     /// plain mic that dictates.
     private var voiceButton: some View {
         let canOpenVoice = canOpenVoiceFromComposer
+        let voiceAvailable = composerVoiceAvailable
         return Button {
             openVoiceFromComposer()
         } label: {
-            Image(systemName: appState.canStartPhoneVoiceConversation ? "waveform" : "waveform.slash")
+            Image(systemName: voiceAvailable ? "waveform" : "waveform.slash")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(canOpenVoice ? Color.accentColor : Color.secondary)
                 .frame(width: Self.controlSize, height: Self.controlSize)
@@ -1899,14 +1912,17 @@ struct ComposerBar: View, Equatable {
         .disabled(!canOpenVoice)
         .conduitGlassControl(
             cornerRadius: Self.controlSize / 2,
-            tint: appState.canStartPhoneVoiceConversation ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
+            tint: voiceAvailable ? .conduitAura.opacity(0.14) : .secondary.opacity(0.06),
             interactive: canOpenVoice
         )
         .accessibilityShowsLargeContentViewer {
             Label("Start voice conversation", systemImage: "waveform")
         }
         .accessibilityLabel(Text("Start voice conversation"))
-        .accessibilityHint(appState.phoneVoiceUnavailableReason
+        #if LAA_BUILD
+        .accessibilityIdentifier("composer.voice")
+        #endif
+        .accessibilityHint(composerVoiceUnavailableReason
             ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
     }
 
@@ -1976,6 +1992,13 @@ struct ComposerBar: View, Equatable {
     private func openVoiceFromComposer() {
         dismissComposer()
         Haptics.selection()
+        #if LAA_BUILD
+        if isEmployeeConversation {
+            guard composerVoiceUnavailableReason == nil else { return }
+            _ = employeeCalls.startEmployeeConversation(appState)
+            return
+        }
+        #endif
         Task {
             _ = await appState.openVoiceConversation(
                 PendingVoiceIntent(
@@ -1988,8 +2011,35 @@ struct ComposerBar: View, Equatable {
     }
 
     private var canOpenVoiceFromComposer: Bool {
-        appState.canStartPhoneVoiceConversation && !appState.voiceWaitsForRunningTurn && appState.composerIsEnabled
+        #if LAA_BUILD
+        if isEmployeeConversation {
+            return composerVoiceUnavailableReason == nil && appState.composerIsEnabled
+        }
+        #endif
+        return appState.canStartPhoneVoiceConversation && !appState.voiceWaitsForRunningTurn && appState.composerIsEnabled
     }
+
+    private var composerVoiceAvailable: Bool {
+        #if LAA_BUILD
+        if isEmployeeConversation { return composerVoiceUnavailableReason == nil }
+        #endif
+        return appState.canStartPhoneVoiceConversation
+    }
+
+    private var composerVoiceUnavailableReason: String? {
+        #if LAA_BUILD
+        if isEmployeeConversation {
+            return LAAEmployeeCallAvailability.reason(appState: appState, bridge: laaBridge.status, calls: employeeCalls)
+        }
+        #endif
+        return appState.phoneVoiceUnavailableReason
+    }
+
+    #if LAA_BUILD
+    private var isEmployeeConversation: Bool {
+        appState.activeRoomSurface == nil && LAAStaff(profile: appState.conversationIdentityProfile) != nil
+    }
+    #endif
 
     private var canDictateFromComposer: Bool {
         appState.composerIsEnabled && !appState.isVoiceInUse

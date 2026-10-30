@@ -378,7 +378,7 @@ build (keeps its own chat and call controls)
 
 **Code**
 - Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `project-laa.yml`, `project-personal.yml`
-- Chat header, photo glass and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
+- Chat header, composer controls, photo glass and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
 - Call state, existing voice adapter, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
 - LAA-only native presentation: `Conduit/LAA/Call/LAACallKitPresentation.swift`, `Conduit/Voice/HermesNativeCalls.swift`, `Conduit/Services/AppState.swift`
@@ -389,8 +389,11 @@ build (keeps its own chat and call controls)
 - The muted loop runs only while visible and active; Reduce Motion, Low Power Mode and scrolling use the still. The loop does not change the audio session.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
+- The call screen follows the selected light or dark appearance using the v2 background, text, surface and control tokens; either the top back control or Chat returns to the originating conversation.
 - Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
 - Employee calls from the chat and widget use GPT-Live on the ChatGPT subscription, the employee's profile and its SOUL persona, regardless of the workspace's voice or billing setting. A missing persona or subscription failure stops the call; there is no API fallback or mode switch during the employee call. The employee detail's voice picker stores a ChatGPT voice in that profile's existing preferences; the call reports if the host does not confirm it. The default profile keeps its existing voice behavior.
+- The header and both composer call buttons use the employee call path, including the expanded composer's saved-call entry. Health, location and phone permissions, live style and recorded or resumed calls follow the employee's profile; an expired call cannot start a later request under a different profile. Persona failures distinguish a missing plugin route from a missing persona or connection failure.
+- A CarPlay start, chat pick or End cannot adopt or discard an employee plan while the phone is waiting for CallKit. CarPlay's existing GPT-Live attachment remains available for a running call.
 - In the LAA build, GPT-Live settings offer only the ChatGPT plan and all GPT-Live calls, including calls from Hermes, use that plan even if API billing was previously saved. The saved preference is retained; the App Store build's billing choices are unchanged.
 - The native provider uses the bundled LAA mask and staff names for outgoing calls; unknown profiles keep their existing name. On iOS 14 and later the system takes the provider name from the app display name.
 - CallKit recents remain off because a recents entry cannot yet start a call back.

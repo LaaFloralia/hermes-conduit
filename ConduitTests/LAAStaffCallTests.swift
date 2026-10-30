@@ -73,6 +73,36 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertTrue(calls.isShowingCall)
     }
 
+    func testComposerCallUsesTheEmployeeConversationAndReturnsToIt() {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        app.setActiveProfileForTesting("default")
+        app.noteBotChatSessionForTesting("morgan-chat", profile: "laa-cfo")
+        app.activeSessionId = "morgan-chat"
+        let control = FakeControl()
+        let calls = LAAEmployeeCallCoordinator(control: control)
+
+        XCTAssertTrue(calls.startEmployeeConversation(app))
+        XCTAssertEqual(control.context?.profile, "laa-cfo")
+        XCTAssertEqual(control.context?.name, "Morgan")
+        XCTAssertEqual(control.context?.conversationID, "morgan-chat")
+        XCTAssertEqual(app.activeProfile, "default")
+        let first = control.context?.id
+        app.laaEmployeeGPTLivePlan = app.laaEmployeeCallPlan(profile: "laa-cfo")
+        calls.showChat()
+        XCTAssertNil(LAAEmployeeCallAvailability.reason(appState: app, bridge: .paired, calls: calls))
+        XCTAssertTrue(calls.startEmployeeConversation(app))
+        XCTAssertTrue(calls.isShowingCall)
+        XCTAssertEqual(control.context?.id, first)
+        calls.end()
+        app.laaEmployeeGPTLivePlan = nil
+        app.activeSessionId = nil
+        XCTAssertFalse(calls.startEmployeeConversation(app))
+    }
+
     func testBindingVoiceControlRefreshesAvailability() {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in

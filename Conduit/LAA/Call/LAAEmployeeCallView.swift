@@ -11,47 +11,51 @@ struct LAAEmployeeCallView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Color(red: 0, green: 0.34, blue: 0.37),
-                                    Color(red: 0.05, green: 0.10, blue: 0.11)],
-                           startPoint: .top, endPoint: .bottom)
+            LAAColor.background
                 .ignoresSafeArea()
             if let snapshot = calls.snapshot {
-                ScrollView {
-                    VStack(spacing: 24) {
-                        Spacer(minLength: 32)
-                        avatar(snapshot)
-                        VStack(spacing: 8) {
-                            Text(snapshot.context.name)
-                                .font(.custom("Georgia", size: 32, relativeTo: .title))
-                                .accessibilityIdentifier("laa.call.name")
-                            if LAAStaff(profile: snapshot.context.profile) != nil {
-                                Text(verbatim: "GPT-Live")
-                                    .laaTextStyle(.secondary)
-                                    .accessibilityIdentifier("laa.call.engine")
+                GeometryReader { geometry in
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            header(snapshot)
+                            avatar(snapshot)
+                                .padding(.top, LAASpacing.x8 + LAASpacing.x6)
+                            VStack(spacing: LAASpacing.x2) {
+                                Text(snapshot.context.name)
+                                    .font(LAAType.screenTitle)
+                                    .accessibilityIdentifier("laa.call.name")
+                                status(snapshot)
+                                    .font(.subheadline)
+                                    .foregroundStyle(LAAColor.secondaryText)
+                                    .accessibilityIdentifier("laa.call.status")
+                                if LAAStaff(profile: snapshot.context.profile) != nil {
+                                    Text(verbatim: "GPT-Live")
+                                        .laaTextStyle(.secondary)
+                                        .foregroundStyle(LAAColor.link)
+                                        .accessibilityIdentifier("laa.call.engine")
+                                }
+                                if let note = snapshot.voiceNote {
+                                    Text(verbatim: note)
+                                        .laaTextStyle(.secondary)
+                                        .foregroundStyle(LAAColor.secondaryText)
+                                        .multilineTextAlignment(.center)
+                                        .accessibilityIdentifier("laa.call.voice-note")
+                                }
                             }
-                            status(snapshot)
-                                .font(.subheadline)
-                                .foregroundStyle(.white.opacity(0.8))
-                                .accessibilityIdentifier("laa.call.status")
-                            if let note = snapshot.voiceNote {
-                                Text(verbatim: note)
-                                    .laaTextStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .accessibilityIdentifier("laa.call.voice-note")
-                            }
+                            .padding(.top, LAASpacing.x2)
+                            Spacer(minLength: LAASpacing.x8)
+                            controls(snapshot)
+                                .padding(.bottom, LAASpacing.x8 + LAASpacing.x4)
                         }
-                        Spacer(minLength: 32)
-                        controls(snapshot)
-                            .padding(.bottom, 28)
+                        .frame(maxWidth: 540)
+                        .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                        .padding(.horizontal, LAASpacing.horizontal)
                     }
-                    .frame(maxWidth: 540, minHeight: 620)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
+                    .scrollBounceBehavior(.basedOnSize)
                 }
-                .scrollBounceBehavior(.basedOnSize)
             }
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(LAAColor.text)
         .accessibilityIdentifier("laa.call.screen")
         .interactiveDismissDisabled()
         .onAppear { routeLabel = LAAAudioRouteLabel.current() }
@@ -61,15 +65,37 @@ struct LAAEmployeeCallView: View {
             }
     }
 
+    private func header(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
+        ZStack {
+            Text(verbatim: "通話")
+                .laaTextStyle(.section)
+                .fontWeight(.semibold)
+                .foregroundStyle(LAAColor.secondaryText)
+            HStack {
+                Button(action: calls.showChat) {
+                    Label("チャット", systemImage: "chevron.left")
+                }
+                .foregroundStyle(LAAColor.link)
+                .disabled(!snapshot.phase.isOngoing)
+                .accessibilityIdentifier("laa.call.back")
+                Spacer()
+            }
+        }
+        .frame(height: 44)
+    }
+
     private func avatar(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
         let level = Self.level(snapshot.audioLevel)
         return ZStack {
             Circle()
-                .stroke(.white.opacity(0.45), lineWidth: 2)
-                .frame(width: 278, height: 278)
+                .fill(LAAColor.surface)
+                .frame(width: 270, height: 270)
+            StaffAvatarView(profile: snapshot.context.profile, name: snapshot.context.name, size: 270)
+            Circle()
+                .strokeBorder(LAAColor.selectionFill, lineWidth: 14)
+                .frame(width: 298, height: 298)
                 .scaleEffect(reduceMotion ? 1 : 1 + CGFloat(level) * 0.08)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
-            StaffAvatarView(profile: snapshot.context.profile, name: snapshot.context.name, size: 270)
         }
         .frame(width: 300, height: 300)
     }
@@ -112,7 +138,8 @@ struct LAAEmployeeCallView: View {
                     LAAAudioRoutePicker()
                         .frame(width: 60, height: 60)
                         .modifier(CallGlassCircle(selected: false, destructive: false))
-                    Text(verbatim: routeLabel).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(verbatim: routeLabel).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity)
                 .disabled(!snapshot.phase.isOngoing)
@@ -148,7 +175,8 @@ private struct CallGlassButton: View {
                     .font(.system(size: 21, weight: .semibold))
                     .frame(width: 60, height: 60)
                     .modifier(CallGlassCircle(selected: selected, destructive: destructive))
-                Text(title).font(.caption).lineLimit(1).minimumScaleFactor(0.8)
+                Text(title).font(.caption).foregroundStyle(LAAColor.secondaryText)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity)
         }
@@ -184,8 +212,8 @@ enum LAAAudioRouteLabel {
 private struct LAAAudioRoutePicker: UIViewRepresentable {
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()
-        picker.tintColor = .white
-        picker.activeTintColor = .white
+        picker.tintColor = UIColor(LAAColor.link)
+        picker.activeTintColor = UIColor(LAAColor.link)
         picker.prioritizesVideoDevices = false
         picker.accessibilityLabel = "音声の出力先"
         picker.accessibilityIdentifier = "laa.call.audio-route"
@@ -200,16 +228,33 @@ private struct CallGlassCircle: ViewModifier {
     let selected: Bool
     let destructive: Bool
 
+    private var fill: Color {
+        destructive ? LAAColor.end : (selected ? LAAColor.selectionFill : LAAColor.surface)
+    }
+
     @ViewBuilder func body(content: Content) -> some View {
         if reduceTransparency {
-            content.background(destructive ? Color.red : (selected ? Color.white.opacity(0.35) : Color(red: 0.09, green: 0.15, blue: 0.16)), in: Circle())
+            styled(content)
+                .background(fill, in: Circle())
+                .overlay(border)
         } else if #available(iOS 26.0, *) {
-            content.glassEffect(.clear.tint(destructive ? .red.opacity(0.75) : (selected ? .white.opacity(0.25) : .clear)).interactive(), in: Circle())
-        } else if destructive {
-            content.background(.ultraThinMaterial, in: Circle()).background(Color.red.opacity(0.65), in: Circle())
+            styled(content)
+                .glassEffect(.clear.tint(fill).interactive(), in: Circle())
+                .overlay(border)
         } else {
-            content.background(.ultraThinMaterial, in: Circle())
+            styled(content)
+                .background(fill, in: Circle())
+                .overlay(border)
         }
+    }
+
+    private func styled(_ content: Content) -> some View {
+        content.foregroundStyle(destructive ? LAAColor.filledButtonText : LAAColor.link)
+    }
+
+    private var border: some View {
+        Circle().strokeBorder(destructive ? Color.clear : LAAColor.separator, lineWidth: 1)
+            .allowsHitTesting(false)
     }
 }
 
@@ -218,7 +263,6 @@ struct LAACallPresentation: ViewModifier {
     func body(content: Content) -> some View {
         content.fullScreenCover(isPresented: $calls.isShowingCall) {
             LAAEmployeeCallView(calls: calls)
-                .preferredColorScheme(.dark)
         }
         .sheet(item: $calls.consentRequest, onDismiss: calls.consentDidDismiss) { request in
             LiveVoiceConsentSheet(mode: request.mode, onAnswer: calls.answerConsent)
