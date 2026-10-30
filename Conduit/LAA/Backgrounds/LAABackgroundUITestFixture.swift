@@ -135,6 +135,7 @@ struct LAABackgroundUITestFixtureScreen: View {
     @State private var sheet: FixtureSheet?
     @State private var bridgeResult = "未確認"
     @State private var captureReady = false
+    @State private var pushesChat = ProcessInfo.processInfo.arguments.contains("-LAA_FIXTURE_PUSH_CHAT")
     @EnvironmentObject private var bridge: LAABridgeSession
     @EnvironmentObject private var rootState: AppState
     @Environment(\.colorScheme) private var inheritedColorScheme
@@ -169,6 +170,11 @@ struct LAABackgroundUITestFixtureScreen: View {
                 }
                 if let name = fake.createdName { Text(verbatim: "作成済み：\(name)").accessibilityIdentifier("fixture.created") }
                 conversationScreen.environmentObject(fake.state)
+            }
+            .navigationTitle(pushesChat ? "Chats" : "")
+            .navigationDestination(isPresented: $pushesChat) {
+                conversationScreen.environmentObject(fake.state)
+                    .transformEnvironment(\.v2Shell) { $0.isRootCovered = true }
             }
             .sheet(item: $sheet) { selected in
                 switch selected {
@@ -227,7 +233,9 @@ struct LAABackgroundUITestFixtureScreen: View {
                 }
                 rootState.themePreference = args.contains("-LAA_V2_DARK") ? .dark : .light
             }
-            if argument("-LAA_CAPTURE_SURFACE") == "group" { await fake.openGroup() }
+            if argument("-LAA_CAPTURE_SURFACE") == "group" || args.contains("-LAA_FIXTURE_PUSH_GROUP") {
+                await fake.openGroup()
+            }
             if let raw = argument("-LAA_CAPTURE_KIND") {
                 guard let kind = LAABackground.Kind(rawValue: raw), let key = LAAConversationScope.current(fake.state) else { return }
                 do {

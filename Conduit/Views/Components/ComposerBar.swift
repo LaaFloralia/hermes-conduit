@@ -425,7 +425,7 @@ struct ComposerBar: View, Equatable {
         }
         // Resting, the voice button keeps its spot on the trailing side.
 #if LAA_BUILD
-        .padding(.horizontal, LAASpacing.x4)
+        .padding(.horizontal, LAASpacing.horizontal)
         .padding(.top, LAASpacing.x2)
         .padding(.bottom, LAASpacing.x2)
 #else

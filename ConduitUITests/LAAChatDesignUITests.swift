@@ -79,6 +79,34 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertTrue(groupApp.buttons["room.call.reason"].waitForExistence(timeout: 5))
     }
 
+    func testCompactHeaderKeepsBackAndMenuUsable() {
+        let app = launch(["-LAA_FORCE_COMPACT_CHAT", "-LAA_FIXTURE_PUSH_CHAT"])
+        let header = app.buttons["laa.employee.header"]
+        let menu = app.buttons["conversation.menu"]
+        let back = app.buttons["BackButton"]
+        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        XCTAssertTrue(back.isHittable)
+        XCTAssertTrue(menu.isHittable)
+        XCTAssertFalse(back.frame.intersects(header.frame), "Back \(back.frame) must not overlap the employee header \(header.frame)")
+        back.tap()
+        XCTAssertTrue(app.buttons["fixture.group"].waitForExistence(timeout: 10))
+    }
+
+    func testCompactGroupHeaderKeepsBackAndMenuUsable() {
+        let app = launch(["-LAA_FORCE_COMPACT_CHAT", "-LAA_FIXTURE_PUSH_CHAT", "-LAA_FIXTURE_PUSH_GROUP"])
+        let groupCall = app.buttons["room.call.unavailable"]
+        let menu = app.buttons["conversation.menu"]
+        let back = app.buttons["BackButton"]
+        XCTAssertTrue(groupCall.waitForExistence(timeout: 20))
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        XCTAssertTrue(back.isHittable)
+        XCTAssertTrue(menu.isHittable)
+        XCTAssertFalse(back.frame.intersects(groupCall.frame), "Back must not overlap the group controls")
+        back.tap()
+        XCTAssertTrue(app.buttons["fixture.group"].waitForExistence(timeout: 10))
+    }
+
     func testGroupUsesSameRichCardsAndSendsThroughFake() {
         let app = launch()
         app.buttons["fixture.group"].tap()

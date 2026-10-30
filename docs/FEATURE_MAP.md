@@ -3635,5 +3635,6 @@ and rollback instructions · the upstream App Store build
 
 **Rulings**
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
+- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the system Back button.
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.

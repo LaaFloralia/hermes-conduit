@@ -186,7 +186,7 @@ struct GroupRoomComposer: View {
         // Send and the mic give way to dictation's Stop, and come back.
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: dictationHoldsSendSlot)
 #if LAA_BUILD
-        .padding(.horizontal, LAASpacing.x4)
+        .padding(.horizontal, LAASpacing.horizontal)
         .padding(.top, LAASpacing.x2)
         .padding(.bottom, LAASpacing.x2)
 #else

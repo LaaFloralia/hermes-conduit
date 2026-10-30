@@ -3,6 +3,8 @@ import SwiftUI
 
 struct LAAEmployeeChatToolbar: ToolbarContent {
     var compactMenu: AnyView? = nil
+    var compactWidth: CGFloat = 0
+    var compactLeadingInset: CGFloat = 0
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
     @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
@@ -49,7 +51,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     @ToolbarContentBuilder var body: some ToolbarContent {
         if let compactMenu {
             ToolbarItem(placement: .principal) {
-                LAACompactConversationToolbar {
+                LAACompactConversationToolbar(width: compactWidth, leadingInset: compactLeadingInset) {
                     header
                 } controls: {
                     callButton
@@ -66,11 +68,19 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
 /// Keep the same controls in the header when the system would otherwise
 /// place trailing toolbar items in the Duo's side rail.
 struct LAACompactConversationToolbar<Title: View, Controls: View>: View {
+    let width: CGFloat
+    let leadingInset: CGFloat
     @ViewBuilder let title: Title
     @ViewBuilder let controls: Controls
 
     var body: some View {
         HStack(spacing: LAASpacing.x1) {
+            if leadingInset > 0 {
+                Color.clear
+                    .frame(width: leadingInset)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
             title
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
@@ -80,7 +90,7 @@ struct LAACompactConversationToolbar<Title: View, Controls: View>: View {
                 .laaPhotoGlassScope()
                 .fixedSize()
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: max(0, width - 2 * LAASpacing.horizontal))
     }
 }
 

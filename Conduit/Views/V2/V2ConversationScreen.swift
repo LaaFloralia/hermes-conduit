@@ -79,6 +79,11 @@ struct V2ConversationScreen: View {
     }
 
     private var compactMenu: AnyView? { usesCompactHeader ? AnyView(conversationMenu) : nil }
+
+    // Leave the system Back button unobstructed when the chat was pushed.
+    private var compactLeadingInset: CGFloat {
+        shell.isRootCovered && !shell.isSplit ? 2 * LAASpacing.x8 + LAASpacing.x4 : 0
+    }
 #endif
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil
@@ -94,7 +99,7 @@ struct V2ConversationScreen: View {
         if appState.activeRoomSurface != nil {
             // Keyed by room: another room starts with its own draft.
 #if LAA_BUILD
-            GroupChatView(compactMenu: compactMenu)
+            GroupChatView(compactMenu: compactMenu, compactWidth: screenWidth, compactLeadingInset: compactLeadingInset)
                 .id(appState.activeRoomSurface?.room.roomID)
                 .environment(\.v2ComposerRests, true)
 #else
@@ -260,7 +265,7 @@ struct V2ConversationScreen: View {
         // Session-only controls: an open room owns the title and actions.
         if appState.activeRoomSurface == nil {
 #if LAA_BUILD
-            LAAEmployeeChatToolbar(compactMenu: compactMenu)
+            LAAEmployeeChatToolbar(compactMenu: compactMenu, compactWidth: screenWidth, compactLeadingInset: compactLeadingInset)
 #else
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {

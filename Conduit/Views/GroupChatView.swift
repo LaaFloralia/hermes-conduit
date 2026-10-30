@@ -8,6 +8,8 @@ import UIKit
 struct GroupChatView: View {
 #if LAA_BUILD
     var compactMenu: AnyView? = nil
+    var compactWidth: CGFloat = 0
+    var compactLeadingInset: CGFloat = 0
 #endif
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var appLanguage = AppLanguageStore.shared
@@ -209,7 +211,11 @@ struct GroupChatView: View {
                 }
                 .coordinateSpace(.named(GroupRoomFollow.coordinateSpaceName))
                 .background { GroupRoomScrollLocator(flag: followFlag, isFollowing: $isFollowingLatest) }
+#if LAA_BUILD
+                .padding(.horizontal, LAASpacing.horizontal)
+#else
                 .padding(.horizontal, 16)
+#endif
                 .padding(.top, 14)
                 .padding(.bottom, 18)
             }
@@ -353,7 +359,7 @@ struct GroupChatView: View {
 #if LAA_BUILD
         if let compactMenu {
             ToolbarItem(placement: .principal) {
-                LAACompactConversationToolbar {
+                LAACompactConversationToolbar(width: compactWidth, leadingInset: compactLeadingInset) {
                     roomTitle
                 } controls: {
                     roomCallButton

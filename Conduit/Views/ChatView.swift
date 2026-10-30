@@ -540,7 +540,11 @@ struct ChatView: View {
             .background {
                 ChatScrollSurfaceLocator(engine: scrollEngine)
             }
+#if LAA_BUILD
+            .padding(.horizontal, LAASpacing.horizontal)
+#else
             .padding(.horizontal, 18)
+#endif
             .padding(.top, 18)
             .background {
                 GeometryReader { _ in

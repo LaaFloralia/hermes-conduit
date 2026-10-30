@@ -61,8 +61,13 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         let previousWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
         let scene = try XCTUnwrap(previousWindow?.windowScene ?? scenes.first,
                                  "The hosted conversation needs a window scene to render")
+        let deviceInsets = previousWindow?.safeAreaInsets ?? .zero
         let window = UIWindow(windowScene: scene)
-        window.frame = canvas
+        // On Duo, put the physical rail outside the 440-point viewport.
+        // UIKit then lays out the real screen and navigation bar in the same
+        // usable width as a single-screen phone, without modifying either.
+        window.frame = CGRect(x: 0, y: 0, width: canvas.width + deviceInsets.left + deviceInsets.right,
+                              height: canvas.height)
         window.traitOverrides.horizontalSizeClass = .compact
         window.traitOverrides.verticalSizeClass = .regular
         window.traitOverrides.userInterfaceStyle = style
@@ -89,8 +94,10 @@ final class LAACompactChatSnapshotTests: XCTestCase {
             }
         }
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertEqual(window.bounds, canvas)
-        XCTAssertEqual(host.view.bounds.size, canvas.size)
+        XCTAssertEqual(window.bounds.height, canvas.height, accuracy: 0.5)
+        XCTAssertEqual(host.view.bounds.size, window.bounds.size)
+        XCTAssertEqual(window.bounds.width - host.view.safeAreaInsets.left - host.view.safeAreaInsets.right,
+                       canvas.width, accuracy: 0.5, "The actual conversation viewport must be 440 points")
         XCTAssertEqual(window.traitCollection.horizontalSizeClass, .compact)
         XCTAssertEqual(host.traitCollection.horizontalSizeClass, .compact)
         XCTAssertEqual(swiftUISizeClass, .compact)
@@ -111,13 +118,26 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 3
         format.opaque = true
-        let image = UIGraphicsImageRenderer(bounds: canvas, format: format).image { _ in
-            XCTAssertTrue(window.drawHierarchy(in: canvas, afterScreenUpdates: true))
+        let rendered = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+            XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
         }
+        let viewport = CGRect(x: host.view.safeAreaInsets.left * format.scale, y: 0,
+                              width: canvas.width * format.scale, height: canvas.height * format.scale)
+        let cropped = try XCTUnwrap(rendered.cgImage?.cropping(to: viewport))
+        let image = UIImage(cgImage: cropped, scale: format.scale, orientation: .up)
         XCTAssertEqual(image.size, canvas.size)
         XCTAssertEqual(image.cgImage?.width, 1320)
         XCTAssertEqual(image.cgImage?.height, 2868)
         XCTAssertTrue(hasVisibleContent(image), "The rendered snapshot must not be blank")
+        let bubbleTrailing = try XCTUnwrap(bubbleTrailingEdge(image, style: style), "Own bubble must be visible")
+        XCTAssertEqual(canvas.width - bubbleTrailing, LAASpacing.horizontal, accuracy: 2,
+                       "The own bubble must end at the chat's trailing margin")
+        let headerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 10..<60), "The header controls must be visible")
+        XCTAssertEqual(canvas.width - headerTrailing, LAASpacing.horizontal, accuracy: 3,
+                       "The header controls must end at the chat's trailing margin")
+        let composerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 800..<940), "The composer controls must be visible")
+        XCTAssertEqual(canvas.width - composerTrailing, LAASpacing.horizontal, accuracy: 3,
+                       "The send control must end at the chat's trailing margin")
         let attachment = XCTAttachment(image: image)
         attachment.name = "compact-440x956-\(style == .dark ? "dark" : "light")"
         attachment.lifetime = .keepAlways
@@ -136,6 +156,72 @@ final class LAACompactChatSnapshotTests: XCTestCase {
     private func textHosts(in root: UIView) -> [SelectableTextViewHostView] {
         let own = (root as? SelectableTextViewHostView).map { [$0] } ?? []
         return own + root.subviews.flatMap { textHosts(in: $0) }
+    }
+
+    /// Measures the actual rendered bubble, so a 440-point window containing
+    /// a narrower conversation fails even if its outer bounds look correct.
+    private func bubbleTrailingEdge(_ image: UIImage, style: UIUserInterfaceStyle) -> CGFloat? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = Int(canvas.width), height = Int(canvas.height), components = 4
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        guard UIColor(LAAColor.ownBubble).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+            .getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return nil }
+        let expected = [red, green, blue].map { Int(($0 * 255).rounded()) }
+        var pixels = [UInt8](repeating: 0, count: width * height * components)
+        return pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * components,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                            | CGBitmapInfo.byteOrder32Big.rawValue) else { return nil }
+            context.interpolationQuality = .high
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+            var trailing: Int?
+            for y in 0..<height {
+                var start: Int?
+                for x in 0...width {
+                    let offset = (y * width + min(x, width - 1)) * components
+                    let matches = x < width && (0..<3).allSatisfy { abs(Int(buffer[offset + $0]) - expected[$0]) <= 3 }
+                    if matches && start == nil { start = x }
+                    if !matches, let runStart = start {
+                        if x - runStart >= 80 { trailing = max(trailing ?? 0, x) }
+                        start = nil
+                    }
+                }
+            }
+            return trailing.map(CGFloat.init)
+        }
+    }
+
+    /// The glass edge differs from the plain paper at the far right of the
+    /// same row. Crop first so other controls cannot satisfy the assertion.
+    private func trailingControlEdge(_ image: UIImage, rows: Range<Int>) -> CGFloat? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = Int(canvas.width), height = rows.count, components = 4
+        let crop = CGRect(x: 0, y: CGFloat(rows.lowerBound) * image.scale,
+                          width: CGFloat(cgImage.width), height: CGFloat(height) * image.scale)
+        guard let section = cgImage.cropping(to: crop) else { return nil }
+        var pixels = [UInt8](repeating: 0, count: width * height * components)
+        return pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * components,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                            | CGBitmapInfo.byteOrder32Big.rawValue) else { return nil }
+            context.interpolationQuality = .high
+            context.draw(section, in: CGRect(x: 0, y: 0, width: width, height: height))
+            var trailing: Int?
+            for y in 0..<height {
+                let background = (y * width + width - 5) * components
+                for x in (width / 2)..<(width - 8) {
+                    let offset = (y * width + x) * components
+                    if (0..<3).contains(where: { abs(Int(buffer[offset + $0]) - Int(buffer[background + $0])) >= 8 }) {
+                        trailing = max(trailing ?? 0, x + 1)
+                    }
+                }
+            }
+            return trailing.map(CGFloat.init)
+        }
     }
 
     private func hasVisibleContent(_ image: UIImage) -> Bool {
