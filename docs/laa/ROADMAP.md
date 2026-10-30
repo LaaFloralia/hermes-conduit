@@ -1,6 +1,6 @@
 # LAA iPhoneアプリ：構成と実装順
 
-2026-10-29。対象はLaaFloralia/hermes-conduitのLAA版。これは実装計画であり、接続・実機稼働を示さない。別作業中の署名／TestFlight、CallKit発信、ConsoleのUsage非表示には手を重ねない。各タスクは最大2作業日、日付や期限の約束ではない。担当は実装=公式DSH、デザイン=design-worker、判断・統合・検証=親。D1・Jevの判断、指定モデル・認証・停止状態を維持する。
+2026-10-29。対象はLaaFloralia/hermes-conduitのLAA版。これは実装計画であり、接続・実機稼働を示さない。別作業中の署名／TestFlight、CallKit発信、ConsoleのUsage非表示には手を重ねない。各タスクは最大2作業日、日付や期限の約束ではない。iOS実装・独立レビューは [PROJECT-RULES](../../PROJECT-RULES.md) を優先し、その他の実装は公式DSH、デザインはdesign-worker、判断・統合・検証は親。D1・Jevの判断、指定モデル・認証・停止状態を維持する。
 
 ## 決定と境界
 
@@ -90,7 +90,7 @@ P0 基準版：署名／発信の並行作業の結果を取り込み、設計�
 
 ## 最初の5件：派遣仕様
 
-**共通**：入力は本書、対象repoと適用PROJECT-RULES、既存正本の必要節。秘密や会話全文を子へ渡さない。実装担当は公式DSH `deepseek-v4.1-flash` High、デザイン担当はdesign-worker、親は現在のモデルを維持。各自のworktreeと所有範囲を指定し、競合作業やmasterを変更しない。結果に実provider／model／effort、証拠、未確認、検証と停止理由を添える。起動値と結果を親が照合する。
+**共通**：入力は本書、対象repoと適用PROJECT-RULES、既存正本の必要節。秘密や会話全文を子へ渡さない。iOS実装・独立レビューはPROJECT-RULES、その他の実装は公式DSH `deepseek-v4.1-flash` High、デザインはdesign-worker、親は現在のモデルを維持。各自のworktreeと所有範囲を指定し、競合作業やmasterを変更しない。結果に実provider／model／effort、証拠、未確認、検証と停止理由を添える。起動値と結果を親が照合する。
 
 1. **01 現状・依存棚卸し**：DSH High、読取のみ。対象はConduitのFEATURE_MAP・widget・Kanban、HQのPASEO-HERMES／AI-OPERATING-MODEL／LINEAR、`laa-personal-agent`、既存Usage・Studio・同期経路。所有物は作業用の棚卸し結果のみ。署名／CallKitの別workerの状態、稼働版とrepo版、Paseo依存とcron、ConsoleのUsage変更、Brainの同期writer・ディレクトリを照合。完了はパス・版・観測方法・未確認と後続への影響を返すこと。認証・設定・サービスを変更しない。最大2日。
 2. **02 Bridge契約・安全設計**：親、01に依存。所有物はBridge設計文書のみ。対象別認可、Tailscale＋端末認証、リプレイ防止、イベントcursor、異常終了・復旧、GUI排他、Brain外部writerの競合と切戻しを具体化。既存の認証・サービス・agent-controlを再利用し、通信失敗と権限拒否を区別。受入は脅威・端点・データ所有者・テスト・未決定が独立レビュー可能なこと。実装・権限変更なし。最大2日。
