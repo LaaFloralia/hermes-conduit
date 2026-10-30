@@ -46,6 +46,20 @@ import UIKit
 
 @MainActor
 final class WatchDirectBroker {
+    enum AudioGrantMode { case gpt, grok, local }
+
+    static func unavailableGrantReason(_ mode: AudioGrantMode) -> String {
+#if LAA_BUILD
+        return LAACopy.watchCallUnavailable
+#else
+        switch mode {
+        case .gpt: return AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay.")
+        case .grok: return AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay.")
+        case .local: return AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay.")
+        }
+#endif
+    }
+
     /// A start_job is answered once Hermes takes the job, or after this
     /// long whatever happens: its news comes with a later poll.
     static let jobStartWait: Duration = .seconds(8)
@@ -549,7 +563,7 @@ final class WatchDirectBroker {
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio else {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open GPT-Live for the Watch: \($0)") }
-                    ?? AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay."))
+                    ?? Self.unavailableGrantReason(.gpt))
             }
             if !audio.engines.contains(engine) {
                 try await prepareRuntime(id, profile: plan.connection.profile)
@@ -662,7 +676,7 @@ final class WatchDirectBroker {
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.grok) else {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Grok for the Watch: \($0)") }
-                    ?? AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay."))
+                    ?? Self.unavailableGrantReason(.grok))
             }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -792,7 +806,7 @@ final class WatchDirectBroker {
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.localLive) else {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Local Live for the Watch: \($0)") }
-                    ?? AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay."))
+                    ?? Self.unavailableGrantReason(.local))
             }
             guard appState.watchDirectConnection == plan.connection else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)

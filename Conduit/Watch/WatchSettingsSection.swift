@@ -143,6 +143,14 @@ struct WatchSettingsSection: View {
 /// /prepare): whether a Watch call to GPT-Live can start at once.
 @MainActor
 final class WatchGPTLiveSetup: ObservableObject {
+    static var statusUnavailableReason: String {
+#if LAA_BUILD
+        LAACopy.watchVoiceStatusUnavailable
+#else
+        AppLocalization.string("Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin.")
+#endif
+    }
+
     enum State: Equatable {
         case unknown
         case ready
@@ -177,7 +185,7 @@ final class WatchGPTLiveSetup: ObservableObject {
         do {
             apply(try await client.audioStatus(profile: appState.activeProfile))
         } catch {
-            state = .unavailable(AppLocalization.string("Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin."))
+            state = .unavailable(Self.statusUnavailableReason)
         }
     }
 

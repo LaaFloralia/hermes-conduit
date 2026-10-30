@@ -212,7 +212,11 @@ struct ShortcutInboxSettingsPage: View {
 
     private static func message(for error: Error) -> String {
         if isPluginTooOld(error) {
+#if LAA_BUILD
+            return LAACopy.shortcutInboxUnavailable
+#else
             return AppLocalization.string("Update the Conduit plugin on your Hermes host to see and delete what was logged.")
+#endif
         }
         return AppLocalization.string("Conduit couldn't reach the inbox on your Hermes host. Try again in a moment.")
     }

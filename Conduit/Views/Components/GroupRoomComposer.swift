@@ -510,7 +510,11 @@ struct GroupRoomComposer: View {
                 }
             } else {
                 // Older plugins can't store a room's files; say what fixes it.
+#if LAA_BUILD
+                Text(verbatim: LAACopy.groupFilesUnavailable)
+#else
                 Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
+#endif
             }
         } label: {
             Image(systemName: "plus")
@@ -1072,7 +1076,11 @@ struct GroupRoomComposer: View {
         // A disbanded room sends nothing, whichever target took the drop.
         guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
         guard appState.canAttachRoomFiles else {
+#if LAA_BUILD
+            composerError = LAACopy.groupFilesUnavailable
+#else
             composerError = AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")
+#endif
             Haptics.error()
             return
         }

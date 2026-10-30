@@ -24,13 +24,21 @@ struct ShortcutLogError: LocalizedError, Equatable {
     /// Kept on the phone: the host keeps events, but this plugin answered
     /// without its inbox.
     static var pluginTooOld: ShortcutLogError {
+#if LAA_BUILD
+        ShortcutLogError(message: LAACopy.shortcutEventKept)
+#else
         ShortcutLogError(message: AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one was kept on the phone and goes after the update."))
+#endif
     }
 
     /// Not kept: the plugin doesn't keep events, so nothing on the phone
     /// would show or delete it.
     static var pluginMissing: ShortcutLogError {
+#if LAA_BUILD
+        ShortcutLogError(message: LAACopy.shortcutEventNotKept)
+#else
         ShortcutLogError(message: AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one wasn't kept."))
+#endif
     }
 
     /// Kept on the phone: it goes with the next event, or when Conduit

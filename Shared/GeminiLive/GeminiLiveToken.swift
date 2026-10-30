@@ -41,7 +41,12 @@ enum GeminiLiveAvailability: Equatable {
         if provider == .qwen {
             switch self {
             case .available: return nil
-            case .pluginMissing: return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+            case .pluginMissing:
+#if LAA_BUILD
+                return LAACopy.serverFeatureUnavailable
+#else
+                return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+#endif
             case .unavailable(let reason):
                 if reason == "no_api_key" { return AppLocalization.string("Add a DashScope API key on your Hermes server.") }
                 if let reason, !reason.isEmpty { return AppLocalization.string("Qwen Live is not available on this Hermes server: \(reason)") }
@@ -60,7 +65,11 @@ enum GeminiLiveAvailability: Equatable {
             }
             return Self.notAvailable(for: provider)
         case .pluginMissing:
+#if LAA_BUILD
+            return LAACopy.serverFeatureUnavailable
+#else
             return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+#endif
         }
     }
 }

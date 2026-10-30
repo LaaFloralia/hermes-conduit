@@ -94,6 +94,31 @@ final class AccessibilityLabelAuditTests: XCTestCase {
         XCTAssertEqual(Self.unnamedIconButtons(in: source, path: "A.swift"), [])
     }
 
+    func testConditionalStylingDoesNotHideTheControlsLabel() {
+        let source = """
+            Button { create() } label: {
+                Image(systemName: "plus")
+        #if LAA_BUILD
+                    .foregroundStyle(LAAColor.link)
+        #endif
+            }
+            .accessibilityLabel("New")
+        """
+        XCTAssertEqual(Self.unnamedIconButtons(in: source, path: "A.swift"), [])
+    }
+
+    func testConditionalStylingDoesNotHideAMissingLabel() {
+        let source = """
+            Button { create() } label: {
+                Image(systemName: "plus")
+        #if LAA_BUILD
+                    .foregroundStyle(LAAColor.link)
+        #endif
+            }
+        """
+        XCTAssertEqual(Self.unnamedIconButtons(in: source, path: "A.swift").map(\.line), [2])
+    }
+
     func testTextInsideTheLabelNamesTheButton() {
         let source = """
             Button(action: open) {
@@ -238,6 +263,9 @@ final class AccessibilityLabelAuditTests: XCTestCase {
                 let trimmed = l.trimmingCharacters(in: .whitespaces)
                 k += 1
                 guard !trimmed.isEmpty else { continue }
+                // Compilation directives do not end the surrounding control.
+                if trimmed.hasPrefix("#if ") || trimmed.hasPrefix("#elseif ")
+                    || trimmed == "#else" || trimmed == "#endif" { continue }
                 let lineIndent = indent(l)
                 if lineIndent < ownerIndent { break }
                 // Another control's image ends the span; an image with no

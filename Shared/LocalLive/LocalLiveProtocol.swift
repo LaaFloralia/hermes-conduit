@@ -37,7 +37,11 @@ enum LocalLiveProtocol {
     static let readinessTimeout: Duration = .seconds(90)
 
     static var pluginMissingReason: String {
+#if LAA_BUILD
+        LAACopy.localLiveUnavailable
+#else
         AppLocalization.string("Update the Conduit plugin on your Hermes host to use Local Live.")
+#endif
     }
 
     static var answeredWithoutHermesReason: String {

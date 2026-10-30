@@ -231,7 +231,11 @@ enum PhoneSyncPause: Codable, Equatable {
         case .signInRequired:
             return AppLocalization.string("Paused: sign in to this dashboard again. Sharing catches up when you open Conduit.")
         case .pluginMissing:
+#if LAA_BUILD
+            return LAACopy.sharingPausedPrefix + LAACopy.phoneSharingUnavailable
+#else
             return AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status.")
+#endif
         case .otherDashboard:
             return AppLocalization.string("Waiting: this goes only to the dashboard it was turned on for. Switch back to it to sync.")
         case .refused(let detail):

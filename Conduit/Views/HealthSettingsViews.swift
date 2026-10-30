@@ -47,7 +47,13 @@ struct HealthSettingsPage: View {
                 } else if preferences.isOn {
                     statusRows
                 } else if !pluginServesHealth {
-                    Text("Update the Conduit plugin on your Hermes host to share health data.")
+                    Group {
+#if LAA_BUILD
+                        Text(verbatim: LAACopy.healthSharingUnavailable)
+#else
+                        Text("Update the Conduit plugin on your Hermes host to share health data.")
+#endif
+                    }
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }

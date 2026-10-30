@@ -241,7 +241,11 @@ extension HermesVoiceGatewayTimeoutTests {
         let status = try await missing.availability()
 
         XCTAssertEqual(status, .pluginMissing)
+#if LAA_BUILD
+        XCTAssertEqual(status.userFacingReason, LAACopy.gptLiveUnavailable)
+#else
         XCTAssertEqual(status.userFacingReason, "Install or update the Hermes notifier plugin on your Hermes server.")
+#endif
     }
 
     func testGPTLiveSessionPostsTheOfferToTheProfileScopedRouteAndSurfacesHostErrorsAsIs() async throws {
@@ -4463,7 +4467,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(GPTLiveClient.availability(from: older).isAvailable)
         let olderAPI = GPTLiveClient.availability(from: older, billing: .api)
         XCTAssertFalse(olderAPI.isAvailable, "A plugin without the api block can't bill the API key")
+#if LAA_BUILD
+        XCTAssertEqual(olderAPI, .unavailable(reason: LAACopy.gptLiveAPIUnavailable))
+        XCTAssertEqual(olderAPI.userFacingReason, LAACopy.gptLiveAPIUnavailable)
+#else
         XCTAssertEqual(olderAPI, .unavailable(reason: "GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer."))
+#endif
 
         var status = older
         status["api"] = ["auth": "api", "enabled": false, "available": false, "reason": "It is off"]

@@ -68,7 +68,11 @@ struct PredictiveSettingsPage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if !appState.predictiveIsServed {
                     Label {
+#if LAA_BUILD
+                        Text(verbatim: LAACopy.predictiveUnavailable)
+#else
                         Text("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later).")
+#endif
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     }

@@ -21,9 +21,22 @@ struct LiveVoiceSetupSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var appLanguage = AppLanguageStore.shared
 
+    private var providerStep: Int {
+#if LAA_BUILD
+        1
+#else
+        2
+#endif
+    }
+
     var body: some View {
         NavigationStack {
             SettingsDetailContainer {
+#if LAA_BUILD
+                Text(verbatim: LAACopy.voiceSetupManaged)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+#else
                 Text(AppLocalization.string("Install the notifier if it is missing, or update your existing installation. Both commands target the Hermes gateway used by this profile."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -38,20 +51,23 @@ struct LiveVoiceSetupSheet: View {
                     title: AppLocalization.string("Update the notifier"),
                     command: "hermes plugins update conduit_push"
                 )
+#endif
 
                 modeInstructions
 
                 NotificationSetupCommand(
-                    step: 3,
+                    step: providerStep + 1,
                     title: AppLocalization.string("Restart the gateway"),
                     command: "hermes gateway restart"
                 )
 
+#if !LAA_BUILD
                 Link(destination: URL(string: "https://github.com/kaishi00/hermes-conduit-notifier")!) {
                     Label(AppLocalization.string("Hermes notifier repository"), systemImage: "arrow.up.right.square")
                         .font(.subheadline.weight(.medium))
                 }
                 .accessibilityHint(AppLocalization.string("Opens the notifier project on GitHub"))
+#endif
 
                 Label(
                     AppLocalization.string("Return to Voice settings, enable this mode if it is off, and tap \(mode.checkTitle) to check availability."),
@@ -78,7 +94,7 @@ struct LiveVoiceSetupSheet: View {
         case .gemini:
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Text(verbatim: "2")
+                    Text(verbatim: String(providerStep))
                         .font(.caption.weight(.bold))
                         .conduitFixedGlyph()
                         .foregroundStyle(.white)
@@ -97,7 +113,7 @@ struct LiveVoiceSetupSheet: View {
         case .qwen:
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Text(verbatim: "2")
+                    Text(verbatim: String(providerStep))
                         .font(.caption.weight(.bold))
                         .conduitFixedGlyph()
                         .foregroundStyle(.white)
@@ -115,7 +131,7 @@ struct LiveVoiceSetupSheet: View {
         case .gpt:
             VStack(alignment: .leading, spacing: 6) {
                 NotificationSetupCommand(
-                    step: 2,
+                    step: providerStep,
                     title: AppLocalization.string("Sign in to OpenAI Codex"),
                     command: "hermes auth"
                 )
@@ -127,7 +143,7 @@ struct LiveVoiceSetupSheet: View {
         case .grok:
             VStack(alignment: .leading, spacing: 6) {
                 NotificationSetupCommand(
-                    step: 2,
+                    step: providerStep,
                     title: AppLocalization.string("Sign in to SuperGrok"),
                     command: "hermes auth add xai-oauth"
                 )

@@ -3465,7 +3465,7 @@ final class AppState: ObservableObject {
                         switch result {
                         case .available(let text): personality = text
                         case .missingRoute:
-                            return .unavailable(reason: "Hermes のプラグインを更新してください。社員の人格を読み込めません。")
+                            return .unavailable(reason: LAACopy.employeePersonalityUnavailable)
                         case .missingPersona:
                             return .unavailable(reason: "社員の人格が見つかりません。Hermes のプロフィールを確認してください。")
                         case .unavailable:
@@ -23849,7 +23849,11 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("This notification belongs to a dashboard this device doesn't recognize. Add that dashboard again to continue.")
             case .unscopedPush:
                 traceStage = "dashboard check (unscoped push)"
+                #if LAA_BUILD
+                errorMessage = LAACopy.unscopedNotificationUnavailable
+                #else
                 errorMessage = AppLocalization.string("This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue.")
+                #endif
             }
             return .failed
         }
@@ -26279,11 +26283,19 @@ final class AppState: ObservableObject {
     static func chatTakeoverFailureMessage(_ error: Error) -> String {
         switch error {
         case ChatTakeoverError.pluginMissing:
+#if LAA_BUILD
+            return LAACopy.serverFeatureUnavailable
+#else
             return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+#endif
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
         case ChatTakeoverError.malformed:
+#if LAA_BUILD
+            return LAACopy.unreadableServerResponse
+#else
             return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+#endif
         default:
             let detail = UserFacingError.message(for: error).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {
@@ -35018,6 +35030,9 @@ final class AppState: ObservableObject {
     /// own; classic-only surfaces (suspension restore, provider tests) keep
     /// `voiceUnavailableReason`.
     var phoneVoiceUnavailableReason: String? {
+#if LAA_BUILD
+        if laaEmployeeGPTLivePlan != nil { return LAACopy.otherCallInProgress }
+#endif
         if isQwenLiveEnabled || isGeminiLiveEnabled || isGPTLiveEnabled || isGrokLiveEnabled || isLocalLiveEnabled {
             return isConnected ? nil : VoiceSetupIssue.notConnected.message
         }

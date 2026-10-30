@@ -224,7 +224,13 @@ struct LocationSettingsPage: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             if !pluginServesLocation, !settings.isOn {
-                Text("Update the Conduit plugin on your Hermes host to share your location.")
+                Group {
+#if LAA_BUILD
+                    Text(verbatim: LAACopy.locationSharingUnavailable)
+#else
+                    Text("Update the Conduit plugin on your Hermes host to share your location.")
+#endif
+                }
                     .font(.caption)
                     .foregroundStyle(.orange)
             }

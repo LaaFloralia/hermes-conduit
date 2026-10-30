@@ -79,7 +79,13 @@ struct LocalLiveFrontModelSettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if loaded && status == nil {
-                Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model."))
+                Group {
+#if LAA_BUILD
+                    Text(verbatim: LAACopy.fastModelUnavailable)
+#else
+                    Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model."))
+#endif
+                }
                     .font(.footnote)
                     .foregroundStyle(.orange)
             } else {

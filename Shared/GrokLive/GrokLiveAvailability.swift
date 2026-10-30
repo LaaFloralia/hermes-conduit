@@ -34,7 +34,11 @@ enum GrokLiveAvailability: Equatable {
             }
             return AppLocalization.string("Grok Live is not available on this Hermes server.")
         case .pluginMissing:
+#if LAA_BUILD
+            return LAACopy.serverFeatureUnavailable
+#else
             return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+#endif
         }
     }
 }

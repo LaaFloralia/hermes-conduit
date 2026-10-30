@@ -197,13 +197,18 @@ private final class LAAEmployeeComposerHarness: ObservableObject {
             app.gptLiveController.requestPermissionForTesting = { true }
         } else {
             app.setActiveProfileForTesting("default")
-            app.noteBotChatSessionForTesting("fixture-conversation", profile: "laa-cfo")
+            if !ProcessInfo.processInfo.arguments.contains("-laa-default-call") {
+                app.noteBotChatSessionForTesting("fixture-conversation", profile: "laa-cfo")
+            }
             app.gptLiveClient = app.laaGPTLiveClient { _, _, _, _ in
                 ["ok": true, "available": false, "auth": "subscription", "reason": "fixture offline"]
             }
         }
         app.setGPTLiveEnabled(true)
         app.activeSessionId = "fixture-conversation"
+        if ProcessInfo.processInfo.arguments.contains("-laa-dictation-button") {
+            app.setChatVoiceButtonOverride(.dictation)
+        }
         if savedCall {
             let control = LAAEmployeeVoiceControl()
             control.bind(app)
@@ -251,11 +256,20 @@ private struct LAAEmployeeComposerContent: View {
             }
             if ProcessInfo.processInfo.arguments.contains("-laa-pending-call") {
                 Button {
-                    appState.laaEmployeeGPTLivePlan = appState.laaEmployeeCallPlan(profile: "laa-cto")
+                    appState.laaEmployeeGPTLivePlan = appState.laaEmployeeGPTLivePlan == nil
+                        ? appState.laaEmployeeCallPlan(profile: "laa-cto") : nil
                 } label: {
                     Text(verbatim: "Wait for widget call")
                 }
                 .accessibilityIdentifier("laa.fixture.pending-call")
+            }
+            if ProcessInfo.processInfo.arguments.contains("-laa-default-call") {
+                V2VoiceButton(context: .home, style: .capsule)
+                    .accessibilityIdentifier("laa.fixture.default-call")
+            }
+            if ProcessInfo.processInfo.arguments.contains("-laa-dictation-button") {
+                V2VoiceButton(context: .conversation)
+                    .accessibilityIdentifier("laa.fixture.dictation")
             }
             if let context = calls.snapshot?.context {
                 Text(verbatim: "\(context.profile)|\(context.conversationID ?? "")")

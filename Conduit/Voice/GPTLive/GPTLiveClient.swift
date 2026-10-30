@@ -47,11 +47,18 @@ enum GPTLiveAvailability: Equatable {
             return nil
         case .unavailable(let reason):
             if let reason, !reason.isEmpty {
+#if LAA_BUILD
+                if reason == LAACopy.gptLiveAPIUnavailable { return reason }
+#endif
                 return AppLocalization.string("GPT-Live is not available on this Hermes server: \(reason)")
             }
             return AppLocalization.string("GPT-Live is not available on this Hermes server.")
         case .pluginMissing:
+#if LAA_BUILD
+            return LAACopy.gptLiveUnavailable
+#else
             return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+#endif
         }
     }
 }
@@ -100,7 +107,11 @@ enum GPTLiveClientError: LocalizedError, Equatable {
         case .notSubscription:
             return AppLocalization.string("Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect.")
         case .notAPIKey:
+#if LAA_BUILD
+            return LAACopy.gptLiveAPIUnavailable
+#else
             return AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin.")
+#endif
         }
     }
 }
@@ -232,7 +243,11 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             return .unavailable(reason: response["reason"] as? String ?? response["detail"] as? String ?? response["error"] as? String)
         }
         guard let api = response["api"] as? [String: Any] else {
+#if LAA_BUILD
+            return .unavailable(reason: LAACopy.gptLiveAPIUnavailable)
+#else
             return .unavailable(reason: AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer."))
+#endif
         }
         guard api["available"] as? Bool == true, api["auth"] as? String == GPTLiveBilling.api.rawValue else {
             return .unavailable(reason: api["reason"] as? String)

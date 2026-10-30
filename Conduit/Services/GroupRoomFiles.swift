@@ -54,7 +54,11 @@ final class GroupRoomFilesClient {
             case .unreadable(let name):
                 return AppLocalization.string("Could not prepare \(name) for upload.")
             case .malformed:
+#if LAA_BUILD
+                return LAACopy.unreadableServerResponse
+#else
                 return AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
+#endif
             }
         }
     }

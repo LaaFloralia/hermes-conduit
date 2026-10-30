@@ -119,6 +119,53 @@ final class LAAStaffCallUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["laa.call.name"].exists)
     }
 
+    func testDefaultCallButtonsDisableDuringPendingEmployeePlanAndRecover() {
+        let app = launch("-laa-composer-fixture", "-laa-default-call", "-laa-pending-call")
+        let home = app.buttons["laa.fixture.default-call"]
+        XCTAssertTrue(home.waitForExistence(timeout: 10))
+        XCTAssertTrue(home.isEnabled)
+        let field = app.textViews["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        let composer = app.buttons["laa.voice.button"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertTrue(composer.isEnabled)
+        let pending = app.buttons["laa.fixture.pending-call"]
+        pending.tap()
+        XCTAssertFalse(home.isEnabled)
+        XCTAssertFalse(composer.isEnabled)
+        XCTAssertFalse(app.staticTexts["laa.call.name"].exists)
+        pending.tap()
+        XCTAssertTrue(home.isEnabled)
+        XCTAssertTrue(composer.isEnabled)
+    }
+
+    func testDictationMenuExplainsUnavailableCallDuringPendingPlan() {
+        let app = launch("-laa-composer-fixture", "-laa-default-call", "-laa-pending-call", "-laa-dictation-button")
+        let pending = app.buttons["laa.fixture.pending-call"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 10))
+        pending.tap()
+        let dictation = app.buttons["laa.fixture.dictation"]
+        XCTAssertTrue(dictation.waitForExistence(timeout: 5))
+        XCTAssertTrue(dictation.isEnabled)
+        dictation.press(forDuration: 1)
+        let call = app.buttons["laa.voice.menu.call"]
+        XCTAssertTrue(call.waitForExistence(timeout: 5))
+        XCTAssertFalse(call.isEnabled)
+        XCTAssertTrue(call.label.contains("別の通話を終了してください"))
+        // Reopen the fixture to leave the native menu before checking the
+        // clear state; the transition itself is covered by the previous test.
+        app.terminate()
+        let cleared = launch("-laa-composer-fixture", "-laa-default-call", "-laa-pending-call", "-laa-dictation-button")
+        let clearedDictation = cleared.buttons["laa.fixture.dictation"]
+        XCTAssertTrue(clearedDictation.waitForExistence(timeout: 10))
+        clearedDictation.press(forDuration: 1)
+        let clearedCall = cleared.buttons["laa.voice.menu.call"]
+        XCTAssertTrue(clearedCall.waitForExistence(timeout: 5))
+        XCTAssertTrue(clearedCall.isEnabled)
+        XCTAssertFalse(clearedCall.label.contains("別の通話を終了してください"))
+    }
+
     private func assertLabel(_ app: XCUIApplication, _ identifier: String, _ label: String) {
         let matching = app.staticTexts.matching(identifier: identifier)
             .matching(NSPredicate(format: "label == %@", label)).firstMatch

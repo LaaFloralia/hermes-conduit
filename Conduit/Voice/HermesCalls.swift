@@ -527,7 +527,11 @@ extension VoiceCallbackAvailability {
         case .notPaired:
             return "Hermes can't call the user: this Hermes profile isn't set up for Conduit notifications. They can turn them on in Conduit's Settings, under Notifications."
         case .unsupported:
+#if LAA_BUILD
+            return "Hermes can't call the user: this Hermes server does not support calls yet."
+#else
             return "Hermes can't call the user yet: the Conduit plugin on their Hermes host needs an update."
+#endif
         }
     }
 }

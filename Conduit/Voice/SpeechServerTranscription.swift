@@ -425,7 +425,11 @@ struct SpeechServerStatus: Equatable {
     var pluginMissing: Bool
 
     static var pluginMissingReason: String {
+#if LAA_BUILD
+        LAACopy.speechServerUnavailable
+#else
         AppLocalization.string("Update the Conduit plugin on your Hermes host to use your own speech server.")
+#endif
     }
 
     static var pluginMissing: SpeechServerStatus {

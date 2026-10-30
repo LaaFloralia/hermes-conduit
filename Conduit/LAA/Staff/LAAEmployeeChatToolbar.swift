@@ -108,7 +108,7 @@ enum LAAEmployeeCallAvailability {
                 ? nil : "別の会話の通話を確認してください"
         }
         if appState.isVoiceCallInProgress || appState.laaEmployeeGPTLivePlan != nil {
-            return "別の通話を終了してください"
+            return LAACopy.otherCallInProgress
         }
         if let reason = bridgeReason(bridge) { return reason }
         guard appState.isConnected else { return "Hermesに接続してください" }

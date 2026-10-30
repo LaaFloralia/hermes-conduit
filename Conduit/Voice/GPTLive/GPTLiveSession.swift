@@ -228,7 +228,11 @@ final class GPTLiveSession {
     nonisolated static func voiceNote(requested: String?, applied: String?) -> String? {
         guard let requested, !requested.isEmpty else { return nil }
         guard let applied else {
+#if LAA_BUILD
+            return LAACopy.voiceNotConfirmed
+#else
             return AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose. Update the plugin to pick a voice.")
+#endif
         }
         guard applied.lowercased() != requested.lowercased() else { return nil }
         return AppLocalization.string("Your Hermes server used the voice \(applied) instead of \(requested).")

@@ -39,7 +39,11 @@ enum LocationSyncPause: Codable, Equatable {
         case .signInRequired:
             return AppLocalization.string("Paused: sign in to this dashboard again. Location is sent again once you open Conduit.")
         case .pluginMissing:
+#if LAA_BUILD
+            return LAACopy.sharingPausedPrefix + LAACopy.locationSharingUnavailable
+#else
             return AppLocalization.string("Paused: update the Conduit plugin on this host to share your location.")
+#endif
         case .refused(let detail):
             return AppLocalization.string("Paused: the host refused location data (\(detail)).")
         }

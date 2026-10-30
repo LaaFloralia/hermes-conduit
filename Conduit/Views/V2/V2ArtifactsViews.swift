@@ -287,11 +287,16 @@ private struct ArtifactsList: View {
     @ViewBuilder
     private var content: some View {
         if !appState.supportsArtifacts {
+#if LAA_BUILD
+            unavailable(title: Text(verbatim: LAACopy.serverUnavailableTitle),
+                        detail: Text(verbatim: LAACopy.artifactsUnavailable), symbol: "exclamationmark.circle")
+#else
             unavailable(
                 title: Text("Update the Conduit plugin"),
                 detail: Text("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."),
                 symbol: "arrow.down.circle"
             )
+#endif
         } else if items.isEmpty, isLoading || loadedKey != currentKey {
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 200)

@@ -245,7 +245,11 @@ extension AppState {
                 )
                 guard !superseded else { return }
                 guard let revision = GroupRoomPictures.storedRevision(from: answer) else {
+#if LAA_BUILD
+                    errorMessage = LAACopy.unreadableServerResponse
+#else
                     errorMessage = AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
+#endif
                     return
                 }
                 groupRoomPictureData[roomID] = upload.jpeg

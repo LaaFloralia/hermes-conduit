@@ -214,6 +214,9 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
 
         XCTAssertFalse(opened)
         XCTAssertNotNil(appState.errorMessage)
+        #if LAA_BUILD
+        XCTAssertEqual(appState.errorMessage, LAACopy.unscopedNotificationUnavailable)
+        #endif
         XCTAssertEqual(appState.activeDashboardID, dashboardA, "The active dashboard must not change on a fail-closed push")
     }
 

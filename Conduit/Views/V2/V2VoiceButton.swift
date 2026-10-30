@@ -106,6 +106,7 @@ struct V2VoiceButton: View {
         if employeeCall != nil, !returnsToCall {
             return employeeCallReason == nil && !isStarting && !appState.isPreparingVoiceResume
         }
+        if appState.laaEmployeeGPTLivePlan != nil && !returnsToCall { return false }
         #endif
         if returnsToCall || needsSetup { return true }
         guard !isStarting, !appState.isPreparingVoiceResume,
@@ -173,6 +174,11 @@ struct V2VoiceButton: View {
 
     private var hint: String? {
         if dictates {
+            #if LAA_BUILD
+            if canAct, appState.laaEmployeeGPTLivePlan != nil {
+                return LAACopy.dictationDuringCallHint
+            }
+            #endif
             return canAct
                 ? AppLocalization.string("Types what you say into the message. Touch and hold for a live call.")
                 : nil
@@ -225,8 +231,18 @@ struct V2VoiceButton: View {
                     Button {
                         callTap()
                     } label: {
+#if LAA_BUILD
+                        Label(appState.laaEmployeeGPTLivePlan == nil
+                              ? conversationCallLabel : "\(conversationCallLabel) — \(LAACopy.otherCallInProgress)",
+                              systemImage: "waveform")
+#else
                         Label(conversationCallLabel, systemImage: "waveform")
+#endif
                     }
+#if LAA_BUILD
+                    .disabled(appState.laaEmployeeGPTLivePlan != nil && !returnsToCall)
+                    .accessibilityIdentifier("laa.voice.menu.call")
+#endif
                     Button {
                         dictate()
                     } label: {
@@ -258,6 +274,9 @@ struct V2VoiceButton: View {
         .disabled(!canAct)
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
+#if LAA_BUILD
+        .accessibilityIdentifier("laa.voice.button")
+#endif
         .macTooltip(label)
         .accessibilityShowsLargeContentViewer {
             Label(label, systemImage: dictates || recordsMessage ? chatAction.symbol : "waveform")

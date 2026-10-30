@@ -394,6 +394,7 @@ build (keeps its own chat and call controls)
 - Employee calls from the chat and widget use GPT-Live on the ChatGPT subscription, the employee's profile and its SOUL persona, regardless of the workspace's voice or billing setting. A missing persona or subscription failure stops the call; there is no API fallback or mode switch during the employee call. The employee detail's voice picker stores a ChatGPT voice in that profile's existing preferences; the call reports if the host does not confirm it. The default profile keeps its existing voice behavior.
 - The header and both composer call buttons use the employee call path, including the expanded composer's saved-call entry. Health, location and phone permissions, live style and recorded or resumed calls follow the employee's profile; an expired call cannot start a later request under a different profile. Persona failures distinguish a missing plugin route from a missing persona or connection failure.
 - A CarPlay start, chat pick or End cannot adopt or discard an employee plan while the phone is waiting for CallKit. CarPlay's existing GPT-Live attachment remains available for a running call.
+- While an employee's ChatGPT-plan call is pending, LAA's default-profile phone call entries are disabled and explain that another call is in progress. They become available again when the plan clears; an existing minimised call can still be reopened.
 - In the LAA build, GPT-Live settings offer only the ChatGPT plan and all GPT-Live calls, including calls from Hermes, use that plan even if API billing was previously saved. The saved preference is retained; the App Store build's billing choices are unchanged.
 - The native provider uses the bundled LAA mask and staff names for outgoing calls; unknown profiles keep their existing name. On iOS 14 and later the system takes the provider name from the app display name.
 - CallKit recents remain off because a recents entry cannot yet start a call back.
@@ -446,6 +447,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
 - Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
+- Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAADashboardUsage.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
@@ -462,7 +464,10 @@ App Store build · the Bridge API, Brain and Usage data contracts
   suppresses update prompts and actions in the shell, Settings and plugin
   catalog; the server decides updates. The Conduit finish-setup card is also
   hidden in LAA, with notification and voice settings still reachable in
-  Settings. Other plugins retain their controls.
+  Settings. App-generated notices for unsupported server features describe
+  them as unavailable without prompting for a notifier update; queued or
+  unsaved data is still named.
+  Other plugins retain their controls.
 - The Mac Bridge is paired by a one-time code. The device token and its address
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
   scope and service failures are distinguished. Bridge tabs share the
@@ -1314,6 +1319,7 @@ group rooms (no Artifacts list) · the notifier's artifacts route · README.md
 
 **Rulings**
 - A list reads each store the chats it covers are kept in: a Bot Chat's sheet reads the bot's profile, and the Artifacts page reads the profile in use, each other profile All shows while it's on, and every other bot's Bot Chat, merged newest first (2026-10-24, #1203, Eric's report).
+- In the LAA build an unsupported Artifacts list states that it is unavailable on this Hermes server; plugin updates are handled by HQ.
 - Stores are read one at a time (the host reads two lists at once at most) and each shows as it arrives; a refresh keeps the list it is refreshing until every store answers. A bot's chat or other profile that can't be read leaves the rest listed.
 - A bot whose profile is read whole (the profile in use, or one All shows) isn't read again for its Bot Chat; that chat's rows still go by the bot's name and open the way Bots opens them.
 - The profile in use is always read, even when All leaves it out.
@@ -1358,7 +1364,7 @@ README.md
 - The Folder lives in Artifacts, not behind the composer's +: a tab in the chat's ⋯ › Artifacts sheet, beside the chat on a wide window, and on the Chats bar's Artifacts page. + › Workspace stays only in the drawer shell, which has no Artifacts (2026-10-27, #1399, Eric: "+" hurt visibility).
 - The full explorer: previews, search, Recently Changed, new folder and file, rename, move, duplicate, delete with a confirmation, upload, and text editing that refuses a save over a file changed since it was opened (Replace It or Keep Editing) (2026-10-27, #1399, Eric picked it).
 - The tree starts at the chat's folder and switches to a project's folder, never above them; the plugin keeps every path inside the root it's given and leaves out files holding keys or passwords. Hermes' own file routes already reach the home folder, so this scopes the view rather than guarding the host: on a personal install the plugin takes any folder as a root, and on a hosted or locked install only one inside Hermes' files folder (2026-10-27, #1399).
-- Without the plugin's workspace routes the Folder still browses and opens files through Hermes' own listing; search, Recently Changed and changes ask for a plugin update.
+- Without the plugin's workspace routes the Folder still browses and opens files through Hermes' own listing; search, Recently Changed and changes are unavailable. The upstream build asks for a plugin update; LAA explains that these actions are unavailable on this Hermes server.
 - A path in a reply is a link when inline code names one, or when plain text names a path with a folder and a known file type; a relative path is in the chat's folder. It opens in the Folder, at the file, switching to the chat's or a project's folder that holds it. A file in none of them opens to read only, outside the tree, as Hermes' own file routes would show it (2026-10-27, #1399).
 - A tool that writes, moves or deletes files, or runs commands, refreshes an open Folder when it completes; nothing polls.
 - An answer for another dashboard, profile or folder is dropped, its failure too, and only the latest file picked shows.

@@ -145,7 +145,11 @@ enum VoiceSetupIssue: Equatable {
         case .liveModeNotSetUp(let mode):
             return AppLocalization.string("\(mode.displayName) isn't set up on your Hermes server. Settings > Voice shows what it needs.")
         case .notifierPluginMissing:
+#if LAA_BUILD
+            return LAACopy.serverFeatureUnavailable
+#else
             return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+#endif
         case .providerConsentNeeded(let mode):
             return AppLocalization.string("\(mode.displayName) sends your voice to \(mode.company). Allow it in Conduit on your iPhone to start the call.")
         }
@@ -198,10 +202,14 @@ enum VoiceSetupIssue: Equatable {
                 AppLocalization.string("\(mode.displayName) not set up"),
             ]
         case .notifierPluginMissing:
+#if LAA_BUILD
+            return [LAACopy.serverUnavailableTitle]
+#else
             return [
                 AppLocalization.string("Update the Hermes notifier plugin"),
                 AppLocalization.string("Plugin update needed"),
             ]
+#endif
         case .providerConsentNeeded(let mode):
             return [
                 AppLocalization.string("Allow \(mode.displayName) on your iPhone"),

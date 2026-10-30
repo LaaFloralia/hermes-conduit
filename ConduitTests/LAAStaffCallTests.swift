@@ -6,6 +6,58 @@ import Combine
 
 @MainActor
 final class LAAStaffCallTests: XCTestCase {
+    func testDefaultCallIsUnavailableOnlyWhileAnEmployeePlanIsPending() {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        app.setGPTLiveEnabled(true)
+        app.isConnected = true
+        XCTAssertNil(app.phoneVoiceUnavailableReason)
+        app.laaEmployeeGPTLivePlan = app.laaEmployeeCallPlan(profile: "laa-cto")
+        XCTAssertEqual(app.phoneVoiceUnavailableReason, LAACopy.otherCallInProgress)
+        XCTAssertTrue(LAACopy.dictationDuringCallHint.contains(LAACopy.otherCallInProgress))
+        XCTAssertFalse(app.canStartPhoneVoiceConversation)
+        app.laaEmployeeGPTLivePlan = nil
+        XCTAssertNil(app.phoneVoiceUnavailableReason)
+    }
+
+    func testUnsupportedServerFeaturesDoNotAskForPluginUpdates() {
+        XCTAssertEqual(GPTLiveAvailability.pluginMissing.userFacingReason, LAACopy.gptLiveUnavailable)
+        XCTAssertEqual(GPTLiveClientError.notAPIKey(nil).errorDescription, LAACopy.gptLiveAPIUnavailable)
+        XCTAssertEqual(GeminiLiveAvailability.pluginMissing.userFacingReason, LAACopy.serverFeatureUnavailable)
+        XCTAssertEqual(GeminiLiveAvailability.pluginMissing.userFacingReason(for: .qwen), LAACopy.serverFeatureUnavailable)
+        XCTAssertEqual(GrokLiveAvailability.pluginMissing.userFacingReason, LAACopy.serverFeatureUnavailable)
+        XCTAssertEqual(VoiceSetupIssue.notifierPluginMissing.message, LAACopy.serverFeatureUnavailable)
+        XCTAssertEqual(GPTLiveSession.voiceNote(requested: "vale", applied: nil), LAACopy.voiceNotConfirmed)
+        XCTAssertEqual(AppState.chatTakeoverFailureMessage(ChatTakeoverError.pluginMissing), LAACopy.serverFeatureUnavailable)
+        XCTAssertEqual(AppState.chatTakeoverFailureMessage(ChatTakeoverError.malformed), LAACopy.unreadableServerResponse)
+        XCTAssertEqual(WatchGPTLiveSetup.statusUnavailableReason, LAACopy.watchVoiceStatusUnavailable)
+        let watchModes: [WatchDirectBroker.AudioGrantMode] = [.gpt, .grok, .local]
+        for mode in watchModes {
+            XCTAssertEqual(WatchDirectBroker.unavailableGrantReason(mode), LAACopy.watchCallUnavailable)
+        }
+        XCTAssertEqual(ShortcutLogError.pluginTooOld.message, LAACopy.shortcutEventKept)
+        XCTAssertEqual(ShortcutLogError.pluginMissing.message, LAACopy.shortcutEventNotKept)
+        XCTAssertEqual(SpeechServerStatus.pluginMissingReason, LAACopy.speechServerUnavailable)
+        XCTAssertEqual(SpeechServerVoiceStatus.pluginMissingReason, LAACopy.speechServerUnavailable)
+        XCTAssertEqual(LocalLiveProtocol.pluginMissingReason, LAACopy.localLiveUnavailable)
+        XCTAssertEqual(VoiceSetupIssue.notifierPluginMissing.carPlayTitleVariants, [LAACopy.serverUnavailableTitle])
+        XCTAssertFalse(VoiceCallbackAvailability.unsupported.refusal.lowercased().contains("update"))
+        XCTAssertEqual(GroupRoomFilesClient.Failure.malformed.errorDescription, LAACopy.unreadableServerResponse)
+        XCTAssertEqual(ReplySourcesClient.Failure.malformed.errorDescription, LAACopy.unreadableServerResponse)
+        XCTAssertTrue(PhoneSyncPause.pluginMissing.message.contains("一時停止"))
+        XCTAssertTrue(HealthSyncPause.pluginMissing.message.contains("一時停止"))
+        XCTAssertTrue(LocationSyncPause.pluginMissing.message.contains("一時停止"))
+        for text in [LAACopy.artifactsUnavailable, LAACopy.workspaceActionsUnavailable,
+                     LAACopy.groupFilesUnavailable, LAACopy.gptLiveUnavailable] {
+            XCTAssertTrue(text.contains("まだ利用できません"))
+            XCTAssertFalse(text.lowercased().contains("plugin"))
+            XCTAssertFalse(text.contains("更新"))
+        }
+    }
+
     func testStaffProfilesAndUnknownProfile() {
         let expected: [String: String] = ["ciel": "Ciel", "argus": "Argus", "cfo": "Morgan",
                                           "cio": "Sherlock", "cmo": "Monet", "cos": "Merlin",

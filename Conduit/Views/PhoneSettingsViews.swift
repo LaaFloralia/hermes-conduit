@@ -51,7 +51,13 @@ struct PhoneSettingsPage: View {
                 if preferences.isOn {
                     statusRows
                 } else if !pluginServes {
-                    Text("Update the Conduit plugin on your Hermes host to share your calendar and phone status.")
+                    Group {
+#if LAA_BUILD
+                        Text(verbatim: LAACopy.phoneSharingUnavailable)
+#else
+                        Text("Update the Conduit plugin on your Hermes host to share your calendar and phone status.")
+#endif
+                    }
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }

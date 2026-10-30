@@ -426,7 +426,11 @@ extension HermesVoiceGatewayTimeoutTests {
         let status = try await missing.availability()
 
         XCTAssertEqual(status, .pluginMissing)
+#if LAA_BUILD
+        XCTAssertEqual(status.userFacingReason, LAACopy.serverFeatureUnavailable)
+#else
         XCTAssertEqual(status.userFacingReason, "Install or update the Hermes notifier plugin on your Hermes server.")
+#endif
     }
 }
 

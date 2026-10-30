@@ -459,7 +459,11 @@ struct SpeechServerVoiceStatus: Equatable {
     var frontModel: LocalLiveFrontModelStatus?
 
     static var pluginMissingReason: String {
+#if LAA_BUILD
+        LAACopy.speechServerUnavailable
+#else
         AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies.")
+#endif
     }
 
     static var pluginMissing: SpeechServerVoiceStatus {

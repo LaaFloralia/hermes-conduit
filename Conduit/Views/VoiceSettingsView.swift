@@ -2252,8 +2252,13 @@ struct VoiceCallSaveStatusSection: View {
         ConduitSettingsSection(title: AppLocalization.string("Unsaved voice calls"), symbol: "exclamationmark.icloud", tint: .orange) {
             Text(AppLocalization.string("Voice calls waiting to save: \(model.pendingCount)"))
                 .font(.subheadline.weight(.semibold))
+#if LAA_BUILD
+            let blockedMessage = LAACopy.voiceHistoryUnavailable
+#else
+            let blockedMessage = AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now.")
+#endif
             Text(model.blocked
-                 ? AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now.")
+                 ? blockedMessage
                  : AppLocalization.string("These calls are kept on this device and Conduit retries them automatically. It keeps up to 20 calls, and a call that still hasn't saved after 7 days is dropped."))
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -41,9 +41,15 @@ struct SyncedPreferencesSettingsDetail: View {
                 .disabled(!appState.supportsSyncedPreferences || checkingHost)
                 .accessibilityIdentifier("settings.sync.enabled")
                 if !appState.supportsSyncedPreferences {
+#if LAA_BUILD
+                    Text(verbatim: LAACopy.syncedPreferencesUnavailable)
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+#else
                     Text("Needs Conduit plugin 0.54 or later on this host.")
                         .font(.footnote)
                         .foregroundStyle(.orange)
+#endif
                 } else if controller.isEnabled {
                     SettingsMetricRow(label: AppLocalization.string("Status"), value: statusText, lineLimit: 2)
                     Button {

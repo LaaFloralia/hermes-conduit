@@ -360,9 +360,17 @@ struct WorkspaceFolderView: View {
         } else {
             if !explorer.canChange {
                 Label {
+#if LAA_BUILD
+                    Text(verbatim: LAACopy.workspaceActionsUnavailable)
+#else
                     Text("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")
+#endif
                 } icon: {
+#if LAA_BUILD
+                    Image(systemName: "exclamationmark.circle")
+#else
                     Image(systemName: "arrow.down.circle")
+#endif
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)
