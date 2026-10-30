@@ -171,7 +171,7 @@ struct LAABackgroundUITestFixtureScreen: View {
                 if let name = fake.createdName { Text(verbatim: "作成済み：\(name)").accessibilityIdentifier("fixture.created") }
                 conversationScreen.environmentObject(fake.state)
             }
-            .navigationTitle(pushesChat ? "Chats" : "")
+            .navigationTitle(pushesChat ? AppLocalization.string("Chats") : "")
             .navigationDestination(isPresented: $pushesChat) {
                 conversationScreen.environmentObject(fake.state)
                     .transformEnvironment(\.v2Shell) { $0.isRootCovered = true }

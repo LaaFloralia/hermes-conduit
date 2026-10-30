@@ -3693,3 +3693,8 @@ and rollback instructions · the upstream App Store build
 - Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the system Back button.
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.
+
+**Open gaps**
+- Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
+
+**Checked:** 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
