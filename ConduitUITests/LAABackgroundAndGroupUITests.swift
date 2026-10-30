@@ -21,7 +21,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         for kind in ["paper", "tealNight", "ink"] {
             let choice = app.buttons["background.choice.\(kind)"]
             choice.tap()
-            XCTAssertEqual(choice.value as? String, "選択中")
+            XCTAssertEqual(choice.value as? String, "Selected")
         }
         app.buttons["background.fixture.photo"].tap()
         let dim = app.sliders["background.photo.dim"]
@@ -33,7 +33,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         let blurValue = blur.value as? String
         XCTAssertNotNil(dimValue)
         XCTAssertNotNil(blurValue)
-        app.buttons["完了"].tap()
+        app.buttons["Done"].tap()
         app.terminate()
         app.launch()
         openBackground(app)
@@ -80,7 +80,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         // The expanded photo canvas must not intercept controls above it.
         openBackground(app)
         app.buttons["background.fixture.photo"].tap()
-        app.buttons["完了"].tap()
+        app.buttons["Done"].tap()
         let create = app.buttons["fixture.create"]
         XCTAssertTrue(create.waitForExistence(timeout: 20))
         create.tap()

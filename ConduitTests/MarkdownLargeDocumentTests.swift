@@ -358,6 +358,14 @@ final class MarkdownLargeDocumentTests: XCTestCase {
             contentCategory: .extraLarge
         )
         XCTAssertFalse(first === rebuilt, "a Dynamic Type change must rebuild the attributed string")
+        let recolored = box.attributedText(
+            blocks: blocks,
+            references: .empty,
+            foregroundStyle: .red,
+            usesAccentSurface: false,
+            contentCategory: .extraLarge
+        )
+        XCTAssertFalse(rebuilt === recolored, "a foreground color change must rebuild the attributed string")
         // (Font sizes themselves resolve from the process-wide setting, which
         // the view always passes as the category — the identity checks above
         // are the memoization/invalidation contract.)

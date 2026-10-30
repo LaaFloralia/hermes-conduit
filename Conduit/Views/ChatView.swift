@@ -363,12 +363,18 @@ struct ChatView: View {
                 bottomBar
             }
         }
+#if LAA_BUILD
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if composerFloats { bottomBar }
+        }
+#else
         .v2EdgeBar(.bottom) {
             if composerFloats {
                 bottomBar
                     .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
+#endif
         .onPreferenceChange(V2ComposerTypingKey.self) { typing in
             withAnimation(ConduitMotion.ease(reduceMotion: composerReduceMotion)) {
                 composerTyping = typing
@@ -387,6 +393,9 @@ struct ChatView: View {
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
         .laaConversationBackground()
+#if LAA_BUILD
+        .environment(\.laaChatDesign, true)
+#endif
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
         // are staged in the composer for the user to send (#1408).
         .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
@@ -437,7 +446,8 @@ struct ChatView: View {
     // MARK: - Scroll construction (layered so the type-checker can cope)
 
     private func chatScrollView(proxy: ScrollViewProxy) -> some View {
-        ScrollView {
+        let visibleTargets = drawnMessageScrollTargets
+        return ScrollView {
             LazyVStack(spacing: ChatStepStyle.transcriptRowSpacing) {
                 Color.clear
                     .frame(height: 1)
@@ -459,7 +469,7 @@ struct ChatView: View {
                 // deep sessions. Row identity (target.id) and the transcript
                 // order needed by row geometry (target.order, maintained by
                 // the scroll-target cache) are unchanged.
-                ForEach(drawnMessageScrollTargets) { target in
+                ForEach(visibleTargets) { target in
                     MessageBubble(
                         message: target.message,
                         gatewayResolver: appState.gatewayMediaResolver,
@@ -467,6 +477,10 @@ struct ChatView: View {
                         stepsAbove: target.stepsAbove
                     )
                         .equatable()
+#if LAA_BUILD
+                        .laaChatDaySection(date: MessageTimestampFormatter.date(from: target.message.timestamp),
+                            previous: LAAChatDay.previousDate(before: target.order, in: visibleTargets))
+#endif
                         .id(target.id)
                         .background {
                             // Measured in the stack's own coordinate space,
@@ -526,7 +540,11 @@ struct ChatView: View {
             .background {
                 ChatScrollSurfaceLocator(engine: scrollEngine)
             }
+#if LAA_BUILD
+            .padding(.horizontal, LAASpacing.horizontal)
+#else
             .padding(.horizontal, 18)
+#endif
             .padding(.top, 18)
             .background {
                 GeometryReader { _ in
@@ -537,6 +555,9 @@ struct ChatView: View {
                 }
             }
         }
+#if LAA_BUILD
+        .accessibilityIdentifier("chat.transcript")
+#endif
         .scrollDismissesKeyboard(.interactively)
         .id(transcriptScrollID)
         // The open chat's pinned replies (#918), over the transcript's top.
@@ -1372,7 +1393,9 @@ struct UserBubble: View {
 
     var body: some View {
         HStack {
+#if !LAA_BUILD
             Spacer(minLength: 40)
+#endif
             VStack(alignment: .trailing, spacing: 4) {
                 UserMessageContent(
                     message: message,
@@ -1396,6 +1419,9 @@ struct UserBubble: View {
                     UserMessageCopyButton(message: message)
                 }
             }
+#if LAA_BUILD
+            .laaChatColumn(.trailing)
+#endif
         }
     }
 }
@@ -1757,6 +1783,10 @@ struct UserMessageContent: View, Equatable {
                 attachmentViews
             }
         }
+#if LAA_BUILD
+        .padding(LAASpacing.x4)
+        .background(LAAColor.ownBubble, in: RoundedRectangle(cornerRadius: LAARadius.bubble, style: .continuous))
+#else
         .padding(.horizontal, 17)
         .padding(.vertical, 11)
         .background {
@@ -1777,6 +1807,7 @@ struct UserMessageContent: View, Equatable {
             RoundedRectangle(cornerRadius: 21, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
         }
+#endif
         .textSelection(.enabled)
     }
 }
@@ -2408,6 +2439,7 @@ struct SettledAssistantMessageContent: View, Equatable {
         VStack(alignment: .leading, spacing: 6) {
             // Keep identity in a compact header so the actual response can use
             // the full reading column instead of inheriting the avatar indent.
+#if !LAA_BUILD
             HStack(spacing: 8) {
                 ConduitAgentMark(identity: identity)
 
@@ -2418,6 +2450,7 @@ struct SettledAssistantMessageContent: View, Equatable {
                 MessageTimestampLabel(timestamp: message.timestamp)
 
             }
+#endif
 
             if !message.content.isEmpty {
                 MarkdownText(
@@ -2433,6 +2466,12 @@ struct SettledAssistantMessageContent: View, Equatable {
                 ChatCodeBlock(source: code)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+#if LAA_BUILD
+            HStack {
+                Spacer(minLength: 0)
+                MessageTimestampLabel(timestamp: message.timestamp)
+            }
+#endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -2703,6 +2742,9 @@ struct AssistantBubble: View {
             .conduitFixedGlyph()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+#if LAA_BUILD
+        .laaChatColumn(.leading)
+#endif
     }
 }
 
@@ -3099,7 +3141,11 @@ private struct MessageTimestampLabel: View {
             Text(label)
                 .font(.caption2.weight(.medium))
                 .laaPhotoSupportingText()
+#if LAA_BUILD
+                .foregroundStyle(LAAColor.secondaryText)
+#else
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
+#endif
                 .monospacedDigit()
                 .accessibilityLabel(AppLocalization.string("Sent \(label)"))
         }
@@ -4754,6 +4800,9 @@ struct StreamingBubble: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .laaAssistantSurface()
+#if LAA_BUILD
+        .laaChatColumn(.leading)
+#endif
     }
 }
 

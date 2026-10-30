@@ -3648,7 +3648,7 @@ and rollback instructions · the upstream App Store build
 
 **Rulings**
 - Store a background locally by dashboard, profile, surface and conversation or room id; copy downscaled photos into the app, never upload them, and fall back to paper if the photo is missing. Dim bright photos to keep white body text at least 4.5:1; dim and blur remain adjustable.
-- Paper retains the existing chat appearance. Night, ink and photo put employee replies on opaque surfaces; a photo uses clear glass and a dim backing for the bar and composer. All other glass controls retain their regular default.
+- In the LAA v2 design, replies use opaque cards on paper as well as night, ink and photo; a photo uses clear glass and a dim backing for the bar and controls. All other glass controls retain their regular default.
 - Create a hosted room from the eight named employee profiles actually available on the current gateway, with the existing 2–6 member contract and retry identity. Rename only when `groups.rename` is advertised.
 
 **Open gaps**
@@ -3676,3 +3676,20 @@ and rollback instructions · the upstream App Store build
 - Dynamic Type, VoiceOver, reduced transparency, small screens, and the employee and group routes require physical iPhone verification.
 
 **Checked:** 2026-10-30, based on 1b4bdba5 (LAA v2 Chats).
+
+## LAA v2 chat presentation
+
+**Siblings:** employee header and calls · conversation-specific backgrounds · hosted groups · Markdown selection and media previews · composer drafts and dictation · the upstream App Store build
+
+**Code**
+- Chat colours, columns and date separators: `Conduit/LAA/Chat/LAAChatStyle.swift`, `Conduit/LAA/Design/LAATokens.swift`, `Conduit/Views/ChatView.swift`, `Conduit/Views/GroupChatView.swift`
+- Rich text and media: `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/MarkdownProseRun.swift`
+- Composers: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
+- Compact employee and group toolbar placement: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/GroupChatView.swift`
+- Tests: `ConduitTests/LAAChatDesignTests.swift`, `ConduitTests/LAACompactChatSnapshotTests.swift`, `ConduitUITests/LAAChatDesignUITests.swift`
+
+**Rulings**
+- Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
+- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the system Back button.
+- The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
+- Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.

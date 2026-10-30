@@ -114,7 +114,11 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.adjustsFontForContentSizeCategory = false
         view.backgroundColor = .clear
         view.textColor = .label
+#if LAA_BUILD
+        view.tintColor = UIColor(LAAColor.link)
+#else
         view.tintColor = .systemOrange
+#endif
         view.textContainerInset = UIEdgeInsets(top: 8, left: 9, bottom: 8, right: 9)
         view.textContainer.lineFragmentPadding = 0
         // Keep long pasted prompts usable without letting the composer cover its
