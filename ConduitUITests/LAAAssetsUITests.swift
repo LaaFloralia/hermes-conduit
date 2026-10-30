@@ -4,12 +4,55 @@ import XCTest
 final class LAAAssetsUITests: XCTestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
 
-    private func launch(_ mode: String? = nil) -> XCUIApplication {
+    private func launch(_ mode: String? = nil, appearance: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         if let mode { app.launchArguments += ["-laa-assets-fixture", mode] }
+        if let appearance { app.launchArguments += ["-conduit.themePreference", appearance] }
         app.launch()
         return app
+    }
+
+    private func capture(_ screen: String, _ appearance: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "drive-\(screen)-\(appearance)-iphone16promax"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    func testOwnerDeviceScreenshots() {
+        for appearance in ["light", "dark"] {
+            let app = launch("normal", appearance: appearance)
+            XCTAssertTrue(app.buttons["laa.assets.item.folder1"].waitForExistence(timeout: 30))
+            capture("assets", appearance)
+
+            app.swipeUp()
+            let video = app.buttons["laa.assets.item.video1"]
+            XCTAssertTrue(video.waitForExistence(timeout: 10))
+            video.tap()
+            let open = app.buttons["laa.drive.open"]
+            XCTAssertTrue(open.waitForExistence(timeout: 10))
+            capture("details", appearance)
+            open.tap()
+            XCTAssertTrue(app.buttons["laa.drive.play"].waitForExistence(timeout: 10))
+            capture("player", appearance)
+            app.terminate()
+
+            for (item, screen, title) in [("image1", "image", "Portrait"), ("doc1", "pdf", "Notes")] {
+                let previewApp = launch("normal", appearance: appearance)
+                let file = previewApp.buttons["laa.assets.item.\(item)"]
+                XCTAssertTrue(file.waitForExistence(timeout: 30))
+                file.tap()
+                let preview = previewApp.buttons["laa.drive.open"]
+                XCTAssertTrue(preview.waitForExistence(timeout: 10))
+                preview.tap()
+                XCTAssertTrue(previewApp.navigationBars[title].waitForExistence(timeout: 10))
+                Thread.sleep(forTimeInterval: 1)
+                XCTAssertFalse(previewApp.staticTexts["This file could not be displayed. Open on Mac."].exists)
+                capture(screen, appearance)
+                previewApp.terminate()
+            }
+        }
     }
 
     func testDriveGridFolderSearchAndUnsupportedActions() {
