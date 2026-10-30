@@ -206,6 +206,7 @@ struct LAABackgroundUITestFixtureScreen: View {
         .environment(\.colorScheme, fixtureColorScheme ?? inheritedColorScheme)
         .overlay(alignment: .topLeading) {
             if captureReady {
+                // Fixed size: The nearly invisible test marker must not change the screenshot layout.
                 Text(verbatim: "Ready")
                     .font(.system(size: 1))
                     .opacity(0.02)
