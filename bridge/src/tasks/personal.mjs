@@ -15,6 +15,7 @@ const ISSUE_FIELDS = `
   labels(first: 100) { nodes { id name color } pageInfo { hasNextPage endCursor } }
 `;
 const PAGE = 'pageInfo { hasNextPage endCursor }';
+const PRIVATE_FILE_LIMIT = 20 * 1024 * 1024;
 const COMMENT_FIELDS = `id body issueId parentId createdAt updatedAt url user { id name app }`;
 const RELATION_FIELDS = `id type issue { id identifier title } relatedIssue { id identifier title }`;
 const SECTION_FIELDS = Object.freeze({
@@ -22,7 +23,21 @@ const SECTION_FIELDS = Object.freeze({
   children: ISSUE_FIELDS,
   history: `id createdAt actor { id name app } fromState { id name } toState { id name }
     fromAssignee { id name app } toAssignee { id name app } fromPriority toPriority
-    fromTitle toTitle updatedDescription`,
+    fromTitle toTitle updatedDescription
+    fromDelegate { id name } toDelegate { id name }
+    fromCycle { id name } toCycle { id name }
+    fromProject { id name } toProject { id name }
+    fromProjectMilestone { id name } toProjectMilestone { id name }
+    fromTeam { id name } toTeam { id name }
+    fromParent { id identifier title } toParent { id identifier title }
+    fromEstimate toEstimate fromDueDate toDueDate
+    addedLabels { id name } removedLabels { id name }
+    addedToReleases { id name } removedFromReleases { id name }
+    relationChanges { identifier type }
+    archived autoArchived autoClosed trashed
+    fromSlaType toSlaType fromSlaBreached toSlaBreached fromSlaBreachesAt toSlaBreachesAt
+    attachment { id title } toConvertedProject { id name } issueImport { id displayName }
+    customerNeedId triageResponsibilityAutoAssigned`,
   relations: RELATION_FIELDS,
   inverseRelations: RELATION_FIELDS,
   attachments: `id title subtitle url sourceType createdAt`,
@@ -50,6 +65,13 @@ export const PERSONAL_DOCUMENTS = Object.freeze({
     comment(id: $id) { id issueId children(first: $first, after: $after) { nodes { ${COMMENT_FIELDS} } ${PAGE} } }
   }`,
   commentParent: `query LAAPersonalCommentParent($id: String!) { comment(id: $id) { id issueId } }`,
+  commentFileSource: `query LAAPersonalCommentFileSource($id: String!) { comment(id: $id) { id issueId body } }`,
+  attachmentFileSource: `query LAAPersonalAttachmentFileSource($id: String!) { attachment(id: $id) { id title url issue { id } } }`,
+  fileUpload: `mutation LAAPersonalFileUpload($contentType: String!, $filename: String!, $size: Int!) {
+    fileUpload(contentType: $contentType, filename: $filename, size: $size, makePublic: false) {
+      success uploadFile { assetUrl uploadUrl headers { key value } }
+    }
+  }`,
   createComment: `mutation LAAPersonalCommentCreate($input: CommentCreateInput!) {
     commentCreate(input: $input) { success comment { id } }
   }`,
@@ -147,6 +169,41 @@ function person(user, viewerId) {
   if (!user) return { kind: 'unassigned', id: null, name: null };
   return { id: user.id, name: user.name, kind: user.id === viewerId ? 'owner' : user.app === true ? 'agent' : 'person' };
 }
+
+// A phone supplies only a digest, never a URL. Each fetch re-reads the
+// associated issue/comment/attachment and matches the digest against it.
+function privateFileURL(value) {
+  try {
+    if (typeof value !== 'string' || value.length > 4096) return null;
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hostname !== 'uploads.linear.app' ||
+        url.port || url.username || url.password || url.hash) return null;
+    return url;
+  } catch { return null; }
+}
+function uploadURL(value) {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.port || url.username || url.password || url.hash ||
+        !(url.hostname === 'storage.googleapis.com' || url.hostname.endsWith('.storage.googleapis.com'))) return null;
+    return url;
+  } catch { return null; }
+}
+function fileId(url) { return createHash('sha256').update(url.href).digest('hex'); }
+function fileName(url) {
+  let name;
+  try { name = decodeURIComponent(url.pathname.split('/').pop() || 'file'); } catch { name = 'file'; }
+  name = name.replace(/[\/\\\x00-\x1f\x7f:]/g, '_').slice(0, 160);
+  return name && name !== '.' && name !== '..' ? name : 'file';
+}
+function markdownFiles(markdown) {
+  const found = new Map();
+  for (const match of (markdown ?? '').matchAll(/https:\/\/uploads\.linear\.app\/[^\s<>"'\)\]\}]+/gi)) {
+    const url = privateFileURL(match[0]);
+    if (url) found.set(fileId(url), { id: fileId(url), name: fileName(url), url });
+  }
+  return [...found.values()];
+}
 function issueToTask(issue, viewerId) {
   if (!issue || typeof issue.id !== 'string' || typeof issue.identifier !== 'string' || typeof issue.title !== 'string') {
     throw failure('linear_response_invalid', 'Linear returned an incomplete issue');
@@ -212,7 +269,39 @@ export function createPersonalLinearSource({
     if (data.viewer?.id !== expectedViewerId) {
       throw failure('linear_viewer_mismatch', 'the Linear credential does not belong to the expected viewer', { status: 403 });
     }
-    return { viewer: data.viewer, run: (document, variables) => graph(token, document, variables) };
+    return {
+      viewer: data.viewer, run: (document, variables) => graph(token, document, variables),
+      async readPrivateFile(value) {
+        const url = privateFileURL(value);
+        if (!url) throw failure('file_not_found', 'the private file was not found', { status: 404 });
+        let response;
+        try {
+          response = await fetchImpl(url.href, { headers: { authorization: token },
+            redirect: 'manual', signal: AbortSignal.timeout(60_000) });
+        } catch { throw failure('linear_unavailable', 'the private file could not be reached', { retryable: true }); }
+        if (response.status !== 200 || !response.body) {
+          if (response.body) await response.body.cancel().catch(() => {});
+          throw failure('linear_file_unavailable', 'Linear did not return the private file', { status: 503 });
+        }
+        const declared = response.headers.get('content-length');
+        if (declared && (!/^\d+$/.test(declared) || Number(declared) > PRIVATE_FILE_LIMIT)) {
+          await response.body.cancel().catch(() => {});
+          throw failure('file_too_large', 'the file exceeds the 20 MiB limit', { status: 413 });
+        }
+        const chunks = []; let size = 0;
+        try {
+          for await (const chunk of response.body) {
+            size += chunk.length;
+            if (size > PRIVATE_FILE_LIMIT) throw failure('file_too_large', 'the file exceeds the 20 MiB limit', { status: 413 });
+            chunks.push(Buffer.from(chunk));
+          }
+        } catch (error) {
+          if (error instanceof TaskSourceError) throw error;
+          throw failure('linear_file_unavailable', 'the private file could not be read', { status: 503 });
+        }
+        return { name: fileName(url), content: Buffer.concat(chunks).toString('base64'), size };
+      },
+    };
   }
   async function listTasks(options = {}) {
     const view = text(options.view, 'view') ?? 'all';
@@ -299,6 +388,70 @@ export function createPersonalLinearSource({
       throw failure('comment_not_found', 'the comment was not found for this task', { status: 404 });
     }
   }
+  async function fileSource(personalSession, id, commentId) {
+    const issue = await getTaskInSession(personalSession, id);
+    if (!issue) throw failure('task_not_found', 'the task was not found', { status: 404 });
+    if (!commentId) return markdownFiles(issue.task.description);
+    const data = await personalSession.run(PERSONAL_DOCUMENTS.commentFileSource, { id: commentId });
+    if (!data.comment || data.comment.issueId !== issue.task.linearId) {
+      throw failure('comment_not_found', 'the comment was not found for this task', { status: 404 });
+    }
+    return markdownFiles(data.comment.body);
+  }
+  async function listFiles(id, commentId) {
+    const personalSession = await session();
+    const files = await fileSource(personalSession, id, commentId);
+    return { viewerId: personalSession.viewer.id, items: files.map(({ id: fileIdValue, name }) => ({ id: fileIdValue, name })) };
+  }
+  async function readFile(id, { commentId, assetId, attachmentId }) {
+    const personalSession = await session();
+    let url, title;
+    if (attachmentId) {
+      const issue = await getTaskInSession(personalSession, id);
+      if (!issue) throw failure('task_not_found', 'the task was not found', { status: 404 });
+      const data = await personalSession.run(PERSONAL_DOCUMENTS.attachmentFileSource, { id: attachmentId });
+      if (data.attachment?.issue?.id === issue.task.linearId) {
+        url = privateFileURL(data.attachment.url);
+        title = data.attachment.title;
+      }
+    } else {
+      const files = await fileSource(personalSession, id, commentId);
+      url = files.find((file) => file.id === assetId)?.url;
+    }
+    if (!url) throw failure('file_not_found', 'the private file was not found for this task', { status: 404 });
+    const result = await personalSession.readPrivateFile(url.href);
+    if (typeof title === 'string' && title.length > 0) {
+      const safeTitle = title.replace(/[\/\\\x00-\x1f\x7f:]/g, '_').slice(0, 160);
+      if (safeTitle && safeTitle !== '.' && safeTitle !== '..') result.name = safeTitle;
+    }
+    return { ...result, viewerId: personalSession.viewer.id };
+  }
+  async function uploadFile(personalSession, { filename, contentType, bytes }) {
+    const data = await personalSession.run(PERSONAL_DOCUMENTS.fileUpload, { filename, contentType, size: bytes.length });
+    const payload = data.fileUpload;
+    const file = payload?.uploadFile;
+    const target = uploadURL(file?.uploadUrl);
+    const asset = privateFileURL(file?.assetUrl);
+    if (payload?.success !== true || !target || !asset || !Array.isArray(file?.headers) || file.headers.length > 30) {
+      throw failure('linear_upload_invalid', 'Linear did not return a supported upload target');
+    }
+    const headers = { 'content-type': contentType };
+    for (const header of file.headers) {
+      const key = typeof header?.key === 'string' ? header.key.toLowerCase() : '';
+      if (!/^(?:x-goog-[a-z0-9-]+|content-type|cache-control)$/.test(key) ||
+          typeof header.value !== 'string' || header.value.length > 8192 || /[\r\n]/.test(header.value)) {
+        throw failure('linear_upload_invalid', 'Linear returned unsupported upload headers');
+      }
+      headers[key] = header.value;
+    }
+    let response;
+    try {
+      response = await fetchImpl(target.href, { method: 'PUT', headers, body: bytes,
+        redirect: 'manual', signal: AbortSignal.timeout(120_000) });
+    } catch { throw failure('linear_upload_failed', 'the file upload could not be completed', { retryable: true }); }
+    if (!response.ok) throw failure('linear_upload_failed', 'Linear storage did not accept the file');
+    return asset.href;
+  }
   async function createTaskItem(personalSession, kind, input) {
     const mapping = {
       comment: ['createComment', 'commentCreate', 'comment'],
@@ -343,6 +496,6 @@ export function createPersonalLinearSource({
     result.priorities = data.issuePriorityValues;
     return result;
   }
-  return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listTaskSection,
+  return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listTaskSection, listFiles, readFile, uploadFile,
     assertCommentInIssue, createTaskItem, listCollection, metadata, session };
 }

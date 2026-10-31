@@ -27,6 +27,7 @@ struct LAAPersonalTaskEditor: View {
     @State private var remote: LAAPersonalTask?
     @State private var confirmedRejection = false
     @State private var operation: LAAPersonalOperationResponse.Operation?
+    @State private var showFollowup = false
 
     init(task: LAAPersonalTask?, viewerId: String, drafts: ComposerDraftStore, parent: LAAPersonalTask? = nil) {
         initialTask = task; parentTask = parent; self.viewerId = viewerId; self.drafts = drafts
@@ -128,12 +129,26 @@ struct LAAPersonalTaskEditor: View {
                 Button(initialTask == nil ? LAACopy.WorkTab.create : LAACopy.WorkTab.save) { save() }
                     .disabled(!ready || !identityOK || !hasFullTask || pending != nil || busy || drafts.persistenceFailed)
                     .accessibilityIdentifier("work.task.save")
+                if !identityOK {
+                    Button("Queue Until Connected") { save(sendImmediately: false) }
+                        .disabled(!ready || pending != nil || busy || drafts.persistenceFailed)
+                    Text(verbatim: "端末に保存し、本人を確認できる接続に戻った時に送信します。")
+                        .laaTextStyle(.secondary)
+                }
             }
             .disabled(busy)
             .navigationTitle(Text(verbatim: initialTask == nil ? LAACopy.WorkTab.newTask : LAACopy.WorkTab.editTask))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
             .onChange(of: draft) { _, _ in if ready && pending == nil { saveDraft() } }
             .task { await prepare() }
+            .sheet(isPresented: $showFollowup) {
+                if let pending, let (_, requestKey) = LAAWorkDrafts.request(pending), let device = bridge.deviceID,
+                   let data = pending.draft.text.data(using: .utf8),
+                   let original = try? JSONDecoder().decode(LAAPersonalTaskDraft.self, from: data), original.viewerId == viewerId {
+                    LAAPersonalDependencyEditor(drafts: drafts, viewer: viewerId, device: device,
+                                                parentKey: requestKey.value, team: original.teamId)
+                }
+            }
         }
     }
 
@@ -154,6 +169,11 @@ struct LAAPersonalTaskEditor: View {
                 Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled)
             }
             Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }
+            if initialTask == nil {
+                Button("Add Follow-up") { showFollowup = true }
+                Text(verbatim: "コメント・子課題・関連・リンクは、作成を確認した後に送ります。")
+                    .laaTextStyle(.secondary)
+            }
             if !confirmedRejection && LAAWorkDrafts.canRepeat(item) {
                 Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(item, firstAttempt: false) } }
             }
@@ -251,7 +271,7 @@ struct LAAPersonalTaskEditor: View {
             error = "下書きを端末に保存できませんでした。"; return
         }
     }
-    private func save() {
+    private func save(sendImmediately: Bool = true) {
         guard let key else { return }
         do {
             let body = try draft.requestBody()
@@ -260,7 +280,8 @@ struct LAAPersonalTaskEditor: View {
                 body: body, idempotency: LAABridgeIdempotencyKey(), expectedVersion: draft.base?.updatedAt) else {
                 error = "保存要求を端末に記録できませんでした。"; return
             }
-            Task { await perform(item, firstAttempt: true) }
+            if sendImmediately { Task { await perform(item, firstAttempt: true) } }
+            else { drafts.markSubmissionUnknown(item.id); error = "要求を端末に保存しました。接続後に送信を試みます。" }
         } catch LAAPersonalTaskDraft.Validation.missingTitle { error = "タイトルを入力してください。" }
         catch LAAPersonalTaskDraft.Validation.missingTeam { error = "チームを選んでください。" }
         catch LAAPersonalTaskDraft.Validation.invalidEstimate { error = "見積りは0以上の整数で入力してください。" }

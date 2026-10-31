@@ -246,7 +246,11 @@ export function createBridge({
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
 
-      const rawBody = await readBody(req);
+      // The one bounded upload route consumes its body only after device
+      // authentication and scope checks. All existing routes keep their
+      // original 64 KiB JSON behaviour.
+      const rawBody = route.streamBody ? Buffer.alloc(0) : await readBody(req);
+      if (route.streamBody) res.shouldKeepAlive = false;
 
       let device = null;
       if (route.auth) {

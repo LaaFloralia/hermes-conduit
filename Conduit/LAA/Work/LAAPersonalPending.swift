@@ -28,8 +28,22 @@ struct LAAPersonalPendingView: View {
                 if localItems.isEmpty { Text(verbatim: "保留中の要求はありません。") }
                 ForEach(localItems) { item in
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        Text(verbatim: item.key.sessionID).textSelection(.enabled).laaTextStyle(.secondary)
-                        Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }.disabled(busy)
+                        if let device = bridge.deviceID, LAAPersonalTaskQueue.isDependency(item, device: device, viewer: viewerId) {
+                            if let value = LAAPersonalTaskQueue.dependency(item, device: device, viewer: viewerId) {
+                                Text(verbatim: "作成待ちへの \(value.kind.title)").fontWeight(.semibold)
+                                Text(verbatim: value.first).textSelection(.enabled)
+                                if !value.second.isEmpty { Text(verbatim: value.second).textSelection(.enabled) }
+                                Text(verbatim: "元の作成が未確認・未適用の場合は送信しません。拒否・未適用の場合は内容を確認してください。")
+                                    .laaTextStyle(.secondary)
+                                Button("Process Queue") { Task { await processQueue() } }.disabled(busy)
+                            } else {
+                                Text(verbatim: "送信待ちの内容を読み取れません。記録は保持しています。")
+                                    .foregroundStyle(LAAColor.attention)
+                            }
+                        } else {
+                            Text(verbatim: item.key.sessionID).textSelection(.enabled).laaTextStyle(.secondary)
+                            Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }.disabled(busy)
+                        }
                         if !LAAWorkDrafts.canRepeat(item) {
                             Text(verbatim: "期限を過ぎているため再送できません。保存先を確認して照合してください。")
                                 .laaTextStyle(.secondary)
@@ -62,10 +76,10 @@ struct LAAPersonalPendingView: View {
                     }.padding(.vertical, LAASpacing.x1)
                 }
             }
-            Button("Refresh") { Task { await load() } }.disabled(busy)
+            Button("Refresh") { Task { await processQueue() } }.disabled(busy)
         }
         .navigationTitle("Pending")
-        .task(id: bridge.revision) { await load() }
+        .task(id: bridge.revision) { await processQueue() }
         .confirmationDialog("確認した結果を選んでください", isPresented: $showConfirmation, titleVisibility: .visible) {
             Button("Confirmed Applied") { if let selected { Task { await resolve(selected, as: "applied") } } }
             Button("Confirmed Not Applied") { if let selected { Task { await resolve(selected, as: "not_applied") } } }
@@ -75,6 +89,12 @@ struct LAAPersonalPendingView: View {
         }
     }
 
+    @MainActor private func processQueue() async {
+        busy = true
+        await LAAPersonalTaskQueue.run(drafts: drafts, bridge: bridge, viewer: viewerId)
+        busy = false
+        await load()
+    }
     @MainActor private func load() async {
         busy = true; defer { busy = false }
         do {

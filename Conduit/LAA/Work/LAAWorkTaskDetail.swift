@@ -46,6 +46,10 @@ struct LAAWorkTaskDetailView: View {
                         }.workCard()
                         if let description = task.description, !description.isEmpty {
                             MarkdownText(source: description, foregroundStyle: LAAColor.text).workCard()
+                            if description.lowercased().contains("https://uploads.linear.app/"), let viewerId {
+                                LAAPersonalMarkdownFiles(taskPath: "/v1/personal-tasks/" + (task.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""),
+                                                         viewerId: viewerId, commentId: nil).workCard()
+                            }
                         }
                         if let viewerId {
                             LAAPersonalTaskConnections(drafts: drafts, task: task, viewerId: viewerId)

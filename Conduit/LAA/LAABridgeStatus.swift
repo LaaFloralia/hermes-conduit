@@ -55,6 +55,23 @@ final class LAABridgeSession: ObservableObject {
         }
     }
 
+    func uploadPersonalTaskFile(path: String, file: URL, metadata: LAAPersonalUploadMetadata,
+                                key: LAABridgeIdempotencyKey) async throws -> LAABridgeResponse<LAAPersonalOperationResponse> {
+        guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
+        do {
+            let result = try await client.uploadPersonalTaskFile(path: path, file: file, metadata: metadata,
+                                                                 credentials: current, key: key)
+            guard current == credentials, status == .paired else { throw CancellationError() }
+            return result
+        } catch let error as LAABridgeHTTPError {
+            if current == credentials, error.status == 401 {
+                status = error.code == "token_revoked" ? .revoked : .unauthorized
+                revision += 1
+            }
+            throw error
+        }
+    }
+
     func pair(address: String, code: String, name: String) async throws {
         let url = try LAABridgeEndpoint.parse(address)
         let enrolled = try await client.enroll(baseURL: url, code: code, name: name)

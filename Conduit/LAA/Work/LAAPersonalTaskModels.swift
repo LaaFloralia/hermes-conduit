@@ -89,6 +89,83 @@ struct LAAPersonalOperationResponse: Decodable {
 }
 struct LAAPersonalOperationList: Decodable { let items: [LAAPersonalOperationResponse.Operation]; let viewerId: String }
 
+/// An immutable, protected follow-up to a create whose result is not yet
+/// known. A request can only be built after the same viewer has read back the
+/// exact issue recorded by the parent operation.
+struct LAAPersonalDependency: Codable, Equatable {
+    enum Kind: String, Codable, CaseIterable {
+        case comment, subtask, relation, link
+        var title: String {
+            switch self {
+            case .comment: return "Comment"
+            case .subtask: return "Subtask"
+            case .relation: return "Relation"
+            case .link: return "Link"
+            }
+        }
+    }
+    struct Request { let path: String; let body: Data }
+    let viewerId: String
+    let deviceId: String
+    let parentKey: String
+    let childKey: String
+    let teamId: String
+    var kind: Kind = .comment
+    var first = ""
+    var second = ""
+    var relationType = "related"
+
+    private static func validID(_ value: String) -> Bool {
+        value.range(of: #"^[A-Za-z0-9][A-Za-z0-9._:-]{0,200}$"#, options: .regularExpression) != nil
+    }
+    var valid: Bool {
+        guard Self.validID(viewerId), Self.validID(deviceId), Self.validID(parentKey), Self.validID(childKey),
+              parentKey != childKey, !first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        switch kind {
+        case .comment: return first.utf8.count <= 48 * 1024
+        case .subtask: return first.utf16.count <= 512 && Self.validID(teamId)
+        case .relation: return Self.validID(first.trimmingCharacters(in: .whitespacesAndNewlines)) &&
+            ["blocks", "duplicate", "related", "similar"].contains(relationType)
+        case .link:
+            guard first.utf16.count <= 512, second.utf16.count <= 2048,
+                  let url = URL(string: second.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+            return url.scheme?.lowercased() == "https" && url.host != nil && url.user == nil && url.password == nil
+        }
+    }
+
+    func parentTarget(_ operation: LAAPersonalOperationResponse.Operation, device: String, viewer: String) -> String? {
+        guard valid, device == deviceId, viewer == viewerId, operation.kind == "create",
+              let target = UUID(uuidString: operation.targetId) else { return nil }
+        if operation.status == "succeeded" {
+            guard let result = operation.resultId.flatMap(UUID.init(uuidString:)), result == target else { return nil }
+        } else if operation.status != "resolved" || operation.resolution != "applied" { return nil }
+        return operation.targetId
+    }
+
+    func request(parent: LAAPersonalOperationResponse.Operation, verified: LAAPersonalTaskResponse,
+                 device: String, viewer: String) -> Request? {
+        guard let target = parentTarget(parent, device: device, viewer: viewer),
+              verified.viewerId == viewerId, let readID = verified.task.linearId.flatMap(UUID.init(uuidString:)),
+              readID == UUID(uuidString: target) else { return nil }
+        var payload = ["expectedViewerId": viewerId]
+        let path: String
+        switch kind {
+        case .comment:
+            path = "/v1/personal-tasks/\(target)/comments"; payload["body"] = first
+        case .subtask:
+            path = "/v1/personal-tasks"; payload["title"] = first; payload["teamId"] = teamId; payload["parentId"] = target
+        case .relation:
+            path = "/v1/personal-tasks/\(target)/relations"
+            payload["relatedIssueId"] = first.trimmingCharacters(in: .whitespacesAndNewlines); payload["type"] = relationType
+        case .link:
+            path = "/v1/personal-tasks/\(target)/attachments"
+            payload["title"] = first; payload["url"] = second.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        guard let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else { return nil }
+        return Request(path: path, body: body)
+    }
+}
+
 /// The base and viewer travel with the protected draft, so a restored edit
 /// neither changes unrelated fields nor crosses to a different Linear user.
 struct LAAPersonalTaskDraft: Codable, Equatable {

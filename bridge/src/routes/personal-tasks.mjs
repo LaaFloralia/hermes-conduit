@@ -1,7 +1,7 @@
 // Owner-scoped Linear endpoints. The existing /v1/tasks agent view remains
 // untouched for clients which depend on it.
 import { BridgeError, badRequest } from '../errors.mjs';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { IDEMPOTENCY_KEY_PATTERN } from '../idempotency.mjs';
 import { parseObjectBody } from './state-file.mjs';
 import { createTaskOperationLedger, operationFingerprint } from '../tasks/operation-ledger.mjs';
@@ -11,6 +11,11 @@ import { TaskSourceError } from '../tasks/errors.mjs';
 const DETAIL = /^\/v1\/personal-tasks\/([^/]+)$/;
 const SECTION = /^\/v1\/personal-tasks\/([^/]+)\/(comments|children|history|relations|inverse-relations|attachments)$/;
 const REPLIES = /^\/v1\/personal-tasks\/([^/]+)\/comments\/([^/]+)\/replies$/;
+const FILES = /^\/v1\/personal-tasks\/([^/]+)\/files$/;
+const FILE_CONTENT = /^\/v1\/personal-tasks\/([^/]+)\/files\/([0-9a-f]{64})\/content$/;
+const ATTACHMENT_CONTENT = /^\/v1\/personal-tasks\/([^/]+)\/attachments\/([^/]+)\/content$/;
+const FILE_UPLOAD = /^\/v1\/personal-tasks\/([^/]+)\/files$/;
+const UPLOAD_LIMIT = 20 * 1024 * 1024;
 const OPERATION = /^\/v1\/task-operations\/([0-9a-f-]+)$/i;
 const RESOLUTION = /^\/v1\/task-operations\/([0-9a-f-]+)\/resolve$/i;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,200}$/;
@@ -126,6 +131,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
   const source = personal ?? createPersonalLinearSource({ ...personalConfig, now });
   const operations = createTaskOperationLedger({ store, now });
   const inFlight = new Set();
+  let activeUploads = 0;
   const read = (path, handler, pattern) => ({
     method: 'GET', path, ...(pattern ? { pattern } : {}), auth: true, scope: 'tasks:read', handler: guarded(handler),
   });
@@ -271,6 +277,87 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       });
     } finally { inFlight.delete(operationId); }
   }
+  async function uploadTaskFile({ req, device, params }) {
+    const key = requireKey(req);
+    const issueId = requestedId(params[0]);
+    const viewerId = req.headers['x-linear-viewer-id'];
+    const encodedName = req.headers['x-linear-file-name'];
+    const contentType = req.headers['content-type'];
+    const expectedHash = req.headers['x-linear-content-sha256'];
+    const rawLength = req.headers['content-length'];
+    if (typeof viewerId !== 'string' || !ID.test(viewerId)) throw badRequest('expected_viewer_required', 'the original Linear viewer is required');
+    if (typeof encodedName !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(encodedName) || encodedName.length > 700) {
+      throw badRequest('payload_invalid', 'the filename is invalid');
+    }
+    const nameBytes = Buffer.from(encodedName, 'base64');
+    const filename = nameBytes.toString('utf8');
+    if (nameBytes.toString('base64') !== encodedName || !filename || filename.length > 200 ||
+        Buffer.from(filename).compare(nameBytes) !== 0 || /[\/\\\x00-\x1f\x7f]/.test(filename)) {
+      throw badRequest('payload_invalid', 'the filename is invalid');
+    }
+    if (typeof contentType !== 'string' || !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(contentType) || contentType.length > 128 ||
+        typeof expectedHash !== 'string' || !/^[0-9a-f]{64}$/.test(expectedHash)) {
+      throw badRequest('payload_invalid', 'the file type or digest is invalid');
+    }
+    if (typeof rawLength !== 'string' || !/^\d+$/.test(rawLength) || Number(rawLength) < 1 || Number(rawLength) > UPLOAD_LIMIT) {
+      throw new BridgeError(413, 'file_too_large', 'the file must contain 1 byte to 20 MiB');
+    }
+    if (activeUploads >= 2) throw new BridgeError(429, 'upload_busy', 'two uploads are already in progress', { retryable: true });
+    activeUploads += 1;
+    try {
+      const personalSession = await requestSession();
+      if (personalSession.viewer.id !== viewerId) throw new BridgeError(409, 'linear_viewer_changed', 'the upload was prepared for a different Linear viewer');
+      const chunks = []; let size = 0;
+      try {
+        for await (const chunk of req) {
+          size += chunk.length;
+          if (size > Number(rawLength) || size > UPLOAD_LIMIT) throw new BridgeError(413, 'file_too_large', 'the upload exceeds its declared size');
+          chunks.push(chunk);
+        }
+      } catch (error) {
+        if (error instanceof BridgeError) throw error;
+        throw badRequest('upload_interrupted', 'the upload was interrupted');
+      }
+      if (size !== Number(rawLength)) throw badRequest('upload_interrupted', 'the upload was incomplete');
+      const bytes = Buffer.concat(chunks);
+      const hash = createHash('sha256').update(bytes).digest('hex');
+      if (hash !== expectedHash) throw badRequest('payload_invalid', 'the file digest did not match');
+      const path = `/v1/personal-tasks/${encodeURIComponent(issueId)}/files`;
+      const rawBody = Buffer.from(JSON.stringify({ viewerId, filename, contentType, size, hash }));
+      const reserved = operations.reserve({ deviceId: device.id, viewerId, key, method: 'POST', path,
+        ifMatch: null, rawBody, kind: 'file', targetId: randomUUID(), contextId: issueId });
+      if (reserved.action === 'conflict') throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
+      if (reserved.action === 'expired') throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
+      if (reserved.action === 'existing') {
+        const previous = reserved.entry;
+        if (previous.status === 'succeeded') return statusFor(previous);
+        if (previous.status === 'rejected') throw new BridgeError(409, 'task_operation_rejected', 'the previous upload was refused before association');
+        if (previous.status === 'in_progress') throw new BridgeError(409, 'idempotency_key_in_flight', 'the same upload is still in progress', { details: { operation: previous } });
+        throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier upload must be reconciled', { details: { operation: previous } });
+      }
+      const operationId = reserved.entry.operationId;
+      inFlight.add(operationId);
+      let sent = false;
+      try {
+        const issue = await source.getTaskInSession(personalSession, issueId);
+        if (!issue?.task?.linearId) throw new BridgeError(404, 'task_not_found', 'the task was not found');
+        const assetUrl = await source.uploadFile(personalSession, { filename, contentType, bytes });
+        sent = true;
+        const result = await source.createTaskItem(personalSession, 'attachment', {
+          id: reserved.entry.targetId, issueId: issue.task.linearId, title: filename, url: assetUrl,
+        });
+        const finished = operations.finish({ deviceId: device.id, viewerId, key, status: 'succeeded', result });
+        return { status: 201, data: { operation: finished } };
+      } catch (error) {
+        if (!sent) {
+          operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'preflight_failed' });
+          throw error;
+        }
+        try { operations.finish({ deviceId: device.id, viewerId, key, status: 'outcome_unknown' }); } catch { /* fail closed */ }
+        throw new BridgeError(409, 'idempotency_outcome_unknown', 'Linear may have received the file association; reconcile before retrying', { details: { operationId } });
+      } finally { inFlight.delete(operationId); }
+    } finally { activeUploads -= 1; }
+  }
   async function operationContext(device) {
     const session = await requestSession();
     return { deviceId: device.id, viewerId: session.viewer.id };
@@ -289,6 +376,20 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       if (!result) throw new BridgeError(404, 'task_not_found', 'the task was not found');
       return { status: 200, data: result };
     }, DETAIL),
+    read('/v1/personal-tasks/{id}/files', async ({ req, params }) => {
+      const comment = parameters(req).get('comment');
+      return { status: 200, data: await source.listFiles(requestedId(params[0]), comment ? requestedId(comment) : null) };
+    }, FILES),
+    { ...write('POST', '/v1/personal-tasks/{id}/files', uploadTaskFile, FILE_UPLOAD), streamBody: true },
+    read('/v1/personal-tasks/{id}/files/{fileId}/content', async ({ req, params }) => {
+      const comment = parameters(req).get('comment');
+      return { status: 200, data: await source.readFile(requestedId(params[0]), {
+        assetId: params[1], commentId: comment ? requestedId(comment) : null,
+      }) };
+    }, FILE_CONTENT),
+    read('/v1/personal-tasks/{id}/attachments/{attachmentId}/content', async ({ params }) => ({
+      status: 200, data: await source.readFile(requestedId(params[0]), { attachmentId: requestedId(params[1]) }),
+    }), ATTACHMENT_CONTENT),
     read('/v1/personal-tasks/{id}/{section}', async ({ req, params }) => {
       const query = parameters(req);
       const section = params[1] === 'inverse-relations' ? 'inverseRelations' : params[1];

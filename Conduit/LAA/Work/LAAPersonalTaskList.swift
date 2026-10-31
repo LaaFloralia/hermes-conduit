@@ -173,6 +173,9 @@ struct LAAPersonalTaskList: View {
             items.append(contentsOf: page.items.filter { existing.insert($0.id).inserted })
             loadedFilter = selection
             cursor = page.nextCursor; viewerId = page.viewerId; observedAt = page.observedAt
+            if await LAAPersonalTaskQueue.run(drafts: drafts, bridge: bridge, viewer: page.viewerId), !Task.isCancelled {
+                revision += 1
+            }
         } catch is CancellationError {
         } catch let failure as LAABridgeError {
             if generation == thisGeneration && !Task.isCancelled { error = failure.japaneseText }

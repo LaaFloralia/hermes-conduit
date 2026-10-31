@@ -12,7 +12,8 @@ struct LAAPersonalComment: Decodable, Identifiable {
     let user: User?
 }
 struct LAAPersonalHistory: Decodable, Identifiable {
-    struct Name: Decodable { let id: String; let name: String? }
+    struct Name: Decodable { let id: String; let name: String?; let identifier: String?; let title: String?; let displayName: String? }
+    struct RelationChange: Decodable { let identifier: String; let type: String }
     let id: String
     let createdAt: String?
     let actor: Name?
@@ -25,6 +26,62 @@ struct LAAPersonalHistory: Decodable, Identifiable {
     let fromTitle: String?
     let toTitle: String?
     let updatedDescription: Bool?
+    let fromDelegate: Name?; let toDelegate: Name?
+    let fromCycle: Name?; let toCycle: Name?
+    let fromProject: Name?; let toProject: Name?
+    let fromProjectMilestone: Name?; let toProjectMilestone: Name?
+    let fromTeam: Name?; let toTeam: Name?
+    let fromParent: Name?; let toParent: Name?
+    let fromEstimate: Double?; let toEstimate: Double?
+    let fromDueDate: String?; let toDueDate: String?
+    let addedLabels: [Name]?; let removedLabels: [Name]?
+    let addedToReleases: [Name]?; let removedFromReleases: [Name]?
+    let relationChanges: [RelationChange]?
+    let archived: Bool?; let autoArchived: Bool?; let autoClosed: Bool?; let trashed: Bool?
+    let fromSlaType: String?; let toSlaType: String?
+    let fromSlaBreached: Bool?; let toSlaBreached: Bool?
+    let fromSlaBreachesAt: String?; let toSlaBreachesAt: String?
+    let attachment: Name?; let toConvertedProject: Name?; let issueImport: Name?
+    let customerNeedId: String?; let triageResponsibilityAutoAssigned: Bool?
+
+    var lines: [String] {
+        var result: [String] = []
+        func change(_ label: String, _ before: String?, _ after: String?) {
+            if before != nil || after != nil { result.append("\(label): \(before ?? "—") → \(after ?? "—")") }
+        }
+        func name(_ item: Name?) -> String? { item?.name ?? item?.identifier ?? item?.title ?? item?.displayName }
+        change("タイトル", fromTitle, toTitle)
+        change("状態", name(fromState), name(toState))
+        change("担当", name(fromAssignee), name(toAssignee))
+        change("委任先", name(fromDelegate), name(toDelegate))
+        change("優先度", fromPriority.map { String($0) }, toPriority.map { String($0) })
+        change("見積り", fromEstimate.map { String($0) }, toEstimate.map { String($0) })
+        change("期限", fromDueDate, toDueDate)
+        change("Cycle", name(fromCycle), name(toCycle))
+        change("Project", name(fromProject), name(toProject))
+        change("Milestone", name(fromProjectMilestone), name(toProjectMilestone))
+        change("チーム", name(fromTeam), name(toTeam))
+        change("親課題", name(fromParent), name(toParent))
+        if updatedDescription == true { result.append("本文を更新") }
+        if let labels = addedLabels, !labels.isEmpty { result.append("ラベルを追加: " + labels.compactMap(name).joined(separator: ", ")) }
+        if let labels = removedLabels, !labels.isEmpty { result.append("ラベルを削除: " + labels.compactMap(name).joined(separator: ", ")) }
+        if let releases = addedToReleases, !releases.isEmpty { result.append("Releaseに追加: " + releases.compactMap(name).joined(separator: ", ")) }
+        if let releases = removedFromReleases, !releases.isEmpty { result.append("Releaseから削除: " + releases.compactMap(name).joined(separator: ", ")) }
+        for relation in relationChanges ?? [] { result.append("関連: \(relation.identifier) · \(relation.type)") }
+        if archived == true { result.append("アーカイブ") }
+        if autoArchived == true { result.append("自動アーカイブ") }
+        if autoClosed == true { result.append("自動クローズ") }
+        if trashed == true { result.append("ゴミ箱へ移動") }
+        change("SLA", fromSlaType, toSlaType)
+        change("SLA超過", fromSlaBreached.map(String.init), toSlaBreached.map(String.init))
+        change("SLA期限", fromSlaBreachesAt, toSlaBreachesAt)
+        if let value = name(attachment) { result.append("添付: " + value) }
+        if let value = name(toConvertedProject) { result.append("Projectへ変換: " + value) }
+        if let value = name(issueImport) { result.append("インポート: " + value) }
+        if customerNeedId != nil { result.append("顧客ニーズを更新") }
+        if triageResponsibilityAutoAssigned == true { result.append("トリアージ担当を自動設定") }
+        return result.isEmpty ? ["その他の更新（詳細は未対応）"] : result
+    }
 }
 struct LAAPersonalRelation: Decodable, Identifiable {
     struct Issue: Decodable { let id: String; let identifier: String; let title: String }
@@ -129,6 +186,7 @@ struct LAAPersonalTaskConnections: View {
     @State private var revision = 0
     @State private var reply: LAAPersonalCommentTarget?
     @State private var showSubtask = false
+    @State private var showUpload = false
     @State private var itemMode: LAAPersonalItemMode?
     private var path: String { LAAPersonalPath.task(task.id) }
 
@@ -151,19 +209,24 @@ struct LAAPersonalTaskConnections: View {
             relationSection("Relations", section: "relations")
             relationSection("Referenced By", section: "inverse-relations")
             Button("New Link") { itemMode = .attachment }.buttonStyle(.bordered)
+            Button("Upload File") { showUpload = true }.buttonStyle(.bordered)
             LAAPersonalDetailSection("Attachments", path: path + "/attachments", viewerId: viewerId, revision: revision) { (item: LAAPersonalAttachment) in
                 VStack(alignment: .leading) {
                     if let url = URL(string: item.url), url.scheme?.lowercased() == "https",
                        url.host?.lowercased() != "uploads.linear.app", url.user == nil, url.password == nil {
                         Link(item.title, destination: url)
+                    } else if let url = URL(string: item.url), url.scheme?.lowercased() == "https",
+                              url.host?.lowercased() == "uploads.linear.app" {
+                        LAAPersonalFileButton(title: item.title,
+                            path: path + "/attachments/" + LAAPersonalPath.component(item.id) + "/content", viewerId: viewerId)
                     } else {
                         Text(verbatim: item.title)
-                        Text(verbatim: "Linear内のファイルはLinearで開いてください。").laaTextStyle(.secondary)
+                        Text(verbatim: "この添付先は開けません。").laaTextStyle(.secondary)
                     }
                     if let subtitle = item.subtitle { Text(verbatim: subtitle).laaTextStyle(.secondary) }
                 }
             }
-            Text(verbatim: "活動はタイトル・状態・担当・優先度・本文の更新を表示します。")
+            Text(verbatim: "活動の一部は詳細を表示できない場合があります。")
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             LAAPersonalDetailSection("Activity", path: path + "/history", viewerId: viewerId, revision: revision) { (item: LAAPersonalHistory) in
                 LAAPersonalHistoryRow(item: item)
@@ -174,6 +237,9 @@ struct LAAPersonalTaskConnections: View {
         }
         .sheet(isPresented: $showSubtask, onDismiss: { revision += 1 }) {
             LAAPersonalTaskEditor(task: nil, viewerId: viewerId, drafts: drafts, parent: task)
+        }
+        .sheet(isPresented: $showUpload, onDismiss: { revision += 1 }) {
+            LAAPersonalTaskUpload(drafts: drafts, taskId: task.id, viewerId: viewerId)
         }
         .sheet(item: $itemMode, onDismiss: { revision += 1 }) { mode in
             LAAPersonalItemEditor(mode: mode, taskId: task.id, viewerId: viewerId, drafts: drafts)
@@ -207,6 +273,9 @@ private struct LAAPersonalCommentRow: View {
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             if comment.parentId != nil { Text(verbatim: "返信").laaTextStyle(.secondary) }
             MarkdownText(source: comment.body, foregroundStyle: LAAColor.text)
+            if comment.body.lowercased().contains("https://uploads.linear.app/") {
+                LAAPersonalMarkdownFiles(taskPath: taskPath, viewerId: viewerId, commentId: comment.id)
+            }
             HStack {
                 Button("Reply") { onReply(comment.id) }
                 Button(showReplies ? "Hide Replies" : "Show Replies") { showReplies.toggle() }
@@ -227,16 +296,7 @@ private struct LAAPersonalHistoryRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
             Text(verbatim: "\(item.actor?.name ?? "不明") · \(LAAWorkPresentation.date(item.createdAt))").laaTextStyle(.secondary)
-            if item.fromTitle != nil || item.toTitle != nil { Text(verbatim: "タイトル: \(item.fromTitle ?? "—") → \(item.toTitle ?? "—")") }
-            if item.fromState != nil || item.toState != nil { Text(verbatim: "状態: \(item.fromState?.name ?? "—") → \(item.toState?.name ?? "—")") }
-            if item.fromAssignee != nil || item.toAssignee != nil { Text(verbatim: "担当: \(item.fromAssignee?.name ?? "—") → \(item.toAssignee?.name ?? "—")") }
-            if item.fromPriority != nil || item.toPriority != nil {
-                Text(verbatim: "優先度: \(item.fromPriority.map { String($0) } ?? "—") → \(item.toPriority.map { String($0) } ?? "—")")
-            }
-            if item.updatedDescription == true { Text(verbatim: "本文を更新") }
-            if item.fromTitle == nil && item.toTitle == nil && item.fromState == nil && item.toState == nil
-                && item.fromAssignee == nil && item.toAssignee == nil && item.fromPriority == nil && item.toPriority == nil
-                && item.updatedDescription != true { Text(verbatim: "その他の更新（詳細は未対応）") }
+            ForEach(Array(item.lines.enumerated()), id: \.offset) { _, line in Text(verbatim: line) }
         }.padding(.vertical, LAASpacing.x1)
     }
 }
@@ -299,7 +359,7 @@ private struct LAAPersonalItemEditor: View {
                     Section("Link") {
                         TextField("Title", text: $draft.first)
                         TextField("HTTPS URL", text: $draft.second).keyboardType(.URL).textInputAutocapitalization(.never)
-                        Text(verbatim: "外部リンクを追加します。Linear内のファイルのアップロードは準備中です。").laaTextStyle(.secondary)
+                        Text(verbatim: "外部リンクを追加します。ファイルは別の操作でアップロードできます。").laaTextStyle(.secondary)
                     }.disabled(!ready || pending != nil)
                 }
                 Button("Save") { submit() }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || draft.first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
