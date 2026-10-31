@@ -51,7 +51,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 
 ## シミュレーターとMacの負荷
 
-- このプロジェクトの端末は同時に1台だけ起動する。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で下の2台の停止を待ってから渡す。
+- このプロジェクトの端末は同時に2台まで起動する（下の2台を別々の担当へ1台ずつ渡す。2026-11-01、順番待ちで統合が止まったため）。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>" <端末のUDID>` でその端末の停止を待ってから渡す。
 - 検証用の端末は2台。`LAA 16 Pro Max`（iOS 27.0、`DFFD3966-F54E-4C7A-A161-59201C7EA105`、社長の端末と同じ画面）と `iPhone Duo`（iOS 27.1、`228F6BE7-98B2-4AF6-861F-F76BC8CA0DE7`）。作業用に端末を増やしたら、終了時に削除する。
 - xcodebuildは同時3本・各 `-jobs 4` まで。空き容量はビルド中だけ75 GiBまで下がってよく、75.0 GiBを切ったら止める。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。親はゲートが終わるたびに `LAA 16 Pro Max` を `simctl erase` で初期化し、起動して `defaults write -g AppleLanguages -array en-US` と `AppleLocale en_US` を書いて読み戻してから停止する（試験のたびに端末のデータが増え、2時間で約2 GB増えた）。
 
