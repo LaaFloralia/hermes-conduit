@@ -16,17 +16,20 @@ struct LAADriveBrowserView: View {
     let loadThumbnail: ThumbnailLoader
     let resolveShortcut: ShortcutLoader
     let errorMessage: (Error) -> String
-    let open: (LAADriveListingItem) -> Void
+    let open: (LAADriveListingItem, [LAADriveItem]) -> Void
+    let saveFolder: (LAADriveListingItem) -> Void
 
     init(revision: Int, load: @escaping Loader, loadThumbnail: @escaping ThumbnailLoader,
          resolveShortcut: @escaping ShortcutLoader,
-         errorMessage: @escaping (Error) -> String, open: @escaping (LAADriveListingItem) -> Void) {
+         errorMessage: @escaping (Error) -> String, open: @escaping (LAADriveListingItem, [LAADriveItem]) -> Void,
+         saveFolder: @escaping (LAADriveListingItem) -> Void = { _ in }) {
         self.revision = revision
         self.load = load
         self.loadThumbnail = loadThumbnail
         self.resolveShortcut = resolveShortcut
         self.errorMessage = errorMessage
         self.open = open
+        self.saveFolder = saveFolder
     }
 
     @StateObject private var controller = LAADriveBrowseController()
@@ -62,15 +65,22 @@ struct LAADriveBrowserView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             sections
             searchField
-            if !folders.isEmpty {
-                Button {
-                    folders.removeLast()
-                    search = ""
-                } label: {
-                    Label("Back to \(folders.dropLast().last?.item.name ?? section.title)", systemImage: "chevron.left")
+            if let folder = folders.last {
+                HStack {
+                    Button {
+                        folders.removeLast()
+                        search = ""
+                    } label: {
+                        Label("Back to \(folders.dropLast().last?.item.name ?? section.title)", systemImage: "chevron.left")
+                    }
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .accessibilityIdentifier("laa.drive.browser.back")
+                    Spacer()
+                    Button("Save folder") { saveFolder(folder) }
+                        .frame(minHeight: LAASpacing.minimumTouchTarget)
+                        .accessibilityHint("Estimate space before saving this folder offline.")
+                    .accessibilityIdentifier("laa.drive.offline.folder")
                 }
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
-                .accessibilityIdentifier("laa.drive.browser.back")
             }
             header
             results
@@ -149,6 +159,12 @@ struct LAADriveBrowserView: View {
                 .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                 .accessibilityAddTraits(.isHeader)
             Spacer()
+            Button { Task { await reload(key, debounce: false) } } label: {
+                Image(systemName: "arrow.clockwise")
+                    .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+            }
+            .accessibilityLabel("Refresh files")
+            .accessibilityIdentifier("laa.drive.browser.refresh")
             Button {
                 layout = layout == .grid ? .list : .grid
             } label: {
@@ -235,6 +251,11 @@ struct LAADriveBrowserView: View {
         .accessibilityValue(Text(verbatim: kind(entry)))
         .accessibilityHint(entry.item.isFolder ? "Open folder" : entry.item.kind == "shortcut" ? "Open shortcut" : "Open file")
         .accessibilityIdentifier("laa.drive.browser.item.\(entry.id)")
+        .contextMenu {
+            if entry.item.isFolder {
+                Button("Save folder offline", systemImage: "arrow.down.circle") { saveFolder(entry) }
+            }
+        }
     }
 
     private func labels(_ entry: LAADriveListingItem) -> some View {
@@ -284,7 +305,11 @@ struct LAADriveBrowserView: View {
             folders.append(entry)
             search = ""
             searchFocused = false
-        } else { open(entry) }
+        } else {
+            var images = controller.items.map(\.item).filter(\.isImage)
+            if entry.item.isImage && !images.contains(where: { $0.id == entry.id }) { images.append(entry.item) }
+            open(entry, images)
+        }
     }
 
     private func cancelResolution() {

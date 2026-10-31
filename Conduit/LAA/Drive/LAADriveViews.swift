@@ -19,7 +19,7 @@ extension LAACopy {
         static let pause = "Pause"
         static let seek = "Playback position"
         static let retry = "Retry"
-        static let workspace = "Google documents cannot be exported by this Bridge yet. Open on Mac."
+        static let workspace = "This Google document cannot be exported as a PDF. Open in Google Drive."
         static let unsupported = "This file type cannot be previewed here. Open on Mac."
         static let notDownloadable = "This file cannot be downloaded. Open on Mac."
         static let downloadUnknown = "Download permission is unavailable. Open on Mac."
@@ -42,26 +42,34 @@ enum LAADriveThumbnail {
 
 enum LAADrivePresentation {
     static func message(_ error: Error) -> String {
+        if let error = error as? LAADrivePDFExportError {
+            switch error {
+            case .tooLarge: return "The exported PDF exceeds 10 MB. Open in Google Drive."
+            case .versionChanged: return "This file changed in Drive. Reopen it to continue."
+            }
+        }
         if let error = error as? LAADriveRangeError {
             switch error {
             case .rangeUnsupported: return LAACopy.Drive.rangeUnsupported
             case .unsatisfiable, .invalidRange: return LAACopy.Drive.rangeInvalid
             case .tooLarge: return LAACopy.Drive.tooLarge
+            case .versionChanged: return "This file changed in Drive. Reopen it to continue."
             }
         }
         if let error = error as? LAABridgeHTTPError {
             if error.code == "drive_not_configured" { return LAACopy.Assets.configureDrive }
             if error.code == "insufficient_scope" { return LAACopy.Assets.scope }
+            if error.code == "version_changed" { return "This file changed in Drive. Reopen it to continue." }
             return error.legacyError.japaneseText
         }
         return (error as? LAABridgeError)?.japaneseText ?? LAABridgeError.invalidResponse.japaneseText
     }
 
     static func reason(_ item: LAADriveItem) -> String? {
-        if item.isWorkspace { return LAACopy.Drive.workspace }
         guard let downloadable = item.downloadable else { return LAACopy.Drive.downloadUnknown }
         if !downloadable { return LAACopy.Drive.notDownloadable }
-        if !(item.isMedia || item.isImage || item.isPDF) { return LAACopy.Drive.unsupported }
+        if item.isWorkspace && item.exportFormats?.contains("application/pdf") != true { return LAACopy.Drive.workspace }
+        if !(item.isMedia || item.isImage || item.isPDF || item.isWorkspace) { return LAACopy.Drive.unsupported }
         return nil
     }
 }
@@ -69,9 +77,20 @@ enum LAADrivePresentation {
 struct LAADriveDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     let item: LAADriveItem
+    let webViewURL: URL?
+    let images: [LAADriveItem]
     @State private var metadata: LAADriveItem?
     @State private var error: String?
     @State private var loading = true
+    @State private var saveConfirmation = false
+    @State private var saveTask: Task<Void, Never>?
+    @State private var saveMessage: String?
+
+    init(item: LAADriveItem, webViewURL: URL? = nil, images: [LAADriveItem] = []) {
+        self.item = item
+        self.webViewURL = webViewURL
+        self.images = images
+    }
 
     var body: some View {
         ScrollView {
@@ -100,9 +119,28 @@ struct LAADriveDetailView: View {
                             .accessibilityHint(Text(verbatim: reason))
                         Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     } else {
-                        NavigationLink(LAACopy.Drive.open) { LAADrivePreviewView(item: value) }
+                        NavigationLink(LAACopy.Drive.open) { LAADrivePreviewView(item: value, images: images) }
                             .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                             .foregroundStyle(LAAColor.filledButtonText).accessibilityIdentifier("laa.drive.open")
+                    }
+                    if let webViewURL {
+                        Link("Open in Google Drive", destination: webViewURL)
+                            .accessibilityHint("Opens Google Drive or a browser.")
+                        ShareLink("Share Drive link", item: webViewURL)
+                    }
+                    if LAADrivePresentation.reason(value) == nil {
+                        if saveTask == nil {
+                            Button("Save offline") { saveConfirmation = true }
+                                .accessibilityIdentifier("laa.drive.offline.save")
+                        } else {
+                            HStack {
+                                ProgressView("Saving offline")
+                                Button("Cancel") { saveTask?.cancel() }
+                            }
+                        }
+                        if let saveMessage {
+                            Text(verbatim: saveMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        }
                     }
                 }
             }.laaTextStyle(.body).padding(LAASpacing.horizontal).frame(maxWidth: .infinity, alignment: .leading)
@@ -112,6 +150,17 @@ struct LAADriveDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task(id: bridge.revision) { await load() }
+        .onDisappear { saveTask?.cancel() }
+        .confirmationDialog("Save a copy on this iPhone?", isPresented: $saveConfirmation, titleVisibility: .visible) {
+            Button("Save offline") { if let metadata { save(metadata) } }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            if let metadata, metadata.isWorkspace {
+                Text("The document will be saved as a PDF. Its size is known after export (up to 10 MB).")
+            } else if let size = metadata?.size {
+                Text("Required file space: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)), plus a small temporary allowance.")
+            } else { Text("The file size will be checked before saving.") }
+        }
         .accessibilityIdentifier("laa.drive.detail")
     }
 
@@ -137,6 +186,18 @@ struct LAADriveDetailView: View {
         catch { self.error = LAADrivePresentation.message(error) }
         loading = false
     }
+    @MainActor private func save(_ value: LAADriveItem) {
+        guard saveTask == nil else { return }
+        saveMessage = nil
+        saveTask = Task {
+            do {
+                try await LAADriveOfflineOperations.shared.save(value, bridge: bridge)
+                saveMessage = "Saved offline."
+            } catch is CancellationError { saveMessage = "Saving cancelled." }
+            catch { saveMessage = LAADriveOfflineOperations.message(error) }
+            saveTask = nil
+        }
+    }
 }
 
 private extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
@@ -144,6 +205,7 @@ private extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 struct LAADrivePreviewView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     let item: LAADriveItem
+    var images: [LAADriveItem] = []
     @State private var data: Data?
     @State private var error: String?
     @State private var loading = true
@@ -153,9 +215,11 @@ struct LAADrivePreviewView: View {
         Group {
             if item.isMedia {
                 LAADrivePlayerView(item: item, bridge: bridge)
+            } else if item.isImage, images.count > 1 {
+                LAADriveImagePager(items: images, initialID: item.id)
             } else if let data {
                 if item.isImage, let image = UIImage(data: data) { LAADriveZoomImage(image: image) }
-                else if item.isPDF, let document = PDFDocument(data: data) { LAADrivePDF(document: document) }
+                else if (item.isPDF || item.isWorkspace), let document = PDFDocument(data: data) { LAADrivePDF(document: document) }
                 else { Text(verbatim: LAACopy.Drive.invalidPreview).foregroundStyle(LAAColor.attention) }
             } else if let error {
                 VStack(spacing: LAASpacing.x4) {
@@ -170,9 +234,15 @@ struct LAADrivePreviewView: View {
         .navigationTitle(Text(verbatim: item.name)).navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task(id: retry) {
-            guard !item.isMedia else { return }
+            guard !item.isMedia, !(item.isImage && images.count > 1) else { return }
             loading = true; error = nil
-            do { data = try await LAADriveContent.preview(item, bridge: bridge) }
+            do {
+                if item.isWorkspace {
+                    data = try await LAADriveData.exportPDF(item, bridge: bridge, expectedVersion: item.version).data
+                } else {
+                    data = try await LAADriveContent.preview(item, bridge: bridge)
+                }
+            }
             catch is CancellationError { }
             catch { self.error = LAADrivePresentation.message(error) }
             loading = false
@@ -180,13 +250,13 @@ struct LAADrivePreviewView: View {
     }
 }
 
-private struct LAADrivePDF: UIViewRepresentable {
+struct LAADrivePDF: UIViewRepresentable {
     let document: PDFDocument
     func makeUIView(context: Context) -> PDFView { let view = PDFView(); view.autoScales = true; return view }
     func updateUIView(_ view: PDFView, context: Context) { if view.document !== document { view.document = document } }
 }
 
-private struct LAADriveZoomImage: UIViewRepresentable {
+struct LAADriveZoomImage: UIViewRepresentable {
     let image: UIImage
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeUIView(context: Context) -> UIScrollView {

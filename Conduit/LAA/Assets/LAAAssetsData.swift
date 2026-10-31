@@ -1,5 +1,8 @@
 #if LAA_BUILD
 import Foundation
+#if DEBUG
+import UIKit
+#endif
 
 extension LAACopy {
     enum Assets {
@@ -34,6 +37,7 @@ struct LAADriveItem: Decodable, Identifiable, Hashable {
     let name: String
     let mimeType: String
     let kind: String
+    let version: String?
     let size: Int64?
     let modifiedAt: String?
     let downloadable: Bool?
@@ -117,8 +121,8 @@ enum LAADriveData {
         return bridge.status == .paired
     }
 
-    @MainActor static func page(path: String, bridge: LAABridgeSession) async throws -> LAADrivePage {
-        #if DEBUG
+    #if DEBUG
+    private static func fixturePage(path: String) throws -> Data? {
         if let fixture {
             if fixture == "offline" { throw LAABridgeError.networkUnreachable }
             if fixture == "error" {
@@ -151,20 +155,60 @@ enum LAADriveData {
             }
             if let search, !search.isEmpty { objects = objects.filter { $0["name"]?.localizedCaseInsensitiveContains(search) == true } }
             let next: Any = fixture == "paged" && cursor == nil ? "page2" : NSNull()
-            let data = try JSONSerialization.data(withJSONObject: ["items": objects, "nextCursor": next])
-            return try JSONDecoder().decode(LAADrivePage.self, from: data)
+            let enriched: [[String: Any]] = objects.map { object in
+                var result: [String: Any] = object
+                result["version"] = "1"
+                result["downloadable"] = true
+                result["size"] = 1024
+                result["hasThumbnail"] = false
+                result["exportFormats"] = object["kind"] == "workspace_document" ? ["application/pdf"] : []
+                return result
+            }
+            return try JSONSerialization.data(withJSONObject: ["items": enriched, "nextCursor": next, "incompleteSearch": false])
         }
+        return nil
+    }
+    #endif
+
+    @MainActor static func page(path: String, bridge: LAABridgeSession) async throws -> LAADrivePage {
+        #if DEBUG
+        if let data = try fixturePage(path: path) { return try JSONDecoder().decode(LAADrivePage.self, from: data) }
         #endif
         let result: LAABridgeResponse<LAADrivePage> = try await bridge.request(method: "GET", path: path)
+        return result.data
+    }
+
+    @MainActor static func listingPage(_ query: LAADriveBrowseQuery, bridge: LAABridgeSession) async throws -> LAADriveListingPage {
+        guard let path = query.path else { throw LAABridgeError.invalidResponse }
+        #if DEBUG
+        if let data = try fixturePage(path: path) { return try JSONDecoder().decode(LAADriveListingPage.self, from: data) }
+        #endif
+        let result: LAABridgeResponse<LAADriveListingPage> = try await bridge.request(method: "GET", path: path)
+        return result.data
+    }
+
+    @MainActor static func listingMetadata(_ id: String, bridge: LAABridgeSession) async throws -> LAADriveListingItem {
+        let path = try LAADrivePaths.metadata(id)
+        #if DEBUG
+        if fixture != nil {
+            let data = try JSONSerialization.data(withJSONObject: ["id": id, "name": id, "mimeType": "application/pdf",
+                                                                    "kind": "file", "version": "1", "downloadable": true])
+            return try JSONDecoder().decode(LAADriveListingItem.self, from: data)
+        }
+        #endif
+        let result: LAABridgeResponse<LAADriveListingItem> = try await bridge.request(method: "GET", path: path)
         return result.data
     }
 
     @MainActor static func metadata(_ item: LAADriveItem, bridge: LAABridgeSession) async throws -> LAADriveItem {
         #if DEBUG
         if fixture != nil {
+            let fixtureSize: Int64
+            if item.isWorkspace { fixtureSize = 0 }
+            else { fixtureSize = (try? await LAADriveContent.range(item, offset: 0, length: 1, bridge: bridge).total) ?? 1024 }
             let data = try JSONSerialization.data(withJSONObject: [
                 "id": item.id, "name": item.name, "mimeType": item.mimeType, "kind": item.kind,
-                "size": 1024, "modifiedAt": "2026-10-25T13:00:00.000Z", "downloadable": !item.isWorkspace,
+                "size": fixtureSize, "version": "1", "modifiedAt": "2026-10-25T13:00:00.000Z", "downloadable": true,
                 "exportFormats": item.isWorkspace ? ["application/pdf"] : []
             ])
             return try JSONDecoder().decode(LAADriveItem.self, from: data)
@@ -173,6 +217,21 @@ enum LAADriveData {
         let path = try LAADrivePaths.metadata(item.id)
         let result: LAABridgeResponse<LAADriveItem> = try await bridge.request(method: "GET", path: path)
         return result.data
+    }
+
+    @MainActor static func exportPDF(_ item: LAADriveItem, bridge: LAABridgeSession,
+                                     expectedVersion: String?) async throws -> LAADrivePDFExport {
+        #if DEBUG
+        if fixture != nil {
+            guard expectedVersion == nil || expectedVersion == "1" else { throw LAADrivePDFExportError.versionChanged }
+            let data = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 200, height: 200)).pdfData { context in
+                context.beginPage()
+                "Fixture document".draw(at: CGPoint(x: 20, y: 20), withAttributes: nil)
+            }
+            return LAADrivePDFExport(data: data, version: "1")
+        }
+        #endif
+        return try await bridge.driveExportPDF(id: item.id, expectedVersion: expectedVersion)
     }
 }
 #endif

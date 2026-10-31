@@ -11,13 +11,14 @@ import CoreVideo
 struct LAADriveItem {
     let id: String
     let mimeType: String
+    let version: String? = nil
 }
 
 enum LAABridgeError: Error {
     case invalidResponse
     var japaneseText: String { "Invalid response" }
 }
-enum LAADriveRangeError: Error { case invalidRange }
+enum LAADriveRangeError: Error { case invalidRange, versionChanged }
 enum LAADrivePresentation {
     static func message(_ error: Error) -> String { String(describing: error) }
 }
@@ -26,12 +27,16 @@ enum LAACopy {
 }
 enum LAADrivePaths {
     static func content(_ id: String) throws -> String { "/v1/drive/files/\(id)/content" }
+    static func validVersion(_ value: String) -> Bool { !value.isEmpty && value.allSatisfy(\.isNumber) }
 }
+enum LAAStudioMedia { static func bridgePathIsValid(_ path: String) -> Bool { false } }
 struct RangeResult {
     let data: Data
     let total: Int64
     let mimeType: String?
+    let version: String?
 }
+typealias LAADriveRangeResponse = RangeResult
 
 private struct TransferMeasurement {
     let result: RangeResult
@@ -67,7 +72,8 @@ private func measuredTransfer(_ request: URLRequest, offset: Int64, length: Int)
         data.append(byte)
     }
     guard data.count == expected else { throw LAADriveRangeError.invalidRange }
-    return .init(result: .init(data: data, total: total, mimeType: http.mimeType),
+    return .init(result: .init(data: data, total: total, mimeType: http.mimeType,
+                               version: http.value(forHTTPHeaderField: "x-laa-drive-version")),
                  timings: ["size": Double(data.count),
                            "headersMs": headersAt.timeIntervalSince(started) * 1_000,
                            "bodyMs": Date().timeIntervalSince(headersAt) * 1_000])
@@ -77,6 +83,9 @@ private func measuredTransfer(_ request: URLRequest, offset: Int64, length: Int)
     let baseURL: URL
     let token: String
     init(baseURL: URL, token: String) { self.baseURL = baseURL; self.token = token }
+    func driveRange(path: String, offset: Int64, length: Int) async throws -> RangeResult {
+        throw LAABridgeError.invalidResponse // Studio playback is not part of this measurement.
+    }
 }
 
 enum LAADriveContent {
@@ -85,12 +94,14 @@ enum LAADriveContent {
     @MainActor static var requests = 0
     @MainActor static var completedRanges: [[String: Double]] = []
     @MainActor static func range(_ item: LAADriveItem, offset: Int64, length: Int,
-                                 bridge: LAABridgeSession) async throws -> RangeResult {
+                                 bridge: LAABridgeSession, expectedVersion: String? = nil) async throws -> RangeResult {
         requests += 1
         var request = URLRequest(url: bridge.baseURL.appendingPathComponent("v1/drive/files/\(item.id)/content"))
         request.setValue("Bearer \(bridge.token)", forHTTPHeaderField: "Authorization")
         request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
+        if let expectedVersion { request.setValue(expectedVersion, forHTTPHeaderField: "x-laa-drive-version") }
         let measurement = try await measuredTransfer(request, offset: offset, length: length)
+        if let expectedVersion, measurement.result.version != expectedVersion { throw LAADriveRangeError.versionChanged }
         completedRanges.append(measurement.timings)
         return measurement.result
     }

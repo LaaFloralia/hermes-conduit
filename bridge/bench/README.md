@@ -53,3 +53,14 @@ The experimental transport was never wired into the iOS client.
 These are Mac-side fixture measurements, not iPhone display timings or real
 Drive results. They do not establish behavior for long videos, other codecs,
 changing files, loss, variable bandwidth, PiP, or AirPlay.
+
+## CLI integration checks
+
+`node bridge/bench/drive-integration-typecheck.mjs` typechecks the assembled
+Assets, Drive, Bridge and existing voice-audio coordinator against the iOS SDK,
+with stubs for unrelated shell and Studio screens. It is not an app build or a
+simulator test. `node bridge/bench/drive-offline-integration-test.mjs` exercises
+file and Workspace PDF saves through the actual offline adapter and store, with
+synthetic data, including offline access, denial, restored permissions, version
+changes, pairing changes and removal. The remaining `drive-*-test.mjs` files
+exercise individual contracts and player state with local fixtures.

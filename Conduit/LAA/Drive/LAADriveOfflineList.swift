@@ -85,7 +85,9 @@ struct LAADriveOfflineList: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(!canOpen || busyIDs.contains(record.id))
+            // Tapping a previously denied copy performs a fresh check; an
+            // offline check still refuses it until access is restored online.
+            .disabled(busyIDs.contains(record.id))
             .accessibilityIdentifier("laa.drive.offline.item.\(record.id)")
             if busyIDs.contains(record.id) {
                 ProgressView().accessibilityLabel("Updating saved file")

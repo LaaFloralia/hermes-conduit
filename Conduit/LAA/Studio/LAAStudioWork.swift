@@ -88,7 +88,10 @@ struct LAAStudioPlayerView: View {
     }
     var body: some View {
         Group {
-            if let item { LAADrivePlayerView(item: item, bridge: bridge, studioPath: path) }
+            if let item {
+                LAADrivePlayerView(item: item, bridge: bridge, studioPath: path, autoPlay: true)
+                    .id("\(bridge.revision):\(path)")
+            }
             else { Text(verbatim: LAACopy.Studio.unsupported) }
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: asset.name))
             .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)

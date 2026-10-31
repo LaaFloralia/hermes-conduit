@@ -13,16 +13,24 @@ enum LAADrivePaths {
         return "/v1/drive/files/\(id)"
     }
     static func content(_ id: String) throws -> String { try metadata(id) + "/content" }
+    static func validVersion(_ value: String) -> Bool {
+        (1...30).contains(value.utf8.count) && value.utf8.allSatisfy { (48...57).contains($0) }
+    }
 }
 
 enum LAADriveRangeError: Error, Equatable {
-    case rangeUnsupported, unsatisfiable, invalidRange, tooLarge
+    case rangeUnsupported, unsatisfiable, invalidRange, tooLarge, versionChanged
 }
 
 struct LAADriveRangeResponse {
     let data: Data
     let total: Int64
     let mimeType: String?
+    let version: String?
+
+    init(data: Data, total: Int64, mimeType: String?, version: String? = nil) {
+        self.data = data; self.total = total; self.mimeType = mimeType; self.version = version
+    }
 }
 
 private struct LAADriveErrorEnvelope: Decodable {
@@ -35,8 +43,10 @@ extension LAABridgeClient {
     /// Bound every request and inspect its headers before consuming bytes. In
     /// particular, a server ignoring Range must never trigger a whole download.
     func driveRange(path: String, credentials: LAABridgeCredentials, offset: Int64,
-                    length: Int) async throws -> LAADriveRangeResponse {
+                    length: Int, expectedVersion: String? = nil) async throws -> LAADriveRangeResponse {
         guard offset >= 0, length > 0, length <= LAADriveContent.chunkSize,
+              expectedVersion.map(LAADrivePaths.validVersion) ?? true,
+              expectedVersion == nil || path.hasPrefix("/v1/drive/files/"),
               offset <= Int64.max - Int64(length - 1), (path.hasPrefix("/v1/drive/files/") || LAAStudioMedia.bridgePathIsValid(path)),
               let url = URL(string: path, relativeTo: credentials.baseURL)?.absoluteURL,
               url.scheme == credentials.baseURL.scheme, url.host == credentials.baseURL.host,
@@ -45,6 +55,7 @@ extension LAABridgeClient {
         request.timeoutInterval = 30
         request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
         request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
+        if let expectedVersion { request.setValue(expectedVersion, forHTTPHeaderField: "x-laa-drive-version") }
         do {
             let (bytes, response) = try await rangeSession.bytes(for: request)
             defer { bytes.task.cancel() }
@@ -68,6 +79,9 @@ extension LAABridgeClient {
                   range.end <= offset + Int64(length - 1), range.total > range.end else {
                 throw LAADriveRangeError.invalidRange
             }
+            let version = http.value(forHTTPHeaderField: "x-laa-drive-version")
+            if let version, !LAADrivePaths.validVersion(version) { throw LAADriveRangeError.invalidRange }
+            if let expectedVersion, version != expectedVersion { throw LAADriveRangeError.versionChanged }
             let expected = Int(range.end - range.start + 1)
             var data = Data(capacity: expected)
             for try await byte in bytes {
@@ -76,7 +90,7 @@ extension LAABridgeClient {
                 data.append(byte)
             }
             guard data.count == expected else { throw LAADriveRangeError.invalidRange }
-            return .init(data: data, total: range.total, mimeType: http.mimeType)
+            return .init(data: data, total: range.total, mimeType: http.mimeType, version: version)
         } catch is CancellationError { throw CancellationError() }
         catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
@@ -106,7 +120,7 @@ enum LAADriveContent {
     static let previewLimit: Int64 = 64 * 1024 * 1024
 
     @MainActor static func range(_ item: LAADriveItem, offset: Int64, length: Int,
-                                 bridge: LAABridgeSession) async throws -> LAADriveRangeResponse {
+                                 bridge: LAABridgeSession, expectedVersion: String? = nil) async throws -> LAADriveRangeResponse {
         #if DEBUG
         if LAADriveData.fixture != nil {
             let directory = Bundle.main.bundleURL.appendingPathComponent("staff/ciel")
@@ -124,18 +138,26 @@ enum LAADriveContent {
             } else { throw LAABridgeError.unavailable }
             guard offset < data.count else { throw LAADriveRangeError.unsatisfiable }
             let end = min(Int(offset) + length, data.count)
-            return .init(data: data.subdata(in: Int(offset)..<end), total: Int64(data.count), mimeType: item.mimeType)
+            return .init(data: data.subdata(in: Int(offset)..<end), total: Int64(data.count), mimeType: item.mimeType,
+                         version: item.version ?? expectedVersion)
         }
         #endif
-        return try await bridge.driveRange(path: LAADrivePaths.content(item.id), offset: offset, length: length)
+        return try await bridge.driveRange(path: LAADrivePaths.content(item.id), offset: offset, length: length,
+                                           expectedVersion: expectedVersion)
     }
 
     @MainActor static func preview(_ item: LAADriveItem, bridge: LAABridgeSession) async throws -> Data {
         var data = Data()
         var total: Int64?
+        var version = item.version
         repeat {
-            let part = try await range(item, offset: Int64(data.count), length: chunkSize, bridge: bridge)
+            let part = try await range(item, offset: Int64(data.count), length: chunkSize, bridge: bridge,
+                                       expectedVersion: version)
             guard part.total <= previewLimit, total == nil || total == part.total else { throw LAADriveRangeError.tooLarge }
+            if let received = part.version {
+                guard version == nil || version == received else { throw LAADriveRangeError.versionChanged }
+                version = received
+            } else if version != nil { throw LAADriveRangeError.versionChanged }
             total = part.total
             data.append(part.data)
         } while Int64(data.count) < (total ?? 0)
