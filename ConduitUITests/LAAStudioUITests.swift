@@ -92,8 +92,15 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertFalse(app.buttons["laa.studio.composer.textSize"].exists)
         let send = app.buttons["laa.studio.composer.send"]
         if !send.isHittable { app.swipeUp() }
+        _ = try helper("mode/create-busy-once")
         XCTAssertTrue(send.waitForExistence(timeout: 10)); XCTAssertGreaterThanOrEqual(send.frame.height, 44); send.tap()
+        XCTAssertTrue(app.staticTexts["Studioが使用中です。少し待ってから送り直してください。"].waitForExistence(timeout: 15))
+        let retryCreation = app.buttons["laa.studio.retry"]
+        XCTAssertTrue(retryCreation.waitForExistence(timeout: 10))
+        if !retryCreation.isHittable { app.swipeUp() }
+        retryCreation.tap()
         XCTAssertTrue(app.staticTexts["依頼を受け付けました。"].waitForExistence(timeout: 15))
+        XCTAssertEqual(try helper("create-consistent"), "true")
     }
 }
 #endif

@@ -20,14 +20,14 @@ struct LAAStudioCreateView: View {
         Binding(get: { draft.projectID ?? "" }, set: { value in
             draft.projectID = value.isEmpty ? nil : value
             draft.expectedRevision = snapshot.projects.first(where: { $0.id == value })?.revision ?? 0
-            draft.requestID = nil
+            draft.resetSubmission()
         })
     }
     private var principleSelection: Binding<String> {
         Binding(get: { draft.principle?.id ?? "" }, set: { value in
             let found = snapshot.principles.first(where: { $0.id == value })
             draft.principle = found.map { .init(id: $0.id, version: $0.version, revision: $0.revision) }
-            draft.requestID = nil
+            draft.resetSubmission()
         })
     }
     var body: some View {
@@ -44,7 +44,7 @@ struct LAAStudioCreateView: View {
                         .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                     if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
                 } else {
-                    Text(verbatim: draft.pending ? LAACopy.Studio.uncertain : LAACopy.Studio.draft)
+                    Text(verbatim: draft.pending ? (draft.workBusy == true ? LAACopy.Studio.workBusy : LAACopy.Studio.uncertain) : LAACopy.Studio.draft)
                         .laaTextStyle(.secondary).foregroundStyle(draft.pending ? LAAColor.attention : LAAColor.secondaryText)
                     LabeledContent(LAACopy.Studio.work) {
                         Picker(LAACopy.Studio.work, selection: selection) {
@@ -93,6 +93,7 @@ struct LAAStudioCreateView: View {
         .onAppear {
             guard !initialized else { return }
             draft = LAAStudioDraftStore.load(deviceID: device, draftID: draftID) ?? LAAStudioDraft()
+            canRetry = draft.pending && draft.workBusy == true
             if draft.prompt.isEmpty && !draft.pending, let initialProject {
                 draft.projectID = initialProject.id; draft.expectedRevision = initialProject.revision; draft.prompt = initialPrompt
             }
@@ -104,22 +105,34 @@ struct LAAStudioCreateView: View {
         }
     }
     @MainActor private func submit() async {
-        guard !sending else { return }
+        guard !sending && (!draft.pending || canRetry) else { return }
         sending = true; error = nil
         defer { sending = false }
         do {
             if draft.requestID == nil { draft.requestID = try await LAAStudioData.requestID(bridge) }
-            guard let request = draft.request() else { error = LAACopy.Studio.invalid; return }
+            let rotateKey = draft.pending && draft.workBusy != true
+            guard let submission = try draft.submission(rotateKey: rotateKey) else { error = LAACopy.Studio.invalid; return }
+            let previousDraft = draft
+            let previousCanRetry = canRetry
             draft.pending = true
-            guard LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) else { draft.pending = false; error = LAACopy.Studio.saveFailed; return }
-            let record = try await LAAStudioData.submit(request, bridge: bridge)
+            draft.workBusy = nil
+            canRetry = false
+            guard LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) else {
+                draft = previousDraft; canRetry = previousCanRetry; error = LAACopy.Studio.saveFailed; return
+            }
+            let record = try await LAAStudioData.submit(submission.request, body: submission.body, key: submission.key, bridge: bridge)
             done = true
             if !LAAStudioDraftStore.clear(deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
             created = record
         } catch let failure as LAABridgeHTTPError {
-            let refused = ["studio_revision_changed", "studio_principle_changed", "studio_work_busy", "invalid_request", "studio_payload_invalid", "insufficient_scope"].contains(failure.code ?? "")
-            if refused { draft.pending = false; draft.requestID = nil; _ = LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) }
-            error = LAAStudioData.message(failure)
+            if failure.status == 409 && failure.code == "studio_work_busy" && failure.retryable == true {
+                draft.workBusy = true; canRetry = true
+                if !LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
+            } else {
+                let refused = ["studio_revision_changed", "studio_principle_changed", "invalid_request", "studio_payload_invalid", "insufficient_scope"].contains(failure.code ?? "")
+                if refused { draft.resetSubmission(); _ = LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) }
+                error = LAAStudioData.message(failure)
+            }
         } catch { self.error = LAAStudioData.message(error) }
     }
     @MainActor private func check() async {
@@ -132,7 +145,7 @@ struct LAAStudioCreateView: View {
             if !LAAStudioDraftStore.clear(deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
             created = record
         } catch let failure as LAABridgeHTTPError {
-            canRetry = failure.code == "studio_request_missing"
+            canRetry = draft.workBusy == true || failure.code == "studio_request_missing"
             error = LAAStudioData.message(failure)
         } catch { self.error = LAAStudioData.message(error) }
     }

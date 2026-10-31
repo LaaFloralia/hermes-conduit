@@ -26,7 +26,7 @@ import {
   randomDeviceId,
   randomToken,
 } from './auth.mjs';
-import { IDEMPOTENCY_KEY_PATTERN, complete, requestFingerprint, reserve } from './idempotency.mjs';
+import { IDEMPOTENCY_KEY_PATTERN, complete, release, requestFingerprint, reserve } from './idempotency.mjs';
 import { driveAdapterFromEnv } from './drive/google-api.mjs';
 import { driveRoutes } from './routes/drive.mjs';
 import { BridgeError, badRequest } from './errors.mjs';
@@ -233,6 +233,8 @@ export function createBridge({
       : url.pathname;
     let deviceId = null;
     let errorCode = null;
+    let route = null;
+    let reservation = null;
 
     try {
       checkOrigin(req);
@@ -241,7 +243,7 @@ export function createBridge({
       if (candidates.length === 0) {
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
-      const route = candidates.find((candidate) => candidate.method === req.method);
+      route = candidates.find((candidate) => candidate.method === req.method);
       if (!route) {
         throw new BridgeError(405, 'method_not_allowed', `${req.method} is not allowed on ${pathname}`);
       }
@@ -301,6 +303,7 @@ export function createBridge({
           });
           return;
         }
+        reservation = { deviceId: device.id, key: idempotencyKey, fingerprint, createdAt: outcome.entry.createdAt };
       }
 
       const params = route.pattern ? (route.pattern.exec(pathname) ?? []).slice(1) : [];
@@ -318,9 +321,16 @@ export function createBridge({
       }
       ok(res, result.status, result.data, requestId, result.headers ?? {});
     } catch (err) {
-      const error = err instanceof BridgeError
+      let error = err instanceof BridgeError
         ? err
         : new BridgeError(500, 'internal_error', 'unexpected server error');
+      if (reservation && route?.releaseOnError?.(error)) {
+        try {
+          if (!store.mutate((state) => release(state, reservation))) throw new Error('reservation changed');
+        } catch {
+          error = new BridgeError(503, 'idempotency_release_failed', 'Unable to release the retry reservation');
+        }
+      }
       errorCode = error.code;
       if (!(err instanceof BridgeError) && log) {
         log({ level: 'error', requestId, error: err?.message ?? String(err) });

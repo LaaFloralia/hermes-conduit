@@ -46,6 +46,7 @@ extension LAACopy {
         static let openOnMac = "Open on Mac"
         static let disconnected = "MacのStudioに接続できません。Studioの起動と接続を確認してください。"
         static let notAccepting = "Studioは現在依頼を受け付けていません。しばらくしてから確認してください。"
+        static let workBusy = "Studioが使用中です。少し待ってから送り直してください。"
         static let permission = "この端末にはStudioの権限がありません。Macで権限を追加してください。"
         static let draft = "下書きはこの端末に保存されています。まだ送信していません。"
         static let uncertain = "送信結果を確認できていません。同じ依頼を照合してください。"
@@ -116,7 +117,7 @@ enum LAAStudioData {
         let response: LAABridgeResponse<LAAStudioRecord> = try await bridge.request(method: "GET", path: "/v1/studio/requests/\(id)")
         return response.data
     }
-    @MainActor static func submit(_ request: LAAStudioRequest, bridge: LAABridgeSession) async throws -> LAAStudioRecord {
+    @MainActor static func submit(_ request: LAAStudioRequest, body: Data, key: LAABridgeIdempotencyKey, bridge: LAABridgeSession) async throws -> LAAStudioRecord {
         #if DEBUG
         if fixture != nil {
             let record = LAAStudioRecord(request: request, status: "queued", bootId: nil, updatedAt: "2026-10-31T09:00:00Z", report: nil)
@@ -124,8 +125,7 @@ enum LAAStudioData {
             return record
         }
         #endif
-        let body = try JSONEncoder().encode(request)
-        let response: LAABridgeResponse<LAAStudioRecord> = try await bridge.request(method: "POST", path: "/v1/studio/requests", jsonBody: body, idempotencyKey: .init(), timeout: 30)
+        let response: LAABridgeResponse<LAAStudioRecord> = try await bridge.request(method: "POST", path: "/v1/studio/requests", jsonBody: body, idempotencyKey: key, timeout: 30)
         return response.data
     }
     @MainActor static func action(_ action: LAAStudioAction, body: Data, key: LAABridgeIdempotencyKey, bridge: LAABridgeSession) async throws -> LAAStudioRecord {
@@ -144,7 +144,8 @@ enum LAAStudioData {
         if let error = error as? LAABridgeHTTPError {
             switch error.code {
             case "studio_not_connected": return LAACopy.Studio.disconnected
-            case "studio_not_accepting", "studio_work_busy": return LAACopy.Studio.notAccepting
+            case "studio_not_accepting": return LAACopy.Studio.notAccepting
+            case "studio_work_busy": return LAACopy.Studio.workBusy
             case "insufficient_scope": return LAACopy.Studio.permission
             case "studio_request_missing": return LAACopy.Studio.missing
             case "studio_revision_changed": return "作品の版が変わりました。作品一覧を更新してください。"
@@ -190,6 +191,9 @@ struct LAAStudioDraft: Codable, Equatable {
     var prompt: String = ""
     var principle: LAAStudioRequest.Principle?
     var pending = false
+    var submissionBody: Data?
+    var submissionKey: String?
+    var workBusy: Bool?
     var isNew: Bool { projectID == nil }
     func request() -> LAAStudioRequest? {
         guard let requestID, UUID(uuidString: requestID) != nil,
@@ -199,6 +203,23 @@ struct LAAStudioDraft: Codable, Equatable {
                                 prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
                                 create: isNew ? .init(title: title.trimmingCharacters(in: .whitespacesAndNewlines)) : nil,
                                 principle: principle)
+    }
+    mutating func submission(rotateKey: Bool = false) throws -> (request: LAAStudioRequest, body: Data, key: LAABridgeIdempotencyKey)? {
+        guard let request = request() else { return nil }
+        let body: Data
+        if let submissionBody {
+            guard try JSONDecoder().decode(LAAStudioRequest.self, from: submissionBody) == request else { return nil }
+            body = submissionBody
+        } else {
+            body = try JSONEncoder().encode(request)
+            submissionBody = body
+        }
+        if rotateKey || submissionKey == nil { submissionKey = LAABridgeIdempotencyKey().value }
+        guard let submissionKey, let key = LAABridgeIdempotencyKey(restoring: submissionKey) else { return nil }
+        return (request, body, key)
+    }
+    mutating func resetSubmission() {
+        pending = false; requestID = nil; submissionBody = nil; submissionKey = nil; workBusy = nil
     }
 }
 

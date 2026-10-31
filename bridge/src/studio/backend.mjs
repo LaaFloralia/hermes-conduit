@@ -16,6 +16,7 @@ export function createStudioBackend({
   launch = () => execFileAsync(join(homedir(), 'dev', 'studio', 'bin', 'studio'), ['{"operation":"intake.snapshot"}'],
     { timeout: 8000, maxBuffer: 1024 * 1024 }),
   now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, statPath = lstat,
+  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   const socketPath = join(directory, 'intake.sock');
   const metadataPath = join(directory, 'intake.json');
@@ -51,14 +52,14 @@ export function createStudioBackend({
   }
 
   async function startOnce() {
-    if (starting) return starting;
-    if (now() - lastStart < startupIntervalMs) return;
+    if (starting) { await starting; return false; }
+    if (now() - lastStart < startupIntervalMs) return false;
     lastStart = now();
-    starting = Promise.resolve().then(launch).catch(() => {}).finally(() => { starting = null; });
+    starting = Promise.resolve().then(launch).then(() => true, () => false).finally(() => { starting = null; });
     return starting;
   }
 
-  async function request(args) {
+  async function request(args, context = {}) {
     let response;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
@@ -69,7 +70,7 @@ export function createStudioBackend({
       } catch (error) {
         if (error?.name === 'AbortError') throw error;
         if (attempt === 0 && (error?.code === 'ENOENT' || error?.code === 'ECONNREFUSED' || error?.code === 'studio_not_connected')) {
-          await startOnce();
+          if (await startOnce()) context.startedStudio = true;
         } else if (attempt === 0) {
           // A timeout or reset may follow a completed mutation: do not replay it.
           throw unavailable();
@@ -79,8 +80,8 @@ export function createStudioBackend({
     throw unavailable();
   }
 
-  async function json(args) {
-    const response = await request(args);
+  async function json(args, context) {
+    const response = await request(args, context);
     const chunks = []; let size = 0;
     for await (const chunk of response) {
       size += chunk.length;
@@ -107,7 +108,9 @@ export function createStudioBackend({
       studio_approval_expired: 'The question has expired or the answer is not permitted',
       payload_too_large: 'The request is too large',
     };
-    if (Object.hasOwn(reasons, code)) throw new BridgeError(response.statusCode, code, reasons[code]);
+    if (Object.hasOwn(reasons, code)) throw new BridgeError(response.statusCode, code, reasons[code], {
+      retryable: response.statusCode === 409 && code === 'studio_work_busy',
+    });
     if (response.statusCode === 503) throw new BridgeError(503, 'studio_not_accepting', 'Studio is not accepting requests on the Mac', { retryable: true });
     if (response.statusCode === 404) throw new BridgeError(404, 'not_found', 'Studio could not find the resource');
     throw new BridgeError(502, 'studio_response_invalid', 'Studio could not process the request');
@@ -115,7 +118,16 @@ export function createStudioBackend({
   return {
     snapshot: () => json({ path: '/api/studio/snapshot' }),
     getRequest: (id) => json({ path: `/api/studio/requests/${id}` }),
-    createRequest: (body) => json({ path: '/api/studio/requests', method: 'POST', body }),
+    async createRequest(body) {
+      const args = { path: '/api/studio/requests', method: 'POST', body };
+      const context = {};
+      try { return await json(args, context); }
+      catch (error) {
+        if (!(context.startedStudio && error instanceof BridgeError && error.status === 409 && error.code === 'studio_work_busy')) throw error;
+        await wait(1500);
+        return json(args);
+      }
+    },
     action: (body) => json({ path: '/api/studio/action', method: 'POST', body }),
     media: (path, options = {}) => request({ path, ...options }),
   };

@@ -204,6 +204,73 @@ describe('Studio Bridge routes', () => {
 });
 
 describe('Studio mock contract', () => {
+  it('releases only a confirmed no-write busy result, allowing the same key and body to create once', async () => {
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    const originalCreate = backend.createRequest;
+    let calls = 0; const inputs = [];
+    let entered; const began = new Promise((resolve) => { entered = resolve; });
+    let unblock; const gate = new Promise((resolve) => { unblock = resolve; });
+    backend.createRequest = async (input) => {
+      calls += 1; inputs.push(input);
+      if (calls === 1) { entered(); await gate; throw new BridgeError(409, 'studio_work_busy', 'busy'); }
+      return originalCreate(input);
+    };
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      const attempt = { method: 'POST', token, key: 'busy-same-key', body: draft };
+      const first = bridge.request('/v1/studio/requests', attempt);
+      await began;
+      const concurrent = await bridge.request('/v1/studio/requests', attempt);
+      assert.equal(concurrent.body.error.code, 'idempotency_key_in_flight');
+      assert.equal(calls, 1);
+      unblock();
+      const busy = await first;
+      assert.equal(busy.status, 409); assert.equal(busy.body.error.code, 'studio_work_busy');
+      assert.equal(busy.body.error.retryable, true);
+      assert.equal(Object.values(bridge.store.read().idempotency).filter((row) => row.key === attempt.key).length, 0);
+      const retry = await bridge.request('/v1/studio/requests', attempt);
+      assert.equal(retry.status, 202); assert.deepEqual(inputs, [draft, draft]);
+      const replay = await bridge.request('/v1/studio/requests', attempt);
+      assert.equal(replay.status, 202); assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+      assert.equal(calls, 2);
+    } finally { unblock(); await bridge.close(); }
+  });
+
+  it('does not release an uncertain creation error or a busy action', async () => {
+    const backend = fakeBackend();
+    backend.createRequest = async () => { throw new BridgeError(503, 'studio_not_connected', 'unknown'); };
+    backend.action = async () => { throw new BridgeError(409, 'studio_work_busy', 'busy'); };
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      const create = { method: 'POST', token, key: 'unknown-create', body: draft };
+      assert.equal((await bridge.request('/v1/studio/requests', create)).status, 503);
+      assert.equal((await bridge.request('/v1/studio/requests', create)).body.error.code, 'idempotency_key_in_flight');
+      const action = { method: 'POST', token, key: 'busy-action', body: { action: 'stop', id } };
+      assert.equal((await bridge.request('/v1/studio/action', action)).body.error.code, 'studio_work_busy');
+      assert.equal((await bridge.request('/v1/studio/action', action)).body.error.code, 'idempotency_key_in_flight');
+    } finally { await bridge.close(); }
+  });
+
+  it('does not promise a safe busy retry if the ledger reservation cannot be released', async () => {
+    const backend = fakeBackend();
+    const bridge = await startBridge({ studio: { backend } });
+    const mutate = bridge.store.mutate;
+    backend.createRequest = async () => {
+      bridge.store.mutate = () => { throw new Error('storage unavailable'); };
+      throw new BridgeError(409, 'studio_work_busy', 'busy');
+    };
+    try {
+      const token = await bridge.token(['studio:request']);
+      const attempt = { method: 'POST', token, key: 'busy-release-failed', body: draft };
+      const first = await bridge.request('/v1/studio/requests', attempt);
+      assert.equal(first.status, 503); assert.equal(first.body.error.code, 'idempotency_release_failed');
+      assert.equal(first.body.error.retryable, false);
+      bridge.store.mutate = mutate;
+      assert.equal((await bridge.request('/v1/studio/requests', attempt)).body.error.code, 'idempotency_key_in_flight');
+    } finally { bridge.store.mutate = mutate; await bridge.close(); }
+  });
   it('replays the same action key after a lost response without applying twice and returns current state', async () => {
     const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
     let applied = 0;
@@ -379,6 +446,103 @@ describe('Studio mock contract', () => {
 });
 
 describe('Studio UDS backend', () => {
+  it('retries the identical creation once after this request launches Studio', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'studio-busy-start-')); chmodSync(dir, 0o700);
+    const socket = join(dir, 'intake.sock');
+    const inputs = []; const waits = []; let launches = 0;
+    const server = createServer((req, res) => {
+      let input = ''; req.on('data', (chunk) => { input += chunk; });
+      req.on('end', () => {
+        inputs.push({ path: req.url, input });
+        res.setHeader('content-type', 'application/json');
+        if (inputs.length === 1) { res.writeHead(409); res.end('{"error":"studio_work_busy"}'); }
+        else { res.writeHead(202); res.end(JSON.stringify({ request: JSON.parse(input), status: 'queued' })); }
+      });
+    });
+    const launch = async () => {
+      launches += 1;
+      writeFileSync(join(dir, 'intake.json'), JSON.stringify({ version: 1, socketPath: socket, token: 'a'.repeat(64), bootId: id, pid: process.pid }), { mode: 0o600 });
+      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve); });
+      chmodSync(socket, 0o600);
+    };
+    try {
+      const backend = createStudioBackend({ directory: dir, launch, wait: async (ms) => waits.push(ms) });
+      const result = await backend.createRequest(draft);
+      assert.equal(result.status, 'queued'); assert.equal(launches, 1);
+      assert.deepEqual(waits, [1500]); assert.equal(inputs.length, 2);
+      assert.deepEqual(inputs[0], inputs[1]); assert.equal(inputs[0].path, '/api/studio/requests');
+    } finally { await new Promise((resolve) => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('bounds startup busy retry and never auto-retries an already running Studio or an answer', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'studio-busy-limit-')); chmodSync(dir, 0o700);
+    const socket = join(dir, 'intake.sock'); const inputs = []; const waits = []; let launches = 0;
+    const server = createServer((req, res) => {
+      let input = ''; req.on('data', (chunk) => { input += chunk; });
+      req.on('end', () => { inputs.push({ path: req.url, input }); res.writeHead(409, { 'content-type': 'application/json' }); res.end('{"error":"studio_work_busy"}'); });
+    });
+    const launch = async () => {
+      launches += 1;
+      writeFileSync(join(dir, 'intake.json'), JSON.stringify({ version: 1, socketPath: socket, token: 'b'.repeat(64), bootId: id, pid: process.pid }), { mode: 0o600 });
+      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve); }); chmodSync(socket, 0o600);
+    };
+    try {
+      const backend = createStudioBackend({ directory: dir, launch, wait: async (ms) => waits.push(ms) });
+      await assert.rejects(backend.createRequest(draft), { status: 409, code: 'studio_work_busy', retryable: true });
+      assert.equal(inputs.length, 2); assert.deepEqual(inputs[0], inputs[1]); assert.deepEqual(waits, [1500]);
+      await assert.rejects(backend.createRequest(draft), { status: 409, code: 'studio_work_busy', retryable: true });
+      assert.equal(inputs.length, 3); assert.deepEqual(waits, [1500]); assert.equal(launches, 1);
+      const answer = { action: 'answer', id, approvalId, accept: true, content: {}, persist: false };
+      await assert.rejects(backend.action(answer), { status: 409, code: 'studio_work_busy' });
+      assert.equal(inputs.length, 4); assert.equal(inputs[3].path, '/api/studio/action');
+      assert.deepEqual(JSON.parse(inputs[3].input), answer); assert.deepEqual(waits, [1500]);
+    } finally { await new Promise((resolve) => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('does not grant the startup retry to a concurrent request waiting for another launch', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'studio-busy-concurrent-')); chmodSync(dir, 0o700);
+    const socket = join(dir, 'intake.sock'); let calls = 0; const waits = [];
+    let releaseLaunch; const gate = new Promise((resolve) => { releaseLaunch = resolve; });
+    let launchStarted; const started = new Promise((resolve) => { launchStarted = resolve; });
+    let secondChecked; const checked = new Promise((resolve) => { secondChecked = resolve; });
+    let directoryChecks = 0;
+    const statPath = async (path) => { if (path === dir && ++directoryChecks === 2) secondChecked(); return lstat(path); };
+    const server = createServer((req, res) => {
+      req.resume(); req.on('end', () => { calls += 1; res.writeHead(409, { 'content-type': 'application/json' }); res.end('{"error":"studio_work_busy"}'); });
+    });
+    const launch = async () => {
+      launchStarted(); await gate;
+      writeFileSync(join(dir, 'intake.json'), JSON.stringify({ version: 1, socketPath: socket, token: 'c'.repeat(64), bootId: id, pid: process.pid }), { mode: 0o600 });
+      await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve); }); chmodSync(socket, 0o600);
+    };
+    try {
+      const backend = createStudioBackend({ directory: dir, launch, statPath, wait: async (ms) => waits.push(ms) });
+      const first = backend.createRequest(draft);
+      await started;
+      const second = backend.createRequest({ ...draft, id: randomUUID() });
+      await checked;
+      await new Promise((resolve) => setImmediate(resolve));
+      releaseLaunch();
+      const results = await Promise.allSettled([first, second]);
+      assert.ok(results.every((result) => result.status === 'rejected' && result.reason.code === 'studio_work_busy'));
+      assert.equal(calls, 3); assert.deepEqual(waits, [1500]);
+    } finally { releaseLaunch(); await new Promise((resolve) => server.close(resolve)); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('keeps the thirty-second automatic startup cooldown', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'studio-start-cooldown-')); chmodSync(dir, 0o700);
+    let clock = 1000; let launches = 0;
+    const backend = createStudioBackend({ directory: dir, now: () => clock, launch: async () => { launches += 1; throw new Error('unavailable'); } });
+    try {
+      await assert.rejects(backend.snapshot(), { code: 'studio_not_connected' });
+      clock += 29999;
+      await assert.rejects(backend.snapshot(), { code: 'studio_not_connected' });
+      assert.equal(launches, 1);
+      clock += 1;
+      await assert.rejects(backend.snapshot(), { code: 'studio_not_connected' });
+      assert.equal(launches, 2);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
   it('does not expose the device or intake bearer token through Studio responses or Bridge logs', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'studio-log-'));
     const socket = join(dir, 'intake.sock'), secret = 'e'.repeat(64);

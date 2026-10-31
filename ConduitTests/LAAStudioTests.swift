@@ -27,6 +27,30 @@ final class LAAStudioTests: XCTestCase {
         XCTAssertNil(LAAStudioDraftStore.load(deviceID: "device-1", directory: directory))
     }
 
+    func testBusyRetryPersistsExactRequestBodyAndKey() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-busy-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var draft = LAAStudioDraft()
+        draft.requestID = requestID; draft.title = "Work"; draft.prompt = "日本語\nA"
+        let first = try XCTUnwrap(draft.submission())
+        draft.pending = true; draft.workBusy = true
+        XCTAssertTrue(LAAStudioDraftStore.save(draft, deviceID: "device-1", directory: directory))
+        var restored = try XCTUnwrap(LAAStudioDraftStore.load(deviceID: "device-1", directory: directory))
+        let retry = try XCTUnwrap(restored.submission())
+        XCTAssertEqual(retry.request.id, first.request.id)
+        XCTAssertEqual(retry.body, first.body)
+        XCTAssertEqual(retry.key, first.key)
+        let afterMissing = try XCTUnwrap(restored.submission(rotateKey: true))
+        XCTAssertEqual(afterMissing.body, first.body)
+        XCTAssertNotEqual(afterMissing.key, first.key)
+        restored.prompt = "changed"
+        XCTAssertNil(try restored.submission())
+        let old = Data("{\"expectedRevision\":0,\"title\":\"\",\"prompt\":\"\",\"pending\":false}".utf8)
+        XCTAssertNil(try JSONDecoder().decode(LAAStudioDraft.self, from: old).workBusy)
+        let error = LAABridgeHTTPError(status: 409, code: "studio_work_busy", message: nil, retryable: true, details: nil, requestId: nil, currentETag: nil)
+        XCTAssertEqual(LAAStudioData.message(error), LAACopy.Studio.workBusy)
+    }
+
     func testRerequestDraftDoesNotOverwriteAnotherDraft() {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-test-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -71,3 +71,14 @@ test('UI fixture reserves and replays request creation keys', async (t) => {
   assert.equal(replay.headers.get('idempotency-replayed'), 'true');
   assert.equal((await f.post('/v1/studio/requests', 'create-key', { ...draft, prompt: 'Different' })).body.error.code, 'idempotency_key_conflict');
 });
+
+test('UI fixture releases a busy creation and records exact retry identity', async (t) => {
+  const f = await fixture(t);
+  const draft = { id: 'create-busy', prompt: 'Create' };
+  await f.control('mode/create-busy-once');
+  const busy = await f.post('/v1/studio/requests', 'busy-key', draft);
+  assert.equal(busy.status, 409); assert.equal(busy.body.error.code, 'studio_work_busy');
+  assert.equal(busy.body.error.retryable, true);
+  assert.equal((await f.post('/v1/studio/requests', 'busy-key', draft)).status, 202);
+  assert.equal(await f.control('create-consistent'), 'true');
+});

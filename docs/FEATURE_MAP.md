@@ -506,8 +506,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   and supports typed approvals and stopping through the scoped Bridge. Studio
   remains the executor; media and Drive delivery are linked from the work.
   Unsupported approvals require the Mac, and terminal requests can be submitted
-  anew against the current work revision. The real intake connection remains to
-  be verified when Studio's implementation is running.
+  anew against the current work revision. A busy creation keeps the same ID,
+  body and key for an explicit retry; real intake connection remains to be verified.
 - Brain shows Recent and Folders with Tags disabled until supported; the note
   body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the

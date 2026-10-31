@@ -42,7 +42,13 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
   async function getRequest({ params }) { return { status: 200, data: await backend.getRequest(params[0]) }; }
   async function createRequest({ rawBody }) {
     const body = validateRequest(parseBody(rawBody));
-    return { status: 202, data: await backend.createRequest(body) };
+    try { return { status: 202, data: await backend.createRequest(body) }; }
+    catch (error) {
+      if (error instanceof BridgeError && error.status === 409 && error.code === 'studio_work_busy') {
+        throw new BridgeError(409, error.code, error.message, { retryable: true });
+      }
+      throw error;
+    }
   }
   async function replayRequest({ rawBody }) {
     // A replay confirms the original mutation but must report current state.
@@ -124,7 +130,8 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
     { method: 'GET', path: '/v1/studio/snapshot', auth: true, scope: 'studio:read', handler: snapshot },
     { method: 'GET', path: '/v1/studio/request-id', auth: true, scope: 'studio:request', handler: () => ({ status: 200, data: { id: randomUUID() } }) },
     { method: 'GET', pattern: requestPattern, auth: true, scope: 'studio:read', handler: getRequest },
-    { method: 'POST', path: '/v1/studio/requests', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: createRequest, replay: replayRequest },
+    { method: 'POST', path: '/v1/studio/requests', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: createRequest, replay: replayRequest,
+      releaseOnError: (error) => error.status === 409 && error.code === 'studio_work_busy' },
     { method: 'POST', path: '/v1/studio/action', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: action, replay: replayAction },
     { method: 'GET', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },
     { method: 'HEAD', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },
