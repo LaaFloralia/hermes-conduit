@@ -1,6 +1,8 @@
 # LAA iPhoneアプリ：構成と実装順
 
-2026-10-29。対象はLaaFloralia/hermes-conduitのLAA版。これは実装計画であり、接続・実機稼働を示さない。別作業中の署名／TestFlight、CallKit発信、ConsoleのUsage非表示には手を重ねない。各タスクは最大2作業日、日付や期限の約束ではない。iOS実装・独立レビューは [PROJECT-RULES](../../PROJECT-RULES.md) を優先し、その他の実装は公式DSH、デザインはdesign-worker、判断・統合・検証は親。D1・Jevの判断、指定モデル・認証・停止状態を維持する。
+2026-10-29。対象はLaaFloralia/hermes-conduitのLAA版。これは実装計画であり、接続・実機稼働を示さない。各タスクは最大2作業日、日付や期限の約束ではない。iOS実装・独立レビューは [PROJECT-RULES](../../PROJECT-RULES.md) を優先し、その他の実装は公式DSH、デザインはdesign-worker、判断・統合・検証は親。D1・Jevの判断、指定モデル・認証・停止状態を維持する。
+
+現在の進捗・次の作業・判断待ちは [SESSION-HANDOFF](SESSION-HANDOFF.md) とLinear「LAAアプリ」に置き、この計画には書かない。
 
 ## 決定と境界
 
@@ -88,18 +90,8 @@ P0 基準版：署名／発信の並行作業の結果を取り込み、設計�
 | 31 | Mac実画面配信の調査・試作（DSH） | 23 | 既存資産・OS権限・GUI排他と接続の実測 |
 | 32 | 実機総合検証・Lab版照合（親） | 08–12、18、22、26–31 | 実機、オフライン、復旧、アクセシビリティ、採用デザインを確認 |
 
-## 最初の5件：派遣仕様
-
-**共通**：入力は本書、対象repoと適用PROJECT-RULES、既存正本の必要節。秘密や会話全文を子へ渡さない。iOS実装・独立レビューはPROJECT-RULES、その他の実装は公式DSH `deepseek-v4.1-flash` High、デザインはdesign-worker、親は現在のモデルを維持。各自のworktreeと所有範囲を指定し、競合作業やmasterを変更しない。結果に実provider／model／effort、証拠、未確認、検証と停止理由を添える。起動値と結果を親が照合する。
-
-1. **01 現状・依存棚卸し**：DSH High、読取のみ。対象はConduitのFEATURE_MAP・widget・Kanban、HQのPASEO-HERMES／AI-OPERATING-MODEL／LINEAR、`laa-personal-agent`、既存Usage・Studio・同期経路。所有物は作業用の棚卸し結果のみ。署名／CallKitの別workerの状態、稼働版とrepo版、Paseo依存とcron、ConsoleのUsage変更、Brainの同期writer・ディレクトリを照合。完了はパス・版・観測方法・未確認と後続への影響を返すこと。認証・設定・サービスを変更しない。最大2日。
-2. **02 Bridge契約・安全設計**：親、01に依存。所有物はBridge設計文書のみ。対象別認可、Tailscale＋端末認証、リプレイ防止、イベントcursor、異常終了・復旧、GUI排他、Brain外部writerの競合と切戻しを具体化。既存の認証・サービス・agent-controlを再利用し、通信失敗と権限拒否を区別。受入は脅威・端点・データ所有者・テスト・未決定が独立レビュー可能なこと。実装・権限変更なし。最大2日。
-3. **03 Studio iPhone Lab視覚案**：design-worker、01に依存。Studioの既存Lab候補領域のみ所有し、Conduitコードは触らない。`hq/tools/CREATIVE-REFERENCES.md`の実物1〜3件とAppleの標準を見て、5タブ・会話・入力・通話・Brainの通常／空／失敗／オフライン／競合を比較。会社アイコン、3D・背景、Glassの操作層、文字・余白を示し、参考の採用理由と版を記録。Web試作とSwiftUI実機を区別し、社長が候補を選べる状態を返す。契約・有料素材の追加なし。最大2日。
-4. **04 実機基準と入力再現**：DSH High、01と署名workerの成果に依存。所有物は検証記録のみ、署名設定と他workerの変更は触らない。実機でSimejiと標準日本語、長文・返信中変換・全画面切替・文字サイズ・下書き復元を確認。署名版の通話・ロック・widget導線も別worker成果に干渉せず検証。実機が使えない項目は未確認として、機種・OS・版・再現操作・期待／実際・添付証拠を返す。通話品質や予測修正の成功を推測しない。最大2日。
-5. **05 Usage・Mac監視契約**：DSH High、01に依存。所有物は読取仕様・fixtureのみ。inventory lookupと既存Console／usage-meters／CodexBar／Mac監視の収集・出力を確認し、利用枠・実利用・費用・CPU・メモリ・空き容量について取得元・単位・鮮度・欠測・認証境界を表にする。Console非表示の別workerには触れず、資格情報を読まずに形だけ照合。受入は既存データの再利用経路と未取得・期限切れ・推計の表示例、実データとの照合方法を示すこと。最大2日。
-
 ## 根拠・未確認
 
 現行仕様は [FEATURE_MAP](../FEATURE_MAP.md)、[WIDGETS](../WIDGETS.md)、[Kanban lifecycle](../KANBAN_LIFECYCLE_MATRIX.md)、`hq/tools/PASEO-HERMES.md`、`AI-OPERATING-MODEL.md`、`LINEAR.md`、台帳lookupと社長指定のBrain Inbox案。Inbox案は検討資料であり現行正本を上書きしない。OS制約は [CallKit](https://developer.apple.com/documentation/callkit)、[CallKitのアイコン](https://developer.apple.com/documentation/callkit/cxproviderconfiguration/icontemplateimagedata)、[WidgetKit](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities)、[Drive Range](https://developers.google.com/workspace/drive/api/guides/manage-downloads)、[Google Photos Picker](https://developers.google.com/photos/picker/guides/get-started-picker) を参照。
 
-未確認：署名・TestFlight・CallKit別workerの完了と実機、Dotsの実画面、Simeji症状、StudioとSyncTrain実機の現在状態、Drive動画不具合の原因、Photos認可、Mac配信の既存資産、保管期間。設計の受入条件は今後の実測であり、現在動作中と断定しない。保管期間やデザイン採用は実物と利用状況を基に社長が決める。
+未確認：CallKit発信の実機確認、Dotsの実画面、Simeji症状、StudioとSyncTrain実機の現在状態、Drive動画不具合の原因、Photos認可、Mac配信の既存資産、保管期間。設計の受入条件は今後の実測であり、現在動作中と断定しない。保管期間やデザイン採用は実物と利用状況を基に社長が決める。
