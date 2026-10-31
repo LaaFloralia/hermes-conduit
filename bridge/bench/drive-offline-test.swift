@@ -45,6 +45,29 @@ private actor Source {
     }
 }
 
+private actor PDFSource {
+    let data: Data
+    let version: String
+    let finalVersion: String?
+    let responseVersion: String?
+    private var metadataCount = 0
+
+    init(data: Data, version: String, finalVersion: String? = nil, responseVersion: String? = nil) {
+        self.data = data; self.version = version; self.finalVersion = finalVersion; self.responseVersion = responseVersion
+    }
+
+    func metadata() -> LAADriveOfflineMetadata {
+        metadataCount += 1
+        return LAADriveOfflineMetadata(version: metadataCount > 1 ? finalVersion ?? version : version,
+                                       size: nil, downloadable: true)
+    }
+
+    func export(expected: String) throws -> LAADriveOfflinePDF {
+        guard expected == version else { throw LAADriveOfflineError.versionChanged }
+        return LAADriveOfflinePDF(data: data, version: responseVersion ?? version)
+    }
+}
+
 private actor Gate {
     private var entered = false
     private var startedWaiter: CheckedContinuation<Void, Never>?
@@ -180,6 +203,65 @@ private actor Gate {
         let sourceNoSpace = Source(data: bytes, version: "1")
         await expectError(.insufficientSpace) { _ = try await save(sourceNoSpace, to: noSpace) }
         expect(await sourceNoSpace.rangeCount == 0, "insufficient space fails before transfer")
+
+        let pdfBytes = Data("%PDF-1.7\nsynthetic\n%%EOF\n".utf8)
+        let pdfSource = PDFSource(data: pdfBytes, version: "9")
+        let pdfRecord = try await store.saveWorkspacePDF(pairingID: "pairing-a", id: "workspace-a", name: "notes",
+                                                          metadata: { await pdfSource.metadata() },
+                                                          export: { try await pdfSource.export(expected: $0) })
+        expect(pdfRecord.sourceFormat == .workspacePDF && pdfRecord.mimeType == "application/pdf" &&
+               pdfRecord.version == "9" && pdfRecord.size == Int64(pdfBytes.count), "exported PDF metadata")
+        let pdfURL = try await store.localFile(pairingID: "pairing-a", id: "workspace-a")!
+        expect(try Data(contentsOf: pdfURL) == pdfBytes, "exported PDF bytes")
+        try await store.recordCheck(pairingID: "pairing-a", id: "workspace-a",
+                                    result: .metadata(.init(version: "9", size: nil, downloadable: true)))
+        expect(try await store.records(pairingID: "pairing-a").first(where: { $0.id == "workspace-a" })?.access == .verified,
+               "workspace source need not have a byte size")
+        try await store.recordCheck(pairingID: "pairing-a", id: "workspace-a",
+                                    result: .metadata(.init(version: "10", size: nil, downloadable: true)))
+        expect(try await store.records(pairingID: "pairing-a").first(where: { $0.id == "workspace-a" })?.access == .stale,
+               "changed workspace document marks the export stale")
+        let changedPDF = PDFSource(data: pdfBytes, version: "10", finalVersion: "11")
+        await expectError(.versionChanged) {
+            _ = try await store.saveWorkspacePDF(pairingID: "pairing-a", id: "workspace-a", name: "notes",
+                                                  metadata: { await changedPDF.metadata() },
+                                                  export: { try await changedPDF.export(expected: $0) })
+        }
+        let wrongPDF = PDFSource(data: Data("invalid".utf8), version: "10")
+        await expectError(.invalidDocument) {
+            _ = try await store.saveWorkspacePDF(pairingID: "pairing-a", id: "workspace-a", name: "notes",
+                                                  metadata: { await wrongPDF.metadata() },
+                                                  export: { try await wrongPDF.export(expected: $0) })
+        }
+        let wrongVersion = PDFSource(data: pdfBytes, version: "10", responseVersion: "11")
+        await expectError(.versionChanged) {
+            _ = try await store.saveWorkspacePDF(pairingID: "pairing-a", id: "workspace-a", name: "notes",
+                                                  metadata: { await wrongVersion.metadata() },
+                                                  export: { try await wrongVersion.export(expected: $0) })
+        }
+        expect(try await store.localFile(pairingID: "pairing-a", id: "workspace-a") == pdfURL,
+               "failed PDF replacements preserve the older export")
+        let pdfNoSpace = PDFSource(data: pdfBytes, version: "9")
+        await expectError(.insufficientSpace) {
+            _ = try await noSpace.saveWorkspacePDF(pairingID: "pairing-a", id: "workspace-a", name: "notes",
+                                                    metadata: { await pdfNoSpace.metadata() },
+                                                    export: { try await pdfNoSpace.export(expected: $0) })
+        }
+        let pdfGate = Gate()
+        let pdfConcurrent = PDFSource(data: pdfBytes, version: "10")
+        let pendingPDF = Task {
+            try await store.saveWorkspacePDF(pairingID: "pairing-a", id: "workspace-a", name: "notes",
+                                              metadata: { await pdfConcurrent.metadata() }, export: { version in
+                await pdfGate.blockRange()
+                return try await pdfConcurrent.export(expected: version)
+            })
+        }
+        await pdfGate.waitUntilEntered()
+        try await store.recordCheck(pairingID: "pairing-a", id: "workspace-a", result: .denied)
+        await pdfGate.release()
+        await expectError(.accessChanged) { _ = try await pendingPDF.value }
+        expect(try await store.localFile(pairingID: "pairing-a", id: "workspace-a") == nil &&
+               FileManager.default.fileExists(atPath: pdfURL.path), "PDF denial blocks access without erasing saved bytes")
 
         let oldMeta = LAADriveOfflineMetadata(version: "1", size: Int64(bytes.count), downloadable: true)
         try await store.recordCheck(pairingID: "pairing-a", id: "file-a", result: .metadata(oldMeta))

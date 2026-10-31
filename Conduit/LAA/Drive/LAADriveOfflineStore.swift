@@ -14,14 +14,21 @@ struct LAADriveOfflineChunk: Sendable {
     let version: String?
 }
 
+struct LAADriveOfflinePDF: Sendable {
+    let data: Data
+    let version: String
+}
+
 enum LAADriveOfflineError: Error, Equatable {
     case invalidItem, permissionUnknown, forbidden, notFound, versionUnavailable, versionChanged
-    case invalidRange, insufficientSpace, alreadySaving, accessChanged, corruptIndex, unavailable
+    case invalidRange, invalidDocument, insufficientSpace, alreadySaving, accessChanged, corruptIndex, unavailable
 }
 
 enum LAADriveOfflineAccess: String, Codable, Sendable {
     case verified, stale, denied, missing, unknown
 }
+
+enum LAADriveOfflineSourceFormat: String, Codable, Sendable { case workspacePDF }
 
 struct LAADriveOfflineRecord: Codable, Identifiable, Sendable {
     let id: String
@@ -30,6 +37,8 @@ struct LAADriveOfflineRecord: Codable, Identifiable, Sendable {
     let mimeType: String
     let version: String
     let size: Int64
+    /// Nil is an original file from an older or current index.
+    let sourceFormat: LAADriveOfflineSourceFormat?
     let savedAt: Date
     var verifiedAt: Date
     var access: LAADriveOfflineAccess
@@ -52,6 +61,7 @@ enum LAADriveOfflineCheck: Sendable {
 actor LAADriveOfflineStore {
     typealias MetadataReader = @Sendable () async throws -> LAADriveOfflineMetadata
     typealias RangeReader = @Sendable (_ offset: Int64, _ length: Int, _ version: String) async throws -> LAADriveOfflineChunk
+    typealias PDFReader = @Sendable (_ version: String) async throws -> LAADriveOfflinePDF
     typealias CapacityReader = @Sendable (_ directory: URL) -> Int64?
 
     private let root: URL
@@ -113,7 +123,8 @@ actor LAADriveOfflineStore {
         case .metadata(let metadata):
             if metadata.downloadable == false { entries[at].access = .denied }
             else if metadata.downloadable != true || validVersion(metadata.version) == nil { entries[at].access = .unknown }
-            else if metadata.version == entries[at].version, metadata.size != entries[at].size {
+            else if metadata.version == entries[at].version, entries[at].sourceFormat != .workspacePDF,
+                    metadata.size != entries[at].size {
                 entries[at].access = .unknown
             } else {
                 entries[at].access = metadata.version == entries[at].version ? .verified : .stale
@@ -173,6 +184,64 @@ actor LAADriveOfflineStore {
         guard finalVersion == version, finalSize == size else { throw LAADriveOfflineError.versionChanged }
         try Task.checkCancellation()
         guard accessGeneration[key, default: 0] == generation else { throw LAADriveOfflineError.accessChanged }
+        return try commit(temporary: temporary, pairingID: pairingID, id: id, name: name, mimeType: mimeType,
+                          version: version, size: size, sourceFormat: nil,
+                          sha256: digest.finalize().map({ String(format: "%02x", $0) }).joined())
+    }
+
+    /// Workspace exports have no source byte size. The export is bounded,
+    /// version checked, and only installed after a second metadata check.
+    @discardableResult
+    func saveWorkspacePDF(pairingID: String, id: String, name: String,
+                          metadata: @escaping MetadataReader, export: @escaping PDFReader) async throws -> LAADriveOfflineRecord {
+        guard validText(pairingID, maximum: 200), validText(id, maximum: 200),
+              validText(name, maximum: 2000) else { throw LAADriveOfflineError.invalidItem }
+        let key = itemKey(pairingID: pairingID, id: id)
+        guard saving.insert(key).inserted else { throw LAADriveOfflineError.alreadySaving }
+        defer { saving.remove(key) }
+        let generation = accessGeneration[key, default: 0]
+        try prepareDirectories()
+        let initial = try await checkedMetadata(metadata, pairingID: pairingID, id: id)
+        let version = try validatedVersion(initial)
+        guard accessGeneration[key, default: 0] == generation else { throw LAADriveOfflineError.accessChanged }
+        try Task.checkCancellation()
+        let pdf: LAADriveOfflinePDF
+        do { pdf = try await export(version) }
+        catch {
+            try persistKnownDenial(error, pairingID: pairingID, id: id)
+            throw error
+        }
+        try Task.checkCancellation()
+        guard accessGeneration[key, default: 0] == generation else { throw LAADriveOfflineError.accessChanged }
+        guard pdf.version == version else { throw LAADriveOfflineError.versionChanged }
+        guard pdf.data.count <= 10_000_000, pdf.data.starts(with: Data("%PDF-".utf8)) else {
+            throw LAADriveOfflineError.invalidDocument
+        }
+        let size = Int64(pdf.data.count)
+        let (required, overflow) = size.addingReportingOverflow(1_048_576)
+        if overflow || capacity(root).map({ $0 < required }) == true { throw LAADriveOfflineError.insufficientSpace }
+        let temporary = pending.appendingPathComponent(UUID().uuidString, isDirectory: false)
+        guard fileManager.createFile(atPath: temporary.path, contents: nil, attributes: protectionAttributes) else {
+            throw LAADriveOfflineError.unavailable
+        }
+        defer { try? fileManager.removeItem(at: temporary) }
+        let handle = try FileHandle(forWritingTo: temporary)
+        defer { try? handle.close() }
+        try handle.write(contentsOf: pdf.data)
+        try handle.synchronize()
+        try handle.close()
+        let final = try await checkedMetadata(metadata, pairingID: pairingID, id: id)
+        guard try validatedVersion(final) == version else { throw LAADriveOfflineError.versionChanged }
+        try Task.checkCancellation()
+        guard accessGeneration[key, default: 0] == generation else { throw LAADriveOfflineError.accessChanged }
+        let digest = SHA256.hash(data: pdf.data).map { String(format: "%02x", $0) }.joined()
+        return try commit(temporary: temporary, pairingID: pairingID, id: id, name: name, mimeType: "application/pdf",
+                          version: version, size: size, sourceFormat: .workspacePDF, sha256: digest)
+    }
+
+    private func commit(temporary: URL, pairingID: String, id: String, name: String, mimeType: String,
+                        version: String, size: Int64, sourceFormat: LAADriveOfflineSourceFormat?,
+                        sha256: String) throws -> LAADriveOfflineRecord {
         let bodyName = UUID().uuidString
         let destination = files.appendingPathComponent(bodyName, isDirectory: false)
         try fileManager.moveItem(at: temporary, to: destination)
@@ -182,9 +251,9 @@ actor LAADriveOfflineStore {
         let old = entries.first { $0.pairingID == pairingID && $0.id == id }
         let now = Date()
         let saved = LAADriveOfflineRecord(id: id, pairingID: pairingID, name: name, mimeType: mimeType,
-                                          version: version, size: size, savedAt: now, verifiedAt: now,
-                                          access: .verified, bodyName: bodyName,
-                                          sha256: digest.finalize().map({ String(format: "%02x", $0) }).joined())
+                                          version: version, size: size, sourceFormat: sourceFormat,
+                                          savedAt: now, verifiedAt: now, access: .verified, bodyName: bodyName,
+                                          sha256: sha256)
         entries.removeAll { $0.pairingID == pairingID && $0.id == id }
         entries.append(saved)
         try writeIndex(entries)
@@ -239,11 +308,15 @@ actor LAADriveOfflineStore {
         return version
     }
     private func validated(_ metadata: LAADriveOfflineMetadata) throws -> (String, Int64) {
+        let version = try validatedVersion(metadata)
+        guard let size = metadata.size, size >= 0 else { throw LAADriveOfflineError.invalidItem }
+        return (version, size)
+    }
+    private func validatedVersion(_ metadata: LAADriveOfflineMetadata) throws -> String {
         if metadata.downloadable == false { throw LAADriveOfflineError.forbidden }
         guard metadata.downloadable == true else { throw LAADriveOfflineError.permissionUnknown }
         guard let version = validVersion(metadata.version) else { throw LAADriveOfflineError.versionUnavailable }
-        guard let size = metadata.size, size >= 0 else { throw LAADriveOfflineError.invalidItem }
-        return (version, size)
+        return version
     }
     private var protectionAttributes: [FileAttributeKey: Any]? {
         #if os(iOS)
@@ -268,6 +341,7 @@ actor LAADriveOfflineStore {
         do {
             let entries = try JSONDecoder().decode([LAADriveOfflineRecord].self, from: Data(contentsOf: index))
             guard entries.allSatisfy({ UUID(uuidString: $0.bodyName)?.uuidString == $0.bodyName && $0.size >= 0 &&
+                                      ($0.sourceFormat != .workspacePDF || ($0.mimeType == "application/pdf" && $0.size <= 10_000_000)) &&
                                       validText($0.pairingID, maximum: 200) && validText($0.id, maximum: 200) &&
                                       validVersion($0.version) != nil && $0.sha256.utf8.count == 64 &&
                                       $0.sha256.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) }),
