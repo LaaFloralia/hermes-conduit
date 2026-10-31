@@ -450,6 +450,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAADashboardUsage.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
+- Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-mock.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
@@ -496,8 +497,14 @@ App Store build · the Bridge API, Brain and Usage data contracts
   authenticated byte ranges and stops if the server ignores Range; image and
   PDF previews are limited to 64 MB. Workspace export is unavailable on the
   current Bridge, so those documents show an Open on Mac reason. Inspiration
-  and Studio remain disabled; missing Drive authorization and Bridge failures
+  remains disabled; missing Drive authorization and Bridge failures
   are distinct. The current Bridge supplies neither owners nor thumbnails.
+- Assets Studio lists works and requests, preserves unsent or uncertain drafts,
+  and supports typed approvals and stopping through the scoped Bridge. Studio
+  remains the executor; media and Drive delivery are linked from the work.
+  Unsupported approvals require the Mac, and terminal requests can be submitted
+  anew against the current work revision. The real intake connection remains to
+  be verified when Studio's implementation is running.
 - Brain shows Recent and Folders with Tags disabled until supported; the note
   body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the
@@ -509,7 +516,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   not have sufficient contrast in dark mode; their screen tasks should use the
   semantic filled-button color pair. The existing Hermes login retains its
   Conduit backdrop.
-- Work routines, Assets Inspiration and Studio remain unavailable. Drive
+- Work routines and Assets Inspiration remain unavailable. Drive
   Workspace export, owner and thumbnail data need Bridge support. Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
   The LAA shell uses

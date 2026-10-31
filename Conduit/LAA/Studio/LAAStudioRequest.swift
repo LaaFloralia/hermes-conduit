@@ -1,0 +1,205 @@
+#if LAA_BUILD
+import SwiftUI
+
+private struct LAAStudioPendingAction: Codable {
+    let action: String
+    let approvalId: String?
+}
+private enum LAAStudioActionGuard {
+    static func file(device: String, id: String) -> URL? {
+        guard let root = LAAStudioDraftStore.file(deviceID: device), UUID(uuidString: id) != nil else { return nil }
+        return root.deletingLastPathComponent().appendingPathComponent("action-\(device)-\(id).json")
+    }
+    static func load(device: String, id: String) -> LAAStudioPendingAction? {
+        guard let file = file(device: device, id: id), let data = try? Data(contentsOf: file) else { return nil }
+        return try? JSONDecoder().decode(LAAStudioPendingAction.self, from: data)
+    }
+    static func save(_ pending: LAAStudioPendingAction, device: String, id: String) -> Bool {
+        guard let file = file(device: device, id: id) else { return false }
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(pending).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return true
+        } catch { return false }
+    }
+    static func clear(device: String, id: String) -> Bool {
+        guard let file = file(device: device, id: id) else { return false }
+        do { if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }; return true }
+        catch { return false }
+    }
+}
+
+struct LAAStudioRequestView: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
+    @State private var record: LAAStudioRecord
+    @State private var pending: LAAStudioPendingAction?
+    @State private var error: String?
+    @State private var busy = false
+    @State private var confirmStop = false
+    @State private var project: LAAStudioProject?
+    private var device: String { bridge.deviceID ?? "fixture" }
+    init(initial: LAAStudioRecord) { _record = State(initialValue: initial) }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: LAASpacing.x6) {
+                Text(verbatim: LAACopy.Studio.requests).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Text(verbatim: record.status.capitalized).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.link)
+                    Text(verbatim: LAAWorkPresentation.date(record.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    if record.status == "unreceived" { Text(verbatim: LAACopy.Studio.unreceived).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+                }
+                Text(verbatim: record.request.prompt).laaTextStyle(.body).foregroundStyle(LAAColor.text).textSelection(.enabled)
+                if let report = record.report {
+                    Text(verbatim: report.text).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                    if let revision = report.revision { Text(verbatim: "Revision \(revision)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                    if record.status == "approval" {
+                        ForEach(report.approvals) { approval in
+                            LAAStudioApprovalView(approval: approval, disabled: busy || pending != nil) { accepted, content, persist in
+                                Task { await perform(.init(action: "answer", id: record.id, approvalId: approval.id,
+                                                          accept: accepted, content: content, persist: persist)) }
+                            }
+                        }
+                    }
+                }
+                if pending != nil { Text(verbatim: LAACopy.Studio.pendingAction).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
+                if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
+                if busy { ProgressView() }
+                if let project {
+                    NavigationLink(LAACopy.Studio.deliverables) { LAAStudioWorkView(project: project) }
+                        .accessibilityIdentifier("laa.studio.deliverables")
+                }
+                if record.canStop {
+                    Button(LAACopy.Studio.stop) { confirmStop = true }.disabled(busy || pending != nil)
+                        .accessibilityIdentifier("laa.studio.stop")
+                }
+                if record.canRequestAgain {
+                    NavigationLink(LAACopy.Studio.askAgain) { LAAStudioRerequestView(previous: record) }
+                        .accessibilityIdentifier("laa.studio.again")
+                }
+            }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.requests))
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(LAACopy.Studio.stop, isPresented: $confirmStop, titleVisibility: .visible) {
+            Button(LAACopy.Studio.stop, role: .destructive) { Task { await perform(.init(action: "stop", id: record.id)) } }
+            Button(LAACopy.Studio.cancel, role: .cancel) { }
+        }
+        .task(id: record.id) {
+            pending = LAAStudioActionGuard.load(device: device, id: record.id)
+            await refresh()
+            if let snapshot = try? await LAAStudioData.snapshot(bridge) {
+                project = snapshot.projects.first { $0.id == record.request.projectId }
+            }
+            while !Task.isCancelled && record.active {
+                do { try await Task.sleep(for: .seconds(3)) } catch { break }
+                await refresh()
+            }
+        }
+    }
+    @MainActor private func refresh() async {
+        do {
+            let latest = try await LAAStudioData.record(record.id, bridge: bridge)
+            record = latest
+            if let pending {
+                let resolved = pending.action == "stop" ? !latest.canStop :
+                    latest.status != "approval" || !(latest.report?.approvals.contains(where: { $0.id == pending.approvalId }) ?? false)
+                if resolved && LAAStudioActionGuard.clear(device: device, id: record.id) { self.pending = nil }
+            }
+            if pending == nil { error = nil }
+        } catch is CancellationError { }
+        catch { self.error = LAAStudioData.message(error) }
+    }
+    @MainActor private func perform(_ action: LAAStudioAction) async {
+        guard !busy && pending == nil else { return }
+        let marker = LAAStudioPendingAction(action: action.action, approvalId: action.approvalId)
+        guard LAAStudioActionGuard.save(marker, device: device, id: record.id) else { error = LAACopy.Studio.saveFailed; return }
+        pending = marker; busy = true; error = nil
+        defer { busy = false }
+        do {
+            record = try await LAAStudioData.action(action, key: .init(), bridge: bridge)
+            if LAAStudioActionGuard.clear(device: device, id: record.id) { pending = nil }
+        } catch let failure as LAABridgeHTTPError {
+            let rejected = ["studio_payload_invalid", "invalid_request", "studio_approval_on_mac", "studio_approval_changed", "studio_approval_expired", "studio_request_finished", "insufficient_scope"].contains(failure.code ?? "")
+            if rejected && LAAStudioActionGuard.clear(device: device, id: record.id) { pending = nil }
+            error = LAAStudioData.message(failure)
+        } catch { self.error = LAAStudioData.message(error) }
+    }
+}
+
+private struct LAAStudioApprovalView: View {
+    let approval: LAAStudioApproval
+    let disabled: Bool
+    let answer: (Bool, [String: LAAStudioScalar], Bool) -> Void
+    @State private var raw: [String: String] = [:]
+    @State private var persist = false
+    @State private var invalid = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            Text(verbatim: approval.message).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+            if !approval.supported {
+                Text(verbatim: LAACopy.Studio.approvalOnMac).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+            } else {
+                ForEach(approval.fields) { field in
+                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                        Text(verbatim: field.title + (field.required ? " *" : "")).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        if let options = field.options, !options.isEmpty {
+                            Picker(field.title, selection: binding(field.name)) {
+                                Text(verbatim: LAACopy.Studio.none).tag("")
+                                ForEach(options, id: \.self) { Text(verbatim: $0).tag($0) }
+                            }
+                        } else if field.type == "boolean" {
+                            Picker(field.title, selection: binding(field.name)) {
+                                Text(verbatim: LAACopy.Studio.none).tag("")
+                                Text(verbatim: LAACopy.Studio.yes).tag("true")
+                                Text(verbatim: LAACopy.Studio.no).tag("false")
+                            }
+                        } else {
+                            TextField(field.title, text: binding(field.name)).textFieldStyle(.roundedBorder)
+                                .keyboardType(field.type == "number" || field.type == "integer" ? .decimalPad : .default)
+                        }
+                    }
+                }
+                if approval.allowSession { Toggle(LAACopy.Studio.persist, isOn: $persist) }
+                if invalid { Text(verbatim: LAACopy.Studio.invalid).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+                HStack(spacing: LAASpacing.x4) {
+                    Button(LAACopy.Studio.allow) {
+                        guard let content = LAAStudioAnswers.content(fields: approval.fields, raw: raw) else { invalid = true; return }
+                        invalid = false; answer(true, content, persist)
+                    }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                        .accessibilityIdentifier("laa.studio.approval.allow")
+                    Button(LAACopy.Studio.deny) { answer(false, [:], false) }
+                        .accessibilityIdentifier("laa.studio.approval.deny")
+                }.disabled(disabled)
+            }
+        }.padding(LAASpacing.x4).background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+    }
+    private func binding(_ name: String) -> Binding<String> {
+        Binding(get: { raw[name] ?? "" }, set: { raw[name] = $0 })
+    }
+}
+
+private struct LAAStudioRerequestView: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
+    let previous: LAAStudioRecord
+    @State private var snapshot: LAAStudioSnapshot?
+    @State private var error: String?
+    var body: some View {
+        Group {
+            if let snapshot, let project = snapshot.projects.first(where: { $0.id == previous.request.projectId }) {
+                LAAStudioCreateView(snapshot: snapshot, initialProject: project, initialPrompt: previous.request.prompt)
+            } else if let error {
+                Text(verbatim: error).foregroundStyle(LAAColor.attention).padding(LAASpacing.horizontal)
+            } else { ProgressView() }
+        }.task {
+            do {
+                let current = try await LAAStudioData.snapshot(bridge)
+                guard current.projects.contains(where: { $0.id == previous.request.projectId }) else {
+                    error = "最新の作品が見つかりません。Studioを確認してください。"; return
+                }
+                snapshot = current
+            } catch { self.error = LAAStudioData.message(error) }
+        }
+    }
+}
+#endif

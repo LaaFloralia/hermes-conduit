@@ -101,14 +101,15 @@ export function createBridge({
     );
   }
 
-  async function readBody(req) {
+  async function readBody(req, limit = BODY_LIMIT_BYTES) {
     const chunks = [];
     let size = 0;
     for await (const chunk of req) {
       size += chunk.length;
-      if (size > BODY_LIMIT_BYTES) {
+      if (size > limit) {
         req.pause();
-        throw badRequest('payload_too_large', `request body exceeds ${BODY_LIMIT_BYTES} bytes`);
+        if (limit !== BODY_LIMIT_BYTES) throw new BridgeError(413, 'payload_too_large', `request body exceeds ${limit} bytes`);
+        throw badRequest('payload_too_large', `request body exceeds ${limit} bytes`);
       }
       chunks.push(chunk);
     }
@@ -246,7 +247,7 @@ export function createBridge({
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
 
-      const rawBody = await readBody(req);
+      const rawBody = await readBody(req, route.bodyLimit ?? BODY_LIMIT_BYTES);
 
       let device = null;
       if (route.auth) {

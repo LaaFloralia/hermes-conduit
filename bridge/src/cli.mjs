@@ -18,7 +18,7 @@ import {
   expandScopes,
 } from './config.mjs';
 import { createStore } from './store.mjs';
-import { issuePairing, revokeDevice } from './pairing.mjs';
+import { grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +33,7 @@ Usage:
       --json              machine-readable output
   laa-bridge devices [--json]              list paired devices
   laa-bridge revoke <device-id|prefix>     revoke one device (--reason <text>)
+  laa-bridge grant-studio <device-id|prefix>  grant Studio scopes to an active device
   laa-bridge status [--json]               local health check of the running service
   laa-bridge version
 
@@ -194,6 +195,15 @@ switch (command) {
   case 'revoke':
     commandRevoke(positional, flags);
     break;
+  case 'grant-studio': {
+    const target = positional[0];
+    if (!target || positional.length !== 1) fail('grant-studio needs one device id or unambiguous prefix', 2);
+    const result = grantStudio(openStore(), { target });
+    if (result.error) fail(result.error);
+    const { id, scopes } = result.device;
+    process.stdout.write(flags.json ? `${JSON.stringify({ deviceId: id, scopes })}\n` : `Granted Studio scopes to ${id}.\n`);
+    break;
+  }
   case 'status':
     await commandStatus(flags);
     break;

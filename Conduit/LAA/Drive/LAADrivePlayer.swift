@@ -14,13 +14,14 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
     let player = AVPlayer()
     private let item: LAADriveItem
     private let bridge: LAABridgeSession
+    private let studioPath: String?
     private var requests: [ObjectIdentifier: Task<Void, Never>] = [:]
     private var observer: Any?
     private var endObservation: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
 
-    init(item: LAADriveItem, bridge: LAABridgeSession) {
-        self.item = item; self.bridge = bridge
+    init(item: LAADriveItem, bridge: LAABridgeSession, studioPath: String? = nil) {
+        self.item = item; self.bridge = bridge; self.studioPath = studioPath
         super.init()
         open()
     }
@@ -28,7 +29,7 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
     func open() {
         guard player.currentItem == nil else { return }
         error = nil
-        guard (try? LAADrivePaths.content(item.id)) != nil,
+        guard (studioPath.map(LAAStudioMedia.bridgePathIsValid) ?? ((try? LAADrivePaths.content(item.id)) != nil)),
               let url = URL(string: "laa-drive://asset/\(item.id)") else {
             error = LAABridgeError.invalidResponse.japaneseText
             return
@@ -124,7 +125,12 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
             try Task.checkCancellation()
             let remaining = requestedEnd == Int64.max ? LAADriveContent.chunkSize :
                 Int(min(Int64(LAADriveContent.chunkSize), max(1, requestedEnd - offset)))
-            let result = try await LAADriveContent.range(item, offset: offset, length: remaining, bridge: bridge)
+            let result: LAADriveRangeResponse
+            if let studioPath {
+                result = try await bridge.driveRange(path: studioPath, offset: offset, length: remaining)
+            } else {
+                result = try await LAADriveContent.range(item, offset: offset, length: remaining, bridge: bridge)
+            }
             guard expectedTotal == nil || expectedTotal == result.total else { throw LAADriveRangeError.invalidRange }
             expectedTotal = result.total
             if let info = request.contentInformationRequest {
@@ -145,9 +151,9 @@ struct LAADrivePlayerView: View {
     @State private var dragPosition = 0.0
     let item: LAADriveItem
 
-    init(item: LAADriveItem, bridge: LAABridgeSession) {
+    init(item: LAADriveItem, bridge: LAABridgeSession, studioPath: String? = nil) {
         self.item = item
-        _model = StateObject(wrappedValue: LAADrivePlayer(item: item, bridge: bridge))
+        _model = StateObject(wrappedValue: LAADrivePlayer(item: item, bridge: bridge, studioPath: studioPath))
     }
     var body: some View {
         VStack(spacing: LAASpacing.x6) {

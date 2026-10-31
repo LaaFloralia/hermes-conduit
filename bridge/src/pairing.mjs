@@ -37,3 +37,17 @@ export function revokeDevice(store, { target, reason = null, now = Date.now() })
     return { device, alreadyRevoked: false };
   });
 }
+
+// A narrow operator grant: existing tokens remain unchanged and revoked devices
+// cannot be revived. The store lock makes CLI and Bridge updates atomic.
+export function grantStudio(store, { target }) {
+  return store.mutate((state) => {
+    const matches = target.length >= 4 ? Object.keys(state.devices).filter((id) => id.startsWith(target)) : [];
+    if (!matches.length) return { error: 'no device matches that id' };
+    if (matches.length > 1) return { error: `ambiguous id, matches ${matches.join(', ')}` };
+    const device = state.devices[matches[0]];
+    if (device.revokedAt) return { error: 'cannot grant scopes to a revoked device' };
+    device.scopes = [...new Set([...device.scopes, 'studio:read', 'studio:request'])].sort();
+    return { device };
+  });
+}

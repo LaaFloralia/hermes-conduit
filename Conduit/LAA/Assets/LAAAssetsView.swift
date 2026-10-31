@@ -11,6 +11,8 @@ struct LAAAssetsView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let onRequestSettings: () -> Void
+    @State private var studioSelected = false
+    private let initialStudioSection: Int
     @State private var query = ""
     @State private var folders: [LAADriveItem] = []
     @State private var items: [LAADriveItem] = []
@@ -22,6 +24,12 @@ struct LAAAssetsView: View {
     @State private var loading = false
     @State private var showPairing = false
     @FocusState private var searchFocused: Bool
+
+    init(onRequestSettings: @escaping () -> Void, initialStudioSelected: Bool = false, initialStudioSection: Int = 0) {
+        self.onRequestSettings = onRequestSettings
+        self.initialStudioSection = initialStudioSection
+        _studioSelected = State(initialValue: initialStudioSelected)
+    }
 
     private var key: AssetsLoadKey { .init(revision: bridge.revision, query: query, folderID: folders.last?.id) }
     private var columns: [GridItem] {
@@ -36,8 +44,10 @@ struct LAAAssetsView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
                     heading
                     segments
-                    Text(verbatim: LAACopy.Assets.unavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    if LAADriveData.available(bridge) {
+                    if studioSelected {
+                        LAAStudioHomeView(initialSection: initialStudioSection)
+                    } else if LAADriveData.available(bridge) {
+                        Text(verbatim: LAACopy.Assets.unavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         searchField
                         if !folders.isEmpty {
                             Button { folders.removeLast(); query = "" } label: {
@@ -46,6 +56,7 @@ struct LAAAssetsView: View {
                         }
                         contents
                     } else {
+                        Text(verbatim: LAACopy.Assets.unavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         connection
                     }
                 }
@@ -54,7 +65,7 @@ struct LAAAssetsView: View {
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .refreshable { await reload(key) }
+            .refreshable { if !studioSelected { await reload(key) } }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -67,7 +78,7 @@ struct LAAAssetsView: View {
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .task(id: key) { await reload(key) }
+        .task(id: key) { if !studioSelected { await reload(key) } }
     }
 
     private var heading: some View {
@@ -83,17 +94,16 @@ struct LAAAssetsView: View {
     private var segments: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: LAASpacing.x2) {
-                segment(LAACopy.Assets.drive, selected: true)
-                segment(LAACopy.Assets.inspiration, selected: false).disabled(true)
+                segment(LAACopy.Assets.drive, selected: !studioSelected) { studioSelected = false }
+                segment(LAACopy.Assets.inspiration, selected: false, action: {}).disabled(true)
                     .accessibilityHint(Text(verbatim: LAACopy.Assets.unavailable))
-                segment(LAACopy.Assets.studio, selected: false).disabled(true)
-                    .accessibilityHint(Text(verbatim: LAACopy.Assets.unavailable))
+                segment(LAACopy.Assets.studio, selected: studioSelected) { studioSelected = true }
             }
         }
     }
 
-    private func segment(_ title: String, selected: Bool) -> some View {
-        Button {} label: {
+    private func segment(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             Text(verbatim: title).laaTextStyle(.secondary).fontWeight(selected ? .semibold : .regular)
                 .foregroundStyle(selected ? LAAColor.filledButtonText : LAAColor.secondaryText)
                 .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)

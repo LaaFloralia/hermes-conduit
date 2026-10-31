@@ -38,6 +38,8 @@ export const DEFAULT_SCOPES = Object.freeze([
   'usage:read',
   'archives:read',
   'archives:create',
+  'studio:read',
+  'studio:request',
 ]);
 
 // `brain:create` (new files only) is deliberately NOT in DEFAULT_SCOPES: BRIDGE
