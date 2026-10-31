@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import test from 'node:test';
 import { createUsageFeedSource } from '../src/usage/feed.mjs';
 import { usageItemsFromFeed } from '../src/usage/proxy.mjs';
@@ -11,56 +13,50 @@ const feed = { version: 1, fetchedAt: observed, providers: [{ id: 'claude', avai
   updatedAt: observed, windows: [{ label: 'Session', remaining: 62, resetsAt: null }] }] };
 const response = (body = feed) => ({ ok: true, headers: { get: () => null }, text: async () => JSON.stringify(body) });
 
-function fixture(t) {
-  const dir = mkdtempSync(join(tmpdir(), 'laa-usage-feed-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return join(dir, 'feed.json');
-}
-
 test('initial read never waits for a background fetch', async (t) => {
   let resolveFetch;
   const pending = new Promise(resolve => { resolveFetch = resolve; });
-  const source = createUsageFeedSource({ file: fixture(t), fetcher: () => pending });
+  const source = createUsageFeedSource({ fetcher: () => pending });
   t.after(source.close);
-  assert.deepEqual(await source.read(), { feed: null, lastGood: false, receivedAt: null, observationAnchors: new Map() });
+  assert.deepEqual(await source.read(), { feed: null, receivedAt: null, observationAnchors: new Map() });
   assert.equal(source.inflight, true);
   resolveFetch(response());
   assert.deepEqual(await source.refresh(), feed);
   assert.deepEqual((await source.read()).feed, feed);
 });
 
-test('a failed refresh clears memory and does not create a snapshot file', async (t) => {
-  const file = fixture(t);
+test('a failed refresh clears memory', async (t) => {
   let calls = 0;
-  const source = createUsageFeedSource({ file, fetcher: async () => {
+  const source = createUsageFeedSource({ fetcher: async () => {
     if (++calls === 1) return response();
     throw new Error('offline');
   } });
   t.after(source.close);
   await source.refresh();
   assert.deepEqual((await source.read()).feed, feed);
-  assert.equal(existsSync(file), false);
   assert.equal(await source.refresh(), null);
   assert.equal((await source.read()).feed, null);
-  assert.equal(existsSync(file), false);
 });
 
-test('a restart never reloads an older snapshot', async (t) => {
-  const file = fixture(t);
-  writeFileSync(file, JSON.stringify(feed));
-  const source = createUsageFeedSource({ file, fetcher: async () => { throw new Error('offline'); } });
-  t.after(source.close);
-  assert.equal((await source.read()).feed, null);
-  await source.refresh();
-  assert.equal((await source.read()).feed, null);
-  assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), feed);
+test('refresh does not create a snapshot under an isolated home', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'laa-usage-feed-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const script = `import { createUsageFeedSource } from './src/usage/feed.mjs';
+    const body = ${JSON.stringify(feed)};
+    const source = createUsageFeedSource({ fetcher: async () => ({
+      ok: true, headers: { get: () => null }, text: async () => JSON.stringify(body) }) });
+    await source.refresh(); source.close();`;
+  await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: new URL('..', import.meta.url), env: { ...process.env, HOME: dir, XDG_STATE_HOME: dir },
+  });
+  assert.deepEqual(readdirSync(dir), []);
 });
 
 test('concurrent refreshes share one request and reads keep the actual timestamp', async (t) => {
   let calls = 0;
   let resolveFetch;
   const pending = new Promise(resolve => { resolveFetch = resolve; });
-  const source = createUsageFeedSource({ file: fixture(t), fetcher: () => { calls++; return pending; } });
+  const source = createUsageFeedSource({ fetcher: () => { calls++; return pending; } });
   t.after(source.close);
   const a = source.refresh();
   const b = source.refresh();
@@ -109,7 +105,7 @@ test('repeated observations cannot extend a future-clock allowance', async (t) =
 
 test('timeout invalidates the cache without retaining a previous sample', async (t) => {
   let calls = 0;
-  const source = createUsageFeedSource({ file: fixture(t), refreshTimeoutMs: 15,
+  const source = createUsageFeedSource({ refreshTimeoutMs: 15,
     fetcher: async (_url, { signal }) => {
       if (++calls === 1) return response();
       return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('timeout'))));

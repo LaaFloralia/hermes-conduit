@@ -3,8 +3,8 @@
 // faithfully (ROADMAP 09, docs/laa/USAGE.md §7).
 //
 // Reads the CodexBar feed and the laa-storage-guard status file directly, then
-// rebuilds the expected item values with independent arithmetic and compares
-// them with the Bridge's projection. Read-only: no credential, no token, no
+// uses the Bridge's freshness decision and checks values with independent
+// arithmetic. Read-only: no credential, no token, no
 // service start, and nothing is printed but counts and field names.
 //
 //   node bridge/scripts/verify-usage.mjs [--timeout-ms 30000]
@@ -12,7 +12,7 @@
 // Not part of `npm test`: CI has no Mac sources and must not need them.
 
 import { readDiskStatus } from '../src/usage/host.mjs';
-import { readUsageFeed, usageItemsFromFeed } from '../src/usage/proxy.mjs';
+import { readUsageFeed, usageItemsFromFeed, UsageFeedError } from '../src/usage/proxy.mjs';
 
 const failures = [];
 const checks = [];
@@ -32,9 +32,20 @@ const timeoutIndex = args.indexOf('--timeout-ms');
 // matches the service (5 s), and an operator can wait longer for a diagnosis.
 const timeoutMs = timeoutIndex >= 0 ? Number(args[timeoutIndex + 1]) : 5000;
 
-const feed = await readUsageFeed({ timeoutMs });
-const items = usageItemsFromFeed(feed, { now: Date.now() });
+let feed;
+let items;
+let receivedAt;
+try {
+  feed = await readUsageFeed({ timeoutMs });
+  receivedAt = Date.now();
+  items = usageItemsFromFeed(feed, { now: receivedAt, receivedAt });
+} catch (error) {
+  const reason = error instanceof UsageFeedError ? error.code : 'fetch_failed';
+  process.stdout.write(`FAIL  feed (${reason})\n`);
+  process.exit(1);
+}
 const byId = new Map(items.map((item) => [item.id, item]));
+const available = (id) => byId.get(id)?.availability === 'available';
 
 check('feed version', feed.version === 1, String(feed.version));
 check('providers in feed', Array.isArray(feed.providers) && feed.providers.length > 0, `${feed.providers?.length ?? 0}`);
@@ -46,16 +57,14 @@ for (const row of feed.providers) {
   if (!row || typeof row !== 'object') continue;
   // `clef` reports a text status, which no v1 item kind carries (README).
   if (['clef', 'gemini', 'deepseek', 'refuseless'].includes(row.id)) continue;
-  const current = Date.now();
-  const observed = Date.parse(row.updatedAt);
-  const fetched = Date.parse(feed.fetchedAt);
-  const until = row.freshUntil == null ? Infinity : Date.parse(row.freshUntil);
-  const fresh = row.available === true && ['live', 'local', 'codexbar-cli', undefined].includes(row.source)
-    && Number.isFinite(observed) && observed <= current && Number.isFinite(fetched) && fetched <= current
-    && current < Math.min(observed + 600000, fetched + 600000, until);
+  const current = receivedAt;
+  const suffix = row.kind === 'quota' ? 'quota' : row.kind === 'unitCredits' ? 'credits'
+    : row.kind === 'usage' ? 'usage' : 'balance';
+  const fresh = row.available === true && available(`provider.${row.id}.${suffix}`);
   if (row.kind === 'cost') {
     for (const period of ['today', 'month']) {
-      expected.set(`provider.${row.id}.cost-${period}`, fresh ? numberAt(row[`${period}Amount`]) : null);
+      const id = `provider.${row.id}.cost-${period}`;
+      expected.set(id, row.available === true && available(id) ? numberAt(row[`${period}Amount`]) : null);
     }
   } else if (row.kind === 'quota' && Array.isArray(row.windows)) {
     const all = [...row.windows, ...(Array.isArray(row.extraWindows) ? row.extraWindows : [])];

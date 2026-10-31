@@ -58,7 +58,7 @@ export function createUsageFeedSource({
   const timer = setInterval(startRefresh, refreshIntervalMs);
   timer.unref?.();
   return {
-    read: async () => ({ feed: cached, lastGood: false, receivedAt, observationAnchors: new Map(observationAnchors) }),
+    read: async () => ({ feed: cached, receivedAt, observationAnchors: new Map(observationAnchors) }),
     refresh: startRefresh,
     close: () => { closed = true; controller.abort(); clearInterval(timer); },
     snapshot: () => cached,

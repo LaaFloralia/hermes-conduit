@@ -223,8 +223,7 @@ final class LAAUsageStateTests: XCTestCase {
          "stale":false,"estimated":false,"expired":true,
          "detail":{"windows":[{"label":"Session","remainingPercent":0,"resetsAt":"2026-10-31T00:05:00Z"},
                                {"label":"Weekly","remainingPercent":80,"resetsAt":"2026-11-02T00:00:00Z"}],
-                   "credits":{"remaining":10,"updatedAt":"2026-10-30T20:00:00Z"},
-                   "resetPasses":{"available":false,"remaining":0,"updatedAt":"2026-10-31T00:00:00Z","expiresAt":"2026-11-02T00:00:00Z"}}}
+                   "credits":{"remaining":10,"updatedAt":"2026-10-30T20:00:00Z"}}}
         """)
         let now = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:09:00Z"))
         let windows = try XCTUnwrap(reading.detail?.windows)

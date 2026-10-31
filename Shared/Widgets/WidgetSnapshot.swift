@@ -156,6 +156,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     let freshUntil: Date?
     let resetsAt: Date?
     let stale: Bool
+    // Decode compatibility only; previously retained values must remain stale.
     let retained: Bool
     // Optional so snapshots written by the previous app remain readable.
     let verified: Bool?
@@ -165,12 +166,31 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
          resetsAt: Date?, stale: Bool, retained: Bool, verified: Bool = false, legacyFreshness: Bool = false) {
         self.id = id; self.label = label; self.remainingPercent = remainingPercent
         self.observedAt = observedAt; self.freshUntil = freshUntil; self.resetsAt = resetsAt
-        self.stale = stale; self.retained = retained; self.verified = verified
+        self.stale = stale || retained; self.retained = retained; self.verified = verified
         self.legacyFreshness = legacyFreshness
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, label, remainingPercent, observedAt, freshUntil, resetsAt, stale, retained, verified, legacyFreshness
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let retained = try values.decodeIfPresent(Bool.self, forKey: .retained) ?? false
+        self.id = try values.decode(String.self, forKey: .id)
+        self.label = try values.decode(String.self, forKey: .label)
+        self.remainingPercent = try values.decode(Double.self, forKey: .remainingPercent)
+        self.observedAt = try values.decodeIfPresent(Date.self, forKey: .observedAt)
+        self.freshUntil = try values.decodeIfPresent(Date.self, forKey: .freshUntil)
+        self.resetsAt = try values.decodeIfPresent(Date.self, forKey: .resetsAt)
+        self.stale = try values.decode(Bool.self, forKey: .stale) || retained
+        self.retained = retained
+        self.verified = try values.decodeIfPresent(Bool.self, forKey: .verified)
+        self.legacyFreshness = try values.decodeIfPresent(Bool.self, forKey: .legacyFreshness)
+    }
+
     func isPast(at date: Date, anchor: Date? = nil) -> Bool {
-        guard !stale, !retained, let observedAt,
+        guard !stale, let observedAt,
               observedAt <= min(anchor ?? date, date).addingTimeInterval(120) else { return true }
         if resetsAt.map({ $0 <= date }) == true { return true }
         if verified == true { return true }

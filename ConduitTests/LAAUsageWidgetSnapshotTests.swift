@@ -36,6 +36,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try capture(style: .light, mode: .fullColor, name: "medium-unset-light", unset: true)
         try capture(style: .dark, mode: .fullColor, name: "medium-unset-dark", unset: true)
         try capture(style: .light, mode: .fullColor, name: "medium-stale-light", stale: true)
+        try capture(style: .light, mode: .fullColor, name: "medium-stale-older-light", stale: true, checkedAtOffset: -86_400)
         try capture(style: .dark, mode: .fullColor, name: "medium-stale-dark", stale: true)
         try capture(style: .light, mode: .accented, name: "medium-stale-tinted", stale: true)
         try capture(style: .light, mode: .fullColor, name: "medium-no-quota-light", otherOnly: true)
@@ -93,12 +94,15 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         let today = LAAEmployeeWidgetView.accessibleCheckedParts(now, relativeTo: now, calendar: calendar)
         XCTAssertEqual(today.date, "10/31")
         XCTAssertEqual(today.time, "23:34")
+        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(now, relativeTo: now, calendar: calendar), "取得 23:34")
         let yesterday = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar)
         XCTAssertEqual(yesterday.date, "10/30")
         XCTAssertEqual(yesterday.time, "09:04")
+        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar), "取得 10/30 09:04")
         let previousYear = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar)
         XCTAssertEqual(previousYear.date, "2025/12/31")
         XCTAssertEqual(previousYear.time, "09:04")
+        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar), "取得 2025/12/31 09:04")
     }
 
     func testAccessibility5MatchesAccessibility3() throws {

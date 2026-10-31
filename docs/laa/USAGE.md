@@ -17,7 +17,9 @@
 
 Claude・GPTの費用は日単位で、今日・今月の区切りをUTC、取得時刻を日本時間で示す。`observedAt` は取得時刻であり、上流の反映済み時刻ではない。Anthropicの従来Cost APIは現在も提供され、`amount` は米セント、反映は通常5分程度だが、個々の反映済み時刻や最大遅延は示されない。新規統合に推奨されるAnalytics APIは通常4時間、最大24時間の遅れなので、鮮度を優先して従来APIを使う。従来APIが停止すれば `fetch_failed` となり、保存済みの古い金額は表示しない。Analyticsへの移行は、遅延を受け入れる判断か上流の鮮度改善を条件とし、`data_refreshed_at` を基準にする。根拠: [Anthropic従来API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api)、[Anthropic Analytics API](https://platform.claude.com/docs/en/manage-claude/usage-cost-analytics-api)。
 
-OpenAI Costs APIの `amount.value` は返された通貨単位（USDならドル）で、反映遅延の上限は確認できない。両社の費用とも取得から10分未満に限るが、取得の鮮度は上流への反映完了を保証しない。月初から当日までの日次バケットが欠けた場合は金額を出さない。AnthropicのPriority Tier費用は従来Cost APIに含まれない。根拠: [OpenAI Costs API](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs)。
+OpenAI Costs APIの `amount.value` は返された通貨単位（USDならドル）で、反映遅延の上限は確認できない。両社の費用とも取得から10分未満に限るが、取得の鮮度は上流への反映完了を保証しない。Anthropicは使用ゼロの日も空のバケットを含むと[公式に明記](https://platform.claude.com/docs/en/manage-claude/usage-cost-analytics-api)しているため、月初から当日まで欠けた日があれば金額を出さない。Priority Tier費用は従来Cost APIに含まれない。
+
+[OpenAI Costs API](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs)は空の日の扱いを明記していない。全ページの終端と日付範囲・昇順・重複なしを確認し、欠けた日は0として集計する。これはAPIが使用ゼロの日を省略し得るという暫定の扱いであり、公式保証ではない。
 
 CodexBar 0.74.0の `serve` はproviderごとのエラーを返す場合があり、proxyは `error` を持つ行を無効にする。一方、同一アカウントの一部失敗では、CodexBarがエラー行を最後の正常行そのもので置き換えるため、エラーは見えず `usage.updatedAt` もその行の時刻のままになる。proxyはその時刻を使い10分で消す。各providerの内部取得経路すべてが元の観測時刻を正しく保持することまでは未確認。値が同じことだけでは期限切れにしない。根拠: [CodexBar 0.74.0のserve実装](https://github.com/steipete/CodexBar/blob/v0.74.0/Sources/CodexBarCLI/CLIServeCommand.swift)。
 
@@ -56,7 +58,7 @@ Tailscaleは輸送であり認証の代替ではない。
 
 ## 6. 統合時の確認事項
 
-各管理者キーの設定とサービス再起動は統合担当が行う。falの鍵権限とVenice実環境の失敗原因は別途確認中。WidgetKitのタイムラインは期限に数値なしへ切り替えるよう指定し、遅れて再描画された場合も描画時刻で判定する。ただしOSが期限エントリーの表示や再描画を遅らせ、既存の描画を画面に残している間は数値が残りうる。アプリ配信・実機での切替は別途確認する。
+各管理者キーの設定とサービス再起動は統合担当が行う。設定後、AnthropicとOpenAIの実APIを各1回確認し、使用ゼロの日のバケット、全ページの終端、UTC日付と金額を照合する。falの鍵権限とVenice実環境の失敗原因は別途確認中。WidgetKitのタイムラインは期限に数値なしへ切り替えるよう指定し、遅れて再描画された場合も描画時刻で判定する。ただしOSが期限エントリーの表示や再描画を遅らせ、既存の描画を画面に残している間は数値が残りうる。アプリ配信・実機での切替は別途確認する。
 
 SwiftBarは毎分feedの期限を判定するが、MacのスリープやSwiftBar停止中は最後の描画が残りうる。LAA版への更新前に置かれた上流Workspaceウィジェットの表示、各サイズとロック画面からの遷移はシミュレーター枠待ちで未確認。
 

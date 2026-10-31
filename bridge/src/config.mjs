@@ -179,7 +179,7 @@ export function resolveUsageFeedUrl(env = process.env) {
   return env.LAA_BRIDGE_USAGE_FEED_URL || 'http://127.0.0.1:8081/widget';
 }
 
-// USAGE.md §4: live/local readings go stale after 20 minutes.
+// USAGE.md §4: live/local readings go stale after at most 10 minutes.
 export function resolveUsageAutoStaleMs(env = process.env) {
   const raw = env.LAA_BRIDGE_USAGE_AUTO_STALE_MS;
   if (raw === undefined || raw === '') return 10 * 60 * 1000;
@@ -205,9 +205,6 @@ export function resolveUsageRefreshTimeoutMs(env = process.env) {
   const value = Number(raw);
   return Number.isFinite(value) && value >= 1000 && value <= 60000 ? value : 30000;
 }
-
-// The last successful proxy payload, under the Bridge's state dir next to the
-// device and idempotency records. No credential is ever written here.
 
 export function resolveStorageStatusFile(env = process.env) {
   return resolve(env.LAA_BRIDGE_STORAGE_STATUS

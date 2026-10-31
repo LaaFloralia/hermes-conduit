@@ -72,6 +72,12 @@ final class LAAUsageWidgetTests: XCTestCase {
         {"id":"old","label":"Claude","remainingPercent":20,"observedAt":0,"freshUntil":null,"resetsAt":null,"stale":false,"retained":false}
         """.utf8)
         XCTAssertNil(try JSONDecoder().decode(WidgetUsageMeter.self, from: old).verified)
+        let retained = Data("""
+        {"id":"old","label":"Claude","remainingPercent":20,"observedAt":0,"freshUntil":null,"resetsAt":null,"stale":false,"retained":true}
+        """.utf8)
+        let decoded = try JSONDecoder().decode(WidgetUsageMeter.self, from: retained)
+        XCTAssertTrue(decoded.stale)
+        XCTAssertTrue(decoded.isPast(at: Date(timeIntervalSinceReferenceDate: 1)))
     }
 
     func testOtherUsageIsDistinguishedAndSnapshotContainsOnlySummaryFields() throws {

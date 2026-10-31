@@ -276,7 +276,7 @@ ROADMAP 09。契約は `docs/laa/USAGE.md` §4、応答例は `docs/laa/fixtures
 | 項目 | 現在の契約 |
 |---|---|
 | 利用枠・残高 | ローカルproxy `/widget` の自動取得値を返す。手動確認のみの値は `not_auto` で数値なし |
-| 背景取得 | Bridgeが定期的に取得し要求は待たない。失敗時はキャッシュと保存ファイルを消し、再起動時は以前のsnapshotを使わない |
+| 背景取得 | Bridgeが定期的に取得し要求は待たない。取得結果はメモリのみで、失敗・再起動時は消える |
 | 鮮度 | provider取得時刻とfeed取得時刻の古い方から最大10分。期限、reset、失敗、未来時刻では数値とdetailを返さない |
 | API使用額 | Anthropic従来Cost APIとOpenAI Costs APIの今日・今月。日付はUTC、取得時刻と各社の反映遅れの説明を分ける。管理者鍵が無ければ `not_configured` |
 | CPU・メモリ | Bridgeプロセス内サンプラ、10秒キャッシュ。非Darwin・失敗は数値なし |
@@ -289,7 +289,7 @@ curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/mac/status
 
 `items[]` は `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。`availability:"unavailable"` の時だけ `value:null`・`nullReason` が付き、`observedAt` は null になる。`availability:"available"` は `value` が数値（0 も実値）。`detail` は quota=`{windows[{label,remainingPercent,resetsAt,windowMinutes?}]}`、balance=`{currency,components[]?,expiresOnUtc?}`、credits=`{renewsAt?,grantedAmount?,monthlyGrantedAmount?,dailyRemaining?,dailyGrantedAmount?}`、usage=`{periodDays,models[{model,inputTokens,outputTokens}]}`、CPU=`{windowSeconds,userPercent,systemPercent}`、メモリ=`{totalBytes,availableBytes,swapUsedBytes?}`、disk=`{volume,totalGb,level?,findings[]}`。
 
-検証: `npm test` はHTTP認証、取得失敗、期限、背景取得、保存値と再起動、射影をfixtureで確認する。実接続は別途 `node bridge/scripts/verify-usage.mjs` で確認する。
+検証: `npm test` はHTTP認証、取得失敗、期限、背景取得と射影をfixtureで確認する。実接続は別途 `node bridge/scripts/verify-usage.mjs` で確認する。
 
 ## 停止・再起動・クラッシュ復帰
 

@@ -23,12 +23,6 @@ struct LAAUsageItem: Decodable, Identifiable {
         let remaining: Double?
         let updatedAt: String?
     }
-    struct ResetPasses: Decodable {
-        let available: Bool
-        let remaining: Double?
-        let updatedAt: String?
-        let expiresAt: String?
-    }
     struct RecordedUsage: Decodable {
         let inputTokens: Double?
         let outputTokens: Double?
@@ -38,7 +32,6 @@ struct LAAUsageItem: Decodable, Identifiable {
         let sourceKind: String?
         let freshUntil: String?
         let credits: Credits?
-        let resetPasses: ResetPasses?
         let components: [Component]?
         let currency: String?
         let creditUnit: String?
@@ -124,10 +117,6 @@ enum LAAUsageFreshness {
 
     static func extraNeedsAttention(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
         if let credits = item.detail?.credits, outdated(credits.updatedAt, at: now) { return true }
-        if let passes = item.detail?.resetPasses {
-            return !passes.available || outdated(passes.updatedAt, at: now) ||
-                (LAAUsageItem.date(passes.expiresAt).map { $0 <= now } ?? true)
-        }
         return false
     }
 }

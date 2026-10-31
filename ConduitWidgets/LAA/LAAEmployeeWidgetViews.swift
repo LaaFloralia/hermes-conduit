@@ -190,7 +190,7 @@ struct LAAEmployeeWidgetView: View {
                         .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 if let checked = usage.checkedAt ?? displayed.compactMap(\.observedAt).min() {
-                    Text(verbatim: "取得 " + Self.accessibleCheckedParts(checked, relativeTo: entry.date).time)
+                    Text(verbatim: Self.checkedLabel(checked, relativeTo: renderedAt))
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1).minimumScaleFactor(0.75)
                 } else {
@@ -200,7 +200,7 @@ struct LAAEmployeeWidgetView: View {
                 Text(verbatim: entry.usage?.hasOtherUsage == true ? "枠は未取得・他のUsageあり" : LAACopy.notFetched)
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let checked = entry.usage?.checkedAt {
-                    Text(verbatim: "取得 " + Self.accessibleCheckedParts(checked, relativeTo: entry.date).time)
+                    Text(verbatim: Self.checkedLabel(checked, relativeTo: renderedAt))
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1).minimumScaleFactor(0.75)
                 }
@@ -260,7 +260,7 @@ struct LAAEmployeeWidgetView: View {
                     .accessibilityLabel(hasOtherUsage ? "枠は未取得、他のUsageあり" : LAACopy.notFetched)
             }
             if let checked = entry.usage?.checkedAt ?? entry.usage?.meters.compactMap(\.observedAt).min() {
-                let parts = Self.accessibleCheckedParts(checked, relativeTo: entry.date)
+                let parts = Self.accessibleCheckedParts(checked, relativeTo: renderedAt)
                 VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: parts.date)
                         .lineLimit(1).minimumScaleFactor(0.8)
@@ -316,6 +316,13 @@ struct LAAEmployeeWidgetView: View {
             return ("\(month)/\(day)", time)
         }
         return ("\(components.year ?? 0)/\(month)/\(day)", time)
+    }
+
+    static func checkedLabel(_ checked: Date, relativeTo reference: Date,
+                             calendar: Calendar = .autoupdatingCurrent) -> String {
+        let parts = accessibleCheckedParts(checked, relativeTo: reference, calendar: calendar)
+        return calendar.isDate(checked, inSameDayAs: reference)
+            ? "取得 \(parts.time)" : "取得 \(parts.date) \(parts.time)"
     }
 
     private func percentageText(_ value: Double) -> String {
