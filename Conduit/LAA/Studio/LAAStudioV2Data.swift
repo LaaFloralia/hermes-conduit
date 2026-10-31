@@ -73,7 +73,8 @@ extension LAAStudioData {
         #if DEBUG
         if let fixture { return try sampleProject(fixture) }
         #endif
-        let result: LAABridgeResponse<LAAStudioProjectDetail> = try await bridge.request(method: "GET", path: "/v1/studio/projects/\(id)")
+        let result: LAABridgeResponse<LAAStudioProjectDetail> = try await bridge.request(
+            method: "GET", path: "/v1/studio/projects/\(id)", timeout: 45)
         guard result.data.project.id == id else { throw LAABridgeError.invalidResponse }
         return result.data
     }

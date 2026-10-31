@@ -116,7 +116,7 @@ laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済
 
 Bridge固有の `studio_payload_invalid` は受付契約の `invalid_request` に相当し、`studio_approval_changed` と `studio_approval_on_mac` は `studio_approval_expired` と同様に回答を受け付けない。Studioのエージェント向けCLI・MCPの `intake.action` はstopのみ、受付ソケットの `POST /api/studio/action` はanswer・stopに対応し、resumeは409。
 
-v2はsnapshotの `contract >= 2` でのみアプリに表示する。catalogのETagは不透明な値として転送し、304は本文を返さない。Studioの初回索引待ち（最大10秒）に備え、catalogのStudioソケット待ちは20秒、アプリのBridge待ちは起動時間も含め45秒とする。講評の結果不明時はStudioのUUID重複排除を利用し、同じUUID・本文と新しいBridge keyで利用者が明示的に再送できる。Studioの同一UUID・異本文は409。Bridgeの同一keyは従来どおり生の本文バイト列を照合するため、アプリは確定した本文を保持する。メディアは `pdf` と `usdz` を含む契約形式のみをMIME・サイズ・Range検証して中継し、保存しない。
+v2はsnapshotの `contract >= 2` でのみアプリに表示する。catalogのETagは不透明な値として転送し、304は本文を返さない。Studioの初回索引待ち（最大10秒）に備え、catalogのStudioソケット待ちは20秒、アプリのBridge待ちは起動時間も含め45秒とする。作品詳細も同じ待ち時間とする。Studio契約では起動後の初回詳細は最大50件の書き出しのハッシュ計算後に返るが、計算時間の上限は定めていないため、20秒以内に完了する保証はない。講評の結果不明時はStudioのUUID重複排除を利用し、同じUUID・本文と新しいBridge keyで利用者が明示的に再送できる。Studioの同一UUID・異本文は409。Bridgeの同一keyは従来どおり生の本文バイト列を照合するため、アプリは確定した本文を保持する。メディアは `pdf` と `usdz` を含む契約形式のみをMIME・サイズ・Range検証して中継し、保存しない。
 
 ## Project と workspace（タスク13）
 

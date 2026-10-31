@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { createStudioBackend } from '../src/studio/backend.mjs';
 import { startBridge } from './helpers.mjs';
@@ -22,6 +22,23 @@ const catalog = { etag: 'b'.repeat(64), updatedAt: now, principles: [], adoptedP
   documents: [{ id: 'doc1', title: 'Fixture', media: `/api/studio/media/catalog/${digest}.pdf` },
     { id: 'doc2', title: 'Unavailable fixture', driveUrl: 'https://drive.google.com/file/d/1234567890/view', unavailable: 'source_unreadable' }],
   capabilities: [], brief: [] };
+const pdf = (() => {
+  let body = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [index, object] of [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>',
+  ].entries()) {
+    offsets.push(Buffer.byteLength(body));
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(body);
+  body += `xref\n0 4\n0000000000 65535 f \n${offsets.slice(1).map((value) => `${String(value).padStart(10, '0')} 00000 n \n`).join('')}`;
+  body += `trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(body);
+})();
+const pdfDigest = createHash('sha256').update(pdf).digest('hex');
 const detail = { project, versions: [
   { id: digest, revision: 7, kind: 'video', name: 'preview.mp4', createdAt: now, bytes: 200 * mib,
     media: `/api/studio/media/${projectId}/${digest}.mp4`, previewOnly: true },
@@ -37,7 +54,7 @@ const response = (res, status, data) => {
 describe('Studio v2 mock socket contract', () => {
   let dir, socket, server, bridge, readToken, writeToken, allToken, clock = 1_000_000;
   const state = { reviews: new Map(), calls: [], forcedError: null, dropReviewResponse: false, v2: true, closedStream: false,
-    catalogFault: null, catalogDelayMs: 0, projectDelayMs: 0 };
+    catalog, catalogTag: tag, catalogFault: null, catalogDelayMs: 0, projectDelayMs: 0, snapshotDelayMs: 0 };
 
   before(async () => {
     dir = mkdtempSync(join(tmpdir(), 'laa-studio-v2-'));
@@ -46,16 +63,20 @@ describe('Studio v2 mock socket contract', () => {
     server = createServer(async (req, res) => {
       if (req.headers.authorization !== `Bearer ${token}`) return response(res, 401, { error: 'invalid_token' });
       state.calls.push({ method: req.method, path: req.url, range: req.headers.range, ifNoneMatch: req.headers['if-none-match'] });
-      if (req.url === '/api/studio/snapshot') return response(res, 200, { online: true, accepting: true, contract: state.v2 ? 2 : 1, projects: [], principles: [], requests: [] });
+      if (req.url === '/api/studio/snapshot') {
+        if (state.snapshotDelayMs) await new Promise((resolve) => setTimeout(resolve, state.snapshotDelayMs));
+        if (!res.destroyed) return response(res, 200, { online: true, accepting: true, contract: state.v2 ? 2 : 1, projects: [], principles: [], requests: [] });
+        return;
+      }
       if (!state.v2) return response(res, 404, { error: 'not_found' });
       if (req.url === '/api/studio/catalog') {
         if (state.catalogDelayMs) await new Promise((resolve) => setTimeout(resolve, state.catalogDelayMs));
         if (res.destroyed) return;
-        if (state.catalogFault === 'unexpected304') { res.writeHead(304, { etag: tag }); return res.end(); }
-        const matches = (req.headers['if-none-match'] ?? '').split(',').some((item) => item.trim().replace(/^W\//, '') === tag);
-        if (matches) { res.writeHead(304, state.catalogFault === 'missingTag' ? {} : { etag: tag }); return res.end(); }
-        if (state.catalogFault !== 'missingTag') res.setHeader('etag', tag);
-        return response(res, 200, catalog);
+        if (state.catalogFault === 'unexpected304') { res.writeHead(304, { etag: state.catalogTag }); return res.end(); }
+        const matches = (req.headers['if-none-match'] ?? '').split(',').some((item) => item.trim().replace(/^W\//, '') === state.catalogTag);
+        if (matches) { res.writeHead(304, state.catalogFault === 'missingTag' ? {} : { etag: state.catalogTag }); return res.end(); }
+        if (state.catalogFault !== 'missingTag') res.setHeader('etag', state.catalogTag);
+        return response(res, 200, state.catalog);
       }
       if (req.url === `/api/studio/projects/${projectId}`) {
         if (state.projectDelayMs) await new Promise((resolve) => setTimeout(resolve, state.projectDelayMs));
@@ -83,6 +104,17 @@ describe('Studio v2 mock socket contract', () => {
       if (media) {
         const [, , hash, ext] = media;
         const type = { mp4: 'video/mp4', mp3: 'audio/mpeg', pdf: 'application/pdf', usdz: 'model/vnd.usdz+zip' }[ext];
+        if (ext === 'pdf' && hash === pdfDigest) {
+          const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
+          if (req.headers.range && (!range || Number(range[1]) >= pdf.length || (range[2] && Number(range[2]) < Number(range[1])))) {
+            res.writeHead(416, { 'content-range': `bytes */${pdf.length}` }); return res.end();
+          }
+          if (!range) { res.writeHead(200, { 'content-type': type, 'content-length': pdf.length, 'accept-ranges': 'bytes' }); return res.end(pdf); }
+          const start = Number(range[1]), end = Math.min(range[2] ? Number(range[2]) : pdf.length - 1, pdf.length - 1);
+          res.writeHead(206, { 'content-type': type, 'content-length': end - start + 1,
+            'content-range': `bytes ${start}-${end}/${pdf.length}`, 'accept-ranges': 'bytes' });
+          return res.end(pdf.subarray(start, end + 1));
+        }
         const limit = (ext === 'mp4' || ext === 'mp3' ? 256 : 128) * mib;
         const total = hash.startsWith('f') ? limit + 1 : limit;
         if (hash.startsWith('e')) {
@@ -137,27 +169,73 @@ describe('Studio v2 mock socket contract', () => {
     state.catalogFault = null;
   });
 
-  it('waits for a slow initial catalog through the Bridge', async () => {
-    state.catalogDelayMs = 12_250; // Longer than the former 12-second socket timeout.
+  it('refreshes eight previously unavailable documents when the catalog validator changes', async () => {
+    const documents = Array.from({ length: 8 }, (_, index) => ({
+      id: `fixture-${index + 1}`, title: `Fixture ${index + 1}`, category: 'Fixture', detail: 'Synthetic document', format: 'PDF',
+      driveUrl: `https://drive.google.com/file/d/fixture-document-${index + 1}/view`,
+    }));
+    const newTag = `"${'c'.repeat(64)}"`;
     try {
-      const result = await bridge.request('/v1/studio/catalog', { token: readToken });
+      state.catalog = { ...catalog, documents: documents.map((document) => ({ ...document, unavailable: 'source_unreadable' })) };
+      const old = await bridge.request('/v1/studio/catalog', { token: readToken });
+      assert.equal(old.status, 200);
+      assert.equal(old.headers.get('etag'), tag);
+      assert.equal(old.body.data.documents.length, 8);
+      assert.ok(old.body.data.documents.every((document) => document.unavailable === 'source_unreadable' && !document.media));
+
+      state.catalogTag = newTag;
+      state.catalog = { ...catalog, etag: 'c'.repeat(64), documents: documents.map((document) => ({
+        ...document, media: `/api/studio/media/catalog/${pdfDigest}.pdf`, bytes: pdf.length,
+      })) };
+      const updated = await bridge.request('/v1/studio/catalog', { token: readToken, headers: { 'if-none-match': tag } });
+      assert.equal(state.calls.at(-1).ifNoneMatch, tag);
+      assert.equal(updated.status, 200);
+      assert.equal(updated.headers.get('etag'), newTag);
+      assert.equal(updated.body.data.etag, 'c'.repeat(64));
+      assert.equal(updated.body.data.documents.length, 8);
+      assert.ok(updated.body.data.documents.every((document) => document.media && document.bytes === pdf.length && !document.unavailable));
+
+      const unchanged = await bridge.request('/v1/studio/catalog', { token: readToken, headers: { 'if-none-match': newTag } });
+      assert.equal(unchanged.status, 304);
+      assert.equal(unchanged.body, null);
+      assert.equal(unchanged.headers.get('etag'), newTag);
+    } finally { state.catalog = catalog; state.catalogTag = tag; }
+  });
+
+  it('waits for slow initial catalog and project responses through the Bridge', async () => {
+    state.catalogDelayMs = 12_250; // Longer than the former 12-second socket timeout.
+    state.projectDelayMs = 12_250;
+    try {
+      const [result, work] = await Promise.all([
+        bridge.request('/v1/studio/catalog', { token: readToken }),
+        bridge.request(`/v1/studio/projects/${projectId}`, { token: readToken }),
+      ]);
       assert.equal(result.status, 200);
       assert.equal(result.body.data.documents[1].unavailable, 'source_unreadable');
       assert.equal(result.body.data.documents[1].driveUrl, catalog.documents[1].driveUrl);
-    } finally { state.catalogDelayMs = 0; }
+      assert.equal(work.status, 200);
+      assert.deepEqual(work.body.data, detail);
+    } finally { state.catalogDelayMs = 0; state.projectDelayMs = 0; }
   });
 
-  it('uses a separate, bounded catalog timeout without extending project requests', async () => {
-    const timed = createStudioBackend({ directory: dir, launch: async () => {}, requestTimeoutMs: 100, catalogTimeoutMs: 1000 });
+  it('bounds catalog and project waits independently without extending other requests', async () => {
+    const timed = createStudioBackend({ directory: dir, launch: async () => {}, requestTimeoutMs: 100, catalogTimeoutMs: 1000, projectTimeoutMs: 1000 });
     try {
       state.catalogDelayMs = 350;
-      assert.equal((await timed.catalog()).status, 200);
-      assert.equal((await timed.catalog(tag)).status, 304);
       state.projectDelayMs = 350;
-      await assert.rejects(timed.project(projectId), { code: 'studio_not_connected' });
+      const [result, work] = await Promise.all([timed.catalog(), timed.project(projectId)]);
+      assert.equal(result.status, 200);
+      assert.deepEqual(work, detail);
+      assert.equal((await timed.catalog(tag)).status, 304);
+      state.snapshotDelayMs = 350;
+      await assert.rejects(timed.snapshot(), { code: 'studio_not_connected' });
       state.catalogDelayMs = 1600;
-      await assert.rejects(timed.catalog(), { code: 'studio_not_connected' });
-    } finally { state.catalogDelayMs = 0; state.projectDelayMs = 0; }
+      state.projectDelayMs = 1600;
+      await Promise.all([
+        assert.rejects(timed.catalog(), { code: 'studio_not_connected' }),
+        assert.rejects(timed.project(projectId), { code: 'studio_not_connected' }),
+      ]);
+    } finally { state.catalogDelayMs = 0; state.projectDelayMs = 0; state.snapshotDelayMs = 0; }
   });
 
   it('returns project details without erasing preparing, other, or previewOnly, and maps missing projects', async () => {
@@ -251,6 +329,28 @@ describe('Studio v2 mock socket contract', () => {
       const malformed = await bridge.request(`/v1/studio/media/${projectId}/${'d'.repeat(64)}.${ext}`, { token: readToken, headers: { range: 'bytes=0-3' } });
       assert.equal(malformed.body.error.code, 'studio_media_invalid');
     }
+  });
+
+  it('serves catalog PDF bytes with 200, 206, and out-of-range 416', async () => {
+    const path = `/v1/studio/media/catalog/${pdfDigest}.pdf`;
+    const headers = { authorization: `Bearer ${readToken}` };
+    const full = await fetch(bridge.base + path, { headers });
+    assert.equal(full.status, 200);
+    assert.equal(full.headers.get('content-type'), 'application/pdf');
+    assert.equal(full.headers.get('content-length'), String(pdf.length));
+    assert.equal(full.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(Buffer.from(await full.arrayBuffer()), pdf);
+
+    const part = await fetch(bridge.base + path, { headers: { ...headers, range: 'bytes=4-13' } });
+    assert.equal(part.status, 206);
+    assert.equal(part.headers.get('content-type'), 'application/pdf');
+    assert.equal(part.headers.get('content-range'), `bytes 4-13/${pdf.length}`);
+    assert.deepEqual(Buffer.from(await part.arrayBuffer()), pdf.subarray(4, 14));
+    assert.equal(state.calls.at(-1).range, 'bytes=4-13');
+
+    const outside = await fetch(bridge.base + path, { headers: { ...headers, range: `bytes=${pdf.length}-` } });
+    assert.equal(outside.status, 416);
+    assert.equal(outside.headers.get('content-range'), `bytes */${pdf.length}`);
   });
 
   it('closes the upstream stream when the client cancels', async () => {
