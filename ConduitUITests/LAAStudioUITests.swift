@@ -107,16 +107,14 @@ final class LAAStudioUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
         app.launch()
         XCTAssertTrue(app.buttons["Studio"].waitForExistence(timeout: 30)); app.buttons["Studio"].tap()
         let connect = app.buttons["laa.studio.pair"]
         XCTAssertTrue(connect.waitForExistence(timeout: 10)); connect.tap()
         let address = app.textFields["laa.bridge.address"]
-        XCTAssertTrue(address.waitForExistence(timeout: 10)); address.tap()
-        let current = address.value as? String ?? ""
-        address.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
-        address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 5))
-        address.typeText("http://127.0.0.1:19582")
+        XCTAssertTrue(address.waitForExistence(timeout: 10))
+        XCTAssertEqual(address.value as? String, "http://127.0.0.1:19582")
         let code = app.secureTextFields["laa.bridge.code"]
         code.tap(); code.typeText("TEST-TEST")
         let pair = app.buttons["laa.bridge.pair"]
