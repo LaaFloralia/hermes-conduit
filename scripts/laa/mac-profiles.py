@@ -19,6 +19,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import shutil
 import subprocess
@@ -30,6 +31,8 @@ import urllib.request
 import uuid
 
 BUNDLES = ("com.laa-inc.laa", "com.laa-inc.laa.NotificationService")
+NOTIFICATION_GROUP = "group.com.laa-inc.laa.notifications"
+LAUNCHER_GROUP = "group.com.laa-inc.laa.launcher"
 PROFILE_TYPE = "MAC_CATALYST_APP_DIRECT"
 CERTIFICATE_TYPE = "DEVELOPER_ID_APPLICATION_G2"
 BASE_URL = "https://api.appstoreconnect.apple.com"
@@ -63,14 +66,19 @@ def der_integers(data):
         raise ProfilesError("cannot read the signature openssl returned")
     length, offset = der_length(data, 1)
     end = offset + length
+    if end != len(data):
+        raise ProfilesError("cannot read the signature openssl returned")
     values = []
     while offset < end:
         if data[offset] != 0x02:
             raise ProfilesError("cannot read the signature openssl returned")
         length, offset = der_length(data, offset + 1)
-        if offset + length > end:
+        if length == 0 or offset + length > end or data[offset] & 0x80:
             raise ProfilesError("cannot read the signature openssl returned")
-        values.append(data[offset:offset + length].lstrip(b"\0").rjust(32, b"\0"))
+        value = data[offset:offset + length].lstrip(b"\0")
+        if len(value) > 32:
+            raise ProfilesError("cannot read the signature openssl returned")
+        values.append(value.rjust(32, b"\0"))
         offset += length
     if len(values) != 2:
         raise ProfilesError("cannot read the signature openssl returned")
@@ -149,6 +157,73 @@ def install_profile(path, content):
         raise
 
 
+def profile_allows_bundle(content, bundle):
+    """Inspect the downloaded profile without printing its signed contents."""
+    result = subprocess.run(
+        ["/usr/bin/security", "cms", "-D", "-i", "/dev/stdin"], input=content,
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+    )
+    if result.returncode:
+        raise ProfilesError("cannot decode the downloaded provisioning profile")
+    try:
+        entitlements = plistlib.loads(result.stdout)["Entitlements"]
+        groups = set(entitlements.get("com.apple.security.application-groups", []))
+    except (ValueError, TypeError, KeyError, plistlib.InvalidFileException):
+        raise ProfilesError("downloaded provisioning profile has invalid entitlements") from None
+    required = {NOTIFICATION_GROUP}
+    if bundle == BUNDLES[0]:
+        required.add(LAUNCHER_GROUP)
+        push = entitlements.get("aps-environment", entitlements.get("com.apple.developer.aps-environment"))
+        if push != "production":
+            return False
+    return required.issubset(groups)
+
+
+def select_bundle_profile(bundle, bundle_ids, certificate):
+    # A Catalyst profile can be attached to the same App ID as the iOS app.
+    # Prefer a working, matching profile over guesses based on platform alone.
+    rank = {"UNIVERSAL": 0, "MAC_OS": 1, "IOS": 2}
+    candidates = [item for item in bundle_ids if item["attributes"].get("identifier") == bundle
+                  and item["attributes"].get("platform") in rank]
+    candidates.sort(key=lambda item: rank[item["attributes"]["platform"]])
+    if not candidates:
+        raise ProfilesError(f"bundle id missing or has an unsupported platform: {bundle}")
+    eligible = []
+    required = {"APP_GROUPS"}
+    if bundle == BUNDLES[0]:
+        required.add("PUSH_NOTIFICATIONS")
+    for bundle_id in candidates:
+        query = urllib.parse.urlencode({"fields[bundleIdCapabilities]": "capabilityType", "limit": "200"})
+        capabilities = api("GET", f"/v1/bundleIds/{bundle_id['id']}/bundleIdCapabilities?" + query).get("data", [])
+        enabled = {item["attributes"]["capabilityType"] for item in capabilities}
+        if not required.issubset(enabled):
+            continue
+        eligible.append(bundle_id)
+        query = urllib.parse.urlencode({
+            "fields[profiles]": "name,profileType,profileState,uuid,expirationDate", "limit": "200",
+        })
+        for entry in api("GET", f"/v1/bundleIds/{bundle_id['id']}/profiles?" + query).get("data", []):
+            attrs = entry["attributes"]
+            if attrs["profileType"] != PROFILE_TYPE or attrs["profileState"] != "ACTIVE":
+                continue
+            query = urllib.parse.urlencode({"fields[certificates]": "serialNumber", "limit": "50"})
+            linked = api("GET", f"/v1/profiles/{entry['id']}/certificates?" + query).get("data", [])
+            if not any(item["attributes"]["serialNumber"].upper() == certificate["attributes"]["serialNumber"].upper()
+                       for item in linked):
+                continue
+            query = urllib.parse.urlencode({"fields[profiles]": "name,uuid,profileContent,expirationDate"})
+            profile = api("GET", f"/v1/profiles/{entry['id']}?" + query)
+            content = base64.b64decode(profile["data"]["attributes"]["profileContent"], validate=True)
+            if profile_allows_bundle(content, bundle):
+                return bundle_id, profile
+    if not eligible:
+        raise ProfilesError(f"required App Groups or Push capability missing for bundle: {bundle}")
+    first_platform = eligible[0]["attributes"]["platform"]
+    if sum(item["attributes"]["platform"] == first_platform for item in eligible) != 1:
+        raise ProfilesError(f"multiple equally eligible App IDs for bundle: {bundle}")
+    return eligible[0], None
+
+
 def main():
     if len(sys.argv) < 2:
         raise ProfilesError("usage: mac-profiles.py OUTPUT.json [--serial SERIAL]")
@@ -175,12 +250,12 @@ def main():
         certificate = next((item for item in certificates
                             if item["attributes"]["serialNumber"].upper() == serial.upper()), None)
         if certificate is None:
-            raise ProfilesError("no Developer ID Application certificate matches the serial from the keychain")
+            raise ProfilesError("no Developer ID Application G2 certificate matches the keychain; G1 is not supported")
     else:
         if len(certificates) != 1:
             raise ProfilesError(f"expected one Developer ID Application certificate, found {len(certificates)}; pass --serial")
         certificate = certificates[0]
-    print("certificate: found, expires", certificate["attributes"]["expirationDate"][:10])
+    print("certificate: Developer ID Application G2, expires", certificate["attributes"]["expirationDate"][:10])
 
     DEST.mkdir(parents=True, exist_ok=True)
     profiles = {}
@@ -191,30 +266,8 @@ def main():
             "limit": "20",
         })
         bundle_ids = api("GET", "/v1/bundleIds?" + query).get("data", [])
-        bundle_id = next((item for item in bundle_ids
-                          if item["attributes"]["identifier"] == bundle), None)
-        if bundle_id is None:
-            raise ProfilesError(f"bundle id missing: {bundle}")
-
-        query = urllib.parse.urlencode({
-            "fields[profiles]": "name,profileType,profileState,uuid,expirationDate",
-            "limit": "200",
-        })
-        existing = None
-        for profile in api("GET", f"/v1/bundleIds/{bundle_id['id']}/profiles?" + query).get("data", []):
-            attributes = profile["attributes"]
-            if attributes["profileType"] != PROFILE_TYPE or attributes["profileState"] != "ACTIVE":
-                continue
-            query = urllib.parse.urlencode({"fields[certificates]": "serialNumber", "limit": "50"})
-            linked = api("GET", f"/v1/profiles/{profile['id']}/certificates?" + query).get("data", [])
-            if any(item["attributes"]["serialNumber"].upper() == certificate["attributes"]["serialNumber"].upper()
-                   for item in linked):
-                existing = profile
-                break
-
-        if existing is not None:
-            query = urllib.parse.urlencode({"fields[profiles]": "name,uuid,profileContent,expirationDate"})
-            profile = api("GET", f"/v1/profiles/{existing['id']}?" + query)
+        bundle_id, profile = select_bundle_profile(bundle, bundle_ids, certificate)
+        if profile is not None:
             state = "existing"
         else:
             profile = api("POST", "/v1/profiles", {"data": {
@@ -229,6 +282,8 @@ def main():
 
         attributes = profile["data"]["attributes"]
         content = base64.b64decode(attributes["profileContent"], validate=True)
+        if state == "created" and not profile_allows_bundle(content, bundle):
+            raise ProfilesError(f"created profile lacks required App Groups or production push entitlement: {bundle}")
         profile_uuid = attributes["uuid"]
         try:
             if str(uuid.UUID(profile_uuid)) != profile_uuid.lower():

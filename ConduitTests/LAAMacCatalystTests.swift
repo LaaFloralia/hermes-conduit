@@ -7,19 +7,21 @@ import UIKit
 final class LAAMacCatalystTests: XCTestCase {
     func testWindowSceneCanGrowAndShrink() async throws {
         var scene: UIWindowScene?
+        let expectedMinimum = CGSize(width: LAAMacWindow.minimumWidth, height: LAAMacWindow.minimumHeight)
         for _ in 0..<30 {
             scene = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
                 .first { !$0.windows.isEmpty }
-            if scene?.sizeRestrictions != nil { break }
+            if scene?.sizeRestrictions?.minimumSize == expectedMinimum { break }
             try await Task.sleep(nanoseconds: 100_000_000)
         }
 
         let restrictions = try XCTUnwrap(scene?.sizeRestrictions)
-        XCTAssertLessThan(restrictions.minimumSize.width, LAAMacWindow.initialWidth)
-        XCTAssertLessThan(restrictions.minimumSize.height, LAAMacWindow.initialHeight)
-        XCTAssertGreaterThan(restrictions.maximumSize.width, LAAMacWindow.initialWidth)
-        XCTAssertGreaterThan(restrictions.maximumSize.height, LAAMacWindow.initialHeight)
+        XCTAssertEqual(restrictions.minimumSize, expectedMinimum)
+        if restrictions.maximumSize != .zero {
+            XCTAssertGreaterThan(restrictions.maximumSize.width, LAAMacWindow.initialWidth)
+            XCTAssertGreaterThan(restrictions.maximumSize.height, LAAMacWindow.initialHeight)
+        }
     }
 
     func testInAppVoiceCanStartWithoutSystemCall() async {

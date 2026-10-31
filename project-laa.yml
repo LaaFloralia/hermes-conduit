@@ -48,6 +48,7 @@ targets:
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_TEST"
+        SUPPORTS_MACCATALYST: YES
   ConduitUITests:
     settings:
       base:
@@ -149,6 +150,7 @@ targets:
   ConduitNotificationService:
     settings:
       base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
         SUPPORTS_MACCATALYST: YES
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO

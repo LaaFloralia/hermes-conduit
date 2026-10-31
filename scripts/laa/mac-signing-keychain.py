@@ -10,6 +10,7 @@ import base64
 import binascii
 import os
 from pathlib import Path
+import re
 import secrets
 import shlex
 import shutil
@@ -36,9 +37,12 @@ def security_command(*arguments):
     command = " ".join(quote(str(item)) for item in arguments) + "\n"
     result = subprocess.run(
         [SECURITY, "-i"], input=command, text=True,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False,
     )
-    if result.returncode:
+    # Interactive security can return success even after a command failed.
+    # Never echo its diagnostics: they might include the command's secrets.
+    diagnostics = result.stderr.replace("security> ", "").strip()
+    if result.returncode or diagnostics:
         raise KeychainError("temporary keychain operation failed")
 
 
@@ -66,6 +70,8 @@ def main():
     password = os.environ.pop("LAA_DEVID_P12_PASSWORD", "")
     if not encoded or not password or len(sys.argv) < 2:
         raise KeychainError("Developer ID PKCS#12, its password, and a release command are required")
+    if not Path(OPENSSL).is_file():
+        raise KeychainError("Homebrew openssl@3 is required (brew install openssl@3)")
     try:
         p12 = base64.b64decode("".join(encoded.split()), validate=True)
     except (ValueError, binascii.Error):
@@ -128,34 +134,65 @@ def main():
             [SECURITY, "find-identity", "-v", "-p", "codesigning", keychain],
             text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
         )
-        if identities.returncode or "Developer ID Application:" not in identities.stdout:
+        match = re.search(r'(?m)^\s*\d+\)\s+([0-9A-Fa-f]{40})\s+"Developer ID Application:', identities.stdout)
+        if identities.returncode or match is None:
             raise KeychainError("the imported keychain has no valid Developer ID Application identity")
         set_keychains([keychain, *keychains()])
         if keychain not in keychains():
             raise KeychainError("the temporary keychain was not added to the search list")
+        # --dryrun performs the cryptographic operation and its access checks,
+        # without writing a signature or sending anything to Apple.
+        probe = folder / "signing-probe"
+        shutil.copy2("/usr/bin/true", probe)
+        try:
+            checked = subprocess.run(
+                ["/usr/bin/codesign", "--force", "--dryrun", "--timestamp=none", "--sign", match.group(1), str(probe)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            raise KeychainError("the temporary signing key was not accessible without interaction") from None
+        if checked.returncode:
+            raise KeychainError("the temporary signing key failed its access check")
+        probe.unlink()
         env = dict(os.environ, LAA_MAC_KEYCHAIN_ACTIVE="1")
         child = subprocess.Popen(sys.argv[1:], env=env)
         return child.wait()
     finally:
+        primary_exception = sys.exc_info()[0] is not None
+        cleanup_failed = False
         try:
             if child is not None and child.poll() is None:
-                child.terminate()
-                child.wait()
+                try:
+                    child.terminate()
+                    child.wait()
+                except OSError:
+                    cleanup_failed = True
             # Preserve changes to other keychains made while the release ran.
             if created:
                 try:
                     current = keychains()
                     if keychain in current:
                         set_keychains([item for item in current if item != keychain])
-                finally:
+                except (KeychainError, OSError):
+                    cleanup_failed = True
+                try:
                     deleted = subprocess.run([SECURITY, "delete-keychain", keychain],
                                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
                     if deleted.returncode:
-                        raise KeychainError("could not delete the temporary signing keychain")
+                        cleanup_failed = True
+                except OSError:
+                    cleanup_failed = True
         finally:
-            shutil.rmtree(folder)
+            try:
+                shutil.rmtree(folder)
+            except OSError:
+                cleanup_failed = True
             for sig, handler in old_handlers.items():
                 signal.signal(sig, handler)
+        if cleanup_failed:
+            print("warning: could not fully clean up the temporary signing keychain", file=sys.stderr)
+            if not primary_exception and (child is None or child.returncode == 0):
+                raise KeychainError("temporary signing keychain cleanup failed")
 
 
 if __name__ == "__main__":

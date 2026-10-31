@@ -1,6 +1,8 @@
 #!/bin/bash
 # Developer ID distribution: signed archive, Developer ID export, notarized app and DMG.
 # Run with: /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/mac-release.env.tpl scripts/laa/mac-release.sh
+# --archive-only creates an unsigned archive for build verification only.
+# Catalyst tests: xcodebuild test -scheme Conduit -destination 'platform=macOS,variant=Mac Catalyst'
 # The template supplies ASC_KEY, ASC_KEY_ID, ASC_ISSUER_ID and the Developer ID
 # PKCS#12 as LAA_DEVID_P12_B64 with LAA_DEVID_P12_PASSWORD.
 set -euo pipefail
@@ -46,6 +48,11 @@ cleanup() {
     trap - EXIT INT TERM
     [ -z "$key_root" ] || rm -rf "$key_root" || cleanup_failed=1
     [ -z "$local_spec" ] || rm -f "$local_spec" || cleanup_failed=1
+    # This is xcarchive metadata, not the signed app. Embedded profiles and
+    # certificates necessarily retain the identity used for distribution.
+    if [ "$archive_complete" -eq 1 ] && /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:SigningIdentity' "$archive/Info.plist" >/dev/null 2>&1; then
+        /usr/libexec/PlistBuddy -c 'Set :ApplicationProperties:SigningIdentity <redacted>' "$archive/Info.plist" >/dev/null 2>&1 || cleanup_failed=1
+    fi
     rm -rf "$work/DerivedData" "$work/WebRTC-local" "$work/dmg-root" "$work/export" "$work/app-certs" || cleanup_failed=1
     rm -f "$work/LAA.zip" "$work/profiles.json" "$work/ExportOptions.plist" || cleanup_failed=1
     [ "$archive_complete" -eq 1 ] || rm -rf "$archive" || cleanup_failed=1
@@ -61,6 +68,11 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+{
+    printf 'commit='
+    git rev-parse HEAD
+    if [ -z "$(git status --porcelain)" ]; then printf 'working-tree=clean\n'; else printf 'working-tree=dirty\n'; fi
+} > "$work/build-info.log"
 auth=()
 if [ "$archive_only" -eq 0 ]; then
     [ -n "${ASC_KEY:-}" ] && [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ] || fail 'ASC_KEY, ASC_KEY_ID and ASC_ISSUER_ID are required'
@@ -128,7 +140,7 @@ if [ "$archive_only" -eq 1 ]; then
     for architecture in arm64 x86_64; do
         /usr/bin/lipo -verify_arch "$architecture" "$app/Contents/MacOS/$executable" || fail 'application is not universal'
     done
-    printf 'Archive: %s\n' "$archive"
+    printf 'Unsigned archive (build verification only, not for distribution): %s\n' "$archive"
     exit 0
 fi
 
@@ -181,10 +193,34 @@ for architecture in arm64 x86_64; do
 done
 ditto -c -k --keepParent "$app" "$work/LAA.zip"
 notarize() {
-    local input="$1" result="$2"
-    /usr/bin/xcrun notarytool submit "$input" --key "$key_path" --key-id "$ASC_KEY_ID" \
-        --issuer "$ASC_ISSUER_ID" --wait --output-format json > "$result" || fail "notary submission failed; see $result"
-    [ "$(/usr/bin/plutil -extract status raw -o - "$result")" = Accepted ] || fail "notarization was not accepted; see $result"
+    local input="$1" result="$2" response status submission log
+    if ! response="$(/usr/bin/xcrun notarytool submit "$input" --key "$key_path" --key-id "$ASC_KEY_ID" \
+        --issuer "$ASC_ISSUER_ID" --wait --output-format json 2> >(redact_signing_names >&2))"; then
+        printf '%s\n' "$response" | redact_signing_names > "$result"
+        fail "notary submission failed; see $result"
+    fi
+    printf '%s\n' "$response" | redact_signing_names > "$result"
+    status="$(printf '%s' "$response" | /usr/bin/plutil -extract status raw -o - -)" || fail "invalid notary response; see $result"
+    if [ "$status" != Accepted ]; then
+        submission="$(printf '%s' "$response" | /usr/bin/plutil -extract id raw -o - -)" || fail "notarization was not accepted; see $result"
+        case "$submission" in *[![:xdigit:]-]*|'') fail "invalid notary submission id; see $result";; esac
+        log="${result%.json}-log.json"
+        if ! /usr/bin/xcrun notarytool log "$submission" --key "$key_path" --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID" 2>&1 | redact_signing_names > "$log"; then
+            fail "notarization was not accepted; could not retrieve details; see $result"
+        fi
+        fail "notarization was not accepted; see $log"
+    fi
+}
+gatekeeper() {
+    local result="$1" label="$2"
+    shift 2
+    if /usr/sbin/spctl -a -vv "$@" 2>&1 | /usr/bin/sed '/^[[:space:]]*origin=/d' | redact_signing_names > "$result"; then
+        /usr/bin/sed -n '/^source=/p' "$result"
+    else
+        /usr/bin/sed -n '/^source=/p' "$result"
+        fail "Gatekeeper rejected $label; see $result"
+    fi
 }
 printf 'Notarizing and stapling application...\n'
 notarize "$work/LAA.zip" "$work/app-notary.json"
@@ -192,9 +228,7 @@ notarize "$work/LAA.zip" "$work/app-notary.json"
 /usr/bin/xcrun stapler validate "$app"
 mv "$app" "$work/LAA.app"
 app="$work/LAA.app"
-if ! /usr/sbin/spctl -a -vv "$app" 2>&1 | /usr/bin/sed -n '/^source=/p'; then
-    fail 'Gatekeeper rejected the application'
-fi
+gatekeeper "$work/app-gatekeeper.log" 'the application' "$app"
 stage="$work/dmg-root"
 mkdir -p "$stage"
 ditto "$app" "$stage/LAA.app"
@@ -217,10 +251,8 @@ printf 'Notarizing and stapling disk image...\n'
 notarize "$dmg" "$work/dmg-notary.json"
 /usr/bin/xcrun stapler staple "$dmg"
 /usr/bin/xcrun stapler validate "$dmg"
-if ! /usr/sbin/spctl -a -vv --type open --context context:primary-signature "$dmg" 2>&1 | /usr/bin/sed -n '/^source=/p'; then
-    fail 'Gatekeeper rejected the disk image'
-fi
+gatekeeper "$work/dmg-gatekeeper.log" 'the disk image' --type open --context context:primary-signature "$dmg"
+(cd "$work" && /usr/bin/shasum -a 256 "$(basename "$dmg")") | /usr/bin/tee "$sha_file"
+sha_complete=1
 dmg_complete=1
 printf 'DMG: %s\n' "$dmg"
-/usr/bin/shasum -a 256 "$dmg" | /usr/bin/tee "$sha_file"
-sha_complete=1

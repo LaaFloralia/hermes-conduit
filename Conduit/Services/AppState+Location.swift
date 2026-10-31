@@ -18,7 +18,11 @@ extension AppState {
     /// Settings shows Location once the host's plugin serves it, or while
     /// sharing is on (so it can be turned off when the plugin went away).
     var showsLocationSettings: Bool {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        false
+        #else
         notifierPlugin.reports(LocationSharingController.capability) || LocationSharingController.shared.settings.isOn
+        #endif
     }
 
     /// The binding for the dashboard and profile in use, for turning on.
@@ -29,12 +33,14 @@ extension AppState {
 
     /// Wires location sharing to this app's connections. Once, at launch.
     func activateLocationSharing() {
+        #if !LAA_BUILD || !targetEnvironment(macCatalyst)
         let controller = LocationSharingController.shared
         guard controller.requestProvider == nil else { return }
         controller.requestProvider = { [weak self] binding in
             await self?.locationRequest(for: binding)
         }
         controller.activateAtLaunch()
+        #endif
     }
 
     /// The bound dashboard's connection, or the host pass for it.

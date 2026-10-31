@@ -455,7 +455,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
-- LAA Catalyst window, paste alternative, entitlements and release: `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `project-laa.yml`, `scripts/laa/entitlements/Conduit-mac.entitlements`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`, `scripts/laa/mac-release.sh`, `scripts/laa/mac-signing-keychain.py`, `ConduitTests/LAAMacCatalystTests.swift`
+- LAA Catalyst window, paste alternative, entitlements and release: `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `project-laa.yml`, `scripts/laa/entitlements/Conduit-mac.entitlements`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`, `scripts/laa/mac-release.sh`, `scripts/laa/mac-signing-keychain.py`, `scripts/laa/mac-profiles.py`, `scripts/laa/test-mac-release.py`, `ConduitTests/LAAMacCatalystTests.swift`
 
 **Rulings**
 - Only the LAA overlay enables the shell. Chats uses Conduit's existing list,
@@ -529,7 +529,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   cost, so the Usage tab labels that actual cost unknown rather than guessing.
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
-- Mac Developer ID export, notarization, push delivery and App Group access require the owner's signed-distribution check; local ad-hoc tests do not establish them.
+- LAA Catalyst hides location settings and does not start background location sharing because its sandbox has no location entitlement. Other builds keep their existing behavior.
+- In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
+- A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
 **Checked:** 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-10-30, laa/v2-shell (design v2 common shell); laa/usage-design-v2-04-urgent based on aec30021 (Usage); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
 

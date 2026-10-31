@@ -40,6 +40,7 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
                 AppStateRuntimeRegistry.shared.appState.resumeHealthSyncAtLaunch()
             }
             #endif
+            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
             // Saved places, visits and significant moves relaunch Conduit
             // in the background: their monitors are set up again before
             // launch returns so the event that woke it arrives.
@@ -53,6 +54,7 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             if !location.settings.background, !location.configUnreadable {
                 PushNotificationService.shared.updateLocationToken(nil)
             }
+            #endif
             // Calendar, reminders and phone status: a background refresh, and
             // the calendar changing while Conduit runs.
             AppState.registerPhoneSyncTask()

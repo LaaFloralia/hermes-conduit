@@ -18929,8 +18929,10 @@ final class AppState: ObservableObject {
             // Health data the phone gathered while Conduit was away.
             Task { await runHealthSync(reason: .foreground) }
             // Location permissions may have changed; unsent location goes.
+            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
             activateLocationSharing()
             LocationSharingController.shared.appBecameActive()
+            #endif
             Task { await runPhoneSync(reason: .foreground) }
             Task { await syncPresentedScreens() }
             scheduleWakeRefresh()
