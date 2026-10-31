@@ -53,12 +53,12 @@ final class LAAWorkUITests: XCTestCase {
         guard address.waitForExistence(timeout: 10) else { return false }
         for _ in 0..<4 {
             let existing = address.value as? String ?? ""
-            if existing.isEmpty || existing == "接続先" { break }
+            if existing.isEmpty || existing == "Address" { break }
             address.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).tap()
             address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing.count))
         }
         let remaining = address.value as? String ?? ""
-        guard remaining.isEmpty || remaining == "接続先" else {
+        guard remaining.isEmpty || remaining == "Address" else {
             print("Address characters remaining after clearing: \(remaining.count)")
             return false
         }
@@ -94,7 +94,7 @@ final class LAAWorkUITests: XCTestCase {
         }
         XCTAssertTrue(app.staticTexts["未接続"].exists)
         connect.tap()
-        XCTAssertTrue(app.navigationBars["Macとの接続"].waitForExistence(timeout: 5) || app.textFields.count > 0)
+        XCTAssertTrue(app.navigationBars["Connect to Mac"].waitForExistence(timeout: 5) || app.textFields.count > 0)
     }
 
     func testWorkSegmentsAndRoutinePlaceholderWhenUnpaired() throws {

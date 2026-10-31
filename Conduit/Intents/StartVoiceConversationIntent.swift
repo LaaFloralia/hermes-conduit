@@ -47,8 +47,16 @@ struct ConduitProfileEntityQuery: EntityQuery {
 /// microphone or a full voice conversation inside the App Intent context.
 @available(iOS 16.0, *)
 struct StartVoiceConversationIntent: AppIntent {
+    // Metadata is generated at build time, before any bundle branding, and
+    // `shortTitle` is a plain String the catalogs never see — so the name is
+    // written per build here (BUS-330).
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "Talk to LAA"
+    static let description = IntentDescription("Open LAA and start a voice conversation.")
+    #else
     static let title: LocalizedStringResource = "Talk to Conduit"
     static let description = IntentDescription("Open Conduit and start a voice conversation.")
+    #endif
 
     /// iOS 26+ deprecates `openAppWhenRun` in favor of `supportedModes`. This
     /// redeclaration stays only for iOS 17–25 (the project's deployment
@@ -89,7 +97,31 @@ struct StartVoiceConversationIntent: AppIntent {
 struct ConduitVoiceShortcuts: AppShortcutsProvider {
     static let shortcutTileColor: ShortcutTileColor = .blue
 
+    // The metadata processor needs literal AppShortcut initializers here, so
+    // the name is given per build rather than looked up at runtime.
     static var appShortcuts: [AppShortcut] {
+        #if LAA_BUILD
+        AppShortcut(
+            intent: StartVoiceConversationIntent(),
+            // "Talk to …" alone reads to Siri as a phone call to a contact,
+            // so the first (suggested) phrases avoid it.
+            phrases: [
+                "Start \(.applicationName) voice",
+                "Start voice in \(.applicationName)",
+                "Voice chat in \(.applicationName)",
+                "Start a voice conversation in \(.applicationName)",
+                "\(.applicationName) voice",
+                "Talk to \(.applicationName)",
+                // Profile phrases ("Start Fam voice in LAA"). Siri can only
+                // match profiles it has been told about, so AppState calls
+                // updateAppShortcutParameters() when the list changes.
+                "Start \(\.$profile) voice in \(.applicationName)",
+                "\(.applicationName) voice with \(\.$profile)"
+            ],
+            shortTitle: "Talk to LAA",
+            systemImageName: "mic.fill"
+        )
+        #else
         AppShortcut(
             intent: StartVoiceConversationIntent(),
             // "Talk to …" alone reads to Siri as a phone call to a contact,
@@ -110,6 +142,7 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             shortTitle: "Talk to Conduit",
             systemImageName: "mic.fill"
         )
+        #endif
         // Siri asks what to send, and speaks Hermes's answer.
         AppShortcut(
             intent: SendToHermesIntent(),

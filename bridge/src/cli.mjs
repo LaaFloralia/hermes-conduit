@@ -12,13 +12,14 @@ import {
   DEFAULT_SCOPES,
   IDEMPOTENCY_RETENTION_MS,
   PAIRING_TTL_MS,
+  STUDIO_SCOPES,
   VERSION,
   resolvePort,
   resolveStateDir,
   expandScopes,
 } from './config.mjs';
 import { createStore } from './store.mjs';
-import { issuePairing, revokeDevice } from './pairing.mjs';
+import { grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +34,7 @@ Usage:
       --json              machine-readable output
   laa-bridge devices [--json]              list paired devices
   laa-bridge revoke <device-id|prefix>     revoke one device (--reason <text>)
+  laa-bridge grant-studio <device-id|prefix> --reason <text>  grant Studio scopes
   laa-bridge status [--json]               local health check of the running service
   laa-bridge version
 
@@ -76,6 +78,7 @@ function commandPair(flags) {
   if (name.length === 0 || name.length > 64) fail('--name must be 1-64 characters', 2);
   const scopes = flags.scopes ? expandScopes(flags.scopes.split(',')) : [...DEFAULT_SCOPES];
   if (scopes.length === 0) fail('--scopes must grant at least one scope', 2);
+  if (scopes.some((scope) => STUDIO_SCOPES.includes(scope))) fail('use grant-studio after pairing for Studio scopes', 2);
   const ttlMinutes = flags['ttl-minutes'] === undefined ? 10 : Number(flags['ttl-minutes']);
   if (!Number.isFinite(ttlMinutes) || ttlMinutes <= 0 || ttlMinutes > 60) fail('--ttl-minutes must be 1-60', 2);
 
@@ -114,6 +117,7 @@ function commandDevices(flags) {
       createdAt: d.createdAt,
       status: d.revokedAt ? 'revoked' : 'active',
       revokedAt: d.revokedAt,
+      studioGrant: d.studioGrant ?? null,
     })))}\n`);
     return;
   }
@@ -126,6 +130,7 @@ function commandDevices(flags) {
       `${device.id}  ${device.revokedAt ? 'revoked' : 'active '}  ${device.name}`,
       `  created ${device.createdAt}${device.revokedAt ? `  revoked ${device.revokedAt}` : ''}`,
       `  scopes  ${device.scopes.join(', ')}`,
+      ...(device.studioGrant ? [`  studio grant ${device.studioGrant.grantedAt} uid=${device.studioGrant.operatorUid} reason=${device.studioGrant.reason}`] : []),
     ].join('\n') + '\n');
   }
 }
@@ -194,6 +199,17 @@ switch (command) {
   case 'revoke':
     commandRevoke(positional, flags);
     break;
+  case 'grant-studio': {
+    const target = positional[0];
+    if (!target || positional.length !== 1) fail('grant-studio needs one device id or unambiguous prefix', 2);
+    if (!flags.reason) fail('grant-studio needs --reason', 2);
+    const result = grantStudio(openStore(), { target, reason: flags.reason });
+    if (result.error) fail(result.error);
+    const { id, name, scopes } = result.device;
+    process.stdout.write(flags.json ? `${JSON.stringify({ deviceId: id, name, previousScopes: result.previousScopes, scopes, alreadyGranted: result.alreadyGranted, studioGrant: result.device.studioGrant ?? null })}\n` :
+      `${result.alreadyGranted ? 'Studio scopes already granted to' : 'Granted Studio scopes to'} ${id} (${name}).\n  before: ${result.previousScopes.join(', ')}\n  after:  ${scopes.join(', ')}\n`);
+    break;
+  }
   case 'status':
     await commandStatus(flags);
     break;

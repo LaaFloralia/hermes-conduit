@@ -450,6 +450,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
+- Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-mock.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
@@ -499,12 +500,27 @@ App Store build · the Bridge API, Brain and Usage data contracts
   authenticated byte ranges and stops if the server ignores Range; image and
   PDF previews are limited to 64 MB. Workspace export is unavailable on the
   current Bridge, so those documents show an Open on Mac reason. Inspiration
-  and Studio remain disabled; missing Drive authorization and Bridge failures
+  remains disabled; missing Drive authorization and Bridge failures
   are distinct. The current Bridge supplies neither owners nor thumbnails.
+- Assets Studio lists works and requests, preserves unsent or uncertain drafts,
+  and supports typed approvals and stopping through the scoped Bridge. Studio
+  remains the executor; media and Drive delivery are linked from the work.
+  Unsupported approvals require the Mac, and terminal requests can be submitted
+  anew against the current work revision. A busy creation keeps the same ID,
+  body and key for an explicit retry; real intake connection remains to be verified.
 - Brain shows Recent and Folders with Tags disabled until supported; the note
   body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
+- Every tab's bar carries the same gear in the same place, with the same
+  accessibility identifier; the Chats screen keeps its own "Chats" heading and
+  an empty navigation title. The gear's frame is compared across tabs, so the
+  UI checks run on the 440 × 956 `LAA 16 Pro Max` simulator and no longer
+  assert a device size. `LAAChromeUITests` and the other `LAA_BUILD` checks
+  are not in GitHub CI (its smoke job generates `project-tests.yml`, which does
+  not define `LAA_BUILD`): run them locally with
+  `xcodegen generate --spec project-laa.yml` and
+  `xcodebuild test -scheme Conduit -destination 'platform=iOS Simulator,id=DFFD3966-F54E-4C7A-A161-59201C7EA105'`.
 
 **Open gaps**
 - Screen-specific v2 restyling and action labels belong to their screen tasks.
@@ -512,7 +528,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   not have sufficient contrast in dark mode; their screen tasks should use the
   semantic filled-button color pair. The existing Hermes login retains its
   Conduit backdrop.
-- Work routines, Assets Inspiration and Studio remain unavailable. Drive
+- Work routines and Assets Inspiration remain unavailable. Drive
   Workspace export, owner and thumbnail data need Bridge support. Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
   The LAA shell uses
@@ -3598,6 +3614,25 @@ point at the map and its check
 - If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
 **Checked:** 2026-10-26, #1314.
+
+## LAA branding and root settings
+
+**Siblings:** Hermes sign-in and permission descriptions · the five tab roots and Settings sheet · Bridge pairing and employee calls · iPhone and Watch widgets · sharing and notification extensions · the upstream app
+
+**Code**
+- LAA build branding, localized bundle resources and extension names: `project-laa.yml`, `project-personal.yml`, `scripts/laa/brand-bundle.py`, `Shared/LAAProductBrand.swift`, `Conduit/Views/Login/LoginScreens.swift`, `Conduit/Models/AppIconChoice.swift`, `Conduit/Theme.swift`
+- Root Settings and control labels: `Conduit/LAA/LAASettingsAction.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Views/LoginView.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`
+- Widgets and sharing: `ConduitWidgets/LauncherWidgets.swift`, `Shared/Widgets/WidgetConfiguration.swift`, `Shared/Widgets/WidgetLocalization.swift`, `ConduitShareExtension/ShareDraftSheet.swift`
+- Tests: `scripts/tests/test_laa_brand_bundle.py`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAChromeUITests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
+
+**Rulings**
+- Only the LAA build replaces product-owned Conduit names, icons and colors with the LAA identity; identifiers, routes, saved content and upstream builds retain their existing values. Generated bundle descriptions keep the source localization and remove the upstream developer's privacy claim instead of assigning it to LAA.
+- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
+
+**Open gaps**
+- Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
+
+**Checked:** 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
 
 ## LAA all-profile notification pairing
 

@@ -20,6 +20,7 @@ import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOption
 import { taskRoutes } from './tasks.mjs';
 import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
+import { studioRoutes } from './studio.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -60,5 +61,6 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     }),
     ...createSessionRoutes({ sessions: sessionService }),
     ...usageRoutes({ ...(options.usage ?? {}), stateDir: store.dir, now }),
+    ...studioRoutes(options.studio ?? {}),
   ];
 }

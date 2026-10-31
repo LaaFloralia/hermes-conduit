@@ -1242,7 +1242,7 @@ extension VoiceConversationControllerTests {
         }
         engines.append(("GPT-Live", gpt))
         for (engine, text) in engines {
-            XCTAssertTrue(text.contains(LiveVoiceAnswerLength.standard.instructions(readsBack: true)), "\(engine) gets the answer-length rule")
+            XCTAssertTrue(text.contains(LAAProductBrand.display(LiveVoiceAnswerLength.standard.instructions(readsBack: true))), "\(engine) gets the answer-length rule")
             XCTAssertFalse(text.localizedCaseInsensitiveContains("keep replies short"), "\(engine) is no longer told to keep it short")
             XCTAssertFalse(text.contains("a few spoken sentences"), engine)
             XCTAssertTrue(text.contains("not how much you say"), "\(engine): a text persona can't make spoken answers terse")
@@ -1284,11 +1284,11 @@ extension VoiceConversationControllerTests {
         for length in LiveVoiceAnswerLength.allCases {
             let gemini = GeminiLiveConversationController.instructions(search: .google, answerLength: length)
             let gpt = GPTLiveConversationController.briefing(answerLength: length)
-            XCTAssertTrue(gemini.contains(length.instructions(readsBack: true)), "\(length)")
-            XCTAssertTrue(gpt.contains(length.instructions(readsBack: true)), "\(length)")
+            XCTAssertTrue(gemini.contains(LAAProductBrand.display(length.instructions(readsBack: true))), "\(length)")
+            XCTAssertTrue(gpt.contains(LAAProductBrand.display(length.instructions(readsBack: true))), "\(length)")
             for other in LiveVoiceAnswerLength.allCases where other != length {
-                XCTAssertFalse(gemini.contains(other.instructions(readsBack: true)), "\(length): one length rule per call")
-                XCTAssertFalse(gpt.contains(other.instructions(readsBack: true)), "\(length): one length rule per call")
+                XCTAssertFalse(gemini.contains(LAAProductBrand.display(other.instructions(readsBack: true))), "\(length): one length rule per call")
+                XCTAssertFalse(gpt.contains(LAAProductBrand.display(other.instructions(readsBack: true))), "\(length): one length rule per call")
             }
         }
         XCTAssertFalse(LiveVoiceAnswerLength.concise.instructions(readsBack: true).contains("Keep it short only"), "Concise doesn't contradict itself")
@@ -1305,7 +1305,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, .concise)
 
         // What the next call gets, through the same builders the sessions use.
-        let detailed = LiveVoiceAnswerLength.detailed.instructions(readsBack: true)
+        let detailed = LAAProductBrand.display(LiveVoiceAnswerLength.detailed.instructions(readsBack: true))
         appState.setLiveVoiceStyle(LiveVoiceStyle(answerLength: .detailed))
         appState.setGeminiLiveEnabled(true)
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(detailed), true, "Gemini Live")
@@ -1320,14 +1320,14 @@ extension VoiceConversationControllerTests {
 
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")
-        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceAnswerLength.standard.instructions(readsBack: true)), true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LAAProductBrand.display(LiveVoiceAnswerLength.standard.instructions(readsBack: true))), true)
 
         // Asking first (#451): off is stored as nothing; the preview says
         // how the next call starts.
-        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceStyle.askFirstInstructions(on: false)), true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LAAProductBrand.display(LiveVoiceStyle.askFirstInstructions(on: false))), true)
         appState.setLiveVoiceStyle(LiveVoiceStyle(asksBeforeSending: true))
         XCTAssertEqual(appState.activeProfileVoicePreferences.liveVoiceAskBeforeSending, true)
-        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LiveVoiceStyle.askFirstInstructions(on: true)), true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains(LAAProductBrand.display(LiveVoiceStyle.askFirstInstructions(on: true))), true)
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.instructions.contains("\"Send:\""), true, "GPT-Live's rules say how to send a waiting request")
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAskBeforeSending)

@@ -202,7 +202,7 @@ final class LAAStaffCallUITests: XCTestCase {
             call.tap()
             XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))
             attachScreenshot(name: "staff-call-\(name)")
-            let background = try callBackgroundPixel()
+            let background = try LAAScreenPixel.sideBackground(XCUIScreen.main.screenshot())
             if name == "dark" {
                 XCTAssertLessThan(background.max() ?? 255, 64, "Dark call background must use the dark token")
             } else {
@@ -219,7 +219,7 @@ final class LAAStaffCallUITests: XCTestCase {
         call.tap()
         let picker = app.descendants(matching: .any)["laa.call.audio-route"]
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
-        XCTAssertEqual(picker.label, "音声の出力先")
+        XCTAssertEqual(picker.label, "Audio output")
         attachScreenshot(name: "staff-call-system-route")
     }
 
@@ -230,8 +230,18 @@ final class LAAStaffCallUITests: XCTestCase {
         add(attachment)
     }
 
-    private func callBackgroundPixel() throws -> [UInt8] {
-        let image = try XCTUnwrap(UIImage(data: XCUIScreen.main.screenshot().pngRepresentation)?.cgImage)
+    private func launch(_ arguments: String...) -> XCUIApplication { launch(arguments) }
+    private func launch(_ arguments: [String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-laa-staff-call-fixture"] + arguments
+        app.launch()
+        return app
+    }
+}
+
+enum LAAScreenPixel {
+    static func sideBackground(_ screenshot: XCUIScreenshot) throws -> [UInt8] {
+        let image = try XCTUnwrap(UIImage(data: screenshot.pngRepresentation)?.cgImage)
         // A point at the side avoids the centred avatar, text and controls.
         let pixel = try XCTUnwrap(image.cropping(to: CGRect(x: image.width / 100, y: image.height / 2,
                                                            width: 1, height: 1)))
@@ -249,12 +259,5 @@ final class LAAStaffCallUITests: XCTestCase {
         return Array(rgba.prefix(3))
     }
 
-    private func launch(_ arguments: String...) -> XCUIApplication { launch(arguments) }
-    private func launch(_ arguments: [String]) -> XCUIApplication {
-        let app = XCUIApplication()
-        app.launchArguments = ["-laa-staff-call-fixture"] + arguments
-        app.launch()
-        return app
-    }
 }
 #endif

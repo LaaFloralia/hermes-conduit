@@ -98,6 +98,34 @@ final class LAADesignTokensTests: XCTestCase {
 }
 
 final class LAATabModelTests: XCTestCase {
+    func testProductBrandChangesOnlyDisplayCopy() {
+        XCTAssertEqual(LAAProductBrand.display("Hermes Conduit"), "LAA")
+        XCTAssertEqual(LAAProductBrand.display("Conduit-chan"), "Ciel")
+        XCTAssertEqual(LAAProductBrand.display("Conduit plugin"), "Hermes plugin")
+        XCTAssertEqual(LAAProductBrand.display("Conduit · conduit://widget"), "LAA · conduit://widget")
+    }
+
+    func testEnglishControlsAndJapaneseExplanations() {
+        XCTAssertEqual(LAACopy.pairingTitle, "Connect to Mac")
+        XCTAssertEqual(LAACopy.pairingAddress, "Address")
+        XCTAssertEqual(LAACopy.pairingCode, "Pairing code")
+        XCTAssertEqual(LAACopy.pairingConnect, "Connect")
+        XCTAssertEqual([LAACopy.call, LAACopy.callMute, LAACopy.callUnmute, LAACopy.callSpeaker,
+                        LAACopy.callChat, LAACopy.callEnd, LAACopy.callAudioRoute],
+                       ["Call", "Mute", "Unmute", "Speaker", "Chat", "End", "Audio output"])
+        XCTAssertEqual(LAACopy.bridgeNotPairedBody, "この端末はMacのLAA Bridgeとペアリングされていません。")
+    }
+
+    func testBuiltAppHasLAANameAndPermissionCopy() throws {
+        let info = try XCTUnwrap(Bundle.main.infoDictionary)
+        XCTAssertEqual(info["CFBundleDisplayName"] as? String, "LAA")
+        let microphone = try XCTUnwrap(info["NSMicrophoneUsageDescription"] as? String)
+        XCTAssertFalse(microphone.contains("Conduit"))
+        let englishURL = try XCTUnwrap(Bundle.main.url(forResource: "en", withExtension: "lproj"))
+        let english = try XCTUnwrap(Bundle(url: englishURL))
+        XCTAssertEqual(english.localizedString(forKey: "Open Conduit", value: nil, table: nil), "Open LAA")
+    }
+
     func testDisplayOrderNamesSymbolsAndPersistentIdentifiers() {
         XCTAssertEqual(LAATab.destinations.map(\.rawValue), ["chats", "work", "brain", "source", "usage"])
         XCTAssertEqual(LAATab.destinations.map(\.title), ["Chats", "Work", "Brain", "Assets", "Usage"])

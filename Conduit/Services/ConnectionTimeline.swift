@@ -72,7 +72,8 @@ struct ConnectionTimeline: Equatable {
     /// The copyable report: one header line, then one line per step with its
     /// offset from the start.
     var report: String {
-        var lines = ["Conduit connection timeline: \(trigger)"]
+        // Support reads this report, so it names this build's app.
+        var lines = ["\(LAAProductBrand.appName) connection timeline: \(trigger)"]
         lines += events.map { event -> String in
             let offset = Self.seconds(event.offset)
             let padding = String(repeating: " ", count: max(0, 9 - offset.count))

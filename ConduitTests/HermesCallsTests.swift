@@ -1094,7 +1094,7 @@ extension VoiceConversationControllerTests {
         trace.begin("Push received: \(HermesNativeCallPlan.ring.traceLabel)")
         trace.note("Chat opened", since: Date().addingTimeInterval(-1))
         let report = try XCTUnwrap(trace.timeline?.report)
-        XCTAssertTrue(report.hasPrefix("Conduit connection timeline: call from Hermes"))
+        XCTAssertTrue(report.hasPrefix("\(LAAProductBrand.appName) connection timeline: call from Hermes"))
         XCTAssertTrue(report.contains("Push received: ring"))
         XCTAssertTrue(report.contains("Chat opened (1."), report)
         trace.begin("Push received: \(HermesNativeCallPlan.endAtOnce(.talk).traceLabel)")

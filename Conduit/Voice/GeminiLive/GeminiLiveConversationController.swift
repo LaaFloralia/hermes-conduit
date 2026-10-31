@@ -171,7 +171,8 @@ final class GeminiLiveConversationController: ObservableObject {
         case .none:
             lookups = "You have no web search. A question that needs current information from the web (weather, news, prices) is work for Hermes: offer to start a job for it."
         }
-        return """
+        // What the model hears about this app names the build it runs in.
+        return LAAProductBrand.display("""
     You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
     \(answerLength.instructions(readsBack: readsBack))
     Never speak while the user is speaking. If they interrupt you, stop and listen. If you have nothing useful to add, stay silent rather than filling the pause.
@@ -181,7 +182,7 @@ final class GeminiLiveConversationController: ObservableObject {
     \(readsBack ? readBackParagraph + "\n" : "")\(onWatch ? watchFindChatParagraph + "\n" : showOnScreenParagraph + "\n" + findChatParagraph + "\n")\(onWatch ? watchApprovalParagraph : "Never approve, deny, or answer anything on a job's behalf yourself. When a job update says it needs the user's OK, ask them, and answer it with answer_approval only on their own yes or no; if a job needs any other input, tell the user to open it in Conduit.")
     When the user corrects, changes, pauses or calls off a job Hermes is still working on ("wait, make it Alex", "hold that", "never mind"), call interrupt_job with their words right away (job_id from list_jobs): Hermes takes them in at once and decides what they mean. Use cancel_job only when the user asks to cancel.
     \(asksFirst ? askFirstParagraph + "\n" : "")When the user says goodbye to you, or asks to end, hang up or close the call, say a short goodbye, then call end_conversation. Jobs keep running after it ends.
-    """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality)
+    """ + personalityInstructions(personality) + memoryInstructions(memory) + speechRule(personality))
     }
 
     static let showOnScreenParagraph = "Use show_on_screen for anything better seen than heard: charts, tables, forecasts, recipes and other steps, comparisons, images and links, and places as map or place cards. Put the full detail there; once it's shown, say in a sentence that it's on their screen and give the gist: the screen takes the place of a long spoken answer. If it says the screen isn't available, just tell the user."

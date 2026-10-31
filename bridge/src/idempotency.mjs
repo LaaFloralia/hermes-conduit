@@ -72,3 +72,12 @@ export function complete(state, { deviceId, key, httpStatus, response, now }) {
   entry.completedAt = now;
   return entry;
 }
+
+// Only a contractually guaranteed no-write failure may release a reservation.
+export function release(state, { deviceId, key, fingerprint, createdAt }) {
+  const id = ledgerKey(deviceId, key);
+  const entry = state.idempotency[id];
+  if (!entry || entry.status !== 'in_progress' || entry.fingerprint !== fingerprint || entry.createdAt !== createdAt) return false;
+  delete state.idempotency[id];
+  return true;
+}

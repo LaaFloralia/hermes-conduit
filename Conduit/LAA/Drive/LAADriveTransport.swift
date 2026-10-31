@@ -37,7 +37,7 @@ extension LAABridgeClient {
     func driveRange(path: String, credentials: LAABridgeCredentials, offset: Int64,
                     length: Int) async throws -> LAADriveRangeResponse {
         guard offset >= 0, length > 0, length <= LAADriveContent.chunkSize,
-              offset <= Int64.max - Int64(length - 1), path.hasPrefix("/v1/drive/files/"),
+              offset <= Int64.max - Int64(length - 1), (path.hasPrefix("/v1/drive/files/") || LAAStudioMedia.bridgePathIsValid(path)),
               let url = URL(string: path, relativeTo: credentials.baseURL)?.absoluteURL,
               url.scheme == credentials.baseURL.scheme, url.host == credentials.baseURL.host,
               url.port == credentials.baseURL.port else { throw LAABridgeError.invalidAddress }

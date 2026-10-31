@@ -758,8 +758,14 @@ struct LoginHeader: View {
             VStack(spacing: 4) {
                 switch style {
                 case .firstLaunch:
+                    #if LAA_BUILD
+                    Text(verbatim: "LAA")
+                        .font(LAAType.screenTitle)
+                        .foregroundStyle(LAAColor.text)
+                    #else
                     Text("Conduit")
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    #endif
                     Text("A focused home for your Hermes work")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -941,9 +947,15 @@ struct LoginPrimaryButton: View {
     let action: () -> Void
 
     /// Dark text on the dark theme's gold, white on the light theme's brown.
+    #if LAA_BUILD
+    private static let labelColor = LAAColor.filledButtonText
+    private static let buttonColor = LAAColor.filledButton
+    #else
     private static let labelColor = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(white: 0, alpha: 0.82) : .white
     })
+    private static let buttonColor = Color.conduitAccent
+    #endif
 
     var body: some View {
         Button {
@@ -966,7 +978,7 @@ struct LoginPrimaryButton: View {
             .foregroundStyle(Self.labelColor)
             .frame(maxWidth: .infinity)
             .frame(minHeight: 52)
-            .background(Color.conduitAccent, in: Capsule())
+            .background(Self.buttonColor, in: Capsule())
             .opacity(isEnabled ? 1 : 0.45)
             .contentShape(Capsule())
         }

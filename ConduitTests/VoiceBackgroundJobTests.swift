@@ -2200,11 +2200,11 @@ extension VoiceConversationControllerTests {
         let watch = GeminiLiveConversationController.instructions(search: .hermes, asksFirst: false, onWatch: true)
         XCTAssertFalse(watch.contains("show_on_screen"))
         XCTAssertFalse(watch.contains("read_last_reply"), "a Watch call never reads back, whatever readsBack says")
-        XCTAssertTrue(watch.contains("Conduit on their Apple Watch"))
+        XCTAssertTrue(watch.contains("\(LAAProductBrand.appName) on their Apple Watch"))
         XCTAssertFalse(watch.contains("iPhone app"))
         XCTAssertTrue(watch.contains("A job's approval request tells you how to answer it"), "no blanket \"never approve\" next to voice approvals")
         XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: true).contains("on the user's Watch screen with Approve and Deny"))
-        XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: false).contains("open it in Conduit."))
+        XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: false).contains("open it in \(LAAProductBrand.appName)."))
         XCTAssertEqual(WatchBridgeDelegation.statusContext([(number: 1, title: "Book a table", status: "running"),
                                                             (number: 3, title: "Clean", status: "needs_approval")]),
                        "[Background jobs on Hermes: Job 1 (Book a table): running; Job 3 (Clean): needs_approval_on_the_watch.]")
