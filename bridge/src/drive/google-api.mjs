@@ -17,6 +17,7 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const FILE_FIELDS = 'id,name,mimeType,size,modifiedTime,parents,webViewLink,trashed,shortcutDetails,version,starred,viewedByMeTime,owners(displayName),capabilities(canDownload),hasThumbnail,thumbnailVersion,thumbnailLink';
 const LIST_FIELDS = `nextPageToken,incompleteSearch,files(${FILE_FIELDS})`;
 const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
+const MAX_EXPORT_BYTES = 10_000_000;
 const THUMBNAIL_HOSTS = new Set(['lh3.googleusercontent.com', 'lh4.googleusercontent.com',
   'lh5.googleusercontent.com', 'lh6.googleusercontent.com']);
 
@@ -59,6 +60,50 @@ export class DriveUpstreamError extends Error {
     this.code = 'drive_upstream_failed';
     this.upstreamStatus = status;
   }
+}
+
+export class DriveExportTooLargeError extends Error {
+  constructor() {
+    super('the exported Drive document exceeds the size limit');
+    this.code = 'drive_export_too_large';
+  }
+}
+
+class BodyTooLargeError extends Error {}
+
+// Limit both declared and streamed sizes without trusting Content-Length.
+async function boundedBody(response, maximum) {
+  const length = response.headers.get('content-length');
+  if (length !== null && !/^\d+$/.test(length)) {
+    await response.body.cancel();
+    throw new DriveUpstreamError('the Drive response length is invalid');
+  }
+  if (length !== null && Number(length) > maximum) {
+    await response.body.cancel();
+    throw new BodyTooLargeError();
+  }
+  const chunks = [];
+  let count = 0;
+  const reader = response.body.getReader();
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      count += value.byteLength;
+      if (count > maximum) {
+        await reader.cancel();
+        throw new BodyTooLargeError();
+      }
+      chunks.push(Buffer.from(value));
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError' || error instanceof BodyTooLargeError) throw error;
+    throw new DriveUpstreamError('the Drive response stream failed');
+  } finally {
+    reader.releaseLock();
+  }
+  if (length !== null && Number(length) !== count) throw new DriveUpstreamError('the Drive response was incomplete');
+  return Buffer.concat(chunks, count);
 }
 
 const ID_PATTERN = /^[A-Za-z0-9_-]{5,200}$/;
@@ -223,7 +268,14 @@ export function createGoogleDriveApiAdapter({
       if (response.status === 401 || /invalid_grant|invalid_token|insufficient.*scope/i.test(body)) {
         throw new DriveAuthError();
       }
-      return { response, denied: true };
+      let reason = null;
+      try {
+        const parsed = JSON.parse(body);
+        const errors = Array.isArray(parsed?.error?.errors) ? parsed.error.errors : [];
+        reason = errors.find((entry) => entry?.reason === 'exportSizeLimitExceeded')?.reason ??
+          errors.find((entry) => typeof entry?.reason === 'string')?.reason ?? null;
+      } catch { /* A non-JSON denial remains a denial. */ }
+      return { response, denied: true, reason };
     }
     if (response.status === 404) return { response, missing: true };
     if (response.status >= 500) throw new DriveUpstreamError('the Google Drive API failed', response.status);
@@ -306,34 +358,45 @@ export function createGoogleDriveApiAdapter({
         throw new DriveUpstreamError('the Drive thumbnail request failed');
       }
       const mime = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
-      const length = response.headers.get('content-length');
-      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime) ||
-          (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_THUMBNAIL_BYTES))) {
+      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime)) {
         await response.body.cancel();
         throw new DriveUpstreamError('the Drive thumbnail has an unsupported type or size');
       }
-      const chunks = [];
-      let count = 0;
-      const reader = response.body.getReader();
+      let body;
       try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          count += value.byteLength;
-          if (count > MAX_THUMBNAIL_BYTES) {
-            await reader.cancel();
-            throw new DriveUpstreamError('the Drive thumbnail is too large');
-          }
-          chunks.push(Buffer.from(value));
-        }
-      } finally {
-        reader.releaseLock();
+        body = await boundedBody(response, MAX_THUMBNAIL_BYTES);
+      } catch (error) {
+        if (error instanceof BodyTooLargeError) throw new DriveUpstreamError('the Drive thumbnail is too large');
+        throw error;
       }
-      const body = Buffer.concat(chunks, count);
-      if ((length !== null && Number(length) !== count) || !isImageBytes(mime, body)) {
+      if (!isImageBytes(mime, body)) {
         throw new DriveUpstreamError('the Drive thumbnail content is invalid');
       }
       return { mimeType: mime, body };
+    },
+    async exportPdf(id, { signal } = {}) {
+      if (!isDriveId(id)) return null;
+      const { response, missing, denied, reason } = await call(`/files/${encodeURIComponent(id)}/export`, {
+        query: { mimeType: 'application/pdf' }, signal,
+      });
+      if (denied && reason === 'exportSizeLimitExceeded') throw new DriveExportTooLargeError();
+      if (missing || denied) return null;
+      const mime = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
+      if (response.status !== 200 || mime !== 'application/pdf' || !response.body) {
+        await response.body?.cancel();
+        throw new DriveUpstreamError('Drive did not return an exported PDF');
+      }
+      let body;
+      try {
+        body = await boundedBody(response, MAX_EXPORT_BYTES);
+      } catch (error) {
+        if (error instanceof BodyTooLargeError) throw new DriveExportTooLargeError();
+        throw error;
+      }
+      if (!body.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+        throw new DriveUpstreamError('the exported Drive PDF is invalid');
+      }
+      return { mimeType: 'application/pdf', body };
     },
     // The client's Range header is forwarded unchanged; Drive answers 206 with
     // Content-Range or 416, and the route relays that status and the bytes.

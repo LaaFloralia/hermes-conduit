@@ -8,6 +8,7 @@ import { after, before, describe, it } from 'node:test';
 import { startBridge } from './helpers.mjs';
 import {
   DriveAuthError,
+  DriveExportTooLargeError,
   DriveNotConfiguredError,
   DriveUpstreamError,
   createGoogleDriveApiAdapter,
@@ -17,6 +18,7 @@ import {
 } from '../src/drive/google-api.mjs';
 
 const VIDEO = Buffer.from(Array.from({ length: 2048 }, (_, i) => i % 251));
+const PDF = Buffer.from('%PDF-1.7\nsynthetic integration fixture\n%%EOF\n');
 const ACCESS_TOKEN = 'test-access-token';
 
 function fileRecord(overrides = {}) {
@@ -70,6 +72,11 @@ function fakeDriveApi() {
         incompleteSearch: url.searchParams.get('q')?.includes("name contains 'partial'") === true }));
       return;
     }
+    if (url.pathname === '/drive/v3/files/doc_export_1/export') {
+      res.writeHead(200, { 'content-type': 'application/pdf', 'content-length': String(PDF.length) });
+      res.end(PDF);
+      return;
+    }
     const match = /^\/drive\/v3\/files\/([A-Za-z0-9_-]+)$/.exec(url.pathname);
     if (match) {
       const id = match[1];
@@ -110,7 +117,8 @@ function fakeDriveApi() {
         return;
       }
       res.writeHead(200, { 'content-type': 'application/json', etag: '"etag-1"' });
-      res.end(JSON.stringify(fileRecord({ id })));
+      res.end(JSON.stringify(fileRecord({ id, ...(id === 'doc_export_1'
+        ? { mimeType: 'application/vnd.google-apps.document' } : {}) })));
       return;
     }
     res.writeHead(500, { 'content-type': 'application/json' });
@@ -339,6 +347,45 @@ describe('Drive thumbnail proxy safety', () => {
   });
 });
 
+describe('Google Docs PDF export', () => {
+  const pdf = Buffer.from('%PDF-1.7\nsynthetic fixture\n%%EOF\n');
+  function fixture({ status = 200, mime = 'application/pdf', body = pdf, length = null } = {}) {
+    const calls = [];
+    const fetch = async (url, options) => {
+      calls.push({ url, options });
+      return new Response(body, { status, headers: { 'content-type': mime,
+        ...(length === null ? {} : { 'content-length': String(length) }) } });
+    };
+    return { calls, adapter: createGoogleDriveApiAdapter({ getAccessToken: async () => ACCESS_TOKEN,
+      baseUrl: 'https://fake.googleapis.test/drive/v3', fetch }) };
+  }
+
+  it('uses files.export with PDF and returns validated bytes', async () => {
+    const test = fixture();
+    const result = await test.adapter.exportPdf('doc_123');
+    assert.ok(result.body.equals(pdf));
+    assert.equal(result.mimeType, 'application/pdf');
+    assert.equal(test.calls[0].url.pathname, '/drive/v3/files/doc_123/export');
+    assert.equal(test.calls[0].url.searchParams.get('mimeType'), 'application/pdf');
+    assert.equal(test.calls[0].options.headers.range, undefined);
+  });
+
+  it('distinguishes the Drive size error from permission denial', async () => {
+    const tooLarge = JSON.stringify({ error: { errors: [{ reason: 'exportSizeLimitExceeded' }] } });
+    await assert.rejects(() => fixture({ status: 403, mime: 'application/json', body: tooLarge })
+      .adapter.exportPdf('doc_123'), DriveExportTooLargeError);
+    const denied = JSON.stringify({ error: { errors: [{ reason: 'forbidden' }] } });
+    assert.equal(await fixture({ status: 403, mime: 'application/json', body: denied }).adapter.exportPdf('doc_123'), null);
+  });
+
+  it('rejects oversized, truncated, mislabeled and non-PDF data', async () => {
+    await assert.rejects(() => fixture({ length: 10_000_001 }).adapter.exportPdf('doc_123'), DriveExportTooLargeError);
+    for (const options of [{ length: pdf.length + 1 }, { mime: 'text/html' }, { body: Buffer.from('<html>') }]) {
+      await assert.rejects(() => fixture(options).adapter.exportPdf('doc_123'), DriveUpstreamError);
+    }
+  });
+});
+
 describe('item mapping', () => {
   it('classifies folders, Workspace documents and binaries', () => {
     assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/vnd.google-apps.folder' }).kind, 'folder');
@@ -407,5 +454,22 @@ describe('google drive api adapter through the bridge', () => {
     });
     assert.equal(response.status, 200);
     assert.equal((await response.arrayBuffer()).byteLength, VIDEO.length);
+  });
+
+  it('checks metadata around a PDF export through the real adapter', async () => {
+    const before = fake.requests.length;
+    const response = await fetch(`${bridge.base}/v1/drive/files/doc_export_1/export?mimeType=application%2Fpdf`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-laa-drive-version'), '9007199254740993');
+    assert.ok(Buffer.from(await response.arrayBuffer()).equals(PDF));
+    const requests = fake.requests.slice(before);
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0].path, '/drive/v3/files/doc_export_1');
+    assert.equal(requests[1].path, '/drive/v3/files/doc_export_1/export');
+    assert.equal(requests[1].query.mimeType, 'application/pdf');
+    assert.equal(requests[1].range, null);
+    assert.equal(requests[2].path, '/drive/v3/files/doc_export_1');
   });
 });

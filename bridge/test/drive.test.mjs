@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
 import { startBridge } from './helpers.mjs';
 import { parseRange } from '../src/routes/drive.mjs';
-import { DriveNotConfiguredError } from '../src/drive/google-api.mjs';
+import { DriveExportTooLargeError, DriveNotConfiguredError } from '../src/drive/google-api.mjs';
 
 const VIDEO = Buffer.from(Array.from({ length: 4096 }, (_, i) => i % 251));
 
@@ -447,6 +447,146 @@ describe('drive thumbnails', () => {
       const token = await pairDevice(bridge);
       const controller = new AbortController();
       const pending = fetch(`${bridge.base}/v1/drive/files/file_video_1/thumbnail`, {
+        headers: { authorization: `Bearer ${token}` }, signal: controller.signal,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.abort();
+      await assert.rejects(pending, { name: 'AbortError' });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(aborted, true);
+    } finally {
+      await bridge.close();
+    }
+  });
+});
+
+describe('Drive Workspace PDF export', () => {
+  const pdf = Buffer.from('%PDF-1.7\nsynthetic\n%%EOF\n');
+  function exportDrive() {
+    const state = { gets: 0, exports: 0, beforeVersion: '12', afterVersion: '12',
+      beforePermission: true, afterPermission: true, body: pdf, error: null, mimeType: DOC.mimeType };
+    return {
+      state,
+      async get(id) {
+        if (id !== 'doc_workspace_1') return null;
+        state.gets += 1;
+        const first = state.gets % 2 === 1;
+        return { item: { ...DOC, mimeType: state.mimeType, version: first ? state.beforeVersion : state.afterVersion,
+          downloadable: first ? state.beforePermission : state.afterPermission } };
+      },
+      async exportPdf() {
+        state.exports += 1;
+        if (state.error) throw state.error;
+        return { mimeType: 'application/pdf', body: state.body };
+      },
+    };
+  }
+
+  it('exports only authorized, stable Docs/Sheets/Slides PDFs and rejects Range', async () => {
+    const drive = exportDrive();
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const url = `${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf`;
+      const headers = { authorization: `Bearer ${token}` };
+      assert.equal((await fetch(url)).status, 401);
+      assert.equal((await fetch(url, { headers: { ...headers, range: 'bytes=0-1' } })).status, 400);
+      assert.equal((await fetch(`${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=text%2Fplain`, { headers })).status, 400);
+      assert.equal(drive.state.exports, 0);
+      const response = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': '12' } });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/pdf');
+      assert.equal(response.headers.get('x-laa-drive-version'), '12');
+      assert.equal(response.headers.get('cache-control'), 'private, no-store');
+      assert.ok(Buffer.from(await response.arrayBuffer()).equals(pdf));
+      assert.equal(drive.state.gets, 2);
+      assert.equal(drive.state.exports, 1);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('accepts Sheets and Slides while rejecting other Workspace types', async () => {
+    for (const [mimeType, status] of [
+      ['application/vnd.google-apps.spreadsheet', 200],
+      ['application/vnd.google-apps.presentation', 200],
+      ['application/vnd.google-apps.form', 409],
+    ]) {
+      const drive = exportDrive();
+      drive.state.mimeType = mimeType;
+      const bridge = await startBridge({ drive });
+      try {
+        const token = await pairDevice(bridge);
+        const response = await fetch(`${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf`,
+          { headers: { authorization: `Bearer ${token}` } });
+        assert.equal(response.status, status);
+        await response.arrayBuffer();
+        assert.equal(drive.state.exports, status === 200 ? 1 : 0);
+      } finally {
+        await bridge.close();
+      }
+    }
+  });
+
+  it('does not return partial output after a version or permission change', async () => {
+    for (const [field, value, status, code] of [
+      ['afterVersion', '13', 409, 'version_changed'],
+      ['afterVersion', null, 409, 'version_unavailable'],
+      ['afterPermission', false, 403, 'download_forbidden'],
+    ]) {
+      const drive = exportDrive();
+      drive.state[field] = value;
+      const bridge = await startBridge({ drive });
+      try {
+        const token = await pairDevice(bridge);
+        const response = await bridge.request('/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf', { token });
+        assert.equal(response.status, status);
+        assert.equal(response.body.error.code, code);
+        assert.equal(drive.state.exports, 1);
+      } finally {
+        await bridge.close();
+      }
+    }
+  });
+
+  it('fails closed for unknown permissions, stale versions, invalid PDFs and oversized exports', async () => {
+    for (const [setup, headers, status, code, expectedExports] of [
+      [{ beforePermission: null }, {}, 409, 'download_permission_unknown', 0],
+      [{ beforePermission: false }, {}, 403, 'download_forbidden', 0],
+      [{ beforeVersion: null }, {}, 409, 'version_unavailable', 0],
+      [{}, { 'x-laa-drive-version': '11' }, 409, 'version_changed', 0],
+      [{ body: Buffer.from('<html>') }, {}, 503, 'export_unavailable', 1],
+      [{ error: new DriveExportTooLargeError() }, {}, 409, 'export_too_large', 1],
+    ]) {
+      const drive = exportDrive();
+      Object.assign(drive.state, setup);
+      const bridge = await startBridge({ drive });
+      try {
+        const token = await pairDevice(bridge);
+        const response = await bridge.request('/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf', { token, headers });
+        assert.equal(response.status, status);
+        assert.equal(response.body.error.code, code);
+        assert.equal(drive.state.exports, expectedExports);
+      } finally {
+        await bridge.close();
+      }
+    }
+  });
+
+  it('aborts an export if its client disconnects', async () => {
+    const drive = exportDrive();
+    let aborted = false;
+    drive.exportPdf = async (_id, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+      }, { once: true });
+    });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const controller = new AbortController();
+      const pending = fetch(`${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf`, {
         headers: { authorization: `Bearer ${token}` }, signal: controller.signal,
       });
       await new Promise((resolve) => setTimeout(resolve, 50));

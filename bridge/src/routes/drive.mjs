@@ -92,6 +92,8 @@ function driveError(error) {
       return new BridgeError(503, 'drive_auth_failed', 'the Google Drive authorization was refused; reauthorize the Mac-side credential');
     case 'drive_upstream_failed':
       return new BridgeError(503, 'drive_unavailable', 'the Google Drive API request failed', { retryable: true });
+    case 'drive_export_too_large':
+      return new BridgeError(409, 'export_too_large', 'the exported PDF exceeds the Drive size limit');
     default:
       return error;
   }
@@ -119,6 +121,18 @@ function sendJsonError(res, requestId, status, code, message, headers = {}) {
 
 function itemVersion(item) {
   return typeof item.version === 'string' && /^\d{1,30}$/.test(item.version) ? item.version : null;
+}
+
+function checkVersion(item, requestedVersion) {
+  const version = itemVersion(item);
+  if (requestedVersion !== undefined) {
+    if (typeof requestedVersion !== 'string' || !/^\d{1,30}$/.test(requestedVersion)) {
+      throw badRequest('version_invalid', 'the expected Drive version must be a decimal string');
+    }
+    if (version === null) throw new BridgeError(409, 'version_unavailable', 'Drive did not provide the expected file version');
+    if (requestedVersion !== version) throw new BridgeError(409, 'version_changed', 'the Drive file changed; reload it before continuing');
+  }
+  return version;
 }
 
 export function driveRoutes({ adapter = null, now = () => Date.now(), log = defaultDriveLog() } = {}) {
@@ -209,6 +223,62 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     }
   }
 
+  async function fileExport({ req, res, requestId, params }) {
+    const url = new URL(req.url ?? '/', 'http://127.0.0.1');
+    if (url.searchParams.get('mimeType') !== 'application/pdf') {
+      throw badRequest('export_format_invalid', 'only PDF export is supported');
+    }
+    if (req.headers.range !== undefined) throw badRequest('export_range_unsupported', 'PDF export does not support Range');
+    const drive = requireAdapter();
+    if (typeof drive.exportPdf !== 'function') throw new BridgeError(503, 'export_unavailable', 'PDF export is unavailable');
+    const abort = new AbortController();
+    const onClose = () => { if (!res.writableEnded) abort.abort(); };
+    res.on('close', onClose);
+    try {
+      const before = await drive.get(params[0], { signal: abort.signal });
+      if (abort.signal.aborted) return undefined;
+      if (!before) throw new BridgeError(404, 'not_found', 'no such Drive file in the allowed range');
+      const item = before.item;
+      const exportable = ['application/vnd.google-apps.document', 'application/vnd.google-apps.spreadsheet',
+        'application/vnd.google-apps.presentation'].includes(item.mimeType);
+      if (item.kind !== 'workspace_document' || !exportable) {
+        throw new BridgeError(409, 'export_unsupported', 'this file cannot be exported as a PDF here');
+      }
+      if (item.downloadable === false) throw new BridgeError(403, 'download_forbidden', 'Drive does not permit exporting this file');
+      if (item.downloadable !== true) throw new BridgeError(409, 'download_permission_unknown', 'Drive did not report export permission');
+      const version = checkVersion(item, req.headers['x-laa-drive-version']);
+      if (version === null) throw new BridgeError(409, 'version_unavailable', 'Drive did not provide a file version');
+      const exported = await drive.exportPdf(params[0], { signal: abort.signal });
+      if (abort.signal.aborted) return undefined;
+      if (!exported) throw new BridgeError(404, 'export_unavailable', 'the PDF export is no longer accessible');
+      if (!Buffer.isBuffer(exported.body) || exported.body.length > 10_000_000 ||
+          exported.mimeType !== 'application/pdf' || !exported.body.subarray(0, 5).equals(Buffer.from('%PDF-'))) {
+        throw new BridgeError(503, 'export_unavailable', 'the exported PDF could not be validated');
+      }
+      const after = await drive.get(params[0], { signal: abort.signal });
+      if (!after) throw new BridgeError(404, 'not_found', 'the Drive file is no longer accessible');
+      if (after.item.downloadable !== true) throw new BridgeError(403, 'download_forbidden', 'Drive no longer permits exporting this file');
+      checkVersion(after.item, version);
+      if (abort.signal.aborted) return undefined;
+      res.writeHead(200, {
+        'content-type': 'application/pdf',
+        'content-length': String(exported.body.length),
+        'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(`${item.name}.pdf`)}`,
+        'x-laa-drive-version': version,
+        'cache-control': 'private, no-store',
+        'x-content-type-options': 'nosniff',
+        'x-request-id': requestId,
+      });
+      res.end(exported.body);
+      return undefined;
+    } catch (error) {
+      if (error?.name === 'AbortError') return undefined;
+      throw driveError(error);
+    } finally {
+      res.off('close', onClose);
+    }
+  }
+
   function contentHeaders({ requestId, item, status, upstream, size, start, end }) {
     const headers = {
       'content-type': upstream?.get('content-type') ?? item.mimeType,
@@ -267,19 +337,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     // Opt-in pinning lets a client detect a change between separate ranges.
     // The media request itself can still race with a change after metadata was
     // read; this is not a revision-pinned Drive download.
-    const requestedVersion = req.headers['x-laa-drive-version'];
-    const version = itemVersion(item);
-    if (requestedVersion !== undefined) {
-      if (typeof requestedVersion !== 'string' || !/^\d{1,30}$/.test(requestedVersion)) {
-        throw badRequest('version_invalid', 'the expected Drive version must be a decimal string');
-      }
-      if (version === null) {
-        throw new BridgeError(409, 'version_unavailable', 'Drive did not provide the expected file version');
-      }
-      if (requestedVersion !== version) {
-        throw new BridgeError(409, 'version_changed', 'the Drive file changed; reload it before continuing');
-      }
-    }
+    checkVersion(item, req.headers['x-laa-drive-version']);
 
     const size = item.size ?? 0;
     const rangeHeader = req.headers.range;
@@ -385,6 +443,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
 
   const contentPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/content$/;
   const thumbnailPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/thumbnail$/;
+  const exportPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/export$/;
   const itemPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})$/;
 
   return [
@@ -393,5 +452,6 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     { method: 'GET', pattern: contentPattern, auth: true, scope: 'media:read', handler: fileContent },
     { method: 'HEAD', pattern: contentPattern, auth: true, scope: 'media:read', handler: fileContent },
     { method: 'GET', pattern: thumbnailPattern, auth: true, scope: 'media:read', handler: fileThumbnail },
+    { method: 'GET', pattern: exportPattern, auth: true, scope: 'media:read', handler: fileExport },
   ];
 }
