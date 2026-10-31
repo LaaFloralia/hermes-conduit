@@ -35,6 +35,7 @@ struct LAABrainSaveEditor: View {
     @State private var busy = true
     @State private var recoveryUnavailable = false
     @State private var historyCorrupt = false
+    @State private var historyUnreadable = false
     @State private var message: String?
     @State private var showHistory = false
     @State private var showFallbackWarning = false
@@ -43,6 +44,11 @@ struct LAABrainSaveEditor: View {
     @State private var missingStageID: UUID?
     @State private var pendingToClear: LAABrainSaveJournal.Pending?
     @State private var showMissingStageAlert = false
+    @State private var exportDocument: BrainRecoveryDocument?
+    @State private var exportName = ""
+    @State private var exportDigest = ""
+    @State private var showExport = false
+    @State private var canExportDraft = false
     #if DEBUG
     @State private var injectFixtureRace = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-race-fixture")
     @State private var injectFixtureMissingStage = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-missing-stage-fixture")
@@ -64,10 +70,17 @@ struct LAABrainSaveEditor: View {
                                 .foregroundStyle(LAAColor.attention)
                                 .accessibilityIdentifier("laa.brain.history.corrupt")
                         }
+                        if historyUnreadable {
+                            Text(verbatim: "このアプリでは読めない形式の履歴があります。記録は残っています。")
+                                .foregroundStyle(LAAColor.attention)
+                        }
                         TextEditor(text: $draft)
                             .font(.body.monospaced()).disabled(busy)
                             .accessibilityIdentifier("laa.brain.edit.text")
                             .padding(.horizontal, LAASpacing.x2)
+                        if canExportDraft {
+                            Button("下書きを書き出す") { prepareExport(Data(draft.utf8), sourcePath: path) }
+                        }
                     }
                 } else {
                     ContentUnavailableView("Cannot open editor", systemImage: "exclamationmark.triangle", description: Text("Check folder access and try again."))
@@ -100,6 +113,19 @@ struct LAABrainSaveEditor: View {
         }
         .interactiveDismissDisabled()
         .task { await open() }
+        .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .data,
+                      defaultFilename: exportName) { result in
+            switch result {
+            case .success(let url):
+                let expected = exportDigest
+                Task {
+                    let matches = await Task.detached { LAABrainSaveCoordinator.verifyExport(url, digest: expected) }.value
+                    message = matches ? "書き出した内容を確認しました。" : "書き出し先の内容を確認できませんでした。"
+                }
+            case .failure:
+                message = "書き出せませんでした。元の記録は残っています。"
+            }
+        }
         .sheet(isPresented: $showHistory, onDismiss: { Task { await refreshHistory() } }) {
             BrainHistoryView(root: root, versions: versions, journal: coordinator.journal, didRestore: didSave,
                              canUse: snapshot != nil && pending.isEmpty && !recoveryUnavailable) { version in
@@ -141,6 +167,7 @@ struct LAABrainSaveEditor: View {
                     }
                     .disabled(busy)
                     .accessibilityIdentifier("laa.brain.recovery.preserve")
+                    Button("中断した版を書き出す") { Task { await exportPending(item) } }.disabled(busy)
                     if missingStageID == item.id {
                         Text("The staged file is missing. Its contents may not be recoverable.")
                             .foregroundStyle(LAAColor.attention)
@@ -210,6 +237,9 @@ struct LAABrainSaveEditor: View {
             historyCorrupt = try await Task.detached(priority: .userInitiated) {
                 try coordinator.journal.corruptCount(vault: vault, path: path) > 0
             }.value
+            historyUnreadable = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.unreadableCount(vault: vault, path: path) > 0
+            }.value
             recoveryUnavailable = false
         } catch LAABrainSaveCoordinator.SaveError.historyUnavailable {
             message = "履歴を読めません。端末内の保存領域を確認してください。"
@@ -241,6 +271,9 @@ struct LAABrainSaveEditor: View {
                 if injectMissing {
                     worker.fixtureBeforeStage = { throw LAABrainSaveCoordinator.SaveError.storage }
                 }
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-force-fallback-fixture") {
+                    worker.fixtureForceFallback = true
+                }
                 #endif
                 return try worker.save(root: root, snapshot: snapshot, draft: data)
             }.value
@@ -265,16 +298,23 @@ struct LAABrainSaveEditor: View {
                                              draft: String(decoding: mine, as: UTF8.self), afterExchange: true)
             }
         } catch {
+            let saveError = error
             do {
                 let (stored, unfinished) = try await Task.detached(priority: .userInitiated) {
                     (try coordinator.journal.summaries(vault: snapshot.vault, path: path),
                      try coordinator.journal.pending(vault: snapshot.vault, path: path))
                 }.value
                 versions = stored; pending = unfinished
-                message = "The save result is uncertain. Review the note and History before trying again."
+                message = saveFailureMessage(saveError)
+                if let value = saveError as? LAABrainSaveCoordinator.SaveError {
+                    switch value {
+                    case .recoveryExportRequired, .historyCapacity: canExportDraft = true
+                    default: break
+                    }
+                }
             } catch {
                 recoveryUnavailable = true
-                message = "The save result and recovery history are unavailable. Keep this draft and check storage."
+                message = "保存結果または履歴を確認できません。下書きを保持して保存領域を確認してください。"
             }
         }
         busy = false
@@ -283,12 +323,47 @@ struct LAABrainSaveEditor: View {
     @MainActor private func refreshHistory() async {
         let vault = LAABrainSaveJournal.vaultID(root)
         do {
-            let (stored, corrupt) = try await Task.detached(priority: .userInitiated) {
+            let (stored, corrupt, unreadable) = try await Task.detached(priority: .userInitiated) {
                 (try coordinator.journal.summaries(vault: vault, path: path),
-                 try coordinator.journal.corruptCount(vault: vault, path: path) > 0)
+                 try coordinator.journal.corruptCount(vault: vault, path: path) > 0,
+                 try coordinator.journal.unreadableCount(vault: vault, path: path) > 0)
             }.value
-            versions = stored; historyCorrupt = corrupt
+            versions = stored; historyCorrupt = corrupt; historyUnreadable = unreadable
         } catch { message = "履歴を読めません。端末内の保存領域を確認してください。" }
+    }
+
+    private func saveFailureMessage(_ error: Error) -> String {
+        guard let error = error as? LAABrainSaveCoordinator.SaveError else {
+            return "保存結果を確認できません。ノートと履歴を確認してください。"
+        }
+        switch error {
+        case .conflictCopy: return "競合コピーは保存できません。ノートは変更していません。"
+        case .tooLarge: return "ノートが大きすぎます。ノートは変更していません。"
+        case .invalidText: return "テキストを保存できません。ノートは変更していません。"
+        case .invalidPath: return "保存先を確認できません。ノートは変更していません。"
+        case .pendingRecovery: return "中断した保存を確認してください。ノートは変更していません。"
+        case .recoveryExportRequired: return "この保存先では安全に置換できません。ノートは変更していません。下書きを書き出してください。"
+        case .durabilityUncertain: return "ノートは置換されましたが、保存の永続化を確認できません。履歴を確認してください。"
+        case .historyCapacity: return "履歴の容量が上限です。ノートは変更していません。下書きを書き出してください。"
+        case .recoveryPending: return "ノートは置換されました。退避版を履歴へ記録できなかったため、中断した版を保存するか書き出してください。"
+        default: return "保存結果を確認できません。ノートと履歴を確認してください。"
+        }
+    }
+
+    private func prepareExport(_ bytes: Data, sourcePath: String) {
+        exportDocument = BrainRecoveryDocument(bytes: bytes)
+        exportName = LAABrainSaveCoordinator.recoveryName(bytes: bytes, path: sourcePath)
+        exportDigest = LAABrainSaveJournal.digest(bytes)
+        showExport = true
+    }
+
+    @MainActor private func exportPending(_ item: LAABrainSaveJournal.Pending) async {
+        busy = true
+        do {
+            let bytes = try await Task.detached { try coordinator.pendingBytes(item) }.value
+            prepareExport(bytes, sourcePath: item.path)
+        } catch { message = "中断した版を読み出せません。記録は消していません。" }
+        busy = false
     }
 
     @MainActor private func resolve(using text: String) async {

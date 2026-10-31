@@ -12,6 +12,10 @@ import Darwin
         guard args.count >= 3 else { throw FixtureFailure() }
         let root = URL(fileURLWithPath: args[2], isDirectory: true)
         if args[1] == "selftest" { try selftest(root); return }
+        if args[1] == "prepare-ignore" {
+            try check(LAABrainSaveCoordinator.ensureFallbackIgnored(root: root), "could not install ignore rule")
+            return
+        }
         if args[1] == "recover-binary", args.count == 5 {
             let journal = LAABrainSaveJournal(directory: URL(fileURLWithPath: args[3], isDirectory: true))
             let vault = LAABrainSaveJournal.vaultID(root)

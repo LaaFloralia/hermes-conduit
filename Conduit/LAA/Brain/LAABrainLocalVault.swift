@@ -25,6 +25,12 @@ import Foundation
                 try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other#Details|次のメモ]]\n\n![[Assets/fixture.png]]\n\n![[Other]]\n".utf8)
                     .write(to: root.appendingPathComponent("Company/Start.md"))
                 try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-conflict-copy-fixture") {
+                    try Data("CONFLICT-COPY-FIXTURE".utf8).write(to: root.appendingPathComponent("Company/Start.sync-conflict-20261101-ABC.md"))
+                }
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-unsafe-ignore-fixture") {
+                    try Data("!/anything\n".utf8).write(to: root.appendingPathComponent(".stignore"))
+                }
                 guard let image = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+X2sAAAAASUVORK5CYII=") else { throw LAABrainVaultError.unreadable }
                 try image.write(to: root.appendingPathComponent("Assets/fixture.png"))
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-save-fixture") &&
@@ -96,6 +102,9 @@ import Foundation
 
     private func activate(_ url: URL, scoped: Bool) {
         deactivate()
+        // Reading remains available if the provider cannot maintain the rule;
+        // the save coordinator independently gates the fallback on it.
+        _ = LAABrainSaveCoordinator.ensureFallbackIgnored(root: url)
         root = url
         scopeHeld = scoped
         let observer = LAABrainVaultPresenter(url: url) { [weak self] in

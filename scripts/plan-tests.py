@@ -172,6 +172,34 @@ def _parse_decl(line: str):
     return name, superclass
 
 
+def _laa_only_file(content: str) -> bool:
+    """Whole-file LAA guards are absent in the default Conduit scheme.
+
+    Be conservative: an outer else, an OR expression, or code outside the
+    guard means the file may also declare default-scheme tests.
+    """
+    lines = content.splitlines()
+    significant = [i for i, line in enumerate(lines) if line.strip() and not line.strip().startswith("//")]
+    if not significant:
+        return False
+    first = significant[0]
+    opening = lines[first].strip()
+    if not re.fullmatch(r"#if\s+LAA_BUILD(?:\s*&&\s*[^|]+)?", opening):
+        return False
+    depth = 0
+    for index in range(first, len(lines)):
+        line = lines[index].strip()
+        if re.match(r"#if\b", line):
+            depth += 1
+        elif re.match(r"#(?:else|elseif)\b", line) and depth == 1:
+            return False
+        elif re.match(r"#endif\b", line):
+            depth -= 1
+            if depth == 0:
+                return all(not tail.strip() or tail.strip().startswith("//") for tail in lines[index + 1:])
+    return False
+
+
 def discover_test_classes(repo_root: str) -> dict:
     """Discover XCTest classes per target directory. Directory membership (not
     class-name suffix) decides ConduitTests vs ConduitUITests."""
@@ -194,6 +222,8 @@ def discover_test_classes(repo_root: str) -> dict:
         for path in _swift_files(root):
             with open(path, encoding="utf-8", errors="replace") as fh:
                 content = fh.read()
+            if _laa_only_file(content):
+                continue
             has_test_func = "func test" in content
             for lineno, line in enumerate(content.splitlines(), start=1):
                 decl = _parse_decl(line)

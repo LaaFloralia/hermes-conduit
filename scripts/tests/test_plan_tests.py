@@ -23,6 +23,18 @@ def errors_from_tree(root, estimates=None, cfg=None):
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_laa_only_files_are_not_selected_by_default_scheme(self):
+        content = {
+            "ConduitTests/LAAOnlyTests.swift": "#if LAA_BUILD && DEBUG\nimport XCTest\nfinal class LAAOnlyTests: XCTestCase { func testLAA() {} }\n#endif\n",
+            "ConduitUITests/LAAOnlyUITests.swift": "#if LAA_BUILD\nimport XCTest\nfinal class LAAOnlyUITests: XCTestCase { func testLAA() {} }\n#endif\n",
+            "ConduitTests/ElseTests.swift": "#if LAA_BUILD\n#else\nfinal class ElseTests: XCTestCase { func testDefault() {} }\n#endif\n",
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(make_repo(Path(tmp), ["RegularTests"], [], extra_files=content))
+            discovery = planner.discover_test_classes(str(root))
+            self.assertEqual([e["name"] for e in discovery["unit"]], ["ElseTests", "RegularTests"])
+            self.assertEqual(discovery["ui"], [])
+
     def test_discovers_direct_subclasses_per_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(make_repo(Path(tmp), ["AlphaTests", "BetaTests"], ["UiOneTests"]))

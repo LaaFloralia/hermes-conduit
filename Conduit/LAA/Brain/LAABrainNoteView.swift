@@ -31,6 +31,17 @@ struct LAABrainNoteView: View {
                         if LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                             Text(verbatim: "競合コピー").foregroundStyle(LAAColor.attention)
                                 .accessibilityIdentifier("laa.brain.conflictCopy")
+                            if let original = LAABrainSaveCoordinator.conflictOriginalPath(reference.path),
+                               let other = files.first(where: { $0.path == original }) {
+                                Text(verbatim: "このコピーと元のノートを見比べ、残す内容を選んでください。")
+                                    .laaTextStyle(.secondary)
+                                Button("元のノートを開く") {
+                                    path.append(.note(LAABrainReference(file: other, includeInbox: reference.inbox)))
+                                }.accessibilityIdentifier("laa.brain.conflictOriginal")
+                            } else {
+                                Text(verbatim: "元のノートを一覧から開き、残す内容を見比べてください。")
+                                    .laaTextStyle(.secondary)
+                            }
                         }
                         if loading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                         else if let localError {

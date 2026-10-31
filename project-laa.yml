@@ -21,6 +21,15 @@
 # hold, and automatic signing adds it.
 include:
   - path: project.yml
+schemes:
+  LAABrain:
+    build:
+      targets:
+        Conduit: all
+        ConduitTests: [test]
+    test:
+      config: Debug
+      targets: [ConduitTests]
 settings:
   base:
     DEVELOPMENT_TEAM: PAW258GB42
@@ -43,6 +52,8 @@ settings:
 targets:
   ConduitTests:
     sources:
+      # LAA-only XCTest lives outside the upstream smoke discovery tree.
+      - path: ConduitLAATests
       - path: Shared/Widgets/LAAEmployeeWidget.swift
       - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets

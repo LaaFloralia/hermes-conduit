@@ -263,10 +263,10 @@ def run_fixture(root, *, retention):
     sync_a, gui_a, sync_b, gui_b = free_ports(4)
     phone = Peer(root, "phone-model", sync_a, gui_a)
     mac = Peer(root, "mac-model", sync_b, gui_b)
-    # The parent will install these ignore rules in the real vault at integration.
-    # This fixture configures only its two disposable vaults.
-    for peer in (phone, mac):
-        (peer.notes / ".stignore").write_text(".laa-tmp\n", encoding="utf-8")
+    # Model connect on the phone with the production Swift routine; the parent
+    # separately configures the Mac. Both vaults here are disposable fixtures.
+    (phone.notes / ".stignore").write_text("// existing setting\n", encoding="utf-8")
+    (mac.notes / ".stignore").write_text(".laa-tmp\n", encoding="utf-8")
     phone.configure(mac, versioning=False)
     mac.configure(phone, versioning=True)
     try:
@@ -277,6 +277,9 @@ def run_fixture(root, *, retention):
         wait_for("loopback peer connection", lambda: phone.api("system/connections")["connections"].get(
             mac.device_id, {}).get("connected") is True, (phone, mac))
 
+        # Append through the actual connect routine while Syncthing is running.
+        subprocess.run([str(swift_fixture), "prepare-ignore", str(phone.notes)], check=True, timeout=30)
+        assert (phone.notes / ".stignore").read_text(encoding="utf-8") == "// existing setting\n.laa-tmp\n"
         temporary_dir = phone.notes / ".laa-tmp"
         temporary_dir.mkdir()
         temporary_file = temporary_dir / (str(uuid.uuid4()).upper() + ".tmp")

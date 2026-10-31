@@ -21,6 +21,12 @@ struct BrainSaveFixture {
         let root = work.appendingPathComponent("notes", isDirectory: true)
         let privateDir = work.appendingPathComponent("private", isDirectory: true)
         try manager.createDirectory(at: root, withIntermediateDirectories: true)
+        let ignoreFile = root.appendingPathComponent(".stignore")
+        try Data("// existing rule\nother-pattern".utf8).write(to: ignoreFile)
+        try check(LAABrainSaveCoordinator.ensureFallbackIgnored(root: root), "ignore rule was not installed")
+        let ignoreBytes = try Data(contentsOf: ignoreFile)
+        try check(ignoreBytes == Data("// existing rule\nother-pattern\n.laa-tmp\n".utf8), "existing ignore bytes changed")
+        try check(LAABrainSaveCoordinator.ensureFallbackIgnored(root: root) && tryData(ignoreFile) == ignoreBytes, "ignore rule duplicated")
         let journal = LAABrainSaveJournal(directory: privateDir)
         let coordinator = LAABrainSaveCoordinator(journal: journal)
         func put(_ path: String, _ content: String) throws { try Data(content.utf8).write(to: root.appendingPathComponent(path)) }
@@ -52,6 +58,7 @@ struct BrainSaveFixture {
         var fallback = LAABrainSaveCoordinator(journal: journal)
         fallback.fixtureForceFallback = true
         let fallbackSnapshot = try fallback.begin(root: root, path: "fallback.md")
+        try check(!manager.fileExists(atPath: root.appendingPathComponent(".laa-tmp").path), "opening created the fallback folder")
         guard case .saved(.checkedReplacement) = try fallback.save(root: root, snapshot: fallbackSnapshot, draft: Data("FALLBACK".utf8)) else { throw FixtureFailure() }
         let temporaryDirectory = root.appendingPathComponent(".laa-tmp", isDirectory: true)
         let temporaryFiles = try manager.contentsOfDirectory(atPath: temporaryDirectory.path)
@@ -61,7 +68,8 @@ struct BrainSaveFixture {
         let unrelatedTemp = temporaryDirectory.appendingPathComponent("other.tmp")
         for file in [oldTemp, freshTemp, unrelatedTemp] { try Data("TEMP".utf8).write(to: file) }
         try manager.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -48 * 60 * 60)], ofItemAtPath: oldTemp.path)
-        _ = try fallback.begin(root: root, path: "fallback.md")
+        let cleanupSnapshot = try fallback.begin(root: root, path: "fallback.md")
+        _ = try fallback.save(root: root, snapshot: cleanupSnapshot, draft: Data("FALLBACK".utf8))
         try check(!manager.fileExists(atPath: oldTemp.path) && manager.fileExists(atPath: freshTemp.path) && manager.fileExists(atPath: unrelatedTemp.path), "fallback cleanup removed the wrong files")
         let fallbackText = try read("fallback.md")
         let fallbackHistory = try journal.versions(vault: fallbackSnapshot.vault, path: fallbackSnapshot.path)
@@ -191,6 +199,117 @@ struct BrainSaveFixture {
         let unrelatedVersions = try journal.versions(vault: normal.vault, path: normal.path)
         try check(!unrelatedVersions.isEmpty, "retention removed another note")
 
+        // Reopening and saving unchanged text must not consume history slots,
+        // and unique displaced/interrupted records are outside the 30 slots.
+        try put("noop.md", "UNCHANGED")
+        let noop = try coordinator.begin(root: root, path: "noop.md")
+        _ = try journal.record(vault: noop.vault, path: noop.path, kind: .displaced, bytes: Data("UNIQUE-DISPLACED".utf8))
+        _ = try journal.record(vault: noop.vault, path: noop.path, kind: .interrupted, bytes: Data("UNIQUE-INTERRUPTED".utf8))
+        for index in 0..<35 {
+            _ = try journal.record(vault: noop.vault, path: noop.path, kind: .draft, bytes: Data("change-\(index)".utf8))
+        }
+        for _ in 0..<35 {
+            let snapshot = try coordinator.begin(root: root, path: "noop.md")
+            _ = try coordinator.save(root: root, snapshot: snapshot, draft: snapshot.base)
+        }
+        let noopHistory = try journal.versions(vault: noop.vault, path: noop.path)
+        try check(noopHistory.filter { $0.kind == .original || $0.kind == .draft || $0.kind == .conflict }.count == 30,
+                  "no-op consumed retention slots")
+        try check(noopHistory.contains { $0.bytes == Data("UNIQUE-DISPLACED".utf8) } &&
+                  noopHistory.contains { $0.bytes == Data("UNIQUE-INTERRUPTED".utf8) } &&
+                  noopHistory.filter { $0.bytes == Data("UNCHANGED".utf8) }.count == 1,
+                  "no-op removed protected versions or duplicated the unchanged version")
+
+        func metadataFile(_ id: UUID) throws -> URL {
+            guard let enumerator = manager.enumerator(at: privateDir.appendingPathComponent("versions"), includingPropertiesForKeys: nil),
+                  let file = enumerator.allObjects.compactMap({ $0 as? URL }).first(where: { $0.lastPathComponent == id.uuidString + ".json" }) else { throw FixtureFailure() }
+            return file
+        }
+        func makeSparse(_ file: URL, size: Int) throws {
+            var object = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as! [String: Any]
+            object["byteCount"] = size
+            try JSONSerialization.data(withJSONObject: object).write(to: file)
+            let body = file.deletingPathExtension().appendingPathExtension("bin")
+            let fd = open(body.path, O_WRONLY | O_NOFOLLOW)
+            guard fd >= 0 else { throw FixtureFailure() }
+            defer { close(fd) }
+            guard ftruncate(fd, off_t(size)) == 0 else { throw FixtureFailure() }
+        }
+
+        // Sparse synthetic records exercise the real 128 MiB limit without
+        // allocating 128 MiB of disk or reading/hash-checking bodies during lists.
+        let oldLarge = try journal.record(vault: noop.vault, path: "quota.md", kind: .draft, bytes: Data("a".utf8))
+        let oldLargeFile = try metadataFile(oldLarge.id)
+        try makeSparse(oldLargeFile, size: 128 * 1024 * 1024 - 512)
+        _ = try journal.record(vault: noop.vault, path: "quota.md", kind: .draft, bytes: Data(repeating: 7, count: 1024))
+        try check(!manager.fileExists(atPath: oldLargeFile.path) &&
+                  !manager.fileExists(atPath: oldLargeFile.deletingPathExtension().appendingPathExtension("bin").path),
+                  "byte quota did not remove the old metadata and body")
+
+        let protectedLarge = try journal.record(vault: noop.vault, path: "protected-quota.md", kind: .displaced, bytes: Data("b".utf8))
+        let protectedFile = try metadataFile(protectedLarge.id)
+        try makeSparse(protectedFile, size: 128 * 1024 * 1024 - 256)
+        let protectedPending = try journal.makePending(vault: noop.vault, path: "protected-quota.md", base: Data(), draft: Data())
+        let protectedPendingStage = try journal.stageURL(protectedPending)
+        try Data("UNIQUE-STAGE".utf8).write(to: protectedPendingStage)
+        do {
+            _ = try journal.record(vault: noop.vault, path: "protected-quota.md", kind: .interrupted, bytes: Data(repeating: 9, count: 1024))
+            throw FixtureFailure()
+        } catch LAABrainSaveJournal.JournalError.capacity {}
+        try check(manager.fileExists(atPath: protectedFile.path) && tryData(protectedPendingStage) == Data("UNIQUE-STAGE".utf8),
+                  "capacity limit removed a protected version or pending stage")
+        try journal.finish(protectedPending)
+        try manager.removeItem(at: protectedFile)
+        try manager.removeItem(at: protectedFile.deletingPathExtension().appendingPathExtension("bin"))
+
+        try put("post-swap-quota.md", "BASE")
+        var quotaRace = LAABrainSaveCoordinator(journal: journal)
+        let quotaSnapshot = try quotaRace.begin(root: root, path: "post-swap-quota.md")
+        let quotaProtected = try journal.record(vault: quotaSnapshot.vault, path: quotaSnapshot.path, kind: .displaced, bytes: Data("z".utf8))
+        let quotaProtectedFile = try metadataFile(quotaProtected.id)
+        try makeSparse(quotaProtectedFile, size: 128 * 1024 * 1024 - 4096)
+        let interveningLarge = Data(repeating: 65, count: 8192)
+        quotaRace.fixtureAfterComparison = { try interveningLarge.write(to: root.appendingPathComponent("post-swap-quota.md")) }
+        do { _ = try quotaRace.save(root: root, snapshot: quotaSnapshot, draft: Data("DRAFT".utf8)); throw FixtureFailure() }
+        catch LAABrainSaveCoordinator.SaveError.recoveryPending {}
+        let quotaPending = try journal.pending(vault: quotaSnapshot.vault, path: quotaSnapshot.path)
+        guard let quotaItem = quotaPending.first else { throw FixtureFailure() }
+        let exportedStage = try coordinator.pendingBytes(quotaItem)
+        try check(quotaPending.count == 1 && exportedStage == interveningLarge &&
+                  tryData(root.appendingPathComponent("post-swap-quota.md")) == Data("DRAFT".utf8),
+                  "post-swap quota failure lost the intervening version")
+        try manager.removeItem(at: quotaProtectedFile)
+        try manager.removeItem(at: quotaProtectedFile.deletingPathExtension().appendingPathExtension("bin"))
+        _ = try coordinator.preservePending(quotaItem)
+
+        // Unknown future schemas are reported but never quarantined or pruned.
+        let future = try journal.record(vault: noop.vault, path: "future.md", kind: .draft, bytes: Data("FUTURE".utf8))
+        let futureFile = try metadataFile(future.id)
+        var futureJSON = try JSONSerialization.jsonObject(with: Data(contentsOf: futureFile)) as! [String: Any]
+        futureJSON["schema"] = 42
+        futureJSON.removeValue(forKey: "kind")
+        try JSONSerialization.data(withJSONObject: futureJSON).write(to: futureFile)
+        let unknown = try journal.unreadableCount(vault: noop.vault, path: "future.md")
+        let unknownCatalogue = try journal.catalogue(vault: noop.vault)
+        try check(unknown == 1 && unknownCatalogue.unreadable > 0 && manager.fileExists(atPath: futureFile.path) &&
+                  !manager.fileExists(atPath: futureFile.path + ".corrupt"), "future schema was quarantined")
+
+        // Aged detached and quarantined files are removed, recent/live data is not.
+        let cleanupFolder = oldLargeFile.deletingLastPathComponent()
+        let oldOrphan = cleanupFolder.appendingPathComponent(UUID().uuidString + ".bin")
+        let freshOrphan = cleanupFolder.appendingPathComponent(UUID().uuidString + ".bin")
+        let corruptID = UUID().uuidString
+        let agedCorrupt = [cleanupFolder.appendingPathComponent(corruptID + ".json.corrupt"),
+                           cleanupFolder.appendingPathComponent(corruptID + ".bin.corrupt")]
+        let freshCorrupt = cleanupFolder.appendingPathComponent(UUID().uuidString + ".bin.corrupt")
+        for file in [oldOrphan, freshOrphan, freshCorrupt] + agedCorrupt { try Data("x".utf8).write(to: file) }
+        for file in [oldOrphan] + agedCorrupt {
+            try manager.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -48 * 60 * 60)], ofItemAtPath: file.path)
+        }
+        try journal.prepare()
+        try check(!manager.fileExists(atPath: oldOrphan.path) && agedCorrupt.allSatisfy { !manager.fileExists(atPath: $0.path) } &&
+                  manager.fileExists(atPath: freshOrphan.path) && manager.fileExists(atPath: freshCorrupt.path), "orphan cleanup removed the wrong files")
+
         // Old debug fixtures had inline base64. Convert without discarding bytes.
         let legacy = LAABrainSaveJournal.Version(id: UUID(), vault: corrupt.vault, path: corrupt.path,
             kind: .draft, created: Date(), bytes: Data("LEGACY".utf8), digest: LAABrainSaveJournal.digest(Data("LEGACY".utf8)))
@@ -217,7 +336,7 @@ struct BrainSaveFixture {
         try coordinator.acknowledgeMissingStage(missingPending[0])
         try check(tryData(root.appendingPathComponent("missing-stage.md")) == Data("BASE".utf8), "missing stage changed note")
 
-        for name in ["conflict.sync-conflict-20261101-ABC.md", "ノート（GitHub競合 2026）.md"] {
+        for name in ["conflict.sync-conflict-20261101-ABC.md", "ノート（GitHub競合 2026）.md", "Note (conflicted copy 2026).md"] {
             try put(name, "CONFLICT")
             do { _ = try coordinator.begin(root: root, path: name); throw FixtureFailure() }
             catch LAABrainSaveCoordinator.SaveError.conflictCopy {}
@@ -225,6 +344,26 @@ struct BrainSaveFixture {
             do { _ = try coordinator.save(root: root, snapshot: synthetic, draft: Data("REPLACE".utf8)); throw FixtureFailure() }
             catch LAABrainSaveCoordinator.SaveError.conflictCopy {}
             try check(tryData(root.appendingPathComponent(name)) == Data("CONFLICT".utf8), "conflict copy was overwritten")
+        }
+        try check(LAABrainSaveCoordinator.conflictOriginalPath("Folder/Note (conflicted copy 2026).md") == "Folder/Note.md" &&
+                  LAABrainSaveCoordinator.conflictOriginalPath("ノート（GitHub競合 2026）.md") == "ノート.md", "conflict original link incorrect")
+
+        // A successful rename with a failed directory sync leaves recovery pending.
+        for forceFallback in [false, true] {
+            let name = forceFallback ? "durability-fallback.md" : "durability-swap.md"
+            try put(name, "BASE")
+            var failedSync = LAABrainSaveCoordinator(journal: journal)
+            failedSync.fixtureForceFallback = forceFallback
+            failedSync.fixtureDirectorySyncFails = true
+            let snap = try failedSync.begin(root: root, path: name)
+            do { _ = try failedSync.save(root: root, snapshot: snap, draft: Data("DRAFT".utf8)); throw FixtureFailure() }
+            catch LAABrainSaveCoordinator.SaveError.durabilityUncertain {}
+            let pendingSync = try journal.pending(vault: snap.vault, path: name)
+            guard let pendingItem = pendingSync.first else { throw FixtureFailure() }
+            let pendingStage = try journal.stageURL(pendingItem)
+            try check(tryData(root.appendingPathComponent(name)) == Data("DRAFT".utf8) && pendingSync.count == 1 &&
+                      tryData(pendingStage) != nil, "failed directory sync lost pending stage")
+            _ = try coordinator.preservePending(pendingSync[0])
         }
 
         let oldRecovery = privateDir.appendingPathComponent("staging").appendingPathComponent(UUID().uuidString + ".recovery")
@@ -279,6 +418,27 @@ struct BrainSaveFixture {
         try check(symlinkPending.count == 1 && tryData(outside) == Data("OUTSIDE".utf8), "source symlink was followed")
         try coordinator.acknowledgeMissingStage(symlinkPending[0])
 
+        // Swap a whole intermediate directory for a symlink after comparison.
+        let nested = root.appendingPathComponent("nested", isDirectory: true)
+        let movedNested = root.appendingPathComponent("moved-nested", isDirectory: true)
+        let externalNested = work.appendingPathComponent("external-nested", isDirectory: true)
+        try manager.createDirectory(at: nested, withIntermediateDirectories: true)
+        try manager.createDirectory(at: externalNested, withIntermediateDirectories: true)
+        try Data("BASE".utf8).write(to: nested.appendingPathComponent("note.md"))
+        try Data("OUTSIDE".utf8).write(to: externalNested.appendingPathComponent("note.md"))
+        var parentRace = LAABrainSaveCoordinator(journal: journal)
+        let parentSnapshot = try parentRace.begin(root: root, path: "nested/note.md")
+        parentRace.fixtureAfterComparison = {
+            try manager.moveItem(at: nested, to: movedNested)
+            try manager.createSymbolicLink(at: nested, withDestinationURL: externalNested)
+        }
+        do { _ = try parentRace.save(root: root, snapshot: parentSnapshot, draft: Data("MINE".utf8)); throw FixtureFailure() }
+        catch LAABrainSaveCoordinator.SaveError.invalidPath {}
+        let parentPending = try journal.pending(vault: parentSnapshot.vault, path: parentSnapshot.path)
+        try check(parentPending.count == 1 && tryData(externalNested.appendingPathComponent("note.md")) == Data("OUTSIDE".utf8) &&
+                  tryData(movedNested.appendingPathComponent("note.md")) == Data("BASE".utf8), "intermediate symlink race changed a note")
+        _ = try coordinator.preservePending(parentPending[0])
+
         try put("swap-fifo.md", "BASE")
         var fifoRace = LAABrainSaveCoordinator(journal: journal)
         let fifoSnapshot = try fifoRace.begin(root: root, path: "swap-fifo.md")
@@ -304,11 +464,34 @@ struct BrainSaveFixture {
         unsafeFallback.fixtureForceFallback = true
         let safeSnapshot = try unsafeFallback.begin(root: otherRoot, path: "note.md")
         do { _ = try unsafeFallback.save(root: otherRoot, snapshot: safeSnapshot, draft: Data("MINE".utf8)); throw FixtureFailure() }
-        catch LAABrainSaveCoordinator.SaveError.invalidPath {}
+        catch LAABrainSaveCoordinator.SaveError.recoveryExportRequired {}
         let unsafePending = try journal.pending(vault: safeSnapshot.vault, path: safeSnapshot.path)
         let outsideFiles = try manager.contentsOfDirectory(atPath: outsideFolder.path)
-        try check(unsafePending.count == 1 && outsideFiles.isEmpty && tryData(otherRoot.appendingPathComponent("note.md")) == Data("BASE".utf8), "fallback followed a symlink directory")
-        _ = try coordinator.preservePending(unsafePending[0])
+        try check(unsafePending.isEmpty && outsideFiles.isEmpty && tryData(otherRoot.appendingPathComponent("note.md")) == Data("BASE".utf8), "fallback followed a symlink directory")
+
+        let ignoredRoot = work.appendingPathComponent("unsafe-ignore-vault", isDirectory: true)
+        try manager.createDirectory(at: ignoredRoot, withIntermediateDirectories: true)
+        try Data("!/anything\n".utf8).write(to: ignoredRoot.appendingPathComponent(".stignore"))
+        try Data("BASE".utf8).write(to: ignoredRoot.appendingPathComponent("note.md"))
+        try check(!LAABrainSaveCoordinator.ensureFallbackIgnored(root: ignoredRoot), "earlier negation should block fallback")
+        let unsafeIgnoreSnapshot = try unsafeFallback.begin(root: ignoredRoot, path: "note.md")
+        do { _ = try unsafeFallback.save(root: ignoredRoot, snapshot: unsafeIgnoreSnapshot, draft: Data("DRAFT".utf8)); throw FixtureFailure() }
+        catch LAABrainSaveCoordinator.SaveError.recoveryExportRequired {}
+        let unsafeIgnorePending = try journal.pending(vault: unsafeIgnoreSnapshot.vault, path: "note.md")
+        try check(unsafeIgnorePending.isEmpty && !manager.fileExists(atPath: ignoredRoot.appendingPathComponent(".laa-tmp").path) &&
+                  tryData(ignoredRoot.appendingPathComponent("note.md")) == Data("BASE".utf8), "unsafe ignore allowed fallback")
+
+        let readonlyRoot = work.appendingPathComponent("readonly-ignore-vault", isDirectory: true)
+        try manager.createDirectory(at: readonlyRoot, withIntermediateDirectories: true)
+        let readonlyIgnore = readonlyRoot.appendingPathComponent(".stignore")
+        try Data("// read only\n".utf8).write(to: readonlyIgnore)
+        try manager.setAttributes([.posixPermissions: 0o400], ofItemAtPath: readonlyIgnore.path)
+        try check(!LAABrainSaveCoordinator.ensureFallbackIgnored(root: readonlyRoot) && tryData(readonlyIgnore) == Data("// read only\n".utf8), "unwritable ignore was changed")
+        try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: readonlyIgnore.path)
+        try Data(".laa-tmp\n#include missing-patterns\n".utf8).write(to: readonlyIgnore)
+        try check(!LAABrainSaveCoordinator.ensureFallbackIgnored(root: readonlyRoot), "unchecked include was treated as a safe ignore")
+        try Data(".laa-tmp\n[invalid\n".utf8).write(to: readonlyIgnore)
+        try check(!LAABrainSaveCoordinator.ensureFallbackIgnored(root: readonlyRoot), "invalid glob was treated as a safe ignore")
 
         let suspicious = try journal.makePending(vault: normal.vault, path: "synthetic.md", base: Data(), draft: Data())
         let suspiciousStage = try journal.stageURL(suspicious)
@@ -320,6 +503,16 @@ struct BrainSaveFixture {
         try check(stillPending.count == 1 && outsideText == "OUTSIDE", "unsafe stage was followed or manifest removed")
         try manager.removeItem(at: suspiciousStage)
         try coordinator.acknowledgeMissingStage(suspicious)
+        let manifest = try journal.makePending(vault: normal.vault, path: "manifest-symlink.md", base: Data(), draft: Data())
+        let key = LAABrainSaveJournal.digest(Data((manifest.vault + "\u{0}" + manifest.path).utf8))
+        let manifestFile = privateDir.appendingPathComponent("pending/" + key + "/" + manifest.id.uuidString + ".json")
+        try manager.removeItem(at: manifestFile)
+        try manager.createSymbolicLink(at: manifestFile, withDestinationURL: outside)
+        do { _ = try journal.pending(vault: manifest.vault, path: manifest.path); throw FixtureFailure() }
+        catch is LAABrainSaveJournal.JournalError {}
+        let symlinkCatalogue = try journal.catalogue(vault: normal.vault)
+        try check(symlinkCatalogue.unreadable > 0 && tryData(outside) == Data("OUTSIDE".utf8), "pending symlink was followed")
+        try manager.removeItem(at: manifestFile)
         print("PASS: Swift exchange, conflict, fallback, missing stages, quarantine, retention, migration, export, binary and deleted/renamed recovery")
     }
 }

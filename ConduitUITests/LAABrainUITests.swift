@@ -235,6 +235,40 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.brain.quickSwitch.note"].firstMatch.waitForExistence(timeout: 10))
     }
 
+    func testConflictCopyOffersOriginalWithoutEditingCopy() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+                                "-laa-brain-save-fixture", "-laa-brain-conflict-copy-fixture"]
+        app.launch()
+        let copy = app.staticTexts["Start.sync-conflict-20261101-ABC"]
+        XCTAssertTrue(copy.waitForExistence(timeout: 30))
+        copy.tap()
+        XCTAssertTrue(app.staticTexts["laa.brain.conflictCopy"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["laa.brain.edit"].exists)
+        let original = app.buttons["laa.brain.conflictOriginal"]
+        XCTAssertTrue(original.waitForExistence(timeout: 10))
+        original.tap()
+        XCTAssertTrue(app.buttons["laa.brain.edit"].waitForExistence(timeout: 10))
+    }
+
+    func testUnsafeIgnoreOffersDraftExportWithoutReplacingNote() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+                                "-laa-brain-save-fixture", "-laa-brain-unsafe-ignore-fixture", "-laa-brain-force-fallback-fixture"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
+        app.staticTexts["Start"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.edit"].waitForExistence(timeout: 10))
+        app.buttons["laa.brain.edit"].tap()
+        let editor = app.textViews["laa.brain.edit.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.tap()
+        editor.typeText("\nEXPORT-DRAFT")
+        app.buttons["laa.brain.edit.save"].tap()
+        XCTAssertTrue(app.buttons["下書きを書き出す"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'ノートは変更していません'")).firstMatch.exists)
+    }
+
     func testLocalExchangeRetainsAndRestoresInterveningVersion() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",

@@ -18,6 +18,28 @@ permissions:
   contents: read
 
 jobs:
+  brain-save-test:
+    name: LAA Brain save and recovery test
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Select Xcode and install xcodegen
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          brew install xcodegen
+      - name: Generate the LAA project
+        run: xcodegen generate --spec project-laa.yml
+      - name: Run the Brain save fixture on the LAA scheme
+        run: |
+          set -euo pipefail
+          xcodebuild test -project Conduit.xcodeproj -scheme LAABrain -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -jobs 4 \
+            -only-testing:ConduitTests/LAABrainSaveTests/testSaveAndRecoveryFixture \
+            CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/brain-save-test.log"
+          # A successful invocation selecting zero tests is not a passing gate.
+          grep -E 'testSaveAndRecoveryFixture.*passed' "$RUNNER_TEMP/brain-save-test.log"
+
   device-build:
     name: Personal build (device, unsigned)
     runs-on: macos-26

@@ -492,6 +492,14 @@ App Store build · the Bridge API, Brain and Usage data contracts
   use the opt-in `brain:create` scope and the server's conflict-safe name.
   An uncertain create retains its exact request and key in ThisDeviceOnly
   Keychain until the same device reconciles it or the user checks Inbox.
+- Existing-note editing remains disabled in the product. Its test-only recovery
+  journal reserves 30 ordinary versions and at most 128 MiB per note; unique
+  displaced and interrupted versions are never automatically evicted. If those
+  versions fill the limit, the pending stage remains available for export.
+  The local vault appends `.laa-tmp` to its device-local `.stignore` on connect;
+  checked replacement requires that rule to pass a conservative local check;
+  SyncTrain applying it still needs device verification. Otherwise the
+  draft is exported. The temp folder is created only if fallback is needed.
 - Assets reads Drive listing and name search through the existing `media:read`
   Bridge endpoint, including folder navigation and cursor paging. Filters apply
   only to loaded items. Metadata opens from a file, and images, PDFs and audio
@@ -515,6 +523,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Work routines, Assets Inspiration and Studio remain unavailable. Drive
   Workspace export, owner and thumbnail data need Bridge support. Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
+  Existing-note editing still needs simulator and device verification; the
+  Mac's Syncthing and Git ignore rules must be installed before enabling it.
   Local recovery history is keyed by vault path, so moving or renaming the vault
   hides its earlier records until the original location is selected again.
   The LAA shell uses
