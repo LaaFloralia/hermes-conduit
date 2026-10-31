@@ -34,7 +34,11 @@ extension AppState {
     /// Settings shows Health once the host's plugin serves it, or while
     /// sharing is on (so it can be turned off when the plugin went away).
     var showsHealthSettings: Bool {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        false
+        #else
         notifierPlugin.reports(Self.healthSyncCapability) || healthSyncPreferences.isOn
+        #endif
     }
 
     /// Runs a pass when sharing is on and its dashboard is the one in use.

@@ -1844,7 +1844,7 @@ private struct ComposerReturnKeySettings: View {
     @AppStorage(ComposerReturnKey.preferenceKey) private var returnKeySends = ComposerReturnKey.sendsByDefault
     /// A Mac has no on-screen keyboard to mention, and starts with the
     /// preference on.
-    private let onMac = ProcessInfo.processInfo.isiOSAppOnMac
+    private let onMac = ProcessInfo.processInfo.isMacCatalystApp
 
     var body: some View {
         ConduitSettingsSection(
@@ -3705,6 +3705,7 @@ private struct NotificationsSettingsDetail: View {
                 }
             }
 
+            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
             // #605: a running turn on the Lock Screen and in the Dynamic
             // Island. Updated by Conduit while it runs; in the background
             // only through the relay, so it needs notifications on.
@@ -3727,6 +3728,8 @@ private struct NotificationsSettingsDetail: View {
                 .tint(.conduitAccent)
                 .accessibilityIdentifier("notifications.live-activities")
             }
+
+            #endif
 
             if notifications.isEnabled {
                 ConduitSettingsSection(title: AppLocalization.string("Notify me when"), symbol: "slider.horizontal.3", tint: .conduitAccent) {

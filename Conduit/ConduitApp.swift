@@ -24,7 +24,9 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         MainActor.assumeIsolated {
             // Low Power Mode and Low Data Mode stretch every poll.
             DeviceConditionsMonitor.shared.start()
+            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
             WatchVoiceLink.shared.activate()
+            #endif
             // Calls from Hermes ring through PushKit (#449): a call that
             // launched Conduit is delivered once the registry is up.
             HermesNativeCalls.shared.activate()
@@ -32,10 +34,12 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             PushNotificationService.shared.refreshDeviceTokenAtLaunch()
             // Apple Health wakes Conduit when shared data changes, and a
             // background refresh catches up.
+            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
             AppState.registerHealthSyncTask()
             if HealthSyncPreferences.load().isOn {
                 AppStateRuntimeRegistry.shared.appState.resumeHealthSyncAtLaunch()
             }
+            #endif
             // Saved places, visits and significant moves relaunch Conduit
             // in the background: their monitors are set up again before
             // launch returns so the event that woke it arrives.
@@ -260,10 +264,20 @@ struct ConduitApp: App {
             rootContent
 #endif
         }
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        .defaultSize(width: LAAMacWindow.initialWidth, height: LAAMacWindow.initialHeight)
+        #endif
     }
 
     private var rootContent: some View {
         RootView()
+            #if LAA_BUILD && targetEnvironment(macCatalyst)
+            .environment(\.horizontalSizeClass, .compact)
+            .frame(maxWidth: LAAMacWindow.contentWidth)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(LAAColor.background.ignoresSafeArea())
+            .background(LAAMacWindowConstraints())
+            #endif
             .environmentObject(appState)
             // In-app App Language: literal SwiftUI keys resolve through the
             // same selection as AppLocalization.string(…). The environment

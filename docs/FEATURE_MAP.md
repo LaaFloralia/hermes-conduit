@@ -382,6 +382,7 @@ build (keeps its own chat and call controls)
 - Call state, existing voice adapter, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
 - LAA-only native presentation: `Conduit/LAA/Call/LAACallKitPresentation.swift`, `Conduit/Voice/HermesNativeCalls.swift`, `Conduit/Services/AppState.swift`
+- Catalyst fallback and checks: `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `ConduitTests/LAAMacCatalystTests.swift`, `ConduitUITests/LAAMacCatalystUITests.swift`
 - Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAAEmployeeGPTLiveTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`
 
 **Rulings**
@@ -397,14 +398,16 @@ build (keeps its own chat and call controls)
 - While an employee's ChatGPT-plan call is pending, LAA's default-profile phone call entries are disabled and explain that another call is in progress. They become available again when the plan clears; an existing minimised call can still be reopened.
 - In the LAA build, GPT-Live settings offer only the ChatGPT plan and all GPT-Live calls, including calls from Hermes, use that plan even if API billing was previously saved. The saved preference is retained; the App Store build's billing choices are unchanged.
 - The native provider uses the bundled LAA mask and staff names for outgoing calls; unknown profiles keep their existing name. On iOS 14 and later the system takes the provider name from the app display name.
+- The LAA Mac Catalyst build does not offer system CallKit calls. It keeps the existing in-app voice start and controls without waiting for a system call.
 - CallKit recents remain off because a recents entry cannot yet start a call back.
 
 **Open gaps**
 - Receiver, speaker, Bluetooth routing and native call presentation still need the requested real-device checks; the UI flow tests use a fake control because CallKit does not run in the simulator.
 - ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
+- A real GPT-Live conversation and microphone route on Mac still need an authenticated device check.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-10-31, BUS-322 (Catalyst fallback; real Mac call pending); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
@@ -436,7 +439,7 @@ mode menu)
 
 ## LAA five-tab shell
 
-The LAA iPhone build's top-level navigation, Bridge pairing, Brain and Usage tabs.
+The LAA iPhone and Mac Catalyst build's top-level navigation, Bridge pairing, Brain and Usage tabs.
 
 **Siblings:** the existing Chats list, sessions and group rooms · Hermes login
 and offline chats · Conduit Settings and its direct Hermes usage report ·
@@ -452,6 +455,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
+- LAA Catalyst window, paste alternative, entitlements and release: `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `project-laa.yml`, `scripts/laa/entitlements/Conduit-mac.entitlements`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`, `scripts/laa/mac-release.sh`, `scripts/laa/mac-signing-keychain.py`, `ConduitTests/LAAMacCatalystTests.swift`, `ConduitUITests/LAAMacCatalystUITests.swift`
 
 **Rulings**
 - Only the LAA overlay enables the shell. Chats uses Conduit's existing list,
@@ -472,6 +476,10 @@ App Store build · the Bridge API, Brain and Usage data contracts
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
   scope and service failures are distinguished. Bridge tabs share the
   connection state and expose only their supported actions.
+- Mac Catalyst uses the same compact one-column LAA shell and Bridge client.
+  Its separate Hermes dashboard scanner accepts pasted codes or addresses,
+  because the camera scanner is unavailable there. Watch, widgets, sharing,
+  CarPlay, HealthKit and Live Activities are not included in the Mac build.
 - The shared Bridge request supports JSON writes, idempotency keys, If-Match
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
@@ -521,8 +529,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   cost, so the Usage tab labels that actual cost unknown rather than guessing.
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
+- Mac Developer ID export, notarization, push delivery and App Group access require the owner's signed-distribution check; local ad-hoc tests do not establish them.
 
-**Checked:** 2026-10-30, laa/v2-shell (design v2 common shell); laa/usage-design-v2-04-urgent based on aec30021 (Usage); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
+**Checked:** 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-10-30, laa/v2-shell (design v2 common shell); laa/usage-design-v2-04-urgent based on aec30021 (Usage); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
 
 ## LAA Work tab
 
@@ -1096,6 +1105,7 @@ docs/privacy: what the relay gets for each kind, and what end-to-end encryption 
 
 **Code**
 - Extension: `ConduitNotificationService/NotificationService.swift`, `ConduitNotificationService/NotificationLocalization.swift` (a private Pulse push's line in the App Language is on the `pulse` branch only, see Pulse)
+- LAA Catalyst extension and App Group entitlement: `project-laa.yml`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`
 - Shared copy: `Shared/Notifications/NotificationCopy.swift`, `Shared/NotificationE2E.swift`
 - Inline key rotation: `Conduit/Services/NotificationKeyRotation.swift` (the exchange), `Conduit/Services/PushNotificationService.swift` (provisionEncryption, rotateInline, finishInlineRotation: when to rotate, resends and pending rotations)
 - App: `Conduit/Services/PushNotificationService.swift` (NotificationDetail and the preferences' `detail`, mirrored to the extension; the relay registration and its updates; a tap's retries, its wait for a call, and the waiting tap kept across a relaunch), `Conduit/ConduitApp.swift` (the route that opens a tap), `Conduit/Services/AppState.swift` (openNotificationTarget, routeBotOwnedNotification, showCallRefusal and clearCallRefusal, callWaitCanEnd), `Conduit/Views/RootView.swift` (callTopBanners: the notice over a call's screen), `Conduit/Services/ChatOnScreen.swift`, `Conduit/Services/AppState+ChatOnScreen.swift`, `Conduit/Services/CronNotifications.swift`, `Conduit/Services/ReplySourceNotifications.swift`
@@ -1108,6 +1118,7 @@ docs/privacy: what the relay gets for each kind, and what end-to-end encryption 
 - Privacy policy: `notifier/docs/privacy/index.html` (what the relay gets for notification delivery, room invites among it, and what end-to-end encryption seals)
 
 **Rulings**
+- The LAA Catalyst build includes the notification service extension because encrypted relay payloads need it for readable notification text. Signed Mac delivery still needs an end-to-end check.
 - Notifications follow the App Language: the extension builds the words from the event's title_label and session_title (2026-10-23, #1158, notifier #326).
 - Pushes are titled with the Hermes session title (2026-10-12, notifier #93 and #94).
 - How much a push says is Settings > Notifications > Show in notifications: Generic (the default) says only what happened; Chat names adds the chat's title and the profile over the generic body, never Hermes' words, and never a host title Conduit didn't write from `title_label` (it may quote a tool's prompt); Full previews adds the host's text. With either of the last two the subtitle names the profile: its bot's name, else its id, left out for an unnamed `default` profile and when the title already ends with it, ignoring case and surrounding spaces (#1425). A room invite has no chat, so Chat names keeps its generic title and body. The relay's plain copy follows the same levels (`show_chat_names`, relay 0.22; an older relay shows Chat names as Generic). Keeping them off the Lock Screen is iOS's own Show Previews, which the caption points to (2026-10-28, issue #1415, #1416, notifier #436).
@@ -1784,6 +1795,7 @@ Keyboard caption is unchanged, as it describes the option)
 
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey)
+- LAA Catalyst uses the same Mac keyboard default as the iPad app running on Mac.
 - Key handling: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView: the Return key command and pressesBegan; ReturnKeyTextEditor, the field rooms and the full editor use)
 - Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`
@@ -2039,10 +2051,12 @@ CHANGELOG
 
 **Code**
 - App: `Conduit/Services/LiveTurnActivities.swift` (turnStarted, observe, reconcile, register, registerUnregistered), `Conduit/Services/PushNotificationService.swift` (registerLiveActivity), `Conduit/Services/AppState.swift` (the turnStarted call, liveTurnActivitiesRegistrySnapshot)
+- LAA Catalyst no-op and check: `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `ConduitTests/LAAMacCatalystTests.swift`
 - Widget: `Shared/Widgets/HermesTurnActivity.swift`, `ConduitWidgets/HermesTurnLiveActivity.swift`
 - Notifier: `notifier/live_activity.py` (the reporter, compacted_from), `notifier/__init__.py` (the hooks that feed it), `notifier/relay/src/live-activities.mjs`, `notifier/relay/src/server.mjs`
 
 **Rulings**
+- Live Activities and their Settings control are unavailable in the LAA Mac Catalyst build; the iOS behavior below is unchanged.
 - Only a phase, a tool category from a fixed list, a tool count and a context percentage cross the relay; the chat's title stays on the phone (#605, notifier #111).
 - A turn's end reaches its card three ways: the stream while Conduit runs, the plugin through the relay, and the live registry once Conduit is back. The relay keeps an end reported before the phone registered the card, and ends a card registered later if it started before that end, never the chat's next turn's (2026-10-27, issue #1361, #1374, notifier #421).
 - A turn that a compaction moves to a new session id reports and ends under the id the card was registered with (2026-10-27, #1374, notifier #421).
@@ -2367,6 +2381,7 @@ wired into the app, so not needed)
 
 **Rulings**
 - Recognition is on-device only, and nothing is recorded or kept (#174).
+- In LAA Mac Catalyst, the CarPlay wake switch is hidden; CarPlay is not included (BUS-322).
 - A Latin-letter phrase is heard in the app's locale. A phrase in another writing system is heard by a recognizer for a language that writes it, the person's own first (the app's language only when it has an on-device model), up to three languages at once; Settings names the language, or says this iPhone can't hear the phrase (2026-10-24, #1222, from #1004).
 - Phrases in Han, kana, Hangul and Thai match as a run of characters, two at least, since those recognizers don't space words; the matcher reads scripts through WakeSpeechLocale, so the two agree (2026-10-25, #1230).
 - A phrase past the third language isn't heard, and Settings says so beside it. The cap counts every profile's phrases on the dashboard, in the listener's order, so Settings and the listener agree (2026-10-24, #1222 review).
@@ -3472,9 +3487,11 @@ on top
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ReadableWidth.settings)
 - Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
 - Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
+- LAA Catalyst compact window and content cap: `Conduit/ConduitApp.swift`, `Conduit/LAA/Mac/LAAMacWindow.swift`
 - Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
 
 **Rulings**
+- LAA Catalyst keeps the compact one-column shell and caps it in the center of a wider resizable window; the upstream iPad and Mac layouts below remain unchanged.
 - Widths follow the window, not the device (2026-10-19, #949).
 - A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
 - A wider chat column shows bigger text rather than longer lines: the column's text goes up one system text size for each size whose lines still hold as many words as the 760 pt column does (none beside the list on an iPad, two with an iPad's list hidden, three on a maximized Mac). Everything in the column steps together, its chrome (timestamps, the reply's buttons, banners) with its text so they keep their proportions: transcript, thinking, step rows, cards, the composer and group rooms, on top of the user's Dynamic Type and the relevant chat or input text-size setting (group responses follow the chat setting, while composer fields use the separate input setting); it stops at the largest standard size, so an accessibility size stays as set. The list beside the chat and the top bar keep their size: the list's column doesn't widen (Eric, 2026-10-27, #1393: maximized on a Mac the chat looked small in a big empty space).

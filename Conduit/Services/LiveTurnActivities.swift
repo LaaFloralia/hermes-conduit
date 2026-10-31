@@ -177,6 +177,7 @@ enum LiveTurnProgress {
 /// current by the notifier plugin through the relay once Conduit is in the
 /// background (the activity's push token is registered there under the
 /// chat's ids).
+#if !LAA_BUILD || !targetEnvironment(macCatalyst)
 @MainActor
 final class LiveTurnActivities {
     static let shared = LiveTurnActivities()
@@ -644,3 +645,4 @@ final class LiveTurnActivities {
         }
     }
 }
+#endif

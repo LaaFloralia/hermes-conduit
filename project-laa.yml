@@ -67,12 +67,20 @@ targets:
     dependencies:REPLACE:
       - package: WebRTC
       - target: ConduitWatch
+        platformFilter: iOS
       - target: ConduitNotificationService
       - target: ConduitWidgets
+        platformFilter: iOS
       - target: ConduitShareExtension
+        platformFilter: iOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/Conduit-mac.entitlements
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        "REGISTER_APP_GROUPS[sdk=macosx*]": YES
         # The LAA icon (design, on master): Conduit/Resources/AppIcon-LAA.icon,
         # an Icon Composer bundle for iOS 26+, with the matching appiconset in
         # Assets.xcassets as the fallback for older Xcode and OS versions. The
@@ -102,6 +110,10 @@ targets:
           plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
           /usr/libexec/PlistBuddy -c "Delete :CFBundleDisplayName" "$plist" 2>/dev/null || true
           /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${CONDUIT_DISPLAY_NAME:-LAA}" "$plist"
+          if [ "$PLATFORM_NAME" = macosx ]; then
+            /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription LAA uses the microphone for voice conversations." "$plist"
+            /usr/libexec/PlistBuddy -c "Delete :UIApplicationSceneManifest:UISceneConfigurations:CPTemplateApplicationSceneSessionRoleApplication" "$plist" 2>/dev/null || true
+          fi
   ConduitWatch:
     settings:
       base:
@@ -138,6 +150,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/ConduitNotificationService-mac.entitlements
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        "REGISTER_APP_GROUPS[sdk=macosx*]": YES
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitNotificationService.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"

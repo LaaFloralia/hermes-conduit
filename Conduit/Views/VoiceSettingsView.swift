@@ -1278,6 +1278,7 @@ struct VoiceSettingsView: View {
                 : AppLocalization.string("When enabled, Conduit automatically listens again after each response and keeps listening through long silences until you pause the mic. When disabled, the session stays open and you start the next listening turn manually. This does not change Pause Mic, Interrupt, Close, or wake-word settings."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
             if let lockedListening {
                 Toggle("Keep listening when locked", isOn: Binding(
                     get: { keepListeningWhenLocked },
@@ -1302,6 +1303,7 @@ struct VoiceSettingsView: View {
             Text("Voice conversations you start are placed as phone calls, so iOS shows them on its call screen, the lock screen and the Dynamic Island, with Mute and End there. A call plays from the earpiece until the call screen's Speaker turns the loudspeaker on, and holding the phone to your ear turns the screen off. Headphones, Bluetooth and CarPlay keep their own route. Where CallKit isn't available, a call still plays from the earpiece and the call screen's own Speaker button moves it. Applies to this device.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            #endif
         }
     }
 
@@ -1918,6 +1920,7 @@ private struct WakePhraseSettingsSection: View {
                         model.save(phrases, value)
                     }
                 ))
+                #if !LAA_BUILD || !targetEnvironment(macCatalyst)
                 Toggle("Listen on CarPlay", isOn: Binding(
                     get: { listensOnCarPlay },
                     set: { value in
@@ -1930,6 +1933,7 @@ private struct WakePhraseSettingsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
+                #endif
                 Toggle("Listen while other audio plays", isOn: Binding(
                     get: { listensOverOtherAudio },
                     set: { value in

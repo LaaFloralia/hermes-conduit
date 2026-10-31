@@ -140,7 +140,11 @@ final class HermesNativeCalls: NSObject {
     /// to NO in both apps' Info.plist and drop `voip` from their
     /// UIBackgroundModes.
     static var ringingBuilt: Bool {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        false
+        #else
         Bundle.main.object(forInfoDictionaryKey: "ConduitHermesCallsRing") as? Bool ?? true
+        #endif
     }
     /// "Ring like a phone call" in Calls from Hermes, on this iPhone. Off,
     /// calls come as the notification.
