@@ -8,38 +8,28 @@ import UIKit
 ///
 /// An `AVPlayer` connected to system audio activates the shared session as
 /// soon as it plays (AVFoundation's `AVPlayerAudioSessionParticipation`), and
-/// the app's category is the non-mixable default. So the player either leaves
-/// the session alone — iOS 27 and later can disconnect it before playback —
-/// or the avatar keeps its still while another app is playing.
+/// the app's category is the non-mixable default. Only iOS 27 and later can
+/// disconnect the player from system audio; everywhere else the avatar keeps
+/// its still, so this app never activates a session for a decorative video.
 struct StaffAvatarIdleAudioPolicy: Equatable {
     /// The avatar's existing visible / active / Reduce Motion / scrolling
     /// decision (`StaffAvatarPlaybackPolicy.shouldPlay`).
     var shouldPlay: Bool
-    /// The player can be disconnected from system audio (iOS 27+, not on Mac
-    /// Catalyst, where the API is unavailable).
+    /// The player can be disconnected from system audio (iOS 27+, and not on
+    /// Mac Catalyst, where the API is unavailable).
     var canDisconnectFromSystemAudio: Bool
-    /// Another app is playing right now. Read when the avatar appears, not
-    /// observed: an idle avatar that starts later is judged then.
-    var otherAudioPlaying: Bool
 
-    /// Disconnecting is the only way to keep the video without touching the
-    /// session; without it, another app's playback wins and the still stays.
-    var startsVideo: Bool {
-        shouldPlay && (canDisconnectFromSystemAudio || !otherAudioPlaying)
-    }
+    /// Playback needs the disconnect: a still is honest, while a connected
+    /// player could stop another app's audio on any start.
+    var startsVideo: Bool { shouldPlay && canDisconnectFromSystemAudio }
 
-    var disconnectsFromSystemAudio: Bool { canDisconnectFromSystemAudio }
-
-    /// The device's own state. `shouldPlay` stays the caller's decision so a
-    /// test can check both branches without a session or a device.
-    @MainActor
+    /// The device's own capability. `shouldPlay` stays the caller's decision
+    /// so a test can check both branches without a device.
     static func current(shouldPlay: Bool) -> Self {
 #if targetEnvironment(macCatalyst)
-        // The disconnect API is unavailable on Mac Catalyst: keep the
-        // pre-BUS-332 behaviour there until the Catalyst branch is integrated.
-        return Self(shouldPlay: shouldPlay,
-                    canDisconnectFromSystemAudio: false,
-                    otherAudioPlaying: false)
+        // The disconnect API is unavailable on Mac Catalyst: the still stays
+        // until that branch gets its own audio handling.
+        return Self(shouldPlay: shouldPlay, canDisconnectFromSystemAudio: false)
 #else
         let canDisconnect: Bool
         if #available(iOS 27.0, *) {
@@ -47,9 +37,7 @@ struct StaffAvatarIdleAudioPolicy: Equatable {
         } else {
             canDisconnect = false
         }
-        return Self(shouldPlay: shouldPlay,
-                    canDisconnectFromSystemAudio: canDisconnect,
-                    otherAudioPlaying: AVAudioSession.sharedInstance().isOtherAudioPlaying)
+        return Self(shouldPlay: shouldPlay, canDisconnectFromSystemAudio: canDisconnect)
 #endif
     }
 }
@@ -113,7 +101,7 @@ struct StaffAvatarView: View {
     private func syncPlayback() {
         let audio = StaffAvatarIdleAudioPolicy.current(shouldPlay: policy.shouldPlay)
         guard audio.startsVideo, let url = assets.loop else { loop.stop(); return }
-        loop.play(url, disconnectingFromSystemAudio: audio.disconnectsFromSystemAudio)
+        loop.play(url)
     }
 }
 
@@ -148,9 +136,10 @@ final class StaffAvatarLoop: ObservableObject {
     }
 
     /// Starts or resumes the muted loop. A connected player activates the
-    /// audio session as soon as it plays, so on iOS 27 and later it is
-    /// disconnected from system audio first, and playback waits for that.
-    func play(_ url: URL, disconnectingFromSystemAudio: Bool) {
+    /// audio session as soon as it plays, so every start first leaves system
+    /// audio, and playback waits for that. The caller only reaches here where
+    /// the platform can disconnect (see `StaffAvatarIdleAudioPolicy`).
+    func play(_ url: URL) {
         if currentURL == url, let player {
             // The avatar may start again before the disconnect completes
             // (onAppear, scenePhase, scrolling): that start must not play the
@@ -167,11 +156,6 @@ final class StaffAvatarLoop: ObservableObject {
         looper = makeLooper(player, url)
         currentURL = url
         self.player = player
-        guard disconnectingFromSystemAudio else {
-            readyToPlay = true
-            player.play()
-            return
-        }
         Task { @MainActor [weak self] in
             await self?.disconnect(player)
             // Only this start may continue it: a stop or another avatar in the

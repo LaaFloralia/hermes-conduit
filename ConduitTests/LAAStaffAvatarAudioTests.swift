@@ -5,14 +5,11 @@
 //
 //  BUS-332: the idle avatar video must not stop another app's music. An
 //  AVPlayer connected to system audio activates the shared session as soon as
-//  it plays, and the app's category is the non-mixable default.
-//
-//  iOS 27 and later can disconnect the player from system audio, so the video
-//  still plays; older versions cannot, so the avatar keeps its still while
-//  another app is playing. Both branches are decided by
-//  `StaffAvatarIdleAudioPolicy`, away from the session and the view. The
-//  start order is fixed with a fake disconnect: nothing may play before the
-//  player has left system audio, even if the avatar starts again meanwhile.
+//  it plays, and the app's category is the non-mixable default. The video
+//  therefore runs only where the player can leave system audio first
+//  (iOS 27+); everywhere else the avatar keeps its still. The start order is
+//  fixed with a fake disconnect: nothing may play before the player has left
+//  system audio, whatever order the completions arrive in.
 //
 
 import AVFoundation
@@ -24,51 +21,25 @@ import XCTest
 final class LAAStaffAvatarAudioTests: XCTestCase {
     // MARK: - The idle audio decision
 
-    func testIOS27DisconnectsThePlayerAndKeepsTheVideoUnderOtherAudio() {
-        let policy = StaffAvatarIdleAudioPolicy(shouldPlay: true,
-                                                canDisconnectFromSystemAudio: true,
-                                                otherAudioPlaying: true)
+    func testIOS27PlaysTheVideoOnlyWhereItCanDisconnect() {
+        let policy = StaffAvatarIdleAudioPolicy(shouldPlay: true, canDisconnectFromSystemAudio: true)
 
-        XCTAssertTrue(policy.startsVideo, "a disconnected player needs no session, so the video may run")
-        XCTAssertTrue(policy.disconnectsFromSystemAudio)
+        XCTAssertTrue(policy.startsVideo, "the player leaves system audio, so the video may run")
     }
 
-    func testAnOlderIOSKeepsTheStillWhileAnotherAppPlays() {
-        let policy = StaffAvatarIdleAudioPolicy(shouldPlay: true,
-                                                canDisconnectFromSystemAudio: false,
-                                                otherAudioPlaying: true)
+    func testAVersionThatCannotDisconnectKeepsTheStill() {
+        // iOS 17–26, and Mac Catalyst, where the disconnect API is unavailable:
+        // a connected player could stop another app's audio, so no video.
+        let policy = StaffAvatarIdleAudioPolicy(shouldPlay: true, canDisconnectFromSystemAudio: false)
 
-        XCTAssertFalse(policy.startsVideo, "playing would activate the session and stop the other app")
-        XCTAssertFalse(policy.disconnectsFromSystemAudio)
-    }
-
-    func testAnOlderIOSPlaysWhenNothingElseIsPlaying() {
-        let policy = StaffAvatarIdleAudioPolicy(shouldPlay: true,
-                                                canDisconnectFromSystemAudio: false,
-                                                otherAudioPlaying: false)
-
-        XCTAssertTrue(policy.startsVideo)
-        XCTAssertFalse(policy.disconnectsFromSystemAudio)
-    }
-
-    func testIOS27LeavesTheSessionAloneEvenWhenNothingElseIsPlaying() {
-        let policy = StaffAvatarIdleAudioPolicy(shouldPlay: true,
-                                                canDisconnectFromSystemAudio: true,
-                                                otherAudioPlaying: false)
-
-        XCTAssertTrue(policy.startsVideo)
-        XCTAssertTrue(policy.disconnectsFromSystemAudio, "the player is always disconnected where it can be")
+        XCTAssertFalse(policy.startsVideo)
     }
 
     func testTheAvatarsExistingPlaybackDecisionStillStopsTheVideo() {
         for canDisconnect in [true, false] {
-            for otherAudio in [true, false] {
-                let policy = StaffAvatarIdleAudioPolicy(shouldPlay: false,
-                                                        canDisconnectFromSystemAudio: canDisconnect,
-                                                        otherAudioPlaying: otherAudio)
-                XCTAssertFalse(policy.startsVideo,
-                               "hidden, inactive, Reduce Motion, Low Power or scrolling keeps the still")
-            }
+            let policy = StaffAvatarIdleAudioPolicy(shouldPlay: false, canDisconnectFromSystemAudio: canDisconnect)
+            XCTAssertFalse(policy.startsVideo,
+                           "hidden, inactive, Reduce Motion, Low Power or scrolling keeps the still")
         }
     }
 
@@ -76,70 +47,109 @@ final class LAAStaffAvatarAudioTests: XCTestCase {
 
     func testTheVideoWaitsForTheDisconnectBeforeItPlays() async {
         let player = RecordingQueuePlayer()
-        var releases: [CheckedContinuation<Void, Never>] = []
-        let loop = StaffAvatarLoop(
-            makePlayer: { player },
-            makeLooper: { _, _ in nil },
-            disconnect: { _ in
-                await withCheckedContinuation { continuation in releases.append(continuation) }
-            }
-        )
+        let releases = ContinuationBox()
+        let loop = makeLoop(players: [player], releases: releases)
         let url = URL(fileURLWithPath: "/tmp/idle.mov")
 
-        loop.play(url, disconnectingFromSystemAudio: true)
+        loop.play(url)
         XCTAssertEqual(player.playCount, 0, "a connected player would activate the session")
-        await waitUntil { releases.count == 1 }
+        await waitUntil { releases.items.count == 1 }
 
         // The avatar starts again before the disconnect completes (onAppear,
         // scenePhase or scrolling): still nothing may play, and the second
         // start must not queue another disconnect.
-        loop.play(url, disconnectingFromSystemAudio: true)
+        loop.play(url)
         XCTAssertEqual(player.playCount, 0)
-        XCTAssertEqual(releases.count, 1)
+        XCTAssertEqual(releases.items.count, 1)
 
-        releases[0].resume()
+        releases.items[0].resume()
         await waitUntil { player.playCount == 1 }
         XCTAssertEqual(player.playCount, 1)
 
         // Already disconnected: a later start resumes at once.
-        loop.play(url, disconnectingFromSystemAudio: true)
+        loop.play(url)
         XCTAssertEqual(player.playCount, 2)
-        XCTAssertEqual(releases.count, 1)
+        XCTAssertEqual(releases.items.count, 1)
     }
 
     func testACompletionAfterStopDoesNotStartPlayback() async {
         let player = RecordingQueuePlayer()
-        var releases: [CheckedContinuation<Void, Never>] = []
-        let loop = StaffAvatarLoop(
-            makePlayer: { player },
-            makeLooper: { _, _ in nil },
-            disconnect: { _ in
-                await withCheckedContinuation { continuation in releases.append(continuation) }
-            }
-        )
+        let releases = ContinuationBox()
+        let loop = makeLoop(players: [player], releases: releases)
         let url = URL(fileURLWithPath: "/tmp/idle.mov")
 
-        loop.play(url, disconnectingFromSystemAudio: true)
-        await waitUntil { releases.count == 1 }
+        loop.play(url)
+        await waitUntil { releases.items.count == 1 }
         loop.stop()
-        releases[0].resume()
+        releases.items[0].resume()
         try? await Task.sleep(for: .milliseconds(100))
 
         XCTAssertEqual(player.playCount, 0, "the avatar moved on; a late disconnect must not play")
         XCTAssertEqual(player.pauseCount, 1)
     }
 
-    func testWithoutTheDisconnectItPlaysAtOnce() {
-        let player = RecordingQueuePlayer()
-        let loop = StaffAvatarLoop(
-            makePlayer: { player },
+    func testSwitchingToAnotherVideoIgnoresTheOldDisconnect() async {
+        let first = RecordingQueuePlayer()
+        let second = RecordingQueuePlayer()
+        let releases = ContinuationBox()
+        let loop = makeLoop(players: [first, second], releases: releases)
+        let a = URL(fileURLWithPath: "/tmp/a.mov")
+        let b = URL(fileURLWithPath: "/tmp/b.mov")
+
+        loop.play(a)
+        await waitUntil { releases.items.count == 1 }
+        loop.play(b)
+        await waitUntil { releases.items.count == 2 }
+
+        // Out of order: A's disconnect arrives after B started waiting.
+        releases.items[0].resume()
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(first.playCount, 0, "a stale completion must not start the old player")
+        XCTAssertEqual(second.playCount, 0, "B still waits for its own disconnect")
+        XCTAssertEqual(first.pauseCount, 1, "the switch stopped A")
+
+        releases.items[1].resume()
+        await waitUntil { second.playCount == 1 }
+        XCTAssertEqual(second.playCount, 1)
+        XCTAssertEqual(first.playCount, 0)
+    }
+
+    func testRestartingTheSameVideoAfterStopWaitsForItsOwnDisconnect() async {
+        let first = RecordingQueuePlayer()
+        let second = RecordingQueuePlayer()
+        let releases = ContinuationBox()
+        let loop = makeLoop(players: [first, second], releases: releases)
+        let url = URL(fileURLWithPath: "/tmp/idle.mov")
+
+        loop.play(url)
+        await waitUntil { releases.items.count == 1 }
+        loop.stop()
+        loop.play(url)
+        await waitUntil { releases.items.count == 2 }
+
+        // The stopped player's completion is stale even though the URL matches.
+        releases.items[0].resume()
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(first.playCount, 0)
+        XCTAssertEqual(second.playCount, 0)
+
+        releases.items[1].resume()
+        await waitUntil { second.playCount == 1 }
+        XCTAssertEqual(second.playCount, 1)
+        XCTAssertEqual(first.playCount, 0)
+    }
+
+    // MARK: - Helpers
+
+    private func makeLoop(players: [RecordingQueuePlayer], releases: ContinuationBox) -> StaffAvatarLoop {
+        var remaining = players
+        return StaffAvatarLoop(
+            makePlayer: { remaining.removeFirst() },
             makeLooper: { _, _ in nil },
-            disconnect: { _ in XCTFail("this start must not wait for a disconnect") }
+            disconnect: { _ in
+                await withCheckedContinuation { continuation in releases.items.append(continuation) }
+            }
         )
-
-        loop.play(URL(fileURLWithPath: "/tmp/idle.mov"), disconnectingFromSystemAudio: false)
-
-        XCTAssertEqual(player.playCount, 1)
     }
 
     private func waitUntil(_ condition: @MainActor () -> Bool,
@@ -150,6 +160,12 @@ final class LAAStaffAvatarAudioTests: XCTestCase {
         }
         XCTFail("condition not met", file: file, line: line)
     }
+}
+
+/// Holds the disconnect completions a test releases by hand.
+@MainActor
+private final class ContinuationBox {
+    var items: [CheckedContinuation<Void, Never>] = []
 }
 
 /// Records the loop's playback calls; the real player would start AVFoundation
