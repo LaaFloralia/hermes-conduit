@@ -116,6 +116,10 @@ function sendJsonError(res, requestId, status, code, message, headers = {}) {
   res.end(payload);
 }
 
+function itemVersion(item) {
+  return typeof item.version === 'string' && /^\d{1,30}$/.test(item.version) ? item.version : null;
+}
+
 export function driveRoutes({ adapter = null, now = () => Date.now(), log = defaultDriveLog() } = {}) {
   function requireAdapter() {
     if (!adapter) {
@@ -178,6 +182,8 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     };
     const etag = upstream?.get('etag');
     if (etag) headers.etag = etag;
+    const version = itemVersion(item);
+    if (version !== null) headers['x-laa-drive-version'] = version;
     if (upstream) {
       for (const name of RELAYED_HEADERS) {
         const value = upstream.get(name);
@@ -212,6 +218,23 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
         'export_required',
         `Workspace documents have no streamable bytes; export through the Drive API as one of: ${formats}`,
       );
+    }
+
+    // Opt-in pinning lets a client detect a change between separate ranges.
+    // The media request itself can still race with a change after metadata was
+    // read; this is not a revision-pinned Drive download.
+    const requestedVersion = req.headers['x-laa-drive-version'];
+    const version = itemVersion(item);
+    if (requestedVersion !== undefined) {
+      if (typeof requestedVersion !== 'string' || !/^\d{1,30}$/.test(requestedVersion)) {
+        throw badRequest('version_invalid', 'the expected Drive version must be a decimal string');
+      }
+      if (version === null) {
+        throw new BridgeError(409, 'version_unavailable', 'Drive did not provide the expected file version');
+      }
+      if (requestedVersion !== version) {
+        throw new BridgeError(409, 'version_changed', 'the Drive file changed; reload it before continuing');
+      }
     }
 
     const size = item.size ?? 0;

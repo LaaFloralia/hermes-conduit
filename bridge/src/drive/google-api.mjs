@@ -14,7 +14,7 @@
 
 const DEFAULT_BASE_URL = 'https://www.googleapis.com/drive/v3';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const FILE_FIELDS = 'id,name,mimeType,size,modifiedTime,parents,webViewLink,trashed,shortcutDetails';
+const FILE_FIELDS = 'id,name,mimeType,size,modifiedTime,parents,webViewLink,trashed,shortcutDetails,version';
 const LIST_FIELDS = `nextPageToken,files(${FILE_FIELDS})`;
 
 const WORKSPACE_MIME = {
@@ -83,6 +83,9 @@ export function itemFromDrive(file) {
     kind,
     size: kind === 'file' ? size : null,
     modifiedAt: file.modifiedTime ?? null,
+    // Drive returns its 64-bit version as a decimal string. Never coerce it to
+    // a JS number, which could silently lose precision.
+    version: typeof file.version === 'string' && /^\d{1,30}$/.test(file.version) ? file.version : null,
     parents: Array.isArray(file.parents) ? file.parents : [],
     downloadable: kind === 'file',
     webViewLink: file.webViewLink ?? null,

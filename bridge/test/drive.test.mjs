@@ -357,6 +357,62 @@ describe('drive configuration and failures', () => {
   });
 });
 
+describe('drive range version pinning', () => {
+  it('exposes a decimal version and rejects changed, unavailable or malformed pins before media access', async () => {
+    const drive = fakeDrive();
+    let version = '9007199254740993'; // Larger than JS's exactly representable integer range.
+    const get = drive.get;
+    drive.get = async (id) => {
+      const found = await get(id);
+      return found ? { ...found, item: { ...found.item, version } } : null;
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const url = `${bridge.base}/v1/drive/files/file_video_1/content`;
+      const headers = { authorization: `Bearer ${token}`, range: 'bytes=0-9' };
+      const first = await fetch(url, { headers });
+      assert.equal(first.status, 206);
+      assert.equal(first.headers.get('x-laa-drive-version'), version);
+      assert.equal((await first.arrayBuffer()).byteLength, 10);
+
+      const pinned = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': version } });
+      assert.equal(pinned.status, 206);
+      assert.equal(pinned.headers.get('x-laa-drive-version'), version);
+      await pinned.arrayBuffer();
+      const head = await fetch(url, { method: 'HEAD', headers: { ...headers, 'x-laa-drive-version': version } });
+      assert.equal(head.status, 206);
+      assert.equal(head.headers.get('x-laa-drive-version'), version);
+
+      const opened = drive.state.opened;
+      version = '9007199254740994';
+      const changed = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': '9007199254740993' } });
+      assert.equal(changed.status, 409);
+      assert.equal((await changed.json()).error.code, 'version_changed');
+      assert.equal(drive.state.opened, opened);
+
+      version = null;
+      const unavailable = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': '9007199254740993' } });
+      assert.equal(unavailable.status, 409);
+      assert.equal((await unavailable.json()).error.code, 'version_unavailable');
+      assert.equal(drive.state.opened, opened);
+
+      const invalid = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': 'not-a-version' } });
+      assert.equal(invalid.status, 400);
+      assert.equal((await invalid.json()).error.code, 'version_invalid');
+      assert.equal(drive.state.opened, opened);
+
+      // Older clients that do not pin a version retain the existing behavior.
+      const legacy = await fetch(url, { headers });
+      assert.equal(legacy.status, 206);
+      assert.equal(legacy.headers.get('x-laa-drive-version'), null);
+      await legacy.arrayBuffer();
+    } finally {
+      await bridge.close();
+    }
+  });
+});
+
 describe('range parsing', () => {
   it('classifies headers', () => {
     assert.deepEqual(parseRange(undefined, 100), { kind: 'full' });

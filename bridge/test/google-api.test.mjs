@@ -26,6 +26,7 @@ function fileRecord(overrides = {}) {
     mimeType: 'video/mp4',
     size: String(VIDEO.length),
     modifiedTime: '2026-10-25T13:00:00.000Z',
+    version: '9007199254740993',
     parents: ['folder_company_1'],
     webViewLink: 'https://drive.google.com/file/d/file_video_1/view',
     ...overrides,
@@ -157,7 +158,9 @@ describe('google drive api adapter', () => {
   it('maps metadata and hides missing or trashed files', async () => {
     const found = await adapter.get('file_video_1');
     assert.equal(found.item.mimeType, 'video/mp4');
+    assert.equal(found.item.version, '9007199254740993');
     assert.equal(found.etag, '"etag-1"');
+    assert.match(fake.requests.at(-1).query.fields, /(?:^|,)version(?:,|$)/);
     assert.equal(await adapter.get('missing_file_1'), null);
     assert.equal(await adapter.get('trashed_file_1'), null);
     assert.equal(await adapter.get('not a drive id'), null);
@@ -255,6 +258,9 @@ describe('item mapping', () => {
     assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf', size: '12' }).size, 12);
     assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf' }).size, null);
     assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf' }).downloadable, true);
+    assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf', version: '9007199254740993' }).version, '9007199254740993');
+    assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf', version: 2 }).version, null);
+    assert.equal(itemFromDrive({ id: 'a', mimeType: 'application/pdf', version: '1\r\nHeader: leaked' }).version, null);
   });
 });
 
