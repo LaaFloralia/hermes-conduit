@@ -48,7 +48,7 @@ struct LAANotificationPairAllControls: View {
         .tint(LAAColors.teal)
         .accessibilityIdentifier("notifications.pair-all")
 
-        Text(verbatim: "戻すにはApp Store版Conduitの「設定＞通知」で、対象プロフィールを再ペアリングします。")
+        Text(verbatim: "戻すには以前のアプリの「設定＞通知」で、対象プロフィールを再ペアリングします。")
             .font(.footnote)
             .foregroundStyle(LAAColors.muted)
 

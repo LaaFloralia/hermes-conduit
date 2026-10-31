@@ -10,8 +10,13 @@ import UIKit
 
 extension ShapeStyle where Self == Color {
     // Primary accent — amber/gold, matching the RN app's signature look
+    #if LAA_BUILD
+    static var conduitAccent: Color { LAAColor.link }
+    static var conduitAccentSoft: Color { LAAColor.selectionFill }
+    #else
     static var conduitAccent: Color { .conduitAdaptiveAccent }
     static var conduitAccentSoft: Color { .conduitAdaptiveAccentSoft }
+    #endif
     static var conduitAura: Color { Color(red: 0.38, green: 0.58, blue: 0.98) }
     // V2 status tokens. Each is always paired with an SF Symbol and a word.
     /// Approval waiting (amber shield).
@@ -45,7 +50,11 @@ extension ShapeStyle where Self == ConduitTertiaryStyle {
 
 extension Color {
     // Aliases for non-ShapeStyle usage (e.g., UIColor extraction)
+    #if LAA_BUILD
+    static var conduitAccentColor: Color { LAAColor.link }
+    #else
     static var conduitAccentColor: Color { .conduitAdaptiveAccent }
+    #endif
     static let conduitBackgroundColor = Color(.systemBackground)
     static let conduitSurfaceColor = Color(.secondarySystemBackground)
 
@@ -277,23 +286,36 @@ extension EnvironmentValues {
 }
 
 extension UIColor {
+    #if LAA_BUILD
+    static let conduitAccent = UIColor(LAAColor.link)
+    #else
     static let conduitAccent = UIColor { traits in
         traits.conduitAccent.color(dark: traits.userInterfaceStyle == .dark)
     }
+    #endif
 
     /// See ConduitAccent.selectionColorOnBubble.
     static let conduitSelectionOnAccent = UIColor { traits in
+        #if LAA_BUILD
+        ConduitAccentChoice.markColor(on: UIColor(LAAColor.ownBubble).resolvedColor(with: traits))
+        #else
         traits.conduitAccent.selectionColorOnBubble
+        #endif
     }
 
     /// A sent bubble's fill, top-leading and bottom-trailing stops. See
     /// ConduitAccent.bubbleColor.
+    #if LAA_BUILD
+    static let conduitUserBubble = UIColor(LAAColor.ownBubble)
+    static let conduitUserBubbleShade = UIColor(LAAColor.ownBubble)
+    #else
     static let conduitUserBubble = UIColor { traits in
         traits.conduitAccent.bubbleColor
     }
     static let conduitUserBubbleShade = UIColor { traits in
         traits.conduitAccent.bubbleShadeColor
     }
+    #endif
 
     /// WCAG relative luminance of an sRGB colour.
     var conduitRelativeLuminance: CGFloat {
@@ -496,6 +518,9 @@ struct ConduitBackdrop: View {
     }
 
     var body: some View {
+        #if LAA_BUILD
+        LAAColor.background.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+        #else
         // Only the two drifting circles live inside the timeline; the base
         // colour and bottom shade never change between ticks.
         ZStack {
@@ -563,6 +588,7 @@ struct ConduitBackdrop: View {
         // iPad. Nothing on a backdrop takes a tap.
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+        #endif
     }
 
     private var glowColor: Color { glowTint ?? Color.conduitAccent }

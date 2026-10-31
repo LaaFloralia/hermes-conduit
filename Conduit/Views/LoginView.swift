@@ -13,6 +13,9 @@ import WebKit
 struct LoginView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
+    #if LAA_BUILD
+    @Environment(\.laaSettingsAction) private var laaSettings
+    #endif
     @State private var flow = LoginFlowModel()
     /// Non-nil presents Add a dashboard, filled in from the seed.
     @State private var addDashboard: LoginSeed?
@@ -21,11 +24,19 @@ struct LoginView: View {
     /// assistant has closed.
     @State private var setupSeed: LoginSeed?
 
+    private var showsFirstLoginScreen: Bool {
+        #if LAA_BUILD && DEBUG
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_FIRST_LOGIN") { return true }
+        #endif
+        return appState.savedDashboardRegistry.dashboards.isEmpty
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 ConduitBackdrop(drifts: true)
-                if appState.savedDashboardRegistry.dashboards.isEmpty {
+                if showsFirstLoginScreen {
                     LoginAddressStep(flow: flow, context: .firstLaunch)
                 } else {
                     LoginDashboardsScreen(flow: flow) {
@@ -33,7 +44,18 @@ struct LoginView: View {
                     }
                 }
             }
+            #if LAA_BUILD
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar {
+                if let laaSettings {
+                    ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: laaSettings) }
+                }
+            }
+            #else
             .toolbar(.hidden, for: .navigationBar)
+            #endif
             // On the stack's root, not on either screen: the first sign-in
             // registers its dashboard, which swaps the first-launch screen for
             // the list underneath this page.

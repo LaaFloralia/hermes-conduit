@@ -512,6 +512,15 @@ App Store build · the Bridge API, Brain and Usage data contracts
   body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
+- Every tab's bar carries the same gear in the same place, with the same
+  accessibility identifier; the Chats screen keeps its own "Chats" heading and
+  an empty navigation title. The gear's frame is compared across tabs, so the
+  UI checks run on the 440 × 956 `LAA 16 Pro Max` simulator and no longer
+  assert a device size. `LAAChromeUITests` and the other `LAA_BUILD` checks
+  are not in GitHub CI (its smoke job generates `project-tests.yml`, which does
+  not define `LAA_BUILD`): run them locally with
+  `xcodegen generate --spec project-laa.yml` and
+  `xcodebuild test -scheme Conduit -destination 'platform=iOS Simulator,id=DFFD3966-F54E-4C7A-A161-59201C7EA105'`.
 
 **Open gaps**
 - Screen-specific v2 restyling and action labels belong to their screen tasks.
@@ -3605,6 +3614,25 @@ point at the map and its check
 - If GitHub can't say whether a PR into `pulse` or `linked-rooms` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
 **Checked:** 2026-10-26, #1314.
+
+## LAA branding and root settings
+
+**Siblings:** Hermes sign-in and permission descriptions · the five tab roots and Settings sheet · Bridge pairing and employee calls · iPhone and Watch widgets · sharing and notification extensions · the upstream app
+
+**Code**
+- LAA build branding, localized bundle resources and extension names: `project-laa.yml`, `project-personal.yml`, `scripts/laa/brand-bundle.py`, `Shared/LAAProductBrand.swift`, `Conduit/Views/Login/LoginScreens.swift`, `Conduit/Models/AppIconChoice.swift`, `Conduit/Theme.swift`
+- Root Settings and control labels: `Conduit/LAA/LAASettingsAction.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Views/LoginView.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`
+- Widgets and sharing: `ConduitWidgets/LauncherWidgets.swift`, `Shared/Widgets/WidgetConfiguration.swift`, `Shared/Widgets/WidgetLocalization.swift`, `ConduitShareExtension/ShareDraftSheet.swift`
+- Tests: `scripts/tests/test_laa_brand_bundle.py`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAChromeUITests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
+
+**Rulings**
+- Only the LAA build replaces product-owned Conduit names, icons and colors with the LAA identity; identifiers, routes, saved content and upstream builds retain their existing values. Generated bundle descriptions keep the source localization and remove the upstream developer's privacy claim instead of assigning it to LAA.
+- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
+
+**Open gaps**
+- Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
+
+**Checked:** 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
 
 ## LAA all-profile notification pairing
 

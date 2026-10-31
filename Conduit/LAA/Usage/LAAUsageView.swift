@@ -54,7 +54,12 @@ struct LAAUsageView: View {
             }
         }
         .tint(LAAColor.link)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+        }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .onAppear {
             guard automaticallyRefresh else { return }
@@ -77,19 +82,18 @@ struct LAAUsageView: View {
                 Text(verbatim: LAACopy.tabTitle(.usage)).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Menu {
-                    if bridge.status == .paired {
+                if bridge.status == .paired {
+                    Menu {
                         Button { showPairing = true } label: { Text(verbatim: LAACopy.usageConnection) }
                             .accessibilityIdentifier("laa.bridge.manage")
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                            .contentShape(Circle())
                     }
-                    Button(action: onRequestSettings) { Text(verbatim: LAACopy.settings) }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                        .contentShape(Circle())
+                    .accessibilityLabel(Text(verbatim: LAACopy.usageMore))
+                    .accessibilityIdentifier("laa.usage.menu")
                 }
-                .accessibilityLabel(Text(verbatim: LAACopy.usageMore))
-                .accessibilityIdentifier("laa.usage.menu")
                 Button { Task { await refresh() } } label: {
                     Group { if state.isRefreshing { ProgressView() } else { Image(systemName: "arrow.clockwise") } }
                         .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
