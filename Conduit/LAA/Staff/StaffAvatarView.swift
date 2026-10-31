@@ -3,10 +3,8 @@ import AVFoundation
 import SwiftUI
 import UIKit
 
-/// Each visible avatar owns its own muted looper. Before it plays, the chat's
-/// idle audio policy makes the session mix with other apps' audio, so a
-/// display-only video never stops the user's music (BUS-332). The still
-/// underneath is also the Reduce Motion fallback.
+/// Each visible avatar owns its own muted looper; it never changes the app's
+/// audio session. The still underneath is also the Reduce Motion fallback.
 struct StaffAvatarView: View {
     let profile: String
     let name: String
@@ -62,9 +60,6 @@ struct StaffAvatarView: View {
 
     private func syncPlayback() {
         guard policy.shouldPlay, let url = assets.loop else { loop.stop(); return }
-        // BUS-332: the idle video is display-only. Mixing keeps the music the
-        // user is playing, instead of the video taking the audio session.
-        LAAChatAudioSession.shared.chatShown()
         loop.play(url)
     }
 }

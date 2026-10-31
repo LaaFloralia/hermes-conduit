@@ -33,11 +33,6 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                           status: status, isObscured: calls.isShowingCall,
                           voiceSetting: voiceSetting(for: profile), voiceSettingEnabled: appState.isConnected)
             .laaPhotoGlassScope()
-            // BUS-332: a call takes the session through the voice coordinator;
-            // when it ends, the open chat hands the audio back and mixes again.
-            .onChange(of: appState.isVoiceCallInProgress) { _, inCall in
-                if !inCall { LAAChatAudioSession.shared.voiceEnded() }
-            }
     }
 
     private var callButton: some View {
