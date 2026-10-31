@@ -106,6 +106,16 @@ final class LAAStudioV2Tests: XCTestCase {
         XCTAssertNotEqual(first, LAAStudioDraftStore.principleDraftID("principle-2"))
     }
 
+    func testCatalogAuthorizationFailuresIncludeLocalAndHTTPFailures() {
+        XCTAssertTrue(LAAStudioData.isAuthorizationFailure(LAABridgeError.unauthorized))
+        XCTAssertTrue(LAAStudioData.isAuthorizationFailure(LAABridgeError.revoked))
+        XCTAssertTrue(LAAStudioData.isAuthorizationFailure(LAABridgeError.keychain))
+        let denied = LAABridgeHTTPError(status: 403, code: "insufficient_scope", message: nil,
+                                        retryable: false, details: nil, requestId: nil, currentETag: nil)
+        XCTAssertTrue(LAAStudioData.isAuthorizationFailure(denied))
+        XCTAssertFalse(LAAStudioData.isAuthorizationFailure(LAABridgeError.networkUnreachable))
+    }
+
     #if DEBUG
     func testV2CatalogAndOtherVersionFixture() throws {
         let catalog = try LAAStudioData.sampleCatalog()

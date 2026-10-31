@@ -7,6 +7,7 @@ struct LAAStudioCatalogView: View {
     @State private var catalog: LAAStudioCatalog?
     @State private var stale = false
     @State private var loading = false
+    @State private var loadID: UUID?
     @State private var error: String?
     @State private var category = "All"
     private var categories: [String] { ["All"] + Array(Set(catalog?.documents.map(\.category) ?? [])).sorted() }
@@ -59,16 +60,24 @@ struct LAAStudioCatalogView: View {
                     }.buttonStyle(.plain)
                 }
             }
-        }.task(id: bridge.revision) { await load() }
+        }.task(id: bridge.revision) {
+            catalog = nil; stale = false
+            await load()
+        }
     }
     @MainActor private func load() async {
-        guard !loading else { return }
+        let id = UUID(); loadID = id
         loading = true; error = nil
-        defer { loading = false }
-        do { let result = try await LAAStudioData.catalog(bridge); catalog = result.catalog; stale = result.stale }
+        defer { if loadID == id { loading = false } }
+        do {
+            let result = try await LAAStudioData.catalog(bridge)
+            guard loadID == id else { return }
+            catalog = result.catalog; stale = result.stale
+        }
         catch is CancellationError { }
         catch {
-            if let failure = error as? LAABridgeHTTPError, [401, 403].contains(failure.status) { catalog = nil }
+            guard loadID == id else { return }
+            if LAAStudioData.isAuthorizationFailure(error) { catalog = nil; stale = false }
             self.error = LAAStudioData.message(error)
         }
     }

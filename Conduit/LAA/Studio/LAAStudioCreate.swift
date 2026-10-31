@@ -147,14 +147,18 @@ struct LAAStudioCreateView: View {
             if !LAAStudioDraftStore.save(value, deviceID: device, draftID: draftID) { storageBlocked = true; error = LAACopy.Studio.saveFailed }
         }
         .task(id: bridge.revision) {
+            catalog = nil; catalogNote = nil
             guard snapshot.supportsV2 else { return }
+            let catalogRevision = bridge.revision
             do {
                 let result = try await LAAStudioData.catalog(bridge)
+                guard bridge.revision == catalogRevision, !Task.isCancelled else { return }
                 catalog = result.catalog
                 catalogNote = result.stale ? "依頼の型は端末に保存した内容です。" : nil
             } catch is CancellationError { }
             catch {
-                if let failure = error as? LAABridgeHTTPError, [401, 403].contains(failure.status) { catalog = nil }
+                guard bridge.revision == catalogRevision, !Task.isCancelled else { return }
+                if LAAStudioData.isAuthorizationFailure(error) { catalog = nil }
                 catalogNote = "依頼の型を読み込めません。本文はそのまま入力できます。"
             }
         }

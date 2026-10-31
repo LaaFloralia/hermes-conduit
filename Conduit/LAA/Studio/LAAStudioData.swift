@@ -163,6 +163,11 @@ enum LAAStudioData {
         }
         return (error as? LAABridgeError)?.japaneseText ?? LAABridgeError.invalidResponse.japaneseText
     }
+    static func isAuthorizationFailure(_ error: Error) -> Bool {
+        if let failure = error as? LAABridgeHTTPError { return [401, 403].contains(failure.status) }
+        guard let failure = error as? LAABridgeError else { return false }
+        return [.unauthorized, .revoked, .forbidden, .keychain].contains(failure)
+    }
     #if DEBUG
     static func sample(_ mode: String) throws -> LAAStudioSnapshot {
         if mode == "offline" { throw LAABridgeError.networkUnreachable }
