@@ -298,7 +298,7 @@ export function createBridge({
         }
         if (outcome.action === 'replay') {
           const data = route.replay ? await route.replay({ rawBody, device, entry: outcome.entry }) : outcome.entry.response;
-          ok(res, outcome.entry.httpStatus ?? 200, data, requestId, {
+          ok(res, route.replayStatus ?? outcome.entry.httpStatus ?? 200, data, requestId, {
             'idempotency-replayed': 'true',
           });
           return;
