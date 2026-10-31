@@ -232,7 +232,7 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.textFields["Project Name"].exists)
         app.buttons["Close"].tap()
         app.buttons["Tasks"].tap()
-        XCTAssertTrue(app.buttons["New Task"].waitForExistence(timeout: 30))
+        XCTAssertTrue(waitUntilReady(app.buttons["New Task"], timeout: 30))
         app.buttons["Routines"].tap()
         XCTAssertTrue(app.staticTexts["準備中"].waitForExistence(timeout: 5))
     }
@@ -273,6 +273,47 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(waitUntilReady(create, timeout: 20))
         create.tap()
         XCTAssertTrue(app.staticTexts["Fixture new task"].waitForExistence(timeout: 20))
+    }
+
+    // Run with a freshly started synthetic server for each scenario.
+    func testPersonalTaskFixtureSaveMineAfterConflict() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "taskfixture-savemine" else {
+            throw XCTSkip("The dedicated conflict fixture was not selected.")
+        }
+        let app = launchWork()
+        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 30)); app.buttons["Tasks"].tap()
+        let row = app.staticTexts["Fixture task"]
+        XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap()
+        XCTAssertTrue(app.staticTexts["Fixture original"].waitForExistence(timeout: 20))
+        app.buttons["Edit"].tap()
+        let description = app.textViews["work.task.description"]
+        XCTAssertTrue(description.waitForExistence(timeout: 20))
+        description.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.1)).tap()
+        description.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Fixture original".count))
+        description.typeText("My fixture revision")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Fixture remote revision"].waitForExistence(timeout: 20))
+        app.buttons["Save My Changes to This Version"].tap()
+        XCTAssertTrue(waitUntilReady(app.buttons["Save"], timeout: 20)); app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["My fixture revision"].waitForExistence(timeout: 20))
+    }
+
+    // Start the fixture with LAA_FIXTURE_FAIL_METADATA_ONCE=1.
+    func testPersonalTaskFixtureMetadataRetryClearsError() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "taskfixture-metadata-retry" else {
+            throw XCTSkip("The dedicated metadata retry fixture was not selected.")
+        }
+        let app = launchWork()
+        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 30)); app.buttons["Tasks"].tap()
+        let row = app.staticTexts["Fixture task"]
+        XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap(); app.buttons["Edit"].tap()
+        let message = app.staticTexts["タスクの選択肢を読み取れませんでした。"]
+        XCTAssertTrue(message.waitForExistence(timeout: 20))
+        app.buttons["Try Again"].tap()
+        XCTAssertTrue(waitUntilReady(app.buttons["Save"], timeout: 20))
+        let cleared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: message)
+        XCTAssertEqual(XCTWaiter.wait(for: [cleared], timeout: 20), .completed)
+        XCTAssertFalse(message.exists)
     }
 
     func testPersonalTaskFixtureComment() throws {

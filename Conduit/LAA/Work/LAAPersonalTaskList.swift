@@ -239,8 +239,9 @@ private struct LAAPersonalTaskRow<Destination: View>: View {
         }
         .contentShape(Rectangle())
         .simultaneousGesture(DragGesture(minimumDistance: 25).onEnded { value in
-            guard abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
-            showActions = value.translation.width < -25
+            if let action = LAAPersonalTaskSwipe.action(width: value.translation.width, height: value.translation.height) {
+                showActions = action
+            }
         })
         .accessibilityAction(named: Text(LAACopy.WorkTab.edit), edit)
         .contextMenu { Button(LAACopy.WorkTab.edit, action: edit) }

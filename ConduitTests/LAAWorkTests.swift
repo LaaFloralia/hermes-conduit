@@ -87,15 +87,6 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNotNil(LAAWorkWorkspaceCreator.branchNotice(requested: "feature", actual: nil))
     }
 
-    func testLinearTaskDetailDecodesTaskInsideResponse() throws {
-        // Bridge data contains a task plus optional comments and links.
-        let data = Data(#"{"task":{"id":"linear:BUS-123","source":"linear","sourceId":"BUS-123","title":"依頼","description":"詳細","status":{"name":"Todo","type":"unstarted","category":"open"}},"comments":[],"links":[]}"#.utf8)
-        let task = try JSONDecoder().decode(LAAWorkTaskDetailResponse.self, from: data).task
-        XCTAssertEqual(task.id, "linear:BUS-123")
-        XCTAssertEqual(task.description, "詳細")
-        XCTAssertEqual(task.status?.name, "Todo")
-    }
-
     func testLegacyProjectReferenceCanOnlyBeClearedExplicitly() throws {
         let encoder = JSONEncoder()
         let rename = LAAWorkProjectChanges(name: "名前", instructions: nil)

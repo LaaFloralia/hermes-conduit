@@ -14,6 +14,12 @@ test('the UI fixture serves synthetic tasks and a reproducible description confl
     body: { expectedViewerId: 'fixture-viewer', description: 'My fixture revision' } });
   assert.equal(changed.status, 412);
   assert.equal(changed.body.error.details.current.description, 'Fixture remote revision');
+  const rebased = await api.request('/v1/personal-tasks/linear%3AFIX-1', { token, method: 'PATCH', key: 'fixture-save-mine',
+    headers: { 'if-match': changed.body.error.details.current.updatedAt },
+    body: { expectedViewerId: 'fixture-viewer', description: 'My fixture revision' } });
+  assert.equal(rebased.status, 200);
+  assert.equal(api.fixtureStats().updates, 1);
+  assert.equal((await api.request('/v1/personal-tasks/linear%3AFIX-1', { token })).body.data.task.description, 'My fixture revision');
   const created = await api.request('/v1/personal-tasks', { token, method: 'POST', key: 'fixture-create',
     body: { expectedViewerId: 'fixture-viewer', teamId: 'fixture-team', title: 'Fixture new task' } });
   assert.equal(created.status, 201);
@@ -25,4 +31,12 @@ test('the UI fixture serves synthetic tasks and a reproducible description confl
   assert.equal(thread.body.data.items[0].body, 'Fixture reply');
   const pending = await api.request('/v1/task-operations', { token });
   assert.equal(pending.body.data.viewerId, 'fixture-viewer');
+});
+
+test('metadata fixture fails once then becomes available for the retry UI', async (t) => {
+  const api = await startPersonalTaskUIFixture({ failMetadataOnce: true });
+  t.after(() => api.close());
+  const token = await api.token(['tasks:read', 'tasks:write']);
+  assert.equal((await api.request('/v1/task-metadata', { token })).status, 503);
+  assert.equal((await api.request('/v1/task-metadata', { token })).status, 200);
 });

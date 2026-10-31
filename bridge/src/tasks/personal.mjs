@@ -238,6 +238,20 @@ export function createPersonalLinearSource({
     }
     return readTokenViaHelper(tokenHelper);
   });
+  const mutationRoots = new Map([
+    [PERSONAL_DOCUMENTS.createIssue, 'issueCreate'], [PERSONAL_DOCUMENTS.updateIssue, 'issueUpdate'],
+    [PERSONAL_DOCUMENTS.createComment, 'commentCreate'], [PERSONAL_DOCUMENTS.createRelation, 'issueRelationCreate'],
+    [PERSONAL_DOCUMENTS.createAttachment, 'attachmentCreate'],
+  ]);
+  function inputRejected(document, body) {
+    const root = mutationRoots.get(document);
+    if (!root || !Array.isArray(body?.errors) || !body.errors.length) return false;
+    const inputError = body.errors.every((error) => error?.extensions?.userError === true
+      && error?.extensions?.code === 'INPUT_ERROR'
+      && (!error.path || (Array.isArray(error.path) && error.path.length === 1 && error.path[0] === root)));
+    return inputError && (body.data == null || (typeof body.data === 'object'
+      && Object.keys(body.data).every((key) => key === root) && body.data[root] == null));
+  }
   async function graph(token, document, variables = {}) {
     let response;
     try {
@@ -247,11 +261,28 @@ export function createPersonalLinearSource({
       });
     } catch { throw failure('linear_unavailable', 'Linear could not be reached', { retryable: true }); }
     if (!response.ok) {
+      if (response.status === 400) {
+        let rejection;
+        try { rejection = await response.json(); } catch { /* an opaque 400 is not proof of a no-write */ }
+        if (inputRejected(document, rejection)) throw failure('linear_rejected', 'Linear refused the submitted input', { status: 400 });
+      }
       const status = response.status === 429 ? 429 : response.status === 401 || response.status === 403 ? 403 : 503;
       throw failure('linear_request_failed', 'Linear did not accept the request', { status, retryable: status === 429 || status === 503 });
     }
     let body;
     try { body = await response.json(); } catch { throw failure('linear_response_invalid', 'Linear returned an invalid response'); }
+    if (body?.errors?.length) {
+      // Only a root-level input rejection with no returned mutation payload is
+      // definite. Nested/partial errors could follow a successful write.
+      if (inputRejected(document, body)) {
+        throw failure('linear_rejected', 'Linear refused the submitted input', { status: 400 });
+      }
+      if (document === PERSONAL_DOCUMENTS.issue && body.data?.issue == null
+          && body.errors.every((error) => error?.path?.[0] === 'issue'
+            && error?.extensions?.userError === true && error?.extensions?.code === 'INPUT_ERROR')) {
+        return { issue: null };
+      }
+    }
     if (!body || body.errors?.length || !body.data || typeof body.data !== 'object') {
       throw failure('linear_graphql_error', 'Linear could not complete the request');
     }
@@ -341,6 +372,7 @@ export function createPersonalLinearSource({
   async function createIssue(personalSession, input) {
     const data = await personalSession.run(PERSONAL_DOCUMENTS.createIssue, { input });
     const result = data.issueCreate;
+    if (result?.success === false && result.issue == null) throw failure('linear_rejected', 'Linear refused the submitted input', { status: 400 });
     if (result?.success !== true || typeof result.issue?.id !== 'string' || typeof result.issue?.identifier !== 'string') {
       throw failure('linear_mutation_unconfirmed', 'Linear did not confirm the issue creation');
     }
@@ -349,6 +381,7 @@ export function createPersonalLinearSource({
   async function updateIssue(personalSession, id, input) {
     const data = await personalSession.run(PERSONAL_DOCUMENTS.updateIssue, { id: id.replace(/^linear:/, ''), input });
     const result = data.issueUpdate;
+    if (result?.success === false && result.issue == null) throw failure('linear_rejected', 'Linear refused the submitted input', { status: 400 });
     if (result?.success !== true || typeof result.issue?.id !== 'string' || typeof result.issue?.identifier !== 'string') {
       throw failure('linear_mutation_unconfirmed', 'Linear did not confirm the issue update');
     }
@@ -462,6 +495,7 @@ export function createPersonalLinearSource({
     if (!document) throw failure('filter_invalid', 'task item is invalid', { status: 400 });
     const data = await personalSession.run(PERSONAL_DOCUMENTS[document], { input });
     const result = data[field];
+    if (result?.success === false && result[resultName] == null) throw failure('linear_rejected', 'Linear refused the submitted input', { status: 400 });
     if (result?.success !== true || typeof result[resultName]?.id !== 'string') {
       throw failure('linear_mutation_unconfirmed', 'Linear did not confirm the task operation');
     }

@@ -1,9 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
 
-// Retained for the existing agent-source fixture contract.
-struct LAAWorkTaskDetailResponse: Decodable { let task: LAAWorkTask }
-
 struct LAAWorkTaskDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore

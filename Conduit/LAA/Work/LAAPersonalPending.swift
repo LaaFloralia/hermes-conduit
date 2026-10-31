@@ -43,6 +43,7 @@ struct LAAPersonalPendingView: View {
                         } else {
                             Text(verbatim: item.key.sessionID).textSelection(.enabled).laaTextStyle(.secondary)
                             Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }.disabled(busy)
+                            Button("Return to Draft if Unsent") { Task { await check(item, abandonIfUnsent: true) } }.disabled(busy)
                         }
                         if !LAAWorkDrafts.canRepeat(item) {
                             Text(verbatim: "期限を過ぎているため再送できません。保存先を確認して照合してください。")
@@ -62,7 +63,7 @@ struct LAAPersonalPendingView: View {
                         if let context = operation.contextId {
                             Text(verbatim: "タスク: \(context)").textSelection(.enabled)
                             NavigationLink("Open Task", destination: LAAWorkTaskDetailView(id: context, drafts: drafts))
-                        } else if operation.kind == "update" {
+                        } else if ["update", "create"].contains(operation.kind) {
                             NavigationLink("Open Task", destination: LAAWorkTaskDetailView(id: operation.targetId, drafts: drafts))
                         }
                         if let created = operation.createdAt { Text(verbatim: "開始: \(LAAWorkPresentation.date(created))").laaTextStyle(.secondary) }
@@ -104,27 +105,27 @@ struct LAAPersonalPendingView: View {
         } catch let failure as LAABridgeError { error = failure.japaneseText }
         catch { self.error = "保留記録を読み取れませんでした。" }
     }
-    @MainActor private func check(_ item: ComposerDraftStore.Submission) async {
+    @MainActor private func check(_ item: ComposerDraftStore.Submission, abandonIfUnsent: Bool = false) async {
         guard let (_, requestKey) = LAAWorkDrafts.request(item) else { error = "要求記録を読み取れません。"; return }
         busy = true; defer { busy = false }
         do {
+            let body = abandonIfUnsent ? try JSONSerialization.data(withJSONObject: ["expectedViewerId": viewerId], options: [.sortedKeys]) : nil
             let result: LAABridgeResponse<LAAPersonalOperationResponse> = try await bridge.request(
-                method: "GET", path: "/v1/task-operations/by-key", idempotencyKey: requestKey)
+                method: abandonIfUnsent ? "POST" : "GET",
+                path: abandonIfUnsent ? "/v1/task-operations/abandon-unsent" : "/v1/task-operations/by-key",
+                jsonBody: body, idempotencyKey: requestKey)
             let operation = result.data.operation
-            switch operation.status {
-            case "succeeded":
+            switch LAAPersonalReconciliation.disposition(operation, mayCompare: operation.kind == "update") {
+            case .complete:
                 if !drafts.finishSubmission(item.id, restoring: false) { error = "結果を端末に保存できませんでした。" }
                 else { error = nil }
-            case "resolved":
-                guard ["applied", "not_applied"].contains(operation.resolution ?? "") else { throw LAABridgeError.invalidResponse }
-                if !drafts.finishSubmission(item.id, restoring: operation.resolution == "not_applied") { error = "結果を端末に保存できませんでした。" }
-                else { error = nil }
-            case "rejected" where operation.kind == "update" && (operation.rejection == nil || operation.rejection == "version_mismatch"):
+            case .compare:
                 error = "本文の競合をタスク編集画面で確認してください。"
-            case "rejected":
+            case .restore:
                 if !drafts.finishSubmission(item.id, restoring: true) { error = "下書きに戻せませんでした。" }
-                else { error = "保存前に拒否されたため、下書きに戻しました。" }
-            default: error = "結果は未確認です。Mac側の記録から対象を確認してください。"
+                else { error = "未適用を確認できたため、下書きに戻しました。" }
+            case .invalid: throw LAABridgeError.invalidResponse
+            case .wait: error = "結果は未確認です。Mac側の記録から対象を確認してください。"
             }
         } catch let failure as LAABridgeHTTPError {
             error = failure.code == "operation_not_found" ? "Macに記録がありません。元の編集画面で同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)

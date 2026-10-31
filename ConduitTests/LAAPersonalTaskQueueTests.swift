@@ -167,5 +167,49 @@ import XCTest
         XCTAssertEqual(bridge.calls, ["upload-key:/v1/personal-tasks/\(encoded)/files"])
         XCTAssertTrue(reopened.submissions.isEmpty)
     }
+
+    func testRetryablePreflightUsesSameKeysButUnknownNeverRepeats() async throws {
+        let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("drafts.json")
+        let original = ComposerDraftStore(fileURL: file); try reserve(original)
+        let bridge = QueueFixture()
+        bridge.operations["parent-key"] = try bridge.operation("preflight_retryable")
+        bridge.operations["child-key"] = try bridge.operation("preflight_retryable", kind: "comment")
+        let reopened = ComposerDraftStore(fileURL: file)
+        await LAAPersonalTaskQueue.run(drafts: reopened, bridge: bridge, viewer: "viewer-a")
+        XCTAssertEqual(bridge.calls, ["parent-key:/v1/personal-tasks", "child-key:/v1/personal-tasks/\(bridge.target)/comments"])
+        XCTAssertTrue(reopened.submissions.isEmpty)
+    }
+
+    func testReconciliationDurablyUnlocksOnlyConfirmedOrRejectedDrafts() throws {
+        for (status, resolution, restores) in [("resolved", "not_applied", true), ("resolved", "applied", false), ("rejected", "", true)] {
+            let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+            let file = folder.appendingPathComponent("drafts.json")
+            let store = ComposerDraftStore(fileURL: file); try reserve(store)
+            let item = try XCTUnwrap(store.submissions.first { $0.key.sessionID.hasSuffix(":new") })
+            let operation = try QueueFixture().operation(status, resolution: resolution.isEmpty ? nil : resolution)
+            let result = LAAPersonalReconciliation.disposition(operation, mayCompare: false)
+            XCTAssertEqual(result, restores ? .restore : .complete)
+            XCTAssertTrue(store.finishSubmission(item.id, restoring: restores))
+            let reopened = ComposerDraftStore(fileURL: file)
+            XCTAssertTrue(!reopened.submissions.contains { $0.id == item.id })
+            XCTAssertEqual(reopened.hasDraft(for: item.key), restores)
+            if restores { XCTAssertEqual(reopened.draft(for: item.key).text, item.draft.text) }
+        }
+    }
+
+    func testViewerChangeKeepsOriginalDraftPrivateAndUnsent() async throws {
+        let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("drafts.json")
+        let original = ComposerDraftStore(fileURL: file); try reserve(original)
+        let reopened = ComposerDraftStore(fileURL: file)
+        let bridge = QueueFixture()
+        await LAAPersonalTaskQueue.run(drafts: reopened, bridge: bridge, viewer: "viewer-b")
+        XCTAssertTrue(bridge.calls.isEmpty)
+        XCTAssertEqual(reopened.submissions.count, 2)
+        let different = LAAWorkDrafts.key(deviceID: "device-a", target: "linear:viewer-b:new")
+        XCTAssertTrue(LAAWorkDrafts.pending(reopened, key: different) == nil)
+        XCTAssertEqual(ComposerDraftStore(fileURL: file).submissions.count, 2)
+    }
 }
 #endif

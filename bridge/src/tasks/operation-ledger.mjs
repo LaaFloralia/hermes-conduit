@@ -113,6 +113,18 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
           if (previous.viewerId !== viewerId || previous.fingerprint !== fingerprint) return { action: 'conflict' };
           const value = visible(previous);
           if (previous.status === 'succeeded' && value.replayExpired) return { action: 'expired', entry: value };
+          if (previous.status === 'preflight_retryable') {
+            if (now() - previous.createdAt >= RECENT_MS) {
+              previous.status = 'rejected';
+              previous.rejection = 'preflight_retry_expired';
+              previous.updatedAt = now();
+              return { action: 'existing', entry: visible(previous), rejection: previous.rejection };
+            }
+            previous.status = 'in_progress';
+            previous.processId = process.pid;
+            previous.updatedAt = now();
+            return { action: 'execute', entry: visible(previous) };
+          }
           return { action: 'existing', entry: value, rejection: previous.rejection ?? null };
         }
         if (Object.keys(all).length >= MAX_RECORDS) throw new BridgeError(503, 'task_ledger_full', 'the task operation ledger needs operator maintenance');
@@ -129,7 +141,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
       return edit((all) => {
         const entry = all[keyHash(deviceId, key)];
         if (!owned(entry, deviceId, viewerId) || entry.status !== 'in_progress') throw unavailable();
-        if (!['succeeded', 'rejected', 'outcome_unknown'].includes(status)) throw unavailable();
+        if (!['succeeded', 'rejected', 'outcome_unknown', 'preflight_retryable'].includes(status)) throw unavailable();
         entry.status = status;
         entry.updatedAt = now();
         if (status === 'succeeded') { entry.resultId = result.id; entry.identifier = result.identifier; }
@@ -140,8 +152,46 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     byKey({ deviceId, viewerId, key }) {
       const all = entries();
       const hash = keyHash(deviceId, key);
-      const entry = all[hash] ?? Object.values(all).find((item) => item.resolutionKeyHash === hash);
+      let entry = all[hash] ?? Object.values(all).find((item) => item.resolutionKeyHash === hash);
+      // Atomically close an expired no-write preflight before advertising it
+      // as rejected. A concurrent retry can never be mistaken for a no-op.
+      if (owned(entry, deviceId, viewerId) && entry.status === 'preflight_retryable' && now() - entry.createdAt >= RECENT_MS) {
+        return edit((current) => {
+          const latest = current[hash];
+          if (!owned(latest, deviceId, viewerId)) return null;
+          if (latest.status === 'preflight_retryable' && now() - latest.createdAt >= RECENT_MS) {
+            latest.status = 'rejected'; latest.rejection = 'preflight_retry_expired'; latest.updatedAt = now();
+          }
+          return visible(latest);
+        });
+      }
       return owned(entry, deviceId, viewerId) ? visible(entry) : null;
+    },
+    abandonUnsent({ deviceId, viewerId, key }) {
+      const hash = keyHash(deviceId, key);
+      return edit((all) => {
+        const previous = all[hash];
+        if (previous) {
+          if (!owned(previous, deviceId, viewerId)) throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to another viewer');
+          // A retry can only start by changing this state under the same lock.
+          if (previous.status === 'preflight_retryable') {
+            previous.status = 'rejected'; previous.rejection = 'preflight_abandoned'; previous.updatedAt = now();
+          }
+          return visible(previous);
+        }
+        if (Object.values(all).some((entry) => entry.resolutionKeyHash === hash)) {
+          throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a reconciliation');
+        }
+        if (Object.keys(all).length >= MAX_RECORDS) throw new BridgeError(503, 'task_ledger_full', 'the task operation ledger needs operator maintenance');
+        // No request reached reservation. A tombstone prevents a delayed
+        // request with this key from starting after the draft is restored.
+        const timestamp = now();
+        const entry = { operationId: randomUUID(), deviceId, viewerId, fingerprint: null,
+          kind: 'abandoned', targetId: 'not_sent', status: 'rejected', rejection: 'abandoned_before_reservation',
+          createdAt: timestamp, updatedAt: timestamp };
+        all[hash] = entry;
+        return visible(entry);
+      });
     },
     get({ deviceId, viewerId, operationId }) {
       const entry = Object.values(entries()).find((item) => item.operationId === operationId && owned(item, deviceId, viewerId));

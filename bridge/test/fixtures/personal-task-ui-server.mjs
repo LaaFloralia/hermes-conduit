@@ -13,13 +13,14 @@ const initial = () => ({ id: 'linear:FIX-1', linearId: 'fixture-issue-1', source
   status: state, team, project: null, milestone: null, cycle: null, parent: null, priority: 0, estimate: null,
   dueDate: null, labels: [], labelsComplete: true, updatedAt: '2026-11-01T00:00:00.000Z', url: null });
 
-export async function startPersonalTaskUIFixture() {
+export async function startPersonalTaskUIFixture({ failMetadataOnce = false } = {}) {
   const tasks = [initial()];
   const comments = [{ id: 'fixture-comment-1', issueId: 'fixture-issue-1', parentId: null,
     body: 'Fixture comment', createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z', user: viewer }];
   const relations = [];
   const attachments = [];
   let conflictPending = true;
+  let updates = 0;
   const copy = (value) => structuredClone(value);
   const find = (id) => tasks.find((task) => [task.id, task.sourceId, task.linearId].includes(id));
   const personal = {
@@ -64,6 +65,7 @@ export async function startPersonalTaskUIFixture() {
       return { id: input.id };
     },
     async metadata() {
+      if (failMetadataOnce) { failMetadataOnce = false; throw new Error('fixture metadata temporarily unavailable'); }
       const group = (items) => ({ items, complete: true });
       return { viewer, teams: group([team]), users: group([{ ...viewer, active: true }]), workflowStates: group([state]),
         issueLabels: group([]), projects: group([]), projectMilestones: group([]), cycles: group([]),
@@ -81,15 +83,18 @@ export async function startPersonalTaskUIFixture() {
     async updateIssue(_session, id, input) {
       const task = find(id);
       if (!task) throw new Error('fixture target missing');
+      updates++;
       Object.assign(task, input, { updatedAt: '2026-11-01T00:02:00.000Z' });
       return { id: task.linearId, identifier: task.sourceId, updatedAt: task.updatedAt };
     },
   };
-  return startBridge({ tasks: { personal } });
+  const bridge = await startBridge({ tasks: { personal } });
+  bridge.fixtureStats = () => ({ updates });
+  return bridge;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const fixture = await startPersonalTaskUIFixture();
+  const fixture = await startPersonalTaskUIFixture({ failMetadataOnce: process.env.LAA_FIXTURE_FAIL_METADATA_ONCE === '1' });
   const pairing = await fixture.pair();
   const credentialsFile = join(fixture.dir, 'simulator-pairing.json');
   writeFileSync(credentialsFile, JSON.stringify({ address: fixture.base, code: pairing.code }), { mode: 0o600 });

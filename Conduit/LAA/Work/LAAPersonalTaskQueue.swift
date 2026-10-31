@@ -105,7 +105,7 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
                    operation.resultId.flatMap(UUID.init(uuidString:)) == target {
                     _ = drafts.finishSubmission(item.id, restoring: false)
                 }
-                return
+                if operation.status != "preflight_retryable" || operation.kind != "create" { return }
             }
             guard LAAWorkDrafts.canRepeat(item), !Task.isCancelled, bridge.deviceID == device,
                   drafts.submissions.contains(where: { $0.id == item.id }) else { return }
@@ -174,7 +174,7 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
                     (operation.status == "resolved" && operation.resolution == "applied")) {
                     _ = drafts.finishSubmission(item.id, restoring: false)
                 }
-                return
+                if operation.status != "preflight_retryable" || operation.kind != request.kind { return }
             }
             guard LAAWorkDrafts.canRepeat(item), !Task.isCancelled, bridge.deviceID == device,
                   drafts.submissions.contains(where: { $0.id == item.id }) else { return }
@@ -208,7 +208,7 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
                     (operation.status == "succeeded" || (operation.status == "resolved" && operation.resolution == "applied")) {
                     _ = drafts.finishSubmission(item.id, restoring: false)
                 }
-                return
+                if operation.status != "preflight_retryable" || operation.kind != expectedKind(value.kind) { return }
             }
             guard LAAWorkDrafts.canRepeat(item), let parent = try await bridge.queueOperation(parentKey),
                   let target = value.parentTarget(parent, device: device, viewer: viewer), !Task.isCancelled else { return }

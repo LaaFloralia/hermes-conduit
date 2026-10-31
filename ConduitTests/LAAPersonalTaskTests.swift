@@ -7,12 +7,12 @@ import XCTest
 
 final class LAAPersonalTaskTests: XCTestCase {
     private func task(title: String = "Original", description: String = "古い本文", version: String? = "v1",
-                      owner: String = "person", labelsComplete: Bool = true, dueDate: String = "2026-11-01") throws -> LAAPersonalTask {
+                      owner: String = "person", labelsComplete: Bool = true, dueDate: String = "2026-11-01", estimate: Double = 0.5) throws -> LAAPersonalTask {
         let value: [String: Any] = ["id": "linear:T-1", "sourceId": "T-1", "linearId": "issue-id", "title": title,
             "description": description, "updatedAt": version as Any? ?? NSNull(), "team": ["id": "team"],
             "owner": ["id": owner, "name": "Owner", "kind": "person"],
             "status": ["id": "todo", "name": "Todo", "type": "unstarted"],
-            "priority": 2.0, "estimate": 0.5, "dueDate": dueDate,
+            "priority": 2.0, "estimate": estimate, "dueDate": dueDate,
             "labels": [["id": "label-a", "name": "A"]], "labelsComplete": labelsComplete]
         return try JSONDecoder().decode(LAAPersonalTask.self, from: JSONSerialization.data(withJSONObject: value))
     }
@@ -61,7 +61,9 @@ final class LAAPersonalTaskTests: XCTestCase {
         XCTAssertNil(body["dueDate"])
         XCTAssertEqual(body["description"] as? String, "私の本文")
         let lines = LAAPersonalTaskDiff.changes(current: "一行\n古い", mine: "一行\n新しい")
-        XCTAssertTrue(lines.contains("− 古い")); XCTAssertTrue(lines.contains("+ 新しい"))
+        XCTAssertEqual(lines, ["− 2: 古い", "+ 2: 新しい"])
+        let repeated = LAAPersonalTaskDiff.changes(current: "同じ\n古い\n同じ\n別", mine: "同じ\n新しい\n同じ\n修正")
+        XCTAssertEqual(repeated, ["− 2: 古い", "+ 2: 新しい", "− 4: 別", "+ 4: 修正"])
         let long = LAAPersonalTaskDiff.changes(current: Array(repeating: "a", count: 1_100).joined(separator: "\n"),
                                               mine: Array(repeating: "b", count: 1_100).joined(separator: "\n"))
         XCTAssertTrue(long.count <= 202)
@@ -85,12 +87,48 @@ final class LAAPersonalTaskTests: XCTestCase {
         XCTAssertThrowsError(try draft.requestBody())
     }
 
+    func testExistingEstimateRendersAsUsableIntegerAndPreservesFraction() throws {
+        var whole = LAAPersonalTaskDraft(viewerId: "viewer", task: try task(estimate: 3))
+        XCTAssertEqual(whole.estimate, "3")
+        whole.estimate += "5"
+        XCTAssertEqual(try payload(whole)["estimate"] as? Int, 35)
+        var fractional = LAAPersonalTaskDraft(viewerId: "viewer", task: try task(estimate: 0.5))
+        XCTAssertEqual(fractional.estimate, "0.5")
+        fractional.title = "Updated"
+        XCTAssertNil(try payload(fractional)["estimate"])
+        XCTAssertEqual(LAAPersonalTaskDraft(viewerId: "viewer", task: try task(estimate: 1e100)).estimate, "1e+100")
+    }
+
+    func testHorizontalSwipeRequiresClearIntent() {
+        XCTAssertNil(LAAPersonalTaskSwipe.action(width: -30, height: 15))
+        XCTAssertNil(LAAPersonalTaskSwipe.action(width: -20, height: 0))
+        XCTAssertEqual(LAAPersonalTaskSwipe.action(width: -40, height: 5), true)
+        XCTAssertEqual(LAAPersonalTaskSwipe.action(width: 40, height: 5), false)
+    }
+
     private func operation(status: String, kind: String = "create", result: String? = "7ae6f09d-3879-47ea-8e0d-72cd834ac5bc",
-                           resolution: String? = nil) throws -> LAAPersonalOperationResponse.Operation {
+                           resolution: String? = nil, rejection: String? = nil) throws -> LAAPersonalOperationResponse.Operation {
         let data: [String: Any] = ["operationId": "operation", "kind": kind,
             "targetId": "7ae6f09d-3879-47ea-8e0d-72cd834ac5bc", "status": status,
-            "resultId": result as Any? ?? NSNull(), "resolution": resolution as Any? ?? NSNull()]
+            "resultId": result as Any? ?? NSNull(), "resolution": resolution as Any? ?? NSNull(), "rejection": rejection as Any? ?? NSNull()]
         return try JSONDecoder().decode(LAAPersonalOperationResponse.Operation.self, from: JSONSerialization.data(withJSONObject: data))
+    }
+
+    func testReconciliationRestoresOnlyKnownUnappliedAndRejectsUnsafeRetryAssumptions() throws {
+        for status in ["outcome_unknown", "in_progress", "preflight_retryable"] {
+            XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: status), mayCompare: false), .wait)
+        }
+        XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "resolved", resolution: "applied"), mayCompare: false), .complete)
+        XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "resolved", resolution: "not_applied"), mayCompare: false), .restore)
+        XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "resolved"), mayCompare: false), .invalid)
+        XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "rejected", rejection: "linear_rejected"), mayCompare: true), .restore)
+        XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "rejected", rejection: "version_mismatch"), mayCompare: true), .compare)
+        for code in ["insufficient_scope", "task_not_found", "linear_rejected", "payload_invalid"] {
+            XCTAssertTrue(LAAPersonalReconciliation.isDefiniteRefusal(code: code))
+        }
+        XCTAssertTrue(!LAAPersonalReconciliation.isDefiniteRefusal(code: "idempotency_outcome_unknown"))
+        XCTAssertTrue(LAAPersonalReconciliation.isDefiniteRefusal(code: "linear_request_failed", status: 403))
+        XCTAssertTrue(!LAAPersonalReconciliation.isDefiniteRefusal(code: "linear_request_failed", status: 503))
     }
     private func verifiedTask(viewer: String = "viewer-a", issue: String = "7ae6f09d-3879-47ea-8e0d-72cd834ac5bc") throws -> LAAPersonalTaskResponse {
         let data: [String: Any] = ["viewerId": viewer, "task": ["id": "linear:T-1", "sourceId": "T-1",

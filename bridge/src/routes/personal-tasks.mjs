@@ -144,6 +144,12 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
   });
   async function requestSession() { return source.session(); }
   const statusFor = (entry) => ({ status: 200, data: { operation: entry } });
+  const preflightStatus = (error) => asBridgeError(error).retryable ? 'preflight_retryable' : 'rejected';
+  const isDefiniteRejection = (error) => error instanceof TaskSourceError && error.code === 'linear_rejected';
+  function resolved(previous) {
+    if (previous.status === 'resolved') throw new BridgeError(409, 'operation_resolved',
+      'the earlier operation was reconciled; use a new key for a new request', { details: { operation: previous } });
+  }
 
   async function mutateIssue({ req, device, rawBody, params }, creating) {
     const key = requireKey(req);
@@ -168,6 +174,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     }
     if (reserved.action === 'existing') {
       const previous = reserved.entry;
+      resolved(previous);
       if (previous.status === 'succeeded') return statusFor(previous);
       if (previous.status === 'rejected') {
         if (reserved.rejection === 'version_mismatch') {
@@ -185,19 +192,21 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     inFlight.add(operationId);
     let sent = false;
     try {
-      if (hasDescription) {
+      let updateTarget = target;
+      if (!creating) {
         const current = await source.getTaskInSession(personalSession, target);
-        if (!current) throw new BridgeError(404, 'task_not_found', 'the task was not found');
-        if (current.task.updatedAt !== ifMatch) {
+        if (!current?.task?.linearId) throw new BridgeError(404, 'task_not_found', 'the task was not found');
+        updateTarget = current.task.linearId;
+        const version = typeof ifMatch === 'string' && /^"[^"\r\n]+"$/.test(ifMatch) ? ifMatch.slice(1, -1) : ifMatch;
+        if (hasDescription && current.task.updatedAt !== version) {
           throw new BridgeError(412, 'version_mismatch', 'the description changed; compare it before saving', { details: { current: current.task } });
         }
       }
       sent = true;
       const result = creating
-        ? await source.createIssue(personalSession, { ...input, id: target })
-        : await source.updateIssue(personalSession, target, input);
-      const comparable = target.replace(/^linear:/, '');
-      if ((creating && result.id !== target) || (!creating && result.id !== comparable && result.identifier !== comparable)) {
+        ? await source.createIssue(personalSession, { ...input, id: reserved.entry.targetId })
+        : await source.updateIssue(personalSession, updateTarget, input);
+      if (result.id !== (creating ? reserved.entry.targetId : updateTarget)) {
         throw new Error('Linear returned a different target');
       }
       const finished = operations.finish({ deviceId: device.id, viewerId, key, status: 'succeeded', result });
@@ -206,7 +215,11 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       if (!sent) {
         const rejection = error instanceof BridgeError && ['version_mismatch', 'task_not_found'].includes(error.code)
           ? error.code : 'preflight_failed';
-        operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection });
+        operations.finish({ deviceId: device.id, viewerId, key, status: preflightStatus(error), rejection });
+        throw error;
+      }
+      if (isDefiniteRejection(error)) {
+        operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'linear_rejected' });
         throw error;
       }
       try { operations.finish({ deviceId: device.id, viewerId, key, status: 'outcome_unknown' }); } catch { /* fail closed */ }
@@ -238,6 +251,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     }
     if (reserved.action === 'existing') {
       const previous = reserved.entry;
+      resolved(previous);
       if (previous.status === 'succeeded') return statusFor(previous);
       if (previous.status === 'rejected') throw new BridgeError(409, 'task_operation_rejected', 'the previous request was refused before the Linear write');
       if (previous.status === 'in_progress') {
@@ -268,7 +282,11 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       return { status: 201, data: { operation: finished } };
     } catch (error) {
       if (!sent) {
-        operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'preflight_failed' });
+        operations.finish({ deviceId: device.id, viewerId, key, status: preflightStatus(error), rejection: 'preflight_failed' });
+        throw error;
+      }
+      if (isDefiniteRejection(error)) {
+        operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'linear_rejected' });
         throw error;
       }
       try { operations.finish({ deviceId: device.id, viewerId, key, status: 'outcome_unknown' }); } catch { /* fail closed */ }
@@ -330,6 +348,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       if (reserved.action === 'expired') throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
       if (reserved.action === 'existing') {
         const previous = reserved.entry;
+        resolved(previous);
         if (previous.status === 'succeeded') return statusFor(previous);
         if (previous.status === 'rejected') throw new BridgeError(409, 'task_operation_rejected', 'the previous upload was refused before association');
         if (previous.status === 'in_progress') throw new BridgeError(409, 'idempotency_key_in_flight', 'the same upload is still in progress', { details: { operation: previous } });
@@ -338,9 +357,11 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       const operationId = reserved.entry.operationId;
       inFlight.add(operationId);
       let sent = false;
+      let storageStarted = false;
       try {
         const issue = await source.getTaskInSession(personalSession, issueId);
         if (!issue?.task?.linearId) throw new BridgeError(404, 'task_not_found', 'the task was not found');
+        storageStarted = true;
         const assetUrl = await source.uploadFile(personalSession, { filename, contentType, bytes });
         sent = true;
         const result = await source.createTaskItem(personalSession, 'attachment', {
@@ -350,7 +371,15 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
         return { status: 201, data: { operation: finished } };
       } catch (error) {
         if (!sent) {
-          operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'preflight_failed' });
+          operations.finish({ deviceId: device.id, viewerId, key, status: storageStarted ? 'rejected' : preflightStatus(error), rejection: 'preflight_failed' });
+          if (storageStarted && asBridgeError(error).retryable) {
+            const refusal = asBridgeError(error);
+            throw new BridgeError(refusal.status, refusal.code, refusal.message);
+          }
+          throw error;
+        }
+        if (isDefiniteRejection(error)) {
+          operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'linear_rejected' });
           throw error;
         }
         try { operations.finish({ deviceId: device.id, viewerId, key, status: 'outcome_unknown' }); } catch { /* fail closed */ }
@@ -419,20 +448,32 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     write('POST', '/v1/personal-tasks', (ctx) => mutateIssue(ctx, true)),
     write('PATCH', '/v1/personal-tasks/{id}', (ctx) => mutateIssue(ctx, false), DETAIL),
     write('POST', '/v1/personal-tasks/{id}/{section}', createTaskItem, SECTION),
-    write('GET', '/v1/task-operations/by-key', async ({ device, req }) => {
+    read('/v1/task-operations/by-key', async ({ device, req }) => {
       const entry = operations.byKey({ ...await operationContext(device), key: requireKey(req) });
       if (!entry) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');
       return statusFor(entry);
     }),
-    write('GET', '/v1/task-operations', async ({ device }) => {
+    read('/v1/task-operations', async ({ device }) => {
       const context = await operationContext(device);
       return { status: 200, data: { items: operations.list(context), nextCursor: null, viewerId: context.viewerId } };
     }),
-    write('GET', '/v1/task-operations/{id}', async ({ device, params }) => {
+    read('/v1/task-operations/{id}', async ({ device, params }) => {
       const entry = operations.get({ ...await operationContext(device), operationId: params[0] });
       if (!entry) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');
       return statusFor(entry);
     }, OPERATION),
+    // This never writes to Linear. It can only close this device's definitely
+    // unsent key, or report the existing state without changing it.
+    { method: 'POST', path: '/v1/task-operations/abandon-unsent', auth: true, scope: 'tasks:read', handler: guarded(async ({ device, req, rawBody }) => {
+      const key = requireKey(req);
+      const body = parseObjectBody(rawBody);
+      if (Object.keys(body).join(',') !== 'expectedViewerId' || typeof body.expectedViewerId !== 'string' || !ID.test(body.expectedViewerId)) {
+        throw badRequest('expected_viewer_required', 'the original Linear viewer is required');
+      }
+      const context = await operationContext(device);
+      if (context.viewerId !== body.expectedViewerId) throw new BridgeError(409, 'linear_viewer_changed', 'the request belongs to a different Linear viewer');
+      return statusFor(operations.abandonUnsent({ ...context, key }));
+    }) },
     write('POST', '/v1/task-operations/{id}/resolve', async ({ device, params, rawBody, req }) => {
       const key = requireKey(req);
       const input = parseObjectBody(rawBody);

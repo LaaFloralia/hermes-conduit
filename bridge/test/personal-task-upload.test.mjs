@@ -20,6 +20,7 @@ function fixture() {
     fetchImpl: async (url, options) => {
       calls.push({ url: String(url), options });
       if (String(url).startsWith('https://storage.googleapis.com/')) {
+        if (config.failPut === 'lost') throw new Error('private connection loss');
         return new Response(null, { status: config.failPut ? 500 : 200 });
       }
       const { query, variables } = JSON.parse(options.body);
@@ -103,6 +104,10 @@ test('incomplete and oversized streams do not reserve or attach a file; failed P
   config.failPut = true;
   assert.equal((await upload(api, token, 'failed-put')).status, 503);
   assert.equal((await upload(api, token, 'failed-put')).body.error.code, 'task_operation_rejected');
+  config.failPut = 'lost';
+  const lost = await upload(api, token, 'lost-put');
+  assert.equal(lost.status, 503); assert.equal(lost.body.error.retryable, false);
+  assert.equal((await upload(api, token, 'lost-put')).body.error.code, 'task_operation_rejected');
   assert.equal(count(calls, 'LAAPersonalAttachmentCreate'), 0);
 });
 

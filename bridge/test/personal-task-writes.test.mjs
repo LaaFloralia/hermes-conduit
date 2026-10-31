@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { startBridge } from './helpers.mjs';
 import { createPersonalLinearSource } from '../src/tasks/personal.mjs';
 import { createTaskOperationLedger } from '../src/tasks/operation-ledger.mjs';
+import { TaskSourceError } from '../src/tasks/errors.mjs';
 
 const VIEWER = { id: 'fixture-owner', name: 'Owner' };
 function sourceFixture() {
@@ -75,7 +77,7 @@ test('attribute updates are last-writer-wins and do not launch any worker', asyn
   const { personal, api, token } = await setup(t);
   const saved = await update(api, token, 'attr', { stateId: 'state', assigneeId: 'someone', priority: 2 }, 'stale');
   assert.equal(saved.status, 200);
-  assert.equal(personal.calls.filter((call) => typeof call === 'string' && call.startsWith('read:')).length, 0);
+  assert.equal(personal.calls.filter((call) => typeof call === 'string' && call.startsWith('read:')).length, 1);
   assert.deepEqual(mutations(personal)[0].update.input, { stateId: 'state', assigneeId: 'someone', priority: 2 });
   assert.equal(mutations(personal).length, 1);
   const changedVersion = await update(api, token, 'attr', { stateId: 'state', assigneeId: 'someone', priority: 2 }, 'other');
@@ -118,6 +120,9 @@ test('parallel identical submissions cannot both reach Linear', async (t) => {
   await enteredPromise;
   const second = await create(api, token, 'parallel');
   assert.equal(second.body.error.code, 'idempotency_key_in_flight');
+  const abandon = await api.request('/v1/task-operations/abandon-unsent', { token, method: 'POST', key: 'parallel',
+    body: { expectedViewerId: VIEWER.id } });
+  assert.equal(abandon.body.data.operation.status, 'in_progress');
   complete();
   assert.equal((await first).status, 201);
   assert.equal(mutations(personal).length, 1);
@@ -146,7 +151,7 @@ test('unknown outcomes are retained beyond seven days and require explicit recon
   assert.equal(repeated.status, 200);
   const changed = await api.request(path, { token, key: 'resolve-1', method: 'POST', body: { confirmed: true, resolution: 'not_applied' } });
   assert.equal(changed.body.error.code, 'idempotency_key_conflict');
-  assert.equal((await create(api, token, 'lost')).body.error.code, 'idempotency_outcome_unknown');
+  assert.equal((await create(api, token, 'lost')).body.error.code, 'operation_resolved');
   assert.equal(mutations(personal).length, 1);
 });
 
@@ -174,7 +179,7 @@ test('a missing ledger fails closed before another Linear write', async (t) => {
 test('operation records are bound to both device and viewer', async (t) => {
   const { personal, api, token } = await setup(t);
   assert.equal((await create(api, token, 'bound')).status, 201);
-  const anotherDevice = await api.token(['tasks:write']);
+  const anotherDevice = await api.token(['tasks:read', 'tasks:write']);
   assert.equal((await api.request('/v1/task-operations/by-key', { token: anotherDevice, key: 'bound' })).status, 404);
   personal.viewer = { id: 'different-owner', name: 'Different' };
   assert.equal((await api.request('/v1/task-operations/by-key', { token, key: 'bound' })).status, 404);
@@ -246,4 +251,265 @@ test('a live writer cannot be resolved as crashed solely because time passed', a
   assert.equal(ledger.get(identity).status, 'outcome_unknown');
   assert.equal(ledger.resolve({ ...identity, resolution: 'not_applied', key: 'confirm', fingerprint: 'fixture' }).status, 'resolved');
   assert.equal(ledger.reserve({ ...args, key: 'confirm' }).action, 'conflict');
+});
+
+test('definite Linear input rejections are recorded without leaking input or creating unknowns', async (t) => {
+  const responses = [
+    { data: { issueCreate: null }, errors: [{ message: 'private upstream secret', path: ['issueCreate'], extensions: { userError: true, code: 'INPUT_ERROR' } }] },
+    { data: null, errors: [{ message: 'private upstream secret', extensions: { userError: true, code: 'INPUT_ERROR' } }] },
+    { data: { issueCreate: { success: false, issue: null } } },
+    { httpStatus: 400, data: null, errors: [{ path: ['issueCreate'], extensions: { userError: true, code: 'INPUT_ERROR' } }] },
+  ];
+  let writes = 0;
+  const personal = createPersonalLinearSource({ expectedViewerId: VIEWER.id, readToken: async () => 'lin_api_fixture',
+    fetchImpl: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      if (request.query.includes('LAAPersonalViewer')) return new Response(JSON.stringify({ data: { viewer: VIEWER } }));
+      const value = responses[writes++];
+      return new Response(JSON.stringify(value), { status: value.httpStatus ?? 200 });
+    } });
+  const { api, token } = await setup(t, { personal });
+  for (let i = 0; i < responses.length; i++) {
+    const key = `definite-${i}`;
+    const refused = await create(api, token, key);
+    assert.equal(refused.status, 400); assert.equal(refused.body.error.code, 'linear_rejected');
+    assert.doesNotMatch(JSON.stringify(refused.body), /private upstream secret|private fixture|lin_api_/);
+    const op = (await api.request('/v1/task-operations/by-key', { token, key })).body.data.operation;
+    assert.equal(op.status, 'rejected'); assert.equal(op.rejection, 'linear_rejected');
+    assert.equal((await create(api, token, key)).body.error.code, 'task_operation_rejected');
+  }
+  assert.equal(writes, responses.length);
+  assert.deepEqual((await api.request('/v1/task-operations', { token })).body.data.items, []);
+  assert.doesNotMatch(readFileSync(join(api.stateDir, 'task-operations.json'), 'utf8'), /private upstream secret|private fixture|lin_api_/);
+});
+
+test('partial or nested mutation errors and transport failure remain unknown and never replay', async (t) => {
+  const responses = [
+    { data: { issueCreate: { success: true, issue: { id: 'x', identifier: 'BUS-1' } } }, errors: [{ path: ['issueCreate'], extensions: { userError: true, code: 'INPUT_ERROR' } }] },
+    { data: { issueCreate: null }, errors: [{ path: ['issueCreate', 'issue', 'id'], extensions: { userError: true, code: 'INPUT_ERROR' } }] },
+    { data: { issueCreate: { success: false, issue: { id: 'x' } } } },
+    'network',
+    'http500',
+    'http400',
+  ];
+  let writes = 0;
+  const personal = createPersonalLinearSource({ expectedViewerId: VIEWER.id, readToken: async () => 'lin_api_fixture',
+    fetchImpl: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      if (request.query.includes('LAAPersonalViewer')) return new Response(JSON.stringify({ data: { viewer: VIEWER } }));
+      const result = responses[writes++];
+      if (result === 'network') throw new Error('private network failure');
+      if (result === 'http500') return new Response('private server failure', { status: 500 });
+      if (result === 'http400') return new Response('opaque upstream refusal', { status: 400 });
+      return new Response(JSON.stringify(result));
+    } });
+  const { api, token } = await setup(t, { personal });
+  for (let i = 0; i < responses.length; i++) {
+    const key = `uncertain-${i}`;
+    assert.equal((await create(api, token, key)).body.error.code, 'idempotency_outcome_unknown');
+    assert.equal((await create(api, token, key)).body.error.code, 'idempotency_outcome_unknown');
+  }
+  assert.equal(writes, responses.length);
+});
+
+test('team move resolves immutable issue identity before updating and accepts the changed identifier', async (t) => {
+  const personal = sourceFixture();
+  personal.updateIssue = async (_session, id, input) => {
+    personal.calls.push({ update: { id, input } });
+    return { id: 'issue-uuid', identifier: 'ENG-42' };
+  };
+  const { api, token } = await setup(t, { personal });
+  const response = await update(api, token, 'move-team', { teamId: 'ENG' });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.data.operation.identifier, 'ENG-42');
+  assert.equal(mutations(personal)[0].update.id, 'issue-uuid');
+  assert.equal((await update(api, token, 'move-team', { teamId: 'ENG' })).status, 200);
+  assert.equal(mutations(personal).length, 1);
+  personal.updateIssue = async () => ({ id: 'different-uuid', identifier: 'BUS-1' });
+  assert.equal((await update(api, token, 'wrong-target', { priority: 1 })).body.error.code, 'idempotency_outcome_unknown');
+});
+
+test('only an issue-field INPUT_ERROR without an issue maps to not found', async (t) => {
+  let mode = 'missing'; let writes = 0;
+  const personal = createPersonalLinearSource({ expectedViewerId: VIEWER.id, readToken: async () => 'lin_api_fixture',
+    fetchImpl: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      if (request.query.includes('LAAPersonalViewer')) return new Response(JSON.stringify({ data: { viewer: VIEWER } }));
+      if (request.query.includes('LAAPersonalIssue(')) {
+        const path = mode === 'missing' ? ['issue'] : ['differentField'];
+        return new Response(JSON.stringify({ data: { issue: null }, errors: [{ path, extensions: { userError: true, code: 'INPUT_ERROR' } }] }));
+      }
+      writes++; throw new Error('must not write');
+    } });
+  const { api, token } = await setup(t, { personal });
+  const detail = await api.request('/v1/personal-tasks/BUS-999', { token });
+  assert.equal(detail.status, 404); assert.equal(detail.body.error.code, 'task_not_found');
+  assert.equal((await update(api, token, 'deleted-edit', { description: 'x' }, 'v1')).status, 404);
+  assert.equal(writes, 0);
+  mode = 'other';
+  assert.equal((await api.request('/v1/personal-tasks/BUS-999', { token })).status, 503);
+});
+
+test('preflight timeout can safely retry the same immutable request after restart', async (t) => {
+  const personal = sourceFixture(); let reads = 0;
+  const read = personal.getTaskInSession;
+  personal.getTaskInSession = async function (...args) {
+    if (++reads === 1) throw new TaskSourceError('linear_unavailable', 'fixture unavailable', { status: 503, retryable: true });
+    return read.apply(this, args);
+  };
+  const { api, token } = await setup(t, { personal });
+  const version = personal.current.updatedAt;
+  const first = await update(api, token, 'retry-preflight', { description: 'local' }, version);
+  assert.equal(first.status, 503); assert.equal(first.body.error.retryable, true);
+  const entry = (await api.request('/v1/task-operations/by-key', { token, key: 'retry-preflight' })).body.data.operation;
+  assert.equal(entry.status, 'preflight_retryable');
+  assert.equal((await update(api, token, 'retry-preflight', { description: 'different' }, version)).body.error.code, 'idempotency_key_conflict');
+  await api.restart();
+  const retried = await update(api, token, 'retry-preflight', { description: 'local' }, version);
+  assert.equal(retried.status, 200); assert.equal(retried.body.data.operation.operationId, entry.operationId);
+  assert.equal((await update(api, token, 'retry-preflight', { description: 'local' }, version)).status, 200);
+  assert.equal(mutations(personal).length, 1);
+});
+
+test('not-applied reconciliation cannot be replayed using the old key', async (t) => {
+  const personal = sourceFixture();
+  personal.createIssue = async (_session, input) => { personal.calls.push({ create: input }); throw new Error('lost'); };
+  const { api, token } = await setup(t, { personal });
+  await create(api, token, 'resolved-not-applied');
+  const operationId = (await api.request('/v1/task-operations/by-key', { token, key: 'resolved-not-applied' })).body.data.operation.operationId;
+  await api.request(`/v1/task-operations/${operationId}/resolve`, { token, method: 'POST', key: 'confirm-not-applied',
+    body: { confirmed: true, resolution: 'not_applied' } });
+  const replay = await create(api, token, 'resolved-not-applied');
+  assert.equal(replay.body.error.code, 'operation_resolved');
+  assert.equal(replay.body.error.details.operation.resolution, 'not_applied');
+  assert.equal(mutations(personal).length, 1);
+});
+
+test('operation lookups use read scope and remain device bound; resolve requires write', async (t) => {
+  const { api, token } = await setup(t);
+  await create(api, token, 'read-scope');
+  api.store.mutate((state) => { Object.values(state.devices)[0].scopes = ['tasks:read']; });
+  const lookup = await api.request('/v1/task-operations/by-key', { token, key: 'read-scope' });
+  assert.equal(lookup.status, 200);
+  assert.equal((await api.request('/v1/task-operations', { token })).status, 200);
+  const id = lookup.body.data.operation.operationId;
+  assert.equal((await api.request(`/v1/task-operations/${id}`, { token })).status, 200);
+  assert.equal((await api.request(`/v1/task-operations/${id}/resolve`, { token, method: 'POST', key: 'read-only-resolve',
+    body: { confirmed: true, resolution: 'applied' } })).status, 403);
+});
+
+test('quoted strong If-Match versions compare correctly while weak versions do not', async (t) => {
+  const { personal, api, token } = await setup(t);
+  assert.equal((await update(api, token, 'quoted', { description: 'mine' }, `"${personal.current.updatedAt}"`)).status, 200);
+  assert.equal((await update(api, token, 'weak', { description: 'mine' }, `W/"${personal.current.updatedAt}"`)).status, 412);
+  assert.equal(mutations(personal).length, 1);
+});
+
+test('an expired preflight is atomically closed as rejected and cannot race a retry', async (t) => {
+  let clock = Date.parse('2026-11-01T00:00:00Z');
+  const personal = sourceFixture();
+  personal.getTaskInSession = async () => { throw new TaskSourceError('linear_unavailable', 'fixture', { retryable: true }); };
+  const { api, token } = await setup(t, { personal, now: () => clock });
+  assert.equal((await update(api, token, 'expired-preflight', { description: 'x' }, 'v1')).status, 503);
+  clock += 8 * 24 * 60 * 60 * 1000;
+  const entry = (await api.request('/v1/task-operations/by-key', { token, key: 'expired-preflight' })).body.data.operation;
+  assert.equal(entry.status, 'rejected'); assert.equal(entry.rejection, 'preflight_retry_expired');
+  assert.equal((await update(api, token, 'expired-preflight', { description: 'x' }, 'v1')).body.error.code, 'task_operation_rejected');
+  assert.equal(mutations(personal).length, 0);
+});
+
+test('concurrent retries of a preflight failure still perform one write', async (t) => {
+  const personal = sourceFixture(); let reads = 0, entered, resume;
+  const blocked = new Promise((resolve) => { resume = resolve; });
+  const enteredPromise = new Promise((resolve) => { entered = resolve; });
+  const normalRead = personal.getTaskInSession;
+  personal.getTaskInSession = async function (...args) {
+    if (++reads === 1) throw new TaskSourceError('linear_unavailable', 'fixture', { retryable: true });
+    if (reads === 2) { entered(); await blocked; }
+    return normalRead.apply(this, args);
+  };
+  const { api, token } = await setup(t, { personal });
+  const version = personal.current.updatedAt;
+  assert.equal((await update(api, token, 'parallel-preflight', { description: 'x' }, version)).status, 503);
+  const first = update(api, token, 'parallel-preflight', { description: 'x' }, version);
+  await enteredPromise;
+  assert.equal((await update(api, token, 'parallel-preflight', { description: 'x' }, version)).body.error.code, 'idempotency_key_in_flight');
+  resume(); assert.equal((await first).status, 200); assert.equal(mutations(personal).length, 1);
+});
+
+test('abandoning an unsent key safely defeats a delayed original request', async (t) => {
+  const personal = sourceFixture(); let calls = 0, entered, resume;
+  const waiting = new Promise((resolve) => { resume = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  personal.session = async function () {
+    if (++calls === 1) { entered(); await waiting; }
+    return { viewer: this.viewer };
+  };
+  const { api, token } = await setup(t, { personal });
+  const original = create(api, token, 'late-request');
+  await started;
+  const abandon = () => api.request('/v1/task-operations/abandon-unsent', { token, method: 'POST', key: 'late-request',
+    body: { expectedViewerId: VIEWER.id } });
+  const result = await abandon();
+  assert.equal(result.body.data.operation.status, 'rejected');
+  assert.equal(result.body.data.operation.rejection, 'abandoned_before_reservation');
+  resume();
+  assert.equal((await original).body.error.code, 'idempotency_key_conflict');
+  assert.equal((await abandon()).body.data.operation.operationId, result.body.data.operation.operationId);
+  assert.equal(mutations(personal).length, 0);
+});
+
+test('abandon closes only a definitely unsent preflight and never an unknown write', async (t) => {
+  const personal = sourceFixture();
+  personal.getTaskInSession = async () => { throw new TaskSourceError('linear_unavailable', 'fixture', { retryable: true }); };
+  personal.createIssue = async (_session, input) => { personal.calls.push({ create: input }); throw new Error('lost'); };
+  const { api, token } = await setup(t, { personal });
+  await update(api, token, 'preflight-cancel', { description: 'x' }, 'v1');
+  await create(api, token, 'unknown-cancel');
+  // Read-only scope can close its own unsent record but cannot write Linear.
+  api.store.mutate((state) => { Object.values(state.devices)[0].scopes = ['tasks:read']; });
+  const abandon = (key, expectedViewerId = VIEWER.id) => api.request('/v1/task-operations/abandon-unsent', {
+    token, method: 'POST', key, body: { expectedViewerId } });
+  assert.equal((await abandon('preflight-cancel')).body.data.operation.rejection, 'preflight_abandoned');
+  assert.equal((await abandon('unknown-cancel')).body.data.operation.status, 'outcome_unknown');
+  assert.equal((await abandon('wrong-viewer', 'other-owner')).body.error.code, 'linear_viewer_changed');
+  assert.equal((await create(api, token, 'still-read-only')).status, 403);
+  assert.equal(mutations(personal).length, 1);
+});
+
+test('ledger capacity refuses a new write while retaining existing records', async (t) => {
+  const { api } = await setup(t);
+  const ledger = createTaskOperationLedger({ store: api.store });
+  const args = { deviceId: 'fixture-device', viewerId: VIEWER.id, key: 'existing', method: 'POST',
+    path: '/fixture', rawBody: Buffer.from('{}'), kind: 'create', targetId: 'target' };
+  ledger.reserve(args);
+  const doc = JSON.parse(readFileSync(ledger.file, 'utf8'));
+  const template = Object.values(doc.entries)[0];
+  for (let i = 1; i < 20_000; i++) doc.entries[`synthetic-${i}`] = { ...template, operationId: `fixture-${i}` };
+  writeFileSync(ledger.file, JSON.stringify(doc));
+  assert.throws(() => ledger.reserve({ ...args, key: 'over-capacity' }), { code: 'task_ledger_full' });
+  assert.equal(ledger.byKey({ deviceId: args.deviceId, viewerId: args.viewerId, key: args.key }).status, 'in_progress');
+});
+
+test('another paired device cannot inspect or resolve the original device’s unknown operation', async (t) => {
+  const personal = sourceFixture();
+  personal.createIssue = async () => { throw new Error('lost'); };
+  const { api, token } = await setup(t, { personal });
+  await create(api, token, 'old-device-key');
+  const operationId = (await api.request('/v1/task-operations/by-key', { token, key: 'old-device-key' })).body.data.operation.operationId;
+  const newDevice = await api.token(['tasks:read', 'tasks:write']);
+  assert.equal((await api.request('/v1/task-operations/by-key', { token: newDevice, key: 'old-device-key' })).status, 404);
+  const attempt = await api.request(`/v1/task-operations/${operationId}/resolve`, { token: newDevice, method: 'POST', key: 'new-confirm',
+    body: { confirmed: true, resolution: 'not_applied' } });
+  assert.equal(attempt.status, 404);
+  assert.equal((await api.request('/v1/task-operations/by-key', { token, key: 'old-device-key' })).body.data.operation.status, 'outcome_unknown');
+});
+
+test('ledger reserve and finish each replace and synchronously flush the whole JSON record', () => {
+  const child = spawnSync(process.execPath, [fileURLToPath(new URL('./fixtures/ledger-io-sample.mjs', import.meta.url))], { encoding: 'utf8' });
+  assert.equal(child.status, 0, child.stderr);
+  const counts = JSON.parse(child.stdout);
+  assert.ok(counts.reads >= 4, `observed ${counts.reads} ledger reads`);
+  assert.equal(counts.replacements, 2);
+  assert.ok(counts.fsyncs >= 4, `observed ${counts.fsyncs} synchronous flushes`);
 });

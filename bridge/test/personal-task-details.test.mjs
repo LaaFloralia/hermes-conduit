@@ -149,7 +149,27 @@ test('unknown comment result survives restart and seven days, without a second m
   const id = pending.body.data.operation.operationId;
   assert.equal((await api.request(`/v1/task-operations/${id}/resolve`, { token, key: 'resolve', method: 'POST',
     body: { confirmed: true, resolution: 'not_applied' } })).body.data.operation.status, 'resolved');
+  assert.equal((await post(api, token, 'comments', 'uncertain', input)).body.error.code, 'operation_resolved');
   assert.equal(personal.calls.length, 1);
+});
+
+test('a definite comment rejection is not left as an unknown mutation', async (t) => {
+  let writes = 0;
+  const personal = createPersonalLinearSource({ expectedViewerId: owner.id, readToken: async () => 'lin_api_fixture',
+    fetchImpl: async (_url, options) => {
+      const { query } = JSON.parse(options.body);
+      if (query.includes('LAAPersonalViewer')) return response({ viewer: owner });
+      if (query.includes('LAAPersonalIssue(')) return response({ issue });
+      if (query.includes('LAAPersonalCommentCreate')) { writes++; return response({ commentCreate: { success: false, comment: null } }); }
+      throw new Error('unexpected fixture query');
+    } });
+  const { api, token } = await setup(t, { personal });
+  const input = { body: 'private comment' };
+  assert.equal((await post(api, token, 'comments', 'comment-rejected', input)).body.error.code, 'linear_rejected');
+  const record = (await api.request('/v1/task-operations/by-key', { token, key: 'comment-rejected' })).body.data.operation;
+  assert.equal(record.status, 'rejected'); assert.equal(record.rejection, 'linear_rejected');
+  assert.equal((await post(api, token, 'comments', 'comment-rejected', input)).body.error.code, 'task_operation_rejected');
+  assert.equal(writes, 1);
 });
 
 test('concurrent identical comments use one downstream mutation and cannot be resolved while active', async (t) => {

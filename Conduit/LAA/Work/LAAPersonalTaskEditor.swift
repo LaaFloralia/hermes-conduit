@@ -28,6 +28,7 @@ struct LAAPersonalTaskEditor: View {
     @State private var confirmedRejection = false
     @State private var operation: LAAPersonalOperationResponse.Operation?
     @State private var showFollowup = false
+    @State private var conflictLines: [String] = []
 
     init(task: LAAPersonalTask?, viewerId: String, drafts: ComposerDraftStore, parent: LAAPersonalTask? = nil) {
         initialTask = task; parentTask = parent; self.viewerId = viewerId; self.drafts = drafts
@@ -54,7 +55,7 @@ struct LAAPersonalTaskEditor: View {
                 if let remote, let pending, confirmedRejection {
                     Section("Compare Description") {
                         Text(verbatim: "− 現在の版 / + あなたの変更").foregroundStyle(LAAColor.secondaryText)
-                        ForEach(Array(LAAPersonalTaskDiff.changes(current: remote.description ?? "", mine: draft.description).enumerated()), id: \.offset) { _, line in
+                        ForEach(Array(conflictLines.enumerated()), id: \.offset) { _, line in
                             Text(verbatim: line).textSelection(.enabled)
                         }
                         Text(verbatim: "現在の本文").fontWeight(.semibold)
@@ -175,7 +176,7 @@ struct LAAPersonalTaskEditor: View {
                     .laaTextStyle(.secondary)
             }
             if !confirmedRejection && LAAWorkDrafts.canRepeat(item) {
-                Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(item, firstAttempt: false) } }
+                Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(item) } }
             }
             if !LAAWorkDrafts.canRepeat(item) {
                 Text(verbatim: "再送期限を過ぎています。保存先を確認して照合してください。")
@@ -184,7 +185,7 @@ struct LAAPersonalTaskEditor: View {
     }
 
     @MainActor private func prepare() async {
-        ready = false; identityOK = false
+        ready = false; identityOK = false; error = nil
         do {
             if let initialTask, initialTask.description == nil {
                 let detail: LAAPersonalTaskResponse = try await bridge.read(taskPath(initialTask.id))
@@ -280,7 +281,7 @@ struct LAAPersonalTaskEditor: View {
                 body: body, idempotency: LAABridgeIdempotencyKey(), expectedVersion: draft.base?.updatedAt) else {
                 error = "保存要求を端末に記録できませんでした。"; return
             }
-            if sendImmediately { Task { await perform(item, firstAttempt: true) } }
+            if sendImmediately { Task { await perform(item) } }
             else { drafts.markSubmissionUnknown(item.id); error = "要求を端末に保存しました。接続後に送信を試みます。" }
         } catch LAAPersonalTaskDraft.Validation.missingTitle { error = "タイトルを入力してください。" }
         catch LAAPersonalTaskDraft.Validation.missingTeam { error = "チームを選んでください。" }
@@ -291,7 +292,7 @@ struct LAAPersonalTaskEditor: View {
         catch { self.error = "保存要求を作れませんでした。" }
     }
 
-    @MainActor private func perform(_ item: ComposerDraftStore.Submission, firstAttempt: Bool) async {
+    @MainActor private func perform(_ item: ComposerDraftStore.Submission) async {
         guard LAAWorkDrafts.canRepeat(item), let (body, requestKey) = LAAWorkDrafts.request(item) else {
             error = LAAWorkDrafts.expiredMessage; return
         }
@@ -305,42 +306,45 @@ struct LAAPersonalTaskEditor: View {
             LAAWorkConflictJournal.clear(item.id); dismiss()
         } catch let failure as LAABridgeHTTPError {
             drafts.markSubmissionUnknown(item.id)
+            let confirmedRefusal = LAAPersonalReconciliation.isDefiniteRefusal(code: failure.code, status: failure.status)
             if failure.status == 412 {
                 if LAAWorkConflictJournal.mark(item.id) { confirmedRejection = true; await loadConflict() }
                 else { error = "競合の記録を保存できません。変更は保留しています。" }
-            } else if firstAttempt && ["payload_invalid", "expected_viewer_required", "if_match_required", "linear_viewer_changed"].contains(failure.code ?? "") {
-                if drafts.finishSubmission(item.id, restoring: true) { restoreDraft() }
-                if failure.code == "linear_viewer_changed" { identityOK = false; error = "Linearの本人が変わりました。元の本人を確認してください。" }
-                else { error = LAAWorkHTTP.message(failure) }
+            } else if confirmedRefusal {
+                // Another foreground sender may have raced even the first
+                // attempt. Only the ledger can close a definitely unsent key.
+                if failure.code == "linear_viewer_changed" { identityOK = false }
+                await check(item, abandonIfUnsent: true)
+            } else if failure.code == "task_operation_rejected" || failure.code == "operation_resolved" {
+                await check(item)
             } else { error = LAAWorkHTTP.message(failure) }
         } catch let failure as LAABridgeError {
             drafts.markSubmissionUnknown(item.id); error = failure.japaneseText
         } catch { drafts.markSubmissionUnknown(item.id); self.error = "保存結果を確認できませんでした。" }
     }
 
-    @MainActor private func check(_ item: ComposerDraftStore.Submission) async {
+    @MainActor private func check(_ item: ComposerDraftStore.Submission, abandonIfUnsent: Bool = false) async {
         guard let (_, requestKey) = LAAWorkDrafts.request(item) else { error = "保存要求を読み取れません。"; return }
         busy = true; defer { busy = false }
         do {
+            let body = abandonIfUnsent ? try JSONSerialization.data(withJSONObject: ["expectedViewerId": viewerId], options: [.sortedKeys]) : nil
             let result: LAABridgeResponse<LAAPersonalOperationResponse> = try await bridge.request(
-                method: "GET", path: "/v1/task-operations/by-key", idempotencyKey: requestKey)
+                method: abandonIfUnsent ? "POST" : "GET",
+                path: abandonIfUnsent ? "/v1/task-operations/abandon-unsent" : "/v1/task-operations/by-key",
+                jsonBody: body, idempotencyKey: requestKey)
             operation = result.data.operation
-            switch result.data.operation.status {
-            case "succeeded":
+            switch LAAPersonalReconciliation.disposition(result.data.operation, mayCompare: initialTask != nil && draft.descriptionChanged) {
+            case .complete:
                 if drafts.finishSubmission(item.id, restoring: false) { dismiss() }
                 else { error = "保存結果を端末に記録できません。" }
-            case "resolved":
-                guard ["applied", "not_applied"].contains(result.data.operation.resolution ?? "") else { throw LAABridgeError.invalidResponse }
-                let restore = result.data.operation.resolution == "not_applied"
-                if drafts.finishSubmission(item.id, restoring: restore) { if restore { restoreDraft() } else { dismiss() } }
-                else { error = "照合結果を端末に記録できません。" }
-            case "rejected":
-                if initialTask != nil && draft.descriptionChanged &&
-                    (result.data.operation.rejection == nil || result.data.operation.rejection == "version_mismatch") {
-                    if LAAWorkConflictJournal.mark(item.id) { confirmedRejection = true; await loadConflict() }
-                    else { error = "確認結果を端末に保存できません。" }
-                } else if drafts.finishSubmission(item.id, restoring: true) { restoreDraft(); error = "保存前に拒否されました。下書きを確認してください。" }
-            default: error = "結果を確認できません。保存先を調べてから照合してください。"
+            case .restore:
+                if drafts.finishSubmission(item.id, restoring: true) { restoreDraft(); error = "未適用のため、下書きに戻しました。" }
+                else { error = "下書きを端末に保存できません。" }
+            case .compare:
+                if LAAWorkConflictJournal.mark(item.id) { confirmedRejection = true; await loadConflict() }
+                else { error = "確認結果を端末に保存できません。" }
+            case .invalid: throw LAABridgeError.invalidResponse
+            case .wait: error = "結果を確認できません。保存先を調べてから照合してください。"
             }
         } catch let failure as LAABridgeHTTPError {
             error = failure.code == "operation_not_found" ? "要求記録がまだありません。同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)
@@ -352,6 +356,7 @@ struct LAAPersonalTaskEditor: View {
         do {
             let current: LAAPersonalTaskResponse = try await bridge.read(taskPath(id))
             guard current.viewerId == viewerId else { throw LAABridgeError.conflict }
+            conflictLines = LAAPersonalTaskDiff.changes(current: current.task.description ?? "", mine: draft.description)
             remote = current.task; error = nil
         } catch { self.error = "現在の本文を読み取れませんでした。" }
     }

@@ -150,22 +150,6 @@ struct LAAWorkArtifact: Decodable, Identifiable, Hashable {
 }
 struct LAAWorkArtifacts: Decodable { let items: [LAAWorkArtifact] }
 
-struct LAAWorkTask: Decodable, Identifiable, Hashable {
-    struct Person: Decodable, Hashable { let id: String?; let name: String?; let kind: String? }
-    struct State: Decodable, Hashable { let name: String?; let type: String?; let category: String? }
-    struct Project: Decodable, Hashable { let id: String?; let name: String? }
-    let id: String
-    let source: String
-    let sourceId: String
-    let title: String
-    let owner: Person?
-    let executor: Person?
-    let status: State?
-    let project: Project?
-    let url: String?
-    let updatedAt: String?
-    let description: String?
-}
 enum LAAWorkPresentation {
     static func japanese(_ text: String) -> String { text }
 

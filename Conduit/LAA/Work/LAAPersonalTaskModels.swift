@@ -1,8 +1,7 @@
 #if LAA_BUILD
 import Foundation
 
-// These models intentionally describe the personal endpoint, leaving the older
-// agent task model and its wire format unchanged.
+// These models describe the personal Linear endpoint.
 struct LAAPersonalTask: Codable, Identifiable, Hashable {
     struct Person: Codable, Hashable { let id: String?; let name: String?; let kind: String? }
     struct State: Codable, Hashable { let id: String?; let name: String?; let type: String? }
@@ -198,7 +197,9 @@ struct LAAPersonalTaskDraft: Codable, Equatable {
         milestoneId = task?.milestone?.id ?? ""
         cycleId = task?.cycle?.id ?? ""
         parentId = task?.parent?.id
-        estimate = task?.estimate.map { String($0) } ?? ""
+        estimate = task?.estimate.map { value in
+            value.isFinite && value.rounded() == value && (0...10000).contains(value) ? String(Int(value)) : String(value)
+        } ?? ""
         dueDate = task?.dueDate ?? ""
         labelIds = task?.labels?.map(\.id).sorted() ?? []
     }
@@ -272,7 +273,7 @@ enum LAAPersonalTaskDiff {
         let after = mine.components(separatedBy: "\n")
         // Keep a long, completely changed description from blocking the UI
         // during a potentially quadratic edit-distance calculation.
-        if before.count > 1_000 || after.count > 1_000 {
+        if before.count > 200 || after.count > 200 {
             var result = ["差分が長いため先頭の変更を行番号順に表示します。全文も下に表示します。"]
             for index in 0..<max(before.count, after.count) {
                 let left = index < before.count ? before[index] : nil
@@ -284,12 +285,51 @@ enum LAAPersonalTaskDiff {
             }
             return result
         }
-        return after.difference(from: before).map { change in
+        let changes = after.difference(from: before)
+        var removed = Set<Int>(), inserted = Set<Int>()
+        for change in changes {
             switch change {
-            case .remove(_, let line, _): return "− " + line
-            case .insert(_, let line, _): return "+ " + line
+            case .remove(let offset, _, _): removed.insert(offset)
+            case .insert(let offset, _, _): inserted.insert(offset)
             }
         }
+        var result: [String] = []; var old = 0; var new = 0
+        while old < before.count || new < after.count {
+            if old < before.count && removed.contains(old) { result.append("− \(old + 1): \(before[old])"); old += 1 }
+            else if new < after.count && inserted.contains(new) { result.append("+ \(new + 1): \(after[new])"); new += 1 }
+            else { old += 1; new += 1 }
+        }
+        return result
+    }
+}
+
+enum LAAPersonalReconciliation {
+    enum Disposition: Equatable { case complete, restore, compare, wait, invalid }
+    static func disposition(_ operation: LAAPersonalOperationResponse.Operation, mayCompare: Bool) -> Disposition {
+        switch operation.status {
+        case "succeeded": return .complete
+        case "resolved":
+            if operation.resolution == "applied" { return .complete }
+            if operation.resolution == "not_applied" { return .restore }
+            return .invalid
+        case "rejected":
+            return mayCompare && (operation.rejection == nil || operation.rejection == "version_mismatch") ? .compare : .restore
+        default: return .wait
+        }
+    }
+    static func isDefiniteRefusal(code: String?, status: Int? = nil) -> Bool {
+        guard let code else { return false }
+        if code == "linear_request_failed" && status == 403 { return true }
+        return ["payload_invalid", "expected_viewer_required", "if_match_required", "linear_viewer_changed",
+                "insufficient_scope", "task_id_invalid", "task_not_found", "linear_rejected",
+                "linear_viewer_mismatch", "linear_personal_credential_invalid", "linear_personal_not_configured"].contains(code)
+    }
+}
+
+enum LAAPersonalTaskSwipe {
+    static func action(width: CGFloat, height: CGFloat) -> Bool? {
+        guard abs(width) > abs(height) * 3, abs(width) > 25 else { return nil }
+        return width < 0
     }
 }
 #endif
