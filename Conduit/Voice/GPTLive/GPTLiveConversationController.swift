@@ -180,7 +180,8 @@ final class GPTLiveConversationController: ObservableObject {
     /// that doesn't take them gets them as session context when the call
     /// starts. Written for the model, not shown as UI copy, so not localized.
     private static func briefingRules(answerLength: LiveVoiceAnswerLength, onWatch: Bool, watchChats: Bool) -> String {
-        """
+        // What the model hears about this app names the build it runs in.
+        LAAProductBrand.display("""
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
         \(answerLength.instructions(readsBack: !onWatch)) This replaces any other guidance on reply length in these instructions, the persona's included; it doesn't change what you delegate.
         Answer yourself, without delegating: greetings and small talk, repeating or rephrasing something already said on this call, and questions you can fully answer from this conversation, from the context Conduit sends you, from what Hermes remembers, or from settled general knowledge. Delegate real work to the client: anything to do, check, find, send, change or remember; current information (news, weather, prices, anything that may have changed); anything about their files, code, systems, accounts or earlier work that isn't in your context; and complex reasoning or research. This takes precedence over any other delegation policy in these instructions. Each delegation runs as a background job on Hermes. Never say something was done, sent, saved or changed unless Conduit or Hermes told you it was. Before delegating, acknowledge it out loud. \(LiveVoiceAcknowledgement.rule) Then keep talking; the job's result arrives later on that delegation. When it arrives, tell the user what Hermes found or did, with the details that matter.\(onWatch ? (watchChats ? "\n" + watchFindChat : "") : "\n" + phoneReadBack + "\n" + phoneFindChat)
@@ -188,7 +189,7 @@ final class GPTLiveConversationController: ObservableObject {
         \(onWatch ? watchApprovals : "Never approve, deny, or answer anything on a job's behalf yourself. For an approval a job update asks for, follow the Approvals rule; if a job needs any other input, tell the user to open it in Conduit.")
         Only say you're sending or passing something to Hermes in a turn where you delegate it: saying so sends nothing, only the delegation does.
         \(endCallRule)]
-        """
+        """)
     }
 
     /// Quiet time after the user's last words before Conduit sends a job

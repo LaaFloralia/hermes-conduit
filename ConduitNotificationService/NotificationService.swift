@@ -74,7 +74,19 @@ final class NotificationService: UNNotificationServiceExtension {
             defer { contentHandler = nil }
             return contentHandler
         }
-        handler?(content)
+        handler?(Self.brandedRedactedApproval(content))
+    }
+
+    /// The notifier on the Mac writes this explanation in place of a redacted
+    /// approval's real text (its `REDACTED_APPROVAL_TEXT`) and names the app
+    /// in it. Only that exact sentence is rewritten, never a chat's words.
+    private static func brandedRedactedApproval(_ content: UNNotificationContent) -> UNNotificationContent {
+        let notifierText = "Hermes needs your approval. Open Conduit for details."
+        guard content.body == notifierText,
+              let copy = content.mutableCopy() as? UNMutableNotificationContent
+        else { return content }
+        copy.body = LAAProductBrand.display(notifierText)
+        return copy
     }
 
     /// Generic copy, and no routing data or envelope left to act on.

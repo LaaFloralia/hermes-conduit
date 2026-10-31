@@ -67,14 +67,14 @@ struct LAAEmployeeCallView: View {
 
     private func header(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
         ZStack {
-            Text(verbatim: "通話")
+            Text(verbatim: LAACopy.call)
                 .laaTextStyle(.section)
                 .fontWeight(.semibold)
                 .foregroundStyle(LAAColor.secondaryText)
             HStack {
                 Button(action: calls.showChat) {
                     Label {
-                        Text(verbatim: "チャット")
+                        Text(verbatim: LAACopy.callChat)
                     } icon: {
                         Image(systemName: "chevron.left")
                     }
@@ -132,7 +132,7 @@ struct LAAEmployeeCallView: View {
 
     private func controls(_ snapshot: LAAEmployeeCallSnapshot) -> some View {
         HStack(alignment: .top, spacing: 16) {
-            CallGlassButton(title: snapshot.muted ? "消音解除" : "消音",
+            CallGlassButton(title: snapshot.muted ? LAACopy.callUnmute : LAACopy.callMute,
                             symbol: snapshot.muted ? "mic.slash.fill" : "mic.fill",
                             identifier: "laa.call.mute", selected: snapshot.muted,
                             action: calls.toggleMute)
@@ -149,14 +149,14 @@ struct LAAEmployeeCallView: View {
                 .disabled(!snapshot.phase.isOngoing)
             } else {
                 CallGlassButton(title: routeLabel, symbol: snapshot.speaker ? "speaker.wave.2.fill" : "speaker.fill",
-                                identifier: "laa.call.speaker", accessibilityTitle: "スピーカー",
+                                identifier: "laa.call.speaker", accessibilityTitle: LAACopy.callSpeaker,
                                 selected: snapshot.speaker, action: calls.toggleSpeaker)
                     .disabled(!snapshot.phase.isOngoing)
             }
-            CallGlassButton(title: "チャット", symbol: "bubble.left.fill", identifier: "laa.call.chat",
+            CallGlassButton(title: LAACopy.callChat, symbol: "bubble.left.fill", identifier: "laa.call.chat",
                             action: calls.showChat)
                 .disabled(!snapshot.phase.isOngoing)
-            CallGlassButton(title: "終了", symbol: "phone.down.fill", identifier: "laa.call.end",
+            CallGlassButton(title: LAACopy.callEnd, symbol: "phone.down.fill", identifier: "laa.call.end",
                             destructive: true, action: calls.end)
         }
         .frame(maxWidth: .infinity)
@@ -194,18 +194,18 @@ enum LAAAudioRouteLabel {
     static func label(type: AVAudioSession.Port, name: String) -> String {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         switch type {
-        case .builtInReceiver: return "受話口"
-        case .builtInSpeaker: return "スピーカー"
+        case .builtInReceiver: return LAACopy.callReceiver
+        case .builtInSpeaker: return LAACopy.callSpeaker
         case .bluetoothA2DP, .bluetoothHFP, .bluetoothLE:
             return name.isEmpty ? "Bluetooth" : name
         default:
-            return name.isEmpty ? "音声出力" : name
+            return name.isEmpty ? LAACopy.callAudioRoute : name
         }
     }
 
     static func labels(_ outputs: [(type: AVAudioSession.Port, name: String)]) -> String {
-        guard !outputs.isEmpty else { return "出力先なし" }
-        return outputs.map { label(type: $0.type, name: $0.name) }.joined(separator: "・")
+        guard !outputs.isEmpty else { return LAACopy.callNoOutput }
+        return outputs.map { label(type: $0.type, name: $0.name) }.joined(separator: ", ")
     }
 
     static func current() -> String {
@@ -219,7 +219,7 @@ private struct LAAAudioRoutePicker: UIViewRepresentable {
         picker.tintColor = UIColor(LAAColor.link)
         picker.activeTintColor = UIColor(LAAColor.link)
         picker.prioritizesVideoDevices = false
-        picker.accessibilityLabel = "音声の出力先"
+        picker.accessibilityLabel = LAACopy.callAudioRoute
         picker.accessibilityIdentifier = "laa.call.audio-route"
         return picker
     }
@@ -294,7 +294,7 @@ struct LAAInCallBar: View {
                         Text(verbatim: "\(snapshot.context.name) と通話中")
                     }
                     Spacer()
-                    Text(verbatim: "通話に戻る")
+                    Text(verbatim: LAACopy.callReturn)
                     Image(systemName: "chevron.right")
                 }
                 .font(.footnote.weight(.semibold))

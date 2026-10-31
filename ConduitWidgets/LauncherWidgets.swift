@@ -13,8 +13,13 @@ struct NativeLauncherWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: LauncherWidgetConfigurationIntent.self, provider: LauncherTimelineProvider()) { entry in
             LauncherWidgetView(entry: entry, style: .native)
         }
+        #if LAA_BUILD
+        .configurationDisplayName("LAA Workspace")
+        .description("Open your workspace, start a new chat, or talk with LAA.")
+        #else
         .configurationDisplayName("Native")
         .description("Open your workspace, start a new chat, or talk with Conduit.")
+        #endif
         .supportedFamilies([.systemMedium])
     }
 }
@@ -26,8 +31,13 @@ struct CharacterLauncherWidget: Widget {
         AppIntentConfiguration(kind: kind, intent: LauncherWidgetConfigurationIntent.self, provider: LauncherTimelineProvider()) { entry in
             LauncherWidgetView(entry: entry, style: .character)
         }
+        #if LAA_BUILD
+        .configurationDisplayName("Ciel Workspace")
+        .description("Open your workspace, start a new chat, or talk with Ciel.")
+        #else
         .configurationDisplayName("Conduit-chan")
         .description("Open your workspace, start a new chat, or talk with Conduit-chan.")
+        #endif
         .supportedFamilies([.systemMedium])
     }
 }
@@ -77,6 +87,9 @@ private struct LauncherWidgetView: View {
 
     @ViewBuilder
     private var nativeMark: some View {
+        #if LAA_BUILD
+        Image("LAAWidgetMark").resizable().scaledToFit().frame(width: 38, height: 38).accessibilityHidden(true)
+        #else
         if #available(iOS 18.0, *), renderingMode == .accented {
             Image("WidgetMark")
                 .resizable()
@@ -91,6 +104,7 @@ private struct LauncherWidgetView: View {
                 .frame(width: 38, height: 38)
                 .accessibilityHidden(true)
         }
+        #endif
     }
 
     private var characterHeading: some View {
@@ -139,6 +153,10 @@ private struct LauncherWidgetView: View {
 
     @ViewBuilder
     private var characterArtwork: some View {
+        #if LAA_BUILD
+        Image("LAAEmployee-ciel-hero").resizable().scaledToFit()
+            .frame(width: 84, height: 94).accessibilityHidden(true)
+        #else
         if #available(iOS 18.0, *), renderingMode == .accented {
             Image("WidgetCharacter")
                 .resizable()
@@ -153,6 +171,7 @@ private struct LauncherWidgetView: View {
             .frame(width: 84, height: 94)
             .accessibilityHidden(true)
         }
+        #endif
     }
 
     private var actionLinks: some View {

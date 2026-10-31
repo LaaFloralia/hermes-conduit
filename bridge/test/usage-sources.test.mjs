@@ -80,6 +80,23 @@ test('a provider without windows is unavailable instead of zero', () => {
   assert.equal(item.nullReason, 'fetch_failed');
 });
 
+test('an invalid or excessive quota window cannot hide a potentially binding limit', () => {
+  const good = { label: 'Weekly', remaining: 80, resetsAt: null };
+  for (const bad of [null, {}, { label: 'Session', remaining: -1 }, { label: 'Session', remaining: 101 }]) {
+    const item = byId(projection([{ id: 'claude', available: true, updatedAt: '2026-10-29T04:58:00Z',
+      windows: [bad, good] }]), 'provider.claude.quota');
+    assert.equal(item.availability, 'unavailable');
+    assert.equal(item.value, null);
+    assert.equal(item.nullReason, 'fetch_failed');
+  }
+  const overflow = byId(projection([{ id: 'claude', available: true, updatedAt: '2026-10-29T04:58:00Z',
+    windows: Array(33).fill(good) }]), 'provider.claude.quota');
+  assert.equal(overflow.availability, 'unavailable');
+  const extras = byId(projection([{ id: 'claude', available: true, updatedAt: '2026-10-29T04:58:00Z',
+    windows: Array(32).fill(good), extraWindows: [{ label: 'Session', remaining: 0, resetsAt: null }] }]), 'provider.claude.quota');
+  assert.equal(extras.value, 0);
+});
+
 test('a zero balance is a real reading; a missing one is not', () => {
   const items = projection([
     { id: 'fal', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-29T04:00:00Z', currency: 'USD', amount: 0 },
@@ -92,6 +109,18 @@ test('a zero balance is a real reading; a missing one is not', () => {
   assert.equal(gemini.unit, 'jpy');
   assert.equal(gemini.value, 48725.03);
   assert.equal(byId(items, 'provider.venice.balance').nullReason, 'fetch_failed');
+});
+
+test('Venice USD and DIEM remain distinct when the proxy has no amount field', () => {
+  const item = byId(projection([{ id: 'venice', kind: 'balance', available: true,
+    updatedAt: '2026-10-29T04:58:00Z', usd: 2.5, diem: 44 }]), 'provider.venice.balance');
+  assert.equal(item.availability, 'available');
+  assert.equal(item.value, 2.5);
+  assert.equal(item.unit, 'usd');
+  assert.equal(item.detail.diem, 44);
+  const diemOnly = byId(projection([{ id: 'venice', kind: 'balance', available: true,
+    updatedAt: '2026-10-29T04:58:00Z', diem: 44 }]), 'provider.venice.balance');
+  assert.equal(diemOnly.availability, 'unavailable'); // Do not call DIEM USD.
 });
 
 test('a balance is expired when every remaining component has expired', () => {
@@ -130,6 +159,7 @@ test('a balance is expired when every remaining component has expired', () => {
     kind: 'monthly',
     amount: 4.98,
     grantedAmount: 5,
+    expiresOnUtc: '2026-11-19',
   });
 });
 
@@ -166,12 +196,53 @@ test('unit credits and recorded usage keep their own units and details', () => {
   const flow = byId(items, 'provider.google-flow.credits');
   assert.equal(flow.value, 0);
   assert.equal(flow.unit, 'credits');
-  assert.deepEqual(flow.detail, { monthlyGrantedAmount: 1000 });
+  assert.deepEqual(flow.detail, { monthlyGrantedAmount: 1000, sourceKind: 'verified' });
   const liquid = byId(items, 'provider.liquid.usage');
   assert.equal(liquid.value, 32007029);
   assert.equal(liquid.unit, 'tokens');
   assert.equal(liquid.detail.periodDays, 14);
+  assert.equal(liquid.detail.recordedCostUsd, 1.31);
+  assert.equal(liquid.detail.recordedRequestCount, 6473);
   assert.deepEqual(liquid.detail.models, [{ model: 'd1.1 / d1-ultra', inputTokens: 32007029, outputTokens: 0 }]);
+});
+
+test('projection keeps quota extras and the original freshness without inventing timestamps', () => {
+  const [item] = projection([{
+    id: 'claude', kind: 'quota', source: 'live', available: true,
+    updatedAt: '2026-10-29T04:50:00Z',
+    windows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
+    extraWindows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
+    credits: { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' },
+    resetPasses: { available: false, updatedAt: '2026-10-29T04:49:00Z', expiresAt: '2026-10-29T07:00:00Z' },
+  }]);
+  assert.equal(item.detail.windows.length, 1);
+  assert.equal(item.detail.windows[0].remainingPercent, 0);
+  assert.equal(item.detail.freshUntil, '2026-10-29T05:10:00.000Z');
+  assert.deepEqual(item.detail.credits, { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' });
+  assert.equal(item.detail.resetPasses.available, false);
+  assert.equal(item.detail.resetPasses.remaining, null);
+  const missing = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(missing.observedAt, null);
+  assert.equal(missing.stale, true);
+  assert.equal(missing.detail.freshUntil, undefined);
+  const future = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
+    updatedAt: '2026-10-29T05:03:00Z', fetchedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(future.detail.freshUntil, undefined);
+  assert.equal(future.stale, true);
+  const defaultLive = byId(projection([{ id: 'codex', kind: 'quota', available: true,
+    updatedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(defaultLive.detail.freshUntil, '2026-10-29T05:19:00.000Z');
+  const unknownSource = byId(projection([{ id: 'codex', kind: 'quota', source: 'unknown', available: true,
+    updatedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(unknownSource.detail.freshUntil, undefined);
+  assert.equal(unknownSource.stale, true);
+  const verifiedMissing = byId(projection([{ id: 'fal', source: 'verified', available: true, amount: 2 }]), 'provider.fal.balance');
+  assert.equal(verifiedMissing.observedAt, null);
+  assert.equal(verifiedMissing.stale, true);
 });
 
 test('text from the feed is sanitised and never carries a credential or a path', () => {

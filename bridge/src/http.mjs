@@ -12,6 +12,7 @@ import { randomBytes } from 'node:crypto';
 import {
   BODY_LIMIT_BYTES,
   IDEMPOTENCY_INFLIGHT_GRACE_MS,
+  STUDIO_SCOPES,
   VERSION,
   testEndpointsEnabled,
 } from './config.mjs';
@@ -25,7 +26,7 @@ import {
   randomDeviceId,
   randomToken,
 } from './auth.mjs';
-import { IDEMPOTENCY_KEY_PATTERN, complete, requestFingerprint, reserve } from './idempotency.mjs';
+import { IDEMPOTENCY_KEY_PATTERN, complete, release, requestFingerprint, reserve } from './idempotency.mjs';
 import { driveAdapterFromEnv } from './drive/google-api.mjs';
 import { driveRoutes } from './routes/drive.mjs';
 import { BridgeError, badRequest } from './errors.mjs';
@@ -101,14 +102,15 @@ export function createBridge({
     );
   }
 
-  async function readBody(req) {
+  async function readBody(req, limit = BODY_LIMIT_BYTES) {
     const chunks = [];
     let size = 0;
     for await (const chunk of req) {
       size += chunk.length;
-      if (size > BODY_LIMIT_BYTES) {
+      if (size > limit) {
         req.pause();
-        throw badRequest('payload_too_large', `request body exceeds ${BODY_LIMIT_BYTES} bytes`);
+        if (limit !== BODY_LIMIT_BYTES) throw new BridgeError(413, 'payload_too_large', `request body exceeds ${limit} bytes`);
+        throw badRequest('payload_too_large', `request body exceeds ${limit} bytes`);
       }
       chunks.push(chunk);
     }
@@ -158,7 +160,9 @@ export function createBridge({
       if (pairing.expiresAt < t) return { error: new BridgeError(401, 'pairing_code_expired', 'pairing code has expired') };
 
       const token = randomToken();
-      const device = newDevice({ id: randomDeviceId(), name, scopes: pairing.scopes, platform, now: t });
+      // Pairing codes issued by older versions must not bypass the explicit grant.
+      const scopes = pairing.scopes.filter((scope) => !STUDIO_SCOPES.includes(scope));
+      const device = newDevice({ id: randomDeviceId(), name, scopes, platform, now: t });
       device.tokenHash = hashToken(token);
       state.devices[device.id] = device;
       pairing.usedAt = t;
@@ -229,6 +233,8 @@ export function createBridge({
       : url.pathname;
     let deviceId = null;
     let errorCode = null;
+    let route = null;
+    let reservation = null;
 
     try {
       checkOrigin(req);
@@ -237,7 +243,7 @@ export function createBridge({
       if (candidates.length === 0) {
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
-      const route = candidates.find((candidate) => candidate.method === req.method);
+      route = candidates.find((candidate) => candidate.method === req.method);
       if (!route) {
         throw new BridgeError(405, 'method_not_allowed', `${req.method} is not allowed on ${pathname}`);
       }
@@ -246,7 +252,7 @@ export function createBridge({
         throw new BridgeError(404, 'not_found', 'no such endpoint');
       }
 
-      const rawBody = await readBody(req);
+      const rawBody = await readBody(req, route.bodyLimit ?? BODY_LIMIT_BYTES);
 
       let device = null;
       if (route.auth) {
@@ -291,11 +297,13 @@ export function createBridge({
           throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier request never finished; reconcile before retrying');
         }
         if (outcome.action === 'replay') {
-          ok(res, outcome.entry.httpStatus ?? 200, outcome.entry.response, requestId, {
+          const data = route.replay ? await route.replay({ rawBody, device, entry: outcome.entry }) : outcome.entry.response;
+          ok(res, outcome.entry.httpStatus ?? 200, data, requestId, {
             'idempotency-replayed': 'true',
           });
           return;
         }
+        reservation = { deviceId: device.id, key: idempotencyKey, fingerprint, createdAt: outcome.entry.createdAt };
       }
 
       const params = route.pattern ? (route.pattern.exec(pathname) ?? []).slice(1) : [];
@@ -313,9 +321,16 @@ export function createBridge({
       }
       ok(res, result.status, result.data, requestId, result.headers ?? {});
     } catch (err) {
-      const error = err instanceof BridgeError
+      let error = err instanceof BridgeError
         ? err
         : new BridgeError(500, 'internal_error', 'unexpected server error');
+      if (reservation && route?.releaseOnError?.(error)) {
+        try {
+          if (!store.mutate((state) => release(state, reservation))) throw new Error('reservation changed');
+        } catch {
+          error = new BridgeError(503, 'idempotency_release_failed', 'Unable to release the retry reservation');
+        }
+      }
       errorCode = error.code;
       if (!(err instanceof BridgeError) && log) {
         log({ level: 'error', requestId, error: err?.message ?? String(err) });

@@ -448,8 +448,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
-- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAADashboardUsage.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
+- Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
+- Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-mock.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
@@ -476,12 +477,15 @@ App Store build · the Bridge API, Brain and Usage data contracts
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
   retain their original error mapping, and writes are never retried by the client.
-- Usage reads quota windows, balances and Mac status from Bridge, and model
-  usage and cost directly from the authenticated Hermes dashboard, on entry or
-  manual refresh. It keeps each source separate, retains the previous readings
-  and times on failure, and disables duplicate refreshes. Missing, zero, stale,
-  expired and unavailable values remain distinct; no unrelated services are
-  summed. Hermes' existing Settings report remains available.
+- Usage reads the Console's visible services in the same order from the Bridge
+  usage-proxy projection. Quota windows, reset times, balances, credits and D1's
+  recorded cost, input/output tokens and request counts stay in their own units;
+  model names, Hermes token usage and Mac status are not
+  part of this screen. Opening the tab refreshes after a 60-second quiet interval;
+  manual refresh and app foreground refresh remain available. It retains previous
+  readings and their times on failure, disables duplicate refreshes and
+  distinguishes missing, zero, stale, expired and unavailable data. Hermes'
+  existing Settings report remains available.
 - Brain lists the default permitted areas, optionally adds Inbox on request,
   searches locally through the Bridge, and opens Markdown or its exact source.
   Frontmatter remains available, unresolved syntax and image references remain
@@ -496,12 +500,27 @@ App Store build · the Bridge API, Brain and Usage data contracts
   authenticated byte ranges and stops if the server ignores Range; image and
   PDF previews are limited to 64 MB. Workspace export is unavailable on the
   current Bridge, so those documents show an Open on Mac reason. Inspiration
-  and Studio remain disabled; missing Drive authorization and Bridge failures
+  remains disabled; missing Drive authorization and Bridge failures
   are distinct. The current Bridge supplies neither owners nor thumbnails.
+- Assets Studio lists works and requests, preserves unsent or uncertain drafts,
+  and supports typed approvals and stopping through the scoped Bridge. Studio
+  remains the executor; media and Drive delivery are linked from the work.
+  Unsupported approvals require the Mac, and terminal requests can be submitted
+  anew against the current work revision. A busy creation keeps the same ID,
+  body and key for an explicit retry; real intake connection remains to be verified.
 - Brain shows Recent and Folders with Tags disabled until supported; the note
   body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
+- Every tab's bar carries the same gear in the same place, with the same
+  accessibility identifier; the Chats screen keeps its own "Chats" heading and
+  an empty navigation title. The gear's frame is compared across tabs, so the
+  UI checks run on the 440 × 956 `LAA 16 Pro Max` simulator and no longer
+  assert a device size. `LAAChromeUITests` and the other `LAA_BUILD` checks
+  are not in GitHub CI (its smoke job generates `project-tests.yml`, which does
+  not define `LAA_BUILD`): run them locally with
+  `xcodegen generate --spec project-laa.yml` and
+  `xcodebuild test -scheme Conduit -destination 'platform=iOS Simulator,id=DFFD3966-F54E-4C7A-A161-59201C7EA105'`.
 
 **Open gaps**
 - Screen-specific v2 restyling and action labels belong to their screen tasks.
@@ -509,7 +528,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   not have sufficient contrast in dark mode; their screen tasks should use the
   semantic filled-button color pair. The existing Hermes login retains its
   Conduit backdrop.
-- Work routines, Assets Inspiration and Studio remain unavailable. Drive
+- Work routines and Assets Inspiration remain unavailable. Drive
   Workspace export, owner and thumbnail data need Bridge support. Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
   The LAA shell uses
@@ -522,7 +541,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-10-30, laa/v2-shell (design v2 common shell); laa/usage-design-v2-04-urgent based on aec30021 (Usage); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
+**Checked:** 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
 
 ## LAA Work tab
 
@@ -3596,6 +3615,25 @@ point at the map and its check
 
 **Checked:** 2026-10-26, #1314.
 
+## LAA branding and root settings
+
+**Siblings:** Hermes sign-in and permission descriptions · the five tab roots and Settings sheet · Bridge pairing and employee calls · iPhone and Watch widgets · sharing and notification extensions · the upstream app
+
+**Code**
+- LAA build branding, localized bundle resources and extension names: `project-laa.yml`, `project-personal.yml`, `scripts/laa/brand-bundle.py`, `Shared/LAAProductBrand.swift`, `Conduit/Views/Login/LoginScreens.swift`, `Conduit/Models/AppIconChoice.swift`, `Conduit/Theme.swift`
+- Root Settings and control labels: `Conduit/LAA/LAASettingsAction.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Views/LoginView.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`
+- Widgets and sharing: `ConduitWidgets/LauncherWidgets.swift`, `Shared/Widgets/WidgetConfiguration.swift`, `Shared/Widgets/WidgetLocalization.swift`, `ConduitShareExtension/ShareDraftSheet.swift`
+- Tests: `scripts/tests/test_laa_brand_bundle.py`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAChromeUITests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
+
+**Rulings**
+- Only the LAA build replaces product-owned Conduit names, icons and colors with the LAA identity; identifiers, routes, saved content and upstream builds retain their existing values. Generated bundle descriptions keep the source localization and remove the upstream developer's privacy claim instead of assigning it to LAA.
+- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
+
+**Open gaps**
+- Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
+
+**Checked:** 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
+
 ## LAA all-profile notification pairing
 
 The LAA-only Settings action moves the active dashboard's profile notifications
@@ -3634,18 +3672,18 @@ and rollback instructions · the upstream App Store build
 **Code**
 - Identities and routes: `Shared/Widgets/LAAEmployeeWidget.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Conduit/Services/AppState+WidgetLaunch.swift`
 - Widget and images: `ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift`, `ConduitWidgets/Resources/LAAStaff.xcassets/Contents.json`, `ConduitWidgets/LauncherWidgets.swift`, `project-laa.yml`
-- Snapshot reload and notice: `Conduit/Services/AppState+Widgets.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/AppState.swift`
-- Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
+- Snapshot reload and notice: `Shared/Widgets/WidgetSnapshot.swift`, `Shared/Widgets/WidgetSnapshotStore.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Services/AppState+Widgets.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Services/AppState.swift`
+- Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
 
 **Rulings**
-- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. Medium is not offered, and no live status is shown.
+- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows Ciel's call and chat icons beside up to three lowest remaining quota windows from the App Group snapshot. It shows the oldest displayed data confirmation time and marks failed, stale, unknown-freshness and expired values. The app updates this snapshot on Usage refresh; WidgetKit controls subsequent timeline delivery.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-10-30, based on 7efd7f90 (Task 11c routing); widget routing and configuration tests before the final image-position adjustment. The final Home Screen render and device behavior remain to be checked.
+**Checked:** 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 

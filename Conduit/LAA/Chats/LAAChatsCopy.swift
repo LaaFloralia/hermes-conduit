@@ -10,7 +10,6 @@ extension LAACopy {
     static let chatsSeeAll = "See all"
     static let chatsSeeLess = "See less"
     static let chatsNewGroup = "New group"
-    static let chatsSettings = "Settings"
     static let chatsRetry = "Try again"
     static let chatsCancel = "Cancel"
     static let chatsNoResults = "一致する項目がありません。"

@@ -3,6 +3,24 @@ import UIKit
 import XCTest
 
 final class LAAUsageUITests: XCTestCase {
+    func testWidgetUsageLinkSelectsUsageOnColdAndWarmLaunch() {
+        for delivery in ["cold", "warm"] {
+            let app = XCUIApplication()
+            app.launchEnvironment["CONDUIT_UITEST"] = "1"
+            app.launchArguments = ["-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
+                                   "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
+                                   "-CONDUIT_UI_TEST_WIDGET_DELIVERY", delivery]
+            app.launch()
+            if delivery == "warm" {
+                let deliver = app.buttons["widgetUITestDeliverURL"]
+                XCTAssertTrue(deliver.waitForExistence(timeout: 15))
+                deliver.tap()
+            }
+            XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 20))
+            app.terminate()
+        }
+    }
+
     private func helper(_ route: String) throws -> String {
         let data = try Data(contentsOf: URL(string: "http://127.0.0.1:19493/\(route)")!)
         return String(data: data, encoding: .utf8) ?? ""
@@ -20,7 +38,7 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 15))
         for _ in 0..<4 {
             let value = address.value as? String ?? ""
-            if value.isEmpty || value == "接続先" { break }
+            if value.isEmpty || value == "Address" { break }
             address.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
             address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count + 10))
         }
@@ -51,57 +69,79 @@ final class LAAUsageUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
-    func testFakeStatesAndRealBridgeRevocation() throws {
-        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the dedicated local Usage fixture first.") }
-        defer { _ = try? helper("revoke") }
+    func testReturningToUsageAfterIntervalRefreshes() throws {
+        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
+        continueAfterFailure = false
+        _ = try helper("mode/normal")
+        let app = XCUIApplication()
+        app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_USAGE_FAST_REFRESH",
+                               "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
+                               "-laa-tab", "usage"]
+        app.launch()
+        defer { app.terminate() }
+        let connect = app.buttons["laa.bridge.openPairing"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 15))
+        connect.tap()
+        try pair(app, port: 19492, codeRoute: "fixture-code")
+        XCTAssertTrue(app.staticTexts["Claude"].waitForExistence(timeout: 30))
+        XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
+
+        let chats = app.buttons["Chats"]
+        XCTAssertTrue(chats.waitForExistence(timeout: 10))
+        chats.tap()
+        // This UI-only interval is two seconds; the real 60-second boundary is unit tested.
+        RunLoop.current.run(until: Date().addingTimeInterval(3))
+        let before = try XCTUnwrap(Int(helper("counts")))
+        XCTAssertGreaterThan(before, 0)
+        app.buttons["Usage"].tap()
+        let deadline = Date().addingTimeInterval(15)
+        var after = before
+        while Date() < deadline && after == before {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            after = try XCTUnwrap(Int(helper("counts")))
+        }
+        XCTAssertEqual(after, before + 1)
+        XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
+    }
+
+    func testUsageRefreshAndFailureStates() throws {
+        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
         continueAfterFailure = false
         _ = try helper("mode/normal")
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP",
+                               "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", "light", "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD",
                                "https://conduit-ui-test.invalid", "-laa-tab", "usage"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
         let connect = app.buttons["laa.bridge.openPairing"]
-        XCTAssertTrue(connect.waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["未接続"].exists)
-        screenshot("v2-4-unpaired")
-        connect.tap()
+        if connect.waitForExistence(timeout: 15) {
+            screenshot("usage-ui-unpaired")
+            connect.tap()
+        } else {
+            XCTAssertTrue(app.buttons["laa.usage.menu"].waitForExistence(timeout: 15))
+            app.buttons["laa.usage.menu"].tap()
+            app.buttons["Connection"].tap()
+        }
         try pair(app, port: 19492, codeRoute: "fixture-code")
         XCTAssertTrue(app.staticTexts["Claude"].waitForExistence(timeout: 30))
         let refresh = app.buttons["laa.usage.refresh"]
         XCTAssertTrue(enabled(refresh))
         XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
-        screenshot("v2-4-normal-light")
+        XCTAssertFalse(app.staticTexts["Mac mini"].exists)
+        screenshot("usage-ui-normal")
 
-        _ = try helper("mode/slow")
-        let gestureCount = Int(try helper("counts")) ?? 0
-        let list = app.collectionViews.firstMatch
-        XCTAssertTrue(list.waitForExistence(timeout: 5))
-        let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.22))
-        let end = list.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.88))
-        start.press(forDuration: 0.15, thenDragTo: end)
-        XCTAssertTrue(enabled(refresh))
-        XCTAssertEqual(Int(try helper("counts")), gestureCount + 1)
-        _ = try helper("mode/normal")
-
-        app.terminate()
-        app.launchArguments = ["-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP",
-                               "-conduit.themePreference", "dark", "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD",
-                               "https://conduit-ui-test.invalid", "-laa-tab", "usage"]
-        app.launch()
-        XCTAssertTrue(app.staticTexts["Claude"].waitForExistence(timeout: 30))
-        XCTAssertTrue(enabled(refresh))
-        screenshot("v2-4-normal-dark")
-
-        _ = try helper("mode/slow")
-        let before = Int(try helper("counts")) ?? 0
+        _ = try helper("mode/stale")
         refresh.tap()
-        XCTAssertTrue(refresh.waitForExistence(timeout: 5))
-        XCTAssertFalse(refresh.isEnabled)
+        XCTAssertTrue(text(containing: "古い値", app: app).waitForExistence(timeout: 30))
+        screenshot("usage-ui-stale")
         XCTAssertTrue(enabled(refresh))
-        XCTAssertEqual(Int(try helper("counts")), before + 1)
 
+        _ = try helper("mode/normal")
+        refresh.tap()
+        XCTAssertTrue(enabled(refresh))
         _ = try helper("mode/degraded")
         refresh.tap()
         XCTAssertTrue(text(containing: "更新失敗・前回の値", app: app).waitForExistence(timeout: 30))
@@ -111,63 +151,42 @@ final class LAAUsageUITests: XCTestCase {
         _ = try helper("mode/error")
         refresh.tap()
         XCTAssertTrue(text(containing: "Mac側のサービスを利用できません。", app: app).waitForExistence(timeout: 30))
-        XCTAssertTrue(text(containing: "前回取得", app: app).exists)
         XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
+        screenshot("usage-ui-error")
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/offline")
         refresh.tap()
         XCTAssertTrue(text(containing: "Macに届きません。", app: app).waitForExistence(timeout: 30))
         XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
+        screenshot("usage-ui-offline")
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/empty")
-        refresh.tap()
-        XCTAssertTrue(app.staticTexts["表示できるサービスはありません。"].waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["Macの状態はありません。"].exists)
-        XCTAssertTrue(enabled(refresh))
-
-        app.buttons["laa.usage.menu"].tap()
-        app.buttons["Macとの接続"].tap()
-        try pair(app, port: 19491, codeRoute: "real-code")
-        XCTAssertTrue(app.staticTexts["Mac mini"].waitForExistence(timeout: 45))
-        XCTAssertTrue(enabled(refresh, timeout: 45))
-        XCTAssertTrue(app.staticTexts["CPU"].exists)
-        XCTAssertTrue(app.staticTexts["メモリ"].exists)
-        XCTAssertTrue(app.staticTexts["空き容量"].exists)
-        screenshot("v2-4-real-bridge")
-        _ = try helper("revoke")
-        refresh.tap()
-        XCTAssertTrue(app.staticTexts["この端末の接続が無効になりました。新しいコードで接続してください。"].waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["未接続"].exists)
-        screenshot("v2-4-revoked")
-    }
-
-    // Run against an isolated real Bridge after its usage-feed cache is populated.
-    func testRealBridgeCachedUsage() throws {
-        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the dedicated local Usage fixture first.") }
-        defer { _ = try? helper("revoke") }
-        continueAfterFailure = false
-        let app = XCUIApplication()
-        app.launchArguments = ["-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP",
-                               "-conduit.themePreference", "light", "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD",
-                               "https://conduit-ui-test.invalid", "-laa-tab", "usage"]
-        app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        // Start with no in-memory last-good values, as on an actual first run.
+        app.terminate()
         app.launch()
-        let connect = app.buttons["laa.bridge.openPairing"]
-        if connect.waitForExistence(timeout: 20) { connect.tap() }
-        else {
-            app.buttons["laa.usage.menu"].tap()
-            app.buttons["Macとの接続"].tap()
-        }
-        try pair(app, port: 19491, codeRoute: "real-code")
-        XCTAssertTrue(app.staticTexts["概要"].waitForExistence(timeout: 45))
-        let refresh = app.buttons["laa.usage.refresh"]
-        XCTAssertTrue(enabled(refresh, timeout: 45))
-        screenshot("v2-4-real-cached")
-        _ = try helper("revoke")
-        refresh.tap()
-        XCTAssertTrue(app.staticTexts["未接続"].waitForExistence(timeout: 30))
+        // The isolated test Keychain deliberately uses a new service per launch.
+        let reconnect = app.buttons["laa.bridge.openPairing"]
+        XCTAssertTrue(reconnect.waitForExistence(timeout: 15))
+        reconnect.tap()
+        try pair(app, port: 19492, codeRoute: "fixture-code")
+        XCTAssertTrue(app.staticTexts["未取得・取得失敗"].firstMatch.waitForExistence(timeout: 30))
+        screenshot("usage-ui-empty")
+
+        _ = try helper("mode/slow")
+        let before = Int(try helper("counts")) ?? -1
+        let again = app.buttons["laa.usage.refresh"]
+        XCTAssertTrue(enabled(again))
+        again.tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: again)], timeout: 5) == .completed)
+        XCTAssertTrue(enabled(again))
+        XCTAssertEqual(Int(try helper("counts")), before + 1)
+
+        _ = try helper("mode/revoked")
+        again.tap()
+        XCTAssertTrue(app.buttons["laa.bridge.openPairing"].waitForExistence(timeout: 30))
+        XCTAssertTrue(text(containing: "接続が無効", app: app).exists)
     }
 }
 #endif

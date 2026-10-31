@@ -17,7 +17,11 @@ struct ShareDraftSheet: View {
     var body: some View {
         NavigationStack {
             content
+                #if LAA_BUILD
+                .navigationTitle(Text(verbatim: "LAA"))
+                #else
                 .navigationTitle(Text(verbatim: "Conduit"))
+                #endif
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbar }
         }
@@ -26,11 +30,15 @@ struct ShareDraftSheet: View {
     }
 
     /// Conduit's default accent (amber), so the sheet reads as Conduit's.
+    #if LAA_BUILD
+    static let accent = LAAColor.link
+    #else
     static let accent = Color(uiColor: UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 0.88, green: 0.67, blue: 0.28, alpha: 1)
             : UIColor(red: 0.55, green: 0.37, blue: 0.13, alpha: 1)
     })
+    #endif
 
     @ViewBuilder
     private var content: some View {

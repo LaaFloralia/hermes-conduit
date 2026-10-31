@@ -539,7 +539,8 @@ struct SpeechServerVoiceStatus: Equatable {
             "- Restart the server after changing its flags (for example its systemd service), and check its log for the language model warming up without errors.",
             "- Keep the key private. Conduit can make a new one in Settings > Voice.",
         ]
-        return lines.joined(separator: "\n")
+        // The agent reads this and repeats the app's name back to the user.
+        return LAAProductBrand.display(lines.joined(separator: "\n"))
     }
 
     /// `value` as one shell word: as is when it's plain, else single-quoted.

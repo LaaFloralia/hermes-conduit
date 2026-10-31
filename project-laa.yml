@@ -45,6 +45,8 @@ targets:
     sources:
       - path: Shared/Widgets/LAAEmployeeWidget.swift
       - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
+      - path: ConduitWidgets/Resources/LAAStaff.xcassets
+        buildPhase: resources
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_TEST"
@@ -95,16 +97,22 @@ targets:
         # keep.
         CODE_SIGN_IDENTITY: "Apple Development"
     postBuildScripts:
-      # The home screen name, beside the App Store Conduit.
-      - name: LAA build name
+      - name: Brand LAA app resources
         basedOnDependencyAnalysis: false
         script: |
-          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
-          /usr/libexec/PlistBuddy -c "Delete :CFBundleDisplayName" "$plist" 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${CONDUIT_DISPLAY_NAME:-LAA}" "$plist"
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
+            --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
   ConduitWatch:
+    sources:
+      - path: Conduit/LAA/LAACopy.swift
+      - path: Conduit/LAA/LAATab.swift
+      - path: Conduit/LAA/Design/LAAServerAvailabilityCopy.swift
+      - path: assets/laa/Watch.xcassets
+        buildPhase: resources
     settings:
       base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        ASSETCATALOG_COMPILER_APPICON_NAME: WatchAppIcon-LAA
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWatch.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
@@ -128,21 +136,41 @@ targets:
           mkdir -p "$DERIVED_FILE_DIR"
           cp "$SCRIPT_INPUT_FILE_0" "$SCRIPT_OUTPUT_FILE_0"
           /usr/libexec/PlistBuddy -c "Set :WKCompanionAppBundleIdentifier com.laa-inc.laa" "$SCRIPT_OUTPUT_FILE_0"
+    postBuildScripts:
+      - name: Brand LAA watch resources
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch --source "$SRCROOT"
   ConduitWatchWidgets:
     settings:
       base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.watchkitapp.widgets
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
+    postBuildScripts:
+      - name: Brand LAA watch widget resources
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch-widget --source "$SRCROOT"
   ConduitNotificationService:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
+        # The extension rewrites the notifier's redacted approval text, which
+        # names the app, so it needs the LAA brand too.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitNotificationService.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
+    postBuildScripts:
+      - name: Brand LAA notification resources
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind notification --source "$SRCROOT"
   ConduitWidgets:
     sources:
+      - path: Shared/LAAProductBrand.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAATokens.swift
@@ -156,10 +184,24 @@ targets:
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
+    postBuildScripts:
+      - name: Brand LAA widget resources
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind widgets --source "$SRCROOT"
   ConduitShareExtension:
+    sources:
+      - path: Conduit/LAA/Design/LAATokens.swift
+      - path: Conduit/LAA/LAAColors.swift
     settings:
       base:
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.ShareExtension
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitShareExtension.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
+    postBuildScripts:
+      - name: Brand LAA share resources
+        basedOnDependencyAnalysis: false
+        script: |
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind share --source "$SRCROOT"

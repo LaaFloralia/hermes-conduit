@@ -206,7 +206,11 @@ struct WidgetConversationEntityQuery: EntityQuery {
 }
 
 struct LauncherWidgetConfigurationIntent: WidgetConfigurationIntent {
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "LAA Widget"
+    #else
     static let title: LocalizedStringResource = "Conduit Widget"
+    #endif
     static let description = IntentDescription("Choose a workspace and conversation for this widget.")
 
     @Parameter(title: "Workspace") var workspace: WidgetWorkspaceEntity?

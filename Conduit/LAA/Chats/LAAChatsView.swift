@@ -72,7 +72,6 @@ struct LAAChatsView: View {
             liveContent
             #endif
         }
-        .toolbar(.hidden, for: .navigationBar)
     }
 
     private var liveContent: some View {
