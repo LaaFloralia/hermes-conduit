@@ -32,6 +32,12 @@ try {
     join(root, 'Conduit/LAA/Drive/LAADriveBrowseController.swift'),
     join(here, 'drive-browse-controller-test.swift'), '-o', binary], { stdio: 'inherit' });
   execFileSync(binary, [], { stdio: 'inherit' });
+  execFileSync('swiftc', ['-swift-version', '5', '-D', 'LAA_BUILD', '-parse-as-library', actualModels,
+    join(root, 'Conduit/LAA/Drive/LAADriveBrowseModels.swift'),
+    join(root, 'Conduit/LAA/Drive/LAADriveOfflineStore.swift'),
+    join(root, 'Conduit/LAA/Drive/LAADriveOfflineFolder.swift'),
+    join(here, 'drive-offline-folder-test.swift'), '-o', binary], { stdio: 'inherit' });
+  execFileSync(binary, [], { stdio: 'inherit' });
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }
