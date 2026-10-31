@@ -31,10 +31,10 @@ async function setup(t, options = {}) {
   return { personal, api, token };
 }
 function create(api, token, key, body = { teamId: 'team', title: 'private fixture title', description: 'private fixture body' }) {
-  return api.request('/v1/personal-tasks', { method: 'POST', token, key, body });
+  return api.request('/v1/personal-tasks', { method: 'POST', token, key, body: { expectedViewerId: VIEWER.id, ...body } });
 }
 function update(api, token, key, body, version) {
-  return api.request('/v1/personal-tasks/linear%3ABUS-1', { method: 'PATCH', token, key, body,
+  return api.request('/v1/personal-tasks/linear%3ABUS-1', { method: 'PATCH', token, key, body: { expectedViewerId: VIEWER.id, ...body },
     headers: version ? { 'if-match': version } : {} });
 }
 
@@ -44,6 +44,7 @@ test('writes require task scope, key and validated fields', async (t) => {
   assert.equal((await create(api, readOnly, 'a')).status, 403);
   assert.equal((await create(api, token, undefined)).body.error.code, 'idempotency_key_required');
   assert.equal((await create(api, token, 'a', { teamId: 'team', title: 'x', delegateId: 'worker' })).status, 400);
+  assert.equal((await create(api, token, 'a', { teamId: 'team', title: 'x', expectedViewerId: null })).body.error.code, 'expected_viewer_required');
   assert.equal((await create(api, token, 'a', { teamId: 'team', title: 'x', dueDate: '2026-02-31' })).status, 400);
   assert.equal(mutations(personal).length, 0);
 });
@@ -81,6 +82,13 @@ test('attribute updates are last-writer-wins and do not launch any worker', asyn
   assert.equal(changedVersion.body.error.code, 'idempotency_key_conflict');
 });
 
+test('fractional Linear estimates are accepted without relaxing validation', async (t) => {
+  const { personal, api, token } = await setup(t);
+  assert.equal((await update(api, token, 'fraction', { estimate: 0.5 })).status, 200);
+  assert.equal(mutations(personal)[0].update.input.estimate, 0.5);
+  assert.equal((await update(api, token, 'invalid-estimate', { estimate: -0.5 })).status, 400);
+});
+
 test('description requires If-Match and returns the current text on conflict without writing', async (t) => {
   const { personal, api, token } = await setup(t);
   assert.equal((await update(api, token, 'no-match', { description: 'local' })).status, 428);
@@ -88,6 +96,8 @@ test('description requires If-Match and returns the current text on conflict wit
   assert.equal(conflict.status, 412);
   assert.equal(conflict.body.error.details.current.description, 'remote text');
   assert.equal(mutations(personal).length, 0);
+  const record = await api.request('/v1/task-operations/by-key', { token, key: 'conflict' });
+  assert.equal(record.body.data.operation.rejection, 'version_mismatch');
   const repeat = await update(api, token, 'conflict', { description: 'local' }, 'stale');
   assert.equal(repeat.status, 412);
   const chosen = await update(api, token, 'chosen', { description: 'local' }, personal.current.updatedAt);
@@ -167,7 +177,8 @@ test('operation records are bound to both device and viewer', async (t) => {
   assert.equal((await api.request('/v1/task-operations/by-key', { token: anotherDevice, key: 'bound' })).status, 404);
   personal.viewer = { id: 'different-owner', name: 'Different' };
   assert.equal((await api.request('/v1/task-operations/by-key', { token, key: 'bound' })).status, 404);
-  assert.equal((await create(api, token, 'bound')).body.error.code, 'idempotency_key_conflict');
+  assert.equal((await create(api, token, 'bound')).body.error.code, 'linear_viewer_changed');
+  assert.equal((await create(api, token, 'new-for-wrong-viewer')).body.error.code, 'linear_viewer_changed');
   assert.equal(mutations(personal).length, 1);
 });
 

@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { startPersonalTaskUIFixture } from './fixtures/personal-task-ui-server.mjs';
+
+test('the UI fixture serves synthetic tasks and a reproducible description conflict', async (t) => {
+  const api = await startPersonalTaskUIFixture();
+  t.after(() => api.close());
+  const token = await api.token(['tasks:read', 'tasks:write']);
+  const list = await api.request('/v1/personal-tasks?view=mine', { token });
+  assert.equal(list.body.data.items[0].title, 'Fixture task');
+  const detail = await api.request('/v1/personal-tasks/linear%3AFIX-1', { token });
+  const changed = await api.request('/v1/personal-tasks/linear%3AFIX-1', { token, method: 'PATCH', key: 'fixture-edit',
+    headers: { 'if-match': detail.body.data.task.updatedAt },
+    body: { expectedViewerId: 'fixture-viewer', description: 'My fixture revision' } });
+  assert.equal(changed.status, 412);
+  assert.equal(changed.body.error.details.current.description, 'Fixture remote revision');
+  const created = await api.request('/v1/personal-tasks', { token, method: 'POST', key: 'fixture-create',
+    body: { expectedViewerId: 'fixture-viewer', teamId: 'fixture-team', title: 'Fixture new task' } });
+  assert.equal(created.status, 201);
+  assert.equal((await api.request('/v1/personal-tasks?view=mine', { token })).body.data.items.length, 2);
+});

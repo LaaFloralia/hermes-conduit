@@ -47,7 +47,10 @@ function requireKey(req) {
 const ISSUE_IDS = new Set(['teamId', 'assigneeId', 'stateId', 'projectId', 'projectMilestoneId', 'cycleId', 'parentId']);
 const NULLABLE_IDS = new Set(['assigneeId', 'projectId', 'projectMilestoneId', 'cycleId', 'parentId']);
 function issueInput(rawBody, creating) {
-  const input = parseObjectBody(rawBody);
+  const { expectedViewerId, ...input } = parseObjectBody(rawBody);
+  if (typeof expectedViewerId !== 'string' || !ID.test(expectedViewerId)) {
+    throw badRequest('expected_viewer_required', 'the original Linear viewer is required');
+  }
   const allowed = new Set(['title', 'description', 'priority', 'estimate', 'dueDate', 'labelIds', ...ISSUE_IDS]);
   if (Object.keys(input).length === 0 || Object.keys(input).some((name) => !allowed.has(name))) {
     throw badRequest('payload_invalid', 'the task contains an unsupported field');
@@ -70,8 +73,9 @@ function issueInput(rawBody, creating) {
   if ('priority' in input && (!Number.isInteger(input.priority) || input.priority < 0 || input.priority > 4)) {
     throw badRequest('payload_invalid', 'priority must be between 0 and 4');
   }
-  if ('estimate' in input && input.estimate !== null && (!Number.isInteger(input.estimate) || input.estimate < 0 || input.estimate > 10000)) {
-    throw badRequest('payload_invalid', 'estimate must be a non-negative integer or null');
+  if ('estimate' in input && input.estimate !== null && (typeof input.estimate !== 'number' || !Number.isFinite(input.estimate)
+      || input.estimate < 0 || input.estimate > 10000)) {
+    throw badRequest('payload_invalid', 'estimate must be a non-negative number or null');
   }
   if ('dueDate' in input && input.dueDate !== null) {
     if (typeof input.dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)
@@ -84,7 +88,7 @@ function issueInput(rawBody, creating) {
       || input.labelIds.some((id) => typeof id !== 'string' || !ID.test(id)))) {
     throw badRequest('payload_invalid', 'labelIds must be an array of at most 100 ids');
   }
-  return input;
+  return { input, expectedViewerId };
 }
 
 export function personalTaskRoutes({ personal, personalConfig, store, now = () => Date.now() } = {}) {
@@ -106,7 +110,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
 
   async function mutateIssue({ req, device, rawBody, params }, creating) {
     const key = requireKey(req);
-    const input = issueInput(rawBody, creating);
+    const { input, expectedViewerId } = issueInput(rawBody, creating);
     const target = creating ? randomUUID() : requestedId(params[0]);
     const hasDescription = !creating && Object.hasOwn(input, 'description');
     const ifMatch = req.headers['if-match'];
@@ -115,6 +119,9 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     }
     const personalSession = await requestSession();
     const viewerId = personalSession.viewer.id;
+    if (viewerId !== expectedViewerId) {
+      throw new BridgeError(409, 'linear_viewer_changed', 'the task was prepared for a different Linear viewer');
+    }
     const path = creating ? '/v1/personal-tasks' : `/v1/personal-tasks/${encodeURIComponent(target)}`;
     const reserved = operations.reserve({ deviceId: device.id, viewerId, key, method: req.method, path,
       ifMatch: typeof ifMatch === 'string' ? ifMatch : null, rawBody, kind: creating ? 'create' : 'update', targetId: target });

@@ -232,9 +232,47 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.textFields["Project Name"].exists)
         app.buttons["Close"].tap()
         app.buttons["Tasks"].tap()
-        XCTAssertTrue(app.staticTexts["Linearが現在のタスクの正本です。ここでは閲覧のみできます。"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.buttons["New Task"].waitForExistence(timeout: 30))
         app.buttons["Routines"].tap()
         XCTAssertTrue(app.staticTexts["準備中"].waitForExistence(timeout: 5))
+    }
+
+    // Pair the dedicated simulator with personal-task-ui-server.mjs first.
+    // This test only operates on that server's in-memory synthetic tasks.
+    func testPersonalTaskFixtureConflictChoiceAndCreate() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "taskfixture" else {
+            throw XCTSkip("The synthetic personal-task Bridge was not selected.")
+        }
+        let app = launchWork()
+        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 30))
+        app.buttons["Tasks"].tap()
+        let row = app.staticTexts["Fixture task"]
+        guard row.waitForExistence(timeout: 30) else { XCTFail("Synthetic task did not load."); return }
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Fixture original"].waitForExistence(timeout: 20))
+        app.buttons["Edit"].tap()
+        let description = app.textViews["work.task.description"]
+        XCTAssertTrue(description.waitForExistence(timeout: 20))
+        description.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.1)).tap()
+        description.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Fixture original".count))
+        description.typeText("My fixture revision")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.staticTexts["Fixture remote revision"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["My fixture revision"].exists)
+        app.buttons["Use Current Version"].tap()
+        XCTAssertEqual(description.value as? String, "Fixture remote revision")
+        app.buttons["Close"].tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let newTask = app.buttons["New Task"]
+        XCTAssertTrue(waitUntilReady(newTask, timeout: 20))
+        newTask.tap()
+        let title = app.textFields["work.task.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 20))
+        title.tap(); title.typeText("Fixture new task")
+        let create = app.buttons["Create"]
+        XCTAssertTrue(waitUntilReady(create, timeout: 20))
+        create.tap()
+        XCTAssertTrue(app.staticTexts["Fixture new task"].waitForExistence(timeout: 20))
     }
 
     func testLiveWorkspaceCreationEntry() throws {

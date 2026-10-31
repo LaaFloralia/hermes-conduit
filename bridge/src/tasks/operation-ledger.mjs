@@ -92,6 +92,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
       operationId: entry.operationId, kind: entry.kind, targetId: entry.targetId,
       status, createdAt: new Date(entry.createdAt).toISOString(), updatedAt: new Date(entry.updatedAt).toISOString(),
       ...(entry.resultId ? { resultId: entry.resultId, identifier: entry.identifier } : {}),
+      ...(entry.status === 'rejected' ? { rejection: entry.rejection ?? 'preflight_failed' } : {}),
       ...(entry.resolution ? { resolution: entry.resolution } : {}),
       ...(entry.status === 'succeeded' && age >= RECENT_MS ? { replayExpired: true } : {}),
     };
