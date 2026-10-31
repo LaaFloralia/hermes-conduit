@@ -198,16 +198,18 @@ struct LAABridgeClient {
     /// The caller owns write keys and retries. For long-poll use a timeout of wait + 10 seconds.
     func request<T: Decodable>(method: String, path: String, jsonBody: Data? = nil,
                                credentials: LAABridgeCredentials, idempotencyKey: LAABridgeIdempotencyKey? = nil,
-                               ifMatch: String? = nil, timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
+                               ifMatch: String? = nil, ifNoneMatch: String? = nil,
+                               timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
         try await send(baseURL: credentials.baseURL, path: path, method: method, body: jsonBody,
-                       token: credentials.token, key: idempotencyKey, ifMatch: ifMatch, timeout: timeout)
+                       token: credentials.token, key: idempotencyKey, ifMatch: ifMatch,
+                       ifNoneMatch: ifNoneMatch, timeout: timeout)
     }
 
     private struct EnrollmentRequest: Encodable { let code: String; let name: String; let platform: String }
 
     private func send<T: Decodable>(baseURL: URL, path: String, method: String = "GET",
                                      body: Data? = nil, token: String? = nil,
-                                     key: LAABridgeIdempotencyKey? = nil, ifMatch: String? = nil,
+                                     key: LAABridgeIdempotencyKey? = nil, ifMatch: String? = nil, ifNoneMatch: String? = nil,
                                      timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
         guard path.hasPrefix("/v1/"), !path.hasPrefix("//"),
               let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
@@ -223,6 +225,7 @@ struct LAABridgeClient {
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let key { request.setValue(key.value, forHTTPHeaderField: "Idempotency-Key") }
         if let ifMatch { request.setValue(ifMatch, forHTTPHeaderField: "If-Match") }
+        if let ifNoneMatch { request.setValue(ifNoneMatch, forHTTPHeaderField: "If-None-Match") }
         let data: Data
         let response: URLResponse
         do {

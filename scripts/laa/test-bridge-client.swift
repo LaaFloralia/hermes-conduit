@@ -116,6 +116,19 @@ final class BridgeMockProtocol: URLProtocol {
         require(response.data.items.isEmpty && response.requestId == "req-test", "decoded response envelope")
         require(response.status == 201 && response.etag == "\"4\"", "response status and ETag")
 
+        BridgeMockProtocol.headers = ["ETag": "\"opaque-catalog\""]
+        BridgeMockProtocol.handler = { request in
+            require(request.value(forHTTPHeaderField: "If-None-Match") == "\"opaque-catalog\"", "conditional catalog header")
+            return (304, Data())
+        }
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(
+                method: "GET", path: "/v1/studio/catalog", credentials: creds, ifNoneMatch: "\"opaque-catalog\"")
+            require(false, "304 must retain its status and ETag")
+        } catch let error as LAABridgeHTTPError {
+            require(error.status == 304 && error.currentETag == "\"opaque-catalog\"", "304 metadata")
+        }
+
         for (status, code) in [(409, "request_id_conflict"), (409, "idempotency_outcome_unknown"),
                                (409, "stop_unconfirmed"), (410, "cursor_expired"),
                                (412, "version_mismatch"), (428, "precondition_required")] {
