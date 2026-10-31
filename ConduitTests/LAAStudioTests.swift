@@ -84,7 +84,8 @@ final class LAAStudioTests: XCTestCase {
         let first = try XCTUnwrap(original.retryMaterial())
         XCTAssertTrue(LAAStudioActionGuard.save(original, device: "device-1", id: requestID, directory: directory))
         let restored = try XCTUnwrap(LAAStudioActionGuard.load(device: "device-1", id: requestID, directory: directory))
-        let retry = try XCTUnwrap(restored.retryMaterial())
+        let retryMarker = try XCTUnwrap(LAAStudioActionGuard.prepareRetry(restored))
+        let retry = try XCTUnwrap(retryMarker.retryMaterial())
         XCTAssertEqual(retry.key, first.key)
         XCTAssertEqual(retry.body, first.body)
         XCTAssertEqual(retry.action.content, action.content)
@@ -94,10 +95,38 @@ final class LAAStudioTests: XCTestCase {
         damaged = restored
         damaged.body = Data("{}".utf8)
         XCTAssertNil(damaged.retryMaterial())
+        damaged = restored
+        damaged.body = try JSONEncoder().encode(LAAStudioAction(action: "answer", id: requestID, approvalId: approvalID,
+                                                                 accept: false, content: action.content, persist: false))
+        XCTAssertNil(damaged.retryMaterial())
         let legacy = LAAStudioPendingAction(action: "answer", approvalId: approvalID, payload: action)
         XCTAssertNil(legacy.retryMaterial())
         XCTAssertFalse(LAAStudioActionGuard.requiresReentry(code: "idempotency_key_in_flight"))
         XCTAssertTrue(LAAStudioActionGuard.requiresReentry(code: "idempotency_outcome_unknown"))
+        XCTAssertTrue(LAAStudioActionGuard.requiresReentry(code: "idempotency_key_conflict"))
+    }
+
+    func testStopRetryUsesFreshKeysButPreservesBody() throws {
+        let original = try LAAStudioActionGuard.prepare(.init(action: "stop", id: requestID))
+        let first = try XCTUnwrap(original.retryMaterial())
+        let retry = try XCTUnwrap(LAAStudioActionGuard.prepareRetry(original))
+        let second = try XCTUnwrap(retry.retryMaterial())
+        let another = try XCTUnwrap(LAAStudioActionGuard.prepareRetry(retry)?.retryMaterial())
+        XCTAssertNotEqual(first.key, second.key)
+        XCTAssertNotEqual(second.key, another.key)
+        XCTAssertEqual(first.body, second.body)
+        XCTAssertEqual(first.body, another.body)
+        XCTAssertTrue(LAAStudioActionGuard.rejected(code: "studio_stopping", action: "stop"))
+        XCTAssertTrue(LAAStudioActionGuard.rejected(code: "studio_request_finished", action: "stop"))
+        XCTAssertFalse(LAAStudioActionGuard.rejected(code: "studio_stopping", action: "answer"))
+    }
+
+    func testRetryNormalizesWholeValuedNumbers() throws {
+        let action = LAAStudioAction(action: "answer", id: requestID, approvalId: UUID().uuidString,
+                                     accept: true, content: ["count": .number(1.0)], persist: false)
+        let marker = try LAAStudioActionGuard.prepare(action)
+        XCTAssertNotNil(marker.retryMaterial())
+        XCTAssertNotNil(LAAStudioActionGuard.prepareRetry(marker))
     }
 
     func testStopIsDisabledDuringSendOrWhileStopIsUnresolved() {

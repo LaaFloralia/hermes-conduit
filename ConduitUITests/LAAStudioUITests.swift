@@ -64,8 +64,24 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(stop.isEnabled)
         if !retry.isHittable { app.swipeDown() }
         retry.tap()
+        XCTAssertTrue(app.staticTexts["元の操作を確認中です。少し待ってから再試行してください。"].waitForExistence(timeout: 10))
+        XCTAssertEqual(try helper("action-count"), "1")
+        XCTAssertEqual(try helper("action-requests"), "2")
+        _ = try helper("advance-clock/61001")
+        XCTAssertTrue(retry.waitForExistence(timeout: 18))
+        if !retry.isHittable { app.swipeDown() }
+        retry.tap()
+        let reenter = app.buttons["Enter again"]
+        XCTAssertTrue(reenter.waitForExistence(timeout: 18))
+        XCTAssertEqual(try helper("action-count"), "1")
+        XCTAssertEqual(try helper("action-requests"), "3")
+        if !reenter.isHittable { app.swipeDown() }
+        reenter.tap()
+        if !allow.isHittable { app.swipeDown() }
+        XCTAssertTrue(allow.waitForExistence(timeout: 10)); allow.tap()
         XCTAssertTrue(app.staticTexts["Running"].waitForExistence(timeout: 10))
         XCTAssertEqual(try helper("action-count"), "2")
+        XCTAssertEqual(try helper("action-requests"), "4")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let create = app.buttons["laa.studio.new"]
         XCTAssertTrue(create.waitForExistence(timeout: 10)); create.tap()

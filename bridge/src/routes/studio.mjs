@@ -60,7 +60,13 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
     return { status: 200, data: await backend.action(body) };
   }
   async function replayAction({ rawBody }) {
-    return backend.getRequest(validateAction(parseBody(rawBody)).id);
+    try { return await backend.getRequest(validateAction(parseBody(rawBody)).id); }
+    catch (error) {
+      if (error instanceof BridgeError && error.code === 'studio_not_connected') {
+        throw new BridgeError(503, error.code, 'The action was accepted earlier, but its current status is unavailable; check it with GET when Studio reconnects', { retryable: true });
+      }
+      throw error;
+    }
   }
   async function media({ req, res, requestId, params }) {
     const abort = new AbortController();

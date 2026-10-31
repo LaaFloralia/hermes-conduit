@@ -279,6 +279,31 @@ describe('Studio mock contract', () => {
     } finally { await bridge.close(); }
   });
 
+  it('accepts a fresh stop key after a lost response and reports an already finished request', async () => {
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    const originalAction = backend.action;
+    let calls = 0;
+    backend.action = async (action) => {
+      calls += 1;
+      const result = await originalAction(action);
+      if (calls === 1) throw new BridgeError(503, 'studio_not_connected', 'response lost');
+      return result;
+    };
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      await bridge.request('/v1/studio/requests', { method: 'POST', token, key: 'create-stop-lost', body: draft });
+      const attempt = { method: 'POST', token, key: 'stop-lost', body: { action: 'stop', id } };
+      assert.equal((await bridge.request('/v1/studio/action', attempt)).status, 503);
+      assert.equal((await bridge.request('/v1/studio/action', attempt)).body.error.code, 'idempotency_key_in_flight');
+      const retry = await bridge.request('/v1/studio/action', { ...attempt, key: 'stop-retry' });
+      assert.equal(retry.status, 409);
+      assert.equal(retry.body.error.code, 'studio_request_finished');
+      assert.equal(calls, 2);
+      assert.equal((await bridge.request(`/v1/studio/requests/${id}`, { token })).body.data.status, 'stopped');
+    } finally { await bridge.close(); }
+  });
+
   it('states that creation was accepted when replay cannot obtain the current Studio record', async () => {
     const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
     const bridge = await startBridge({ studio: { backend } });
@@ -292,6 +317,24 @@ describe('Studio mock contract', () => {
       assert.equal(retry.body.error.code, 'studio_not_connected');
       assert.match(retry.body.error.message, /accepted earlier.*GET/);
       assert.equal(backend.state.records.size, 1);
+    } finally { await bridge.close(); }
+  });
+
+  it('states that an action was accepted when replay cannot obtain the current Studio record', async () => {
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      await bridge.request('/v1/studio/requests', { method: 'POST', token, key: 'create-action-offline-replay', body: draft });
+      const attempt = { method: 'POST', token, key: 'action-offline-replay', body: { action: 'stop', id } };
+      assert.equal((await bridge.request('/v1/studio/action', attempt)).status, 200);
+      backend.state.connected = false;
+      const retry = await bridge.request('/v1/studio/action', attempt);
+      assert.equal(retry.status, 503);
+      assert.equal(retry.body.error.code, 'studio_not_connected');
+      assert.match(retry.body.error.message, /accepted earlier.*GET/);
+      backend.state.connected = true;
+      assert.equal((await bridge.request(`/v1/studio/requests/${id}`, { token })).body.data.status, 'stopped');
     } finally { await bridge.close(); }
   });
 

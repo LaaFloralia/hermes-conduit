@@ -54,6 +54,8 @@ extension LAACopy {
         static let retryAction = "状態が変わらないため、同じ内容を再試行できます。"
         static let reenterAction = "操作が実行済みの可能性があります。状態を確認してから入力し直してください。"
         static let actionInFlight = "元の操作を確認中です。少し待ってから再試行してください。"
+        static let actionDisconnected = "Studioに接続できません。操作が受け付け済みの可能性があります。接続後に状態を確認してください。"
+        static let stopping = "Studioは停止処理中です。状態が変わるまでお待ちください。"
         static let reenter = "Enter again"
         static let saveFailed = "下書きを保存できません。保存できるまで送信しません。"
         static let pageUnsupported = "このページはアプリでプレビューできません。LAA Studioで開いてください。"
@@ -61,7 +63,7 @@ extension LAACopy {
         static let approvalOnMac = "この確認はMacで操作してください。有料生成や認証情報はアプリから回答できません。"
         static let emptyWorks = "まだ作品がありません。"
         static let emptyRequests = "まだ依頼がありません。"
-        static let unreceived = "Studioはまだ依頼を受け取っていません。自動では再実行しません。"
+        static let unreceived = "Studioはまだ依頼を受け取っていません。自動では再実行しません。LAA Studioで状態を確認してください。"
         static let invalid = "必須項目と入力内容を確認してください。"
         static let tooLong = "依頼文は10,000字以内にしてください。"
     }
@@ -150,6 +152,7 @@ enum LAAStudioData {
             case "studio_request_id_conflict": return "依頼IDが別の内容に使われています。Macで確認してください。"
             case "studio_approval_on_mac", "studio_approval_expired": return LAACopy.Studio.approvalOnMac
             case "idempotency_key_in_flight": return LAACopy.Studio.actionInFlight
+            case "studio_stopping": return LAACopy.Studio.stopping
             default: return error.legacyError.japaneseText
             }
         }

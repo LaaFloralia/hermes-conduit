@@ -136,7 +136,7 @@ enum LAAStudioScalar: Codable, Equatable {
         }
     }
 }
-struct LAAStudioAction: Codable {
+struct LAAStudioAction: Codable, Equatable {
     let action: String
     let id: String
     var approvalId: String? = nil
