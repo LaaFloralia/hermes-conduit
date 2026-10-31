@@ -27,6 +27,9 @@ INTERNAL_METADATA_KEYS = {"identifier", "bundleidentifier", "typeidentifier", "t
 # Whole links and App Group IDs are identifiers, not localizable display text;
 # changing them would break existing deep links and shared storage.
 INTERNAL_VALUE = re.compile(r"^(?:(?:https?|conduit|conduitwatch)://[^\s]+|group\.[A-Za-z0-9.-]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})$", re.I)
+# The retained deep-link scheme can occur inside a model-facing prompt.
+# Ignore only the link, never neighboring visible product names.
+INTERNAL_LINK = re.compile(r"(?<![A-Za-z0-9_])conduit://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%+-]+", re.I)
 
 
 class CheckError(Exception):
@@ -63,7 +66,7 @@ def scan_values(value, path, issues, key="", metadata=False):
     elif isinstance(value, list):
         for child in value:
             scan_values(child, path, issues, key, metadata)
-    elif isinstance(value, str) and BRAND.search(value) and not INTERNAL_VALUE.fullmatch(value):
+    elif isinstance(value, str) and not INTERNAL_VALUE.fullmatch(value) and BRAND.search(INTERNAL_LINK.sub("", value)):
         # Print only the resource and key, never the value (which may contain
         # addresses or other data in a future generated resource).
         issues.append(f"old brand in {path} (key: {key})")

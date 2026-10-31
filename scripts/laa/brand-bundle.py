@@ -17,6 +17,26 @@ names = {"app": "LAA", "watch": "LAA", "watch-widget": "LAA Watch Widgets",
 bundle_names = {"watch": "LAA Watch", "watch-widget": "LAA Watch",
                 "widgets": "LAA Widgets", "notification": "LAA Notices", "share": "LAA Share"}
 
+# These are catalog keys, not runtime data. Their upstream display copy
+# contains shell commands or internal configuration names that do not belong
+# in the LAA interface. Keep the original keys and localize the replacement.
+COPY = json.loads(Path(__file__).with_name("brand-copy.json").read_text())
+STATIC_COPY_KEYS = {
+    "Run hermes gateway status on the host to see why.": "check_mac",
+    "It may still be finishing running tasks. Run hermes gateway status on the host to check.": "check_mac",
+    "Update Hermes, or run hermes gateway restart on the host.": "check_mac",
+    "The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.": "check_mac",
+    "On the host, `hermes conduit-push prefs export` and `prefs import` move the same set between hosts.": "sync_mac",
+    "Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server.": "qwen",
+    "Your host has no fast model set (auxiliary.conduit_predict), so the chat's own model answers.": "fast_model",
+    "GPT-Live calls will use your Hermes server's OpenAI API key, which OpenAI bills per minute of call time, separately from any ChatGPT plan. Your Hermes server has to allow it too (voice.gpt_live.conduit_api_billing in the profile's config).": "billing",
+}
+MAC_ONLY_KEYS = {"hermes chat on the host"}
+EXAMPLE_KEYS = {
+    "That doesn’t look like a dashboard URL Conduit can use. Check it for typos — it should look like https://hermes.example.",
+    "Your existing HTTPS Hermes dashboard URL — for example https://hermes.example.com, https://hermes.example.com:9443, or https://example.com/hermes.",
+}
+
 # A value that is an identifier, link or address keeps its spelling: only
 # display copy is rebranded (BUS-330).
 def is_identifier(value):
@@ -60,7 +80,7 @@ def display(value, source_key=None):
     return value
 
 
-def values_only(value, source_key=None):
+def values_only(value, source_key=None, locale="en"):
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
@@ -69,12 +89,23 @@ def values_only(value, source_key=None):
             # do not transfer upstream's developer-visibility claim to LAA.
             if isinstance(item, str) and "Conduit's developer can't see it." in key:
                 item = re.split(r"(?<=[.。])\s*", item, maxsplit=1)[0]
-            result[key] = values_only(item, source_key if source_key is not None else key)
+            result[key] = values_only(item, source_key if source_key is not None else key, locale)
         return result
     if isinstance(value, list):
-        return [values_only(item, source_key) for item in value]
+        return [values_only(item, source_key, locale) for item in value]
     if not isinstance(value, str):
         return value
+    if source_key in STATIC_COPY_KEYS:
+        translations = COPY[STATIC_COPY_KEYS[source_key]]
+        return translations.get(locale, translations["en"])
+    if source_key in MAC_ONLY_KEYS:
+        return "Mac"
+    if source_key in EXAMPLE_KEYS:
+        # These are fixed examples, not user-supplied URLs or credentials.
+        value = value.replace("hermes.example", "mac.example").replace("example.com/hermes", "example.com/mac")
+    if source_key and "conduit_push plugin together" in source_key:
+        # The Watch error keeps its translated text and any format argument.
+        value = value.replace("conduit_push", "Mac")
     return value if is_identifier(value) else display(value, source_key)
 
 
@@ -141,7 +172,7 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
                     continue
                 data = read_plist(path)
                 with path.open("wb") as stream:
-                    plistlib.dump(values_only(data), stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
+                    plistlib.dump(values_only(data, locale=directory.stem), stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
 
     # String catalogs omit untranslated source-language entries from en.lproj.
     # Without explicit English values, Foundation displays the original key.
@@ -153,7 +184,7 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
     english_path = english_dir / "Localizable.strings"
     english = read_plist(english_path) if english_path.exists() else {}
     for key in catalog:
-        if ("Conduit" in key or "Hermes" in key) and key not in english:
+        if ("Conduit" in key or "Hermes" in key or key in MAC_ONLY_KEYS) and key not in english:
             english[key] = values_only({key: key})[key]
     with english_path.open("wb") as stream:
         plistlib.dump(english, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)

@@ -42,6 +42,13 @@ class LAABrandCheckTests(unittest.TestCase):
     def test_complete_bundle_passes_and_preserves_internal_identifiers(self):
         self.assertEqual(checker.check_bundle(self.app), [])
 
+    def test_internal_link_inside_a_sentence_does_not_hide_visible_brand(self):
+        resource = self.app / "en.lproj/Localizable.strings"
+        write_plist(resource, {"prompt": "Use conduit://connect?url=ADDRESS&username=USERNAME."})
+        self.assertEqual(checker.check_bundle(self.app), [])
+        write_plist(resource, {"prompt": "Open Conduit and use conduit://connect?url=ADDRESS."})
+        self.assertTrue(checker.check_bundle(self.app))
+
     def test_old_display_string_in_every_component_fails(self):
         for identifier, part in self.parts.items():
             with self.subTest(component=identifier):

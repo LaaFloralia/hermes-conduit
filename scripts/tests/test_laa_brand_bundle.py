@@ -10,6 +10,10 @@ ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("laa_brand_bundle", ROOT / "scripts/laa/brand-bundle.py")
 brand = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(brand)
+CHECK_SPEC = importlib.util.spec_from_file_location("laa_brand_check", ROOT / "scripts/laa/check-brand-bundle.py")
+checker = importlib.util.module_from_spec(CHECK_SPEC)
+CHECK_SPEC.loader.exec_module(checker)
+LANGUAGES = {"en", "de", "es", "fr", "id", "it", "ja", "ko", "pl", "pt-BR", "ru", "tr", "zh-Hans", "zh-Hant"}
 
 
 class LAABrandBundleTests(unittest.TestCase):
@@ -212,3 +216,44 @@ class LAABrandBundleTests(unittest.TestCase):
                         if "Conduit's developer can't see it." not in key:
                             self.assertEqual(re.findall(r"%(?:\d+\$)?[@dfsi]", value),
                                              re.findall(r"%(?:\d+\$)?[@dfsi]", result))
+
+    def test_static_replacements_are_localized_and_do_not_change_keys(self):
+        catalogs = [json.loads((ROOT / path).read_text())["strings"] for path in
+                    ("Conduit/Localizable.xcstrings", "ConduitWatch/Localizable.xcstrings")]
+        for source, copy_name in brand.STATIC_COPY_KEYS.items():
+            self.assertTrue(any(source in catalog for catalog in catalogs), source)
+            self.assertNotRegex(source, r"%(?:\d+\$)?[@dfsi]")
+            self.assertEqual(set(brand.COPY[copy_name]), LANGUAGES)
+            for language in LANGUAGES:
+                result = brand.values_only({source: source}, locale=language)
+                self.assertEqual(list(result), [source])
+                self.assertEqual(result[source], brand.COPY[copy_name][language])
+                self.assertNotRegex(result[source], re.compile(r"Conduit|Hermes", re.I))
+
+    def test_only_fixed_examples_and_watch_messages_are_rewritten(self):
+        example = next(key for key in brand.EXAMPLE_KEYS if "hermes.example.com" in key)
+        rewritten = brand.values_only({example: example})[example]
+        self.assertIn("https://mac.example.com", rewritten)
+        self.assertIn("https://example.com/mac", rewritten)
+        self.assertEqual(brand.values_only({"user-url": "https://hermes.example"})["user-url"],
+                         "https://hermes.example")
+        watch = "Hermes started %@, not Grok. Update Conduit and the conduit_push plugin together."
+        result = brand.values_only({watch: watch})[watch]
+        self.assertIn("%@", result)
+        self.assertNotRegex(result, re.compile(r"Conduit|Hermes", re.I))
+
+    def test_all_catalog_display_values_pass_the_artifact_inspector(self):
+        for path in ("Conduit/Localizable.xcstrings", "ConduitWatch/Localizable.xcstrings",
+                     "Conduit/AppShortcuts.xcstrings"):
+            catalog = json.loads((ROOT / path).read_text())["strings"]
+            issues = []
+            for key, entry in catalog.items():
+                samples = {"en": key}
+                for language, translation in entry.get("localizations", {}).items():
+                    unit = translation.get("stringUnit", {})
+                    if "value" in unit:
+                        samples[language] = unit["value"]
+                for language, value in samples.items():
+                    localized = brand.values_only({key: value}, locale=language)
+                    checker.scan_values(localized, f"{path}/{language}", issues)
+            self.assertEqual(issues, [], "\n".join(issues[:20]))
