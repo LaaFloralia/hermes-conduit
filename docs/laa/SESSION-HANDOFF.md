@@ -20,10 +20,12 @@
 
 | 役 | モデル・経路 | 担当 |
 |---|---|---|
-| 親 | 社長が選んだモデル（現在 Opus 5.5） | 指摘の登録、分担、統合、検証、TestFlight（秘密を扱うため親だけ） |
-| iOS実装 | GPT-6.1 Terra max（Paseo codex） | アプリとBridgeの実装・試験 |
-| 独立レビュー・その他 | DeepSeek V4.1 Flash max（Paseo dsh） | レビュー、調査、文書 |
+| 親 | 社長が選んだモデル（現在 Opus 5.5） | 指摘の登録、分担、統合、検証、TestFlightとMac版の署名・公証（秘密を扱うため親だけ） |
+| PC操作を伴う実装・試験 | GPT-6.1 Terra max（Paseo codex） | シミュレーター・画面撮影・Macでの起動確認を伴うアプリの実装と試験 |
+| それ以外の実装・レビュー | DeepSeek V4.1 Flash max（Paseo dsh） | Bridge・スクリプト等のコード（CLIのビルドと単体テストまで）、独立レビュー、調査、文書 |
 | デザイン | design-worker | Studioでの視覚案（必要な時だけ） |
+
+独立レビューは実装者と別系統にする（Terraの実装はDSH、DSHの実装はTerraが見る。2026-10-31 社長指示）。
 
 Claudeのサブエージェントは使わない（design-workerだけ例外）。起動例:
 
