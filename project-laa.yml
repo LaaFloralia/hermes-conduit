@@ -49,6 +49,11 @@ targets:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_TEST"
         SUPPORTS_MACCATALYST: YES
+        # Match the app's iOS 17 / macOS 14 baseline; Xcode otherwise uses
+        # the Mac SDK version as the test bundle's minimum macOS version.
+        "MACOSX_DEPLOYMENT_TARGET[sdk=macosx*]": "14.0"
+        # A Catalyst app has the macOS bundle layout, unlike the iOS host.
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/Conduit.app/Contents/MacOS/Conduit"
   ConduitUITests:
     settings:
       base:
