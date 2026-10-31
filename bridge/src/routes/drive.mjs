@@ -17,6 +17,7 @@ import { BridgeError } from '../errors.mjs';
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_QUERY_LENGTH = 200;
+const VIEWS = new Set(['my', 'shared', 'recent', 'starred']);
 const CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
 const ID_PATTERN = /^[A-Za-z0-9_-]{5,200}$/;
 const RELAYED_HEADERS = [
@@ -138,25 +139,28 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     if (folderId !== null && !ID_PATTERN.test(folderId)) {
       throw badRequest('folder_id_invalid', 'folderId is not a Drive folder id');
     }
+    const view = url.searchParams.get('view');
+    if (view !== null && !VIEWS.has(view)) throw badRequest('view_invalid', 'unknown Drive view');
     const rawPageSize = url.searchParams.get('pageSize');
     const pageSize = rawPageSize === null ? DEFAULT_PAGE_SIZE : Number(rawPageSize);
     if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > MAX_PAGE_SIZE) {
       throw badRequest('page_size_invalid', `pageSize must be 1-${MAX_PAGE_SIZE}`);
     }
-    const filter = fingerprint([query, folderId ?? '', String(pageSize)]);
+    // Preserve old unqualified cursors while binding new cursors to their view.
+    const filter = fingerprint([query, folderId ?? '', String(pageSize), ...(view === null ? [] : [view])]);
     const rawCursor = url.searchParams.get('cursor');
     const pageToken = rawCursor === null ? null : decodeCursor(rawCursor, filter, now());
 
     let page;
     try {
-      page = await requireAdapter().list({ query, folderId, pageSize, pageToken });
+      page = await requireAdapter().list({ query, folderId, pageSize, pageToken, view });
     } catch (error) {
       throw driveError(error);
     }
     const nextCursor = page.nextPageToken
       ? encodeCursor({ pageToken: page.nextPageToken, filter, issuedAt: now() })
       : null;
-    return { status: 200, data: { items: page.items, nextCursor } };
+    return { status: 200, data: { items: page.items, nextCursor, incompleteSearch: page.incompleteSearch === true } };
   }
 
   async function fileMetadata({ params }) {
@@ -169,6 +173,40 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     }
     if (!found) throw new BridgeError(404, 'not_found', 'no such Drive file in the allowed range');
     return { status: 200, data: found.item };
+  }
+
+  async function fileThumbnail({ req, res, requestId, params }) {
+    const drive = requireAdapter();
+    if (typeof drive.thumbnail !== 'function') throw new BridgeError(503, 'thumbnail_unavailable', 'thumbnail access is unavailable');
+    const abort = new AbortController();
+    const onClose = () => { if (!res.writableEnded) abort.abort(); };
+    res.on('close', onClose);
+    try {
+      let thumbnail;
+      try {
+        thumbnail = await drive.thumbnail(params[0], { signal: abort.signal });
+      } catch (error) {
+        if (error?.name === 'AbortError') return undefined;
+        throw driveError(error);
+      }
+      if (abort.signal.aborted) return undefined;
+      if (!thumbnail) throw new BridgeError(404, 'thumbnail_unavailable', 'no accessible thumbnail is available');
+      if (!Buffer.isBuffer(thumbnail.body) || thumbnail.body.length > 2 * 1024 * 1024 ||
+          !['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(thumbnail.mimeType)) {
+        throw new BridgeError(503, 'thumbnail_unavailable', 'the thumbnail could not be validated');
+      }
+      res.writeHead(200, {
+        'content-type': thumbnail.mimeType,
+        'content-length': String(thumbnail.body.length),
+        'cache-control': 'private, no-store',
+        'x-content-type-options': 'nosniff',
+        'x-request-id': requestId,
+      });
+      res.end(thumbnail.body);
+      return undefined;
+    } finally {
+      res.off('close', onClose);
+    }
   }
 
   function contentHeaders({ requestId, item, status, upstream, size, start, end }) {
@@ -211,6 +249,9 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     if (!found) throw new BridgeError(404, 'not_found', 'no such Drive file in the allowed range');
     const item = found.item;
     if (item.kind === 'folder') throw badRequest('not_a_file', 'a folder has no content');
+    if (item.kind === 'shortcut') {
+      throw new BridgeError(409, 'shortcut_target_required', 'open the authorized shortcut target instead');
+    }
     if (item.kind === 'workspace_document') {
       const formats = (item.exportFormats ?? []).join(', ');
       throw new BridgeError(
@@ -218,6 +259,9 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
         'export_required',
         `Workspace documents have no streamable bytes; export through the Drive API as one of: ${formats}`,
       );
+    }
+    if (item.downloadable === false) {
+      throw new BridgeError(403, 'download_forbidden', 'Drive does not permit downloading this file');
     }
 
     // Opt-in pinning lets a client detect a change between separate ranges.
@@ -340,6 +384,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
   }
 
   const contentPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/content$/;
+  const thumbnailPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/thumbnail$/;
   const itemPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})$/;
 
   return [
@@ -347,5 +392,6 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     { method: 'GET', pattern: itemPattern, auth: true, scope: 'media:read', handler: fileMetadata },
     { method: 'GET', pattern: contentPattern, auth: true, scope: 'media:read', handler: fileContent },
     { method: 'HEAD', pattern: contentPattern, auth: true, scope: 'media:read', handler: fileContent },
+    { method: 'GET', pattern: thumbnailPattern, auth: true, scope: 'media:read', handler: fileThumbnail },
   ];
 }

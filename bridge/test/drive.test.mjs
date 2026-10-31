@@ -337,6 +337,129 @@ describe('drive content and ranges', () => {
   });
 });
 
+describe('drive views and incomplete searches', () => {
+  it('binds cursors to their view and preserves unqualified legacy cursors', async () => {
+    const drive = fakeDrive();
+    const list = drive.list;
+    const calls = [];
+    drive.list = async (options) => {
+      calls.push(options);
+      return { ...(await list(options)), incompleteSearch: options.view === 'shared' };
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const first = await bridge.request('/v1/drive/files?view=shared&pageSize=1', { token });
+      assert.equal(first.status, 200);
+      assert.equal(first.body.data.incompleteSearch, true);
+      assert.equal(calls.at(-1).view, 'shared');
+      const cursor = encodeURIComponent(first.body.data.nextCursor);
+      assert.equal((await bridge.request(`/v1/drive/files?view=shared&pageSize=1&cursor=${cursor}`, { token })).status, 200);
+      assert.equal((await bridge.request(`/v1/drive/files?view=my&pageSize=1&cursor=${cursor}`, { token })).status, 400);
+      assert.equal((await bridge.request(`/v1/drive/files?pageSize=1&cursor=${cursor}`, { token })).status, 400);
+      const legacy = await bridge.request('/v1/drive/files?pageSize=1', { token });
+      assert.equal(legacy.body.data.incompleteSearch, false);
+      assert.equal(calls.at(-1).view, null);
+      assert.equal((await bridge.request(`/v1/drive/files?pageSize=1&cursor=${encodeURIComponent(legacy.body.data.nextCursor)}`,
+        { token })).status, 200);
+      assert.equal((await bridge.request('/v1/drive/files?view=unexpected', { token })).status, 400);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('does not treat a shortcut as streamable bytes', async () => {
+    const drive = fakeDrive();
+    const get = drive.get;
+    drive.get = async (id) => {
+      const found = await get(id);
+      return found ? { ...found, item: { ...found.item, kind: 'shortcut' } } : null;
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const response = await bridge.request('/v1/drive/files/file_video_1/content', { token });
+      assert.equal(response.status, 409);
+      assert.equal(response.body.error.code, 'shortcut_target_required');
+      assert.equal(drive.state.opened, 0);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('does not open media when Drive reports downloading is forbidden', async () => {
+    const drive = fakeDrive();
+    const get = drive.get;
+    drive.get = async (id) => {
+      const found = await get(id);
+      return found ? { ...found, item: { ...found.item, downloadable: false } } : null;
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const response = await bridge.request('/v1/drive/files/file_video_1/content', { token });
+      assert.equal(response.status, 403);
+      assert.equal(response.body.error.code, 'download_forbidden');
+      assert.equal(drive.state.opened, 0);
+    } finally {
+      await bridge.close();
+    }
+  });
+});
+
+describe('drive thumbnails', () => {
+  it('requires media:read and returns bounded image bytes without upstream links', async () => {
+    const drive = fakeDrive();
+    const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    drive.thumbnail = async () => ({ mimeType: 'image/png', body: image });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const limitedToken = await pairDevice(bridge, ['sessions:read']);
+      const url = `${bridge.base}/v1/drive/files/file_video_1/thumbnail`;
+      assert.equal((await fetch(url)).status, 401);
+      assert.equal((await fetch(url, { headers: { authorization: `Bearer ${limitedToken}` } })).status, 403);
+      const response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'image/png');
+      assert.equal(response.headers.get('cache-control'), 'private, no-store');
+      assert.ok(Buffer.from(await response.arrayBuffer()).equals(image));
+      drive.thumbnail = async () => null;
+      assert.equal((await fetch(url, { headers: { authorization: `Bearer ${token}` } })).status, 404);
+      drive.thumbnail = async () => ({ mimeType: 'text/html', body: image });
+      assert.equal((await fetch(url, { headers: { authorization: `Bearer ${token}` } })).status, 503);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('stops thumbnail work when the client disconnects', async () => {
+    const drive = fakeDrive();
+    let aborted = false;
+    drive.thumbnail = async (_id, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+      }, { once: true });
+    });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const controller = new AbortController();
+      const pending = fetch(`${bridge.base}/v1/drive/files/file_video_1/thumbnail`, {
+        headers: { authorization: `Bearer ${token}` }, signal: controller.signal,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.abort();
+      await assert.rejects(pending, { name: 'AbortError' });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(aborted, true);
+    } finally {
+      await bridge.close();
+    }
+  });
+});
+
 describe('drive configuration and failures', () => {
   it('reports an unconfigured Drive as 503 drive_not_configured', async () => {
     const bridge = await startBridge({ drive: null });

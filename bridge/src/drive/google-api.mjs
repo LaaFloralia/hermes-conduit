@@ -14,8 +14,11 @@
 
 const DEFAULT_BASE_URL = 'https://www.googleapis.com/drive/v3';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const FILE_FIELDS = 'id,name,mimeType,size,modifiedTime,parents,webViewLink,trashed,shortcutDetails,version';
-const LIST_FIELDS = `nextPageToken,files(${FILE_FIELDS})`;
+const FILE_FIELDS = 'id,name,mimeType,size,modifiedTime,parents,webViewLink,trashed,shortcutDetails,version,starred,viewedByMeTime,owners(displayName),capabilities(canDownload),hasThumbnail,thumbnailVersion,thumbnailLink';
+const LIST_FIELDS = `nextPageToken,incompleteSearch,files(${FILE_FIELDS})`;
+const MAX_THUMBNAIL_BYTES = 2 * 1024 * 1024;
+const THUMBNAIL_HOSTS = new Set(['lh3.googleusercontent.com', 'lh4.googleusercontent.com',
+  'lh5.googleusercontent.com', 'lh6.googleusercontent.com']);
 
 const WORKSPACE_MIME = {
   'application/vnd.google-apps.document': [
@@ -70,11 +73,32 @@ function escapeQuery(value) {
   return value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
+function thumbnailUrl(value) {
+  if (typeof value !== 'string' || value.length > 8192) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || !THUMBNAIL_HOSTS.has(url.hostname) ||
+        url.username || url.password || url.port || url.hash) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+function isImageBytes(mime, bytes) {
+  if (mime === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (mime === 'image/png') return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (mime === 'image/gif') return bytes.length >= 6 && ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString('ascii'));
+  if (mime === 'image/webp') return bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  return false;
+}
+
 export function itemFromDrive(file) {
   const mimeType = file.mimeType ?? 'application/octet-stream';
   const isFolder = mimeType === 'application/vnd.google-apps.folder';
+  const isShortcut = mimeType === 'application/vnd.google-apps.shortcut';
   const exportFormats = WORKSPACE_MIME[mimeType];
-  const kind = isFolder ? 'folder' : exportFormats ? 'workspace_document' : 'file';
+  const kind = isFolder ? 'folder' : isShortcut ? 'shortcut' : exportFormats ? 'workspace_document' : 'file';
   const size = typeof file.size === 'string' ? Number(file.size) : typeof file.size === 'number' ? file.size : null;
   const item = {
     id: file.id,
@@ -87,10 +111,27 @@ export function itemFromDrive(file) {
     // a JS number, which could silently lose precision.
     version: typeof file.version === 'string' && /^\d{1,30}$/.test(file.version) ? file.version : null,
     parents: Array.isArray(file.parents) ? file.parents : [],
-    downloadable: kind === 'file',
+    downloadable: isFolder || isShortcut ? false :
+      typeof file.capabilities?.canDownload === 'boolean' ? file.capabilities.canDownload : null,
     webViewLink: file.webViewLink ?? null,
+    starred: typeof file.starred === 'boolean' ? file.starred : null,
+    viewedAt: typeof file.viewedByMeTime === 'string' ? file.viewedByMeTime : null,
+    owners: Array.isArray(file.owners)
+      ? file.owners.map((owner) => ({ displayName: typeof owner?.displayName === 'string' ? owner.displayName : null }))
+      : null,
+    hasThumbnail: typeof file.hasThumbnail === 'boolean' ? file.hasThumbnail : null,
+    thumbnailVersion: typeof file.thumbnailVersion === 'string' && /^\d{1,30}$/.test(file.thumbnailVersion)
+      ? file.thumbnailVersion : null,
   };
   if (kind === 'workspace_document') item.exportFormats = exportFormats;
+  if (isShortcut) {
+    const target = file.shortcutDetails ?? {};
+    item.shortcut = {
+      targetId: isDriveId(target.targetId) ? target.targetId : null,
+      targetMimeType: typeof target.targetMimeType === 'string' ? target.targetMimeType : null,
+      requiresResourceKey: typeof target.targetResourceKey === 'string' && target.targetResourceKey !== '',
+    };
+  }
   return item;
 }
 
@@ -195,11 +236,22 @@ export function createGoogleDriveApiAdapter({
   return {
     kind: 'google-drive-api',
     configured,
-    async list({ query = '', folderId = null, pageSize = 50, pageToken = null } = {}) {
+    async list({ query = '', folderId = null, pageSize = 50, pageToken = null, view = null } = {}) {
       const clauses = ['trashed = false'];
+      if (view !== null && !['my', 'shared', 'recent', 'starred'].includes(view)) {
+        throw new DriveUpstreamError('unknown Drive view');
+      }
       if (folderId) {
         if (!isDriveId(folderId)) throw new DriveUpstreamError('folder id is not a Drive id');
         clauses.push(`'${folderId}' in parents`);
+      } else if (view === 'my') {
+        clauses.push("'root' in parents");
+      } else if (view === 'shared') {
+        clauses.push('sharedWithMe = true');
+      } else if (view === 'starred') {
+        clauses.push('starred = true');
+      } else if (view === 'recent') {
+        clauses.push("viewedByMeTime > '1970-01-01T00:00:00Z'");
       }
       if (query) clauses.push(`name contains '${escapeQuery(query)}'`);
       const { response } = await call('/files', {
@@ -208,7 +260,7 @@ export function createGoogleDriveApiAdapter({
           fields: LIST_FIELDS,
           pageSize,
           pageToken,
-          orderBy: 'folder,name',
+          orderBy: view === 'recent' && !folderId ? 'viewedByMeTime desc' : 'folder,name',
           spaces: 'drive',
           corpora: 'allDrives',
           includeItemsFromAllDrives: 'true',
@@ -220,17 +272,68 @@ export function createGoogleDriveApiAdapter({
       return {
         items: files.map(itemFromDrive),
         nextPageToken: typeof body.nextPageToken === 'string' && body.nextPageToken !== '' ? body.nextPageToken : null,
+        incompleteSearch: body.incompleteSearch === true,
       };
     },
-    async get(id) {
+    async get(id, { signal } = {}) {
       if (!isDriveId(id)) return null;
       const { response, missing, denied } = await call(`/files/${encodeURIComponent(id)}`, {
-        query: { fields: FILE_FIELDS, supportsAllDrives: 'true' },
+        query: { fields: FILE_FIELDS, supportsAllDrives: 'true' }, signal,
       });
       if (missing || denied) return null;
       const file = await response.json();
       if (file.trashed) return null;
-      return { item: itemFromDrive(file), etag: response.headers.get('etag') ?? null };
+      return { item: itemFromDrive(file), etag: response.headers.get('etag') ?? null,
+        thumbnailLink: typeof file.thumbnailLink === 'string' ? file.thumbnailLink : null };
+    },
+    async thumbnail(id, { signal } = {}) {
+      const found = await this.get(id, { signal });
+      if (!found || found.item.downloadable !== true || !found.thumbnailLink) return null;
+      const url = thumbnailUrl(found.thumbnailLink);
+      if (!url) throw new DriveUpstreamError('the Drive thumbnail address is not allowed');
+      const token = await getAccessToken();
+      let response;
+      try {
+        response = await fetchImpl(url, { headers: { authorization: `Bearer ${token}` }, redirect: 'manual', signal });
+      } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        throw new DriveUpstreamError('the Drive thumbnail is unreachable');
+      }
+      if (response.status === 404 || response.status === 403) { await response.body?.cancel(); return null; }
+      if (response.status === 401) { await response.body?.cancel(); throw new DriveAuthError(); }
+      if (response.status !== 200 || !response.body) {
+        await response.body?.cancel();
+        throw new DriveUpstreamError('the Drive thumbnail request failed');
+      }
+      const mime = (response.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase();
+      const length = response.headers.get('content-length');
+      if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mime) ||
+          (length !== null && (!/^\d+$/.test(length) || Number(length) > MAX_THUMBNAIL_BYTES))) {
+        await response.body.cancel();
+        throw new DriveUpstreamError('the Drive thumbnail has an unsupported type or size');
+      }
+      const chunks = [];
+      let count = 0;
+      const reader = response.body.getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          count += value.byteLength;
+          if (count > MAX_THUMBNAIL_BYTES) {
+            await reader.cancel();
+            throw new DriveUpstreamError('the Drive thumbnail is too large');
+          }
+          chunks.push(Buffer.from(value));
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const body = Buffer.concat(chunks, count);
+      if ((length !== null && Number(length) !== count) || !isImageBytes(mime, body)) {
+        throw new DriveUpstreamError('the Drive thumbnail content is invalid');
+      }
+      return { mimeType: mime, body };
     },
     // The client's Range header is forwarded unchanged; Drive answers 206 with
     // Content-Range or 416, and the route relays that status and the bytes.
