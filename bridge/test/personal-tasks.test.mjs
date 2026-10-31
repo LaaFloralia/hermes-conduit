@@ -98,7 +98,8 @@ test('detail preserves long description and distinguishes people, apps and parti
 });
 
 test('inbox read preserves unread status and pagination, without marking anything read', async () => {
-  const notification = { id: 'n1', type: 'issue', readAt: null, issue: { id: 'i1', identifier: 'BUS-1', title: 'Fixture' } };
+  const notification = { id: 'n1', type: 'issue', createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z',
+    readAt: null, archivedAt: null, user: { id: VIEWER.id }, issue: { id: 'i1', identifier: 'BUS-1', title: 'Fixture' } };
   const fake = fixture(() => success({ notifications: page([notification], 'next') }));
   const first = await fake.source.listCollection('inbox');
   assert.equal(first.items[0].readAt, null);

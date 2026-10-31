@@ -43,6 +43,74 @@ struct LAAPersonalPage<Item: Decodable>: Decodable {
     let observedAt: String?
     let viewerId: String
 }
+struct LAAPersonalNotification: Decodable, Identifiable {
+    struct Actor: Decodable { let id: String; let name: String? }
+    struct Issue: Decodable { let id: String; let identifier: String; let title: String }
+    let id: String
+    let type: String
+    let title: String?
+    let subtitle: String?
+    let createdAt: String
+    let updatedAt: String
+    let readAt: String?
+    let archivedAt: String?
+    let snoozedUntilAt: String?
+    let actor: Actor?
+    let issue: Issue?
+    var isUnread: Bool { readAt == nil }
+    var isArchived: Bool { archivedAt != nil }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, type, title, subtitle, createdAt, updatedAt, readAt, archivedAt, snoozedUntilAt, actor, issue
+    }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        type = try values.decode(String.self, forKey: .type)
+        title = try values.decodeIfPresent(String.self, forKey: .title)
+        subtitle = try values.decodeIfPresent(String.self, forKey: .subtitle)
+        createdAt = try values.decode(String.self, forKey: .createdAt)
+        updatedAt = try values.decode(String.self, forKey: .updatedAt)
+        // Missing status is not the same as an explicit Linear null.
+        guard values.contains(.readAt), values.contains(.archivedAt) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Missing notification state"))
+        }
+        readAt = try values.decodeIfPresent(String.self, forKey: .readAt)
+        archivedAt = try values.decodeIfPresent(String.self, forKey: .archivedAt)
+        snoozedUntilAt = try values.decodeIfPresent(String.self, forKey: .snoozedUntilAt)
+        actor = try values.decodeIfPresent(Actor.self, forKey: .actor)
+        issue = try values.decodeIfPresent(Issue.self, forKey: .issue)
+    }
+}
+struct LAAPersonalNotificationResponse: Decodable {
+    let notification: LAAPersonalNotification
+    let viewerId: String
+    let observedAt: String?
+}
+
+/// Cursor pages are live. Never infer a zero unread count from a partial page.
+struct LAAPersonalInboxSnapshot {
+    enum Failure: Error { case viewerChanged, repeatedCursor }
+    let viewerId: String
+    private(set) var items: [LAAPersonalNotification] = []
+    private(set) var nextCursor: String?
+    private(set) var observedAt: String?
+    private var seenCursors = Set<String>()
+
+    mutating func merge(_ page: LAAPersonalPage<LAAPersonalNotification>, reset: Bool) throws {
+        guard page.viewerId == viewerId else { throw Failure.viewerChanged }
+        var cursors = reset ? Set<String>() : seenCursors
+        if let cursor = page.nextCursor, !cursors.insert(cursor).inserted { throw Failure.repeatedCursor }
+        var current = reset ? [] : items
+        var ids = Set(current.map(\.id))
+        current.append(contentsOf: page.items.filter { ids.insert($0.id).inserted })
+        items = current; nextCursor = page.nextCursor; observedAt = page.observedAt; seenCursors = cursors
+    }
+    var summary: String {
+        if items.contains(where: { $0.isUnread && !$0.isArchived }) { return "未読あり" }
+        return nextCursor == nil ? "取得分に未読なし" : "一部取得・未読未確認"
+    }
+}
 struct LAAPersonalChoice: Codable, Identifiable, Hashable {
     struct Reference: Codable, Hashable { let id: String }
     let id: String

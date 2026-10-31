@@ -336,6 +336,31 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Fixture UI comment"].waitForExistence(timeout: 20))
     }
 
+    // Run against a fresh synthetic fixture after the simulator slot is assigned.
+    func testPersonalTaskFixtureInboxReadAndArchive() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "taskfixture-inbox" else {
+            throw XCTSkip("The dedicated Inbox fixture was not selected.")
+        }
+        let app = launchWork()
+        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 30)); app.buttons["Tasks"].tap()
+        let inbox = app.buttons["work.tasks.inbox"]
+        XCTAssertTrue(inbox.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Inbox · 未読あり"].waitForExistence(timeout: 20))
+        inbox.tap()
+        XCTAssertTrue(app.staticTexts["Fixture notification"].waitForExistence(timeout: 20))
+        let mark = app.buttons["work.inbox.read.fixture-notification-1"]
+        XCTAssertTrue(waitUntilReady(mark, timeout: 20)); mark.tap()
+        XCTAssertTrue(app.staticTexts["既読"].waitForExistence(timeout: 20))
+        let archive = app.buttons["work.inbox.archive.fixture-notification-1"]
+        XCTAssertTrue(waitUntilReady(archive, timeout: 20)); archive.tap()
+        XCTAssertTrue(app.staticTexts["通知はありません。"].waitForExistence(timeout: 20))
+        app.switches["Include Archived"].tap()
+        XCTAssertTrue(app.staticTexts["保管済み"].waitForExistence(timeout: 20))
+        let restore = app.buttons["work.inbox.archive.fixture-notification-1"]
+        XCTAssertTrue(waitUntilReady(restore, timeout: 20)); restore.tap()
+        XCTAssertTrue(app.buttons["Archive"].waitForExistence(timeout: 20))
+    }
+
     func testLiveWorkspaceCreationEntry() throws {
         let app = launchWork()
         if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {

@@ -18,6 +18,13 @@ struct LAAPersonalPendingView: View {
         let prefix = "\(deviceID):linear:\(viewerId):"
         return drafts.submissions.filter { $0.key.profile == "laa-bridge" && $0.key.sessionID.hasPrefix(prefix) }
     }
+    private func inboxTarget(_ item: ComposerDraftStore.Submission) -> String? {
+        guard let device = bridge.deviceID else { return nil }
+        let prefix = "\(device):linear:\(viewerId):inbox:"
+        guard item.key.sessionID.hasPrefix(prefix) else { return nil }
+        let id = String(item.key.sessionID.dropFirst(prefix.count))
+        return id.isEmpty ? nil : id
+    }
 
     var body: some View {
         List {
@@ -41,7 +48,12 @@ struct LAAPersonalPendingView: View {
                                     .foregroundStyle(LAAColor.attention)
                             }
                         } else {
-                            Text(verbatim: item.key.sessionID).textSelection(.enabled).laaTextStyle(.secondary)
+                            if let id = inboxTarget(item) {
+                                Text(verbatim: "Inbox: \(item.draft.text) · \(id)").textSelection(.enabled).laaTextStyle(.secondary)
+                                NavigationLink("Open Notification", destination: LAAPersonalInboxItemView(drafts: drafts, viewerId: viewerId, id: id))
+                            } else {
+                                Text(verbatim: item.key.sessionID).textSelection(.enabled).laaTextStyle(.secondary)
+                            }
                             Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }.disabled(busy)
                             Button("Return to Draft if Unsent") { Task { await check(item, abandonIfUnsent: true) } }.disabled(busy)
                         }
@@ -63,6 +75,8 @@ struct LAAPersonalPendingView: View {
                         if let context = operation.contextId {
                             Text(verbatim: "タスク: \(context)").textSelection(.enabled)
                             NavigationLink("Open Task", destination: LAAWorkTaskDetailView(id: context, drafts: drafts))
+                        } else if operation.kind.hasPrefix("inbox_") {
+                            NavigationLink("Open Notification", destination: LAAPersonalInboxItemView(drafts: drafts, viewerId: viewerId, id: operation.targetId))
                         } else if ["update", "create"].contains(operation.kind) {
                             NavigationLink("Open Task", destination: LAAWorkTaskDetailView(id: operation.targetId, drafts: drafts))
                         }
@@ -128,7 +142,11 @@ struct LAAPersonalPendingView: View {
             case .wait: error = "結果は未確認です。Mac側の記録から対象を確認してください。"
             }
         } catch let failure as LAABridgeHTTPError {
-            error = failure.code == "operation_not_found" ? "Macに記録がありません。元の編集画面で同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)
+            if failure.code == "operation_not_found" {
+                error = inboxTarget(item) != nil
+                    ? "Macに記録がありません。Return to Draft if Unsent で未送信を確定してください。"
+                    : "Macに記録がありません。元の編集画面で同じ要求を再試行できます。"
+            } else { error = LAAWorkHTTP.message(failure) }
         } catch { self.error = "要求の結果を読み取れませんでした。" }
     }
     @MainActor private func resolve(_ operation: LAAPersonalOperationResponse.Operation, as resolution: String) async {

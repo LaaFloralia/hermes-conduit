@@ -132,6 +132,9 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
         let prefix = "\(device):linear:\(viewer):"
         guard item.key.sessionID.hasPrefix(prefix) else { return nil }
         let target = String(item.key.sessionID.dropFirst(prefix.count))
+        // Inbox actions are inspected or explicitly abandoned in Pending;
+        // foreground task synchronization must never send them automatically.
+        guard !target.hasPrefix("inbox:") else { return nil }
         if target.hasPrefix("upload:"), let path = taskPath(String(target.dropFirst("upload:".count))),
            let metadata = try? JSONDecoder().decode(LAAPersonalUploadMetadata.self, from: body), metadata.viewerId == viewer {
             return Ordinary(method: "POST", path: path + "/files", kind: "file", ifMatch: nil, upload: metadata)

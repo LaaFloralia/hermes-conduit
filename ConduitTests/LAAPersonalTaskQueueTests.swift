@@ -211,5 +211,23 @@ import XCTest
         XCTAssertTrue(LAAWorkDrafts.pending(reopened, key: different) == nil)
         XCTAssertEqual(ComposerDraftStore(fileURL: file).submissions.count, 2)
     }
+
+    func testInboxRequestSurvivesRestartButTaskQueueNeverSendsIt() async throws {
+        let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("drafts.json")
+        let store = ComposerDraftStore(fileURL: file)
+        let body = try JSONSerialization.data(withJSONObject: ["expectedViewerId": "viewer-a", "action": "read"], options: [.sortedKeys])
+        let localKey = LAAWorkDrafts.key(deviceID: "device-a", target: "linear:viewer-a:inbox:notification-a")
+        _ = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: localKey, text: "read", body: body,
+            idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "inbox-key"))))
+        let reopened = ComposerDraftStore(fileURL: file)
+        let bridge = QueueFixture()
+        await LAAPersonalTaskQueue.run(drafts: reopened, bridge: bridge, viewer: "viewer-a")
+        XCTAssertTrue(bridge.calls.isEmpty)
+        XCTAssertEqual(reopened.submissions.count, 1)
+        let saved = try XCTUnwrap(LAAWorkDrafts.pending(reopened, key: localKey))
+        XCTAssertEqual(LAAWorkDrafts.request(saved)?.1.value, "inbox-key")
+        XCTAssertEqual(LAAWorkDrafts.request(saved)?.0, body)
+    }
 }
 #endif

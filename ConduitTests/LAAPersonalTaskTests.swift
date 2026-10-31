@@ -181,5 +181,31 @@ final class LAAPersonalTaskTests: XCTestCase {
         value.kind = .comment; value.first = String(repeating: "x", count: 48 * 1024 + 1)
         XCTAssertTrue(!value.valid)
     }
+
+    func testInboxPagesKeepUnreadExplicitAndRejectViewerOrCursorChanges() throws {
+        func row(_ id: String, readAt: Any = NSNull()) -> [String: Any] {
+            ["id": id, "type": "issue", "title": "Fixture", "createdAt": "created", "updatedAt": "updated",
+             "readAt": readAt, "archivedAt": NSNull(), "issue": ["id": "issue", "identifier": "T-1", "title": "Task"]]
+        }
+        func page(_ rows: [[String: Any]], viewer: String = "viewer-a", cursor: String? = nil) throws -> LAAPersonalPage<LAAPersonalNotification> {
+            let data: [String: Any] = ["items": rows, "viewerId": viewer, "nextCursor": cursor as Any? ?? NSNull(), "observedAt": "now"]
+            return try JSONDecoder().decode(LAAPersonalPage<LAAPersonalNotification>.self, from: JSONSerialization.data(withJSONObject: data))
+        }
+        var missing = row("missing"); missing.removeValue(forKey: "readAt")
+        XCTAssertThrowsError(try page([missing]))
+        var snapshot = LAAPersonalInboxSnapshot(viewerId: "viewer-a")
+        try snapshot.merge(page([row("a", readAt: "read")], cursor: "page-2"), reset: true)
+        XCTAssertEqual(snapshot.summary, "一部取得・未読未確認")
+        XCTAssertThrowsError(try snapshot.merge(page([row("b")], viewer: "viewer-b"), reset: false))
+        XCTAssertEqual(snapshot.items.map(\.id), ["a"])
+        XCTAssertThrowsError(try snapshot.merge(page([row("b")], cursor: "page-2"), reset: false))
+        try snapshot.merge(page([row("a", readAt: "read"), row("b")]), reset: false)
+        XCTAssertEqual(snapshot.items.map(\.id), ["a", "b"])
+        XCTAssertEqual(snapshot.summary, "未読あり")
+        XCTAssertEqual(snapshot.items.last?.issue?.identifier, "T-1")
+        var complete = LAAPersonalInboxSnapshot(viewerId: "viewer-a")
+        try complete.merge(page([row("a", readAt: "read")]), reset: true)
+        XCTAssertEqual(complete.summary, "取得分に未読なし")
+    }
 }
 #endif

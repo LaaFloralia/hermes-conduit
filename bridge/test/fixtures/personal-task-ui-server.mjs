@@ -19,6 +19,10 @@ export async function startPersonalTaskUIFixture({ failMetadataOnce = false } = 
     body: 'Fixture comment', createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z', user: viewer }];
   const relations = [];
   const attachments = [];
+  const notifications = [{ id: 'fixture-notification-1', type: 'issueNewComment', title: 'Fixture notification', subtitle: '',
+    createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z', readAt: null, archivedAt: null,
+    snoozedUntilAt: null, user: { id: viewer.id }, actor: { id: viewer.id, name: viewer.name },
+    issue: { id: 'fixture-issue-1', identifier: 'FIX-1', title: 'Fixture task' }, comment: null }];
   let conflictPending = true;
   let updates = 0;
   const copy = (value) => structuredClone(value);
@@ -34,7 +38,21 @@ export async function startPersonalTaskUIFixture({ failMetadataOnce = false } = 
       }
       return task ? { task: copy(task), viewerId: viewer.id } : null;
     },
-    async listCollection() { return { items: [], nextCursor: null, observedAt: '2026-11-01T00:00:00.000Z', viewerId: viewer.id }; },
+    async listCollection(name, options = {}) { return { items: name === 'inbox'
+      ? copy(notifications.filter((n) => options.includeArchived === 'true' || n.archivedAt === null)) : [],
+      nextCursor: null, observedAt: '2026-11-01T00:00:00.000Z', viewerId: viewer.id }; },
+    async getNotificationInSession(_session, id) { return copy(notifications.find((n) => n.id === id)); },
+    async getNotification(id) { return { notification: copy(notifications.find((n) => n.id === id)), viewerId: viewer.id,
+      observedAt: '2026-11-01T00:00:00.000Z' }; },
+    async updateNotification(_session, id, action) {
+      const notification = notifications.find((n) => n.id === id);
+      if (!notification) throw new Error('fixture notification missing');
+      if (action === 'read') notification.readAt = '2026-11-01T00:03:00.000Z';
+      if (action === 'unread') notification.readAt = null;
+      if (action === 'archive') notification.archivedAt = '2026-11-01T00:03:00.000Z';
+      if (action === 'unarchive') notification.archivedAt = null;
+      return { id };
+    },
     async listTaskSection(name, id, options = {}) {
       const task = find(id);
       if (!task) throw new Error('fixture target missing');

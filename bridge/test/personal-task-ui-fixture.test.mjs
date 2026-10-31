@@ -40,3 +40,19 @@ test('metadata fixture fails once then becomes available for the retry UI', asyn
   assert.equal((await api.request('/v1/task-metadata', { token })).status, 503);
   assert.equal((await api.request('/v1/task-metadata', { token })).status, 200);
 });
+
+test('the UI fixture reads and changes only synthetic notification state', async (t) => {
+  const api = await startPersonalTaskUIFixture();
+  t.after(() => api.close());
+  const token = await api.token(['tasks:read', 'tasks:write']);
+  const path = '/v1/task-inbox/fixture-notification-1';
+  assert.equal((await api.request('/v1/task-inbox', { token })).body.data.items[0].readAt, null);
+  const first = await api.request(path, { token, method: 'PATCH', key: 'fixture-read',
+    body: { expectedViewerId: 'fixture-viewer', action: 'read' } });
+  assert.equal(first.body.data.operation.status, 'succeeded');
+  assert.ok((await api.request(path, { token })).body.data.notification.readAt);
+  await api.request(path, { token, method: 'PATCH', key: 'fixture-archive',
+    body: { expectedViewerId: 'fixture-viewer', action: 'archive' } });
+  assert.equal((await api.request('/v1/task-inbox', { token })).body.data.items.length, 0);
+  assert.equal((await api.request('/v1/task-inbox?includeArchived=true', { token })).body.data.items.length, 1);
+});

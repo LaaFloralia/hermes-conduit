@@ -15,6 +15,10 @@ const ISSUE_FIELDS = `
   labels(first: 100) { nodes { id name color } pageInfo { hasNextPage endCursor } }
 `;
 const PAGE = 'pageInfo { hasNextPage endCursor }';
+const NOTIFICATION_FIELDS = `id type title subtitle createdAt updatedAt readAt archivedAt snoozedUntilAt
+  user { id } actor { id name }
+  ... on IssueNotification { issue { id identifier title } comment { id } }`;
+const NOTIFICATION_STATUS = 'id readAt archivedAt user { id }';
 const PRIVATE_FILE_LIMIT = 20 * 1024 * 1024;
 const COMMENT_FIELDS = `id body issueId parentId createdAt updatedAt url user { id name app }`;
 const RELATION_FIELDS = `id type issue { id identifier title } relatedIssue { id identifier title }`;
@@ -121,12 +125,20 @@ export const PERSONAL_DOCUMENTS = Object.freeze({
   views: `query LAAPersonalViews($first: Int!, $after: String) {
     customViews(first: $first, after: $after) { nodes { id name modelName description } ${PAGE} }
   }`,
-  inbox: `query LAAPersonalInbox($first: Int!, $after: String) {
-    notifications(first: $first, after: $after) {
-      nodes { id type createdAt updatedAt readAt archivedAt snoozedUntilAt
-        ... on IssueNotification { actor { id name } issue { id identifier title } comment { id } }
-      } ${PAGE}
+  inbox: `query LAAPersonalInbox($first: Int!, $after: String, $includeArchived: Boolean!) {
+    notifications(first: $first, after: $after, includeArchived: $includeArchived) {
+      nodes { ${NOTIFICATION_FIELDS} } ${PAGE}
     }
+  }`,
+  notification: `query LAAPersonalNotification($id: String!) { notification(id: $id) { ${NOTIFICATION_FIELDS} } }`,
+  updateNotification: `mutation LAAPersonalNotificationUpdate($id: String!, $input: NotificationUpdateInput!) {
+    notificationUpdate(id: $id, input: $input) { success notification { ${NOTIFICATION_STATUS} } }
+  }`,
+  archiveNotification: `mutation LAAPersonalNotificationArchive($id: String!) {
+    notificationArchive(id: $id) { success entity { ${NOTIFICATION_STATUS} } }
+  }`,
+  unarchiveNotification: `mutation LAAPersonalNotificationUnarchive($id: String!) {
+    notificationUnarchive(id: $id) { success entity { ${NOTIFICATION_STATUS} } }
   }`,
 });
 
@@ -168,6 +180,19 @@ function makePage(connection, filter, map = (value) => value) {
 function person(user, viewerId) {
   if (!user) return { kind: 'unassigned', id: null, name: null };
   return { id: user.id, name: user.name, kind: user.id === viewerId ? 'owner' : user.app === true ? 'agent' : 'person' };
+}
+function notificationStatusValid(value) {
+  return value && typeof value.id === 'string' && typeof value.user?.id === 'string'
+    && Object.hasOwn(value, 'readAt') && (value.readAt === null || typeof value.readAt === 'string')
+    && Object.hasOwn(value, 'archivedAt') && (value.archivedAt === null || typeof value.archivedAt === 'string');
+}
+function checkedNotification(value, viewerId) {
+  if (!notificationStatusValid(value) || typeof value.type !== 'string'
+      || typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string') {
+    throw failure('linear_response_invalid', 'Linear returned an incomplete notification');
+  }
+  if (value.user.id !== viewerId) throw failure('notification_not_found', 'the notification was not found', { status: 404 });
+  return value;
 }
 
 // A phone supplies only a digest, never a URL. Each fetch re-reads the
@@ -242,6 +267,9 @@ export function createPersonalLinearSource({
     [PERSONAL_DOCUMENTS.createIssue, 'issueCreate'], [PERSONAL_DOCUMENTS.updateIssue, 'issueUpdate'],
     [PERSONAL_DOCUMENTS.createComment, 'commentCreate'], [PERSONAL_DOCUMENTS.createRelation, 'issueRelationCreate'],
     [PERSONAL_DOCUMENTS.createAttachment, 'attachmentCreate'],
+    [PERSONAL_DOCUMENTS.updateNotification, 'notificationUpdate'],
+    [PERSONAL_DOCUMENTS.archiveNotification, 'notificationArchive'],
+    [PERSONAL_DOCUMENTS.unarchiveNotification, 'notificationUnarchive'],
   ]);
   function inputRejected(document, body) {
     const root = mutationRoots.get(document);
@@ -505,15 +533,56 @@ export function createPersonalLinearSource({
     if (!['projects', 'cycles', 'views', 'inbox', 'teams', 'users', 'states', 'labels', 'milestones'].includes(name)) {
       throw failure('filter_invalid', 'collection is invalid', { status: 400 });
     }
-    const filter = { collection: name };
+    if (name === 'inbox' && options.includeArchived != null && !['true', 'false'].includes(options.includeArchived)) {
+      throw failure('filter_invalid', 'includeArchived must be true or false', { status: 400 });
+    }
+    const includeArchived = name === 'inbox' && options.includeArchived === 'true';
+    const filter = { collection: name, ...(name === 'inbox' ? { includeArchived } : {}) };
     const first = pageSize(options.limit);
     const { viewer, run } = await session();
     const cursorFilter = { ...filter, viewerId: viewer.id };
     const after = decodeCursor(options.cursor, cursorFilter);
-    const data = await run(PERSONAL_DOCUMENTS[name], { first, after });
+    const data = await run(PERSONAL_DOCUMENTS[name], { first, after, ...(name === 'inbox' ? { includeArchived } : {}) });
     const field = { views: 'customViews', inbox: 'notifications', states: 'workflowStates', labels: 'issueLabels', milestones: 'projectMilestones' }[name] ?? name;
     const connection = data[field];
-    return { ...makePage(connection, cursorFilter), observedAt: new Date(now()).toISOString(), viewerId: viewer.id };
+    return { ...makePage(connection, cursorFilter, name === 'inbox' ? (value) => checkedNotification(value, viewer.id) : undefined),
+      observedAt: new Date(now()).toISOString(), viewerId: viewer.id };
+  }
+  async function getNotificationInSession(personalSession, id) {
+    const data = await personalSession.run(PERSONAL_DOCUMENTS.notification, { id });
+    const item = checkedNotification(data.notification, personalSession.viewer.id);
+    if (item.id !== id) throw failure('notification_not_found', 'the notification was not found', { status: 404 });
+    return item;
+  }
+  async function getNotification(id) {
+    const personalSession = await session();
+    return { notification: await getNotificationInSession(personalSession, id), viewerId: personalSession.viewer.id,
+      observedAt: new Date(now()).toISOString() };
+  }
+  async function updateNotification(personalSession, id, action) {
+    if (!['read', 'unread', 'archive', 'unarchive'].includes(action)) {
+      throw failure('filter_invalid', 'the notification action is invalid', { status: 400 });
+    }
+    let document, root, resultName, variables;
+    if (action === 'read' || action === 'unread') {
+      document = PERSONAL_DOCUMENTS.updateNotification; root = 'notificationUpdate'; resultName = 'notification';
+      variables = { id, input: { readAt: action === 'read' ? new Date(now()).toISOString() : null } };
+    } else {
+      document = action === 'archive' ? PERSONAL_DOCUMENTS.archiveNotification : PERSONAL_DOCUMENTS.unarchiveNotification;
+      root = action === 'archive' ? 'notificationArchive' : 'notificationUnarchive'; resultName = 'entity'; variables = { id };
+    }
+    const result = (await personalSession.run(document, variables))[root];
+    if (result?.success === false && result[resultName] == null) {
+      throw failure('linear_rejected', 'Linear refused the submitted input', { status: 400 });
+    }
+    const value = result?.[resultName];
+    if (result?.success !== true || !notificationStatusValid(value) || value.id !== id
+        || value.user.id !== personalSession.viewer.id
+        || (action === 'read' && value.readAt === null) || (action === 'unread' && value.readAt !== null)
+        || (action === 'archive' && value.archivedAt === null) || (action === 'unarchive' && value.archivedAt !== null)) {
+      throw failure('linear_mutation_unconfirmed', 'Linear did not confirm the notification state');
+    }
+    return { id: value.id };
   }
   async function metadata() {
     const { viewer, run } = await session();
@@ -531,5 +600,5 @@ export function createPersonalLinearSource({
     return result;
   }
   return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listTaskSection, listFiles, readFile, uploadFile,
-    assertCommentInIssue, createTaskItem, listCollection, metadata, session };
+    assertCommentInIssue, createTaskItem, listCollection, getNotification, getNotificationInSession, updateNotification, metadata, session };
 }

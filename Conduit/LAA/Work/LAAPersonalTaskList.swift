@@ -48,6 +48,9 @@ struct LAAPersonalTaskList: View {
     @State private var showCreate = false
     @State private var editing: LAAPersonalTask?
     @State private var revision = 0
+    @State private var inboxRevision = 0
+    @State private var inboxSummary = "未確認"
+    @State private var inboxObservedAt: String?
 
     private var filterID: String { [view, submittedSearch, project, cycle, customView, String(refreshID), String(revision)].joined(separator: "\u{1f}") }
     private var filterSelection: String { [view, submittedSearch, project, cycle, customView].joined(separator: "\u{1f}") }
@@ -62,8 +65,20 @@ struct LAAPersonalTaskList: View {
                     .accessibilityIdentifier("work.tasks.create")
             }
             if let viewerId {
-                NavigationLink("Pending", destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId))
-                    .accessibilityIdentifier("work.tasks.pending")
+                HStack {
+                    NavigationLink(destination: LAAPersonalInboxView(drafts: drafts, viewerId: viewerId, onExit: { inboxRevision += 1 })) {
+                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                            Text(verbatim: "Inbox · \(inboxSummary)")
+                            if let inboxObservedAt {
+                                Text(verbatim: "取得: \(LAAWorkPresentation.date(inboxObservedAt))")
+                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            }
+                        }
+                    }.accessibilityIdentifier("work.tasks.inbox")
+                    Spacer()
+                    NavigationLink("Pending", destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId))
+                        .accessibilityIdentifier("work.tasks.pending")
+                }
             }
             TextField(LAACopy.WorkTab.searchTasks, text: $search)
                 .submitLabel(.search).textInputAutocapitalization(.never)
@@ -145,6 +160,7 @@ struct LAAPersonalTaskList: View {
             projectsDone = false; cyclesDone = false; viewsDone = false; collectionViewer = nil
             await loadCollections()
         }
+        .task(id: "\(bridge.revision)-\(viewerId ?? "")-\(refreshID)-\(inboxRevision)") { await loadInboxSummary() }
     }
 
     @MainActor private func load(reset: Bool) async {
@@ -203,6 +219,19 @@ struct LAAPersonalTaskList: View {
             }
             collectionsIncomplete = !projectsDone || !cyclesDone || !viewsDone
         } catch { collectionsIncomplete = true }
+    }
+    @MainActor private func loadInboxSummary() async {
+        inboxSummary = "未確認"
+        inboxObservedAt = nil
+        guard let viewerId else { return }
+        do {
+            let page: LAAPersonalPage<LAAPersonalNotification> = try await bridge.read("/v1/task-inbox?limit=50")
+            guard !Task.isCancelled else { return }
+            var snapshot = LAAPersonalInboxSnapshot(viewerId: viewerId)
+            try snapshot.merge(page, reset: true)
+            inboxSummary = snapshot.summary
+            inboxObservedAt = snapshot.observedAt
+        } catch { if !Task.isCancelled { inboxSummary = "未確認"; inboxObservedAt = nil } }
     }
     @MainActor private func collectionPage(_ path: String, cursor: String?) async throws -> LAAPersonalPage<LAAPersonalChoice> {
         var query = [URLQueryItem(name: "limit", value: "100")]

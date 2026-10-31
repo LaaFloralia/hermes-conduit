@@ -15,6 +15,7 @@ const FILES = /^\/v1\/personal-tasks\/([^/]+)\/files$/;
 const FILE_CONTENT = /^\/v1\/personal-tasks\/([^/]+)\/files\/([0-9a-f]{64})\/content$/;
 const ATTACHMENT_CONTENT = /^\/v1\/personal-tasks\/([^/]+)\/attachments\/([^/]+)\/content$/;
 const FILE_UPLOAD = /^\/v1\/personal-tasks\/([^/]+)\/files$/;
+const INBOX_ITEM = /^\/v1\/task-inbox\/([^/]+)$/;
 const UPLOAD_LIMIT = 20 * 1024 * 1024;
 const OPERATION = /^\/v1\/task-operations\/([0-9a-f-]+)$/i;
 const RESOLUTION = /^\/v1\/task-operations\/([0-9a-f-]+)\/resolve$/i;
@@ -137,7 +138,8 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
   });
   const collection = (name) => async ({ req }) => {
     const query = parameters(req);
-    return { status: 200, data: await source.listCollection(name, { cursor: query.get('cursor'), limit: query.get('limit') }) };
+    return { status: 200, data: await source.listCollection(name, { cursor: query.get('cursor'), limit: query.get('limit'),
+      ...(name === 'inbox' ? { includeArchived: query.get('includeArchived') } : {}) }) };
   };
   const write = (method, path, handler, pattern) => ({
     method, path, ...(pattern ? { pattern } : {}), auth: true, scope: 'tasks:write', handler: guarded(handler),
@@ -295,6 +297,68 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       });
     } finally { inFlight.delete(operationId); }
   }
+  async function updateInbox({ req, device, rawBody, params }) {
+    const key = requireKey(req);
+    const id = requestedId(params[0]);
+    const body = parseObjectBody(rawBody);
+    if (Object.keys(body).sort().join(',') !== 'action,expectedViewerId'
+        || typeof body.expectedViewerId !== 'string' || !ID.test(body.expectedViewerId)
+        || !['read', 'unread', 'archive', 'unarchive'].includes(body.action)) {
+      throw badRequest('payload_invalid', 'the viewer and supported notification action are required');
+    }
+    const personalSession = await requestSession();
+    const viewerId = personalSession.viewer.id;
+    if (viewerId !== body.expectedViewerId) {
+      throw new BridgeError(409, 'linear_viewer_changed', 'the notification belongs to a different Linear viewer');
+    }
+    const path = `/v1/task-inbox/${encodeURIComponent(id)}`;
+    const reserved = operations.reserve({ deviceId: device.id, viewerId, key, method: 'PATCH', path,
+      ifMatch: null, rawBody, kind: `inbox_${body.action}`, targetId: id });
+    if (reserved.action === 'conflict') throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
+    if (reserved.action === 'expired') throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
+    if (reserved.action === 'existing') {
+      const previous = reserved.entry;
+      resolved(previous);
+      if (previous.status === 'succeeded') return statusFor(previous);
+      if (previous.status === 'rejected') throw new BridgeError(409, 'task_operation_rejected', 'the previous request was refused');
+      if (previous.status === 'in_progress') throw new BridgeError(409, 'idempotency_key_in_flight', 'the same operation is still in progress', { details: { operation: previous } });
+      throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier operation must be reconciled', { details: { operation: previous } });
+    }
+    const operationId = reserved.entry.operationId;
+    inFlight.add(operationId);
+    let sent = false;
+    try {
+      // The notification ID alone is not authority to change another user's Inbox.
+      const current = await source.getNotificationInSession(personalSession, id);
+      if (!current || current.id !== id || current.user?.id !== viewerId) {
+        throw new BridgeError(404, 'notification_not_found', 'the notification was not found');
+      }
+      if (!Object.hasOwn(current, 'readAt') || !(current.readAt === null || typeof current.readAt === 'string')
+          || !Object.hasOwn(current, 'archivedAt') || !(current.archivedAt === null || typeof current.archivedAt === 'string')) {
+        throw new BridgeError(503, 'linear_response_invalid', 'Linear returned an incomplete notification');
+      }
+      const already = body.action === 'read' ? current.readAt !== null : body.action === 'unread' ? current.readAt === null
+        : body.action === 'archive' ? current.archivedAt !== null : current.archivedAt === null;
+      let result = { id };
+      if (!already) {
+        sent = true;
+        result = await source.updateNotification(personalSession, id, body.action);
+        if (result?.id !== id) throw new Error('Linear returned a different notification');
+      }
+      return statusFor(operations.finish({ deviceId: device.id, viewerId, key, status: 'succeeded', result }));
+    } catch (error) {
+      if (!sent) {
+        operations.finish({ deviceId: device.id, viewerId, key, status: preflightStatus(error), rejection: 'preflight_failed' });
+        throw error;
+      }
+      if (isDefiniteRejection(error)) {
+        operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'linear_rejected' });
+        throw error;
+      }
+      try { operations.finish({ deviceId: device.id, viewerId, key, status: 'outcome_unknown' }); } catch { /* fail closed */ }
+      throw new BridgeError(409, 'idempotency_outcome_unknown', 'Linear may have received the operation; reconcile before retrying', { details: { operationId } });
+    } finally { inFlight.delete(operationId); }
+  }
   async function uploadTaskFile({ req, device, params }) {
     const key = requireKey(req);
     const issueId = requestedId(params[0]);
@@ -437,6 +501,9 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     read('/v1/task-cycles', collection('cycles')),
     read('/v1/task-views', collection('views')),
     read('/v1/task-inbox', collection('inbox')),
+    read('/v1/task-inbox/{id}', async ({ params }) => ({
+      status: 200, data: await source.getNotification(requestedId(params[0])),
+    }), INBOX_ITEM),
     read('/v1/task-options', async ({ req }) => {
       const query = parameters(req);
       const kind = query.get('kind');
@@ -448,6 +515,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     write('POST', '/v1/personal-tasks', (ctx) => mutateIssue(ctx, true)),
     write('PATCH', '/v1/personal-tasks/{id}', (ctx) => mutateIssue(ctx, false), DETAIL),
     write('POST', '/v1/personal-tasks/{id}/{section}', createTaskItem, SECTION),
+    write('PATCH', '/v1/task-inbox/{id}', updateInbox, INBOX_ITEM),
     read('/v1/task-operations/by-key', async ({ device, req }) => {
       const entry = operations.byKey({ ...await operationContext(device), key: requireKey(req) });
       if (!entry) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');

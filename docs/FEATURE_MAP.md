@@ -542,14 +542,15 @@ store · the session and project API · the personal Linear task API
   `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskModels.swift`,
   `Conduit/LAA/Work/LAAPersonalTaskConnections.swift`, `Conduit/LAA/Work/LAAPersonalPending.swift`,
   `Conduit/LAA/Work/LAAPersonalTaskQueue.swift`, `Conduit/LAA/Work/LAAPersonalTaskFiles.swift`,
-  `Conduit/LAA/Work/LAAPersonalTaskUpload.swift`, `Conduit/LAA/Work/LAAPersonalTaskUploadTransport.swift`
+  `Conduit/LAA/Work/LAAPersonalTaskUpload.swift`, `Conduit/LAA/Work/LAAPersonalTaskUploadTransport.swift`,
+  `Conduit/LAA/Work/LAAPersonalInbox.swift`
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
 - Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAPersonalTaskTests.swift`, `ConduitTests/LAAPersonalTaskQueueTests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `bridge/test/personal-task-writes.test.mjs`,
   `bridge/test/personal-task-details.test.mjs`, `bridge/test/personal-task-files.test.mjs`,
-  `bridge/test/personal-task-upload.test.mjs`
+  `bridge/test/personal-task-upload.test.mjs`, `bridge/test/personal-task-inbox.test.mjs`
 
 **Rulings**
 - Session and successor writes keep the exact body, request ID and idempotency
@@ -576,18 +577,23 @@ store · the session and project API · the personal Linear task API
   writes; attachment upserts can resolve to a different existing link ID. The
   foreground queue checks each original key and sends follow-ups to an unconfirmed
   create only after the parent issue and viewer are read back.
+- Inbox shows the owner's fetched unread state and pages, with explicit read,
+  unread, archive and restore actions. Viewing alone does not mark notifications
+  read; an uncertain action remains in Pending until checked. The indicator is
+  limited to fetched pages and does not imply background delivery.
 - Pending decisions are read-only until Task 15; routines remain a placeholder.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
-- Some activity details, background delivery and Inbox actions remain pending.
+- Some activity details, background delivery and task-to-session mapping remain pending.
   The personal credential, real Linear file host/transfer compatibility and live
   connection require the operator; no APNs path for Linear has been established.
 - The personal task Swift screens have CLI type checks and model fixtures only;
   the simulator, accessibility, keyboard and live-device checks remain pending.
 
-**Checked:** 2026-10-29, 67166210 (session/project work). Signed Simulator tests covered pairing,
+**Checked:** 2026-11-01, fc32e89d and the current M5 CLI fixtures (personal tasks and Inbox);
+2026-10-29, 67166210 (session/project work). Signed Simulator tests covered pairing,
 sections, workspace entry, durable composer draft, empty, 503 and offline
 states. Against the real Bridge, a scratch session was created, messaged,
 stopped and resumed; artifacts and a stale If-Match 412 were read back.
