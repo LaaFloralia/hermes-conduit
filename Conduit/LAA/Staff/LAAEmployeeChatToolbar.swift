@@ -127,7 +127,7 @@ enum LAAEmployeeCallAvailability {
             return LAACopy.otherCallInProgress
         }
         if let reason = bridgeReason(bridge) { return reason }
-        guard appState.isConnected else { return "Hermesに接続してください" }
+        guard appState.isConnected else { return "Macに接続してください" }
         if let reason = voiceReason(profile: profile, canStart: appState.canStartPhoneVoiceConversation,
                                     issue: appState.voiceSetupIssue) { return reason }
         return calls.unavailableReason

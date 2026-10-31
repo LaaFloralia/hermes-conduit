@@ -176,7 +176,7 @@ final class LAAStaffCallUITests: XCTestCase {
     func testUnavailableBridgeExplainsDisabledCallAndClassicVoiceIsNotRequired() {
         for (argument, reason) in [("-laa-unpaired", "端末を接続すると通話できます"),
                                    ("-laa-revoked", "端末を再接続してください"),
-                                   ("-laa-offline", "Hermesに接続してください")] {
+                                   ("-laa-offline", "Macに接続してください")] {
             let app = launch(argument)
             let button = app.buttons["laa.employee.call"]
             XCTAssertTrue(button.waitForExistence(timeout: 10))

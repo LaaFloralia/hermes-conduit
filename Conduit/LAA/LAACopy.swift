@@ -19,13 +19,28 @@ enum LAACopy {
     // MARK: Shared controls
 
     static let brand = "LAA"
+    static let agent = "Ciel"
     static let settings = "Settings"
-    static let plugin = "Hermes plugin"
+    static let loginMacAddress = "Mac address"
+    static let loginMacSubtitle = "Connect to your Mac"
+    static let plugin = "Connection status"
     static let pairingTitle = "Connect to Mac"
     static let pairingAddress = "Address"
     static let pairingCode = "Pairing code"
     static let pairingConnect = "Connect"
+    static let mac = "Mac"
+    static let macRePair = "Re-pair"
+    static let macRefresh = "Refresh"
+    static let macChecking = "Checking…"
+    static let macConnected = "Connected"
+    static let macOffline = "Offline"
+    static let macNotPaired = "Not paired"
+    static let macRePairRequired = "Re-pair required"
+    static let macKeychainError = "Keychain error"
+    static let macConnectionError = "Connection error"
+    static let screenQuestionAddShortcut = "Add shortcut"
     static let close = "Close"
+    static let done = "Done"
     static let call = "Call"
     static let callMute = "Mute"
     static let callUnmute = "Unmute"
@@ -58,37 +73,7 @@ enum LAACopy {
 
     // MARK: Bridge
 
-    static let bridgeNotPairedBody = "この端末はMacのLAA Bridgeとペアリングされていません。"
-
-    // MARK: Segments
-
-    static func segments(_ tab: LAATab) -> [String] {
-        switch tab {
-        case .work: return ["Sessions", "Projects", "Tasks", "Routines"]
-        case .brain: return ["Recent", "Folders", "Tags"]
-        case .source: return ["Drive", "Inspiration", "Studio"]
-        case .chats, .usage: return []
-        }
-    }
-
-    // MARK: A tab's own line about what it will hold
-
-    /// What the tab will show once the Bridge is paired, one line, so an
-    /// empty screen explains what belongs there.
-    static func emptyReason(_ tab: LAATab) -> String {
-        switch tab {
-        case .chats: return "まだ会話がありません。"
-        case .work: return "Projectやタスクを作ると、ここに並びます。"
-        case .brain: return "Brainに項目がありません。保存するとここに並びます。"
-        case .source: return "まだ素材がありません。Drive・Inspiration・Studioの項目がここに並びます。"
-        case .usage: return "利用枠・実利用・費用・Macの状態を、更新時刻と一緒に出します。"
-        }
-    }
-
-    // MARK: Failures
-
-    static let failureTitle = "Bridgeから読めませんでした"
-    static let failureBody = "データを取得できませんでした。Bridgeの接続を確認してください。"
+    static let bridgeNotPairedBody = "この端末はMacとペアリングされていません。"
 }
 
 #endif

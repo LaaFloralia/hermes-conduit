@@ -782,8 +782,8 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls("USA"))
         XCTAssertTrue(HermesNativeCallStorefront.allowsCalls(nil))
         XCTAssertFalse(HermesNativeCallStorefront.allowsCalls("CHN"))
-        XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: nil, title: nil), "Hermes")
-        XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: "Ada", title: "Check \"it\""), "Hermes · Check 'it'")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: nil, title: nil), HermesCallerName.fallback)
+        XCTAssertEqual(HermesCallCopy.callerName(profile: nil, mainName: "Ada", title: "Check \"it\""), "\(HermesCallerName.fallback) · Check 'it'")
     }
 
     func testInTheCarOrSilencedTheWatchStopsRinging() {
@@ -803,9 +803,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: "Ada", title: nil), "Research")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: nil, title: "Deploy"), "Research · Deploy")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: "Ada", title: "Deploy"), "Ada · Deploy", "The main profile goes by Conduit's name, not Hermes' Default")
-        XCTAssertEqual(HermesCallCopy.callerName(profile: "Default", mainName: " ", title: nil), "Hermes")
-        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, title: nil), "Hermes")
-        XCTAssertEqual(HermesCallCopy.callerName(profile: "  ", mainName: "Ada", title: nil), "Hermes", "No profile: nothing names the caller")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "Default", mainName: " ", title: nil), HermesCallerName.fallback)
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, title: nil), HermesCallerName.fallback)
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "  ", mainName: "Ada", title: nil), HermesCallerName.fallback, "No profile: nothing names the caller")
         // The bot's name in Hermes, as the Bots list shows it, when the push carries one.
         XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: "Ada", profileName: " Atlas  Prime ", title: "Deploy"), "Atlas Prime · Deploy")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: "Ada", profileName: "Nova", title: nil), "Ada", "A name set in Conduit still wins for the main profile")
@@ -813,8 +813,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, profileName: "Nova", title: nil), "Nova")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: nil, profileName: " ", title: nil), "Research")
         XCTAssertEqual(HermesCallCopy.callerName(profile: "research", mainName: nil, profileName: "research", title: nil), "Research", "A name that is only the id reads as the id does")
-        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, profileName: "Default", title: nil), "Hermes")
-        XCTAssertEqual(HermesCallCopy.callerName(profile: "  ", mainName: nil, profileName: "Nova", title: nil), "Hermes", "No profile: nothing names the caller")
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "default", mainName: nil, profileName: "Default", title: nil), HermesCallerName.fallback)
+        XCTAssertEqual(HermesCallCopy.callerName(profile: "  ", mainName: nil, profileName: "Nova", title: nil), HermesCallerName.fallback, "No profile: nothing names the caller")
 
         // The Watch reads the caller from a push in the clear.
         let dashboard = UUID()

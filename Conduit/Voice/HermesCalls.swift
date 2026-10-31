@@ -104,7 +104,7 @@ enum HermesCallCopy {
     static var missedCallTitle: String { missedCallTitle(from: HermesCallerName.fallback) }
     /// Names the profile that called (HermesCallerName), as the call did.
     static func missedCallTitle(from name: String) -> String {
-        guard name != HermesCallerName.fallback else { return AppLocalization.string("Missed call from Hermes") }
+        guard !HermesCallerName.isFallback(name) else { return AppLocalization.string("Missed call from Hermes") }
         return AppLocalization.string("Missed call from \(name)")
     }
 

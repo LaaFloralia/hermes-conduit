@@ -12,10 +12,15 @@
 import SwiftUI
 
 extension Color {
+    #if LAA_BUILD
+    static let watchAura = LAAColorValues.color(LAAColorValues.linkDark)
+    static let watchAttention = LAAColorValues.color(LAAColorValues.attentionDark)
+    #else
     /// Conduit's listening blue (`conduitAura` on the iPhone).
     static let watchAura = Color(red: 0.38, green: 0.58, blue: 0.98)
     /// V2's approval amber (`conduitAttention`, dark).
     static let watchAttention = Color(red: 0.96, green: 0.65, blue: 0.24)
+    #endif
 }
 
 /// The iPhone's accent presets (ConduitAccentChoice in Theme.swift), in
@@ -27,6 +32,9 @@ extension Color {
 /// shade the iPhone works out from it.
 enum WatchAccent {
     static func color(_ choice: String?) -> Color {
+        #if LAA_BUILD
+        return LAAColorValues.color(LAAColorValues.linkDark)
+        #else
         if let choice, let custom = CustomAccentColor(hex: choice) {
             let shade = custom.darkShade
             return Color(red: shade.red, green: shade.green, blue: shade.blue)
@@ -39,6 +47,7 @@ enum WatchAccent {
         case "pink": return Color(red: 0.93, green: 0.42, blue: 0.64)
         default: return Color(red: 0.88, green: 0.67, blue: 0.28)
         }
+        #endif
     }
 }
 
@@ -64,7 +73,11 @@ struct WatchBackdrop: View {
 
     var body: some View {
         ZStack {
+            #if LAA_BUILD
+            LAAColorValues.color(LAAColorValues.backgroundDark)
+            #else
             Color(red: 0.045, green: 0.052, blue: 0.072)
+            #endif
             if !isLuminanceReduced {
                 RadialGradient(
                     colors: [accent.opacity(0.30), .clear],

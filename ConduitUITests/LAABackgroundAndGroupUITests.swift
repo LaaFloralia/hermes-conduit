@@ -47,7 +47,7 @@ final class LAABackgroundAndGroupUITests: XCTestCase {
         for (mode, expected) in [
             ("empty", "グループはまだありません。"),
             ("error", "グループを読み込めませんでした"),
-            ("offline", "グループを開くには Hermes に接続してください。")
+            ("offline", "グループを開くにはMacに接続してください。")
         ] {
             let app = XCUIApplication()
             app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_GROUPS_STATE", mode]

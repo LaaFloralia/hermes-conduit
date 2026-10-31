@@ -172,9 +172,13 @@ struct LoginAddressStep: View {
     }
 
     private var addressLabel: String {
+        #if LAA_BUILD
+        return LAACopy.loginMacAddress
+        #else
         context == .firstLaunch
             ? AppLocalization.string("Your Hermes dashboard address")
             : AppLocalization.string("Dashboard address")
+        #endif
     }
 
     private var advancedCard: some View {
@@ -766,7 +770,11 @@ struct LoginHeader: View {
                     Text("Conduit")
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     #endif
+                    #if LAA_BUILD
+                    Text(verbatim: LAACopy.loginMacSubtitle)
+                    #else
                     Text("A focused home for your Hermes work")
+                    #endif
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 case .welcomeBack:

@@ -61,6 +61,19 @@ final class LAADesignTokensTests: XCTestCase {
         }
     }
 
+    func testSystemAccentMatchesTheLinkTokenInBothAppearancesAndContrasts() throws {
+        let accent = try XCTUnwrap(UIColor(named: "LAAAccent", in: Bundle.main, compatibleWith: nil))
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for contrast in [UIAccessibilityContrast.normal, .high] {
+                let asset = components(Color(uiColor: accent), style: style, contrast: contrast)
+                let token = components(LAAColor.link, style: style, contrast: contrast)
+                for (assetChannel, tokenChannel) in zip(asset, token) {
+                    XCTAssertEqual(assetChannel, tokenChannel, accuracy: 0.001)
+                }
+            }
+        }
+    }
+
     func testTextAndFilledControlsMeetContrastInBothAppearances() {
         let pairs: [(String, Color, Color)] = [
             ("text/background", LAAColor.text, LAAColor.background),
@@ -101,7 +114,7 @@ final class LAATabModelTests: XCTestCase {
     func testProductBrandChangesOnlyDisplayCopy() {
         XCTAssertEqual(LAAProductBrand.display("Hermes Conduit"), "LAA")
         XCTAssertEqual(LAAProductBrand.display("Conduit-chan"), "Ciel")
-        XCTAssertEqual(LAAProductBrand.display("Conduit plugin"), "Hermes plugin")
+        XCTAssertEqual(LAAProductBrand.display("Conduit plugin"), "connection service")
         XCTAssertEqual(LAAProductBrand.display("Conduit · conduit://widget"), "LAA · conduit://widget")
     }
 
@@ -113,7 +126,7 @@ final class LAATabModelTests: XCTestCase {
         XCTAssertEqual([LAACopy.call, LAACopy.callMute, LAACopy.callUnmute, LAACopy.callSpeaker,
                         LAACopy.callChat, LAACopy.callEnd, LAACopy.callAudioRoute],
                        ["Call", "Mute", "Unmute", "Speaker", "Chat", "End", "Audio output"])
-        XCTAssertEqual(LAACopy.bridgeNotPairedBody, "この端末はMacのLAA Bridgeとペアリングされていません。")
+        XCTAssertEqual(LAACopy.bridgeNotPairedBody, "この端末はMacとペアリングされていません。")
     }
 
     func testBuiltAppHasLAANameAndPermissionCopy() throws {

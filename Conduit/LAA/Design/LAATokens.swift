@@ -5,14 +5,14 @@ import UIKit
 /// Semantic colours for the LAA interface. Content stays opaque; system
 /// navigation and controls supply their own material or glass.
 enum LAAColor {
-    static let background = adaptive(light: 0xF6F2E9, dark: 0x0F1B1C)
-    static let surface = adaptive(light: 0xFFFDF8, dark: 0x172627)
+    static let background = adaptive(light: 0xF6F2E9, dark: LAAColorValues.backgroundDark)
+    static let surface = adaptive(light: 0xFFFDF8, dark: LAAColorValues.surfaceDark)
     static let subtleSurface = adaptive(light: 0xEBE6DC, dark: 0x243638)
     static let text = adaptive(light: 0x213536, dark: 0xECE7DC,
                                highContrastLight: 0x102627, highContrastDark: 0xFFFDF8)
     static let secondaryText = adaptive(light: 0x596968, dark: 0xA8B7B4,
                                         highContrastLight: 0x3A5150, highContrastDark: 0xD1DEDA)
-    static let link = adaptive(light: 0x00585E, dark: 0x75C3C3,
+    static let link = adaptive(light: LAAColorValues.linkLight, dark: LAAColorValues.linkDark,
                                highContrastLight: 0x003F43, highContrastDark: 0xA4DDDC)
     static let separator = adaptive(light: 0xD7D5CC, dark: 0x385052,
                                     highContrastLight: 0x899493, highContrastDark: 0x829D9A)
@@ -24,7 +24,7 @@ enum LAAColor {
     // Compatibility aliases for the initial v2 token API.
     static let filledControl = filledButton
     static let filledControlText = filledButtonText
-    static let attention = adaptive(light: 0x6C244C, dark: 0xD49AB6)
+    static let attention = adaptive(light: 0x6C244C, dark: LAAColorValues.attentionDark)
     static let end = Color.red
     static let decorativeTan = adaptive(light: 0xB99B7A, dark: 0xB99B7A)
 

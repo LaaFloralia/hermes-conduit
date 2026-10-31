@@ -46,7 +46,7 @@ struct LAAPairingView: View {
                             .accessibilityLabel(Text(verbatim: LAACopy.pairingCode))
                             .accessibilityIdentifier("laa.bridge.code")
                     }
-                    Text(verbatim: "Macで laa-bridge pair を実行し、表示されたコードを入力してください。コードは10分間、1回だけ使えます。")
+                    Text(verbatim: "Macに表示された接続コードを入力してください。コードは10分間、1回だけ使えます。")
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if bridge.status == .paired {
                         Text(verbatim: "接続先を変更した後は、以前の端末登録をMacで失効してください。")

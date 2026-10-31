@@ -24,7 +24,7 @@ private struct LAAGroupListEntry: ViewModifier {
     func body(content: Content) -> some View {
         content.safeAreaInset(edge: .bottom) {
             Button { showing = true } label: {
-                Label(String("グループ"), systemImage: "person.2")
+                Label(LAACopy.chatsGroups, systemImage: "person.2")
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity).padding(.vertical, 10)
             }
@@ -48,14 +48,14 @@ struct LAAGroupListView: View {
         NavigationStack {
             List {
                 if !appState.isConnected {
-                    Text(verbatim: "グループを開くには Hermes に接続してください。")
+                    Text(verbatim: "グループを開くにはMacに接続してください。")
                 } else {
                     switch appState.groupChatPhase {
                     case .idle, .loading: ProgressView(String("グループを読み込み中"))
                     case .gatewayUnsupported: Text(verbatim: "この接続先はグループに対応していません。")
                     case .failed(let message): Text(verbatim: "グループを読み込めませんでした：\(message)")
                     case .available:
-                        NavigationLink(String("グループを作成")) {
+                        NavigationLink(LAACopy.chatsNewGroup) {
                             LAAGroupCreateView(roster: appState.botRoster) { name, bots, roomID in
                                 let created = await appState.createGroupRoom(name: name, bots: bots, roomID: roomID)
                                 if created { dismiss() }
@@ -66,7 +66,7 @@ struct LAAGroupListView: View {
                             Text(verbatim: "グループはまだありません。")
                                 .foregroundStyle(.secondary)
                         } else {
-                            Section(String("グループ")) {
+                            Section(LAACopy.chatsGroups) {
                                 ForEach(appState.groupRooms) { room in
                                     Button {
                                         Task { await appState.openGroupRoom(room); dismiss() }
@@ -83,8 +83,8 @@ struct LAAGroupListView: View {
                     }
                 }
             }
-            .navigationTitle(Text(verbatim: "グループ"))
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { dismiss() } } }
+            .navigationTitle(Text(verbatim: LAACopy.chatsGroups))
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LAACopy.groupDone) { dismiss() } } }
             .task {
                 guard appState.isConnected else { return }
                 await appState.refreshBotRoster()
@@ -117,8 +117,8 @@ struct LAAGroupCreateView: View {
 
     var body: some View {
         List {
-            Section(String("グループ名")) {
-                TextField(text: $name) { Text(verbatim: "名前") }.accessibilityIdentifier("groups.create.name")
+            Section(LAACopy.groupName) {
+                TextField(text: $name) { Text(verbatim: LAACopy.groupNameField) }.accessibilityIdentifier("groups.create.name")
             }
             Section {
                 ForEach(LAAWidgetEmployee.allCases, id: \.self) { employee in
@@ -138,14 +138,14 @@ struct LAAGroupCreateView: View {
                     .disabled(!isAvailable || creating)
                     .accessibilityIdentifier("groups.employee.\(employee.profile)")
                 }
-            } header: { Text(verbatim: "社員を選択（2〜6人）") }
+            } header: { Text(verbatim: LAACopy.groupSelectEmployees) }
             if failed { Text(verbatim: "作成できませんでした。接続先と選択した社員を確認して再試行してください。")
                 .foregroundStyle(.red) }
         }
-        .navigationTitle(Text(verbatim: "グループを作成"))
+        .navigationTitle(Text(verbatim: LAACopy.chatsNewGroup))
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button(String("作成")) {
+                Button(LAACopy.groupCreate) {
                     guard !creating else { return }
                     let inputs = GroupCreateAttempt.Inputs(name: name.trimmingCharacters(in: .whitespacesAndNewlines), members: selected)
                     roomID = GroupCreateAttempt.roomID(for: inputs, current: roomID, attempted: attempted)
@@ -217,9 +217,9 @@ struct LAAGroupSettingsContent: View {
 
     var body: some View {
         Form {
-            Section(String("グループ名")) {
-                TextField(text: $name) { Text(verbatim: "名前") }.accessibilityIdentifier("groups.rename.name")
-                Button(String("名前を変更")) {
+            Section(LAACopy.groupName) {
+                TextField(text: $name) { Text(verbatim: LAACopy.groupNameField) }.accessibilityIdentifier("groups.rename.name")
+                Button(LAACopy.groupRename) {
                     let next = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     if let attemptedName, attemptedName != next { eventID = UUID().uuidString.lowercased() }
                     attemptedName = next
@@ -238,16 +238,16 @@ struct LAAGroupSettingsContent: View {
                     HStack {
                         Text(member.displayName ?? member.profile ?? member.identityKey)
                         Spacer()
-                        Button(String("削除")) {}.disabled(true)
+                        Button(LAACopy.groupRemove) {}.disabled(true)
                             .accessibilityIdentifier("groups.member.remove.\(member.identityKey)")
                     }
                 }
-                Button(String("社員を追加")) {}.disabled(true).accessibilityIdentifier("groups.member.add")
-            } header: { Text(verbatim: "参加者") }
+                Button(LAACopy.groupAddEmployee) {}.disabled(true).accessibilityIdentifier("groups.member.add")
+            } header: { Text(verbatim: LAACopy.groupMembers) }
               footer: { Text(verbatim: "この接続先には参加者を追加・削除する機能がありません。") }
         }
-        .navigationTitle(Text(verbatim: "グループ設定"))
-        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(String("完了")) { dismiss() } } }
+        .navigationTitle(Text(verbatim: LAACopy.groupSettings))
+        .toolbar { ToolbarItem(placement: .confirmationAction) { Button(LAACopy.groupDone) { dismiss() } } }
         .onAppear { name = room.name }
     }
 }

@@ -65,7 +65,7 @@ extension ChatTextSelectionTests {
     }
 
     @MainActor
-    func testAPickRedrawsTheAccentInPlace() throws {
+    func testAccentPickUpdatesTraitsAndUsesBuildColor() throws {
         let model = AccentProbeModel()
         let host = UIHostingController(rootView: AccentProbeView(model: model))
         let window = Self.window(hosting: host)

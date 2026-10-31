@@ -36,6 +36,9 @@ struct LiveVoiceSetupSheet: View {
                 Text(verbatim: LAACopy.voiceSetupManaged)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                Text(verbatim: "Mac側で音声サービスの設定を確認し、Voice設定に戻って利用可能か確認してください。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
 #else
                 Text(AppLocalization.string("Install the notifier if it is missing, or update your existing installation. Both commands target the Hermes gateway used by this profile."))
                     .font(.subheadline)
@@ -51,8 +54,6 @@ struct LiveVoiceSetupSheet: View {
                     title: AppLocalization.string("Update the notifier"),
                     command: "hermes plugins update conduit_push"
                 )
-#endif
-
                 modeInstructions
 
                 NotificationSetupCommand(
@@ -60,8 +61,6 @@ struct LiveVoiceSetupSheet: View {
                     title: AppLocalization.string("Restart the gateway"),
                     command: "hermes gateway restart"
                 )
-
-#if !LAA_BUILD
                 Link(destination: URL(string: "https://github.com/kaishi00/hermes-conduit-notifier")!) {
                     Label(AppLocalization.string("Hermes notifier repository"), systemImage: "arrow.up.right.square")
                         .font(.subheadline.weight(.medium))

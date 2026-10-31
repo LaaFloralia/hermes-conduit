@@ -67,12 +67,21 @@ struct HermesTurnLiveActivity: Widget {
 /// Theme.swift's conduitAdaptiveAccent (gold), conduitAdaptiveAccentSoft,
 /// conduitAdaptiveAttention and conduitAdaptiveSuccess: keep them in step.
 enum HermesTurnStyle {
+    #if LAA_BUILD
+    static let gold = LAAColorValues.color(LAAColorValues.linkDark)
+    static let goldSoft = LAAColorValues.color(LAAColorValues.linkDark)
+    static let attention = LAAColorValues.color(LAAColorValues.attentionDark)
+    static let success = LAAColorValues.color(LAAColorValues.linkDark)
+    static let failure = LAAColor.end
+    static let glass = LAAColorValues.color(LAAColorValues.surfaceDark).opacity(0.9)
+    #else
     static let gold = Color(red: 0.88, green: 0.67, blue: 0.28)
     static let goldSoft = Color(red: 0.98, green: 0.83, blue: 0.48)
     static let attention = Color(red: 0.96, green: 0.65, blue: 0.24)
     static let success = Color(red: 0.38, green: 0.80, blue: 0.50)
     static let failure = Color(red: 0.96, green: 0.42, blue: 0.40)
     static let glass = Color(red: 0.09, green: 0.075, blue: 0.08).opacity(0.62)
+    #endif
 
     static func tint(for phase: HermesTurnPhase) -> Color {
         switch phase {
@@ -94,8 +103,12 @@ enum HermesTurnStyle {
     /// app, whatever the phase (the status disc carries the phase's color).
     /// Gold, like the app's backdrop, when the profile has none.
     static func glow(_ attributes: HermesTurnAttributes) -> Color {
+        #if LAA_BUILD
+        return gold
+        #else
         guard let rgb = attributes.glowColor else { return gold }
         return Color(red: rgb.red, green: rgb.green, blue: rgb.blue)
+        #endif
     }
 }
 

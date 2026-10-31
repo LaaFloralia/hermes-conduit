@@ -598,7 +598,11 @@ struct SettingsView: View {
                     if let homeHeader {
                         homeHeader
                     } else {
+                        #if LAA_BUILD
+                        LAASettingsHeader(close: { dismiss() })
+                        #else
                         ConduitSheetHeader(title: AppLocalization.string("Settings"), close: { dismiss() })
+                        #endif
                     }
                 }
                 // On a wide window every page keeps to a readable column.
@@ -1172,7 +1176,7 @@ private struct SettingsHome: View {
                     homeSection(AppLocalization.string("Profile"), symbol: "person.crop.circle", tint: .conduitAccent) {
                         settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences"))
                     }
-                    homeSection("Hermes", tint: .conduitAura) {
+                    homeSection(agentSettingsTitle, tint: .conduitAura) {
                         settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
                         settingsLink(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
                         settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
@@ -1188,7 +1192,7 @@ private struct SettingsHome: View {
                     homeSection(AppLocalization.string("Connection"), tint: .conduitAura) {
                         settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
                         settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
-                        settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: notifierPluginSummary, identifier: "settings.conduit-plugin")
+                        settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: pluginSettingsTitle, detail: notifierPluginSummary, identifier: "settings.conduit-plugin")
                         settingsLink(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
                         settingsActionRow(
                             icon: "checkmark.circle",
@@ -1395,7 +1399,7 @@ private struct SettingsHome: View {
         }
         v2Group(AppLocalization.string("Server"), symbol: "server.rack") {
             v2Link(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards", first: true)
-            v2Link(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: notifierPluginSummary, identifier: "settings.conduit-plugin")
+            v2Link(.conduitPlugin, icon: "puzzlepiece.extension", title: pluginSettingsTitle, detail: notifierPluginSummary, identifier: "settings.conduit-plugin")
             v2Action(
                 icon: "checkmark.circle",
                 title: AppLocalization.string("Connection Setup"),
@@ -1513,6 +1517,22 @@ private struct SettingsHome: View {
         LAAPluginPolicy.summary(appState.notifierPlugin)
         #else
         NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate)
+        #endif
+    }
+
+    private var agentSettingsTitle: String {
+        #if LAA_BUILD
+        LAACopy.agent
+        #else
+        "Hermes"
+        #endif
+    }
+
+    private var pluginSettingsTitle: String {
+        #if LAA_BUILD
+        LAACopy.plugin
+        #else
+        AppLocalization.string("Conduit plugin")
         #endif
     }
 
@@ -4385,12 +4405,20 @@ private struct AboutSettingsDetail: View {
             }
             #endif
             ConduitSettingsSection(title: AppLocalization.string("Data handling"), symbol: "hand.raised", tint: .conduitAura) {
+                #if LAA_BUILD
+                Text(verbatim: "LAAは設定したMacに接続します。会話と添付ファイルはその接続先で処理されます。")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Text(verbatim: "会話一覧と最近の会話をこの端末に保存します。接続先ごとに、サインアウトまたは削除するまで保持されます。")
+                    .font(.footnote).foregroundStyle(.secondary)
+                #else
                 Text("Conduit connects to the dashboard and gateway you configure. Conversations and attachments are handled by that Hermes installation.")
                     .font(.footnote).foregroundStyle(.secondary)
                 Text("Conduit keeps your Chats lists and recent conversations on this device, so it opens straight to them while it connects. Each dashboard keeps its own until you sign out of it or remove it.")
                     .font(.footnote).foregroundStyle(.secondary)
+                #endif
                 deleteSavedChatsButton
             }
+            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("Links"), symbol: "link", tint: .conduitAccent) {
                 Link(destination: URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/privacy/")!) {
                     HStack {
@@ -4417,7 +4445,6 @@ private struct AboutSettingsDetail: View {
                     }
                 }
             }
-            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("Disclaimer"), symbol: "info.circle", tint: .conduitAura) {
                 Text("Hermes Conduit is an independent client and is not affiliated with or endorsed by Nous Research. © 2026 Milim.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -4563,11 +4590,19 @@ extension View {
     /// A settings group's card: a faint fill and hairline over the backdrop,
     /// like the V2 Scheduled list, so a page of them stays calm.
     func settingsCard(cornerRadius: CGFloat = 20) -> some View {
+        #if LAA_BUILD
+        background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: LAARadius.card, style: .continuous)
+                    .strokeBorder(LAAColor.separator, lineWidth: 0.5)
+            }
+        #else
         background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
             }
+        #endif
     }
 }
 

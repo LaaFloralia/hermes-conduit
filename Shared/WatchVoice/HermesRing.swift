@@ -44,7 +44,16 @@ struct HermesRing: Equatable {
 /// names the caller. Another bot goes by its name in Hermes, else its
 /// capitalized profile id.
 enum HermesCallerName {
+    #if LAA_BUILD
+    static let fallback = "Ciel"
+    #else
     static let fallback = "Hermes"
+    #endif
+    // Older installations saved the upstream default as a profile name.
+    // It must continue to be interpreted as an unset name after upgrading.
+    static func isFallback(_ name: String) -> Bool {
+        name == fallback || name == "Hermes"
+    }
     static let maximumNameCharacters = 40
 
     /// `mainName`: the name the user gave the main profile on the call's
@@ -61,7 +70,7 @@ enum HermesCallerName {
             // The name set in Conduit wins; one never set reads "Hermes"
             // (as does one set to "Hermes"), where the bot's own name says more.
             let main = oneLine(mainName)
-            let shown = main.isEmpty || main == fallback ? (named.isEmpty ? fallback : named) : main
+            let shown = main.isEmpty || isFallback(main) ? (named.isEmpty ? fallback : named) : main
             return String(shown.prefix(maximumNameCharacters))
         }
         // The bot's name, else the profile as Conduit shows one with no

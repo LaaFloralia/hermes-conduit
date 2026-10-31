@@ -36,9 +36,9 @@ enum LAAEmployeeWidgetLinks {
     /// A widget can be added before the app has published a dashboard. The
     /// app resolves this sentinel to its current dashboard at delivery time.
     static let unresolvedDashboard = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
-    static let missingDashboardMessage = "Hermes の接続先がありません。アプリで接続してください。"
-    static let missingProfileMessage = "社員のプロフィールが見つかりません。Hermes の設定を確認してください。"
-    static let offlineMessage = "Hermes に接続できません。接続を確認してからお試しください。"
+    static let missingDashboardMessage = "Macの接続先がありません。アプリで接続してください。"
+    static let missingProfileMessage = "社員のプロフィールが見つかりません。Macの設定を確認してください。"
+    static let offlineMessage = "Macに接続できません。接続を確認してからお試しください。"
 
     static func link(employee: LAAWidgetEmployee, action: WidgetLaunchAction, snapshot: WidgetSnapshot?) -> WidgetLaunchLink {
         precondition(action == .employeeChat || action == .talk)

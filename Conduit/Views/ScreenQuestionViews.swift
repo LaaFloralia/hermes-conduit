@@ -112,6 +112,16 @@ struct ScreenQuestionSettingsSection: View {
             symbol: "camera.viewfinder",
             tint: .conduitAccent
         ) {
+            #if LAA_BUILD
+            Text(verbatim: "配布用ショートカットは現在利用できません。設定済みのショートカットは引き続き使えます。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {} label: { Text(verbatim: LAACopy.screenQuestionAddShortcut) }
+                .disabled(true)
+                .accessibilityHint(Text(verbatim: "配布用ショートカットは現在利用できません。"))
+                .accessibilityIdentifier("voice.screenQuestionAddShortcut")
+            lastUsedRow
+            #else
             Text("Press the Action Button in any app and Conduit opens with a screenshot of it, ready for your question.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -119,6 +129,7 @@ struct ScreenQuestionSettingsSection: View {
             actionButtonStep
             otherWaysStep
             lastUsedRow
+            #endif
         }
         .onAppear { lastUsed = ScreenQuestionUsage.lastUsed() }
         // Left before the link resolved: nothing opens later.

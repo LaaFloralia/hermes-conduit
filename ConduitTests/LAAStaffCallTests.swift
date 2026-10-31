@@ -81,6 +81,14 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(LAACallKitPresentation.outgoingUpdate(name: "Talos").localizedCallerName, "Talos")
     }
 
+    func testLegacyDefaultCallerNameKeepsNamedProfilesAndUsesCielFallback() {
+        XCTAssertEqual(HermesCallerName.name(profile: nil, mainName: nil), "Ciel")
+        XCTAssertEqual(HermesCallerName.name(profile: "default", mainName: "Hermes"), "Ciel")
+        XCTAssertEqual(HermesCallerName.name(profile: "default", mainName: "Hermes", profileName: "Ada"), "Ada")
+        XCTAssertEqual(HermesCallerName.name(profile: "default", mainName: "Morgan", profileName: "Ada"), "Morgan")
+        XCTAssertEqual(HermesCallCopy.missedCallTitle(from: "Hermes"), HermesCallCopy.missedCallTitle(from: "Ciel"))
+    }
+
     func testPlacedCallNameFollowsConversationAndKeepsDefaultName() {
         let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
         addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in

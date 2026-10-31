@@ -17,7 +17,11 @@ extension ShapeStyle where Self == Color {
     static var conduitAccent: Color { .conduitAdaptiveAccent }
     static var conduitAccentSoft: Color { .conduitAdaptiveAccentSoft }
     #endif
+    #if LAA_BUILD
+    static var conduitAura: Color { LAAColor.link }
+    #else
     static var conduitAura: Color { Color(red: 0.38, green: 0.58, blue: 0.98) }
+    #endif
     // V2 status tokens. Each is always paired with an SF Symbol and a word.
     /// Approval waiting (amber shield).
     static var conduitAttention: Color { .conduitAdaptiveAttention }

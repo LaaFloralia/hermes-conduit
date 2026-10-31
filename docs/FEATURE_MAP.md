@@ -3613,16 +3613,20 @@ point at the map and its check
 **Siblings:** Hermes sign-in and permission descriptions · the five tab roots and Settings sheet · Bridge pairing and employee calls · iPhone and Watch widgets · sharing and notification extensions · the upstream app
 
 **Code**
-- LAA build branding, localized bundle resources and extension names: `project-laa.yml`, `project-personal.yml`, `scripts/laa/brand-bundle.py`, `Shared/LAAProductBrand.swift`, `Conduit/Views/Login/LoginScreens.swift`, `Conduit/Models/AppIconChoice.swift`, `Conduit/Theme.swift`
+- LAA build branding, localized bundle resources and extension names: `project-laa.yml`, `project-personal.yml`, `scripts/laa/brand-bundle.py`, `scripts/laa/check-brand-bundle.py`, `scripts/laa/testflight.sh`, `Shared/LAAProductBrand.swift`, `Conduit/Views/Login/LoginScreens.swift`, `Conduit/Models/AppIconChoice.swift`, `Conduit/Theme.swift`
 - Root Settings and control labels: `Conduit/LAA/LAASettingsAction.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Views/LoginView.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`
-- Widgets and sharing: `ConduitWidgets/LauncherWidgets.swift`, `Shared/Widgets/WidgetConfiguration.swift`, `Shared/Widgets/WidgetLocalization.swift`, `ConduitShareExtension/ShareDraftSheet.swift`
-- Tests: `scripts/tests/test_laa_brand_bundle.py`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAChromeUITests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
+- Widgets, Watch and sharing: `ConduitWidgets/LauncherWidgets.swift`, `ConduitWidgets/HermesTurnLiveActivity.swift`, `ConduitWatch/WatchTheme.swift`, `Shared/Widgets/WidgetConfiguration.swift`, `Shared/Widgets/WidgetLocalization.swift`, `ConduitShareExtension/ShareDraftSheet.swift`, `Conduit/LAA/Design/LAAColorValues.swift`, `assets/laa/LAAAccent.xcassets`
+- Static voice copy and redacted notifications: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/SpeechServerSpeech.swift`, `Conduit/Voice/VoiceBackgroundJobs.swift`, `Shared/WatchVoice/WatchCallAnswer.swift`, `Shared/WatchVoice/WatchJobRelay.swift`, `Shared/Notifications/NotificationCopy.swift`, `ConduitNotificationService/NotificationService.swift`
+- Tests: `scripts/tests/test_laa_brand_bundle.py`, `scripts/tests/test_laa_brand_bundle_check.py`, `ConduitTests/LAABuildBrandTests.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAChromeUITests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
 
 **Rulings**
 - Only the LAA build replaces product-owned Conduit names, icons and colors with the LAA identity; identifiers, routes, saved content and upstream builds retain their existing values. Generated bundle descriptions keep the source localization and remove the upstream developer's privacy claim instead of assigning it to LAA.
+- Personal builds use their own upstream icon consistently on the Home Screen and in the app, with a distinct LAA Personal display name. LAA's system accent and Watch/Live Activity colors share the design tokens. User-provided persona, memories, job titles, answers, credentials and addresses are not brand-rewritten.
+- The archive inspector checks visible bundle names, localization values and App Intents metadata for upstream product names in the app and embedded targets before TestFlight export. It does not inspect arbitrary runtime content or prove that Swift source literals never reach the screen.
 - A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
 
 **Open gaps**
+- If `redact_content` is enabled, a push that bypasses the notification extension can still show the upstream redacted approval text. The parent reports that the current Mac configuration has `redact_content=false` for every profile (2026-11-01).
 - Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
 
 **Checked:** 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).

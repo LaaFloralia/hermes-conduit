@@ -105,6 +105,32 @@ final class LAAChromeUITests: XCTestCase {
         }
     }
 
+    func testSettingsAndAboutUseLAAContentAndCapture() {
+        for appearance in ["light", "dark"] {
+            let app = launch(appearance)
+            let settings = app.buttons["laa.settings.open"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 30))
+            settings.tap()
+            XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["Ciel"].exists)
+            XCTAssertFalse(app.staticTexts["Hermes"].exists)
+            capture("remnants-settings-\(appearance)")
+
+            let scroll = app.scrollViews.firstMatch
+            let about = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "About & privacy")).firstMatch
+            for _ in 0..<6 where !about.isHittable { scroll.swipeUp() }
+            XCTAssertTrue(about.isHittable)
+            about.tap()
+            XCTAssertTrue(app.navigationBars["About & privacy"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["LAAは設定したMacに接続します。会話と添付ファイルはその接続先で処理されます。"].exists)
+            XCTAssertFalse(app.links["Privacy policy"].exists)
+            XCTAssertFalse(app.links["Support"].exists)
+            XCTAssertFalse(app.links["GitHub"].exists)
+            capture("remnants-about-\(appearance)")
+            app.terminate()
+        }
+    }
+
     func testCallControlsAndCapture() throws {
         for appearance in ["light", "dark"] {
             let app = XCUIApplication()

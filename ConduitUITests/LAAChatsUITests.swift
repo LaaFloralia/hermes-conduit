@@ -63,8 +63,8 @@ final class LAAChatsUITests: XCTestCase {
 
     func testEmptyLoadingErrorAndOffline() {
         for (mode, label) in [("empty", "グループはまだありません。"), ("loading", "読み込み中…"),
-                              ("error", "Hermesから読み込めませんでした。"),
-                              ("offline", "Hermesに接続できません。保存済みの会話は表示できます。"),
+                              ("error", "Macから読み込めませんでした。"),
+                              ("offline", "Macに接続できません。保存済みの会話は表示できます。"),
                               ("unsupported", "この接続先はグループに対応していません。")] {
             let app = launch(mode)
             XCTAssertTrue(app.staticTexts[label].firstMatch.waitForExistence(timeout: 10), mode)

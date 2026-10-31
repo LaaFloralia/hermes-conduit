@@ -48,6 +48,10 @@ class LAABrandCheckTests(unittest.TestCase):
         self.assertEqual(checker.check_bundle(self.app), [])
         write_plist(resource, {"prompt": "Open Conduit and use conduit://connect?url=ADDRESS."})
         self.assertTrue(checker.check_bundle(self.app))
+        write_plist(resource, {"link": "https://conduit.example"})
+        self.assertTrue(checker.check_bundle(self.app))
+        write_plist(resource, {"label": "https://は不要です。Conduitに接続します。"})
+        self.assertTrue(checker.check_bundle(self.app))
 
     def test_old_display_string_in_every_component_fails(self):
         for identifier, part in self.parts.items():

@@ -21,7 +21,7 @@ struct LAAChatsFixtureView: View {
     private var state: LAAChatsLoadState {
         switch mode {
         case "loading": return .loading
-        case "error": return .failed("Hermesから読み込めませんでした。")
+        case "error": return .failed("Macから読み込めませんでした。")
         case "offline": return .offline
         case "unsupported": return .unsupported
         default: return .ready
