@@ -1824,7 +1824,7 @@ extension VoiceConversationControllerTests {
 
     func testGPTLiveBriefingAsksForEndCallOnGoodbye() {
         for onWatch in [false, true] {
-            XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: onWatch).contains(GPTLiveConversationController.endCallRule))
+            XCTAssertTrue(GPTLiveConversationController.briefing(onWatch: onWatch).contains(LAAProductBrand.display(GPTLiveConversationController.endCallRule)))
         }
     }
 
