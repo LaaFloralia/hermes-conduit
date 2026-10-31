@@ -65,7 +65,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 - 既知の失敗: `LAA 16 Pro Max`（master `638a2af6`、英語（米国））は `ConnectionSetupUITests` 5件のみ。`ProfilePickerUITests` は3件とも成功した。`iPhone Duo`（master `21cec9ed`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件。
 - Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
-- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2610311529（2026-11-01、LAA Internal、Xcode 27.2 27B52で受理）。終わったら `build/laa/DerivedData` を消す。
+- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2610312000（2026-11-01、master 638a2af6、LAA Internal）。終わったら `build/laa/DerivedData` を消す。
 
 ## 現在の状態（2026-10-31）
 
