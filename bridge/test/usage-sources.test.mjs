@@ -180,7 +180,7 @@ test('unit credits and recorded usage keep their own units and details', () => {
 test('projection keeps quota extras and the original freshness without inventing timestamps', () => {
   const [item] = projection([{
     id: 'claude', kind: 'quota', source: 'live', available: true,
-    updatedAt: '2026-10-29T04:50:00Z', fetchedAt: '2026-10-29T04:45:00Z',
+    updatedAt: '2026-10-29T04:50:00Z',
     windows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
     extraWindows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
     credits: { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' },
@@ -188,7 +188,7 @@ test('projection keeps quota extras and the original freshness without inventing
   }]);
   assert.equal(item.detail.windows.length, 1);
   assert.equal(item.detail.windows[0].remainingPercent, 0);
-  assert.equal(item.detail.freshUntil, '2026-10-29T05:05:00.000Z');
+  assert.equal(item.detail.freshUntil, '2026-10-29T05:10:00.000Z');
   assert.deepEqual(item.detail.credits, { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' });
   assert.equal(item.detail.resetPasses.available, false);
   assert.equal(item.detail.resetPasses.remaining, null);
@@ -200,10 +200,14 @@ test('projection keeps quota extras and the original freshness without inventing
     updatedAt: '2026-10-29T05:03:00Z', fetchedAt: '2026-10-29T04:59:00Z',
     windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
   assert.equal(future.detail.freshUntil, undefined);
-  const missingSourceFetch = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
+  const defaultLive = byId(projection([{ id: 'codex', kind: 'quota', available: true,
     updatedAt: '2026-10-29T04:59:00Z',
     windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
-  assert.equal(missingSourceFetch.detail.freshUntil, undefined);
+  assert.equal(defaultLive.detail.freshUntil, '2026-10-29T05:19:00.000Z');
+  const unknownSource = byId(projection([{ id: 'codex', kind: 'quota', source: 'unknown', available: true,
+    updatedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(unknownSource.detail.freshUntil, undefined);
 });
 
 test('text from the feed is sanitised and never carries a credential or a path', () => {

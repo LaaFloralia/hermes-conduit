@@ -192,7 +192,7 @@ function isStale(row, feedFetchedAt, now, autoStaleMs) {
   // A verified value is a screen check with no auto refresh: age is expected,
   // and `observedAt` plus the expiry already say how old it is.
   if (row.source === 'verified') return false;
-  const times = [isoTime(row.updatedAt), isoTime(row.fetchedAt), feedFetchedAt]
+  const times = [isoTime(row.updatedAt), feedFetchedAt]
     .filter((value) => value !== null)
     .map((value) => Date.parse(value));
   if (times.length === 0) return false;
@@ -365,14 +365,14 @@ export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolv
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
     const item = itemFromRow(row, provider, context);
-    if (item.availability === 'available' && ['live', 'local', 'codexbar-cli'].includes(row.source)) {
+    // Console's projection uses the feed time for every provider and treats a
+    // missing source as live; the raw /widget response has no row.fetchedAt.
+    const source = row.source ?? 'live';
+    if (item.availability === 'available' && ['live', 'local', 'codexbar-cli'].includes(source)) {
       const updated = isoTime(row.updatedAt);
-      const sourceFetched = isoTime(row.fetchedAt);
-      if (updated !== null && sourceFetched !== null
-        && Date.parse(updated) <= now + FUTURE_TOLERANCE_MS
-        && Date.parse(sourceFetched) <= now + FUTURE_TOLERANCE_MS) {
+      if (updated !== null && Date.parse(updated) <= now + FUTURE_TOLERANCE_MS) {
         item.detail ??= {};
-        item.detail.freshUntil = new Date(Math.min(Date.parse(updated), Date.parse(sourceFetched), Date.parse(fetchedAt)) + autoStaleMs).toISOString();
+        item.detail.freshUntil = new Date(Math.min(Date.parse(updated), Date.parse(fetchedAt)) + autoStaleMs).toISOString();
       }
     }
     return item;
