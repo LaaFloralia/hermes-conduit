@@ -7,6 +7,21 @@ import re
 import subprocess
 from pathlib import Path
 
+# Each target's default home-screen name. A build that needs another one (the
+# personal build keeps upstream's identity) passes --name.
+names = {"app": "LAA", "watch": "LAA", "watch-widget": "LAA Watch Widgets",
+         "widgets": "LAA Widgets", "notification": "LAA Notifications", "share": "LAA"}
+
+# A value that is an identifier, link or address keeps its spelling: only
+# display copy is rebranded (BUS-330).
+identifier = re.compile(r"^(?:[A-Za-z0-9_.:/@+-]+[._:/@+][A-Za-z0-9_.:/@+-]*|Conduit[A-Za-z0-9]*[A-Z][A-Za-z0-9]*)$")
+
+
+def is_identifier(value):
+    # "ConduitAppGroup" is a symbol; "Conduitを開く" is a sentence, and its
+    # format specifier (%2$@) must not read as an address.
+    return not any(c.isspace() for c in value) and identifier.match(value) is not None
+
 
 def display(value):
     for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Ciel"),
@@ -28,7 +43,9 @@ def values_only(value):
         return result
     if isinstance(value, list):
         return [values_only(item) for item in value]
-    return display(value) if isinstance(value, str) else value
+    if not isinstance(value, str):
+        return value
+    return value if is_identifier(value) else display(value)
 
 
 def read_plist(path):
@@ -57,22 +74,24 @@ def permission_strings(catalog, locale):
     return result
 
 
-def brand_bundle(bundle, kind, source):
-    names = {"app": "LAA", "watch": "LAA", "watch-widget": "LAA Watch Widgets",
-             "widgets": "LAA Widgets", "notification": "LAA Notifications", "share": "LAA"}
+def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
     info_path = bundle / "Info.plist"
     info = read_plist(info_path)
-    info["CFBundleDisplayName"] = names[kind]
+    info["CFBundleDisplayName"] = name or names[kind]
+    if bundle_name:
+        info["CFBundleName"] = bundle_name
     if kind in ("app", "watch"):
         catalog_path = source / ("Conduit/InfoPlist.xcstrings" if kind == "app" else "ConduitWatch/InfoPlist.xcstrings")
         catalog = json.loads(catalog_path.read_text())
         info.update(permission_strings(catalog, "en"))
-        locales = {p.stem for p in bundle.glob("*.lproj")} | {"en", "ja"}
-        for locale in locales:
-            directory = bundle / (locale + ".lproj")
-            directory.mkdir(exist_ok=True)
-            with (directory / "InfoPlist.strings").open("wb") as stream:
-                plistlib.dump(permission_strings(catalog, locale), stream, fmt=plistlib.FMT_BINARY)
+        # Update the localizations the build already produced, and never
+        # create one: a draft language strip-draft-localizations.py removed
+        # would come back. English needs no lproj; the base Info.plist has it.
+        for path in bundle.glob("*.lproj/InfoPlist.strings"):
+            strings = read_plist(path)
+            strings.update(permission_strings(catalog, path.parent.stem))
+            with path.open("wb") as stream:
+                plistlib.dump(strings, stream, fmt=plistlib.FMT_BINARY)
     with info_path.open("wb") as stream:
         plistlib.dump(info, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)
     for directory in bundle.glob("*.lproj"):
@@ -103,10 +122,14 @@ def brand_bundle(bundle, kind, source):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle", required=True, type=Path)
-    parser.add_argument("--kind", required=True, choices=("app", "watch", "watch-widget", "widgets", "notification", "share"))
+    parser.add_argument("--kind", required=True, choices=tuple(names))
     parser.add_argument("--source", required=True, type=Path)
+    # The home-screen name: the personal build keeps its own identity beside
+    # the LAA one, and an env override is honored instead of ignored.
+    parser.add_argument("--name")
+    parser.add_argument("--bundle-name")
     args = parser.parse_args()
-    brand_bundle(args.bundle, args.kind, args.source)
+    brand_bundle(args.bundle, args.kind, args.source, name=args.name, bundle_name=args.bundle_name)
 
 
 if __name__ == "__main__":

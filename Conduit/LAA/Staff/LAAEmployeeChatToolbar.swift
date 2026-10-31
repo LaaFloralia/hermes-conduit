@@ -58,8 +58,12 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
                 }
             }
         } else {
-            ToolbarItem(placement: .principal) { header }
-            ToolbarItem(placement: .topBarTrailing) { callButton }
+            ToolbarItem(placement: .principal) {
+                header.frame(height: LAAConversationHeaderLayout.controlHeight)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                callButton.frame(height: LAAConversationHeaderLayout.controlHeight)
+            }
         }
     }
 
@@ -70,33 +74,45 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     }
 }
 
-/// Keep the same controls in the header when the system would otherwise
-/// place trailing toolbar items in the Duo's side rail.
+/// The conversation bar's one row: the name stays on the screen's center and
+/// the call/menu capsule stays inside the trailing margin, whatever either
+/// side needs. Both are the same height and share the bar's vertical center.
 struct LAACompactConversationToolbar<Title: View, Controls: View>: View {
+    /// The screen width; the row keeps the bar's margins on both sides.
     let width: CGFloat
+    /// Width the leading system Back button occupies. It is reserved on both
+    /// sides, so reserving it cannot move the name off center.
     let leadingInset: CGFloat
     @ViewBuilder let title: Title
     @ViewBuilder let controls: Controls
 
     var body: some View {
-        HStack(spacing: LAASpacing.x1) {
-            if leadingInset > 0 {
-                Color.clear
-                    .frame(width: leadingInset)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-            }
+        let rowWidth = max(0, width - 2 * LAASpacing.horizontal)
+        // The name keeps the screen's center and shrinks rather than running
+        // under the capsule, so neither side can move it.
+        let nameWidth = max(0, rowWidth - 2 * LAAConversationHeaderLayout.sideReserve)
+        ZStack {
             title
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .layoutPriority(1)
+                .frame(width: nameWidth)
             HStack(spacing: LAASpacing.x1) { controls }
                 .padding(.horizontal, LAASpacing.x1)
+                .frame(height: LAAConversationHeaderLayout.controlHeight)
                 .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.08))
                 .laaPhotoGlassScope()
                 .fixedSize()
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .frame(width: max(0, width - 2 * LAASpacing.horizontal))
+        .frame(width: rowWidth)
+        .frame(height: LAAConversationHeaderLayout.controlHeight)
     }
+}
+
+enum LAAConversationHeaderLayout {
+    /// The bar's controls are all this tall, so their centers line up.
+    static let controlHeight: CGFloat = 44
+    /// Half the width the call/menu capsule needs, including its margin: the
+    /// name keeps the screen's center instead of the space left over.
+    static let sideReserve: CGFloat = 110
 }
 
 enum LAAEmployeeCallAvailability {
@@ -180,16 +196,19 @@ private struct LAAEmployeeHeaderGlass: ViewModifier {
     let clear: Bool
 
     @ViewBuilder func body(content: Content) -> some View {
+        // 2pt vertical padding keeps the 38pt avatar inside the bar's 44pt
+        // control height, so the pill, Back and the call capsule share a
+        // center line.
         if clear {
             content
                 .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                .padding(.vertical, 2)
                 .background(.black.opacity(0.38), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .conduitGlassControl(cornerRadius: 20, tint: .conduitAccent.opacity(0.06), interactive: false)
         } else {
             content
                 .padding(.horizontal, LAASpacing.x2)
-                .padding(.vertical, LAASpacing.x1)
+                .padding(.vertical, 2)
                 .conduitGlassControl(cornerRadius: LAARadius.control, tint: LAAColor.link.opacity(0.06), interactive: false)
         }
     }

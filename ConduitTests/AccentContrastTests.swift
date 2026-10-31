@@ -22,6 +22,8 @@ final class AccentContrastTests: XCTestCase {
         #if LAA_BUILD
         XCTAssertEqual(AppIconChoice.dark.previewAssetName, "LAAIconPreview")
         XCTAssertEqual(AppIconChoice.light.previewAssetName, "LAAIconPreview")
+        // A name alone would pass with the image set deleted from the bundle.
+        XCTAssertNotNil(UIImage(named: "LAAIconPreview"), "the preview image must ship")
         #else
         XCTAssertEqual(AppIconChoice.dark.previewAssetName, "AppIconPreview")
         XCTAssertEqual(AppIconChoice.light.previewAssetName, "AppIconLightPreview")

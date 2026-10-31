@@ -6673,7 +6673,7 @@ final class AppState: ObservableObject {
         defaultProfileName = self.profileAppearanceStore.loadDefaultName(dashboardID: initialDashboardID)
         profileAvatarURLs = self.profileAppearanceStore.loadAvatarURLs(dashboardID: initialDashboardID)
         profileGlowPicks = self.profileAppearanceStore.loadGlowColors(dashboardID: initialDashboardID)
-        appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
+        appIconChoice = Self.startupAppIconChoice(alternateIconName: UIApplication.shared.alternateIconName)
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
         ) ?? .dark
@@ -12745,6 +12745,22 @@ final class AppState: ObservableObject {
                 }
             }
         }
+    }
+
+    /// The icon this launch shows. The LAA build no longer offers the
+    /// upstream Light icon, so a choice made in an earlier build is reset
+    /// once: otherwise Conduit's icon stays on the home screen with no way
+    /// back (BUS-330).
+    static func startupAppIconChoice(
+        alternateIconName: String?,
+        reset: (String?) -> Void = { UIApplication.shared.setAlternateIconName($0) }
+    ) -> AppIconChoice {
+        #if LAA_BUILD
+        if alternateIconName != nil { reset(nil) }
+        return .dark
+        #else
+        return alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
+        #endif
     }
 
     /// A photo kept on this device only: the gateway has no profile asset
@@ -31100,7 +31116,9 @@ final class AppState: ObservableObject {
     /// The explanation a redacted push carries in place of the real one
     /// (conduit-push-notifier `events.py`, `REDACTED_APPROVAL_TEXT`, used by
     /// `redact_event` for profiles with `hermes conduit-push redact on`).
-    /// Keep it in step with the notifier.
+    /// Keep it in step with the notifier. The text stays the notifier's even
+    /// in the LAA build, because matching depends on it; the notification
+    /// service brands that one exact sentence before it is shown.
     static let redactedApprovalPushDescription = "Hermes needs your approval. Open Conduit for details."
 
     /// How long a push's explanation can be: the notifier collapses its

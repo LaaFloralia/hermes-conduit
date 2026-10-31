@@ -37,14 +37,16 @@ final class LAAChromeUITests: XCTestCase {
     func testAllTabsOpenSettingsAtTheSamePositionAndCapture() throws {
         for appearance in ["light", "dark"] {
             let app = launch(appearance)
-            XCTAssertEqual(app.frame.width, 440, accuracy: 1)
-            XCTAssertEqual(app.frame.height, 956, accuracy: 1)
             var firstFrame: CGRect?
             for tab in ["Chats", "Work", "Brain", "Assets", "Usage"] {
                 let tabButton = app.buttons[tab]
                 XCTAssertTrue(tabButton.waitForExistence(timeout: 30), tab)
                 tabButton.tap()
-                let settings = app.buttons["laa.settings.open"]
+                // Only the visible tab's bar carries the button; the tab
+                // views the picker keeps off screen must not answer here.
+                let bar = app.navigationBars.buttons.matching(identifier: "laa.settings.open")
+                XCTAssertEqual(bar.count, 1, "\(tab): one settings button in the visible bar")
+                let settings = bar.firstMatch
                 XCTAssertTrue(settings.waitForExistence(timeout: 15), tab)
                 XCTAssertTrue(settings.isHittable, tab)
                 if let firstFrame {
@@ -54,6 +56,12 @@ final class LAAChromeUITests: XCTestCase {
                     XCTAssertEqual(settings.frame.height, firstFrame.height, accuracy: 1, tab)
                 } else {
                     firstFrame = settings.frame
+                }
+                if tab == "Chats" {
+                    // The screen's own "Chats" heading is the only one: the
+                    // bar above it stays empty (BUS-331).
+                    XCTAssertFalse(app.navigationBars["Chats"].exists, "no navigation title over Chats")
+                    XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Chats")).count, 1)
                 }
                 capture("chrome-\(tab.lowercased())-\(appearance)")
                 settings.tap()
@@ -69,7 +77,9 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertTrue(code.exists)
             XCTAssertTrue(app.staticTexts["Address"].exists)
             XCTAssertTrue(app.staticTexts["Pairing code"].exists)
-            XCTAssertLessThanOrEqual(app.staticTexts.matching(identifier: "Connect to Mac").count, 1)
+            // The bar title may be read once; the body must not repeat it.
+            XCTAssertLessThanOrEqual(
+                app.staticTexts.matching(NSPredicate(format: "label == %@", "Connect to Mac")).count, 1)
             let connect = app.buttons["laa.bridge.pair"]
             XCTAssertFalse(connect.isEnabled)
             try assertBackground(capture("chrome-pairing-\(appearance)"), appearance: appearance)

@@ -51,7 +51,7 @@ enum MapsNavigator {
             return opened ? .opened(name) : .failed(.failed("Apple Maps couldn't be opened."))
         }
         guard await notify(name: name, url: url) else {
-            return .failed(.failed("Conduit isn't in front and can't post notifications, so Maps couldn't be opened."))
+            return .failed(.failed("\(LAAProductBrand.appName) isn't in front and can't post notifications, so Maps couldn't be opened."))
         }
         return .notified(name)
     }

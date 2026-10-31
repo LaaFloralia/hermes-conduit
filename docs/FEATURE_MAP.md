@@ -505,6 +505,15 @@ App Store build · the Bridge API, Brain and Usage data contracts
   body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
+- Every tab's bar carries the same gear in the same place, with the same
+  accessibility identifier; the Chats screen keeps its own "Chats" heading and
+  an empty navigation title. The gear's frame is compared across tabs, so the
+  UI checks run on the 440 × 956 `LAA 16 Pro Max` simulator and no longer
+  assert a device size. `LAAChromeUITests` and the other `LAA_BUILD` checks
+  are not in GitHub CI (its smoke job generates `project-tests.yml`, which does
+  not define `LAA_BUILD`): run them locally with
+  `xcodegen generate --spec project-laa.yml` and
+  `xcodebuild test -scheme Conduit -destination 'platform=iOS Simulator,id=DFFD3966-F54E-4C7A-A161-59201C7EA105'`.
 
 **Open gaps**
 - Screen-specific v2 restyling and action labels belong to their screen tasks.

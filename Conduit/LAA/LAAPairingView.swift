@@ -9,8 +9,16 @@ struct LAAPairingView: View {
     @State private var isPairing = false
     @State private var failure: LAABridgeError?
 
+    /// The code as the Bridge should see it: pasting from `laa-bridge pair`
+    /// can carry a newline or spaces, which must not fail the match.
+    static func normalizedCode(_ code: String) -> String {
+        code.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var submittedCode: String { Self.normalizedCode(code) }
+
     private var canPair: Bool {
-        !isPairing && !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isPairing && !submittedCode.isEmpty
     }
 
     var body: some View {
@@ -45,7 +53,9 @@ struct LAAPairingView: View {
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                     if let failure {
-                        Text(verbatim: failure.japaneseText).foregroundStyle(LAAColor.attention)
+                        Text(verbatim: failure.japaneseText)
+                            .foregroundStyle(LAAColor.attention)
+                            .accessibilityIdentifier("laa.bridge.failure")
                         if failure == .keychain {
                             Text(verbatim: "端末登録が作成されている場合は、Macで今回の登録を失効してください。")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -89,17 +99,29 @@ struct LAAPairingView: View {
     private func pair() async {
         isPairing = true
         failure = nil
-        defer { isPairing = false; code = "" }
+        defer { isPairing = false }
+        let submitted = submittedCode
         do {
-            try await bridge.pair(address: address, code: code, name: UIDevice.current.name)
+            try await bridge.pair(address: address, code: submitted, name: UIDevice.current.name)
+            code = ""
             dismiss()
         } catch let error as LAABridgeError {
             failure = error
+            // A spent or rejected code is cleared; one that failed on the way
+            // stays, so the user can retry the same 10-minute code.
+            if error == .unauthorized || error == .expired { code = "" }
+            announce(error)
         } catch is CancellationError {
             return
         } catch {
             failure = .invalidResponse
+            announce(.invalidResponse)
         }
+    }
+
+    /// VoiceOver stays on Connect when the failure text appears; say it.
+    private func announce(_ error: LAABridgeError) {
+        AccessibilityNotification.Announcement(error.japaneseText).post()
     }
 }
 

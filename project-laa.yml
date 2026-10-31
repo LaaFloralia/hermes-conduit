@@ -100,7 +100,8 @@ targets:
       - name: Brand LAA app resources
         basedOnDependencyAnalysis: false
         script: |
-          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT"
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
+            --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
   ConduitWatch:
     sources:
       - path: Conduit/LAA/LAACopy.swift
@@ -156,6 +157,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
+        # The extension rewrites the notifier's redacted approval text, which
+        # names the app, so it needs the LAA brand too.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitNotificationService.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"

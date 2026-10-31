@@ -48,6 +48,9 @@ class LAABrandBundleTests(unittest.TestCase):
                 plistlib.dump({"CFBundleDisplayName": "Conduit", "ConduitLauncherAppGroup": "group.keep"}, stream)
             with (local / "Localizable.strings").open("wb") as stream:
                 plistlib.dump({"Open Conduit": "Conduitを開く", "identifier": "conduit://keep"}, stream)
+            # The build's own copy of the catalog-backed permission strings.
+            with (local / "InfoPlist.strings").open("wb") as stream:
+                plistlib.dump({"NSMicrophoneUsageDescription": "Conduitはマイクを使います。"}, stream)
             brand.brand_bundle(bundle, "app", ROOT)
             with (bundle / "Info.plist").open("rb") as stream:
                 info = plistlib.load(stream)
@@ -80,3 +83,91 @@ class LAABrandBundleTests(unittest.TestCase):
                 brand.brand_bundle(bundle, kind, ROOT)
                 with (bundle / "Info.plist").open("rb") as stream:
                     self.assertEqual(plistlib.load(stream)["CFBundleDisplayName"], name)
+
+    def make_app_bundle(self, root):
+        """A built app: the plist keys the brand must keep, and one lproj."""
+        bundle = root / "Conduit.app"
+        local = bundle / "ja.lproj"
+        local.mkdir(parents=True)
+        with (bundle / "Info.plist").open("wb") as stream:
+            plistlib.dump({
+                "CFBundleDisplayName": "Conduit",
+                "CFBundleName": "Conduit",
+                "CFBundleIcons": {"CFBundleAlternateIcons": {"Light": {"CFBundleIconFiles": ["icon-light-120"]}}},
+                "ConduitLauncherAppGroup": "group.keep",
+            }, stream)
+        with (local / "Localizable.strings").open("wb") as stream:
+            plistlib.dump({"Open Conduit": "Conduitを開く", "identifier": "conduit://keep"}, stream)
+        with (local / "InfoPlist.strings").open("wb") as stream:
+            plistlib.dump({"NSMicrophoneUsageDescription": "old",
+                           "ConduitAnotherKey": "keep me"}, stream)
+        return bundle
+
+    def read_bundle(self, bundle):
+        return {path.relative_to(bundle): path.read_bytes()
+                for path in sorted(bundle.rglob("*")) if path.is_file()}
+
+    def test_branding_the_same_bundle_twice_changes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self.make_app_bundle(Path(tmp))
+            brand.brand_bundle(bundle, "app", ROOT)
+            first = self.read_bundle(bundle)
+            brand.brand_bundle(bundle, "app", ROOT)
+            self.assertEqual(self.read_bundle(bundle), first)
+
+    def test_personal_build_keeps_its_own_name_and_upstream_icon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self.make_app_bundle(Path(tmp))
+            brand.brand_bundle(bundle, "app", ROOT, name="Conduit LAA")
+            with (bundle / "Info.plist").open("rb") as stream:
+                info = plistlib.load(stream)
+            self.assertEqual(info["CFBundleDisplayName"], "Conduit LAA")
+            self.assertEqual(info["CFBundleName"], "Conduit")
+            # The alternate (Light) icon stays registered, as upstream had it.
+            self.assertIn("Light", info["CFBundleIcons"]["CFBundleAlternateIcons"])
+            self.assertEqual(info["ConduitLauncherAppGroup"], "group.keep")
+
+    def test_laa_app_sets_its_bundle_name_and_keeps_other_localized_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self.make_app_bundle(Path(tmp))
+            brand.brand_bundle(bundle, "app", ROOT, name="LAA", bundle_name="LAA")
+            with (bundle / "Info.plist").open("rb") as stream:
+                self.assertEqual(plistlib.load(stream)["CFBundleName"], "LAA")
+            with (bundle / "ja.lproj/InfoPlist.strings").open("rb") as stream:
+                strings = plistlib.load(stream)
+            self.assertNotIn("Conduit", strings["NSMicrophoneUsageDescription"])
+            self.assertEqual(strings["ConduitAnotherKey"], "keep me")
+
+    def test_watch_bundle_is_branded_with_its_own_permission_catalog(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = Path(tmp) / "ConduitWatch.app"
+            (bundle / "ja.lproj").mkdir(parents=True)
+            with (bundle / "ja.lproj/InfoPlist.strings").open("wb") as stream:
+                plistlib.dump({"NSMicrophoneUsageDescription": "Conduitはマイクを使います。"}, stream)
+            with (bundle / "Info.plist").open("wb") as stream:
+                plistlib.dump({"CFBundleDisplayName": "Conduit"}, stream)
+            brand.brand_bundle(bundle, "watch", ROOT)
+            with (bundle / "Info.plist").open("rb") as stream:
+                info = plistlib.load(stream)
+            self.assertEqual(info["CFBundleDisplayName"], "LAA")
+            self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
+            with (bundle / "ja.lproj/InfoPlist.strings").open("rb") as stream:
+                self.assertNotIn("Conduit", plistlib.load(stream)["NSMicrophoneUsageDescription"])
+
+    def test_identifier_like_values_keep_their_spelling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self.make_app_bundle(Path(tmp))
+            with (bundle / "ja.lproj/Localizable.strings").open("wb") as stream:
+                plistlib.dump({"identifier": "conduit://keep",
+                               "group": "group.com.milim.relay.launcher",
+                               "address": "ops@conduit.example",
+                               "symbol": "ConduitAppGroup",
+                               "sentence": "Conduitを開く"}, stream)
+            brand.brand_bundle(bundle, "app", ROOT)
+            with (bundle / "ja.lproj/Localizable.strings").open("rb") as stream:
+                localized = plistlib.load(stream)
+            self.assertEqual(localized["identifier"], "conduit://keep")
+            self.assertEqual(localized["group"], "group.com.milim.relay.launcher")
+            self.assertEqual(localized["address"], "ops@conduit.example")
+            self.assertEqual(localized["symbol"], "ConduitAppGroup")
+            self.assertEqual(localized["sentence"], "LAAを開く")
