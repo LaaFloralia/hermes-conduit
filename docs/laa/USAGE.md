@@ -52,7 +52,7 @@ Console collector（`dev/inventory`）とR2のsnapshotは**正本にしない**�
 | `id` | string | 安定ID（例 `provider.claude.quota`、`profile.laa-ciel.cost.30d`） |
 | `kind` | enum | `quota` / `balance` / `usage` / `cost` |
 | `label` | string | 表示名（provider名＋窓名） |
-| `value` | number \| null | 値。**欠測は必ず null**（0で埋めない）。`quota` は窓のうち最も残りが少ない percent、`balance` は `amount`、`usage` は対象期間のトークン合計、`cost` は USD |
+| `value` | number \| null | 値。**欠測は必ず null**（0で埋めない）。`quota` は窓のうち最も残りが少ない percent、`balance` は `amount`（Veniceは欠けていれば `usd`）、`usage` は対象期間のトークン合計、`cost` は USD |
 | `unit` | enum | `percent` / `usd` / `jpy` / `tokens` / `count` / `credits`（mac/statusは `bytes` / `gb`） |
 | `source` | string | `codexbar-usage-proxy` / `hermes-dashboard-analytics`（mac/statusは `laa-storage-guard` / `bridge-host-sampler`） |
 | `observedAt` | ISO \| null | 取得時刻（proxyはproviderの `updatedAt`、analyticsは要求時刻） |
@@ -62,6 +62,22 @@ Console collector（`dev/inventory`）とR2のsnapshotは**正本にしない**�
 | `expired` | boolean | 窓の `resetsAt` 経過、または `expiresOnUtc` 経過 |
 | `nullReason` | string? | `availability: unavailable` の理由コード（`not_configured` / `fetch_failed` / `unsupported` / `auth_required`） |
 | `detail` | object? | `quota`: `windows[{label, remainingPercent, resetsAt, windowMinutes?}]`、`balance`: `currency`・`components[]`・`expiresOnUtc?`、`usage`: `periodDays`・`models[]`、`cost`: `periodDays`・`actualUsd`・`estimatedUsd` |
+
+2026-10-31追加：proxy由来の射影で取得できる `detail` の任意項目は次のとおり。無い項目は未取得であり、0や現在時刻で補わない。
+
+| field | 意味 |
+|---|---|
+| `freshUntil` | 自動取得値の鮮度期限。`updatedAt` とフィード `fetchedAt` の古い方＋20分。時刻不正・手動確認値には付けない |
+| `sourceKind` | `verified` のとき画面確認値・自動更新なし。取得時刻と期限を併記する |
+| `credits` | quotaとは単位の異なる追加クレジットの `remaining` と `updatedAt` |
+| `resetPasses` | 手動確認した `available`・`remaining`・`updatedAt`・`expiresAt`。欠測や期限到来は要確認 |
+| `recordedCostUsd`・`recordedRequestCount`・`lastRecordedAt` | Liquid D1のproxyに記録された費用・応答数・最新記録時刻。全利用額とは限らない |
+| `creditUnit`・`grantedAmount`・`monthlyGrantedAmount`・`dailyRemaining`・`dailyGrantedAmount`・`fallbackAiCredits` | クレジットの単位、付与、残額。存在する値だけ |
+| `usd`・`diem`・`monthlyRemainingPercent`・`renewsAt` | proxyが実際に返した残高内訳・更新時刻。存在する値だけ |
+
+現行Bridgeは、有効な `updatedAt` を持つ自動取得のavailable値に `freshUntil` を必ず付ける。旧Bridgeに `freshUntil` がない場合、クライアントは `observedAt + 20分` と `stale` を使い、鮮度が目安であることを表示する。旧応答はフィード時刻を含まないため、この代用では両時刻の古い方を再現できない。正確な期限にはBridgeの更新が必要。`observedAt` が欠落・60秒を超えて未来なら鮮度不明とする。`verified` は20分で自動的に古いとせず、確認時刻と自動更新なしを示す。
+
+quotaの `expired` は最小残量の窓だけを指す。窓ごとの `resetsAt` は個別に判定する。不正な残量や長さ上限を超える窓配列は、残りの窓だけで代表値を作らず、そのproviderを取得失敗とする。`updatedAt` が欠落・未来のavailable値は `stale`。proxyの通常のCodexBar行は `source` を省略するためConsole collectorと同様 `live` と解釈し、手動確認行の `verified` は明示される。未知の `source` は古さ不明として扱う。
 
 `GET /v1/mac/status` の `item` は同じ形で `kind` が `host.cpu` / `host.memory` / `host.disk`。単位は `percent` / `bytes` / `gb`。`detail` に `totalBytes`・`swapUsedBytes`・`volume`・`level`・`findings` を入れる。
 

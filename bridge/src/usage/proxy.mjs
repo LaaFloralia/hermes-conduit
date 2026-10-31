@@ -135,12 +135,16 @@ export async function readUsageFeed({
 }
 
 function normalizeWindows(row) {
+  // Do not discard a bad/extra window: it may be the limiting quota.
+  for (const key of ['windows', 'extraWindows']) {
+    if (row[key] !== undefined && (!Array.isArray(row[key]) || row[key].length > MAX_WINDOWS)) return null;
+  }
   const raw = [...(Array.isArray(row.windows) ? row.windows : []), ...(Array.isArray(row.extraWindows) ? row.extraWindows : [])];
   const windows = [];
-  for (const entry of raw.slice(0, MAX_WINDOWS)) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
     const remaining = finiteNumber(entry.remaining, { max: 100 });
-    if (remaining === null) continue;
+    if (remaining === null) return null;
     const window = {
       label: safeText(entry.label, 64) ?? `Window ${windows.length + 1}`,
       remainingPercent: remaining,
@@ -148,7 +152,8 @@ function normalizeWindows(row) {
     };
     const minutes = finiteNumber(entry.windowMinutes, { min: 1 });
     if (minutes !== null) window.windowMinutes = minutes;
-    windows.push(window);
+    if (!windows.some((old) => old.label === window.label && old.remainingPercent === window.remainingPercent
+      && old.resetsAt === window.resetsAt && old.windowMinutes === window.windowMinutes)) windows.push(window);
   }
   return windows;
 }
@@ -163,6 +168,9 @@ function normalizeComponents(row) {
     const component = { kind: safeText(entry.kind, 32) ?? 'other', amount };
     const granted = finiteNumber(entry.grantedAmount);
     if (granted !== null) component.grantedAmount = granted;
+    if (typeof entry.expiresOnUtc === 'string' && expiryTime(entry.expiresOnUtc) !== null) {
+      component.expiresOnUtc = entry.expiresOnUtc;
+    }
     components.push(component);
   }
   return components;
@@ -185,49 +193,67 @@ function balanceExpired(row, now) {
 }
 
 function isStale(row, feedFetchedAt, now, autoStaleMs) {
+  const observed = isoTime(row.updatedAt);
+  if (observed === null || Date.parse(observed) > now + FUTURE_TOLERANCE_MS) return true;
+  if (row.source != null && !['live', 'local', 'codexbar-cli', 'verified'].includes(row.source)) return true;
   // A verified value is a screen check with no auto refresh: age is expected,
   // and `observedAt` plus the expiry already say how old it is.
   if (row.source === 'verified') return false;
-  const times = [isoTime(row.updatedAt), feedFetchedAt]
+  const times = [observed, feedFetchedAt]
     .filter((value) => value !== null)
     .map((value) => Date.parse(value));
-  if (times.length === 0) return false;
-  return now - Math.min(...times) > autoStaleMs;
+  return now - Math.min(...times) >= autoStaleMs;
 }
 
 function observedAtOf(row, feedFetchedAt) {
-  return isoTime(row.updatedAt) ?? feedFetchedAt;
+  return isoTime(row.updatedAt);
 }
 
 function quotaItem(row, provider, context) {
   const windows = normalizeWindows(row);
-  if (windows.length === 0) {
+  if (!windows || windows.length === 0) {
     return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
   }
   const binding = windows.reduce((lowest, window) => (
     window.remainingPercent < lowest.remainingPercent ? window : lowest
   ));
   const expired = binding.resetsAt !== null && Date.parse(binding.resetsAt) <= context.now;
+  const detail = { windows };
+  if (row.source === 'verified') detail.sourceKind = 'verified';
+  const extraCredits = finiteNumber(row.credits?.remaining);
+  if (extraCredits !== null) detail.credits = { remaining: extraCredits, updatedAt: isoTime(row.credits?.updatedAt) };
+  if (row.resetPasses && typeof row.resetPasses.available === 'boolean') {
+    detail.resetPasses = { available: row.resetPasses.available, remaining: finiteNumber(row.resetPasses.remaining),
+      updatedAt: isoTime(row.resetPasses.updatedAt), expiresAt: isoTime(row.resetPasses.expiresAt) };
+  }
   return availableItem({
     ...baseOf(provider),
     value: binding.remainingPercent,
     observedAt: observedAtOf(row, context.fetchedAt),
     stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs),
     expired,
-    detail: { windows },
+    detail,
   });
 }
 
 function balanceItem(row, provider, context) {
-  const currency = row.currency === 'JPY' ? 'JPY' : row.currency === 'USD' ? 'USD' : null;
-  const amount = finiteNumber(row.amount);
+  const veniceUsd = provider.id === 'venice' ? finiteNumber(row.usd) : null;
+  const explicitAmount = finiteNumber(row.amount);
+  const currency = explicitAmount === null && veniceUsd !== null ? 'USD'
+    : row.currency === 'JPY' ? 'JPY' : row.currency === 'USD' || veniceUsd !== null ? 'USD' : null;
+  const amount = explicitAmount ?? veniceUsd;
   const expired = balanceExpired(row, context.now);
   const base = { ...baseOf(provider), unit: currency === 'JPY' ? 'jpy' : 'usd' };
   if (amount === null) {
     return unavailableItem({ ...base, reason: 'fetch_failed', expired });
   }
   const detail = {};
+  if (row.source === 'verified') detail.sourceKind = 'verified';
   if (currency !== null) detail.currency = currency;
+  for (const key of ['usd', 'diem', 'monthlyRemainingPercent']) {
+    const value = finiteNumber(row[key], { max: key === 'monthlyRemainingPercent' ? 100 : Number.MAX_SAFE_INTEGER });
+    if (value !== null) detail[key] = value;
+  }
   const components = normalizeComponents(row);
   if (components.length > 0) detail.components = components;
   if (typeof row.expiresOnUtc === 'string' && expiryTime(row.expiresOnUtc) !== null) {
@@ -251,9 +277,12 @@ function creditsItem(row, provider, context) {
     return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed', expired });
   }
   const detail = {};
+  if (row.source === 'verified') detail.sourceKind = 'verified';
+  if (row.unit === 'AI credits' || row.unit === 'Flow credits') detail.creditUnit = row.unit;
+  if (typeof row.expiresOnUtc === 'string' && expiryTime(row.expiresOnUtc) !== null) detail.expiresOnUtc = row.expiresOnUtc;
   const renewsAt = isoTime(row.renewsAt);
   if (renewsAt !== null) detail.renewsAt = renewsAt;
-  for (const key of ['grantedAmount', 'monthlyGrantedAmount', 'dailyRemaining', 'dailyGrantedAmount']) {
+  for (const key of ['grantedAmount', 'monthlyGrantedAmount', 'dailyRemaining', 'dailyGrantedAmount', 'fallbackAiCredits']) {
     const value = finiteNumber(row[key]);
     if (value !== null) detail[key] = value;
   }
@@ -287,6 +316,9 @@ function recordedUsageItem(row, provider, context) {
     stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs),
     detail: {
       periodDays,
+      recordedCostUsd: finiteNumber(recorded.costUsd),
+      recordedRequestCount: finiteNumber(recorded.requestCount),
+      lastRecordedAt,
       models: [{
         model: safeText(recorded.model, 64) ?? 'recorded-calls',
         inputTokens: input,
@@ -341,6 +373,19 @@ export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolv
   return USAGE_PROVIDERS.map((provider) => {
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
-    return itemFromRow(row, provider, context);
+    const item = itemFromRow(row, provider, context);
+    // usage-meters/usage-proxy.py normalize() intentionally omits source for
+    // ordinary CodexBar live rows; inventory/collector/usage.ts also supplies
+    // live for them. Manual credit rows explicitly carry source: verified.
+    // The raw /widget response has no row.fetchedAt.
+    const source = row.source ?? 'live';
+    if (item.availability === 'available' && ['live', 'local', 'codexbar-cli'].includes(source)) {
+      const updated = isoTime(row.updatedAt);
+      if (updated !== null && Date.parse(updated) <= now + FUTURE_TOLERANCE_MS) {
+        item.detail ??= {};
+        item.detail.freshUntil = new Date(Math.min(Date.parse(updated), Date.parse(fetchedAt)) + autoStaleMs).toISOString();
+      }
+    }
+    return item;
   });
 }

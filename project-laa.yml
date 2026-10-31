@@ -45,6 +45,8 @@ targets:
     sources:
       - path: Shared/Widgets/LAAEmployeeWidget.swift
       - path: ConduitWidgets/LAA/LAAEmployeeWidgetViews.swift
+      - path: ConduitWidgets/Resources/LAAStaff.xcassets
+        buildPhase: resources
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_TEST"
