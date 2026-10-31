@@ -17,21 +17,33 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try capture(style: .light, mode: .fullColor, name: "medium-no-quota-light", otherOnly: true)
         try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-dark", otherOnly: true)
         try capture(style: .light, mode: .accented, name: "medium-no-quota-tinted", otherOnly: true)
-        try capture(style: .light, mode: .fullColor, name: "medium-accessibility-light", accessibility: true)
-        try capture(style: .dark, mode: .fullColor, name: "medium-accessibility-dark", accessibility: true)
-        try capture(style: .light, mode: .accented, name: "medium-accessibility-tinted", accessibility: true)
-        try capture(style: .light, mode: .fullColor, name: "medium-stale-accessibility-light", stale: true, accessibility: true)
-        try capture(style: .dark, mode: .fullColor, name: "medium-stale-accessibility-dark", stale: true, accessibility: true)
-        try capture(style: .light, mode: .accented, name: "medium-stale-accessibility-tinted", stale: true, accessibility: true)
-        try capture(style: .light, mode: .fullColor, name: "medium-stale-older-accessibility-light", stale: true, accessibility: true, checkedAtOffset: -370 * 86_400)
-        try capture(style: .dark, mode: .fullColor, name: "medium-stale-older-accessibility-dark", stale: true, accessibility: true, checkedAtOffset: -370 * 86_400)
-        try capture(style: .light, mode: .accented, name: "medium-stale-older-accessibility-tinted", stale: true, accessibility: true, checkedAtOffset: -370 * 86_400)
-        try capture(style: .light, mode: .fullColor, name: "medium-no-quota-accessibility-light", otherOnly: true, accessibility: true)
-        try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-accessibility-dark", otherOnly: true, accessibility: true)
-        try capture(style: .light, mode: .accented, name: "medium-no-quota-accessibility-tinted", otherOnly: true, accessibility: true)
-        try capture(style: .light, mode: .fullColor, name: "medium-no-quota-older-accessibility-light", otherOnly: true, accessibility: true, checkedAtOffset: -370 * 86_400)
-        try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-older-accessibility-dark", otherOnly: true, accessibility: true, checkedAtOffset: -370 * 86_400)
-        try capture(style: .light, mode: .accented, name: "medium-no-quota-older-accessibility-tinted", otherOnly: true, accessibility: true, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .fullColor, name: "medium-accessibility-light", dynamicTypeSize: .accessibility3)
+        try capture(style: .dark, mode: .fullColor, name: "medium-accessibility-dark", dynamicTypeSize: .accessibility3)
+        try capture(style: .light, mode: .accented, name: "medium-accessibility-tinted", dynamicTypeSize: .accessibility3)
+        try capture(style: .light, mode: .fullColor, name: "medium-stale-accessibility-light", stale: true, dynamicTypeSize: .accessibility3)
+        try capture(style: .dark, mode: .fullColor, name: "medium-stale-accessibility-dark", stale: true, dynamicTypeSize: .accessibility3)
+        try capture(style: .light, mode: .accented, name: "medium-stale-accessibility-tinted", stale: true, dynamicTypeSize: .accessibility3)
+        try capture(style: .light, mode: .fullColor, name: "medium-stale-older-accessibility-light", stale: true, dynamicTypeSize: .accessibility3, checkedAtOffset: -370 * 86_400)
+        try capture(style: .dark, mode: .fullColor, name: "medium-stale-older-accessibility-dark", stale: true, dynamicTypeSize: .accessibility3, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .accented, name: "medium-stale-older-accessibility-tinted", stale: true, dynamicTypeSize: .accessibility3, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .fullColor, name: "medium-no-quota-accessibility-light", otherOnly: true, dynamicTypeSize: .accessibility3)
+        try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-accessibility-dark", otherOnly: true, dynamicTypeSize: .accessibility3)
+        try capture(style: .light, mode: .accented, name: "medium-no-quota-accessibility-tinted", otherOnly: true, dynamicTypeSize: .accessibility3)
+        try capture(style: .light, mode: .fullColor, name: "medium-no-quota-older-accessibility-light", otherOnly: true, dynamicTypeSize: .accessibility3, checkedAtOffset: -370 * 86_400)
+        try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-older-accessibility-dark", otherOnly: true, dynamicTypeSize: .accessibility3, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .accented, name: "medium-no-quota-older-accessibility-tinted", otherOnly: true, dynamicTypeSize: .accessibility3, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .fullColor, name: "medium-stale-accessibility5-light", stale: true, dynamicTypeSize: .accessibility5)
+        try capture(style: .dark, mode: .fullColor, name: "medium-stale-accessibility5-dark", stale: true, dynamicTypeSize: .accessibility5)
+        try capture(style: .light, mode: .accented, name: "medium-stale-accessibility5-tinted", stale: true, dynamicTypeSize: .accessibility5)
+        try capture(style: .light, mode: .fullColor, name: "medium-stale-older-accessibility5-light", stale: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
+        try capture(style: .dark, mode: .fullColor, name: "medium-stale-older-accessibility5-dark", stale: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .accented, name: "medium-stale-older-accessibility5-tinted", stale: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .fullColor, name: "medium-no-quota-accessibility5-light", otherOnly: true, dynamicTypeSize: .accessibility5)
+        try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-accessibility5-dark", otherOnly: true, dynamicTypeSize: .accessibility5)
+        try capture(style: .light, mode: .accented, name: "medium-no-quota-accessibility5-tinted", otherOnly: true, dynamicTypeSize: .accessibility5)
+        try capture(style: .light, mode: .fullColor, name: "medium-no-quota-older-accessibility5-light", otherOnly: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
+        try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-older-accessibility5-dark", otherOnly: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .accented, name: "medium-no-quota-older-accessibility5-tinted", otherOnly: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
     }
 
     func testAccessibilityNoticeIncludesHiddenStaleMeterAndCheckedDate() throws {
@@ -66,7 +78,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
     }
 
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
-                         stale: Bool = false, otherOnly: Bool = false, accessibility: Bool = false,
+                         stale: Bool = false, otherOnly: Bool = false, dynamicTypeSize: DynamicTypeSize = .large,
                          checkedAtOffset: TimeInterval = 0) throws {
         let now = Date()
         let meters = [("Claude · Session", 12.0), ("Codex · Weekly", 35.0), ("OpenCode · 5h", 72.0)]
@@ -83,7 +95,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
             .frame(width: 360, height: 169)
             .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
             .preferredColorScheme(style == .dark ? .dark : .light)
-            .environment(\.dynamicTypeSize, accessibility ? .accessibility3 : .large)
+            .environment(\.dynamicTypeSize, dynamicTypeSize)
             .ignoresSafeArea()
         let host = UIHostingController(rootView: screen)
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

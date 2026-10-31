@@ -205,10 +205,11 @@ struct LAAEmployeeWidgetView: View {
         ViewThatFits(in: .vertical) {
             accessibleUsageLayout(maxMeters: 2).fixedSize(horizontal: false, vertical: true)
             accessibleUsageLayout(maxMeters: 1).fixedSize(horizontal: false, vertical: true)
+            accessibleUsageLayout(maxMeters: 1, compact: true).fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func accessibleUsageLayout(maxMeters: Int) -> some View {
+    private func accessibleUsageLayout(maxMeters: Int, compact: Bool = false) -> some View {
         let notice = entry.usage.flatMap { Self.accessibleNotice(for: $0.meters, at: entry.date) }
         return VStack(alignment: .leading, spacing: LAASpacing.x1) {
             HStack(spacing: LAASpacing.x1) {
@@ -235,8 +236,10 @@ struct LAAEmployeeWidgetView: View {
                         }
                         .laaTextStyle(.section)
                         .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
-                        ProgressView(value: meter.remainingPercent, total: 100)
-                            .tint(past ? LAAColor.attention : LAAColor.link)
+                        if !compact {
+                            ProgressView(value: meter.remainingPercent, total: 100)
+                                .tint(past ? LAAColor.attention : LAAColor.link)
+                        }
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(meter.label), 残り \(percentage)\(past ? ", 最終取得、要確認" : "")")
@@ -250,11 +253,18 @@ struct LAAEmployeeWidgetView: View {
             }
             if let checked = entry.usage?.checkedAt {
                 let parts = Self.accessibleCheckedParts(checked, relativeTo: entry.date)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: parts.date)
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                    Text(verbatim: "確認 \(parts.time)")
-                        .lineLimit(1).minimumScaleFactor(0.8)
+                Group {
+                    if compact {
+                        Text(verbatim: "\(parts.date) \(parts.time)")
+                            .lineLimit(1).minimumScaleFactor(0.65)
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(verbatim: parts.date)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                            Text(verbatim: "確認 \(parts.time)")
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                    }
                 }
                 .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
