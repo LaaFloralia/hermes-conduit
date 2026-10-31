@@ -179,7 +179,7 @@ struct LAAEmployeeWidgetView: View {
                         .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 if let checked = usage.checkedAt {
-                    Text("\(checked, format: .dateTime.hour().minute()) 時点")
+                    Text(verbatim: Self.accessibleCheckedParts(checked, relativeTo: entry.date).time + " 時点")
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1).minimumScaleFactor(0.75)
                 } else {
@@ -189,7 +189,7 @@ struct LAAEmployeeWidgetView: View {
                 Text(verbatim: entry.usage?.hasOtherUsage == true ? "枠は未取得・他のUsageあり" : LAACopy.notFetched)
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let checked = entry.usage?.checkedAt {
-                    Text("\(checked, format: .dateTime.hour().minute()) 時点")
+                    Text(verbatim: Self.accessibleCheckedParts(checked, relativeTo: entry.date).time + " 時点")
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1).minimumScaleFactor(0.75)
                 }
