@@ -72,6 +72,7 @@ class ReleaseHelpersTests(unittest.TestCase):
         def fake_api(method, path):
             self.assertEqual(method, "GET")
             if "/bundleIdCapabilities?" in path:
+                self.assertNotIn("limit=", path)  # App Store Connect rejects it on this endpoint
                 return {"data": [{"attributes": {"capabilityType": kind}} for kind in ("APP_GROUPS", "PUSH_NOTIFICATIONS")]}
             if path.startswith("/v1/bundleIds/mac/profiles?"):
                 return {"data": []}

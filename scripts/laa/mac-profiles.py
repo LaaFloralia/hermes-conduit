@@ -200,7 +200,8 @@ def select_bundle_profile(bundle, bundle_ids, certificate):
     if bundle == BUNDLES[0]:
         required.add("PUSH_NOTIFICATIONS")
     for bundle_id in candidates:
-        query = urllib.parse.urlencode({"fields[bundleIdCapabilities]": "capabilityType", "limit": "200"})
+        # This relationship endpoint rejects `limit` (HTTP 400 PARAMETER_ERROR.ILLEGAL).
+        query = urllib.parse.urlencode({"fields[bundleIdCapabilities]": "capabilityType"})
         try:
             capabilities = api("GET", f"/v1/bundleIds/{bundle_id['id']}/bundleIdCapabilities?" + query).get("data", [])
         except ProfilesAPIError as error:
