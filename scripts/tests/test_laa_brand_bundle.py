@@ -117,11 +117,11 @@ class LAABrandBundleTests(unittest.TestCase):
     def test_personal_build_keeps_its_own_name_and_upstream_icon(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = self.make_app_bundle(Path(tmp))
-            brand.brand_bundle(bundle, "app", ROOT, name="Conduit LAA")
+            brand.brand_bundle(bundle, "app", ROOT, name="LAA Personal", bundle_name="LAA Personal")
             with (bundle / "Info.plist").open("rb") as stream:
                 info = plistlib.load(stream)
-            self.assertEqual(info["CFBundleDisplayName"], "Conduit LAA")
-            self.assertEqual(info["CFBundleName"], "Conduit")
+            self.assertEqual(info["CFBundleDisplayName"], "LAA Personal")
+            self.assertEqual(info["CFBundleName"], "LAA Personal")
             # The alternate (Light) icon stays registered, as upstream had it.
             self.assertIn("Light", info["CFBundleIcons"]["CFBundleAlternateIcons"])
             self.assertEqual(info["ConduitLauncherAppGroup"], "group.keep")
@@ -181,11 +181,11 @@ class LAABrandBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = self.make_app_bundle(Path(tmp))
             before = self.read_bundle(bundle)
-            for name in ("", "  ", "LAA/Other", " LAA", "LAA\n", "LAA\x00"):
+            for name in ("", "  ", "LAA/Other", " LAA", "LAA\n", "LAA\x00", "Conduit LAA", "Hermes"):
                 with self.subTest(name=name), self.assertRaises(ValueError):
                     brand.brand_bundle(bundle, "app", ROOT, name=name)
                 self.assertEqual(self.read_bundle(bundle), before)
-            for name in ("", "LAA/Other", "LAA\n", "x" * 17, "日本語"):
+            for name in ("", "LAA/Other", "LAA\n", "x" * 17, "日本語", "conduit", "HERMES"):
                 with self.subTest(bundle_name=name), self.assertRaises(ValueError):
                     brand.brand_bundle(bundle, "app", ROOT, bundle_name=name)
                 self.assertEqual(self.read_bundle(bundle), before)

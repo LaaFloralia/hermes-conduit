@@ -24,6 +24,8 @@ settings:
 targets:
   Conduit:
     sources:
+      - path: assets/laa/LAAAccent.xcassets
+        buildPhase: resources
       - path: docs/laa/assets/staff
         type: folder
         buildPhase: resources
@@ -36,9 +38,10 @@ targets:
       - package: WebRTC
     settings:
       base:
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.conduit
-        # Upstream's icon and name: this build sits beside the App Store
-        # Conduit and the LAA build, so it must not look like either one.
+        # The upstream icon keeps this build distinct from TestFlight LAA;
+        # the display and bundle names below use the personal LAA name.
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_ENTITLEMENTS: ""
         PROVISIONING_PROFILE_SPECIFIER: ""
@@ -46,12 +49,12 @@ targets:
         # docs/laa/DESIGN.md) are behind this flag, so the App Store build
         # from project.yml never compiles them and upstream stays unchanged.
         # The TestFlight signing overlay must adopt the same setting.
-        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_PERSONAL_BUILD"
     postBuildScripts:
-      # Only the permission wording is branded here; the name stays the
-      # personal build's own and the icon stays upstream's AppIcon.
-      - name: Brand permission text for the personal build
+      # Brand permission and localized LAA screen copy. The personal name
+      # and upstream AppIcon remain distinct from the TestFlight build.
+      - name: Brand resources for the personal build
         basedOnDependencyAnalysis: false
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
-            --name "${CONDUIT_PERSONAL_NAME:-Conduit LAA}"
+            --name "${CONDUIT_PERSONAL_NAME:-LAA Personal}" --bundle-name "LAA Personal"

@@ -12753,7 +12753,11 @@ final class AppState: ObservableObject {
     /// back (BUS-330).
     static func startupAppIconChoice(
         alternateIconName: String?,
-        reset: (String?) -> Void = { UIApplication.shared.setAlternateIconName($0) }
+        reset: (String?) -> Void = { name in
+            UIApplication.shared.setAlternateIconName(name) { error in
+                if error != nil { lifecycleLog.error("Failed to reset the alternate app icon at startup") }
+            }
+        }
     ) -> AppIconChoice {
         #if LAA_BUILD
         if alternateIconName != nil { reset(nil) }

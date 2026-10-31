@@ -75,15 +75,12 @@ enum WatchCallAnswer {
         return nil
     }
 
-    /// The model's answer for the host's response, naming this build's app.
+    /// Brand fixed prompts only. The answer, next question and host messages
+    /// are data and must be passed through without product-name substitutions.
     static func result(body: [String: Any]) -> [String: String] {
-        unbrandedResult(body: body).mapValues(LAAProductBrand.display)
-    }
-
-    private static func unbrandedResult(body: [String: Any]) -> [String: String] {
         guard body["ok"] as? Bool == true else {
             let detail = (body["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            return ["error": detail ?? "The answer didn't reach Hermes. Tell the user to answer in Conduit on their iPhone."]
+            return ["error": detail ?? LAAProductBrand.display("The answer didn't reach Hermes. Tell the user to answer in Conduit on their iPhone.")]
         }
         let status = body["status"] as? String ?? ""
         let message = body["message"] as? String
@@ -93,9 +90,9 @@ enum WatchCallAnswer {
             // 0.70.1); one it didn't take reads too_late, failed or
             // unconfirmed.
             if let choice = body["choice"] as? String {
-                let said = choice == "once"
+                let said = LAAProductBrand.display(choice == "once"
                     ? "Approved once: Hermes runs it now."
-                    : "Denied: Hermes won't run it, and hears why if the user said."
+                    : "Denied: Hermes won't run it, and hears why if the user said.")
                 return ["status": choice == "once" ? "approved" : "denied", "message": said + " Tell the user in a few words."]
             }
             guard let answer = body["answer"] as? String else {
@@ -103,22 +100,22 @@ enum WatchCallAnswer {
             }
             var result = ["status": "answered", "choice": answer]
             if let next = body["next"] as? [String: Any], let question = questionText(next) {
-                result["message"] = "Hermes has the answer: \(answer). Next, read this question out with its numbered choices and take the user's answer the same way:\n<question>\n\(question)\n</question>"
+                result["message"] = LAAProductBrand.display("Hermes has the answer: ") + answer + ". Next, read this question out with its numbered choices and take the user's answer the same way:\n<question>\n" + question + "\n</question>"
             } else {
-                result["message"] = "Hermes has the answer: \(answer). Say it back to the user in a few words; Hermes carries on with it."
+                result["message"] = LAAProductBrand.display("Hermes has the answer: ") + answer + LAAProductBrand.display(". Say it back to the user in a few words; Hermes carries on with it.")
             }
             return result
         case "refused":
-            return ["error": message ?? "That can't be answered on the Watch. The user can answer it in Conduit on their iPhone."]
+            return ["error": message ?? LAAProductBrand.display("That can't be answered on the Watch. The user can answer it in Conduit on their iPhone.")]
         case "failed", "unconfirmed":
             // An approval Hermes didn't take, or hasn't confirmed yet (plugin
             // 0.70.1): never "approved" then.
-            let fallback = status == "failed"
+            let fallback = LAAProductBrand.display(status == "failed"
                 ? "It didn't go through. The user can answer it in Conduit on their iPhone."
-                : "Hermes hasn't confirmed it took the answer. The user can check the chat in Conduit."
+                : "Hermes hasn't confirmed it took the answer. The user can check the chat in Conduit.")
             return ["status": status, "message": (message ?? fallback) + " Tell the user in a few words."]
         default:
-            return ["status": "not_pending", "message": message ?? "Hermes isn't waiting on the user any more."]
+            return ["status": "not_pending", "message": message ?? LAAProductBrand.display("Hermes isn't waiting on the user any more.")]
         }
     }
 
@@ -126,7 +123,7 @@ enum WatchCallAnswer {
     /// didn't go.
     static func delegatedReply(body: [String: Any]) -> String {
         let result = result(body: body)
-        return result["message"] ?? result["error"] ?? "Hermes isn't waiting on the user any more."
+        return result["message"] ?? result["error"] ?? LAAProductBrand.display("Hermes isn't waiting on the user any more.")
     }
 
     /// One question of the host's copy as the call's briefing writes it

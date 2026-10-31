@@ -517,14 +517,14 @@ struct SpeechServerVoiceStatus: Equatable {
     var agentSetupText: String? {
         guard let modelAddress, let apiKey, let serverFlags else { return nil }
         var lines = [
-            "Please point my Hugging Face speech-to-speech server at Conduit, so Hermes writes every reply it speaks.",
+            LAAProductBrand.display("Please point my Hugging Face speech-to-speech server at Conduit, so Hermes writes every reply it speaks."),
             "",
         ]
         if let speechServerURL {
-            lines += ["Speech server: \(speechServerURL) (the address my Hermes host connects to).", ""]
+            lines += ["Speech server: \(speechServerURL) (" + LAAProductBrand.display("the address my Hermes host connects to") + ").", ""]
         }
         lines += [
-            "Set its language model to Conduit's model address (OpenAI-compatible chat completions, streamed):",
+            LAAProductBrand.display("Set its language model to Conduit's model address (OpenAI-compatible chat completions, streamed):"),
             "- base URL: \(modelAddress)",
             "- API key: \(apiKey)",
             "- model name: \(modelName)",
@@ -533,14 +533,14 @@ struct SpeechServerVoiceStatus: Equatable {
             serverFlags,
             "",
             "Notes:",
-            "- --num_pipelines 2 lets Conduit listen and speak over two connections at once.",
-            "- --stream_batch_sentences 1 speaks each sentence as soon as Hermes writes it.",
+            LAAProductBrand.display("- --num_pipelines 2 lets Conduit listen and speak over two connections at once."),
+            LAAProductBrand.display("- --stream_batch_sentences 1 speaks each sentence as soon as Hermes writes it."),
             "- The server's machine must reach the base URL. Check from there: curl -sS -H \(Self.shellQuoted("Authorization: Bearer " + apiKey)) \(Self.shellQuoted(modelAddress + "/models")) should list the model \"\(modelName)\".",
             "- Restart the server after changing its flags (for example its systemd service), and check its log for the language model warming up without errors.",
-            "- Keep the key private. Conduit can make a new one in Settings > Voice.",
+            LAAProductBrand.display("- Keep the key private. Conduit can make a new one in Settings > Voice."),
         ]
-        // The agent reads this and repeats the app's name back to the user.
-        return LAAProductBrand.display(lines.joined(separator: "\n"))
+        // User-provided keys, addresses and model names must remain unchanged.
+        return lines.joined(separator: "\n")
     }
 
     /// `value` as one shell word: as is when it's plain, else single-quoted.

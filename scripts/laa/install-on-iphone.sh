@@ -12,7 +12,7 @@
 # Usage: scripts/laa/install-on-iphone.sh
 #   CONDUIT_TEAM_ID   your team ID, when Xcode has more than one
 #   CONDUIT_DEVICE    the iPhone's UDID, when more than one is connected
-#   CONDUIT_PERSONAL_NAME  the home screen name (default "Conduit LAA")
+#   CONDUIT_PERSONAL_NAME  the home screen name (default "LAA Personal")
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -98,4 +98,4 @@ app="$work/DerivedData/Build/Products/Release-iphoneos/Conduit.app"
 xcrun devicectl device install app --device "$device" "$app"
 # A locked phone refuses the launch; the install still stands.
 xcrun devicectl device process launch --device "$device" com.laa-inc.conduit >/dev/null 2>&1 \
-  || echo "Installed. Unlock the iPhone and open ${CONDUIT_PERSONAL_NAME:-Conduit LAA}."
+  || echo "Installed. Unlock the iPhone and open ${CONDUIT_PERSONAL_NAME:-LAA Personal}."

@@ -9,6 +9,16 @@ import Foundation
 /// app and the Notification Service Extension, each with its own
 /// `AppLocalization` over the app's String Catalog.
 enum NotificationCopy {
+    /// Only the notifier's exact generic sentence is app-owned. A prefix or
+    /// variation may contain user content and must not be rewritten.
+    static func redactedApprovalBody(_ body: String) -> String {
+        #if LAA_BUILD
+        if body == "Hermes needs your approval. Open Conduit for details." {
+            return "Ciel needs your approval. Open LAA for details."
+        }
+        #endif
+        return body
+    }
     /// The private fallback for a notification that shows no content: Show
     /// previews off, or a push Conduit can't verify. Kept message for
     /// message with the relay's generic copy (`genericCopy` in

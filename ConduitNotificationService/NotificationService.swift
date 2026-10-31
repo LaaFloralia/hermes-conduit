@@ -81,11 +81,11 @@ final class NotificationService: UNNotificationServiceExtension {
     /// approval's real text (its `REDACTED_APPROVAL_TEXT`) and names the app
     /// in it. Only that exact sentence is rewritten, never a chat's words.
     private static func brandedRedactedApproval(_ content: UNNotificationContent) -> UNNotificationContent {
-        let notifierText = "Hermes needs your approval. Open Conduit for details."
-        guard content.body == notifierText,
+        let branded = NotificationCopy.redactedApprovalBody(content.body)
+        guard branded != content.body,
               let copy = content.mutableCopy() as? UNMutableNotificationContent
         else { return content }
-        copy.body = LAAProductBrand.display(notifierText)
+        copy.body = branded
         return copy
     }
 

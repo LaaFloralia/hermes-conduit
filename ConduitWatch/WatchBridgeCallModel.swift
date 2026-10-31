@@ -1517,8 +1517,7 @@ final class WatchBridgeCallModel: ObservableObject {
     /// Quiet notes go at once; anything GPT-Live should say waits for a
     /// quiet moment, as on the phone.
     private func answer(_ delegationID: String?, _ text: String, channel: GPTLiveProtocol.Channel) {
-        // The text goes to the model to say out loud, so it names this build.
-        let text = LAAProductBrand.display(text)
+        // Responses can contain the user's or model's words; do not rewrite them.
         guard !text.isEmpty else { return }
         if delegationID != nil, channel == .speakable { delegationsAnswered += 1 }
         pendingSends.append(Pending(text: text, channel: channel, delegationID: delegationID))

@@ -9,7 +9,7 @@ import unicodedata
 from pathlib import Path
 
 # Each target's default home-screen name. A build that needs another one (the
-# personal build keeps upstream's identity) passes --name.
+# personal build uses a distinct LAA name) passes --name.
 names = {"app": "LAA", "watch": "LAA", "watch-widget": "LAA Watch Widgets",
          "widgets": "LAA Widgets", "notification": "LAA Notifications", "share": "LAA"}
 # CFBundleName can also be displayed by the system. Keep executable names,
@@ -30,14 +30,16 @@ def is_identifier(value):
 
 def validate_name(value):
     if (not value or value != value.strip() or len(value) > 64 or "/" in value
-            or any(unicodedata.category(char) == "Cc" for char in value)):
-        raise ValueError("name must be 1–64 visible characters without surrounding whitespace or '/'")
+            or any(unicodedata.category(char) == "Cc" for char in value)
+            or re.search(r"conduit|hermes", value, re.I)):
+        raise ValueError("name must be 1–64 visible characters without surrounding whitespace, '/' or upstream names")
     return value
 
 
 def validate_bundle_name(value):
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,15}", value) or value != value.strip():
-        raise ValueError("bundle name must be 1–16 ASCII letters, digits, spaces, dots, underscores or hyphens")
+    if (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,15}", value)
+            or value != value.strip() or re.search(r"conduit|hermes", value, re.I)):
+        raise ValueError("bundle name must be 1–16 ASCII letters, digits, spaces, dots, underscores or hyphens, without upstream names")
     return value
 
 

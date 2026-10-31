@@ -2655,11 +2655,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     static func finishedNotice(_ title: String) -> String {
-        LAAProductBrand.display(AppLocalization.string("\(title) has finished. Open it in Conduit to read the result."))
+        AppLocalization.string("\(title) has finished. Open it in Conduit to read the result.")
     }
 
     static func waitingNotice(_ title: String) -> String {
-        LAAProductBrand.display(AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond."))
+        AppLocalization.string("\(title) is waiting for your approval or an answer. Open it in Conduit to respond.")
     }
 
     /// What a job waiting on the user says: the command it asks to run,
@@ -2684,7 +2684,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// first line, kept short. A provider's raw error can run on, and a
     /// read-back repeats the notice word for word.
     static func failedNotice(_ title: String, reason: String) -> String {
-        let notice = LAAProductBrand.display(AppLocalization.string("\(title) failed. Open it in Conduit for details."))
+        let notice = AppLocalization.string("\(title) failed. Open it in Conduit for details.")
         let line = reason.split(whereSeparator: \.isNewline).lazy
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""

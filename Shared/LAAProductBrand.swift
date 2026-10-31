@@ -14,15 +14,18 @@ enum LAAProductBrand {
         #endif
     }()
 
-    /// Brands text the app writes for the model or another app, so what the
-    /// model says and what the Watch reads out name this build. Upstream
-    /// builds get the value back untouched.
+    /// Brands static text written by the app. Never pass interpolated values,
+    /// credentials, addresses, chat content or model responses here.
+    /// Upstream builds get the value back untouched.
     static func display(_ value: String) -> String {
         #if LAA_BUILD
         return value.replacingOccurrences(of: "Hermes Conduit", with: "LAA")
             .replacingOccurrences(of: "Conduit-chan", with: "Ciel")
-            .replacingOccurrences(of: "Conduit plugin", with: "Hermes plugin")
+            .replacingOccurrences(of: "Conduit plugin", with: "connection service")
+            .replacingOccurrences(of: "Hermes server", with: "Mac")
+            .replacingOccurrences(of: "Hermes host", with: "Mac")
             .replacingOccurrences(of: "Conduit", with: "LAA")
+            .replacingOccurrences(of: "Hermes", with: "Ciel")
         #else
         return value
         #endif
