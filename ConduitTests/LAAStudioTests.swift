@@ -74,6 +74,41 @@ final class LAAStudioTests: XCTestCase {
         XCTAssertTrue(LAAStudioActionGuard.clear(device: "device-1", id: requestID, directory: directory))
     }
 
+    func testActionRetryPersistsExactlyTheOriginalKeyAndBody() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-retry-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let approvalID = UUID().uuidString
+        let action = LAAStudioAction(action: "answer", id: requestID, approvalId: approvalID, accept: true,
+                                     content: ["text": .string("確認\nA"), "count": .integer(3)], persist: false)
+        let original = try LAAStudioActionGuard.prepare(action)
+        let first = try XCTUnwrap(original.retryMaterial())
+        XCTAssertTrue(LAAStudioActionGuard.save(original, device: "device-1", id: requestID, directory: directory))
+        let restored = try XCTUnwrap(LAAStudioActionGuard.load(device: "device-1", id: requestID, directory: directory))
+        let retry = try XCTUnwrap(restored.retryMaterial())
+        XCTAssertEqual(retry.key, first.key)
+        XCTAssertEqual(retry.body, first.body)
+        XCTAssertEqual(retry.action.content, action.content)
+        var damaged = restored
+        damaged.keyValue = "invalid key"
+        XCTAssertNil(damaged.retryMaterial())
+        damaged = restored
+        damaged.body = Data("{}".utf8)
+        XCTAssertNil(damaged.retryMaterial())
+        let legacy = LAAStudioPendingAction(action: "answer", approvalId: approvalID, payload: action)
+        XCTAssertNil(legacy.retryMaterial())
+        XCTAssertFalse(LAAStudioActionGuard.requiresReentry(code: "idempotency_key_in_flight"))
+        XCTAssertTrue(LAAStudioActionGuard.requiresReentry(code: "idempotency_outcome_unknown"))
+    }
+
+    func testStopIsDisabledDuringSendOrWhileStopIsUnresolved() {
+        let answer = LAAStudioPendingAction(action: "answer", approvalId: UUID().uuidString)
+        let stop = LAAStudioPendingAction(action: "stop", approvalId: nil)
+        XCTAssertTrue(LAAStudioActionGuard.mayStop(busy: false, pending: nil))
+        XCTAssertTrue(LAAStudioActionGuard.mayStop(busy: false, pending: answer))
+        XCTAssertFalse(LAAStudioActionGuard.mayStop(busy: true, pending: answer))
+        XCTAssertFalse(LAAStudioActionGuard.mayStop(busy: false, pending: stop))
+    }
+
     func testExistingWorkRevisionAndPromptLimit() throws {
         var draft = LAAStudioDraft()
         draft.requestID = requestID

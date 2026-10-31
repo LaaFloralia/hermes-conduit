@@ -34,7 +34,7 @@ Usage:
       --json              machine-readable output
   laa-bridge devices [--json]              list paired devices
   laa-bridge revoke <device-id|prefix>     revoke one device (--reason <text>)
-  laa-bridge grant-studio <device-id|prefix>  grant Studio scopes (--reason <text>)
+  laa-bridge grant-studio <device-id|prefix> --reason <text>  grant Studio scopes
   laa-bridge status [--json]               local health check of the running service
   laa-bridge version
 
@@ -202,10 +202,12 @@ switch (command) {
   case 'grant-studio': {
     const target = positional[0];
     if (!target || positional.length !== 1) fail('grant-studio needs one device id or unambiguous prefix', 2);
+    if (!flags.reason) fail('grant-studio needs --reason', 2);
     const result = grantStudio(openStore(), { target, reason: flags.reason });
     if (result.error) fail(result.error);
-    const { id, scopes } = result.device;
-    process.stdout.write(flags.json ? `${JSON.stringify({ deviceId: id, scopes, alreadyGranted: result.alreadyGranted, studioGrant: result.device.studioGrant ?? null })}\n` : `${result.alreadyGranted ? 'Studio scopes already granted to' : 'Granted Studio scopes to'} ${id}.\n`);
+    const { id, name, scopes } = result.device;
+    process.stdout.write(flags.json ? `${JSON.stringify({ deviceId: id, name, previousScopes: result.previousScopes, scopes, alreadyGranted: result.alreadyGranted, studioGrant: result.device.studioGrant ?? null })}\n` :
+      `${result.alreadyGranted ? 'Studio scopes already granted to' : 'Granted Studio scopes to'} ${id} (${name}).\n  before: ${result.previousScopes.join(', ')}\n  after:  ${scopes.join(', ')}\n`);
     break;
   }
   case 'status':

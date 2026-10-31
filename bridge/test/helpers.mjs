@@ -73,7 +73,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
       const enrolled = await this.enroll(paired.code);
       if (scopes.some((scope) => STUDIO_SCOPES.includes(scope))) {
         const id = enrolled.body.data.deviceId;
-        grantStudio(store, { target: id, now: clock() });
+        grantStudio(store, { target: id, reason: 'Test device', now: clock() });
         // Fixtures may model a partially granted legacy device for scope tests.
         store.mutate((state) => { state.devices[id].scopes = [...scopes]; });
       }

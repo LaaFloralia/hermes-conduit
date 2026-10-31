@@ -6,12 +6,31 @@ struct LAAStudioPendingAction: Codable {
     let approvalId: String?
     var payload: LAAStudioAction? = nil
     var attemptedAt: Date? = nil
+    var keyValue: String? = nil
+    var body: Data? = nil
+
+    func retryMaterial() -> (action: LAAStudioAction, key: LAABridgeIdempotencyKey, body: Data)? {
+        guard let keyValue, let key = LAABridgeIdempotencyKey(restoring: keyValue), let body,
+              let decoded = try? JSONDecoder().decode(LAAStudioAction.self, from: body),
+              decoded.action == action, decoded.approvalId == approvalId else { return nil }
+        return (decoded, key, body)
+    }
 }
 enum LAAStudioActionGuard {
+    static func prepare(_ action: LAAStudioAction) throws -> LAAStudioPendingAction {
+        let key = LAABridgeIdempotencyKey()
+        let body = try JSONEncoder().encode(action)
+        return LAAStudioPendingAction(action: action.action, approvalId: action.approvalId, payload: action,
+                                      attemptedAt: Date(), keyValue: key.value, body: body)
+    }
     static func resolved(_ pending: LAAStudioPendingAction, record: LAAStudioRecord) -> Bool {
         pending.action == "stop" ? !record.canStop :
             record.status != "approval" || !(record.report?.approvals.contains(where: { $0.id == pending.approvalId }) ?? false)
     }
+    static func mayStop(busy: Bool, pending: LAAStudioPendingAction?) -> Bool {
+        !busy && pending?.action != "stop"
+    }
+    static func requiresReentry(code: String?) -> Bool { code == "idempotency_outcome_unknown" }
     static func mayRetry(_ pending: LAAStudioPendingAction, record: LAAStudioRecord, checks: Int) -> Bool {
         checks >= 3 && !resolved(pending, record: record)
     }
@@ -48,6 +67,7 @@ struct LAAStudioRequestView: View {
     @State private var unchangedChecks = 0
     @State private var error: String?
     @State private var busy = false
+    @State private var retryNeedsReentry = false
     @State private var confirmStop = false
     @State private var project: LAAStudioProject?
     private var device: String { bridge.deviceID ?? "fixture" }
@@ -88,10 +108,10 @@ struct LAAStudioRequestView: View {
                 if let pending {
                     Text(verbatim: LAACopy.Studio.pendingAction).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                     if LAAStudioActionGuard.mayRetry(pending, record: record, checks: unchangedChecks) {
-                        Text(verbatim: pending.payload == nil ? LAACopy.Studio.reenterAction : LAACopy.Studio.retryAction)
+                        Text(verbatim: pending.retryMaterial() == nil || retryNeedsReentry ? LAACopy.Studio.reenterAction : LAACopy.Studio.retryAction)
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         Button { Task { await retryPending() } } label: {
-                            Text(verbatim: pending.payload == nil ? LAACopy.Studio.reenter : LAACopy.Studio.retry)
+                            Text(verbatim: pending.retryMaterial() == nil || retryNeedsReentry ? LAACopy.Studio.reenter : LAACopy.Studio.retry)
                                 .frame(minHeight: LAASpacing.minimumTouchTarget)
                         }.buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("laa.studio.action.retry")
                     }
@@ -107,7 +127,7 @@ struct LAAStudioRequestView: View {
                 if record.canStop {
                     Button(role: .destructive) { confirmStop = true } label: {
                         Text(verbatim: LAACopy.Studio.stop).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }.buttonStyle(.bordered).tint(LAAColor.end).disabled(busy)
+                    }.buttonStyle(.bordered).tint(LAAColor.end).disabled(!LAAStudioActionGuard.mayStop(busy: busy, pending: pending))
                         .accessibilityIdentifier("laa.studio.stop")
                 }
                 if record.canRequestAgain {
@@ -158,26 +178,31 @@ struct LAAStudioRequestView: View {
         await refresh()
         busy = false
         guard let current = self.pending, LAAStudioActionGuard.mayRetry(current, record: record, checks: unchangedChecks) else { return }
-        guard let payload = current.payload else {
-            if LAAStudioActionGuard.clear(device: device, id: record.id) { self.pending = nil; unchangedChecks = 0 }
+        guard !retryNeedsReentry, let material = current.retryMaterial() else {
+            if LAAStudioActionGuard.clear(device: device, id: record.id) { self.pending = nil; unchangedChecks = 0; retryNeedsReentry = false }
             else { error = LAACopy.Studio.saveFailed }
             return
         }
-        await perform(payload, retry: true)
+        await perform(material.action, retry: current)
     }
-    @MainActor private func perform(_ action: LAAStudioAction, retry: Bool = false) async {
+    @MainActor private func perform(_ action: LAAStudioAction, retry: LAAStudioPendingAction? = nil) async {
         // Stop remains available even if an earlier answer has an unknown outcome.
-        guard !busy && (pending == nil || retry || action.action == "stop") else { return }
-        let marker = LAAStudioPendingAction(action: action.action, approvalId: action.approvalId, payload: action, attemptedAt: Date())
+        guard !busy, action.id == record.id,
+              pending == nil || retry != nil || (action.action == "stop" && LAAStudioActionGuard.mayStop(busy: busy, pending: pending)) else { return }
+        let marker: LAAStudioPendingAction
+        do { marker = try retry ?? LAAStudioActionGuard.prepare(action) }
+        catch { self.error = LAACopy.Studio.saveFailed; return }
+        guard let material = marker.retryMaterial(), material.action.id == record.id else { error = LAACopy.Studio.saveFailed; return }
         guard LAAStudioActionGuard.save(marker, device: device, id: record.id) else { error = LAACopy.Studio.saveFailed; return }
-        pending = marker; unchangedChecks = 0; busy = true; error = nil
+        pending = marker; unchangedChecks = 0; busy = true; error = nil; retryNeedsReentry = false
         defer { busy = false }
         do {
-            record = try await LAAStudioData.action(action, key: .init(), bridge: bridge)
+            record = try await LAAStudioData.action(material.action, body: material.body, key: material.key, bridge: bridge)
             if LAAStudioActionGuard.clear(device: device, id: record.id) { pending = nil }
         } catch let failure as LAABridgeHTTPError {
             let rejected = ["studio_payload_invalid", "invalid_request", "studio_approval_on_mac", "studio_approval_changed", "studio_approval_expired", "studio_request_finished", "insufficient_scope"].contains(failure.code ?? "")
             if rejected && LAAStudioActionGuard.clear(device: device, id: record.id) { pending = nil }
+            if LAAStudioActionGuard.requiresReentry(code: failure.code) { retryNeedsReentry = true }
             error = LAAStudioData.message(failure)
         } catch { self.error = LAAStudioData.message(error) }
     }

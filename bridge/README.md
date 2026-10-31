@@ -15,7 +15,7 @@
 | ペアリング | Mac の CLI が10分有効・1回限りのコードを発行。state には hash のみ保存し、コードは端末に一度だけ表示 | §9。コードはログ・引数・チャットへ出さない |
 | scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`brain:create` `brain:write` `gui:operate` `archives:restore` `devices:admin` は付与しない。`brain:create` は端末ごとの opt-in（`laa-bridge pair --scopes brain:read,brain:create`） | §9・BRAIN-WRITE §7 |
 | 失効 | `laa-bridge revoke` は state を書き換えるだけ。稼働中サーバーは毎リクエスト state を読むため再起動不要で 401 になる | 失効の即時性 |
-| idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は原則として保存応答を再返却（Studioの作成は現在の状態を取得）、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
+| idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は原則として保存応答を再返却（Studioの作成・操作は現在の状態を取得）、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
 | 失敗時 | state が壊れていたら起動しない（端末・台帳を失ったまま稼働させない） | §7 |
 | ルート追加 | 各領域は `src/routes/<area>.mjs` が `{method,path|pattern,scope,handler,headers?}` の配列を返し、`src/http.mjs` の `ROUTES` へ1行で登録する。ストリーム応答は handler が `res` を直接書き、`undefined` を返す | 並行作業の衝突を1行に閉じる |
 | 版 | 変更系は `Idempotency-Key` 必須。Project の更新は加えて `If-Match`（ETag は `"<version>"`）必須。欠落は 428、不一致は 412 | §3。2台の端末が黙って上書きしない |
@@ -106,11 +106,11 @@ laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済
 
 ## Studio受付（タスク34）
 
-試験端末のペアリングだけで依頼や承認ができないよう、Studio権限は明示した端末にのみ付与する。`devices --json` には管理操作の時刻・実行UID・理由と既存権限の有無を記録する（同一UIDで変更可能であり、改ざん不能な監査記録ではない）。記録済み端末への再実行は記録を更新しない。旧版ですでに付与されたscopeは自動では変更せず、記録のない端末に管理操作を行った場合は既存権限として記録する。
+試験端末のペアリングだけで依頼や承認ができないよう、Studio権限は明示した端末にのみ付与する。`grant-studio` は理由が必須で、対象名と付与前後のscopeを表示する。`devices --json` には管理操作の時刻・実行UID・理由と既存権限の有無を記録する（同一UIDで変更可能であり、改ざん不能な監査記録ではない）。記録済み端末への再実行は記録を更新しない。旧版ですでに付与されたscopeは自動では変更せず、記録のない端末に管理操作を行った場合は既存権限として記録する。
 
 `src/studio/backend.mjs` が Studio の受付契約 v1（`~/dev/studio/docs/intake/README.md`）との境界。`~/Library/Application Support/LAA Creative Studio/Remote/intake.sock` と同所の `intake.json` を同一UID・権限確認後に読み、専用BearerでHTTP/1.1を送る。TCP・Cloudflare・`control.json` は使わない。ENOENT・ECONNREFUSED・401は資格情報を読み直して1回再試行し、停止中の起動は間隔を空けて試す。応答不能は503 `studio_not_connected`。トークンはログへ出さない。`test/studio-mock.mjs` は契約試験用のメモリ内模擬実装で、時間とStudio側の受取りを試験から指定する。
 
-作成はStudio側でも依頼UUIDと本文を照合する。同じBridge key・本文の作成再送はStudioに再作成せず、現在の依頼を取得して返す（未接続なら503）。状態の確認は `GET /v1/studio/requests/{id}` を使う。結果不明時はアプリが下書きとUUIDを保持し、1件取得で照合する。404なら同じUUID・本文と新しいBridge idempotency keyで明示的に再送できる。操作の結果不明時は自動再送せず状態を確認し、未変化なら利用者が明示的に再試行できる。`unreceived` はStudioが45秒以上受け取らなかった queued、再開APIはなく、完了後の再依頼は最新の作品版と新しいUUIDを使う。unsupportedな質問はMacで扱う。Studio本物の受付実装との接続確認は別途必要。
+作成はStudio側でも依頼UUIDと本文を照合する。同じBridge key・本文の作成再送はStudioに再作成せず、現在の依頼を取得して返す。作成済みでもStudio未接続なら503を返し、受理済みだが現在の状態は未確認とメッセージで伝える。状態の確認は `GET /v1/studio/requests/{id}` を使う。結果不明時はアプリが下書きとUUIDを保持し、1件取得で照合する。404なら同じUUID・本文と新しいBridge idempotency keyで明示的に再送できる。操作の結果不明時は自動再送せず、同じキー・本文で利用者が明示的に再試行できる。Bridge台帳の実行中は409で待ち、60秒を超えて結果不明のままなら、実行済みの可能性を表示して状態確認後の入力し直しを案内する。入力し直しは新しい操作・キーになり、重複拒否はStudio側の状態確認にも依存する。`unreceived` はStudioが45秒以上受け取らなかった queued、再開APIはなく、完了後の再依頼は最新の作品版と新しいUUIDを使う。unsupportedな質問はMacで扱う。Studio本物の受付実装との接続確認は別途必要。
 
 Bridge固有の `studio_payload_invalid` は受付契約の `invalid_request` に相当し、`studio_approval_changed` と `studio_approval_on_mac` は `studio_approval_expired` と同様に回答を受け付けない。Studioのエージェント向けCLI・MCPの `intake.action` はstopのみ、受付ソケットの `POST /api/studio/action` はanswer・stopに対応し、resumeは409。
 

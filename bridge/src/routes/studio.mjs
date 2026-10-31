@@ -46,12 +46,21 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
   }
   async function replayRequest({ rawBody }) {
     // A replay confirms the original mutation but must report current state.
-    return backend.getRequest(validateRequest(parseBody(rawBody)).id);
+    try { return await backend.getRequest(validateRequest(parseBody(rawBody)).id); }
+    catch (error) {
+      if (error instanceof BridgeError && error.code === 'studio_not_connected') {
+        throw new BridgeError(503, error.code, 'The request was accepted earlier, but its current status is unavailable; check it with GET when Studio reconnects', { retryable: true });
+      }
+      throw error;
+    }
   }
   async function action({ rawBody }) {
     const body = validateAction(parseBody(rawBody));
     if (body.action === 'answer') validateAnswer(body, await backend.getRequest(body.id));
     return { status: 200, data: await backend.action(body) };
+  }
+  async function replayAction({ rawBody }) {
+    return backend.getRequest(validateAction(parseBody(rawBody)).id);
   }
   async function media({ req, res, requestId, params }) {
     const abort = new AbortController();
@@ -110,7 +119,7 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
     { method: 'GET', path: '/v1/studio/request-id', auth: true, scope: 'studio:request', handler: () => ({ status: 200, data: { id: randomUUID() } }) },
     { method: 'GET', pattern: requestPattern, auth: true, scope: 'studio:read', handler: getRequest },
     { method: 'POST', path: '/v1/studio/requests', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: createRequest, replay: replayRequest },
-    { method: 'POST', path: '/v1/studio/action', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: action },
+    { method: 'POST', path: '/v1/studio/action', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: action, replay: replayAction },
     { method: 'GET', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },
     { method: 'HEAD', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },
   ];

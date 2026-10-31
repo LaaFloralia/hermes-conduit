@@ -52,7 +52,8 @@ extension LAACopy {
         static let missing = "Studioに依頼が見つかりません。同じ内容で再送できます。"
         static let pendingAction = "操作の結果を確認中です。自動では再送しません。"
         static let retryAction = "状態が変わらないため、同じ内容を再試行できます。"
-        static let reenterAction = "以前の操作内容を保存できていません。解除して入力し直せます。"
+        static let reenterAction = "操作が実行済みの可能性があります。状態を確認してから入力し直してください。"
+        static let actionInFlight = "元の操作を確認中です。少し待ってから再試行してください。"
         static let reenter = "Enter again"
         static let saveFailed = "下書きを保存できません。保存できるまで送信しません。"
         static let pageUnsupported = "このページはアプリでプレビューできません。LAA Studioで開いてください。"
@@ -125,7 +126,7 @@ enum LAAStudioData {
         let response: LAABridgeResponse<LAAStudioRecord> = try await bridge.request(method: "POST", path: "/v1/studio/requests", jsonBody: body, idempotencyKey: .init(), timeout: 30)
         return response.data
     }
-    @MainActor static func action(_ action: LAAStudioAction, key: LAABridgeIdempotencyKey, bridge: LAABridgeSession) async throws -> LAAStudioRecord {
+    @MainActor static func action(_ action: LAAStudioAction, body: Data, key: LAABridgeIdempotencyKey, bridge: LAABridgeSession) async throws -> LAAStudioRecord {
         #if DEBUG
         if fixture != nil {
             let previous = try await record(action.id, bridge: bridge)
@@ -134,7 +135,7 @@ enum LAAStudioData {
             return changed
         }
         #endif
-        let response: LAABridgeResponse<LAAStudioRecord> = try await bridge.request(method: "POST", path: "/v1/studio/action", jsonBody: JSONEncoder().encode(action), idempotencyKey: key, timeout: 30)
+        let response: LAABridgeResponse<LAAStudioRecord> = try await bridge.request(method: "POST", path: "/v1/studio/action", jsonBody: body, idempotencyKey: key, timeout: 30)
         return response.data
     }
     static func message(_ error: Error) -> String {
@@ -148,6 +149,7 @@ enum LAAStudioData {
             case "studio_principle_changed": return "原則の版が変わりました。原則一覧を更新してください。"
             case "studio_request_id_conflict": return "依頼IDが別の内容に使われています。Macで確認してください。"
             case "studio_approval_on_mac", "studio_approval_expired": return LAACopy.Studio.approvalOnMac
+            case "idempotency_key_in_flight": return LAACopy.Studio.actionInFlight
             default: return error.legacyError.japaneseText
             }
         }

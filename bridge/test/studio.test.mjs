@@ -11,6 +11,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { startBridge } from './helpers.mjs';
 import { createStudioBackend } from '../src/studio/backend.mjs';
+import { BridgeError } from '../src/errors.mjs';
 import { grantStudio } from '../src/pairing.mjs';
 import { DEFAULT_SCOPES } from '../src/config.mjs';
 import { hashPairingCode, normalizePairingCode } from '../src/auth.mjs';
@@ -151,7 +152,7 @@ describe('Studio Bridge routes', () => {
     assert.match(grantStudio(bridge.store, { target: existing.id, reason: 'invalid\nline' }).error, /one line/);
     assert.equal((await bridge.request('/v1/studio/snapshot', { token: noToken })).status, 200);
     bridge.store.mutate((s) => { s.devices[existing.id].revokedAt = new Date().toISOString(); });
-    assert.match(grantStudio(bridge.store, { target: existing.id }).error, /revoked/);
+    assert.match(grantStudio(bridge.store, { target: existing.id, reason: 'Revoked device' }).error, /revoked/);
   });
   it('requires an explicit Studio grant even for a stale pre-upgrade pairing code', async () => {
     assert.ok(!DEFAULT_SCOPES.some((scope) => scope.startsWith('studio:')));
@@ -166,7 +167,7 @@ describe('Studio Bridge routes', () => {
     const token = enrolled.body.data.token;
     assert.equal((await bridge.request('/v1/studio/snapshot', { token })).status, 403);
     assert.equal((await bridge.request('/v1/studio/requests', { method: 'POST', token, key: randomUUID(), body: draft })).status, 403);
-    grantStudio(bridge.store, { target: enrolled.body.data.deviceId });
+    grantStudio(bridge.store, { target: enrolled.body.data.deviceId, reason: 'Test device' });
     assert.equal((await bridge.request('/v1/studio/snapshot', { token })).status, 200);
   });
   it('records the first explicit management operation for an old already-granted device', async () => {
@@ -187,14 +188,113 @@ describe('Studio Bridge routes', () => {
     const paired = await bridge.pair();
     const enrolled = await bridge.enroll(paired.code);
     const deviceId = enrolled.body.data.deviceId;
+    const missingReason = spawnSync(process.execPath, [cli, 'grant-studio', deviceId], { env, encoding: 'utf8' });
+    assert.equal(missingReason.status, 2);
+    assert.match(missingReason.stderr, /--reason/);
+    assert.equal(bridge.store.read().devices[deviceId].studioGrant, undefined);
     const output = execFileSync(process.execPath, [cli, 'grant-studio', deviceId, '--reason', 'Owner device', '--json'], { env, encoding: 'utf8' });
-    assert.equal(JSON.parse(output).studioGrant.reason, 'Owner device');
+    const grant = JSON.parse(output);
+    assert.equal(grant.studioGrant.reason, 'Owner device');
+    assert.equal(grant.name, 'iPhone');
+    assert.ok(!grant.previousScopes.includes('studio:request'));
+    assert.ok(grant.scopes.includes('studio:request'));
     const devices = JSON.parse(execFileSync(process.execPath, [cli, 'devices', '--json'], { env, encoding: 'utf8' }));
     assert.equal(devices.find((device) => device.id === deviceId).studioGrant.reason, 'Owner device');
   });
 });
 
 describe('Studio mock contract', () => {
+  it('replays the same action key after a lost response without applying twice and returns current state', async () => {
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    let applied = 0;
+    const originalAction = backend.action;
+    backend.action = async (action) => { applied += 1; return originalAction(action); };
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      await bridge.request('/v1/studio/requests', { method: 'POST', token, key: 'create-lost-action', body: draft });
+      backend.report(id, { status: 'approval', bootId: id, approvals: [{ id: approvalId, supported: true, allowSession: false, fields: [] }] });
+      const answer = { action: 'answer', id, approvalId, accept: true, content: {}, persist: false };
+      const attempt = { method: 'POST', token, key: 'same-action-key', body: answer };
+      const first = await bridge.request('/v1/studio/action', attempt);
+      assert.equal(first.status, 200); // The client loses this response after Studio applied the action.
+      assert.equal(applied, 1);
+      backend.report(id, { status: 'completed', bootId: id });
+      const retry = await bridge.request('/v1/studio/action', attempt);
+      assert.equal(retry.status, 200);
+      assert.equal(retry.headers.get('idempotency-replayed'), 'true');
+      assert.equal(retry.body.data.status, 'completed');
+      assert.equal(applied, 1);
+      const different = await bridge.request('/v1/studio/action', { ...attempt, body: { ...answer, accept: false } });
+      assert.equal(different.body.error.code, 'idempotency_key_conflict');
+      assert.equal(applied, 1);
+    } finally { await bridge.close(); }
+  });
+
+  it('does not repeat an action when the Studio response was lost before Bridge could record it', async () => {
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    let calls = 0;
+    const originalAction = backend.action;
+    backend.action = async (action) => {
+      calls += 1;
+      await originalAction(action);
+      throw new BridgeError(503, 'studio_not_connected', 'response lost');
+    };
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      await bridge.request('/v1/studio/requests', { method: 'POST', token, key: 'create-upstream-loss', body: draft });
+      backend.report(id, { status: 'approval', bootId: id, approvals: [{ id: approvalId, supported: true, allowSession: false, fields: [] }] });
+      const attempt = { method: 'POST', token, key: 'upstream-loss-action',
+        body: { action: 'answer', id, approvalId, accept: true, content: {}, persist: false } };
+      assert.equal((await bridge.request('/v1/studio/action', attempt)).status, 503);
+      const retry = await bridge.request('/v1/studio/action', attempt);
+      assert.equal(retry.body.error.code, 'idempotency_key_in_flight');
+      assert.equal(calls, 1);
+      assert.equal((await bridge.request(`/v1/studio/requests/${id}`, { token })).body.data.status, 'running');
+    } finally { await bridge.close(); }
+  });
+
+  it('allows a newly confirmed action after the original failed before reaching Studio', async () => {
+    let clock = Date.now();
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    const originalAction = backend.action;
+    let calls = 0;
+    backend.action = async () => { calls += 1; throw new BridgeError(503, 'studio_not_connected', 'not sent'); };
+    const bridge = await startBridge({ now: () => clock, studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      await bridge.request('/v1/studio/requests', { method: 'POST', token, key: 'create-no-action', body: draft });
+      const attempt = { method: 'POST', token, key: 'not-sent-action', body: { action: 'stop', id } };
+      assert.equal((await bridge.request('/v1/studio/action', attempt)).status, 503);
+      assert.equal((await bridge.request('/v1/studio/action', attempt)).body.error.code, 'idempotency_key_in_flight');
+      assert.equal(calls, 1);
+      clock += 60_001;
+      assert.equal((await bridge.request('/v1/studio/action', attempt)).body.error.code, 'idempotency_outcome_unknown');
+      assert.equal(calls, 1);
+      assert.equal((await bridge.request(`/v1/studio/requests/${id}`, { token })).body.data.status, 'queued');
+      backend.action = originalAction;
+      const confirmed = await bridge.request('/v1/studio/action', { ...attempt, key: 'newly-confirmed-action' });
+      assert.equal(confirmed.body.data.status, 'stopped');
+    } finally { await bridge.close(); }
+  });
+
+  it('states that creation was accepted when replay cannot obtain the current Studio record', async () => {
+    const backend = mockStudioBackend({ projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }] });
+    const bridge = await startBridge({ studio: { backend } });
+    try {
+      const token = await bridge.token(['studio:read', 'studio:request']);
+      const attempt = { method: 'POST', token, key: 'create-offline-replay', body: draft };
+      assert.equal((await bridge.request('/v1/studio/requests', attempt)).status, 202);
+      backend.state.connected = false;
+      const retry = await bridge.request('/v1/studio/requests', attempt);
+      assert.equal(retry.status, 503);
+      assert.equal(retry.body.error.code, 'studio_not_connected');
+      assert.match(retry.body.error.message, /accepted earlier.*GET/);
+      assert.equal(backend.state.records.size, 1);
+    } finally { await bridge.close(); }
+  });
+
   it('preserves request identity, conflicts and 45-second unreceived state without retrying', async () => {
     let clock = Date.parse('2026-11-01T03:12:40.512Z');
     const backend = mockStudioBackend({ now: () => clock, projects: [{ id: 'project1', revision: 2, title: 'Work', pages: [] }],
