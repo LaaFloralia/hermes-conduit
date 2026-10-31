@@ -114,6 +114,7 @@ actor LAADriveOfflineStore {
             if !isMissingFile(error) { throw error }
         }
         try writeIndex(previous.filter { $0.pairingID != pairingID || $0.id != id })
+        accessGeneration[itemKey(pairingID: pairingID, id: id), default: 0] &+= 1
         do {
             try fileManager.removeItem(at: body)
         } catch {
@@ -128,6 +129,12 @@ actor LAADriveOfflineStore {
     /// Returns no file for known denial, deletion, or unknown permission.
     /// A stale but still permitted version remains available and is marked stale.
     func localFile(pairingID: String, id: String) throws -> URL? {
+        try localCopy(pairingID: pairingID, id: id)?.url
+    }
+
+    /// The record and URL describe the same saved version, even if a
+    /// replacement is committed by another task immediately afterwards.
+    func localCopy(pairingID: String, id: String) throws -> (record: LAADriveOfflineRecord, url: URL)? {
         guard let record = try readIndex().first(where: { $0.pairingID == pairingID && $0.id == id }),
               record.access == .verified || record.access == .stale else { return nil }
         let url = files.appendingPathComponent(record.bodyName, isDirectory: false)
@@ -142,12 +149,31 @@ actor LAADriveOfflineStore {
         guard digest.finalize().map({ String(format: "%02x", $0) }).joined() == record.sha256 else {
             throw LAADriveOfflineError.unavailable
         }
-        return url
+        return (record, url)
+    }
+
+    /// Snapshot an access check so a slower response cannot undo a newer denial,
+    /// deletion, or replacement of the saved copy.
+    func accessCheckGeneration(pairingID: String, id: String) throws -> UInt64 {
+        guard try readIndex().contains(where: { $0.pairingID == pairingID && $0.id == id }) else {
+            throw LAADriveOfflineError.unavailable
+        }
+        return accessGeneration[itemKey(pairingID: pairingID, id: id), default: 0]
     }
 
     /// Store a known access result without erasing the user's saved bytes.
-    func recordCheck(pairingID: String, id: String, result: LAADriveOfflineCheck, now: Date = Date()) throws {
+    func recordCheck(pairingID: String, id: String, result: LAADriveOfflineCheck,
+                     expectedGeneration: UInt64? = nil, now: Date = Date()) throws {
         let key = itemKey(pairingID: pairingID, id: id)
+        if let expectedGeneration, accessGeneration[key, default: 0] != expectedGeneration {
+            // A known denial or missing file must still block access, even if
+            // another check completed first. A fresh check can restore it.
+            switch result {
+            case .denied, .missing: break
+            case .metadata(let metadata) where metadata.downloadable == false: break
+            default: throw LAADriveOfflineError.accessChanged
+            }
+        }
         accessGeneration[key, default: 0] &+= 1
         var entries = try readIndex()
         guard let at = entries.firstIndex(where: { $0.pairingID == pairingID && $0.id == id }) else { return }
@@ -291,6 +317,7 @@ actor LAADriveOfflineStore {
         entries.removeAll { $0.pairingID == pairingID && $0.id == id }
         entries.append(saved)
         try writeIndex(entries)
+        accessGeneration[itemKey(pairingID: pairingID, id: id), default: 0] &+= 1
         committed = true
         if let old { try? fileManager.removeItem(at: files.appendingPathComponent(old.bodyName)) }
         return saved

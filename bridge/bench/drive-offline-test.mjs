@@ -12,6 +12,7 @@ try {
   const binary = join(temporary, 'fixture');
   execFileSync('swiftc', ['-swift-version', '5', '-D', 'LAA_BUILD', '-parse-as-library',
     join(root, 'Conduit/LAA/Drive/LAADriveOfflineStore.swift'),
+    join(root, 'Conduit/LAA/Drive/LAADriveOfflineAccess.swift'),
     join(here, 'drive-offline-test.swift'), '-o', binary], { stdio: 'inherit' });
   execFileSync(binary, [join(temporary, 'data')], { stdio: 'inherit' });
 } finally {

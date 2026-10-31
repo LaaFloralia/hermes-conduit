@@ -305,6 +305,97 @@ private actor Gate {
                    FileManager.default.fileExists(atPath: newReplacement.path), "failed removal restores its record")
         }
 
+        let known = LAADriveOfflineMetadata(version: "1", size: Int64(bytes.count), downloadable: true)
+        let rechecked = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) {
+            .checked(.metadata(known))
+        }
+        expect(rechecked.checkedOnline && rechecked.record.access == .verified && rechecked.url == firstURL,
+               "online open rechecks permission")
+        let offline = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) { .offline }
+        expect(!offline.checkedOnline && offline.record.access == .verified, "offline open retains last verification")
+        let older = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) {
+            .checked(.metadata(.init(version: "2", size: Int64(bytes.count), downloadable: true)))
+        }
+        expect(older.record.access == .stale && older.url == firstURL, "permitted older copy is marked stale")
+        await expectError(.forbidden) {
+            _ = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) { .checked(.denied) }
+        }
+        await expectError(.forbidden) {
+            _ = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) { .offline }
+        }
+        await expectError(.permissionUnknown) {
+            _ = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) {
+                .checked(.metadata(.init(version: nil, size: nil, downloadable: nil)))
+            }
+        }
+        await expectError(.notFound) {
+            _ = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) { .checked(.missing) }
+        }
+        await expectError(.unavailable) {
+            _ = try await LAADriveOfflineOpener.open(pairingID: "pairing-b", id: "file-a", store: store) { .offline }
+        }
+        expect(FileManager.default.fileExists(atPath: firstURL.path), "access loss never erases the saved copy")
+        let denialGate = Gate()
+        let earlierCheck = Task {
+            try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) {
+                await denialGate.blockRange()
+                return .checked(.metadata(known))
+            }
+        }
+        await denialGate.waitUntilEntered()
+        await expectError(.forbidden) {
+            _ = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) { .checked(.denied) }
+        }
+        await denialGate.release()
+        await expectError(.accessChanged) { _ = try await earlierCheck.value }
+        expect(try await store.records(pairingID: "pairing-a").first(where: { $0.id == "file-a" })?.access == .denied,
+               "older successful check cannot overwrite a newer denial")
+
+        let slowDenialGate = Gate()
+        let slowDenial = Task {
+            try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) {
+                await slowDenialGate.blockRange()
+                return .checked(.denied)
+            }
+        }
+        await slowDenialGate.waitUntilEntered()
+        _ = try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) {
+            .checked(.metadata(known))
+        }
+        await slowDenialGate.release()
+        await expectError(.forbidden) { _ = try await slowDenial.value }
+        expect(try await store.records(pairingID: "pairing-a").first(where: { $0.id == "file-a" })?.access == .denied,
+               "late denial still blocks an earlier success")
+
+        let replacementGate = Gate()
+        let pendingReplacementCheck = Task {
+            try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "replacement", store: store) {
+                await replacementGate.blockRange()
+                return .checked(.metadata(.init(version: "2", size: Int64(otherBytes.count), downloadable: true)))
+            }
+        }
+        await replacementGate.waitUntilEntered()
+        _ = try await store.remove(pairingID: "pairing-a", id: "replacement")
+        _ = try await save(Source(data: otherBytes, version: "3"), to: store, id: "replacement")
+        await replacementGate.release()
+        await expectError(.accessChanged) { _ = try await pendingReplacementCheck.value }
+        expect(try await store.records(pairingID: "pairing-a").first(where: { $0.id == "replacement" })?.version == "3",
+               "old check cannot update a removed and replaced copy")
+
+        let openGate = Gate()
+        let opening = Task {
+            try await LAADriveOfflineOpener.open(pairingID: "pairing-a", id: "file-a", store: store) {
+                await openGate.blockRange()
+                return .checked(.metadata(known))
+            }
+        }
+        await openGate.waitUntilEntered()
+        opening.cancel()
+        await openGate.release()
+        do { _ = try await opening.value; fatalError("expected cancellation") } catch is CancellationError { }
+        expect(try await store.records(pairingID: "pairing-a").first(where: { $0.id == "file-a" })?.access == .denied,
+               "cancelled access check cannot restore permission")
+
         let oldMeta = LAADriveOfflineMetadata(version: "1", size: Int64(bytes.count), downloadable: true)
         try await store.recordCheck(pairingID: "pairing-a", id: "file-a", result: .metadata(oldMeta))
         var corrupted = bytes
