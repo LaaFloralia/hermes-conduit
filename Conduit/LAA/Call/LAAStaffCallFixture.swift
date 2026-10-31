@@ -51,7 +51,7 @@ struct LAAStaffCallFixture: View {
     private var reason: String? {
         if args.contains("-laa-unpaired") { return LAAEmployeeCallAvailability.bridgeReason(.unpaired) }
         if args.contains("-laa-revoked") { return LAAEmployeeCallAvailability.bridgeReason(.revoked) }
-        if args.contains("-laa-offline") { return "Hermesに接続してください" }
+        if args.contains("-laa-offline") { return "Macに接続してください" }
         if args.contains("-laa-no-voice") {
             return LAAEmployeeCallAvailability.voiceReason(profile: profile, canStart: false, issue: .noTextToSpeech)
         }
