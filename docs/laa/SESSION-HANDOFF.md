@@ -49,9 +49,9 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 
 ## シミュレーターとMacの負荷
 
-- シミュレーターは同時に1台だけ起動する。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で空きを待ってから渡す。
+- このプロジェクトの端末は同時に1台だけ起動する。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で下の2台の停止を待ってから渡す。
 - 検証用の端末は2台。`LAA 16 Pro Max`（iOS 27.0、`DFFD3966-F54E-4C7A-A161-59201C7EA105`、社長の端末と同じ画面）と `iPhone Duo`（iOS 27.1、`228F6BE7-98B2-4AF6-861F-F76BC8CA0DE7`）。作業用に端末を増やしたら、終了時に削除する。
-- xcodebuildは同時3本・各 `-jobs 4` まで、空き容量は80 GiB以上を保つ。作業後はDerivedData・xcresult・一時端末を消す。
+- xcodebuildは同時3本・各 `-jobs 4` まで。空き容量はビルド中だけ75 GiBまで下がってよく、75.0 GiBを切ったら止める。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。
 
 ## マージとTestFlight
 
@@ -60,8 +60,9 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
   2. `python3 scripts/plan-tests.py smoke --repo-root . --suite scripts/smoke-suite.json --changed-from <mergeしたmasterのSHA> --out <file>` で選ばれたunit・UIクラスを、既定のConduit scheme（`project.yml`。LAA版ではない）で流す。端末は言語と地域を英語（米国）に設定して読み戻したものを使う（`-AppleLanguages` だけでは効かなかった）。同じクラスをmasterでも流し、候補だけの失敗が0であること。
   3. `xcodegen generate --spec project-personal.yml` の後、`xcodebuild build -quiet -project Conduit.xcodeproj -scheme Conduit -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO` が成功すること。生成したprojectはcommitしない。
   4. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
-- 既知の基準（master `21cec9ed`）: `LAA 16 Pro Max` では既知の失敗なし。`iPhone Duo` では `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件が既知の失敗。
-- Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。
+- 既知の失敗: `LAA 16 Pro Max`（master `d4bab91a`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests.testTappingTheCardBodyInvokesSelection` 1件（タップ位置が画面外）。`iPhone Duo`（master `21cec9ed`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件。
+- Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。
+- Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
 - TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みはビルド6（2610300121、LAA Internal）。ビルド7はXcode 27.2（27B52）をApp Store Connectが拒否して止まっている（BUS-320）。
 
 ## 現在の状態（2026-10-31）
