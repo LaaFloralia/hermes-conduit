@@ -16,7 +16,11 @@ struct LAAAppShell: View {
     @State private var chatsPath: [V2Route] = []
 
     private var requiresLogin: Bool {
-        appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_FORCE_LOGIN") { return true }
+        #endif
+        return appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
     }
 
     private var conversationVisible: Bool {
@@ -179,8 +183,10 @@ struct LAAAppShell: View {
             LoginView()
         } else {
             NavigationStack(path: $chatsPath) {
+                // LAAChatsContent owns the bar (an empty title and the
+                // settings button); a title here would repeat the "Chats"
+                // heading in the body.
                 LAAChatsView(appState: appState)
-                    .navigationTitle(LAATab.chats.title)
                     .navigationDestination(for: V2Route.self) { route in
                         switch route {
                         case .conversation:

@@ -2,7 +2,7 @@
 
 最初に読む入口。社長の呼び名は「AIアプリ」「LAAアプリ」。ここには現行の進め方と状態だけを置き、経緯はgit logとLinearに任せる。古くなった記述は書き足さずに置き換える。
 
-最終更新: 2026-10-31（アプリのコードはmaster `21cec9ed` 時点。以降の更新は文書だけ）
+最終更新: 2026-11-01（ゲートはmaster `638a2af6` と比較。UI試験は `LAA 16 Pro Max` で実施）
 
 ## 位置づけ
 
@@ -22,10 +22,12 @@
 |---|---|---|
 | 親 | 社長が選んだモデル（現在 Opus 5.5） | 指摘の登録、分担、統合、検証、TestFlightとMac版の署名・公証（秘密を扱うため親だけ） |
 | PC操作を伴う実装・試験 | GPT-6.1 Terra max（Paseo codex） | シミュレーター・画面撮影・Macでの起動確認を伴うアプリの実装と試験 |
-| それ以外の実装・レビュー | DeepSeek V4.1 Flash max（Paseo dsh） | Bridge・スクリプト等のコード（CLIのビルドと単体テストまで）、独立レビュー、調査、文書 |
+| それ以外の実装・レビュー | DeepSeek V4.1 Flash max（Paseo dsh） | 単独のBridge・スクリプト等のコード（CLIのビルドと単体テストまで）、独立レビュー、調査、文書。アプリ側と契約が密に結び付くBridge変更は、その機能のTerra担当がまとめて実装する（2026-11-01、統合の失敗を減らすため） |
 | デザイン | design-worker | Studioでの視覚案（必要な時だけ） |
 
 独立レビューは実装者と別系統にする（Terraの実装はDSH、DSHの実装はTerraが見る。2026-10-31 社長指示）。
+
+DSHとTerraは、分担に合う範囲で量の上限を気にせず使ってよい（2026-11-01 社長指示）。Codexの週の枠が尽きてもクレジットで動く（2026-11-01に確認。残りはUsageのCodexの `credits` で見る）。
 
 Claudeのサブエージェントは使わない（design-workerだけ例外）。起動例:
 
@@ -60,15 +62,15 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
   2. `python3 scripts/plan-tests.py smoke --repo-root . --suite scripts/smoke-suite.json --changed-from <mergeしたmasterのSHA> --out <file>` で選ばれたunit・UIクラスを、既定のConduit scheme（`project.yml`。LAA版ではない）で流す。端末は言語と地域を英語（米国）に設定して読み戻したものを使う（`-AppleLanguages` だけでは効かなかった）。同じクラスをmasterでも流し、候補だけの失敗が0であること。
   3. `xcodegen generate --spec project-personal.yml` の後、`xcodebuild build -quiet -project Conduit.xcodeproj -scheme Conduit -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO` が成功すること。生成したprojectはcommitしない。
   4. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
-- 既知の失敗: `LAA 16 Pro Max`（master `d4bab91a`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests.testTappingTheCardBodyInvokesSelection` 1件（タップ位置が画面外）。`iPhone Duo`（master `21cec9ed`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件。
+- 既知の失敗: `LAA 16 Pro Max`（master `638a2af6`、英語（米国））は `ConnectionSetupUITests` 5件のみ。`ProfilePickerUITests` は3件とも成功した。`iPhone Duo`（master `21cec9ed`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件。
 - Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
-- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2610311529（2026-11-01、LAA Internal、Xcode 27.2 27B52で受理）。終わったら `build/laa/DerivedData` を消す。
+- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2610312000（2026-11-01、master 638a2af6、LAA Internal）。終わったら `build/laa/DerivedData` を消す。
 
 ## 現在の状態（2026-10-31）
 
 - 完了: ROADMAP 01–14・24・25・28、デザインv2、W3の仕上げ（プラグイン更新表示の撤去、社員呼出しボタンの表示条件）。
-- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（branch `laa/mac-catalyst` で実装中）、34 Studio依頼（アプリとBridgeは模擬のStudioで先に作り、LAA Studioのローカル受付APIができたら接続）。
+- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（branch `laa/mac-catalyst` で実装中）、34 Studio依頼（アプリ・Bridge実装済み。BridgeはLAA Studioの契約v1ローカル受付へ中継し、依頼・進行・回答・停止・成果物プレビューまで。実機確認と契約v2の成果物確認・審美眼はこれから）。
 - Driveの閲覧・再生は実装済み。認可がないため、Bridgeは `503 drive_not_configured` を返す（BUS-318）。
 - 再生画面の再生ボタンとシークバーは素の部品のままで、デザインの手直しが要る。
 - Bridgeで有効な端末は社長のiPhone 1台だけ。試験用の端末はすべて失効済み。
@@ -93,6 +95,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 - push relay（launchd `com.laa.conduit-relay-laa`）は本体チェックアウトの `scripts/laa/relay-run.sh` から動く。worktreeから入れない。
 - Brainの既存ノートの上書きはv1では無効（[BRAIN-WRITE](BRAIN-WRITE.md)）。できるのは閲覧・検索・新規作成だけ。
 - 秘密は親だけが1Password Agents経由で扱い、workerへ渡さない。workerにBrainを読ませない。
+- StudioのUI試験（`LAAStudioUITests`）は `scripts/laa/studio-ui-fixture.mjs`（api 19582／control 19583）を先に起動し、アプリへ `LAA_BRIDGE_DEFAULT_ADDRESS=http://127.0.0.1:19582` を渡す（DEBUGのみ有効。simulatorのhttpは127.0.0.1だけ許可）。
 - Conduitプラグインの更新は、HQの定期処理（`hq/tools/CONDUIT-UPDATE.md`）が判断する。
 
 ## worker共通指示（各指示の先頭に貼る）

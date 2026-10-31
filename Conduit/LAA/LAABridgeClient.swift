@@ -10,7 +10,17 @@ struct LAABridgeCredentials: Codable, Equatable {
 
 struct LAABridgeEndpoint {
     // The Mac's Tailscale Serve address recorded in docs/laa/BASELINE.md.
-    static let defaultAddress = "https://mac-mini.tailc9b8e7.ts.net:8445"
+    // UI tests point the pairing field at their local fixture through the
+    // environment instead of typing over this value, which the simulator's
+    // field editing made flaky.
+    static var defaultAddress: String {
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["LAA_BRIDGE_DEFAULT_ADDRESS"], !override.isEmpty {
+            return override
+        }
+        #endif
+        return "https://mac-mini.tailc9b8e7.ts.net:8445"
+    }
 
     static func parse(_ text: String) throws -> URL {
         guard var parts = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),

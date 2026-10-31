@@ -75,8 +75,12 @@ enum WatchCallAnswer {
         return nil
     }
 
-    /// The model's answer for the host's response.
+    /// The model's answer for the host's response, naming this build's app.
     static func result(body: [String: Any]) -> [String: String] {
+        unbrandedResult(body: body).mapValues(LAAProductBrand.display)
+    }
+
+    private static func unbrandedResult(body: [String: Any]) -> [String: String] {
         guard body["ok"] as? Bool == true else {
             let detail = (body["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             return ["error": detail ?? "The answer didn't reach Hermes. Tell the user to answer in Conduit on their iPhone."]

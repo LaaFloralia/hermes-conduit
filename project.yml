@@ -117,6 +117,9 @@ targets:
         excludes:
           - "Widgets/**"
       - path: Shared/WatchVoice
+      # The app name Watch prompts and spoken notices use; "Conduit" unless a
+      # build defines LAA_BUILD.
+      - path: Shared/LAAProductBrand.swift
       # The iPhone's own Gemini Live code: the Watch runs the same session
       # (designs/apple-watch-voice-direct.md).
       - path: Shared/GeminiLive
