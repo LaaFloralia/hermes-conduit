@@ -3,8 +3,60 @@ import AVFoundation
 import SwiftUI
 import UIKit
 
-/// Each visible avatar owns its own muted looper; it never changes the app's
-/// audio session. The still underneath is also the Reduce Motion fallback.
+/// BUS-332: the muted idle video must not take the audio session away from
+/// the music another app is playing.
+///
+/// An `AVPlayer` connected to system audio activates the shared session as
+/// soon as it plays (AVFoundation's `AVPlayerAudioSessionParticipation`), and
+/// the app's category is the non-mixable default. So the player either leaves
+/// the session alone — iOS 27 and later can disconnect it before playback —
+/// or the avatar keeps its still while another app is playing.
+struct StaffAvatarIdleAudioPolicy: Equatable {
+    /// The avatar's existing visible / active / Reduce Motion / scrolling
+    /// decision (`StaffAvatarPlaybackPolicy.shouldPlay`).
+    var shouldPlay: Bool
+    /// The player can be disconnected from system audio (iOS 27+, not on Mac
+    /// Catalyst, where the API is unavailable).
+    var canDisconnectFromSystemAudio: Bool
+    /// Another app is playing right now. Read when the avatar appears, not
+    /// observed: an idle avatar that starts later is judged then.
+    var otherAudioPlaying: Bool
+
+    /// Disconnecting is the only way to keep the video without touching the
+    /// session; without it, another app's playback wins and the still stays.
+    var startsVideo: Bool {
+        shouldPlay && (canDisconnectFromSystemAudio || !otherAudioPlaying)
+    }
+
+    var disconnectsFromSystemAudio: Bool { canDisconnectFromSystemAudio }
+
+    /// The device's own state. `shouldPlay` stays the caller's decision so a
+    /// test can check both branches without a session or a device.
+    @MainActor
+    static func current(shouldPlay: Bool) -> Self {
+#if targetEnvironment(macCatalyst)
+        // The disconnect API is unavailable on Mac Catalyst: keep the
+        // pre-BUS-332 behaviour there until the Catalyst branch is integrated.
+        return Self(shouldPlay: shouldPlay,
+                    canDisconnectFromSystemAudio: false,
+                    otherAudioPlaying: false)
+#else
+        let canDisconnect: Bool
+        if #available(iOS 27.0, *) {
+            canDisconnect = true
+        } else {
+            canDisconnect = false
+        }
+        return Self(shouldPlay: shouldPlay,
+                    canDisconnectFromSystemAudio: canDisconnect,
+                    otherAudioPlaying: AVAudioSession.sharedInstance().isOtherAudioPlaying)
+#endif
+    }
+}
+
+/// Each visible avatar owns its own muted looper; the idle audio policy above
+/// keeps it from taking another app's audio. The still underneath is also the
+/// Reduce Motion fallback.
 struct StaffAvatarView: View {
     let profile: String
     let name: String
@@ -59,8 +111,9 @@ struct StaffAvatarView: View {
     }
 
     private func syncPlayback() {
-        guard policy.shouldPlay, let url = assets.loop else { loop.stop(); return }
-        loop.play(url)
+        let audio = StaffAvatarIdleAudioPolicy.current(shouldPlay: policy.shouldPlay)
+        guard audio.startsVideo, let url = assets.loop else { loop.stop(); return }
+        loop.play(url, disconnectingFromSystemAudio: audio.disconnectsFromSystemAudio)
     }
 }
 
@@ -69,20 +122,42 @@ private final class StaffAvatarLoop: ObservableObject {
     @Published private(set) var player: AVQueuePlayer?
     private var looper: AVPlayerLooper?
     private var currentURL: URL?
+    /// Bumped by every start and stop: a disconnect that completes after the
+    /// avatar moved on must not start playback.
+    private var generation = 0
 
-    func play(_ url: URL) {
+    /// Starts the muted loop. A connected player activates the audio session
+    /// as soon as it plays, so on iOS 27 and later it is disconnected from
+    /// system audio first, and playback waits for that to finish.
+    func play(_ url: URL, disconnectingFromSystemAudio: Bool) {
         if currentURL == url, let player { player.play(); return }
         stop()
+        generation &+= 1
+        let generation = generation
         let player = AVQueuePlayer()
         player.isMuted = true
         player.preventsDisplaySleepDuringVideoPlayback = false
         looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
         currentURL = url
         self.player = player
+#if !targetEnvironment(macCatalyst)
+        if #available(iOS 27.0, *), disconnectingFromSystemAudio {
+            // The completion runs on an arbitrary queue; playback continues on
+            // the main actor, and only if this is still the current player.
+            player.setDisconnectedFromSystemAudio(true) { [weak self] in
+                Task { @MainActor in
+                    guard let self, self.generation == generation, let player = self.player else { return }
+                    player.play()
+                }
+            }
+            return
+        }
+#endif
         player.play()
     }
 
     func stop() {
+        generation &+= 1
         player?.pause()
         looper?.disableLooping()
         player?.removeAllItems()
