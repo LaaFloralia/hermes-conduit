@@ -21,9 +21,12 @@ import Foundation
             do {
                 let root = FileManager.default.temporaryDirectory.appendingPathComponent("brain-fixture-" + UUID().uuidString, isDirectory: true)
                 try FileManager.default.createDirectory(at: root.appendingPathComponent("Company"), withIntermediateDirectories: true)
-                try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other|次のメモ]]\n".utf8)
+                try FileManager.default.createDirectory(at: root.appendingPathComponent("Assets"), withIntermediateDirectories: true)
+                try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other#Details|次のメモ]]\n\n![[Assets/fixture.png]]\n\n![[Other]]\n".utf8)
                     .write(to: root.appendingPathComponent("Company/Start.md"))
-                try Data("# 別のメモ\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
+                try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
+                guard let image = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+X2sAAAAASUVORK5CYII=") else { throw LAABrainVaultError.unreadable }
+                try image.write(to: root.appendingPathComponent("Assets/fixture.png"))
                 activate(root, scoped: false)
             } catch { state = .needsAccess }
             return
@@ -125,7 +128,7 @@ private final class LAABrainVaultPresenter: NSObject, NSFilePresenter {
 }
 
 enum LAABrainVaultError: Error {
-    case access, notDirectory, invalidPath, unreadable, invalidText
+    case access, notDirectory, invalidPath, unreadable, invalidText, tooLarge, ambiguous
 
     var message: String {
         switch self {
@@ -134,6 +137,8 @@ enum LAABrainVaultError: Error {
         case .invalidPath: return "This item is outside the selected folder or is a symbolic link."
         case .unreadable: return "The folder or note could not be read. Check its availability and try again."
         case .invalidText: return "This note is not valid UTF-8 text."
+        case .tooLarge: return "This file is too large to preview."
+        case .ambiguous: return "More than one attachment has this name. Use its full path."
         }
     }
 }
@@ -189,9 +194,97 @@ enum LAABrainVaultIO {
         NSFileCoordinator().coordinate(readingItemAt: file, options: [], error: &coordinationError) { coordinatedURL in
             result = Result {
                 _ = try safeURL(root: root, path: path)
-                let data = try Data(contentsOf: coordinatedURL)
+                let maxBytes = 32 * 1024 * 1024
+                if let size = try coordinatedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > maxBytes {
+                    throw LAABrainVaultError.tooLarge
+                }
+                let data = try Data(contentsOf: coordinatedURL, options: .mappedIfSafe)
+                guard data.count <= maxBytes else { throw LAABrainVaultError.tooLarge }
                 guard let text = String(data: data, encoding: .utf8) else { throw LAABrainVaultError.invalidText }
                 return LAABrainNote(id: LAABrainReference(path: path, includeInbox: true).id, path: path, text: text)
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        return try result.get()
+    }
+
+    static func attachment(root: URL, currentPath: String, target: String) throws -> (path: String, data: Data) {
+        let raw = target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        let requested = raw.removingPercentEncoding ?? raw
+        guard !requested.isEmpty, !requested.hasPrefix("/"), !requested.contains(":"),
+              !requested.contains("\\"), requested.rangeOfCharacter(from: .controlCharacters) == nil else {
+            throw LAABrainVaultError.invalidPath
+        }
+        let parent = currentPath.split(separator: "/").dropLast().map(String.init)
+        func normalize(_ base: [String], _ path: String) -> String? {
+            var parts = base
+            for part in path.split(separator: "/", omittingEmptySubsequences: false) {
+                if part == "." { continue }
+                if part == ".." { guard !parts.isEmpty else { return nil }; parts.removeLast() }
+                else if part.isEmpty { return nil }
+                else { parts.append(String(part)) }
+            }
+            return parts.joined(separator: "/")
+        }
+        guard let relative = normalize(parent, requested) else { throw LAABrainVaultError.invalidPath }
+        let rooted = normalize([], requested)
+        let candidates = [relative, rooted].compactMap { $0 }
+        var selected: String?
+        for path in candidates {
+            if let url = try? safeURL(root: root, path: path),
+               (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true {
+                selected = path; break
+            }
+        }
+        if selected == nil && !requested.contains("/") {
+            let matches = try findAttachments(root: root, filename: requested)
+            if matches.count > 1 { throw LAABrainVaultError.ambiguous }
+            selected = matches.first
+        }
+        guard let path = selected else { throw LAABrainVaultError.unreadable }
+        let url = try safeURL(root: root, path: path)
+        var result: Result<Data, Error> = .failure(LAABrainVaultError.unreadable)
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinatedURL in
+            result = Result {
+                _ = try safeURL(root: root, path: path)
+                let maxBytes = 32 * 1024 * 1024
+                if let size = try coordinatedURL.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > maxBytes {
+                    throw LAABrainVaultError.tooLarge
+                }
+                let data = try Data(contentsOf: coordinatedURL, options: .mappedIfSafe)
+                guard data.count <= maxBytes else { throw LAABrainVaultError.tooLarge }
+                return data
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        return (path, try result.get())
+    }
+
+    private static func findAttachments(root: URL, filename: String) throws -> [String] {
+        var result: Result<[String], Error> = .failure(LAABrainVaultError.unreadable)
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: root, options: [], error: &coordinationError) { coordinatedRoot in
+            result = Result {
+                let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey]
+                var enumerationError: Error?
+                guard let enumerator = FileManager.default.enumerator(at: coordinatedRoot, includingPropertiesForKeys: Array(keys), options: [], errorHandler: { _, error in
+                    enumerationError = error; return false
+                }) else { throw LAABrainVaultError.unreadable }
+                let prefix = coordinatedRoot.standardizedFileURL.path.hasSuffix("/") ? coordinatedRoot.standardizedFileURL.path : coordinatedRoot.standardizedFileURL.path + "/"
+                var matches: [String] = []
+                for case let item as URL in enumerator {
+                    let values = try item.resourceValues(forKeys: keys)
+                    if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
+                    if values.isDirectory == true {
+                        if excludedDirectories.contains(item.lastPathComponent) { enumerator.skipDescendants() }
+                    } else if values.isRegularFile == true, item.lastPathComponent.precomposedStringWithCanonicalMapping == filename.precomposedStringWithCanonicalMapping,
+                              item.standardizedFileURL.path.hasPrefix(prefix) {
+                        matches.append(String(item.standardizedFileURL.path.dropFirst(prefix.count)))
+                    }
+                }
+                if let enumerationError { throw enumerationError }
+                return matches
             }
         }
         if let coordinationError { throw coordinationError }

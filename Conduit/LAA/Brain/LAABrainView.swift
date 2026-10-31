@@ -189,6 +189,9 @@ struct LAABrainView: View {
                     chip(LAACopy.Brain.folders, selected: mode == 1) { mode = 1 }
                     chip(LAACopy.Brain.tags, selected: mode == 2) { mode = 2; selectedTag = nil }
                         .disabled(!local.isReady).accessibilityHint(Text(verbatim: local.isReady ? "" : LAACopy.Brain.tagsUnavailable))
+                    if files.contains(where: { $0.conflictOriginalPath != nil }) {
+                        chip("Conflicts", selected: mode == 3) { mode = 3 }
+                    }
                 }
             }
             if !local.isReady {
@@ -212,6 +215,8 @@ struct LAABrainView: View {
                 recent
             } else if mode == 2 {
                 tagBrowser
+            } else if mode == 3 {
+                conflictBrowser
             } else {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     sectionHeading(LAACopy.Brain.folders)
@@ -220,6 +225,26 @@ struct LAABrainView: View {
             }
         }
         .foregroundStyle(LAAColor.text)
+    }
+
+    private var conflictBrowser: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            sectionHeading("Conflicts")
+            Text(verbatim: "Both copies are kept. Review them before making changes.")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            ForEach(files.filter { $0.conflictOriginalPath != nil }) { conflict in
+                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                    Text(verbatim: "Conflict copy").laaTextStyle(.section).foregroundStyle(LAAColor.attention)
+                    noteLink(conflict)
+                    if let original = files.first(where: { $0.path == conflict.conflictOriginalPath }) {
+                        Text(verbatim: "Original").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                        noteLink(original)
+                    } else {
+                        Text(verbatim: "Original is unavailable.").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                }
+            }
+        }
     }
 
     private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -297,6 +322,10 @@ struct LAABrainView: View {
         } else {
             Text(verbatim: "No tags found.").foregroundStyle(LAAColor.secondaryText)
         }
+        if let index, index.unreadableCount > 0 {
+            Text(verbatim: "\(index.unreadableCount) notes could not be indexed.")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+        }
     }
 
     private func folderLink(_ name: String, parent: String) -> some View {
@@ -323,6 +352,7 @@ struct LAABrainView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
                     Text(verbatim: file.title).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                     Text(verbatim: file.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    if file.conflictOriginalPath != nil { Text(verbatim: "Sync conflict").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                     if file.unreadable != nil { Text(verbatim: "本文を読み込めません").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 }
                 Spacer(minLength: 0)

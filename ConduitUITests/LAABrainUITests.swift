@@ -221,5 +221,18 @@ final class LAABrainUITests: XCTestCase {
         search.typeText("fixture-search\n")
         XCTAssertTrue(app.buttons["laa.brain.searchResult"].firstMatch.waitForExistence(timeout: 10))
     }
+
+    func testLocalFixtureEmbedsAndQuickSwitch() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
+        app.staticTexts["Start"].tap()
+        XCTAssertTrue(app.images["laa.brain.embed.image"].waitForExistence(timeout: 15))
+        let switcher = app.buttons["laa.brain.quickSwitch"]
+        XCTAssertTrue(switcher.waitForExistence(timeout: 10))
+        switcher.tap()
+        XCTAssertTrue(app.buttons["laa.brain.quickSwitch.note"].firstMatch.waitForExistence(timeout: 10))
+    }
 }
 #endif

@@ -51,6 +51,16 @@ final class LAABrainTests: XCTestCase {
         XCTAssertFalse(parts.contains { if case .image = $0 { return true }; return false })
     }
 
+    func testInlineCodeDoesNotResolveWikisOrEmbeds() throws {
+        let source = "`![[Other]]` and ``[[Other]] ![x](image.png)`` and [[Other]]"
+        let parts = LAABrainDocument(source).parts(currentPath: "Company/Start.md", files: [try file("Company/Other.md")])
+        XCTAssertFalse(parts.contains { if case .image = $0 { return true }; return false })
+        let text = parts.compactMap { if case .markdown(let value) = $0 { return value }; return nil }.joined()
+        XCTAssertTrue(text.contains("`![[Other]]`"))
+        XCTAssertTrue(text.contains("``[[Other]] ![x](image.png)``"))
+        XCTAssertTrue(text.contains("[Other](laabrain://note/"))
+    }
+
     func testURLAndFileIdUsePercentEncodingAndNFC() throws {
         let route = try XCTUnwrap(LAABrainPaths.request("/v1/brain/search", items: [URLQueryItem(name: "q", value: "色 & 形 C++")], includeInbox: true))
         let components = try XCTUnwrap(URLComponents(string: route))
@@ -59,6 +69,35 @@ final class LAABrainTests: XCTestCase {
         XCTAssertEqual(components.queryItems?.first(where: { $0.name == "area" })?.value, "inbox")
         XCTAssertEqual(LAABrainReference(path: "é.md", includeInbox: false).id,
                        LAABrainReference(path: "e\u{301}.md", includeInbox: false).id)
+    }
+
+    func testHeadingsFootnotesHighlightsAndMultipleEmbedsKeepTheirSource() throws {
+        let source = "---\nstatus: draft\n---\n# 見出し\n[[Other#詳細|次へ]] と [^注]\n==強調==\n前 ![[Other#詳細]] 間 ![図](../Assets/図.png) 後\n[^注]: 脚注の本文\n## 詳細\n本文\n# 続き\n"
+        let document = LAABrainDocument(source)
+        let files = try ["Company/Start.md", "Company/Other.md"].map(file)
+        let parts = document.parts(currentPath: "Company/Start.md", files: files)
+        XCTAssertEqual(document.properties.first?.name, "status")
+        XCTAssertEqual(document.properties.first?.value, "draft")
+        XCTAssertTrue(parts.contains(.heading(source: "# 見出し", title: "見出し")))
+        XCTAssertTrue(parts.contains(.highlight("==強調==")))
+        XCTAssertTrue(parts.contains(.image("![[Other#詳細]]")))
+        XCTAssertTrue(parts.contains(.image("![図](../Assets/図.png)")))
+        XCTAssertTrue(parts.contains(.footnote(id: "注", text: "脚注の本文")))
+        let rendered = parts.compactMap { if case .markdown(let text) = $0 { return text }; return nil }.joined(separator: "\n")
+        XCTAssertTrue(rendered.contains("laabrain://note/"))
+        XCTAssertTrue(rendered.contains("laabrain://footnote/"))
+        XCTAssertTrue(rendered.contains("前 "))
+        XCTAssertTrue(rendered.contains(" 間 "))
+        XCTAssertTrue(rendered.contains(" 後"))
+        XCTAssertEqual(document.section("詳細"), "## 詳細\n本文")
+        XCTAssertEqual(LAABrainEmbedSpec.parse("![[Other#詳細|別名]]")?.anchor, "詳細")
+        XCTAssertEqual(LAABrainPaths.resolve("#見出し", currentPath: "Company/Start.md", files: files)?.path, "Company/Start.md")
+    }
+
+    func testSyncConflictNamesPointToOriginal() throws {
+        let conflict = try file("Folder/Note.sync-conflict-20261101-123456-ABCD123.md")
+        XCTAssertEqual(conflict.conflictOriginalPath, "Folder/Note.md")
+        XCTAssertNil(try file("Folder/Note.md").conflictOriginalPath)
     }
 }
 #endif

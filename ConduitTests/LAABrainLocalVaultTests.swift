@@ -41,5 +41,20 @@ final class LAABrainLocalVaultTests: XCTestCase {
         XCTAssertTrue(try LAABrainVaultIO.files(root: root).isEmpty)
         XCTAssertThrowsError(try LAABrainVaultIO.note(root: root, path: path))
     }
+
+    func testAttachmentsStayInsideVaultAndAmbiguousNamesAreRejected() throws {
+        let manager = FileManager.default
+        try manager.createDirectory(at: root.appendingPathComponent("Assets"), withIntermediateDirectories: true)
+        try Data([0, 1, 2]).write(to: root.appendingPathComponent("Assets/図.png"))
+        let relative = try LAABrainVaultIO.attachment(root: root, currentPath: "Folder/日本語.md", target: "../Assets/図.png")
+        XCTAssertEqual(relative.path, "Assets/図.png")
+        XCTAssertEqual(relative.data, Data([0, 1, 2]))
+        XCTAssertEqual(try LAABrainVaultIO.attachment(root: root, currentPath: "Folder/日本語.md", target: "図.png").path, "Assets/図.png")
+        XCTAssertThrowsError(try LAABrainVaultIO.attachment(root: root, currentPath: "Folder/日本語.md", target: "../../outside/secret.md"))
+        XCTAssertThrowsError(try LAABrainVaultIO.attachment(root: root, currentPath: "Folder/日本語.md", target: "linked/secret.md"))
+        try manager.createDirectory(at: root.appendingPathComponent("Other"), withIntermediateDirectories: true)
+        try Data([3]).write(to: root.appendingPathComponent("Other/図.png"))
+        XCTAssertThrowsError(try LAABrainVaultIO.attachment(root: root, currentPath: "Folder/日本語.md", target: "図.png"))
+    }
 }
 #endif
