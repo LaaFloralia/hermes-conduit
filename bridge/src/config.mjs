@@ -208,9 +208,6 @@ export function resolveUsageRefreshTimeoutMs(env = process.env) {
 
 // The last successful proxy payload, under the Bridge's state dir next to the
 // device and idempotency records. No credential is ever written here.
-export function resolveUsageFeedStateFile({ stateDir = resolveStateDir(), env = process.env } = {}) {
-  return resolve(env.LAA_BRIDGE_USAGE_FEED_STATE || join(stateDir, 'usage-feed.json'));
-}
 
 export function resolveStorageStatusFile(env = process.env) {
   return resolve(env.LAA_BRIDGE_STORAGE_STATUS

@@ -72,6 +72,12 @@ struct LAAUsageItem: Decodable, Identifiable {
     let expired: Bool
     let nullReason: String?
     let detail: Detail?
+    // Set locally on receipt; it is never decoded from the remote response.
+    var freshnessAnchor: Date? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, label, value, unit, source, observedAt, availability, stale, estimated, expired, nullReason, detail
+    }
 
     var availableValue: Double? { availability == "available" ? value : nil }
 
@@ -93,16 +99,18 @@ struct LAAUsageItem: Decodable, Identifiable {
 }
 
 enum LAAUsageFreshness {
-    static func isStale(_ item: LAAUsageItem, at now: Date = Date(), retained: Bool = false, failed: Bool = false) -> Bool {
-        if item.stale || retained || failed { return true }
-        guard let observed = LAAUsageItem.date(item.observedAt), observed <= now else { return true }
+    static func isStale(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
+        if item.stale { return true }
+        guard let observed = LAAUsageItem.date(item.observedAt),
+              observed <= min(item.freshnessAnchor ?? now, now).addingTimeInterval(120) else { return true }
+        let limit = min(observed, item.freshnessAnchor ?? now, now).addingTimeInterval(10 * 60)
         if item.detail?.sourceKind == "verified" { return true }
         if let raw = item.detail?.freshUntil {
             guard let deadline = LAAUsageItem.date(raw) else { return true }
-            return min(deadline, observed.addingTimeInterval(10 * 60)) <= now
+            return min(deadline, limit) <= now
         }
         // Older Bridges do not supply freshUntil, but do send observedAt and stale.
-        return observed.addingTimeInterval(10 * 60) <= now
+        return limit <= now
     }
 
     static func windowExpired(_ window: LAAUsageItem.Window, at now: Date = Date()) -> Bool {
@@ -111,7 +119,7 @@ enum LAAUsageFreshness {
 
     static func outdated(_ text: String?, at now: Date = Date()) -> Bool {
         guard let date = LAAUsageItem.date(text) else { return true }
-        return date > now || now.timeIntervalSince(date) >= 10 * 60
+        return date > now.addingTimeInterval(120) || now.timeIntervalSince(date) >= 10 * 60
     }
 
     static func extraNeedsAttention(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {

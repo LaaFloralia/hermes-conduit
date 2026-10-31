@@ -45,7 +45,6 @@ enum LAAUsageProblem: Error, Equatable {
 @MainActor
 final class LAAUsageState: ObservableObject {
     @Published private(set) var usage = LAAUsageSnapshot<[LAAUsageItem]>()
-    @Published private(set) var retainedUsageIDs: Set<String> = []
     @Published private(set) var updatedAt: Date?
     @Published private(set) var isRefreshing = false
     private var generation = 0
@@ -105,8 +104,7 @@ final class LAAUsageState: ObservableObject {
         guard bridge.status == .paired else { publish(nil); return }
         guard !Task.isCancelled, bridge.revision == revision else { return }
         if let items = usage.value {
-            publish(LAAWidgetUsageBuilder.make(items: items, retained: retainedUsageIDs,
-                                              failed: usage.error != nil, checkedAt: usage.fetchedAt))
+            publish(LAAWidgetUsageBuilder.make(items: items, receivedAt: usage.fetchedAt ?? Date()))
         } else {
             publish(nil)
         }
@@ -143,7 +141,6 @@ final class LAAUsageState: ObservableObject {
         completedGeneration = nil
         lastRefreshAttempt = nil
         usage = .init()
-        retainedUsageIDs = []
         updatedAt = nil
         return true
     }
@@ -171,7 +168,19 @@ final class LAAUsageState: ObservableObject {
         let result = await Self.capture(load)
         guard mine == generation, !Task.isCancelled else { return }
         let finished = now()
-        Self.apply(result, to: &usage, retainedIDs: &retainedUsageIDs, at: finished)
+        switch result {
+        case .success(var items):
+            var previous: [String: LAAUsageItem] = [:]
+            for item in usage.value ?? [] { previous[item.id] = item }
+            for index in items.indices {
+                let prior = previous[items[index].id]
+                items[index].freshnessAnchor = LAAUsageItem.date(prior?.observedAt) == LAAUsageItem.date(items[index].observedAt)
+                    ? (prior?.freshnessAnchor ?? finished) : finished
+            }
+            usage.apply(.success(items), at: finished)
+        case .failure(let error):
+            usage.apply(.failure(error), at: finished)
+        }
         if case .success = result { updatedAt = finished } else { updatedAt = nil }
         completedGeneration = mine
     }
@@ -181,12 +190,6 @@ final class LAAUsageState: ObservableObject {
         catch { return .failure(error) }
     }
 
-    private static func apply(_ result: Result<[LAAUsageItem], Error>,
-                       to snapshot: inout LAAUsageSnapshot<[LAAUsageItem]>,
-                       retainedIDs: inout Set<String>, at date: Date) {
-        retainedIDs = []
-        snapshot.apply(result, at: date)
-    }
 }
 
 struct LAAUsageGroup: Identifiable {
@@ -224,8 +227,7 @@ struct LAAUsageGroup: Identifiable {
 }
 
 enum LAAWidgetUsageBuilder {
-    static func make(items: [LAAUsageItem], retained: Set<String>, failed: Bool,
-                     checkedAt _: Date?) -> WidgetUsageSnapshot {
+    static func make(items: [LAAUsageItem], receivedAt: Date = Date()) -> WidgetUsageSnapshot {
         let visible = LAAUsageGroup.consoleGroups(items).flatMap(\.items)
         let meters = visible.flatMap { item -> [WidgetUsageMeter] in
             guard item.kind == "quota", item.availability == "available" else { return [] }
@@ -234,13 +236,16 @@ enum LAAWidgetUsageBuilder {
                 let observed = LAAUsageItem.date(item.observedAt)
                 let verified = item.detail?.sourceKind == "verified"
                 let rawDeadline = item.detail?.freshUntil
-                let deadline = rawDeadline == nil && !verified
-                    ? observed?.addingTimeInterval(10 * 60) : LAAUsageItem.date(rawDeadline)
+                let upstreamDeadline = LAAUsageItem.date(rawDeadline)
+                let limit = observed.map { min($0, item.freshnessAnchor ?? receivedAt, receivedAt).addingTimeInterval(10 * 60) }
+                let deadline = rawDeadline == nil && !verified ? limit : upstreamDeadline.flatMap { upstream in
+                    limit.map { min($0, upstream) }
+                }
                 return WidgetUsageMeter(id: "\(item.id).\(index)", label: "\(item.label) · \(window.label)",
                     remainingPercent: value, observedAt: observed, freshUntil: deadline,
                     resetsAt: LAAUsageItem.date(window.resetsAt),
                     stale: item.stale || (rawDeadline != nil && deadline == nil),
-                    retained: failed || retained.contains(item.id), verified: verified,
+                    retained: false, verified: verified,
                     legacyFreshness: rawDeadline == nil && !verified)
             }
         }.sorted {

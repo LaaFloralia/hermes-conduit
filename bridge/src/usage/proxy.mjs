@@ -189,9 +189,9 @@ function balanceExpired(row, now) {
   });
 }
 
-function isStale(row, feedFetchedAt, now, autoStaleMs) {
+function isStale(row, feedFetchedAt, now, autoStaleMs, receivedAt = now) {
   const observed = isoTime(row.updatedAt);
-  if (observed === null || Date.parse(observed) > now) return true;
+  if (observed === null || Date.parse(observed) > Math.min(now, receivedAt) + 120_000) return true;
   if (row.source != null && !['live', 'local', 'codexbar-cli', 'verified'].includes(row.source)) return true;
   if (row.source === 'verified') return true;
   if (row.freshUntil != null && (isoTime(row.freshUntil) === null || Date.parse(row.freshUntil) <= now)) return true;
@@ -218,7 +218,7 @@ function quotaItem(row, provider, context) {
   if (row.source === 'verified') detail.sourceKind = 'verified';
   const extraCredits = finiteNumber(row.credits?.remaining);
   const creditsTime = isoTime(row.credits?.updatedAt);
-  if (extraCredits !== null && creditsTime !== null && Date.parse(creditsTime) <= context.now &&
+  if (extraCredits !== null && creditsTime !== null && Date.parse(creditsTime) <= Math.min(context.now, context.receivedAt) + 120_000 &&
       context.now - Date.parse(creditsTime) < context.autoStaleMs) {
     detail.credits = { remaining: extraCredits, updatedAt: creditsTime };
   }
@@ -226,7 +226,7 @@ function quotaItem(row, provider, context) {
     ...baseOf(provider),
     value: binding.remainingPercent,
     observedAt: observedAtOf(row, context.fetchedAt),
-    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs),
+    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs, context.receivedAt),
     expired,
     detail,
   });
@@ -259,7 +259,7 @@ function balanceItem(row, provider, context) {
     ...base,
     value: amount,
     observedAt: observedAtOf(row, context.fetchedAt),
-    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs),
+    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs, context.receivedAt),
     expired,
     detail,
   });
@@ -286,7 +286,7 @@ function creditsItem(row, provider, context) {
     ...baseOf(provider),
     value: remaining,
     observedAt: observedAtOf(row, context.fetchedAt),
-    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs),
+    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs, context.receivedAt),
     expired,
     detail,
   });
@@ -309,7 +309,7 @@ function recordedUsageItem(row, provider, context) {
     ...baseOf(provider),
     value: round(input + output, 0),
     observedAt: observedAtOf(row, context.fetchedAt),
-    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs),
+    stale: isStale(row, context.fetchedAt, context.now, context.autoStaleMs, context.receivedAt),
     detail: {
       periodDays,
       recordedCostUsd: finiteNumber(recorded.costUsd),
@@ -355,20 +355,22 @@ function itemFromRow(row, provider, context) {
   }
 }
 
-function validateFeed(raw, now) {
+function validateFeed(raw, now, receivedAt) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new UsageFeedError('invalid_feed');
   if (raw.version !== USAGE_FEED_VERSION) throw new UsageFeedError('invalid_version');
+  if (raw.stale === true) throw new UsageFeedError('stale_feed');
   if (!Array.isArray(raw.providers) || raw.providers.length > MAX_PROVIDERS) {
     throw new UsageFeedError('invalid_providers');
   }
   const fetchedAt = isoTime(raw.fetchedAt);
   if (fetchedAt === null) throw new UsageFeedError('invalid_fetched_at');
-  if (Date.parse(fetchedAt) > now) throw new UsageFeedError('fetched_at_in_future');
+  if (Date.parse(fetchedAt) > Math.min(now, receivedAt) + 120_000) throw new UsageFeedError('fetched_at_in_future');
   return fetchedAt;
 }
 
-export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolveUsageAutoStaleMs() } = {}) {
-  const fetchedAt = validateFeed(raw, now);
+export function usageItemsFromFeed(raw, { now = Date.now(), receivedAt = now, observationAnchors = new Map(), autoStaleMs = resolveUsageAutoStaleMs() } = {}) {
+  receivedAt = Math.min(receivedAt ?? now, now);
+  const fetchedAt = validateFeed(raw, now, receivedAt);
   const byId = new Map();
   for (const entry of raw.providers) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new UsageFeedError('invalid_provider');
@@ -377,11 +379,15 @@ export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolv
     if (byId.has(provider.id)) throw new UsageFeedError('duplicate_provider');
     byId.set(provider.id, entry);
   }
-  const context = { now, fetchedAt, autoStaleMs: Math.min(autoStaleMs, 10 * 60 * 1000) };
+  const autoLimit = Math.min(autoStaleMs, 10 * 60 * 1000);
   return USAGE_PROVIDERS.map((provider) => {
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
-    if (row.available === true && isStale(row, fetchedAt, now, context.autoStaleMs)) {
+    const prior = observationAnchors.get(provider.id);
+    const rowReceivedAt = prior?.observedAt === Date.parse(row.updatedAt) ? Math.min(prior.receivedAt, receivedAt) : receivedAt;
+    const context = { now, fetchedAt, receivedAt: rowReceivedAt, autoStaleMs: autoLimit };
+    if (row.available === true && (isStale(row, fetchedAt, now, context.autoStaleMs, context.receivedAt) ||
+        now - context.receivedAt >= context.autoStaleMs)) {
       return unavailableItem({ ...baseOf(provider), reason: row.source === 'verified' ? 'not_auto' : 'fetch_failed' });
     }
     const item = itemFromRow(row, provider, context);
@@ -396,9 +402,10 @@ export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolv
     const source = row.source ?? 'live';
     if (item.availability === 'available' && ['live', 'local', 'codexbar-cli'].includes(source)) {
       const updated = isoTime(row.updatedAt);
-      if (updated !== null && Date.parse(updated) <= now) {
+      if (updated !== null && Date.parse(updated) <= Math.min(now, context.receivedAt) + 120_000) {
         item.detail ??= {};
         const deadline = Math.min(Date.parse(updated) + context.autoStaleMs, Date.parse(fetchedAt) + context.autoStaleMs,
+          context.receivedAt + context.autoStaleMs,
           row.freshUntil == null ? Infinity : Date.parse(row.freshUntil));
         item.detail.freshUntil = new Date(deadline).toISOString();
       }

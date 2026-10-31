@@ -188,7 +188,7 @@ test('projection respects provider deadlines and separately ages quota extras', 
   assert.equal(item.detail.freshUntil, '2026-10-29T05:00:30.000Z');
   assert.equal(item.detail.credits.remaining, 0);
   assert.equal(item.detail.resetPasses, undefined);
-  for (const changes of [{ updatedAt: null }, { updatedAt: '2026-10-29T05:00:01Z' },
+  for (const changes of [{ updatedAt: null }, { updatedAt: '2026-10-29T05:02:01Z' },
                          { source: 'unknown' }, { freshUntil: '2026-10-29T05:00:00Z' },
                          { freshUntil: 'bad' }, { available: undefined }]) {
     const invalid = byId(projection([{ id: 'codex', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
@@ -231,11 +231,27 @@ test('an unknown provider id is ignored and a duplicate is rejected', () => {
   ]), UsageFeedError);
 });
 
-test('a future-dated feed, missing time zone, or another version is rejected', () => {
-  for (const fetchedAt of ['2026-10-29T05:00:01Z', '2026-10-29T04:59:00']) {
+test('a feed more than 120 seconds in the future, missing time zone, or another version is rejected', () => {
+  for (const fetchedAt of ['2026-10-29T05:02:01Z', '2026-10-29T04:59:00']) {
     assert.throws(() => usageItemsFromFeed({ version: 1, fetchedAt, providers: [] }, { now: NOW }), UsageFeedError);
   }
   assert.throws(() => usageItemsFromFeed({ version: 2, fetchedAt: '2026-10-29T04:59:00Z', providers: [] }, { now: NOW }), UsageFeedError);
+});
+
+test('future tolerance anchors expiration at receipt, and an older feed always expires', () => {
+  const row = { id: 'claude', available: true, updatedAt: '2026-10-29T05:02:00Z',
+    windows: [{ label: 'Session', remaining: 42, resetsAt: null }] };
+  const feed = { version: 1, fetchedAt: row.updatedAt, providers: [row] };
+  const fresh = byId(usageItemsFromFeed(feed, { now: NOW, receivedAt: NOW }), 'provider.claude.quota');
+  assert.equal(fresh.value, 42);
+  assert.equal(Date.parse(fresh.detail.freshUntil), NOW + 600_000);
+  const aged = byId(usageItemsFromFeed(feed, { now: NOW + 600_000, receivedAt: NOW }), 'provider.claude.quota');
+  assert.equal(aged.value, null);
+  const future = { ...feed, providers: [{ ...row, updatedAt: '2026-10-29T05:02:01Z' }] };
+  assert.equal(byId(usageItemsFromFeed(future, { now: NOW }), 'provider.claude.quota').value, null);
+  assert.equal(byId(usageItemsFromFeed(future, { now: NOW + 2_000, receivedAt: NOW }), 'provider.claude.quota').value, null);
+  const oldFeed = { ...feed, fetchedAt: '2026-10-29T04:50:00Z', providers: [{ ...row, updatedAt: '2026-10-29T05:00:00Z' }] };
+  assert.equal(byId(usageItemsFromFeed(oldFeed, { now: NOW }), 'provider.claude.quota').value, null);
 });
 
 test('cost readings carry UTC periods and declared lag without inventing a watermark', () => {

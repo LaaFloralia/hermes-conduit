@@ -15,7 +15,13 @@
 | CPU・メモリ | Bridge内サンプラ、percent・bytes、10秒キャッシュ | nullと理由 |
 | Mac空き容量 | `laa-storage-guard` 状態ファイルのGB、`checked_at` | 読取失敗はnull。26時間超はstale |
 
-Claude・GPTの費用は日単位APIで取得し、区切りはUTCと明記する。`observedAt` は取得時刻であり、上流の反映済み時刻ではない。Anthropicは通常5分程度の遅れを公表、OpenAIは反映の遅れを公表していない。両者とも取得から10分未満の値だけ表示する。AnthropicのPriority Tier費用はCost APIに含まれない。根拠: [Anthropic Usage and Cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api)、[OpenAI Costs API](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs)。
+Claude・GPTの費用は日単位で、今日・今月の区切りをUTC、取得時刻を日本時間で示す。`observedAt` は取得時刻であり、上流の反映済み時刻ではない。Anthropicの従来Cost APIは現在も提供され、`amount` は米セント、反映は通常5分程度だが、個々の反映済み時刻や最大遅延は示されない。新規統合に推奨されるAnalytics APIは通常4時間、最大24時間の遅れなので、鮮度を優先して従来APIを使う。従来APIが停止すれば `fetch_failed` となり、保存済みの古い金額は表示しない。Analyticsへの移行は、遅延を受け入れる判断か上流の鮮度改善を条件とし、`data_refreshed_at` を基準にする。根拠: [Anthropic従来API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api)、[Anthropic Analytics API](https://platform.claude.com/docs/en/manage-claude/usage-cost-analytics-api)。
+
+OpenAI Costs APIの `amount.value` は返された通貨単位（USDならドル）で、反映遅延の上限は確認できない。両社の費用とも取得から10分未満に限るが、取得の鮮度は上流への反映完了を保証しない。月初から当日までの日次バケットが欠けた場合は金額を出さない。AnthropicのPriority Tier費用は従来Cost APIに含まれない。根拠: [OpenAI Costs API](https://developers.openai.com/api/reference/resources/admin/subresources/organization/subresources/usage/methods/costs)。
+
+CodexBar 0.74.0の `serve` はproviderごとのエラーを返す場合があり、proxyは `error` を持つ行を無効にする。一方、同一アカウントの一部失敗では、CodexBarがエラー行を最後の正常行そのもので置き換えるため、エラーは見えず `usage.updatedAt` もその行の時刻のままになる。proxyはその時刻を使い10分で消す。各providerの内部取得経路すべてが元の観測時刻を正しく保持することまでは未確認。値が同じことだけでは期限切れにしない。根拠: [CodexBar 0.74.0のserve実装](https://github.com/steipete/CodexBar/blob/v0.74.0/Sources/CodexBarCLI/CLIServeCommand.swift)。
+
+以前の `clef` は自動取得の数値ではなく、ローカルhealthからの「主系／予備／一時停止」という文字の接続状態だった。Usageの数値一覧には該当する表示項目がないため、今回のfeedには含めない。
 
 ## 2. 実装前の実測
 
@@ -23,17 +29,17 @@ Claude・GPTの費用は日単位APIで取得し、区切りはUTCと明記す�
 
 ## 3. 取得と保存
 
-proxyとBridgeはバックグラウンドで取得し、要求時に上流を待たない。Bridgeは一度に一つだけ取得し、成功した表示用payloadをメモリと `usage-feed.json`（0600）に保存する。失敗すればメモリを消し、ファイルも消す。再起動時は以前のファイルを読み戻さず、新しい取得の結果を待つ。期限を超えた値や失敗した値を、現在値または前回値として返さない。
+proxyとBridgeはバックグラウンドで取得し、要求時に上流を待たない。Bridgeは一度に一つだけ取得し、表示用payloadをメモリに保持する。取得失敗時は消し、再起動時も新しい取得を待つ。以前の `usage-feed.json` は読まず、更新もしない。proxyの `/health` は最終成功時刻、表示可能なprovider数、feedの期限状態を返す。
 
 ## 4. 契約
 
 `GET /v1/usage` はscope `usage:read` を要求し、`{data:{items,nextCursor},requestId}` を返す。個々のitemは `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。欠測・期限超過・失敗・手動確認のみの項目は `availability:unavailable`、`value:null`、理由を返し、数値を含むdetailを返さない。0は正常に取得した値が0の場合だけ。
 
-- 自動取得項目の期限 `detail.freshUntil` はproviderの `updatedAt` とfeedの `fetchedAt` の古い方から10分以内。provider側の期限がさらに早ければそちらを採用する。期限ちょうどから値を消す。時刻の欠落・未来・不正も取得失敗とする。
+- 自動取得項目の期限 `detail.freshUntil` はproviderの `updatedAt`、feedの `fetchedAt`、受信時刻の最も早い時刻から10分以内。provider側の期限がさらに早ければそちらを採用する。期限ちょうどから値を消す。時計差のため未来120秒まで許容し、期限の起点は受信時刻を超えない。時刻の欠落・120秒超の未来・不正は取得失敗とする。
 - `verified` や手動確認だけの値は自動取得なしとし、数値を返さない。quotaのいずれかのresetが経過した場合も値を消す。付帯クレジットの取得時刻は別に評価する。手動reset passは返さない。
 - API費用のIDは `provider.openai-api.cost-today` / `cost-month`、`provider.claude-api.cost-today` / `cost-month`。`detail.periodTimezone` は `UTC`、`detail.sourceLag` はAnthropic `typical-5m`、OpenAI `undisclosed`。反映済み時刻を推測して作らない。
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
-- 古いBridgeの応答に `freshUntil` がない場合、アプリは `observedAt + 10分` を上限にする。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
+- 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
 `GET /v1/mac/status` は従来どおり `host.cpu`・`host.memory`・`host.disk` を返す。usageと別のホスト状態であり、diskの26時間判定を変更しない。
 
@@ -50,8 +56,10 @@ Tailscaleは輸送であり認証の代替ではない。
 
 ## 6. 統合時の確認事項
 
-各管理者キーの設定とサービス再起動は統合担当が行う。falの鍵権限とVenice実環境の失敗原因は別途確認中。WidgetKitのタイムラインは期限に数値なしへ切り替えるよう指定するが、実際の切替時刻はOSに管理される。アプリ配信・実機での切替は別途確認する。
+各管理者キーの設定とサービス再起動は統合担当が行う。falの鍵権限とVenice実環境の失敗原因は別途確認中。WidgetKitのタイムラインは期限に数値なしへ切り替えるよう指定し、遅れて再描画された場合も描画時刻で判定する。ただしOSが期限エントリーの表示や再描画を遅らせ、既存の描画を画面に残している間は数値が残りうる。アプリ配信・実機での切替は別途確認する。
+
+SwiftBarは毎分feedの期限を判定するが、MacのスリープやSwiftBar停止中は最後の描画が残りうる。LAA版への更新前に置かれた上流Workspaceウィジェットの表示、各サイズとロック画面からの遷移はシミュレーター枠待ちで未確認。
 
 ## 7. 検証
 
-proxyはfixtureで10分境界、失敗・部分ページ・手動値・金額とページングを検証する。Bridgeは `npm test` で期限とreset、数値の欠落、背景取得、再起動、認証、HTTP応答を検証する。実接続・鍵権限・iOS実機の表示はfixture試験と区別する。
+proxyはfixtureで10分境界、失敗・部分ページ・手動値・金額とページングを検証する。Bridgeは `npm test` で期限とreset、数値の欠落、背景取得、再起動、認証、HTTP応答を検証する。`python3 scripts/laa/test-widget-bundle-registration.py` はLAA版と上流版の登録を検証する。実接続・鍵権限・iOS実機の表示はfixture試験と区別する。

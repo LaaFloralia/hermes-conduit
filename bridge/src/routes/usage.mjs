@@ -14,7 +14,6 @@
 import {
   resolveStorageStatusFile,
   resolveUsageAutoStaleMs,
-  resolveUsageFeedStateFile,
   resolveUsageFeedUrl,
   resolveUsageRefreshTimeoutMs,
 } from '../config.mjs';
@@ -31,8 +30,6 @@ export function usageRoutes({
   feedUrl,
   fetcher,
   refreshTimeoutMs,
-  feedStateFile,
-  stateDir,
   autoStaleMs,
   sampler,
   storageStatusFile,
@@ -44,7 +41,6 @@ export function usageRoutes({
   const host = sampler ?? createHostSampler({ now });
   const statusFile = storageStatusFile ?? resolveStorageStatusFile();
   const feedSource = createUsageFeedSource({
-    file: feedStateFile ?? resolveUsageFeedStateFile({ stateDir }),
     url,
     fetcher,
     refreshTimeoutMs: refreshTimeoutMs ?? resolveUsageRefreshTimeoutMs(),
@@ -54,14 +50,14 @@ export function usageRoutes({
 
   async function usage() {
     let items;
-    const { feed } = await feedSource.read();
+    const { feed, receivedAt, observationAnchors } = await feedSource.read();
     if (feed === null) {
       // The reason the feed was unusable stays internal: the app only needs to
       // know that these readings are not available.
       items = unavailableUsageItems('fetch_failed');
     } else {
       try {
-        items = usageItemsFromFeed(feed, { now: now(), autoStaleMs: staleMs });
+        items = usageItemsFromFeed(feed, { now: now(), receivedAt, observationAnchors, autoStaleMs: staleMs });
       } catch {
         // A malformed or future-dated payload is discarded whole (USAGE.md §4),
         // including a snapshot that only passed the lighter reload check.

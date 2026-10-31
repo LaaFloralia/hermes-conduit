@@ -169,11 +169,13 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         self.legacyFreshness = legacyFreshness
     }
 
-    func isPast(at date: Date) -> Bool {
-        guard !stale, !retained, let observedAt, observedAt <= date else { return true }
+    func isPast(at date: Date, anchor: Date? = nil) -> Bool {
+        guard !stale, !retained, let observedAt,
+              observedAt <= min(anchor ?? date, date).addingTimeInterval(120) else { return true }
         if resetsAt.map({ $0 <= date }) == true { return true }
         if verified == true { return true }
-        return min(freshUntil ?? observedAt.addingTimeInterval(10 * 60), observedAt.addingTimeInterval(10 * 60)) <= date
+        let limit = min(observedAt, anchor ?? date, date).addingTimeInterval(10 * 60)
+        return min(freshUntil ?? limit, limit) <= date
     }
 }
 

@@ -1,40 +1,9 @@
 // Background collection keeps requests nonblocking. A failed latest read clears
 // the cache; a previous process's snapshot is never treated as a fresh read.
 
-import {
-  closeSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  unlinkSync,
-  writeSync,
-} from 'node:fs';
-import { dirname } from 'node:path';
 import { readUsageFeed } from './proxy.mjs';
 
-export const USAGE_SNAPSHOT_SCHEMA = 1;
-const MAX_SNAPSHOT_BYTES = 512 * 1024;
-
-// Exported for tests: the on-disk format in one place.
-export function writeUsageSnapshot(file, feed, { now = () => Date.now() } = {}) {
-  const body = `${JSON.stringify({ schema: USAGE_SNAPSHOT_SCHEMA, capturedAt: new Date(now()).toISOString(), feed }, null, 2)}\n`;
-  if (Buffer.byteLength(body, 'utf8') > MAX_SNAPSHOT_BYTES) return false;
-  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
-  const fd = openSync(tmp, 'wx', 0o600);
-  try {
-    writeSync(fd, body, 0, 'utf8');
-    fsyncSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-  renameSync(tmp, file);
-  return true;
-}
-
 export function createUsageFeedSource({
-  file,
   url,
   fetcher,
   refreshTimeoutMs = 30000,
@@ -44,6 +13,8 @@ export function createUsageFeedSource({
   // A persisted last-good sample cannot establish whether the last attempt
   // failed before a restart. Start empty and only trust this process's reads.
   let cached = null;
+  let receivedAt = null;
+  const observationAnchors = new Map();
   let inflight = null;
   let closed = false;
   const controller = new AbortController();
@@ -55,8 +26,18 @@ export function createUsageFeedSource({
       .then((feed) => {
         if (closed) return null;
         cached = feed;
-        if (file !== undefined) {
-          try { writeUsageSnapshot(file, feed, { now }); } catch { /* memory remains usable */ }
+        receivedAt = now();
+        for (const [id, anchor] of observationAnchors) {
+          if (receivedAt - anchor.receivedAt >= 720_000) observationAnchors.delete(id);
+        }
+        for (const row of Array.isArray(feed.providers) ? feed.providers : []) {
+          if (!row || typeof row.id !== 'string' || typeof row.updatedAt !== 'string') continue;
+          const observedAt = Date.parse(row.updatedAt);
+          if (!Number.isFinite(observedAt)) continue;
+          const prior = observationAnchors.get(row.id);
+          if (!prior || prior.observedAt !== observedAt) {
+            observationAnchors.set(row.id, { observedAt, receivedAt });
+          }
         }
         return feed;
       })
@@ -64,9 +45,7 @@ export function createUsageFeedSource({
         if (closed) return null;
         // A failed latest attempt invalidates the old value immediately.
         cached = null;
-        if (file !== undefined) {
-          try { unlinkSync(file); } catch { /* absent or unwritable */ }
-        }
+        receivedAt = null;
         return null;
       })
       .finally(() => { if (inflight === run) inflight = null; });
@@ -79,8 +58,7 @@ export function createUsageFeedSource({
   const timer = setInterval(startRefresh, refreshIntervalMs);
   timer.unref?.();
   return {
-    file,
-    read: async () => ({ feed: cached, lastGood: false }),
+    read: async () => ({ feed: cached, lastGood: false, receivedAt, observationAnchors: new Map(observationAnchors) }),
     refresh: startRefresh,
     close: () => { closed = true; controller.abort(); clearInterval(timer); },
     snapshot: () => cached,

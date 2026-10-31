@@ -7,6 +7,26 @@ import XCTest
 
 @MainActor
 final class LAAUsageWidgetSnapshotTests: XCTestCase {
+    func testLateRenderingOfEarlierEntryNeverShowsItsExpiredNumber() {
+        let observed = Date(timeIntervalSince1970: 1_000)
+        let meter = WidgetUsageMeter(id: "late", label: "Claude", remainingPercent: 42,
+            observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
+        XCTAssertFalse(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(599)))
+        XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)))
+        XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed.addingTimeInterval(600), renderedAt: observed))
+        let future = WidgetUsageMeter(id: "future", label: "Claude", remainingPercent: 42,
+            observedAt: observed.addingTimeInterval(121), freshUntil: nil, resetsAt: nil, stale: false, retained: false)
+        XCTAssertTrue(LAAEmployeeWidgetView.isPast(future, entryDate: observed, renderedAt: observed.addingTimeInterval(2)))
+    }
+
+    func testLateEntryRendersLikeExpiredTimelineEntry() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        let fresh = try capture(style: .light, mode: .fullColor, name: "medium-before-expiry", now: now)
+        let late = try capture(style: .light, mode: .fullColor, name: "medium-late-draw", now: now, renderedAtOffset: 600)
+        let expired = try capture(style: .light, mode: .fullColor, name: "medium-expiry-entry", expired: true, now: now, renderedAtOffset: 600)
+        XCTAssertNotEqual(late, fresh)
+        XCTAssertEqual(late, expired)
+    }
     func testMediumLightDarkAndTinted() throws {
         try capture(style: .light, mode: .fullColor, name: "medium-light")
         try capture(style: .dark, mode: .fullColor, name: "medium-dark")
@@ -102,7 +122,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
                          stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,
                          dynamicTypeSize: DynamicTypeSize = .large,
-                         checkedAtOffset: TimeInterval = 0, now: Date = Date()) throws -> Data {
+                         checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0) throws -> Data {
         let meters = [("Claude · Session", 12.0), ("Codex · Weekly", 35.0), ("OpenCode · 5h", 72.0)]
             .enumerated().map { index, pair in
                 WidgetUsageMeter(id: "\(index)", label: pair.0, remainingPercent: pair.1,
@@ -114,7 +134,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(unset ? nil : usage)
         let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot,
                                                 date: expired ? now.addingTimeInterval(600) : now)
-        let screen = LAAEmployeeWidgetView(entry: entry, familyOverride: .systemMedium, renderingModeOverride: mode)
+        let screen = LAAEmployeeWidgetView(entry: entry, familyOverride: .systemMedium, renderingModeOverride: mode, renderedAtOverride: now.addingTimeInterval(renderedAtOffset))
             .frame(width: 360, height: 169)
             .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
             .preferredColorScheme(style == .dark ? .dark : .light)

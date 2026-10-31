@@ -6,6 +6,25 @@ import XCTest
 
 @MainActor
 final class LAAUsageViewSnapshotTests: XCTestCase {
+    func testUnavailableReasonsAndBillingLink() async throws {
+        let rows: [[String: Any]] = [
+            ["id": "provider.jev.balance", "kind": "balance", "label": "Jev", "nullReason": "not_auto"],
+            ["id": "provider.openai-api.cost-today", "kind": "cost", "label": "GPT API", "nullReason": "not_configured"],
+            ["id": "provider.claude-api.cost-today", "kind": "cost", "label": "Claude API", "nullReason": "freshness_unknown"]
+        ].map { row in
+            row.merging(["value": NSNull(), "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": NSNull(),
+                         "availability": "unavailable", "stale": false, "estimated": false, "expired": false]) { original, _ in original }
+        }
+        let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
+        XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません"])
+        XCTAssertEqual(LAAUsageView.billingURL(items[0])?.absoluteString, "https://app.typesafe.ai/")
+        XCTAssertNil(LAAUsageView.billingURL(items[1]))
+        let state = LAAUsageState()
+        await state.refreshUsage { items }
+        try capture(state: state, paired: true, style: .light, name: "usage-unavailable-reasons-light")
+        try capture(state: state, paired: true, style: .dark, name: "usage-unavailable-reasons-dark")
+    }
+
     func testUsageStatesLightAndDark() async throws {
         for name in ["normal", "empty", "error", "offline", "unpaired", "stale", "balance", "extras", "cost"] {
             for style in [UIUserInterfaceStyle.light, .dark] {

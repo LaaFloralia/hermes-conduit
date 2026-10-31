@@ -40,14 +40,12 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertNil(state.updatedAt)
         XCTAssertEqual(state.usage.error, .bridge(.networkUnreachable))
         await state.refreshUsage({ [try self.unavailable()] }, now: { later })
-        XCTAssertTrue(state.retainedUsageIDs.isEmpty)
         XCTAssertNil(state.usage.value?.first?.value)
         XCTAssertEqual(state.usage.fetchedAt, later)
         XCTAssertEqual(state.updatedAt, later)
         await state.refreshUsage({ [] }, now: { later })
         XCTAssertEqual(state.usage.value?.count, 0)
         XCTAssertNil(state.usage.error)
-        XCTAssertTrue(state.retainedUsageIDs.isEmpty)
         XCTAssertEqual(state.updatedAt, later)
     }
 
@@ -190,8 +188,9 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: at))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: deadline))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: later))
-        XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: at, retained: true))
-        XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: at, failed: true))
+        let observed = try XCTUnwrap(LAAUsageItem.date(reading.observedAt))
+        XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-120)))
+        XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-121)))
         let verified = try item("""
         {"id":"provider.fal.balance","kind":"balance","label":"fal","value":1,"unit":"usd",
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
@@ -199,6 +198,22 @@ final class LAAUsageStateTests: XCTestCase {
         """)
         XCTAssertTrue(LAAUsageFreshness.isStale(verified, at: at))
         XCTAssertTrue(LAAUsageFreshness.isStale(verified, at: at.addingTimeInterval(-3600)))
+    }
+
+    func testRepeatedFutureDatedLegacyReadingDoesNotExtendDeadline() async throws {
+        let reading = try quota()
+        let observed = try XCTUnwrap(LAAUsageItem.date(reading.observedAt))
+        let firstReceipt = observed.addingTimeInterval(-120)
+        let secondReceipt = observed.addingTimeInterval(-60)
+        let state = LAAUsageState(widgetStore: nil)
+        await state.refreshUsage({ [reading] }, now: { firstReceipt })
+        await state.refreshUsage({ [reading] }, now: { secondReceipt })
+        let cached = try XCTUnwrap(state.usage.value?.first)
+        XCTAssertEqual(cached.freshnessAnchor, firstReceipt)
+        XCTAssertFalse(LAAUsageFreshness.isStale(cached, at: firstReceipt.addingTimeInterval(599)))
+        XCTAssertTrue(LAAUsageFreshness.isStale(cached, at: firstReceipt.addingTimeInterval(600)))
+        let widget = LAAWidgetUsageBuilder.make(items: [cached], receivedAt: secondReceipt)
+        XCTAssertEqual(widget.meters.first?.freshUntil, firstReceipt.addingTimeInterval(600))
     }
 
     func testWindowExpirationAndExtraCreditFreshnessAreIndependent() throws {
