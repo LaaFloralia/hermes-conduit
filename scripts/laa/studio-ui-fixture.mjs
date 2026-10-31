@@ -11,12 +11,15 @@ const requestId = '0f6b1c2e-6f1a-4c55-9d43-0d5f6f3b8a11';
 const approvalId = '5e2c1c2e-6f1a-4c55-9d43-0d5f6f3b8a11';
 const stamp = '2026-10-31T09:00:00Z';
 const project = { id: projectId, title: 'サービス紹介資料', revision: 3, pages: [{ id: 'page1', name: 'Cover' }], assets: [], syncedAt: stamp };
-const sha = 'a'.repeat(64);
-const media = `/api/studio/media/${projectId}/${sha}.png`;
+const imageKey = 'a'.repeat(64);
+const rotatedImageKey = 'd'.repeat(64);
+const media = `/api/studio/media/${projectId}/${imageKey}.png`;
 const v2Project = { ...project, pages: [{ id: 'page1', name: 'Cover', preview: media }],
   assets: [{ id: 'model1', name: 'Example model', kind: 'model', preparing: true }] };
 const versions = [
-  { id: sha, revision: 3, kind: 'image', name: 'Example.png', createdAt: stamp, bytes: 70, media },
+  { id: '6'.repeat(64), revision: 3, kind: 'video', name: 'Example.mp4', createdAt: stamp, bytes: 321,
+    media: `/api/studio/media/${projectId}/${'6'.repeat(64)}.mp4` },
+  { id: imageKey, revision: 3, kind: 'image', name: 'Example.png', createdAt: stamp, bytes: 70, media },
   { id: 'b'.repeat(64), revision: 2, kind: 'other', name: 'Website.zip', createdAt: stamp, bytes: 1024, unavailable: 'unsupported_format' },
 ];
 const catalog = { etag: 'c'.repeat(64), updatedAt: stamp,
@@ -103,10 +106,15 @@ export function createStudioUIFixture() {
         return;
       }
       if (req.url === `/v1/studio/projects/${projectId}` && req.method === 'GET') {
-        ok(res, 200, { project: v2Project, versions, delivery: { driveUrl: 'https://drive.google.com/file/d/1234567890/view', revision: 2 },
+        const currentVersions = mode === 'v2-rotated' ? versions.map((version) => version.id === imageKey
+          ? { ...version, id: rotatedImageKey, media: `/api/studio/media/${projectId}/${rotatedImageKey}.png` } : version) : versions;
+        ok(res, 200, { project: v2Project, versions: currentVersions, delivery: { driveUrl: 'https://drive.google.com/file/d/1234567890/view', revision: 2 },
           reviews: [...reviews.values()].reverse() }); return;
       }
-      if (req.url === `/v1/studio/media/${projectId}/${sha}.png` && req.method === 'GET') {
+      if ([imageKey, rotatedImageKey].some((key) => req.url === `/v1/studio/media/${projectId}/${key}.png`) && req.method === 'GET') {
+        if (mode === 'v2-rotated' && req.url === `/v1/studio/media/${projectId}/${imageKey}.png`) {
+          fail(res, 404, 'studio_media_not_found'); return;
+        }
         const match = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
         if (!match || Number(match[1]) >= png.length) { res.writeHead(416, { 'content-range': `bytes */${png.length}` }); res.end(); return; }
         const start = Number(match[1]), end = Math.min(Number(match[2]), png.length - 1);
@@ -124,6 +132,9 @@ export function createStudioUIFixture() {
         const comparable = (value) => JSON.stringify([value.projectId, value.revision, value.target, value.verdict ?? null, value.comment ?? null]);
         if (previous && comparable(previous) !== comparable(body)) {
           release(ledger, reservation); fail(res, 409, 'studio_review_id_conflict'); return;
+        }
+        if (!previous && mode === 'v2-rotated' && body.target.kind === 'version' && body.target.id === imageKey) {
+          release(ledger, reservation); fail(res, 404, 'studio_review_target_missing'); return;
         }
         const saved = previous ?? { ...body, createdAt: stamp };
         reviews.set(body.id, saved);

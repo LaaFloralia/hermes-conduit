@@ -13,13 +13,13 @@ import { startBridge } from './helpers.mjs';
 
 const mib = 1024 * 1024;
 const projectId = '70175325-5cf4-421f-8a6f-95beae8fca92';
-const digest = 'a'.repeat(64);
+const versionKey = 'a'.repeat(64);
 const tag = `"${'b'.repeat(64)}"`;
 const token = 'c'.repeat(64);
 const now = '2026-11-01T03:00:00.000Z';
 const project = { id: projectId, title: 'Fixture', revision: 7, pages: [{ id: 'page1', name: 'Cover' }], assets: [] };
 const catalog = { etag: 'b'.repeat(64), updatedAt: now, principles: [], adoptedPrincipleId: null,
-  documents: [{ id: 'doc1', title: 'Fixture', media: `/api/studio/media/catalog/${digest}.pdf` },
+  documents: [{ id: 'doc1', title: 'Fixture', media: `/api/studio/media/catalog/${versionKey}.pdf` },
     { id: 'doc2', title: 'Unavailable fixture', driveUrl: 'https://drive.google.com/file/d/1234567890/view', unavailable: 'source_unreadable' }],
   capabilities: [], brief: [] };
 const pdf = (() => {
@@ -38,10 +38,14 @@ const pdf = (() => {
   body += `trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(body);
 })();
-const pdfDigest = createHash('sha256').update(pdf).digest('hex');
+// Opaque keys deliberately differ from the bytes' SHA-256.
+const pdfKey = '9'.repeat(64);
+const nextPdfKey = '8'.repeat(64);
+assert.notEqual(pdfKey, createHash('sha256').update(pdf).digest('hex'));
+assert.notEqual(nextPdfKey, createHash('sha256').update(pdf).digest('hex'));
 const detail = { project, versions: [
-  { id: digest, revision: 7, kind: 'video', name: 'preview.mp4', createdAt: now, bytes: 200 * mib,
-    media: `/api/studio/media/${projectId}/${digest}.mp4`, previewOnly: true },
+  { id: versionKey, revision: 7, kind: 'video', name: 'preview.mp4', createdAt: now, bytes: 200 * mib,
+    media: `/api/studio/media/${projectId}/${versionKey}.mp4`, previewOnly: true },
   { id: 'd'.repeat(64), revision: 7, kind: 'other', name: 'bundle.zip', createdAt: now, bytes: 12, unavailable: 'unsupported_format' },
   { id: 'e'.repeat(64), revision: 7, kind: 'model', name: 'model.glb', createdAt: now, bytes: 12, preparing: true },
 ], delivery: null, reviews: [] };
@@ -54,7 +58,8 @@ const response = (res, status, data) => {
 describe('Studio v2 mock socket contract', () => {
   let dir, socket, server, bridge, readToken, writeToken, allToken, clock = 1_000_000;
   const state = { reviews: new Map(), calls: [], forcedError: null, dropReviewResponse: false, v2: true, closedStream: false,
-    catalog, catalogTag: tag, catalogFault: null, catalogDelayMs: 0, projectDelayMs: 0, snapshotDelayMs: 0 };
+    catalog, catalogTag: tag, catalogFault: null, catalogDelayMs: 0, projectDelayMs: 0, snapshotDelayMs: 0,
+    detail, retiredVersion: null, retiredPdfKey: null };
 
   before(async () => {
     dir = mkdtempSync(join(tmpdir(), 'laa-studio-v2-'));
@@ -80,7 +85,7 @@ describe('Studio v2 mock socket contract', () => {
       }
       if (req.url === `/api/studio/projects/${projectId}`) {
         if (state.projectDelayMs) await new Promise((resolve) => setTimeout(resolve, state.projectDelayMs));
-        if (!res.destroyed) return response(res, 200, detail);
+        if (!res.destroyed) return response(res, 200, state.detail);
         return;
       }
       if (req.url?.startsWith('/api/studio/projects/')) return response(res, 404, { error: 'studio_project_missing' });
@@ -95,6 +100,10 @@ describe('Studio v2 mock socket contract', () => {
           if (!isDeepStrictEqual(prior, review)) return response(res, 409, { error: 'studio_review_id_conflict' });
           return response(res, 200, existing);
         }
+        if (review.target.kind === 'version' && review.target.id === state.retiredVersion) {
+          return response(res, 404, { error: 'studio_review_target_missing' });
+        }
+        if (review.revision > project.revision) return response(res, 409, { error: 'studio_revision_unknown' });
         const record = { ...review, createdAt: now };
         state.reviews.set(review.id, record);
         if (state.dropReviewResponse) { state.dropReviewResponse = false; return req.socket.destroy(); }
@@ -102,9 +111,10 @@ describe('Studio v2 mock socket contract', () => {
       }
       const media = /^\/api\/studio\/media\/([\w-]+)\/([a-f0-9]{64})\.(mp4|mp3|pdf|usdz)$/.exec(req.url ?? '');
       if (media) {
-        const [, , hash, ext] = media;
+        const [, , mediaKey, ext] = media;
         const type = { mp4: 'video/mp4', mp3: 'audio/mpeg', pdf: 'application/pdf', usdz: 'model/vnd.usdz+zip' }[ext];
-        if (ext === 'pdf' && hash === pdfDigest) {
+        if (ext === 'pdf' && mediaKey === state.retiredPdfKey) return response(res, 404, { error: 'not_found' });
+        if (ext === 'pdf' && [pdfKey, nextPdfKey].includes(mediaKey)) {
           const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
           if (req.headers.range && (!range || Number(range[1]) >= pdf.length || (range[2] && Number(range[2]) < Number(range[1])))) {
             res.writeHead(416, { 'content-range': `bytes */${pdf.length}` }); return res.end();
@@ -116,15 +126,15 @@ describe('Studio v2 mock socket contract', () => {
           return res.end(pdf.subarray(start, end + 1));
         }
         const limit = (ext === 'mp4' || ext === 'mp3' ? 256 : 128) * mib;
-        const total = hash.startsWith('f') ? limit + 1 : limit;
-        if (hash.startsWith('e')) {
+        const total = mediaKey.startsWith('f') ? limit + 1 : limit;
+        if (mediaKey.startsWith('e')) {
           res.writeHead(200, { 'content-type': type, 'content-length': 1024 * 1024 });
           res.write(Buffer.alloc(1024));
           res.on('close', () => { state.closedStream = true; });
           return;
         }
         if (req.headers.range === 'bytes=999999999-') { res.writeHead(416, { 'content-range': `bytes */${total}` }); return res.end(); }
-        const range = hash.startsWith('d') ? `bytes 0-4/${total}` : `bytes 0-3/${total}`;
+        const range = mediaKey.startsWith('d') ? `bytes 0-4/${total}` : `bytes 0-3/${total}`;
         res.writeHead(206, { 'content-type': type, 'content-length': 4, 'content-range': range, 'accept-ranges': 'bytes' });
         return res.end('abcd');
       }
@@ -185,7 +195,7 @@ describe('Studio v2 mock socket contract', () => {
 
       state.catalogTag = newTag;
       state.catalog = { ...catalog, etag: 'c'.repeat(64), documents: documents.map((document) => ({
-        ...document, media: `/api/studio/media/catalog/${pdfDigest}.pdf`, bytes: pdf.length,
+        ...document, media: `/api/studio/media/catalog/${pdfKey}.pdf`, bytes: pdf.length,
       })) };
       const updated = await bridge.request('/v1/studio/catalog', { token: readToken, headers: { 'if-none-match': tag } });
       assert.equal(state.calls.at(-1).ifNoneMatch, tag);
@@ -283,7 +293,7 @@ describe('Studio v2 mock socket contract', () => {
   });
 
   it('handles concurrent and lost-response retries using the same review UUID', async () => {
-    const input = { id: randomUUID(), projectId, revision: 7, target: { kind: 'version', id: digest }, comment: 'Fixture review' };
+    const input = { id: randomUUID(), projectId, revision: 7, target: { kind: 'version', id: versionKey }, comment: 'Fixture review' };
     const post = (body, key) => bridge.request('/v1/studio/reviews', { method: 'POST', token: allToken, key, body });
     const concurrent = await Promise.all([post(input, randomUUID()), post(input, randomUUID())]);
     assert.deepEqual(concurrent.map((entry) => entry.status).sort(), [200, 201]);
@@ -300,6 +310,61 @@ describe('Studio v2 mock socket contract', () => {
     assert.equal(state.reviews.size, 3);
   });
 
+  it('treats changed version and media keys as opaque while preserving review outcomes', async () => {
+    const nextVersion = '7'.repeat(64);
+    const input = { id: randomUUID(), projectId, revision: 7, target: { kind: 'version', id: versionKey }, comment: 'Original version' };
+    const post = (body) => bridge.request('/v1/studio/reviews', { method: 'POST', token: allToken, key: randomUUID(), body });
+    const headers = { authorization: `Bearer ${readToken}` };
+    const oldPath = `/v1/studio/media/catalog/${pdfKey}.pdf`;
+    const nextPath = `/v1/studio/media/catalog/${nextPdfKey}.pdf`;
+    try {
+      const saved = await post(input);
+      assert.equal(saved.status, 201);
+      const firstMedia = await fetch(bridge.base + oldPath, { headers });
+      assert.equal(firstMedia.status, 200);
+      assert.deepEqual(Buffer.from(await firstMedia.arrayBuffer()), pdf);
+
+      state.retiredVersion = versionKey;
+      state.retiredPdfKey = pdfKey;
+      state.detail = { ...detail, versions: [{ ...detail.versions[0], id: nextVersion,
+        media: `/api/studio/media/${projectId}/${nextVersion}.mp4` }, ...detail.versions.slice(1)] };
+      state.catalogTag = `"${'c'.repeat(64)}"`;
+      state.catalog = { ...catalog, etag: 'c'.repeat(64), documents: [{ ...catalog.documents[0], media: `/api/studio/media/catalog/${nextPdfKey}.pdf` }] };
+
+      const refreshed = await bridge.request('/v1/studio/catalog', { token: readToken, headers: { 'if-none-match': tag } });
+      assert.equal(refreshed.status, 200);
+      assert.equal(refreshed.body.data.documents[0].media, `/api/studio/media/catalog/${nextPdfKey}.pdf`);
+      assert.equal((await bridge.request('/v1/studio/catalog', { token: readToken, headers: { 'if-none-match': state.catalogTag } })).status, 304);
+      assert.equal((await fetch(bridge.base + oldPath, { headers })).status, 404);
+      const nextMedia = await fetch(bridge.base + nextPath, { headers });
+      assert.equal(nextMedia.status, 200);
+      assert.deepEqual(Buffer.from(await nextMedia.arrayBuffer()), pdf);
+      const work = await bridge.request(`/v1/studio/projects/${projectId}`, { token: readToken });
+      assert.equal(work.body.data.versions[0].id, nextVersion);
+      assert.equal(Object.hasOwn(work.body.data.versions[0], 'width'), false);
+      assert.equal(Object.hasOwn(work.body.data.versions[0], 'height'), false);
+      assert.equal(Object.hasOwn(work.body.data.versions[0], 'duration'), false);
+
+      const replay = await post(input);
+      assert.equal(replay.status, 200);
+      assert.deepEqual(replay.body.data, saved.body.data);
+      const missing = await post({ ...input, id: randomUUID() });
+      assert.equal(missing.status, 404);
+      assert.equal(missing.body.error.code, 'studio_review_target_missing');
+      const conflict = await post({ ...input, target: { kind: 'version', id: nextVersion } });
+      assert.equal(conflict.status, 409);
+      assert.equal(conflict.body.error.code, 'studio_review_id_conflict');
+      const future = await post({ ...input, id: randomUUID(), revision: 8, target: { kind: 'version', id: nextVersion } });
+      assert.equal(future.status, 409);
+      assert.equal(future.body.error.code, 'studio_revision_unknown');
+      const retargeted = await post({ ...input, id: randomUUID(), target: { kind: 'version', id: nextVersion } });
+      assert.equal(retargeted.status, 201);
+    } finally {
+      state.detail = detail; state.retiredVersion = null; state.retiredPdfKey = null;
+      state.catalog = catalog; state.catalogTag = tag;
+    }
+  });
+
   it('preserves Studio v2 error codes', async () => {
     const input = { id: randomUUID(), projectId, revision: 7, target: { kind: 'project' }, comment: 'Fixture' };
     for (const [status, code] of [[404, 'studio_project_missing'], [404, 'studio_review_target_missing'],
@@ -314,7 +379,7 @@ describe('Studio v2 mock socket contract', () => {
 
   it('streams PDF, USDZ, and large converted media with exact ranges and limits', async () => {
     for (const [ext, total] of [['mp4', 256 * mib], ['mp3', 256 * mib], ['pdf', 128 * mib], ['usdz', 128 * mib]]) {
-      const path = `/v1/studio/media/${projectId}/${digest}.${ext}`;
+      const path = `/v1/studio/media/${projectId}/${versionKey}.${ext}`;
       const result = await fetch(bridge.base + path, { headers: { authorization: `Bearer ${readToken}`, range: 'bytes=0-3' } });
       assert.equal(result.status, 206);
       assert.equal(result.headers.get('content-range'), `bytes 0-3/${total}`);
@@ -332,7 +397,7 @@ describe('Studio v2 mock socket contract', () => {
   });
 
   it('serves catalog PDF bytes with 200, 206, and out-of-range 416', async () => {
-    const path = `/v1/studio/media/catalog/${pdfDigest}.pdf`;
+    const path = `/v1/studio/media/catalog/${pdfKey}.pdf`;
     const headers = { authorization: `Bearer ${readToken}` };
     const full = await fetch(bridge.base + path, { headers });
     assert.equal(full.status, 200);

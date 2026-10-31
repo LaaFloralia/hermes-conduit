@@ -74,7 +74,7 @@ laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済
 | `GET /v1/studio/request-id` | Bearer + `studio:request` | Bridgeが作った依頼・講評用のUUID（送信前に下書きへ保存） |
 | `POST /v1/studio/requests`、`POST /v1/studio/action` | Bearer + `studio:request` + `Idempotency-Key` | 受付202／操作200。Studio契約の衝突・受付停止の理由を返す |
 | `POST /v1/studio/reviews` | Bearer + `studio:request` + `Idempotency-Key` | v2講評。初回201、同じ記録の再送200 |
-| `GET|HEAD /v1/studio/media/{projectId}/{sha256}.{ext}` | Bearer + `studio:read` | Range 206・範囲外416。mp4・mp3は最大256 MiB、他の許可形式は最大128 MiB |
+| `GET|HEAD /v1/studio/media/{projectId}/{mediaKey}.{ext}` | Bearer + `studio:read` | 64桁のキーは不透明な識別子として転送する。Range 206・範囲外416。mp4・mp3は最大256 MiB、他の許可形式は最大128 MiB |
 | `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |

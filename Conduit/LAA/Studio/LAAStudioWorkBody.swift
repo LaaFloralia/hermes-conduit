@@ -53,6 +53,8 @@ struct LAAStudioWorkBody: View {
     @State private var error: String?
     @State private var search = ""
     @State private var filter = LAAStudioFilter.all
+    @State private var displacedDrafts: [LAAStudioReviewStore.DisplacedDraft] = []
+    @State private var draftStorageError = false
     private var activeSnapshot: LAAStudioSnapshot? { snapshot ?? fetchedSnapshot }
     private var current: LAAStudioProject { detail?.project ?? project }
     private var driveURL: String? { detail == nil ? current.driveUrl : detail?.delivery?.driveUrl }
@@ -91,6 +93,10 @@ struct LAAStudioWorkBody: View {
                     Button { Task { await load() } } label: { Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget) }
                 }
                 if loading { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+                if draftStorageError {
+                    Text(verbatim: "一部の講評下書きを読み書きできません。内容を保持しています。")
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                }
                 delivery
                 if let detail, let snapshot = activeSnapshot {
                     NavigationLink {
@@ -110,6 +116,24 @@ struct LAAStudioWorkBody: View {
                     Text(verbatim: "新しい版から最大50件を表示します。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if versions.isEmpty { Text(verbatim: "取得した範囲に書き出しはありません。").foregroundStyle(LAAColor.secondaryText) }
                     ForEach(Array(versions.enumerated()), id: \.element.id) { index, item in itemLink(item, index: index, items: versions) }
+                    if !displacedDrafts.isEmpty, let snapshot = activeSnapshot {
+                        Text(verbatim: "一覧にない版の講評下書き").laaTextStyle(.section).fontWeight(.semibold)
+                        Text(verbatim: "対象の版は最新50件に含まれていません。内容を確認し、必要ならコピーできます。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        ForEach(displacedDrafts) { draft in
+                            NavigationLink {
+                                LAAStudioReviewView(snapshot: snapshot, project: current, target: draft.target,
+                                                    targetName: draft.targetName ?? "一覧にない版", revision: draft.revision ?? current.revision,
+                                                    reviews: detail.reviews, unavailableInListing: true)
+                            } label: {
+                                VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                    Text(verbatim: draft.targetName ?? "一覧にない版")
+                                    Text(verbatim: draft.state.pending == nil ? "未送信の下書き" : "送信結果を確認")
+                                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                            }.accessibilityIdentifier("laa.studio.displaced.\(draft.id)")
+                        }
+                    }
                 }
                 Text(verbatim: "ページと素材 · \(items.count)").laaTextStyle(.section).fontWeight(.semibold)
                 TextField("名前を検索", text: $search).studioInputField().accessibilityIdentifier("laa.studio.item.search")
@@ -130,7 +154,7 @@ struct LAAStudioWorkBody: View {
         }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.works))
             .tint(LAAColor.link).navigationBarTitleDisplayMode(.inline)
             .task(id: bridge.revision) { await load() }.refreshable { await load() }
-            .onAppear { if detail != nil { Task { await load() } } }
+            .onAppear { refreshDisplacedDrafts(); if detail != nil { Task { await load() } } }
     }
     private var delivery: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
@@ -173,8 +197,19 @@ struct LAAStudioWorkBody: View {
             if snapshot == nil { fetchedSnapshot = try await LAAStudioData.snapshot(bridge) }
             guard activeSnapshot?.supportsV2 == true else { detail = nil; return }
             detail = try await LAAStudioData.project(project.id, bridge: bridge)
+            refreshDisplacedDrafts()
         } catch is CancellationError { }
         catch { self.error = LAAStudioData.message(error) }
+    }
+    @MainActor private func refreshDisplacedDrafts() {
+        guard let detail, let deviceID = bridge.deviceID else { displacedDrafts = []; return }
+        draftStorageError = false
+        for version in detail.versions {
+            if !LAAStudioReviewStore.upgradeLegacy(deviceID: deviceID, projectID: project.id, target: .version(version.id),
+                                                   targetName: version.name, revision: version.revision) { draftStorageError = true }
+        }
+        displacedDrafts = LAAStudioReviewStore.displaced(deviceID: deviceID, projectID: project.id,
+                                                        listedVersionIDs: Set(detail.versions.map(\.id)))
     }
 }
 

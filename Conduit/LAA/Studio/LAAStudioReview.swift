@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import UIKit
 
 struct LAAStudioReviewView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -9,6 +10,7 @@ struct LAAStudioReviewView: View {
     let targetName: String
     let revision: Int
     let reviews: [LAAStudioReview]
+    var unavailableInListing = false
     @State private var state = LAAStudioReviewEditorState()
     @State private var initialized = false
     @State private var storageError = false
@@ -16,6 +18,7 @@ struct LAAStudioReviewView: View {
     @State private var canEditAgain = false
     @State private var error: String?
     @State private var completed: LAAStudioReview?
+    @State private var copied = false
     private var device: String { bridge.deviceID ?? "fixture" }
     private var history: [LAAStudioReview] {
         LAAStudioReview.history(reviews, target: target, including: completed)
@@ -32,6 +35,18 @@ struct LAAStudioReviewView: View {
                 Text(verbatim: targetName).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 Text(verbatim: "講評は記録です。作品や納品は変更されません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                if unavailableInListing {
+                    Text(verbatim: "この版は取得した最新50件にありません。下書きの対象は元の版のままです。別の版への講評には内容をコピーしてください。")
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                    if !state.comment.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = state.comment
+                            copied = true
+                        } label: {
+                            Text(verbatim: copied ? "コメントをコピーしました" : "コメントをコピー").frame(minHeight: LAASpacing.minimumTouchTarget)
+                        }
+                    }
+                }
                 if let completed {
                     Text(verbatim: "講評を保存しました。").foregroundStyle(LAAColor.text)
                     if completed.verdict == "revise" {
@@ -45,7 +60,7 @@ struct LAAStudioReviewView: View {
                     }
                 } else {
                     if state.pending != nil {
-                        Text(verbatim: "送信結果を確認できていません。同じ講評を照合または再送できます。")
+                        Text(verbatim: canEditAgain ? "今回の送信は受け付けられませんでした。内容を保持しています。" : "送信結果を確認できていません。同じ講評を照合または再送できます。")
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     }
                     Picker("判定", selection: verdict) {
@@ -77,7 +92,8 @@ struct LAAStudioReviewView: View {
                         if canEditAgain {
                             Button {
                                 var editable = state; editable.pending = nil
-                                guard LAAStudioReviewStore.save(editable, deviceID: device, projectID: project.id, target: target) else {
+                                guard LAAStudioReviewStore.save(editable, deviceID: device, projectID: project.id, target: target,
+                                                                targetName: targetName, revision: revision) else {
                                     storageError = true; return
                                 }
                                 state = editable; canEditAgain = false; error = nil
@@ -120,7 +136,8 @@ struct LAAStudioReviewView: View {
             .onAppear(perform: restore)
             .onChange(of: state) { _, value in
                 guard initialized, completed == nil, !storageError else { return }
-                if !LAAStudioReviewStore.save(value, deviceID: device, projectID: project.id, target: target) { storageError = true }
+                if !LAAStudioReviewStore.save(value, deviceID: device, projectID: project.id, target: target,
+                                              targetName: targetName, revision: revision) { storageError = true }
             }
     }
     static func label(_ value: String?) -> String {
@@ -135,7 +152,10 @@ struct LAAStudioReviewView: View {
         guard !initialized else { return }
         switch LAAStudioReviewStore.load(deviceID: device, projectID: project.id, target: target) {
         case .missing: break
-        case .loaded(let value): state = value
+        case .loaded(let value):
+            state = value
+            if !LAAStudioReviewStore.save(value, deviceID: device, projectID: project.id, target: target,
+                                          targetName: targetName, revision: revision) { storageError = true }
         case .unreadable: storageError = true
         }
         initialized = true
@@ -160,15 +180,14 @@ struct LAAStudioReviewView: View {
             }
             draft.pending = true
             var savedState = state; savedState.pending = draft
-            guard LAAStudioReviewStore.save(savedState, deviceID: device, projectID: project.id, target: target),
+            guard LAAStudioReviewStore.save(savedState, deviceID: device, projectID: project.id, target: target,
+                                            targetName: targetName, revision: revision),
                   let key = draft.submissionKey else { storageError = true; return }
             state = savedState
             let saved = try await LAAStudioData.review(draft.review, body: draft.body, key: key, bridge: bridge)
             finish(saved)
         } catch let failure as LAABridgeHTTPError {
-            canEditAgain = (failure.status == 400 && failure.code == "studio_payload_invalid") ||
-                (failure.status == 404 && ["studio_project_missing", "studio_review_target_missing"].contains(failure.code ?? "")) ||
-                (failure.status == 409 && failure.code == "studio_revision_unknown")
+            canEditAgain = LAAStudioReviewDraft.definitelyRejected(failure)
             self.error = LAAStudioData.message(failure)
         } catch { self.error = LAAStudioData.message(error) }
     }
@@ -187,7 +206,11 @@ struct LAAStudioReviewView: View {
                 }
                 finish(found)
             } else {
-                error = "最新200件には見つかりません。保存されていないとは限りません。同じ講評を再送できます。"
+                if target.kind == "version", !detail.versions.contains(where: { $0.id == target.id }) {
+                    error = "最新200件に講評がなく、対象の版も最新50件にありません。保存の有無は未確定です。同じ講評を再送できます。"
+                } else {
+                    error = "最新200件には見つかりません。保存されていないとは限りません。同じ講評を再送できます。"
+                }
             }
         } catch { self.error = LAAStudioData.message(error) }
     }

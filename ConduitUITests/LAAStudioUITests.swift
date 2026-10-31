@@ -153,5 +153,52 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["アプリ用の資料を読み込めません。Driveで開いてください。"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "laa.studio.document.drive").firstMatch.exists)
     }
+
+    func testV2VideoWithoutMetadataAndDisplacedReviewDraft() throws {
+        guard (try? helper("health")) == "ok" else { throw XCTSkip("Start scripts/laa/studio-ui-fixture.mjs first") }
+        _ = try helper("reset"); _ = try helper("mode/v2")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
+        app.launch()
+        XCTAssertTrue(app.buttons["Studio"].waitForExistence(timeout: 30)); app.buttons["Studio"].tap()
+        XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 10)); app.buttons["laa.studio.pair"].tap()
+        let code = app.secureTextFields["laa.bridge.code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")
+        let pair = app.buttons["laa.bridge.pair"]
+        if !pair.isHittable { app.swipeUp() }
+        pair.tap()
+        let work = app.buttons["laa.studio.work.70175325-5cf4-421f-8a6f-95beae8fca92"]
+        XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
+        let video = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Example.mp4")).firstMatch
+        for _ in 0..<4 where !video.exists { app.swipeUp() }
+        XCTAssertTrue(video.waitForExistence(timeout: 10)); XCTAssertTrue(video.label.contains("Video"))
+        let image = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Example.png")).firstMatch
+        if !image.isHittable { app.swipeUp() }
+        XCTAssertTrue(image.waitForExistence(timeout: 10)); image.tap()
+        let review = app.buttons["この版への講評"]
+        if !review.isHittable { app.swipeUp() }
+        XCTAssertTrue(review.waitForExistence(timeout: 10)); review.tap()
+        let comment = app.textViews["laa.studio.review.comment"]
+        XCTAssertTrue(comment.waitForExistence(timeout: 10)); comment.tap(); comment.typeText("Original version note")
+        _ = try helper("mode/v2-rotated")
+        let send = app.buttons["laa.studio.review.send"]
+        if !send.isHittable { app.swipeUp() }
+        XCTAssertTrue(send.waitForExistence(timeout: 10)); send.tap()
+        XCTAssertTrue(app.staticTexts["講評の対象が見つかりません。作品を更新してください。"].waitForExistence(timeout: 20))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let displaced = app.buttons["laa.studio.displaced.\(String(repeating: "a", count: 64))"]
+        for _ in 0..<4 where !displaced.exists { app.swipeUp() }
+        XCTAssertTrue(displaced.waitForExistence(timeout: 20)); displaced.tap()
+        XCTAssertTrue(app.staticTexts["この版は取得した最新50件にありません。下書きの対象は元の版のままです。別の版への講評には内容をコピーしてください。"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textViews["laa.studio.review.comment"].value as? String, "Original version note")
+        XCTAssertTrue(app.buttons["コメントをコピー"].exists)
+        let retry = app.buttons["laa.studio.review.retry"]
+        if !retry.isHittable { app.swipeUp() }
+        XCTAssertTrue(retry.waitForExistence(timeout: 10)); retry.tap()
+        XCTAssertTrue(app.buttons["入力し直す"].waitForExistence(timeout: 20))
+    }
 }
 #endif
