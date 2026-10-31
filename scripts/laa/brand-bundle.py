@@ -184,7 +184,7 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
     english_path = english_dir / "Localizable.strings"
     english = read_plist(english_path) if english_path.exists() else {}
     for key in catalog:
-        if ("Conduit" in key or "Hermes" in key or key in MAC_ONLY_KEYS) and key not in english:
+        if ("Conduit" in key or "Hermes" in key or key in STATIC_COPY_KEYS or key in MAC_ONLY_KEYS) and key not in english:
             english[key] = values_only({key: key})[key]
     with english_path.open("wb") as stream:
         plistlib.dump(english, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)

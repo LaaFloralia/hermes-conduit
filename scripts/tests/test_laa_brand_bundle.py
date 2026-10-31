@@ -71,6 +71,13 @@ class LAABrandBundleTests(unittest.TestCase):
             source_keys = json.loads((ROOT / "Conduit/Localizable.xcstrings").read_text())["strings"]
             self.assertFalse([key for key in source_keys if ("Conduit" in key or "Hermes" in key) and key not in english])
             self.assertTrue(all("Conduit" not in value and "Hermes" not in value for value in english.values()))
+            for key, copy_name in brand.STATIC_COPY_KEYS.items():
+                if key in source_keys:
+                    self.assertIn(key, english)
+                    self.assertEqual(english[key], brand.COPY[copy_name]["en"])
+            for key in brand.MAC_ONLY_KEYS:
+                if key in source_keys:
+                    self.assertEqual(english[key], "Mac")
             health = next(value for key, value in english.items()
                           if "Conduit's developer can't see it." in key)
             self.assertNotIn("developer", health)
