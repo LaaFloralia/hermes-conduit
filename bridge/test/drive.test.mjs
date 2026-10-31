@@ -338,6 +338,24 @@ describe('drive content and ranges', () => {
 });
 
 describe('drive views and incomplete searches', () => {
+  it('preserves an unknown completeness signal instead of reporting a complete search', async () => {
+    const drive = fakeDrive();
+    const list = drive.list;
+    drive.list = async (options) => ({ ...(await list(options)),
+      incompleteSearch: { my: false, shared: true, recent: undefined, starred: 'false' }[options.view] });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      for (const [view, expected] of [['my', false], ['shared', true], ['recent', null], ['starred', null]]) {
+        const response = await bridge.request(`/v1/drive/files?view=${view}`, { token });
+        assert.equal(response.status, 200);
+        assert.equal(response.body.data.incompleteSearch, expected);
+      }
+    } finally {
+      await bridge.close();
+    }
+  });
+
   it('binds cursors to their view and preserves unqualified legacy cursors', async () => {
     const drive = fakeDrive();
     const list = drive.list;

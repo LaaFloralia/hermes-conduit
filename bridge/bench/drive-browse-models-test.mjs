@@ -19,6 +19,7 @@ try {
   const actualModels = join(temporary, 'ActualModels.swift');
   writeFileSync(actualModels, `import Foundation\n` +
     `enum LAABridgeError: Error { case invalidResponse }\n` +
+    `struct LAABridgeHTTPError: Error { let status: Int; let code: String? }\n` +
     `enum LAACopy { enum Assets { static let folder = "Folder", image = "Image", document = "Document", file = "File" } }\n` +
     between(transport, 'enum LAADrivePaths {', '\nenum LAADriveRangeError') + '\n' +
     between(assets, 'struct LAADriveItem:', '\nstruct LAADrivePage:') + '\n');

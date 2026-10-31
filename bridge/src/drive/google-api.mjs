@@ -324,7 +324,7 @@ export function createGoogleDriveApiAdapter({
       return {
         items: files.map(itemFromDrive),
         nextPageToken: typeof body.nextPageToken === 'string' && body.nextPageToken !== '' ? body.nextPageToken : null,
-        incompleteSearch: body.incompleteSearch === true,
+        incompleteSearch: typeof body.incompleteSearch === 'boolean' ? body.incompleteSearch : null,
       };
     },
     async get(id, { signal } = {}) {

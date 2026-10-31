@@ -67,9 +67,11 @@ function fakeDriveApi() {
         }));
         return;
       }
+      const query = url.searchParams.get('q');
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ nextPageToken: 'page-2', files: [fileRecord()],
-        incompleteSearch: url.searchParams.get('q')?.includes("name contains 'partial'") === true }));
+        incompleteSearch: query?.includes("name contains 'badflag'") ? 'false' :
+          query?.includes("name contains 'partial'") === true }));
       return;
     }
     if (url.pathname === '/drive/v3/files/doc_export_1/export') {
@@ -146,6 +148,7 @@ describe('google drive api adapter', () => {
     assert.equal(first.items[0].kind, 'file');
     assert.equal(first.items[0].size, VIDEO.length);
     assert.equal(first.nextPageToken, 'page-2');
+    assert.equal(first.incompleteSearch, false);
     const request = fake.requests.at(-1);
     assert.equal(request.query.q, "trashed = false and 'folder_company_1' in parents and name contains 'PR\\'動画'");
     assert.equal(request.query.pageSize, '25');
@@ -163,6 +166,7 @@ describe('google drive api adapter', () => {
     ]);
     assert.equal(second.items[0].size, null);
     assert.equal(second.nextPageToken, null);
+    assert.equal(second.incompleteSearch, null);
   });
 
   it('qualifies views and searches inside an opened folder without retaining top-level filters', async () => {
@@ -184,6 +188,7 @@ describe('google drive api adapter', () => {
     await adapter.list({});
     assert.equal(fake.requests.at(-1).query.q, 'trashed = false', 'old unqualified listing is unchanged');
     assert.equal((await adapter.list({ query: 'partial' })).incompleteSearch, true);
+    assert.equal((await adapter.list({ query: 'badflag' })).incompleteSearch, null);
     await assert.rejects(() => adapter.list({ view: 'unknown' }), DriveUpstreamError);
   });
 

@@ -169,7 +169,9 @@ struct LAADriveBrowserView: View {
             }
             if resolvingID != nil { ProgressView("Opening shortcut") }
             if let error = controller.error {
-                Text(verbatim: errorMessage(error)).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
+                Text(verbatim: (error as? LAADriveBrowseError) == .cursorExpired
+                     ? "Results expired. Retry to reload from the beginning." : errorMessage(error))
+                    .laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                 Button("Retry") {
                     Task {
                         if controller.cursor != nil, !controller.items.isEmpty {

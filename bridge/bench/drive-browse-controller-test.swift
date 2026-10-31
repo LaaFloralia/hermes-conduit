@@ -59,6 +59,23 @@ private enum FixtureError: Error { case unavailable }
                controller.incompleteSearch == true && (controller.error as? LAADriveBrowseError) == .invalidPage,
                "repeated cursor stops pagination and reports incomplete search")
 
+        for (status, code) in [(410, "cursor_expired"), (400, "cursor_invalid")] {
+            await controller.reload(original) { _ in try page(["first"], cursor: "expired") }
+            await controller.loadMore { _ in throw LAABridgeHTTPError(status: status, code: code) }
+            expect(controller.items.map(\.id) == ["first"] && controller.cursor == nil &&
+                   (controller.error as? LAADriveBrowseError) == .cursorExpired,
+                   "expired cursor keeps existing items but retry must restart")
+            await controller.reload(original) { query in
+                expect(query.cursor == nil, "restart requests the first page")
+                return try page(["fresh"])
+            }
+            expect(controller.items.map(\.id) == ["fresh"] && controller.error == nil, "restart replaces old results")
+        }
+        await controller.reload(original) { _ in try page(["first"], cursor: "valid") }
+        await controller.loadMore { _ in throw LAABridgeHTTPError(status: 400, code: "other") }
+        expect(controller.cursor == "valid" && controller.error is LAABridgeHTTPError,
+               "unrelated failures leave the cursor available for retry")
+
         let gate = Gate()
         let old = Task {
             await controller.reload(LAADriveBrowseQuery(section: .my)) { _ in

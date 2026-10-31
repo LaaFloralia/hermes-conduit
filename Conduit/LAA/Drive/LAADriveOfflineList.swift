@@ -117,7 +117,7 @@ struct LAADriveOfflineList: View {
         case .verified: return "Last verified \(checked)"
         case .stale: return "Older copy · Last verified \(checked)"
         case .denied: return "Access denied · Last verified \(checked)"
-        case .missing: return "Not found in Drive · Last verified \(checked)"
+        case .missing: return "Unavailable in Drive · Last verified \(checked)"
         case .unknown: return "Permission unknown · Last verified \(checked)"
         }
     }

@@ -174,7 +174,8 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     const nextCursor = page.nextPageToken
       ? encodeCursor({ pageToken: page.nextPageToken, filter, issuedAt: now() })
       : null;
-    return { status: 200, data: { items: page.items, nextCursor, incompleteSearch: page.incompleteSearch === true } };
+    return { status: 200, data: { items: page.items, nextCursor,
+      incompleteSearch: typeof page.incompleteSearch === 'boolean' ? page.incompleteSearch : null } };
   }
 
   async function fileMetadata({ params }) {

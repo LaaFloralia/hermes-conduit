@@ -2,7 +2,7 @@
 import Combine
 import Foundation
 
-enum LAADriveBrowseError: Error, Equatable { case invalidQuery, invalidPage }
+enum LAADriveBrowseError: Error, Equatable { case invalidQuery, invalidPage, cursorExpired }
 
 /// Keeps each response tied to its original section, folder, search and
 /// pairing revision. The view owns navigation and provides the Bridge loader.
@@ -73,6 +73,11 @@ final class LAADriveBrowseController: ObservableObject {
             loading = false
         } catch is CancellationError {
             if generation == expectedGeneration, cursor == previous { loading = false }
+        } catch let failure as LAABridgeHTTPError where
+            (failure.status == 410 && failure.code == "cursor_expired") ||
+            (failure.status == 400 && failure.code == "cursor_invalid") {
+            guard generation == expectedGeneration, cursor == previous else { return }
+            cursor = nil; error = LAADriveBrowseError.cursorExpired; loading = false
         } catch {
             guard generation == expectedGeneration, cursor == previous else { return }
             self.error = error; loading = false
