@@ -213,10 +213,12 @@ struct LAAEmployeeWidgetView: View {
         let notice = entry.usage.flatMap { Self.accessibleNotice(for: $0.meters, at: entry.date) }
         return VStack(alignment: .leading, spacing: LAASpacing.x1) {
             HStack(spacing: LAASpacing.x1) {
-                Text(verbatim: "Usage").laaTextStyle(.section).fontWeight(.bold)
-                    .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
+                if !compact || notice == nil {
+                    Text(verbatim: "Usage").laaTextStyle(.section).fontWeight(.bold)
+                        .foregroundStyle(LAAColor.text).lineLimit(1).accessibilityAddTraits(.isHeader)
+                }
                 if let notice {
-                    Spacer(minLength: 0)
+                    if !compact { Spacer(minLength: 0) }
                     Text(verbatim: notice.compactText).laaTextStyle(.section)
                         .foregroundStyle(notice == .manual ? LAAColor.secondaryText : LAAColor.attention)
                         .lineLimit(1).layoutPriority(1)
@@ -233,6 +235,7 @@ struct LAAEmployeeWidgetView: View {
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                             Text(verbatim: percentage).font(LAAType.employeeName).monospacedDigit()
+                                .lineLimit(1).minimumScaleFactor(compact ? 0.65 : 1).layoutPriority(1)
                         }
                         .laaTextStyle(.section)
                         .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
@@ -256,7 +259,7 @@ struct LAAEmployeeWidgetView: View {
                 Group {
                     if compact {
                         Text(verbatim: "\(parts.date) \(parts.time)")
-                            .lineLimit(1).minimumScaleFactor(0.65)
+                            .lineLimit(1).minimumScaleFactor(0.4)
                     } else {
                         VStack(alignment: .leading, spacing: 0) {
                             Text(verbatim: parts.date)
