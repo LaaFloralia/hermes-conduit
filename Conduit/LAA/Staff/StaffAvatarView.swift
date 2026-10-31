@@ -118,52 +118,96 @@ struct StaffAvatarView: View {
 }
 
 @MainActor
-private final class StaffAvatarLoop: ObservableObject {
+final class StaffAvatarLoop: ObservableObject {
     @Published private(set) var player: AVQueuePlayer?
     private var looper: AVPlayerLooper?
     private var currentURL: URL?
+    /// The player has left system audio (or never had to): only then may the
+    /// video play. A start that arrives before this must not call play().
+    private var readyToPlay = false
     /// Bumped by every start and stop: a disconnect that completes after the
     /// avatar moved on must not start playback.
     private var generation = 0
 
-    /// Starts the muted loop. A connected player activates the audio session
-    /// as soon as it plays, so on iOS 27 and later it is disconnected from
-    /// system audio first, and playback waits for that to finish.
+    private let makePlayer: () -> AVQueuePlayer
+    private let makeLooper: (AVQueuePlayer, URL) -> AVPlayerLooper?
+    private let disconnect: @MainActor (AVQueuePlayer) async -> Void
+
+    /// The seams are injectable so a test can hold the disconnect open and
+    /// check that nothing plays before it completes.
+    init(
+        makePlayer: @escaping () -> AVQueuePlayer = { AVQueuePlayer() },
+        makeLooper: @escaping (AVQueuePlayer, URL) -> AVPlayerLooper? = { player, url in
+            AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        },
+        disconnect: @escaping @MainActor (AVQueuePlayer) async -> Void = StaffAvatarLoop.disconnectFromSystemAudio
+    ) {
+        self.makePlayer = makePlayer
+        self.makeLooper = makeLooper
+        self.disconnect = disconnect
+    }
+
+    /// Starts or resumes the muted loop. A connected player activates the
+    /// audio session as soon as it plays, so on iOS 27 and later it is
+    /// disconnected from system audio first, and playback waits for that.
     func play(_ url: URL, disconnectingFromSystemAudio: Bool) {
-        if currentURL == url, let player { player.play(); return }
+        if currentURL == url, let player {
+            // The avatar may start again before the disconnect completes
+            // (onAppear, scenePhase, scrolling): that start must not play the
+            // still-connected player. The completion below starts playback.
+            if readyToPlay { player.play() }
+            return
+        }
         stop()
         generation &+= 1
         let generation = generation
-        let player = AVQueuePlayer()
+        let player = makePlayer()
         player.isMuted = true
         player.preventsDisplaySleepDuringVideoPlayback = false
-        looper = AVPlayerLooper(player: player, templateItem: AVPlayerItem(url: url))
+        looper = makeLooper(player, url)
         currentURL = url
         self.player = player
-#if !targetEnvironment(macCatalyst)
-        if #available(iOS 27.0, *), disconnectingFromSystemAudio {
-            // The completion runs on an arbitrary queue; playback continues on
-            // the main actor, and only if this is still the current player.
-            player.setDisconnectedFromSystemAudio(true) { [weak self] in
-                Task { @MainActor in
-                    guard let self, self.generation == generation, let player = self.player else { return }
-                    player.play()
-                }
-            }
+        guard disconnectingFromSystemAudio else {
+            readyToPlay = true
+            player.play()
             return
         }
-#endif
-        player.play()
+        Task { @MainActor [weak self] in
+            await self?.disconnect(player)
+            // Only this start may continue it: a stop or another avatar in the
+            // meantime bumped the generation.
+            guard let self, self.generation == generation else { return }
+            self.readyToPlay = true
+            self.player?.play()
+        }
     }
 
     func stop() {
         generation &+= 1
+        readyToPlay = false
         player?.pause()
         looper?.disableLooping()
         player?.removeAllItems()
         looper = nil
         player = nil
         currentURL = nil
+    }
+
+    /// iOS 27 and later can leave the audio session alone; elsewhere this
+    /// completes at once (the idle policy only asks for the disconnect there).
+    @MainActor
+    static func disconnectFromSystemAudio(_ player: AVQueuePlayer) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+#if !targetEnvironment(macCatalyst)
+            if #available(iOS 27.0, *) {
+                // Called on an arbitrary queue; resuming the continuation from
+                // there is allowed.
+                player.setDisconnectedFromSystemAudio(true) { continuation.resume() }
+                return
+            }
+#endif
+            continuation.resume()
+        }
     }
 }
 
