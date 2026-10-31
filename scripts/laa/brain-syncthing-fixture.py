@@ -248,9 +248,10 @@ def journal_record(path, content):
 def build_swift_fixture(root):
     binary = root / "brain-save-fixture"
     subprocess.run([
-        "swiftc", "-parse-as-library", "-D", "LAA_BUILD", "-D", "DEBUG",
+        "swiftc", "-parse-as-library", "-D", "LAA_BUILD", "-D", "DEBUG", "-D", "LAA_FIXTURE_CLI",
         str(REPO_DIR / "Conduit/LAA/Brain/LAABrainSaveJournal.swift"),
         str(REPO_DIR / "Conduit/LAA/Brain/LAABrainSaveCoordinator.swift"),
+        str(REPO_DIR / "ConduitTests/LAABrainSaveFixture.swift"),
         str(REPO_DIR / "scripts/laa/brain-save-fixture.swift"), "-o", str(binary),
     ], check=True, timeout=90)
     subprocess.run([str(binary), "selftest", str(root / "swift-selftest")], check=True, timeout=30)
@@ -262,6 +263,10 @@ def run_fixture(root, *, retention):
     sync_a, gui_a, sync_b, gui_b = free_ports(4)
     phone = Peer(root, "phone-model", sync_a, gui_a)
     mac = Peer(root, "mac-model", sync_b, gui_b)
+    # The parent will install these ignore rules in the real vault at integration.
+    # This fixture configures only its two disposable vaults.
+    for peer in (phone, mac):
+        (peer.notes / ".stignore").write_text(".laa-tmp\n", encoding="utf-8")
     phone.configure(mac, versioning=False)
     mac.configure(phone, versioning=True)
     try:
@@ -271,6 +276,23 @@ def run_fixture(root, *, retention):
         assert_settings(phone, mac)
         wait_for("loopback peer connection", lambda: phone.api("system/connections")["connections"].get(
             mac.device_id, {}).get("connected") is True, (phone, mac))
+
+        temporary_dir = phone.notes / ".laa-tmp"
+        temporary_dir.mkdir()
+        temporary_file = temporary_dir / (str(uuid.uuid4()).upper() + ".tmp")
+        temporary_file.write_bytes(b"TEMP_DRAFT_MUST_NOT_SYNC")
+        send(phone, mac, "ignore-scan-sentinel.md", b"SCAN_COMPLETED")
+        assert temporary_file.exists() and not (mac.notes / ".laa-tmp" / temporary_file.name).exists()
+        temporary_file.unlink()
+        send(mac, phone, "swift-fallback.md", b"FALLBACK_BASE")
+        subprocess.run([str(swift_fixture), "fallback", str(phone.notes), str(root / "fallback-private"),
+                        "swift-fallback.md", "FALLBACK_DRAFT"], check=True, timeout=30, capture_output=True)
+        phone.scan()
+        wait_for("Swift fallback draft to sync", lambda: file_is(mac.notes / "swift-fallback.md", b"FALLBACK_DRAFT"), (phone, mac))
+        remaining_temp = list(temporary_dir.iterdir())
+        peer_temp = mac.notes / ".laa-tmp"
+        assert not remaining_temp and not peer_temp.exists(), (remaining_temp, peer_temp.exists())
+        print("PASS: ignored fallback staging stays local; checked replacement syncs and leaves no temporary draft")
 
         send(mac, phone, "remote-archive.md", b"MAC_BASE")
         send(phone, mac, "remote-archive.md", b"PHONE_CHANGE")
@@ -424,9 +446,10 @@ def run_fixture(root, *, retention):
         # This verifies filesystem reads on both peers. It is not an Obsidian
         # app read and does not substitute for the requested Obsidian test.
         assert phone_note.read_text() == (mac.notes / name).read_text() == "SWIFT_DRAFT"
-        versions = [json.loads(path.read_text()) for path in (swift_journal / "versions").rglob("*.json")]
-        assert {item["kind"] for item in versions} >= {"original", "draft", "displaced"}
-        assert any(item["kind"] == "displaced" and item["bytes"] == "U1dJRlRfSU5URVJWRU5JTkc=" for item in versions)
+        versions = [(path, json.loads(path.read_text())) for path in (swift_journal / "versions").rglob("*.json")]
+        assert {item["kind"] for _, item in versions} >= {"original", "draft", "displaced"}
+        assert any(item["kind"] == "displaced" and path.with_suffix(".bin").read_bytes() == b"SWIFT_INTERVENING"
+                   for path, item in versions)
         print("PASS: real Swift coordinator retains its intervening version and syncs its draft")
         print("METADATA (Mac APFS fixture): birthtime preserved={}, mode {:04o}->{:04o}, xattr preserved={}; Mac mode={:04o}".format(
             before.st_birthtime == after.st_birthtime, stat.S_IMODE(before.st_mode), stat.S_IMODE(after.st_mode),

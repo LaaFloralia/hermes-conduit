@@ -515,6 +515,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Work routines, Assets Inspiration and Studio remain unavailable. Drive
   Workspace export, owner and thumbnail data need Bridge support. Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
+  Local recovery history is keyed by vault path, so moving or renaming the vault
+  hides its earlier records until the original location is selected again.
   The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
   are not in this five-tab shell.

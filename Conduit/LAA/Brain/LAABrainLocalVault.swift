@@ -155,7 +155,7 @@ enum LAABrainVaultError: Error {
 
 /// All inputs are a user-selected directory or a test fixture, never a guessed vault path.
 enum LAABrainVaultIO {
-    private static let excludedDirectories: Set<String> = [".obsidian", ".git", ".trash", ".stfolder", ".stversions"]
+    private static let excludedDirectories: Set<String> = [".obsidian", ".git", ".trash", ".stfolder", ".stversions", ".laa-tmp"]
 
     static func files(root: URL) throws -> [LAABrainFile] {
         var result: Result<[LAABrainFile], Error> = .failure(LAABrainVaultError.unreadable)

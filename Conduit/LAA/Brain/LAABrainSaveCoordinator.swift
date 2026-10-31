@@ -23,7 +23,7 @@ struct LAABrainSaveCoordinator {
     }
     enum SaveError: Error {
         case invalidPath, notRegularFile, tooLarge, invalidText, pendingRecovery, unsafeStage, missingStage, storage, coordination
-        case recoveryExportRequired, recoveryDestinationExists
+        case recoveryExportRequired, recoveryDestinationExists, conflictCopy, historyUnavailable
         case exchange(Int32)
     }
 
@@ -42,10 +42,16 @@ struct LAABrainSaveCoordinator {
     init(journal: LAABrainSaveJournal = LAABrainSaveJournal()) { self.journal = journal }
 
     func begin(root: URL, path: String) throws -> Snapshot {
+        guard !Self.isConflictCopy(path) else { throw SaveError.conflictCopy }
+        // Best effort here: a provider may allow exchange but not a temp folder.
+        try? Self.prepareFallback(root: root)
         let file = try Self.noteURL(root: root, path: path)
         let vault = LAABrainSaveJournal.vaultID(root)
-        guard try journal.pending(vault: vault, path: path).isEmpty else { throw SaveError.pendingRecovery }
-        try journal.validate(vault: vault, path: path)
+        do {
+            guard try journal.pending(vault: vault, path: path).isEmpty else { throw SaveError.pendingRecovery }
+            try journal.validate(vault: vault, path: path)
+        } catch SaveError.pendingRecovery { throw SaveError.pendingRecovery }
+        catch { throw SaveError.historyUnavailable }
         var result: Result<Data, Error> = .failure(SaveError.coordination)
         var coordinationError: NSError?
         NSFileCoordinator().coordinate(readingItemAt: file, options: [], error: &coordinationError) { coordinated in
@@ -56,7 +62,8 @@ struct LAABrainSaveCoordinator {
         }
         if let coordinationError { throw coordinationError }
         let base = try result.get()
-        try journal.record(vault: vault, path: path, kind: .original, bytes: base)
+        do { try journal.record(vault: vault, path: path, kind: .original, bytes: base) }
+        catch { throw SaveError.historyUnavailable }
         return Snapshot(vault: vault, path: path, base: base)
     }
 
@@ -64,6 +71,7 @@ struct LAABrainSaveCoordinator {
     /// storage, so the recovery screen can copy the stage into the journal.
     func save(root: URL, snapshot: Snapshot, draft: Data) throws -> Outcome {
         guard snapshot.vault == LAABrainSaveJournal.vaultID(root) else { throw SaveError.invalidPath }
+        guard !Self.isConflictCopy(snapshot.path) else { throw SaveError.conflictCopy }
         guard draft.count <= 32 * 1024 * 1024 else { throw SaveError.tooLarge }
         guard String(data: draft, encoding: .utf8) != nil else { throw SaveError.invalidText }
         let file = try Self.noteURL(root: root, path: snapshot.path)
@@ -105,26 +113,26 @@ struct LAABrainSaveCoordinator {
                     // contents changed after the comparison. Do not remove it
                     // until a durable, integrity-checked record exists.
                     guard try journal.stageExists(transaction) else { throw SaveError.storage }
-                    let displaced = try Data(contentsOf: stage)
-                    try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .displaced, bytes: displaced)
+                    let displaced = try Self.readRegular(stage)
+                    let changed = LAABrainSaveJournal.digest(displaced) != LAABrainSaveJournal.digest(snapshot.base)
+                    if changed { try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .displaced, bytes: displaced) }
                     try journal.finish(transaction)
-                    if LAABrainSaveJournal.digest(displaced) != LAABrainSaveJournal.digest(snapshot.base) {
-                        return .intervening(displaced: displaced, draft: draft)
-                    }
-                    return .saved(.exchange)
+                    return changed ? .intervening(displaced: displaced, draft: draft) : .saved(.exchange)
                 }
                 guard Self.supportsFallback(error: swapError) else { throw SaveError.exchange(swapError) }
-                // File Providers / different volumes may reject a swap. This
-                // approved fallback has a small compare/replace window.
-                let fallbackCurrent = try Self.readNote(coordinated)
-                if LAABrainSaveJournal.digest(fallbackCurrent) != LAABrainSaveJournal.digest(snapshot.base) {
-                    try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .conflict, bytes: fallbackCurrent)
+                // A synced, ignored temporary directory holds only a copy of
+                // the already journaled draft, never the displaced file.
+                return try Self.withFallbackStage(root: root, draft: draft) { directoryFD, name in
+                    let fallbackCurrent = try Self.readNote(coordinated)
+                    if LAABrainSaveJournal.digest(fallbackCurrent) != LAABrainSaveJournal.digest(snapshot.base) {
+                        try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .conflict, bytes: fallbackCurrent)
+                        try journal.finish(transaction)
+                        return .conflict(current: fallbackCurrent, draft: draft)
+                    }
+                    guard renameat(directoryFD, name, AT_FDCWD, coordinated.path) == 0 else { throw SaveError.storage }
                     try journal.finish(transaction)
-                    return .conflict(current: fallbackCurrent, draft: draft)
+                    return .saved(.checkedReplacement)
                 }
-                try draft.write(to: coordinated, options: .atomic)
-                try journal.finish(transaction)
-                return .saved(.checkedReplacement)
             }
         }
         if let coordinationError { throw coordinationError }
@@ -138,7 +146,7 @@ struct LAABrainSaveCoordinator {
         let stage = try journal.stageURL(pending)
         guard try journal.stageExists(pending) else { throw SaveError.missingStage }
         let version = try journal.record(vault: pending.vault, path: pending.path, kind: .interrupted,
-                                         bytes: Data(contentsOf: stage))
+                                         bytes: Self.readRegular(stage))
         try journal.finish(pending)
         return version
     }
@@ -157,7 +165,7 @@ struct LAABrainSaveCoordinator {
         let stage = try journal.makeRecoveryStage(version.bytes)
         defer { try? journal.discardRecoveryStage(stage) }
 
-        let name = "Recovered-" + UUID().uuidString + ".md"
+        let name = Self.recoveryName(bytes: version.bytes, path: summary.path)
         var moved = false
         var verified = false
         var operationError: Error?
@@ -177,7 +185,7 @@ struct LAABrainSaveCoordinator {
                 if Self.supportsFallback(error: error) { throw SaveError.recoveryExportRequired }
                 guard error == 0 else { throw SaveError.exchange(error) }
                 moved = true
-                let restored = try Data(contentsOf: destination)
+                let restored = try Self.readRegular(destination)
                 let fd = open(coordinatedRoot.path, O_RDONLY)
                 guard fd >= 0 else { return }
                 defer { close(fd) }
@@ -192,7 +200,28 @@ struct LAABrainSaveCoordinator {
         throw SaveError.coordination
     }
 
-    private static let excluded: Set<String> = [".obsidian", ".git", ".trash", ".stfolder", ".stversions"]
+    static func recoveryName(bytes: Data, path: String) -> String {
+        let ext = String(data: bytes, encoding: .utf8) == nil ? "bin" : URL(fileURLWithPath: path).pathExtension.lowercased()
+        return "Recovered-" + UUID().uuidString + "." + (ext.isEmpty ? "md" : ext)
+    }
+
+    static func isConflictCopy(_ path: String) -> Bool {
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        return name.contains(".sync-conflict-") || name.contains("（GitHub競合")
+    }
+
+    static func verifyExport(_ url: URL, digest: String) -> Bool {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        var matches = false
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
+            if let bytes = try? readRegular(coordinated) { matches = LAABrainSaveJournal.digest(bytes) == digest }
+        }
+        return coordinationError == nil && matches
+    }
+
+    private static let excluded: Set<String> = [".obsidian", ".git", ".trash", ".stfolder", ".stversions", ".laa-tmp"]
 
     private static func noteURL(root: URL, path: String) throws -> URL {
         let parts = path.split(separator: "/", omittingEmptySubsequences: false)
@@ -209,50 +238,91 @@ struct LAABrainSaveCoordinator {
         return url
     }
 
+    private static func openRegular(_ url: URL) throws -> (Int32, stat) {
+        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard fd >= 0 else { throw SaveError.notRegularFile }
+        var status = stat()
+        guard fstat(fd, &status) == 0, status.st_mode & S_IFMT == S_IFREG else {
+            close(fd); throw SaveError.notRegularFile
+        }
+        return (fd, status)
+    }
+
+    private static func readRegular(_ url: URL, limit: Int? = nil) throws -> Data {
+        let (fd, status) = try openRegular(url)
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        if let limit, status.st_size > limit { throw SaveError.tooLarge }
+        let bytes = try handle.readToEnd() ?? Data()
+        if let limit, bytes.count > limit { throw SaveError.tooLarge }
+        return bytes
+    }
+
     private static func readNote(_ url: URL) throws -> Data {
-        let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
-        guard values.isRegularFile == true, values.isSymbolicLink != true else { throw SaveError.notRegularFile }
-        guard (values.fileSize ?? 0) <= 32 * 1024 * 1024 else { throw SaveError.tooLarge }
-        let bytes = try Data(contentsOf: url)
-        guard bytes.count <= 32 * 1024 * 1024 else { throw SaveError.tooLarge }
+        let bytes = try readRegular(url, limit: 32 * 1024 * 1024)
         guard String(data: bytes, encoding: .utf8) != nil else { throw SaveError.invalidText }
         return bytes
     }
 
     private static func makeStage(source: URL, stage: URL, draft: Data) throws {
-        let manager = FileManager.default
-        var status = stat()
-        guard lstat(stage.path, &status) != 0, errno == ENOENT else { throw SaveError.unsafeStage }
-        // Copy when possible to carry the note's metadata; if a provider cannot
-        // copy it, private staging still works and swap/fallback decides access.
-        do { try manager.copyItem(at: source, to: stage) }
-        catch {
-            if lstat(stage.path, &status) == 0 {
-                guard status.st_mode & S_IFMT == S_IFREG else { throw SaveError.unsafeStage }
-                try manager.removeItem(at: stage)
-            } else if errno != ENOENT { throw SaveError.unsafeStage }
-            guard manager.createFile(atPath: stage.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
-                throw SaveError.storage
+        let (sourceFD, status) = try openRegular(source)
+        defer { close(sourceFD) }
+        let stageFD = open(stage.path, O_CREAT | O_EXCL | O_RDWR | O_NOFOLLOW, 0o600)
+        guard stageFD >= 0 else { throw SaveError.unsafeStage }
+        let handle = FileHandle(fileDescriptor: stageFD, closeOnDealloc: true)
+        defer { try? handle.close() }
+        // Copy through verified descriptors, preserving metadata where possible.
+        // A failed metadata copy must not leave unverified source data in use.
+        if fcopyfile(sourceFD, stageFD, nil, copyfile_flags_t(COPYFILE_ALL)) != 0 {
+            guard ftruncate(stageFD, 0) == 0 else { throw SaveError.storage }
+        }
+        guard fchmod(stageFD, status.st_mode & 0o777 | 0o200) == 0,
+              ftruncate(stageFD, 0) == 0, lseek(stageFD, 0, SEEK_SET) >= 0 else { throw SaveError.storage }
+        try handle.write(contentsOf: draft)
+        guard fchmod(stageFD, status.st_mode & 0o777) == 0 else { throw SaveError.storage }
+        #if os(iOS)
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: stage.path)
+        #endif
+        try handle.synchronize()
+    }
+
+    private static func withFallbackDirectory<T>(root: URL, _ operation: (Int32) throws -> T) throws -> T {
+        let rootFD = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard rootFD >= 0 else { throw SaveError.invalidPath }
+        defer { close(rootFD) }
+        if mkdirat(rootFD, ".laa-tmp", 0o700) != 0 && errno != EEXIST { throw SaveError.storage }
+        let directoryFD = openat(rootFD, ".laa-tmp", O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+        guard directoryFD >= 0 else { throw SaveError.invalidPath }
+        defer { close(directoryFD) }
+        return try operation(directoryFD)
+    }
+
+    private static func prepareFallback(root: URL) throws {
+        try withFallbackDirectory(root: root) { directoryFD in
+            let folder = root.appendingPathComponent(".laa-tmp", isDirectory: true)
+            let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            let cutoff = Date().addingTimeInterval(-24 * 60 * 60).timeIntervalSince1970
+            for name in files where name.hasSuffix(".tmp") && UUID(uuidString: String(name.dropLast(4))) != nil {
+                var status = stat()
+                guard fstatat(directoryFD, name, &status, AT_SYMLINK_NOFOLLOW) == 0,
+                      status.st_mode & S_IFMT == S_IFREG, Double(status.st_mtimespec.tv_sec) < cutoff else { continue }
+                guard unlinkat(directoryFD, name, 0) == 0 else { throw SaveError.storage }
             }
         }
-        #if os(iOS)
-        try manager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: stage.path)
-        #endif
-        let attributes = try manager.attributesOfItem(atPath: stage.path)
-        let mode = (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0o600
-        try manager.setAttributes([.posixPermissions: mode | 0o200], ofItemAtPath: stage.path)
-        let fd = open(stage.path, O_WRONLY | O_TRUNC | O_NOFOLLOW)
-        guard fd >= 0 else { throw SaveError.storage }
-        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        do {
+    }
+
+    private static func withFallbackStage<T>(root: URL, draft: Data, _ operation: (Int32, String) throws -> T) throws -> T {
+        try prepareFallback(root: root)
+        return try withFallbackDirectory(root: root) { directoryFD in
+            let name = UUID().uuidString + ".tmp"
+            let fd = openat(directoryFD, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            guard fd >= 0 else { throw SaveError.storage }
+            let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+            defer { try? handle.close(); _ = unlinkat(directoryFD, name, 0) }
             try handle.write(contentsOf: draft)
             try handle.synchronize()
-            try handle.close()
-        } catch {
-            try? handle.close()
-            throw error
+            return try operation(directoryFD, name)
         }
-        try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: stage.path)
     }
 
     private static func exchange(_ a: URL, _ b: URL) -> Int32 {

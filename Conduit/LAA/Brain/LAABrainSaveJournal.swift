@@ -19,13 +19,14 @@ struct LAABrainSaveJournal {
 
     /// The history list does not keep the potentially large note bodies in
     /// memory. A selected record is checked and loaded separately.
-    struct VersionSummary: Decodable, Identifiable {
+    struct VersionSummary: Codable, Identifiable {
         let id: UUID
         let vault: String
         let path: String
         let kind: Kind
         let created: Date
         let digest: String
+        let byteCount: Int
     }
 
     struct Catalogue {
@@ -52,6 +53,10 @@ struct LAABrainSaveJournal {
     }
 
     enum JournalError: Error { case invalidRecord, invalidStage, storage }
+
+    private static let recordLock = NSRecursiveLock()
+    private static let maximumRecords = 30
+    private static let recoveryStageMaxAge: TimeInterval = 24 * 60 * 60
 
     let directory: URL
     private var versionsDirectory: URL { directory.appendingPathComponent("versions", isDirectory: true) }
@@ -83,75 +88,180 @@ struct LAABrainSaveJournal {
         values.isExcludedFromBackup = true
         var mutable = directory
         try mutable.setResourceValues(values)
+        try cleanRecoveryStages()
     }
 
     @discardableResult
     func record(vault: String, path: String, kind: Kind, bytes: Data) throws -> Version {
+        Self.recordLock.lock(); defer { Self.recordLock.unlock() }
         try prepare()
         let version = Version(id: UUID(), vault: vault, path: path, kind: kind, created: Date(),
                               bytes: bytes, digest: Self.digest(bytes))
         let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
-        let url = folder.appendingPathComponent(version.id.uuidString + ".json")
-        try writeProtected(JSONEncoder().encode(version), to: url)
+        let base = folder.appendingPathComponent(version.id.uuidString)
+        let summary = VersionSummary(id: version.id, vault: vault, path: path, kind: kind,
+                                     created: version.created, digest: version.digest, byteCount: bytes.count)
+        // Publish metadata only after the bytes and their directory entry are durable.
+        // An interrupted write can leave an orphan .bin, which is never silently deleted.
+        try writeProtected(bytes, to: base.appendingPathExtension("bin"))
+        try writeProtected(JSONEncoder().encode(summary), to: base.appendingPathExtension("json"))
+        _ = try summaries(vault: vault, path: path)
         return version
     }
 
     func versions(vault: String, path: String) throws -> [Version] {
-        try prepare()
-        let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
-        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-        return try files.filter { $0.pathExtension == "json" }.map { file in
-            let entry = try JSONDecoder().decode(Version.self, from: Data(contentsOf: file))
-            guard Self.digest(entry.bytes) == entry.digest, entry.vault == vault, entry.path == path,
-                  file.lastPathComponent == entry.id.uuidString + ".json" else { throw JournalError.invalidRecord }
-            return entry
-        }.sorted { $0.created > $1.created }
+        try summaries(vault: vault, path: path).map { try version($0) }
     }
 
-    /// Verify one record at a time so saving a note does not retain every
-    /// previous copy in memory as its history grows.
+    /// Only metadata and file attributes are read. Content hashes are checked
+    /// when the person selects a record for recovery or export.
     func validate(vault: String, path: String) throws {
-        try prepare()
-        let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
-        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-        for file in files where file.pathExtension == "json" {
-            try autoreleasepool {
-                let entry = try JSONDecoder().decode(Version.self, from: Data(contentsOf: file))
-                guard Self.digest(entry.bytes) == entry.digest, entry.vault == vault, entry.path == path,
-                      file.lastPathComponent == entry.id.uuidString + ".json" else {
-                    throw JournalError.invalidRecord
-                }
-            }
-        }
+        _ = try summaries(vault: vault, path: path)
     }
 
     func summaries(vault: String, path: String) throws -> [VersionSummary] {
+        Self.recordLock.lock(); defer { Self.recordLock.unlock() }
         try prepare()
         let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-        return try files.filter { $0.pathExtension == "json" }.map { file in
-            let entry = try JSONDecoder().decode(VersionSummary.self, from: Data(contentsOf: file))
-            guard entry.vault == vault, entry.path == path, file.lastPathComponent == entry.id.uuidString + ".json" else {
-                throw JournalError.invalidRecord
-            }
-            return entry
-        }.sorted { $0.created > $1.created }
+        var result: [VersionSummary] = []
+        for file in files where file.pathExtension == "json" {
+            if let item = try readSummary(file, folder: folder, vault: vault, path: path) { result.append(item) }
+        }
+        result.sort { $0.created == $1.created ? $0.id.uuidString > $1.id.uuidString : $0.created > $1.created }
+        for old in result.dropFirst(Self.maximumRecords) {
+            let oldBase = folder.appendingPathComponent(old.id.uuidString)
+            // Remove metadata first; an interruption can leave an orphan body,
+            // never a visible record whose bytes were already deleted.
+            try FileManager.default.removeItem(at: oldBase.appendingPathExtension("json"))
+            try synchronizeDirectory(folder)
+            try FileManager.default.removeItem(at: oldBase.appendingPathExtension("bin"))
+        }
+        if result.count > Self.maximumRecords { try synchronizeDirectory(folder) }
+        return Array(result.prefix(Self.maximumRecords))
+    }
+
+    /// Count quarantined metadata, including across application restarts.
+    func corruptCount(vault: String, path: String) throws -> Int {
+        Self.recordLock.lock(); defer { Self.recordLock.unlock() }
+        _ = try summaries(vault: vault, path: path)
+        let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
+        return try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.contains(".json.corrupt") }.count
     }
 
     func version(_ summary: VersionSummary) throws -> Version {
+        Self.recordLock.lock(); defer { Self.recordLock.unlock() }
         try prepare()
         let folder = try itemDirectory(versionsDirectory, vault: summary.vault, path: summary.path)
         let file = folder.appendingPathComponent(summary.id.uuidString + ".json")
-        let entry = try JSONDecoder().decode(Version.self, from: Data(contentsOf: file))
-        guard entry.id == summary.id, entry.vault == summary.vault, entry.path == summary.path,
-              entry.kind == summary.kind, entry.created == summary.created, entry.digest == summary.digest,
-              Self.digest(entry.bytes) == entry.digest else { throw JournalError.invalidRecord }
-        return entry
+        guard let current = try readSummary(file, folder: folder, vault: summary.vault, path: summary.path),
+              current.id == summary.id, current.kind == summary.kind, current.created == summary.created,
+              current.digest == summary.digest, current.byteCount == summary.byteCount else { throw JournalError.invalidRecord }
+        let body = folder.appendingPathComponent(summary.id.uuidString + ".bin")
+        let bytes = try readRegularFile(body)
+        guard bytes.count == current.byteCount, Self.digest(bytes) == current.digest else {
+            try quarantine(file, body: body)
+            throw JournalError.invalidRecord
+        }
+        return Version(id: current.id, vault: current.vault, path: current.path, kind: current.kind,
+                       created: current.created, bytes: bytes, digest: current.digest)
+    }
+
+    /// Existing fixture builds used inline base64 records. Convert each one
+    /// once, publishing the new metadata only after its body is durable.
+    private func readSummary(_ file: URL, folder: URL, vault: String, path: String) throws -> VersionSummary? {
+        do {
+            let data = try readRegularFile(file)
+            let item: VersionSummary
+            if let decoded = try? JSONDecoder().decode(VersionSummary.self, from: data) {
+                item = decoded
+            } else {
+                let legacy = try JSONDecoder().decode(Version.self, from: data)
+                guard legacy.vault == vault, legacy.path == path,
+                      file.lastPathComponent == legacy.id.uuidString + ".json",
+                      Self.digest(legacy.bytes) == legacy.digest else { throw JournalError.invalidRecord }
+                item = VersionSummary(id: legacy.id, vault: legacy.vault, path: legacy.path, kind: legacy.kind,
+                                      created: legacy.created, digest: legacy.digest, byteCount: legacy.bytes.count)
+                let body = folder.appendingPathComponent(legacy.id.uuidString + ".bin")
+                var bodyStatus = stat()
+                if lstat(body.path, &bodyStatus) == 0 {
+                    guard bodyStatus.st_mode & S_IFMT == S_IFREG,
+                          try readRegularFile(body) == legacy.bytes else { throw JournalError.invalidRecord }
+                } else if errno == ENOENT {
+                    try writeProtected(legacy.bytes, to: body)
+                } else { throw JournalError.storage }
+                try writeProtected(JSONEncoder().encode(item), to: file)
+            }
+            guard item.vault == vault, item.path == path, file.lastPathComponent == item.id.uuidString + ".json",
+                  item.byteCount >= 0, item.digest.count == 64,
+                  item.digest.allSatisfy({ $0.isHexDigit && !$0.isUppercase }) else { throw JournalError.invalidRecord }
+            let body = folder.appendingPathComponent(item.id.uuidString + ".bin")
+            var status = stat()
+            if lstat(body.path, &status) != 0 {
+                if errno == ENOENT { throw JournalError.invalidRecord }
+                throw JournalError.storage
+            }
+            guard status.st_mode & S_IFMT == S_IFREG, status.st_size == item.byteCount else { throw JournalError.invalidRecord }
+            return item
+        } catch is DecodingError {
+            try quarantineRecord(file, folder: folder)
+            return nil
+        } catch JournalError.invalidRecord {
+            try quarantineRecord(file, folder: folder)
+            return nil
+        }
+    }
+
+    private func quarantineRecord(_ file: URL, folder: URL) throws {
+        let stem = file.deletingPathExtension().lastPathComponent
+        let body = UUID(uuidString: stem).map { _ in folder.appendingPathComponent(stem + ".bin") }
+        try quarantine(file, body: body)
+    }
+
+    private func quarantine(_ metadata: URL, body: URL?) throws {
+        for file in [metadata, body].compactMap({ $0 }) {
+            var status = stat()
+            guard lstat(file.path, &status) == 0 else {
+                if errno == ENOENT { continue }; throw JournalError.storage
+            }
+            var destination = file.appendingPathExtension("corrupt")
+            if lstat(destination.path, &status) == 0 {
+                destination = file.appendingPathExtension("corrupt-" + UUID().uuidString)
+            }
+            guard renamex_np(file.path, destination.path, UInt32(RENAME_EXCL)) == 0 else { throw JournalError.storage }
+        }
+        try synchronizeDirectory(metadata.deletingLastPathComponent())
+    }
+
+    private func readRegularFile(_ url: URL) throws -> Data {
+        let fd = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard fd >= 0 else {
+            if errno == ELOOP { throw JournalError.invalidRecord }
+            throw JournalError.storage
+        }
+        let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var status = stat()
+        guard fstat(fd, &status) == 0, status.st_mode & S_IFMT == S_IFREG else { throw JournalError.invalidRecord }
+        return try handle.readToEnd() ?? Data()
+    }
+
+    private func cleanRecoveryStages() throws {
+        let files = try FileManager.default.contentsOfDirectory(at: stagingDirectory, includingPropertiesForKeys: nil)
+        let cutoff = Date().addingTimeInterval(-Self.recoveryStageMaxAge).timeIntervalSince1970
+        for file in files where file.pathExtension == "recovery" && UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil {
+            var status = stat()
+            guard lstat(file.path, &status) == 0, status.st_mode & S_IFMT == S_IFREG,
+                  Double(status.st_mtimespec.tv_sec) < cutoff else { continue }
+            try FileManager.default.removeItem(at: file)
+        }
     }
 
     /// Find history by its recorded path, without requiring the original note
     /// (or even its containing directory) to still exist in the vault.
     func catalogue(vault: String) throws -> Catalogue {
+        Self.recordLock.lock(); defer { Self.recordLock.unlock() }
         try prepare()
         var notes: [String: Catalogue.Note] = [:]
         var unreadable = 0
@@ -179,22 +289,40 @@ struct LAABrainSaveJournal {
                                     note.pending.append(item); notes[item.path] = note
                                 }
                             } else {
-                                let item = try JSONDecoder().decode(VersionSummary.self, from: data)
-                                guard folder.lastPathComponent == Self.itemKey(vault: item.vault, path: item.path),
-                                      file.lastPathComponent == item.id.uuidString + ".json" else { throw JournalError.invalidRecord }
+                                let decoded: VersionSummary
+                                if let item = try? JSONDecoder().decode(VersionSummary.self, from: data) { decoded = item }
+                                else {
+                                    let legacy = try JSONDecoder().decode(Version.self, from: data)
+                                    decoded = VersionSummary(id: legacy.id, vault: legacy.vault, path: legacy.path, kind: legacy.kind,
+                                                             created: legacy.created, digest: legacy.digest, byteCount: legacy.bytes.count)
+                                }
+                                guard folder.lastPathComponent == Self.itemKey(vault: decoded.vault, path: decoded.path),
+                                      let item = try readSummary(file, folder: folder, vault: decoded.vault, path: decoded.path) else {
+                                    throw JournalError.invalidRecord
+                                }
                                 if item.vault == vault {
                                     var note = notes[item.path] ?? Catalogue.Note(path: item.path)
                                     note.versions.append(item); notes[item.path] = note
                                 }
                             }
                         }
-                    } catch { unreadable += 1 }
+                    } catch is DecodingError {
+                        unreadable += 1
+                        if !pendingRecords { try quarantineRecord(file, folder: folder) }
+                    } catch JournalError.invalidRecord {
+                        unreadable += 1
+                        if !pendingRecords { try quarantineRecord(file, folder: folder) }
+                    } catch {
+                        unreadable += 1
+                    }
                 }
+                if !pendingRecords { unreadable += files.filter { $0.lastPathComponent.contains(".json.corrupt") }.count }
             }
         }
-        let sorted = notes.values.map { note in
+        let sorted = try notes.values.map { note in
             var result = note
-            result.versions.sort { $0.created > $1.created }
+            // This also applies the 30-record limit to migrated fixture data.
+            result.versions = try summaries(vault: vault, path: note.path)
             result.pending.sort { $0.created > $1.created }
             return result
         }.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }

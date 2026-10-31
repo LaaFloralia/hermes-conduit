@@ -34,9 +34,12 @@ struct LAABrainSaveEditor: View {
     @State private var versions: [LAABrainSaveJournal.VersionSummary] = []
     @State private var busy = true
     @State private var recoveryUnavailable = false
+    @State private var historyCorrupt = false
     @State private var message: String?
     @State private var showHistory = false
     @State private var showFallbackWarning = false
+    @State private var showHistoryWarning = false
+    @State private var newlyCorruptHistory = false
     @State private var missingStageID: UUID?
     @State private var pendingToClear: LAABrainSaveJournal.Pending?
     @State private var showMissingStageAlert = false
@@ -55,11 +58,17 @@ struct LAABrainSaveEditor: View {
                 } else if let conflict {
                     conflictView(conflict)
                 } else if snapshot != nil {
-                    TextEditor(text: $draft)
-                        .font(.body.monospaced())
-                        .disabled(busy)
-                        .accessibilityIdentifier("laa.brain.edit.text")
-                        .padding(.horizontal, LAASpacing.x2)
+                    VStack {
+                        if historyCorrupt {
+                            Text(verbatim: "履歴が壊れています。該当する記録は退避しました。")
+                                .foregroundStyle(LAAColor.attention)
+                                .accessibilityIdentifier("laa.brain.history.corrupt")
+                        }
+                        TextEditor(text: $draft)
+                            .font(.body.monospaced()).disabled(busy)
+                            .accessibilityIdentifier("laa.brain.edit.text")
+                            .padding(.horizontal, LAASpacing.x2)
+                    }
                 } else {
                     ContentUnavailableView("Cannot open editor", systemImage: "exclamationmark.triangle", description: Text("Check folder access and try again."))
                 }
@@ -91,7 +100,7 @@ struct LAABrainSaveEditor: View {
         }
         .interactiveDismissDisabled()
         .task { await open() }
-        .sheet(isPresented: $showHistory) {
+        .sheet(isPresented: $showHistory, onDismiss: { Task { await refreshHistory() } }) {
             BrainHistoryView(root: root, versions: versions, journal: coordinator.journal, didRestore: didSave,
                              canUse: snapshot != nil && pending.isEmpty && !recoveryUnavailable) { version in
                 showHistory = false
@@ -101,9 +110,16 @@ struct LAABrainSaveEditor: View {
             }
         }
         .alert("Saved with limited protection", isPresented: $showFallbackWarning) {
-            Button("OK") { didSave(); dismiss() }
+            Button("OK") {
+                if newlyCorruptHistory { showHistoryWarning = true } else { didSave(); dismiss() }
+            }
         } message: {
             Text("This location cannot exchange files atomically. A change made immediately after the final check may not be retained.")
+        }
+        .alert("履歴が壊れています", isPresented: $showHistoryWarning) {
+            Button("OK") { didSave(); dismiss() }
+        } message: {
+            Text(verbatim: "該当する記録は退避しました。ほかの履歴は残っています。")
         }
         .alert("Clear missing stage?", isPresented: $showMissingStageAlert) {
             Button("Clear pending", role: .destructive) {
@@ -118,7 +134,7 @@ struct LAABrainSaveEditor: View {
     private var interruptedView: some View {
         List {
             Section {
-                Text("An interrupted save needs review. Preserve the staged file before editing again.")
+                Text("An interrupted save needs review. The staged file may contain the original, a complete or partial draft, or a displaced version. Preserve it before editing again.")
                 ForEach(pending) { item in
                     Button { Task { await preserve(item) } } label: {
                         Label("Preserve interrupted version", systemImage: "tray.and.arrow.down")
@@ -171,6 +187,7 @@ struct LAABrainSaveEditor: View {
     @MainActor private func open() async {
         busy = true; message = nil
         recoveryUnavailable = true
+        var readingNote = false
         do {
             let vault = LAABrainSaveJournal.vaultID(root)
             let (stored, unfinished) = try await Task.detached(priority: .userInitiated) {
@@ -179,17 +196,26 @@ struct LAABrainSaveEditor: View {
             }.value
             versions = stored; pending = unfinished
             if unfinished.isEmpty {
+                readingNote = true
                 let entry = try await Task.detached(priority: .userInitiated) {
                     try coordinator.begin(root: root, path: path)
                 }.value
+                readingNote = false
                 snapshot = entry
                 draft = String(decoding: entry.base, as: UTF8.self)
                 versions = try await Task.detached(priority: .userInitiated) {
                     try coordinator.journal.summaries(vault: vault, path: path)
                 }.value
             }
+            historyCorrupt = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.corruptCount(vault: vault, path: path) > 0
+            }.value
             recoveryUnavailable = false
-        } catch { message = "The note or its recovery history is unavailable." }
+        } catch LAABrainSaveCoordinator.SaveError.historyUnavailable {
+            message = "履歴を読めません。端末内の保存領域を確認してください。"
+        } catch {
+            message = readingNote ? "ノートを読めません。保管庫へのアクセスを確認してください。" : "履歴を読めません。端末内の保存領域を確認してください。"
+        }
         busy = false
     }
 
@@ -221,9 +247,14 @@ struct LAABrainSaveEditor: View {
             versions = try await Task.detached(priority: .userInitiated) {
                 try coordinator.journal.summaries(vault: snapshot.vault, path: path)
             }.value
+            let foundCorruption = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.corruptCount(vault: snapshot.vault, path: path) > 0
+            }.value
+            newlyCorruptHistory = foundCorruption && !historyCorrupt
+            historyCorrupt = foundCorruption
             switch outcome {
             case .saved(.exchange):
-                didSave(); dismiss()
+                if newlyCorruptHistory { showHistoryWarning = true } else { didSave(); dismiss() }
             case .saved(.checkedReplacement):
                 showFallbackWarning = true
             case let .conflict(current, mine):
@@ -247,6 +278,17 @@ struct LAABrainSaveEditor: View {
             }
         }
         busy = false
+    }
+
+    @MainActor private func refreshHistory() async {
+        let vault = LAABrainSaveJournal.vaultID(root)
+        do {
+            let (stored, corrupt) = try await Task.detached(priority: .userInitiated) {
+                (try coordinator.journal.summaries(vault: vault, path: path),
+                 try coordinator.journal.corruptCount(vault: vault, path: path) > 0)
+            }.value
+            versions = stored; historyCorrupt = corrupt
+        } catch { message = "履歴を読めません。端末内の保存領域を確認してください。" }
     }
 
     @MainActor private func resolve(using text: String) async {
@@ -368,7 +410,7 @@ private struct BrainHistoryDetail: View {
                         .disabled(restoring).accessibilityIdentifier("laa.brain.recovery.restore")
                     Button("Export copy to Files") {
                         exportDocument = BrainRecoveryDocument(bytes: version.bytes)
-                        exportName = "Recovered-" + UUID().uuidString + ".md"
+                        exportName = LAABrainSaveCoordinator.recoveryName(bytes: version.bytes, path: summary.path)
                         showExport = true
                     }.disabled(restoring).accessibilityIdentifier("laa.brain.recovery.export")
                     Text("Restoring creates a new file. For export, keep the suggested name to avoid replacing another note. The saved version stays in History.").font(.footnote)
@@ -378,7 +420,7 @@ private struct BrainHistoryDetail: View {
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding()
             } else if failed {
-                Text("This version could not be verified.").padding()
+                Text(verbatim: "履歴が壊れているか、記録を読めません。ほかの履歴を確認してください。").padding()
             } else {
                 ProgressView().padding()
             }
@@ -395,7 +437,7 @@ private struct BrainHistoryDetail: View {
                 restoring = true
                 Task {
                     let verified = await Task.detached(priority: .userInitiated) {
-                        Self.verifyExport(url, digest: summary.digest)
+                        LAABrainSaveCoordinator.verifyExport(url, digest: summary.digest)
                     }.value
                     message = verified ? "Exported copy verified." : "Export finished, but the copy could not be verified."
                     restoring = false
@@ -431,17 +473,6 @@ private struct BrainHistoryDetail: View {
             message = "The copy could not be restored. The saved version remains in History."
         }
         restoring = false
-    }
-
-    nonisolated private static func verifyExport(_ url: URL, digest: String) -> Bool {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        var matches = false
-        var coordinationError: NSError?
-        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
-            if let bytes = try? Data(contentsOf: coordinated) { matches = LAABrainSaveJournal.digest(bytes) == digest }
-        }
-        return coordinationError == nil && matches
     }
 }
 
@@ -484,7 +515,7 @@ struct LAABrainRecoveryCatalogueView: View {
                         }.accessibilityIdentifier("laa.brain.recovery.note")
                     }
                     if catalogue.unreadable > 0 {
-                        Text("Some saved records could not be read. They have not been removed.")
+                        Text("履歴が壊れているか一部を読めません。原本とほかの履歴は残っています。")
                             .foregroundStyle(LAAColor.attention)
                     }
                 } else if failed {
@@ -525,6 +556,7 @@ private struct BrainRecoveryPathView: View {
             if let note {
                 if !note.pending.isEmpty {
                     Section("Interrupted save") {
+                        Text("The staged file may contain the original, a complete or partial draft, or a displaced version.")
                         ForEach(note.pending) { item in
                             Button("Preserve interrupted version") { Task { await preserve(item) } }
                                 .disabled(busy).accessibilityIdentifier("laa.brain.recovery.preserve")
@@ -575,7 +607,7 @@ private struct BrainRecoveryPathView: View {
                 try coordinator.journal.catalogue(vault: LAABrainSaveJournal.vaultID(root))
             }.value
             note = catalogue.notes.first(where: { $0.path == path }) ?? LAABrainSaveJournal.Catalogue.Note(path: path)
-            message = catalogue.unreadable > 0 ? "Some saved records could not be read. They have not been removed." : nil
+            message = catalogue.unreadable > 0 ? "履歴が壊れているか一部を読めません。原本とほかの履歴は残っています。" : nil
         } catch { message = "Recovery history is unavailable. Check storage and try again." }
         busy = false
     }

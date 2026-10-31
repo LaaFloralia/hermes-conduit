@@ -28,6 +28,10 @@ struct LAABrainNoteView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.x4) {
                         Text(verbatim: reference.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        if LAABrainSaveCoordinator.isConflictCopy(reference.path) {
+                            Text(verbatim: "競合コピー").foregroundStyle(LAAColor.attention)
+                                .accessibilityIdentifier("laa.brain.conflictCopy")
+                        }
                         if loading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                         else if let localError {
                             Text(verbatim: localError).foregroundStyle(LAAColor.attention)
@@ -74,7 +78,7 @@ struct LAABrainNoteView: View {
                         .accessibilityLabel(Text(verbatim: "Switch note"))
                         .accessibilityIdentifier("laa.brain.quickSwitch")
                 }
-                if isLocal && LAABrainEditingGate.enabled && note != nil {
+                if isLocal && LAABrainEditingGate.enabled && note != nil && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { editorRoot = try? local.snapshot() } label: { Image(systemName: "square.and.pencil") }
                             .accessibilityLabel(Text(verbatim: "Edit note"))
