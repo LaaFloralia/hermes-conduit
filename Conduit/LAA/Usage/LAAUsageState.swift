@@ -79,6 +79,28 @@ final class LAAUsageState: ObservableObject {
         await withCheckedContinuation { idleWaiters.append($0) }
     }
 
+    /// The Usage tab reads only the proxy projection, not the Hermes dashboard.
+    func refreshUsage(
+        _ load: @escaping @MainActor () async throws -> [LAAUsageItem],
+        now: @escaping () -> Date = Date.init
+    ) async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        generation += 1
+        let mine = generation
+        defer {
+            isRefreshing = false
+            let waiters = idleWaiters
+            idleWaiters.removeAll()
+            waiters.forEach { $0.resume() }
+        }
+        let result = await Self.capture(load)
+        guard mine == generation, !Task.isCancelled else { return }
+        let finished = now()
+        Self.apply(result, to: &usage, retainedIDs: &retainedUsageIDs, at: finished)
+        if case .success = result, retainedUsageIDs.isEmpty { updatedAt = finished }
+    }
+
     func refresh(
         usage loadUsage: @escaping @MainActor () async throws -> [LAAUsageItem],
         mac loadMac: @escaping @MainActor () async throws -> [LAAUsageItem],
@@ -156,6 +178,43 @@ struct LAAUsageGroup: Identifiable {
             }
         }
         return result
+    }
+
+    /// Match the Console's visible provider order; do not add Hermes profiles.
+    static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
+        let ids = ["liquid", "claude", "codex", "opencode-go", "magnific", "fal"]
+        return ids.compactMap { id in
+            let prefix = "provider.\(id)."
+            let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
+            guard let first = selected.first else { return nil }
+            return LAAUsageGroup(id: "provider.\(id)", label: id == "liquid" ? "D1" : first.label, items: selected)
+        }
+    }
+}
+
+enum LAAWidgetUsageBuilder {
+    static func make(items: [LAAUsageItem], retained: Set<String>, failed: Bool,
+                     checkedAt: Date?) -> WidgetUsageSnapshot {
+        let meters = LAAUsageGroup.consoleGroups(items).flatMap(\.items).flatMap { item -> [WidgetUsageMeter] in
+            guard item.kind == "quota", item.availability == "available" else { return [] }
+            return (item.detail?.windows ?? []).enumerated().compactMap { index, window in
+                guard let value = window.remainingPercent, value.isFinite, (0...100).contains(value) else { return nil }
+                return WidgetUsageMeter(id: "\(item.id).\(index)", label: "\(item.label) · \(window.label)",
+                    remainingPercent: value, observedAt: LAAUsageItem.date(item.observedAt),
+                    freshUntil: LAAUsageItem.date(item.detail?.freshUntil),
+                    resetsAt: LAAUsageItem.date(window.resetsAt), stale: item.stale,
+                    retained: failed || retained.contains(item.id))
+            }
+        }.sorted {
+            if $0.remainingPercent != $1.remainingPercent { return $0.remainingPercent < $1.remainingPercent }
+            return $0.id < $1.id
+        }
+        let selected = Array(meters.prefix(3))
+        // The feed can be cached even when the app has just contacted Bridge.
+        // Only show a confirmation time if all displayed meters have one.
+        let observations = selected.compactMap(\.observedAt)
+        let oldestObservation = observations.count == selected.count ? observations.min() : nil
+        return WidgetUsageSnapshot(meters: selected, checkedAt: selected.isEmpty ? checkedAt : oldestObservation)
     }
 }
 

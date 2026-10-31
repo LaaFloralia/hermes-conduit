@@ -45,6 +45,22 @@ struct WidgetSnapshotStore {
 
     @discardableResult
     func write(_ snapshot: WidgetSnapshot) throws -> Bool {
+        #if LAA_BUILD
+        // Chat catalogue publications predate usage and must not erase it.
+        let snapshot = snapshot.usage == nil ? snapshot.withUsage(read()?.usage) : snapshot
+        #endif
+        return try writeRaw(snapshot)
+    }
+
+    #if LAA_BUILD
+    @discardableResult
+    func writeUsage(_ usage: WidgetUsageSnapshot?) throws -> Bool {
+        let snapshot = read() ?? WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
+        return try writeRaw(snapshot.withUsage(usage))
+    }
+    #endif
+
+    private func writeRaw(_ snapshot: WidgetSnapshot) throws -> Bool {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(snapshot)

@@ -209,7 +209,20 @@ test('the normal feed matches the fixture readings field by field', async (t) =>
     const { label: expectedLabel, ...expectedRest } = expected;
     assert.equal(actualLabel.length > 0, true);
     assert.equal(expectedLabel.length > 0, true);
-    assert.deepEqual(actualRest, expectedRest, `${expected.id} differs from the fixture`);
+    assert.deepEqual(Object.keys(actualRest).sort(), Object.keys(expectedRest).sort(), `${expected.id} fields`);
+    for (const [key, value] of Object.entries(expectedRest)) {
+      if (key === 'detail') {
+        for (const [detailKey, detailValue] of Object.entries(value)) {
+          assert.deepEqual(actualRest.detail?.[detailKey], detailValue, `${expected.id} detail.${detailKey}`);
+        }
+        const added = new Set(['sourceKind', 'freshUntil', 'credits', 'resetPasses', 'usd', 'diem',
+          'monthlyRemainingPercent', 'expiresOnUtc', 'creditUnit', 'fallbackAiCredits',
+          'recordedCostUsd', 'recordedRequestCount', 'lastRecordedAt']);
+        for (const detailKey of Object.keys(actualRest.detail)) {
+          assert.ok(Object.hasOwn(value, detailKey) || added.has(detailKey), `${expected.id} unexpected detail.${detailKey}`);
+        }
+      } else assert.deepEqual(actualRest[key], value, `${expected.id} ${key}`);
+    }
   }
 
   // Every known provider is present even when the feed omits it: a missing

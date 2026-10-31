@@ -11,9 +11,44 @@ struct LAAUsageItem: Decodable, Identifiable {
         let label: String
         let remainingPercent: Double?
         let resetsAt: String?
+        let windowMinutes: Double?
+    }
+    struct Component: Decodable {
+        let kind: String
+        let amount: Double
+        let grantedAmount: Double?
+        let expiresOnUtc: String?
+    }
+    struct Credits: Decodable {
+        let remaining: Double?
+        let updatedAt: String?
+    }
+    struct ResetPasses: Decodable {
+        let available: Bool
+        let remaining: Double?
+        let updatedAt: String?
+        let expiresAt: String?
     }
     struct Detail: Decodable {
         let windows: [Window]?
+        let sourceKind: String?
+        let freshUntil: String?
+        let credits: Credits?
+        let resetPasses: ResetPasses?
+        let components: [Component]?
+        let currency: String?
+        let creditUnit: String?
+        let grantedAmount: Double?
+        let monthlyGrantedAmount: Double?
+        let dailyRemaining: Double?
+        let dailyGrantedAmount: Double?
+        let fallbackAiCredits: Double?
+        let usd: Double?
+        let diem: Double?
+        let monthlyRemainingPercent: Double?
+        let recordedCostUsd: Double?
+        let recordedRequestCount: Double?
+        let lastRecordedAt: String?
         let totalBytes: Double?
         let availableBytes: Double?
         let swapUsedBytes: Double?

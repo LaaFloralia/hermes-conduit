@@ -130,6 +130,7 @@ test('a balance is expired when every remaining component has expired', () => {
     kind: 'monthly',
     amount: 4.98,
     grantedAmount: 5,
+    expiresOnUtc: '2026-11-19',
   });
 });
 
@@ -166,12 +167,43 @@ test('unit credits and recorded usage keep their own units and details', () => {
   const flow = byId(items, 'provider.google-flow.credits');
   assert.equal(flow.value, 0);
   assert.equal(flow.unit, 'credits');
-  assert.deepEqual(flow.detail, { monthlyGrantedAmount: 1000 });
+  assert.deepEqual(flow.detail, { monthlyGrantedAmount: 1000, sourceKind: 'verified' });
   const liquid = byId(items, 'provider.liquid.usage');
   assert.equal(liquid.value, 32007029);
   assert.equal(liquid.unit, 'tokens');
   assert.equal(liquid.detail.periodDays, 14);
+  assert.equal(liquid.detail.recordedCostUsd, 1.31);
+  assert.equal(liquid.detail.recordedRequestCount, 6473);
   assert.deepEqual(liquid.detail.models, [{ model: 'd1.1 / d1-ultra', inputTokens: 32007029, outputTokens: 0 }]);
+});
+
+test('projection keeps quota extras and the original freshness without inventing timestamps', () => {
+  const [item] = projection([{
+    id: 'claude', kind: 'quota', source: 'live', available: true,
+    updatedAt: '2026-10-29T04:50:00Z', fetchedAt: '2026-10-29T04:45:00Z',
+    windows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
+    extraWindows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
+    credits: { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' },
+    resetPasses: { available: false, updatedAt: '2026-10-29T04:49:00Z', expiresAt: '2026-10-29T07:00:00Z' },
+  }]);
+  assert.equal(item.detail.windows.length, 1);
+  assert.equal(item.detail.windows[0].remainingPercent, 0);
+  assert.equal(item.detail.freshUntil, '2026-10-29T05:05:00.000Z');
+  assert.deepEqual(item.detail.credits, { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' });
+  assert.equal(item.detail.resetPasses.available, false);
+  assert.equal(item.detail.resetPasses.remaining, null);
+  const missing = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(missing.observedAt, null);
+  assert.equal(missing.detail.freshUntil, undefined);
+  const future = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
+    updatedAt: '2026-10-29T05:03:00Z', fetchedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(future.detail.freshUntil, undefined);
+  const missingSourceFetch = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
+    updatedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
+  assert.equal(missingSourceFetch.detail.freshUntil, undefined);
 });
 
 test('text from the feed is sanitised and never carries a credential or a path', () => {

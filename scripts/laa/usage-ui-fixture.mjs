@@ -38,11 +38,17 @@ createServer(async (req, res) => {
     if (mode === 'slow') await new Promise(resolve => setTimeout(resolve, 3000));
     const name = req.url === '/v1/usage' ? 'usage-normal.json' : 'mac-status-normal.json';
     const body = await readFixture(name);
-    if (req.url === '/v1/usage' && body.data.items[0]?.detail?.windows) {
-      const quota = body.data.items[0];
-      quota.observedAt = new Date(Date.now() - 60_000).toISOString();
-      for (const window of quota.detail.windows) window.resetsAt = new Date(Date.now() + 3_600_000).toISOString();
-      quota.expired = false;
+    if (req.url === '/v1/usage') {
+      for (const quota of body.data.items.filter(item => item.kind === 'quota' && item.detail?.windows)) {
+        const observed = Date.now() - (mode === 'stale' ? 30 * 60_000 : 60_000);
+        quota.observedAt = new Date(observed).toISOString();
+        quota.stale = mode === 'stale';
+        quota.detail.freshUntil = new Date(observed + 20 * 60_000).toISOString();
+        for (const window of quota.detail.windows) window.resetsAt = new Date(Date.now() + 3_600_000).toISOString();
+        quota.expired = false;
+      }
+      const liquid = body.data.items.find(item => item.id === 'provider.liquid.usage');
+      if (liquid) { liquid.detail.recordedCostUsd = 1.31; liquid.detail.recordedRequestCount = 6473; }
     }
     if (mode === 'empty') body.data.items = [];
     if (mode === 'degraded' && req.url === '/v1/usage') {
@@ -61,7 +67,7 @@ createServer(async (req, res) => {
     if (req.url === '/counts') { res.end(String(usageRequests)); return; }
     if (req.url?.startsWith('/mode/')) {
       const next = req.url.slice('/mode/'.length);
-      if (!['normal', 'degraded', 'error', 'offline', 'empty', 'slow'].includes(next)) { send(res, 404, {}); return; }
+      if (!['normal', 'degraded', 'error', 'offline', 'empty', 'slow', 'stale'].includes(next)) { send(res, 404, {}); return; }
       mode = next; res.end('ok'); return;
     }
     // The real server and its state are explicitly isolated by the test runner.

@@ -4,6 +4,7 @@ import SwiftUI
 import WidgetKit
 #if LAA_WIDGET_TEST
 @testable import Conduit
+private final class LAAWidgetTestResources {}
 #endif
 
 extension LAAWidgetEmployee: AppEnum {
@@ -26,15 +27,22 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
     let employee: LAAWidgetEmployee
     let chat: WidgetLaunchLink
     let call: WidgetLaunchLink
+    let mediumChat: WidgetLaunchLink
+    let mediumCall: WidgetLaunchLink
+    let usage: WidgetUsageSnapshot?
 
-    static func make(employee: LAAWidgetEmployee, snapshot: WidgetSnapshot?) -> Self {
-        Self(date: Date(), employee: employee,
+    static func make(employee: LAAWidgetEmployee, snapshot: WidgetSnapshot?, date: Date = Date()) -> Self {
+        Self(date: date, employee: employee,
              chat: LAAEmployeeWidgetLinks.link(employee: employee, action: .employeeChat, snapshot: snapshot),
-             call: LAAEmployeeWidgetLinks.link(employee: employee, action: .talk, snapshot: snapshot))
+             call: LAAEmployeeWidgetLinks.link(employee: employee, action: .talk, snapshot: snapshot),
+             mediumChat: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .employeeChat, snapshot: snapshot),
+             mediumCall: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .talk, snapshot: snapshot),
+             usage: snapshot?.usage)
     }
 
     func defaultLink(for family: WidgetFamily) -> WidgetLaunchLink {
-        family == .systemSmall ? chat : call
+        if family == .systemMedium { return mediumChat }
+        return family == .systemSmall ? chat : call
     }
 }
 
@@ -49,12 +57,15 @@ struct LAAEmployeeTimelineProvider: AppIntentTimelineProvider {
 
     static func makeTimeline(configuration: LAAEmployeeWidgetIntent, snapshot: WidgetSnapshot?) -> Timeline<LAAEmployeeWidgetEntry> {
         let entry = LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot)
-        return Timeline(entries: [entry], policy: .never)
+        let futureDates = Set((snapshot?.usage?.meters ?? []).flatMap { [$0.freshUntil, $0.resetsAt].compactMap { $0 } }
+            .filter { $0 > entry.date }).sorted()
+        let future = futureDates.map { LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot, date: $0) }
+        return Timeline(entries: [entry] + future, policy: future.isEmpty ? .never : .atEnd)
     }
 }
 
 struct LAAEmployeeWidget: Widget {
-    static let supportedFamilies: [WidgetFamily] = [.systemSmall, .accessoryRectangular, .accessoryCircular]
+    static let supportedFamilies: [WidgetFamily] = [.systemSmall, .systemMedium, .accessoryRectangular, .accessoryCircular]
 
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: ConduitWidgetKind.employee, intent: LAAEmployeeWidgetIntent.self, provider: LAAEmployeeTimelineProvider()) { entry in
@@ -77,18 +88,113 @@ private extension LAACopy {
 struct LAAEmployeeWidgetView: View {
     let entry: LAAEmployeeWidgetEntry
     var familyOverride: WidgetFamily? = nil
+    var renderingModeOverride: WidgetRenderingMode? = nil
     @Environment(\.widgetFamily) private var family
     @Environment(\.widgetRenderingMode) private var renderingMode
+    private var effectiveRenderingMode: WidgetRenderingMode { renderingModeOverride ?? renderingMode }
 
     var body: some View {
         Group {
             switch familyOverride ?? family {
             case .accessoryRectangular: rectangular
             case .accessoryCircular: circular
+            case .systemMedium: medium
             default: small
             }
         }
         .containerBackground(for: .widget) { LAAColor.surface }
+    }
+
+    private var medium: some View {
+        HStack(spacing: LAASpacing.x3) {
+            VStack(spacing: LAASpacing.x1) {
+                GeometryReader { geometry in
+                    ZStack(alignment: .topLeading) {
+                        employeeImage(LAAWidgetEmployee.ciel.heroImage)
+                            .scaledToFit()
+                            .frame(width: geometry.size.height, height: geometry.size.height)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                            .accessibilityHidden(true)
+                        Text(verbatim: LAAWidgetEmployee.ciel.name).font(LAAType.employeeName)
+                            .foregroundStyle(LAAColor.text).lineLimit(1)
+                    }
+                }
+                HStack(spacing: LAASpacing.x2) {
+                    iconAction(entry.mediumCall.url, symbol: "phone.fill", label: LAACopy.widgetCall, primary: true)
+                    iconAction(entry.mediumChat.url, symbol: "bubble.left.fill", label: LAACopy.widgetChat, primary: false)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            Rectangle().fill(LAAColor.separator).frame(width: 1)
+            usageSummary.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(LAASpacing.x3)
+        .widgetURL(entry.mediumChat.url)
+    }
+
+    private var usageSummary: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            Text(verbatim: "AI Usage").laaTextStyle(.section).fontWeight(.bold)
+                .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
+            if let usage = entry.usage, !usage.meters.isEmpty {
+                ForEach(usage.meters) { meter in
+                    let past = meter.isPast(at: entry.date)
+                    let percentage = percentageText(meter.remainingPercent)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: LAASpacing.x1) {
+                            Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.8)
+                            Spacer(minLength: 0)
+                            Text(verbatim: percentage)
+                                .monospacedDigit().fontWeight(.semibold)
+                        }
+                        .laaTextStyle(.section)
+                        .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
+                        ProgressView(value: meter.remainingPercent, total: 100)
+                            .tint(past ? LAAColor.attention : LAAColor.link)
+                        if past {
+                            Text(verbatim: "最終取得・要確認").laaTextStyle(.section)
+                                .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(meter.label), 残り \(percentage)\(past ? ", 最終取得、要確認" : "")")
+                }
+                Spacer(minLength: 0)
+                if let checked = usage.checkedAt {
+                    Text("データ確認 \(checked, format: .dateTime.month().day().hour().minute())")
+                        .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                } else {
+                    Text(verbatim: "確認時刻 未取得").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                }
+            } else {
+                Text(verbatim: "未取得").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func percentageText(_ value: Double) -> String {
+        if value > 0 && value < 0.01 { return "<0.01%" }
+        if value < 100 && value > 99.99 { return ">99.99%" }
+        return value.formatted(.number.precision(.fractionLength(0...2))) + "%"
+    }
+
+    private func iconAction(_ url: URL, symbol: String, label: String, primary: Bool) -> some View {
+        Link(destination: url) {
+            Image(systemName: symbol).laaTextStyle(.body).fontWeight(.semibold)
+                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
+                .foregroundStyle(effectiveRenderingMode == .fullColor && primary ? LAAColor.filledButtonText : LAAColor.link)
+                .background {
+                    if effectiveRenderingMode == .fullColor {
+                        RoundedRectangle(cornerRadius: LAARadius.control)
+                            .fill(primary ? LAAColor.filledButton : LAAColor.subtleSurface)
+                    } else {
+                        RoundedRectangle(cornerRadius: LAARadius.control).strokeBorder(LAAColor.text, lineWidth: 1)
+                    }
+                }
+        }
+        .accessibilityLabel("Ciel, \(label)")
     }
 
     private var small: some View {
@@ -164,10 +270,15 @@ struct LAAEmployeeWidgetView: View {
 
     @ViewBuilder
     private func employeeImage(_ name: String) -> some View {
+        #if LAA_WIDGET_TEST
+        let image = Image(name, bundle: Bundle(for: LAAWidgetTestResources.self))
+        #else
+        let image = Image(name)
+        #endif
         if #available(iOS 18.0, *) {
-            Image(name).resizable().widgetAccentedRenderingMode(.fullColor)
+            image.resizable().widgetAccentedRenderingMode(.fullColor)
         } else {
-            Image(name).resizable()
+            image.resizable()
         }
     }
 
