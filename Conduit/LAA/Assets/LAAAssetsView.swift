@@ -61,8 +61,7 @@ struct LAAAssetsView: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: onRequestSettings) { Image(systemName: "gearshape") }
-                    .accessibilityLabel(Text(verbatim: LAACopy.Brain.settings))
+                LAASettingsButton(action: onRequestSettings)
             }
         }
         .tint(LAAColor.link)

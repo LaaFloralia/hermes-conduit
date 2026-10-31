@@ -16,7 +16,11 @@ struct LAAAppShell: View {
     @State private var chatsPath: [V2Route] = []
 
     private var requiresLogin: Bool {
-        appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_FORCE_LOGIN") { return true }
+        #endif
+        return appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
     }
 
     private var conversationVisible: Bool {

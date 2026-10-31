@@ -9,51 +9,79 @@ struct LAAPairingView: View {
     @State private var isPairing = false
     @State private var failure: LAABridgeError?
 
+    private var canPair: Bool {
+        !isPairing && !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    TextField(text: $address) { Text(verbatim: "接続先") }
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .accessibilityIdentifier("laa.bridge.address")
-                    SecureField(text: $code) { Text(verbatim: "ペアリングコード") }
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("laa.bridge.code")
-                } header: {
-                    Text(verbatim: "Macに接続")
-                } footer: {
-                    Text(verbatim: "Macで laa-bridge pair を実行し、表示されたコードを入力してください。コードは10分間、1回だけ使えます。")
-                }
-                if bridge.status == .paired {
-                    Section {
-                        Text(verbatim: "接続先を変更した後は、以前の端末登録をMacで失効してください。")
+            ScrollView {
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        Text(verbatim: LAACopy.pairingAddress)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        TextField("", text: $address)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .modifier(LAAPairingInputStyle())
+                            .accessibilityLabel(Text(verbatim: LAACopy.pairingAddress))
+                            .accessibilityIdentifier("laa.bridge.address")
                     }
-                }
-                if let failure {
-                    Section {
-                        Text(verbatim: failure.japaneseText).foregroundStyle(LAAColors.plum)
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        Text(verbatim: LAACopy.pairingCode)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        SecureField("", text: $code)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .modifier(LAAPairingInputStyle())
+                            .accessibilityLabel(Text(verbatim: LAACopy.pairingCode))
+                            .accessibilityIdentifier("laa.bridge.code")
+                    }
+                    Text(verbatim: "Macで laa-bridge pair を実行し、表示されたコードを入力してください。コードは10分間、1回だけ使えます。")
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    if bridge.status == .paired {
+                        Text(verbatim: "接続先を変更した後は、以前の端末登録をMacで失効してください。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                    if let failure {
+                        Text(verbatim: failure.japaneseText).foregroundStyle(LAAColor.attention)
                         if failure == .keychain {
                             Text(verbatim: "端末登録が作成されている場合は、Macで今回の登録を失効してください。")
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                     }
-                }
-                Section {
                     Button {
                         Task { await pair() }
                     } label: {
-                        if isPairing { ProgressView() } else { Text(verbatim: "接続する") }
+                        Group {
+                            if isPairing { ProgressView() } else { Text(verbatim: LAACopy.pairingConnect) }
+                        }
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight)
+                        .contentShape(Rectangle())
                     }
-                    .disabled(isPairing || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(LAAColor.filledButtonText)
+                    .tint(LAAColor.filledButtonText)
+                    .background(LAAColor.filledButton, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                    .opacity(canPair ? 1 : 0.5)
+                    .disabled(!canPair)
                     .accessibilityIdentifier("laa.bridge.pair")
                 }
+                .frame(maxWidth: 720, alignment: .leading)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, LAASpacing.horizontal)
+                .padding(.top, LAASpacing.x6)
+                .padding(.bottom, LAASpacing.x8)
             }
-            .navigationTitle(Text(verbatim: "Macとの接続"))
+            .scrollDismissesKeyboard(.interactively)
+            .background(LAAColor.background.ignoresSafeArea())
+            .navigationTitle(Text(verbatim: LAACopy.pairingTitle))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "閉じる") } } }
-            .tint(LAAColors.teal)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: LAACopy.close) } } }
+            .tint(LAAColor.link)
             .onAppear { address = bridge.address }
         }
     }
@@ -72,6 +100,18 @@ struct LAAPairingView: View {
         } catch {
             failure = .invalidResponse
         }
+    }
+}
+
+private struct LAAPairingInputStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .laaTextStyle(.body)
+            .foregroundStyle(LAAColor.text)
+            .padding(.horizontal, LAASpacing.x4)
+            .frame(minHeight: LAASpacing.minimumRowHeight)
+            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .overlay(RoundedRectangle(cornerRadius: LAARadius.card).strokeBorder(LAAColor.separator))
     }
 }
 #endif

@@ -18,6 +18,15 @@ import UIKit
 /// the near-black backdrop is too light for white text. So a sent bubble has
 /// its own fill.
 final class AccentContrastTests: XCTestCase {
+    func testAppIconPreviewUsesTheSelectedBuildBrand() {
+        #if LAA_BUILD
+        XCTAssertEqual(AppIconChoice.dark.previewAssetName, "LAAIconPreview")
+        XCTAssertEqual(AppIconChoice.light.previewAssetName, "LAAIconPreview")
+        #else
+        XCTAssertEqual(AppIconChoice.dark.previewAssetName, "AppIconPreview")
+        XCTAssertEqual(AppIconChoice.light.previewAssetName, "AppIconLightPreview")
+        #endif
+    }
     /// `ConduitBackdrop.base`, dark and light.
     private static let darkBackdrop = UIColor(red: 0.045, green: 0.052, blue: 0.072, alpha: 1)
     private static let lightBackdrop = UIColor(red: 0.94, green: 0.95, blue: 0.98, alpha: 1)
@@ -81,7 +90,12 @@ final class AccentContrastTests: XCTestCase {
         for choice in Self.everyAccent {
             for dark in [false, true] {
                 let resolved = UIColor.conduitUserBubble.resolvedColor(with: Self.traits(choice, dark: dark))
-                XCTAssertEqual(Self.contrast(resolved, choice.bubbleColor), 1, accuracy: 0.01, "\(choice) dark=\(dark)")
+                #if LAA_BUILD
+                let expected = UIColor(LAAColor.ownBubble).resolvedColor(with: Self.traits(choice, dark: dark))
+                #else
+                let expected = choice.bubbleColor
+                #endif
+                XCTAssertEqual(Self.contrast(resolved, expected), 1, accuracy: 0.01, "\(choice) dark=\(dark)")
             }
         }
     }

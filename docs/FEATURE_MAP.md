@@ -3599,6 +3599,25 @@ point at the map and its check
 
 **Checked:** 2026-10-26, #1314.
 
+## LAA branding and root settings
+
+**Siblings:** Hermes sign-in and permission descriptions · the five tab roots and Settings sheet · Bridge pairing and employee calls · iPhone and Watch widgets · sharing and notification extensions · the upstream app
+
+**Code**
+- LAA build branding, localized bundle resources and extension names: `project-laa.yml`, `project-personal.yml`, `scripts/laa/brand-bundle.py`, `Shared/LAAProductBrand.swift`, `Conduit/Views/Login/LoginScreens.swift`, `Conduit/Models/AppIconChoice.swift`, `Conduit/Theme.swift`
+- Root Settings and control labels: `Conduit/LAA/LAASettingsAction.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `Conduit/Views/LoginView.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`
+- Widgets and sharing: `ConduitWidgets/LauncherWidgets.swift`, `Shared/Widgets/WidgetConfiguration.swift`, `Shared/Widgets/WidgetLocalization.swift`, `ConduitShareExtension/ShareDraftSheet.swift`
+- Tests: `scripts/tests/test_laa_brand_bundle.py`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAChromeUITests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`
+
+**Rulings**
+- Only the LAA build replaces product-owned Conduit names, icons and colors with the LAA identity; identifiers, routes, saved content and upstream builds retain their existing values. Generated bundle descriptions keep the source localization and remove the upstream developer's privacy claim instead of assigning it to LAA.
+- A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
+
+**Open gaps**
+- Device rendering and permissions, Watch complications, widget and share presentation, and Mac integration require the respective device checks.
+
+**Checked:** 2026-11-01, based on 9cff3211 (BUS-330, BUS-331 and BUS-335).
+
 ## LAA all-profile notification pairing
 
 The LAA-only Settings action moves the active dashboard's profile notifications

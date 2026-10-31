@@ -55,21 +55,20 @@ struct LAAChatsContent: View {
                     if !searching || !sessions.isEmpty { recentSection }
                     if searching { searchIncomplete }
                 }
-                if settingsAvailable && !searching {
-                    Button(action: openSettings) {
-                        Label(LAACopy.chatsSettings, systemImage: "gearshape")
-                            .laaTextStyle(.secondary)
-                            .foregroundStyle(LAAColor.link)
-                            .frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }
-                    .accessibilityIdentifier("laa.chats.settings")
-                }
             }
             .padding(.horizontal, LAASpacing.horizontal)
             .padding(.top, LAASpacing.x3)
             .padding(.bottom, LAASpacing.x8)
         }
         .background(LAAColor.background.ignoresSafeArea())
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            if settingsAvailable {
+                ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: openSettings) }
+            }
+        }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: query) { _, _ in searchChanged() }
         .accessibilityIdentifier("laa.chats.list")
