@@ -9,6 +9,9 @@ struct LAABrainNoteView: View {
     let files: [LAABrainFile]
     @ObservedObject var local: LAABrainLocalVault
     let isLocal: Bool
+    let index: LAABrainIndex?
+    let isPinned: Bool
+    let togglePin: () -> Void
     @Binding var path: [LAABrainRoute]
     @State private var note: LAABrainNote?
     @State private var error: LAABridgeError?
@@ -59,6 +62,10 @@ struct LAABrainNoteView: View {
                                     }.frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             }
+                            if isLocal, let index {
+                                relatedLinks(LAACopy.Brain.links, files: index.outgoing(from: note.path, files: files))
+                                relatedLinks(LAACopy.Brain.backlinks, files: index.backlinks(to: note.path, files: files))
+                            }
                         }
                     }
                 }
@@ -80,6 +87,11 @@ struct LAABrainNoteView: View {
                 }.accessibilityIdentifier("laa.brain.back")
             }
             ToolbarItem(placement: .topBarTrailing) {
+                Button(action: togglePin) { Image(systemName: isPinned ? "pin.fill" : "pin") }
+                    .accessibilityLabel(Text(verbatim: isPinned ? LAACopy.Brain.unpin : LAACopy.Brain.pin))
+                    .accessibilityIdentifier("laa.brain.pin")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Button { raw.toggle() } label: { Text(verbatim: raw ? LAACopy.Brain.formatted : LAACopy.Brain.raw) }
                     .accessibilityIdentifier("laa.brain.rawToggle")
             }
@@ -98,6 +110,18 @@ struct LAABrainNoteView: View {
             return url.scheme == nil || url.scheme == "laabrain" ? .discarded : .systemAction
         })
         .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : 0, isLocal: isLocal)) { await load() }
+    }
+
+    @ViewBuilder private func relatedLinks(_ title: String, files: [LAABrainFile]) -> some View {
+        if !files.isEmpty {
+            Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold)
+                .foregroundStyle(LAAColor.secondaryText).padding(.top, LAASpacing.x4)
+            ForEach(files) { file in
+                Button { path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox))) } label: {
+                    Label { Text(verbatim: file.path) } icon: { Image(systemName: "doc.text") }
+                }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+            }
+        }
     }
 
     @MainActor private func load() async {

@@ -21,7 +21,7 @@ import Foundation
             do {
                 let root = FileManager.default.temporaryDirectory.appendingPathComponent("brain-fixture-" + UUID().uuidString, isDirectory: true)
                 try FileManager.default.createDirectory(at: root.appendingPathComponent("Company"), withIntermediateDirectories: true)
-                try Data("# 見出し\n\nオフラインの検索本文です。\n\n[[Other|次のメモ]]\n".utf8)
+                try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other|次のメモ]]\n".utf8)
                     .write(to: root.appendingPathComponent("Company/Start.md"))
                 try Data("# 別のメモ\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
                 activate(root, scoped: false)

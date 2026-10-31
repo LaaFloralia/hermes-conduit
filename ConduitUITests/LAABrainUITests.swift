@@ -197,5 +197,29 @@ final class LAABrainUITests: XCTestCase {
         app.buttons["laa.brain.rawToggle"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.raw"].label.contains("オフラインの検索本文"))
     }
+
+    func testLocalFixtureSearchTagsAndPin() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
+        app.launch()
+        let tag = app.buttons["Tags"]
+        XCTAssertTrue(tag.waitForExistence(timeout: 30))
+        tag.tap()
+        XCTAssertTrue(app.buttons["#garden"].waitForExistence(timeout: 30))
+        app.buttons["#garden"].tap()
+        XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 10))
+        app.staticTexts["Start"].tap()
+        let pin = app.buttons["laa.brain.pin"]
+        XCTAssertTrue(pin.waitForExistence(timeout: 10))
+        pin.tap()
+        XCTAssertEqual(pin.label, "Unpin note")
+        app.buttons["laa.brain.back"].tap()
+        app.buttons["Recent"].tap()
+        XCTAssertTrue(app.staticTexts["PINNED"].waitForExistence(timeout: 10))
+        let search = app.textFields["laa.brain.search"]
+        search.tap()
+        search.typeText("fixture-search\n")
+        XCTAssertTrue(app.buttons["laa.brain.searchResult"].firstMatch.waitForExistence(timeout: 10))
+    }
 }
 #endif

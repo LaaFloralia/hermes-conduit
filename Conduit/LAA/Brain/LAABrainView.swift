@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private struct BrainLoadKey: Equatable { let revision: Int; let localRevision: Int; let inbox: Bool }
-private struct BrainSearchKey: Equatable { let revision: Int; let localRevision: Int; let inbox: Bool; let query: String; let count: Int }
+private struct BrainSearchKey: Equatable { let revision: Int; let localRevision: Int; let indexRevision: Int; let inbox: Bool; let query: String; let count: Int }
 
 struct LAABrainPending: Codable {
     let request: LAABrainCreateBody
@@ -32,6 +32,12 @@ struct LAABrainView: View {
     @State private var showCreate = false
     @State private var chooseFolder = false
     @State private var localError: String?
+    @State private var localReadFailed = false
+    @State private var index: LAABrainIndex?
+    @State private var indexRevision = 0
+    @State private var isIndexing = false
+    @State private var pins = Set<String>()
+    @State private var selectedTag: String?
     @State private var pending: LAABrainPending?
 
     var body: some View {
@@ -97,7 +103,9 @@ struct LAABrainView: View {
                         }
                     }
                 case .note(let reference):
-                    LAABrainNoteView(reference: reference, files: files, local: local, isLocal: local.isReady, path: $path)
+                    LAABrainNoteView(reference: reference, files: files, local: local, isLocal: local.isReady,
+                                     index: index, isPinned: pins.contains(reference.path),
+                                     togglePin: { togglePin(reference.path) }, path: $path)
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
@@ -114,11 +122,11 @@ struct LAABrainView: View {
             do {
                 guard let selected = try result.get().first else { return }
                 try local.connect(selected)
-                localError = nil; path = []; query = ""
+                localError = nil; path = []; query = ""; selectedTag = nil
             } catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message }
         }
         .task(id: BrainLoadKey(revision: bridge.revision, localRevision: local.revision, inbox: includeInbox)) { await load() }
-        .task(id: BrainSearchKey(revision: bridge.revision, localRevision: local.revision, inbox: includeInbox, query: query, count: files.count)) { await search() }
+        .task(id: BrainSearchKey(revision: bridge.revision, localRevision: local.revision, indexRevision: indexRevision, inbox: includeInbox, query: query, count: files.count)) { await search() }
     }
 
     private var sourceSelector: some View {
@@ -133,7 +141,7 @@ struct LAABrainView: View {
             }
             if local.isSelected {
                 Button(LAACopy.Brain.useMac) {
-                    do { try local.disconnect(); localError = nil; path = []; query = "" }
+                    do { try local.disconnect(); localError = nil; path = []; query = ""; selectedTag = nil }
                     catch { localError = LAABrainVaultError.unreadable.message }
                 }.laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.useMac")
             }
@@ -179,18 +187,20 @@ struct LAABrainView: View {
                 HStack(spacing: LAASpacing.x2) {
                     chip(LAACopy.Brain.recent, selected: mode == 0) { mode = 0 }
                     chip(LAACopy.Brain.folders, selected: mode == 1) { mode = 1 }
-                    chip(LAACopy.Brain.tags, selected: false) { }
-                        .disabled(true).accessibilityHint(Text(verbatim: LAACopy.Brain.tagsUnavailable))
+                    chip(LAACopy.Brain.tags, selected: mode == 2) { mode = 2; selectedTag = nil }
+                        .disabled(!local.isReady).accessibilityHint(Text(verbatim: local.isReady ? "" : LAACopy.Brain.tagsUnavailable))
                 }
             }
-            Text(verbatim: LAACopy.Brain.tagsUnavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            if !local.isReady {
+                Text(verbatim: LAACopy.Brain.tagsUnavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
             if !local.isSelected {
                 Toggle(isOn: $includeInbox) { Text(verbatim: LAACopy.Brain.includeInbox).laaTextStyle(.secondary) }
                     .accessibilityIdentifier("laa.brain.inbox")
             }
             if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 searchResults
-            } else if local.isSelected, localError != nil {
+            } else if local.isSelected, localReadFailed {
                 Button(LAACopy.Brain.retry) { Task { await load() } }
             } else if let listError {
                 failure(listError)
@@ -200,6 +210,8 @@ struct LAABrainView: View {
                 Text(verbatim: "表示できるメモはありません。").foregroundStyle(LAAColor.secondaryText)
             } else if mode == 0 {
                 recent
+            } else if mode == 2 {
+                tagBrowser
             } else {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     sectionHeading(LAACopy.Brain.folders)
@@ -241,8 +253,13 @@ struct LAABrainView: View {
 
     private var recent: some View {
         let sorted = files.sorted { $0.modifiedAt > $1.modifiedAt }
+        let pinned = sorted.filter { pins.contains($0.path) }
         let roots = LAABrainPaths.folders(in: files, parent: "")
         return VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            if !pinned.isEmpty {
+                sectionHeading(LAACopy.Brain.pinned)
+                ForEach(pinned) { file in noteLink(file) }
+            }
             HStack {
                 sectionHeading(LAACopy.Brain.recent)
                 Spacer()
@@ -262,6 +279,23 @@ struct LAABrainView: View {
                     ForEach(Array(roots.prefix(2)), id: \.self) { name in folderLink(name, parent: "") }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private var tagBrowser: some View {
+        if isIndexing { ProgressView(LAACopy.Brain.indexing) }
+        else if let selectedTag {
+            Button(LAACopy.Brain.back) { self.selectedTag = nil }
+            sectionHeading("#" + selectedTag)
+            ForEach(index?.files(tag: selectedTag) ?? []) { noteLink($0) }
+        } else if let index, !index.tags.isEmpty {
+            sectionHeading(LAACopy.Brain.tags)
+            ForEach(index.tags, id: \.self) { tag in
+                Button("#" + tag) { selectedTag = tag }
+                    .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+            }
+        } else {
+            Text(verbatim: "No tags found.").foregroundStyle(LAAColor.secondaryText)
         }
     }
 
@@ -301,7 +335,7 @@ struct LAABrainView: View {
 
     @ViewBuilder private var searchResults: some View {
         if let searchError { failure(searchError) }
-        else if isSearching { ProgressView().accessibilityLabel(Text(verbatim: "検索中")) }
+        else if isSearching || (local.isReady && isIndexing) { ProgressView().accessibilityLabel(Text(verbatim: "検索中")) }
         else if hits.isEmpty { Text(verbatim: "検索結果はありません。 ").foregroundStyle(LAAColor.secondaryText) }
         else {
             Text(verbatim: local.isReady ? "Search results" : "検索結果（最大10件）").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -315,6 +349,19 @@ struct LAABrainView: View {
                 }.buttonStyle(.plain).accessibilityIdentifier("laa.brain.searchResult")
             }
         }
+        if local.isReady, let index, index.unreadableCount > 0 {
+            Text(verbatim: "\(index.unreadableCount) notes could not be indexed.")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+        }
+    }
+
+    @MainActor private func togglePin(_ path: String) {
+        do {
+            var updated = pins
+            if updated.contains(path) { updated.remove(path) } else { updated.insert(path) }
+            try LAABrainPins.save(updated, root: local.isReady ? local.snapshot() : nil)
+            pins = updated
+        } catch { localError = "Could not save pins on this iPhone." }
     }
 
     private func failure(_ error: LAABridgeError) -> some View {
@@ -327,16 +374,27 @@ struct LAABrainView: View {
 
     @MainActor private func load() async {
         if local.isSelected {
-            files = []; listError = nil; isLoading = true
+            files = []; index = nil; listError = nil; localReadFailed = false; isLoading = true; isIndexing = false
             do {
                 let root = try local.snapshot()
                 let result = try await Task.detached(priority: .userInitiated) { try LAABrainVaultIO.files(root: root) }.value
                 try Task.checkCancellation()
-                files = result; isLoading = false; localError = nil
+                files = result; isLoading = false; localError = nil; isIndexing = true
+                do { pins = try LAABrainPins.load(root: root) }
+                catch { localError = "Could not load pins on this iPhone." }
+                let job = Task.detached(priority: .utility) {
+                    LAABrainIndex(files: result) { path in try LAABrainVaultIO.note(root: root, path: path).text }
+                }
+                let built = await withTaskCancellationHandler(operation: { await job.value }, onCancel: { job.cancel() })
+                try Task.checkCancellation()
+                index = built; indexRevision += 1; isIndexing = false
             } catch is CancellationError { return }
-            catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message; isLoading = false }
+            catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message; localReadFailed = true; isLoading = false; isIndexing = false }
             return
         }
+        index = nil; isIndexing = false
+        do { pins = try LAABrainPins.load(root: nil) }
+        catch { localError = "Could not load pins on this iPhone." }
         guard LAABrainData.available(bridge) else { files = []; listError = nil; isLoading = false; return }
         let inbox = includeInbox
         files = []; listError = nil; isLoading = true
@@ -366,26 +424,15 @@ struct LAABrainView: View {
         if local.isSelected {
             hits = []; searchError = nil
             guard !term.isEmpty, local.isReady else { isSearching = false; return }
+            guard let index, !isIndexing else { isSearching = false; return }
             isSearching = true
             do {
                 try await Task.sleep(for: .milliseconds(350))
-                let root = try local.snapshot()
-                let candidates = files
-                let results = try await Task.detached(priority: .userInitiated) {
-                    try candidates.compactMap { file -> LAABrainHit? in
-                        let note = try LAABrainVaultIO.note(root: root, path: file.path)
-                        guard let range = note.text.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) else {
-                            return file.path.localizedCaseInsensitiveContains(term) ? LAABrainHit(path: file.path, section: "", text: "") : nil
-                        }
-                        let start = note.text.index(range.lowerBound, offsetBy: -40, limitedBy: note.text.startIndex) ?? note.text.startIndex
-                        let end = note.text.index(range.upperBound, offsetBy: 80, limitedBy: note.text.endIndex) ?? note.text.endIndex
-                        return LAABrainHit(path: file.path, section: "", text: String(note.text[start..<end]))
-                    }
-                }.value
+                let results = await Task.detached(priority: .userInitiated) { index.search(term) }.value
                 try Task.checkCancellation()
                 hits = results; isSearching = false
             } catch is CancellationError { return }
-            catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message; isSearching = false }
+            catch { localError = LAABrainVaultError.unreadable.message; isSearching = false }
             return
         }
         guard LAABrainData.available(bridge), !term.isEmpty else { hits = []; searchError = nil; isSearching = false; return }
