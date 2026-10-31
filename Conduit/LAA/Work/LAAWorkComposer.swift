@@ -13,6 +13,7 @@ struct LAAWorkComposer: View {
     let onSubmit: () -> Void
     var submitLabel = LAACopy.WorkTab.send
     var accessibilityPrefix = "work.composer"
+    var showsTextSize = true
 
     @State private var focus = false
     @State private var height = ComposerPasteTextView.minimumHeight
@@ -28,17 +29,20 @@ struct LAAWorkComposer: View {
             HStack {
                 Text(verbatim: placeholder).laaTextStyle(.body).fontWeight(.semibold)
                 Spacer()
-                Menu {
-                    Picker(LAACopy.WorkTab.textSize, selection: $inputSize) {
-                        ForEach(ChatTextSize.allCases, id: \.rawValue) { size in
-                            Text(verbatim: size.displayName).tag(size.rawValue)
+                if showsTextSize {
+                    Menu {
+                        Picker(LAACopy.WorkTab.textSize, selection: $inputSize) {
+                            ForEach(ChatTextSize.allCases, id: \.rawValue) { size in
+                                Text(verbatim: size.displayName).tag(size.rawValue)
+                            }
                         }
+                    } label: {
+                        Image(systemName: "textformat.size")
+                            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
                     }
-                } label: {
-                    Image(systemName: "textformat.size")
-                        .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                        .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.textSize))
+                        .accessibilityIdentifier("\(accessibilityPrefix).textSize")
                 }
-                    .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.textSize))
                 Button { fullEditor = true } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
@@ -67,7 +71,9 @@ struct LAAWorkComposer: View {
             if let warning { Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
             HStack {
                 Spacer()
-                Button(submitLabel, action: onSubmit)
+                Button(action: onSubmit) {
+                    Text(verbatim: submitLabel).frame(minHeight: LAASpacing.minimumTouchTarget)
+                }
                     .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                     .foregroundStyle(LAAColor.filledButtonText).disabled(!canSubmit)
                     .accessibilityIdentifier("\(accessibilityPrefix).send")
@@ -82,11 +88,13 @@ struct LAAWorkComposer: View {
                 canSubmitFromReturn: false, onSubmitFromReturn: { false },
                 attachments: { EmptyView() }, dictateButton: { EmptyView() },
                 actionButton: {
-                    Button(submitLabel) { fullEditor = false; onSubmit() }
+                    Button { fullEditor = false; onSubmit() } label: {
+                        Text(verbatim: submitLabel).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }
                         .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                         .foregroundStyle(LAAColor.filledButtonText).disabled(!canSubmit)
                 }
-            )
+            ).tint(LAAColor.link)
         }
     }
 }

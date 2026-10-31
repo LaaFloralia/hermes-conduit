@@ -35,7 +35,11 @@ struct LAAStudioCreateView: View {
                 Text(verbatim: LAACopy.Studio.newRequest).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 if let created {
                     Text(verbatim: "依頼を受け付けました。").foregroundStyle(LAAColor.text)
-                    NavigationLink(LAACopy.Studio.check) { LAAStudioRequestView(initial: created) }
+                    NavigationLink {
+                        LAAStudioRequestView(initial: created, initialProject: snapshot.projects.first { $0.id == created.request.projectId })
+                    } label: {
+                        Text(verbatim: LAACopy.Studio.check).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }
                         .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                     if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
                 } else {
@@ -45,30 +49,35 @@ struct LAAStudioCreateView: View {
                         Picker(LAACopy.Studio.work, selection: selection) {
                             Text(verbatim: LAACopy.Studio.newWork).tag("")
                             ForEach(snapshot.projects) { project in Text(verbatim: project.title).tag(project.id) }
-                        }.labelsHidden().disabled(draft.pending || sending).accessibilityIdentifier("laa.studio.project")
+                        }.labelsHidden().frame(minHeight: LAASpacing.minimumTouchTarget)
+                            .disabled(draft.pending || sending).accessibilityIdentifier("laa.studio.project")
                     }
                     if draft.isNew {
                         TextField(LAACopy.Studio.title, text: $draft.title)
-                            .textFieldStyle(.roundedBorder).disabled(draft.pending || sending)
+                            .studioInputField().disabled(draft.pending || sending)
                             .accessibilityIdentifier("laa.studio.title")
                     }
                     LabeledContent(LAACopy.Studio.principle) {
                         Picker(LAACopy.Studio.principle, selection: principleSelection) {
                             Text(verbatim: LAACopy.Studio.none).tag("")
                             ForEach(snapshot.principles) { item in Text(verbatim: "\(item.name) · \(item.status)").tag(item.id) }
-                        }.labelsHidden().disabled(draft.pending || sending)
+                        }.labelsHidden().frame(minHeight: LAASpacing.minimumTouchTarget).disabled(draft.pending || sending)
                     }
                     LAAWorkComposer(text: $draft.prompt, revision: $revision, placeholder: LAACopy.Studio.prompt,
                                     enabled: !draft.pending && !sending,
                                     canSend: draft.prompt.utf16.count <= 10000 && (!draft.isNew || !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
                                     onChange: { _ in }, onSubmit: { Task { await submit() } },
-                                    submitLabel: LAACopy.Studio.send, accessibilityPrefix: "laa.studio.composer")
+                                    submitLabel: LAACopy.Studio.send, accessibilityPrefix: "laa.studio.composer", showsTextSize: false)
                     Text(verbatim: "\(draft.prompt.utf16.count) / 10,000").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if draft.pending {
-                        Button(LAACopy.Studio.check) { Task { await check() } }.disabled(sending)
+                        Button { Task { await check() } } label: {
+                            Text(verbatim: LAACopy.Studio.check).frame(minHeight: LAASpacing.minimumTouchTarget)
+                        }.disabled(sending)
                             .accessibilityIdentifier("laa.studio.check")
                         if canRetry {
-                            Button(LAACopy.Studio.retry) { Task { await submit() } }.disabled(sending)
+                            Button { Task { await submit() } } label: {
+                                Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget)
+                            }.disabled(sending)
                                 .accessibilityIdentifier("laa.studio.retry")
                         }
                     }
@@ -77,7 +86,8 @@ struct LAAStudioCreateView: View {
                 }
             }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.newRequest))
+        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Assets.studio))
+        .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             guard !initialized else { return }
@@ -125,5 +135,19 @@ struct LAAStudioCreateView: View {
             error = LAAStudioData.message(failure)
         } catch { self.error = LAAStudioData.message(error) }
     }
+}
+
+private struct LAAStudioInputField: ViewModifier {
+    func body(content: Content) -> some View {
+        content.textFieldStyle(.plain)
+            .padding(.horizontal, LAASpacing.x3)
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
+            .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+            .overlay(RoundedRectangle(cornerRadius: LAARadius.card).stroke(LAAColor.separator))
+    }
+}
+
+extension View {
+    func studioInputField() -> some View { modifier(LAAStudioInputField()) }
 }
 #endif

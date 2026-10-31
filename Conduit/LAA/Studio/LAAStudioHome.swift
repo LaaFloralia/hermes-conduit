@@ -21,7 +21,8 @@ struct LAAStudioHomeView: View {
                 Picker("Studio", selection: $section) {
                     Text(verbatim: LAACopy.Studio.works).tag(0)
                     Text(verbatim: LAACopy.Studio.requests).tag(1)
-                }.pickerStyle(.segmented).accessibilityIdentifier("laa.studio.section")
+                }.pickerStyle(.segmented).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .accessibilityIdentifier("laa.studio.section")
                 if let snapshot {
                     NavigationLink { LAAStudioCreateView(snapshot: snapshot) } label: {
                         Image(systemName: "plus").frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
@@ -37,13 +38,17 @@ struct LAAStudioHomeView: View {
                 Text(verbatim: bridge.status == .keychainError ? LAABridgeError.keychain.japaneseText : LAACopy.bridgeNotPairedBody)
                     .laaTextStyle(.body).foregroundStyle(LAAColor.text)
                 if bridge.status != .keychainError {
-                    Button(LAACopy.Brain.connect) { pairing = true }.buttonStyle(.borderedProminent)
+                    Button { pairing = true } label: {
+                        Text(verbatim: LAACopy.Brain.connect).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                         .accessibilityIdentifier("laa.studio.pair")
                 }
             } else {
                 if let error {
                     Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-                    Button(LAACopy.Studio.retry) { Task { await load() } }
+                    Button { Task { await load() } } label: {
+                        Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }
                 }
                 if loading && snapshot == nil { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
                 if let snapshot {
@@ -53,7 +58,8 @@ struct LAAStudioHomeView: View {
                 }
             }
         }
-        .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge) }
+        .tint(LAAColor.link)
+        .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge).tint(LAAColor.link) }
         .task(id: bridge.revision) { await load() }
     }
     private func works(_ snapshot: LAAStudioSnapshot) -> some View {
@@ -90,11 +96,21 @@ struct LAAStudioHomeView: View {
             if !records.isEmpty {
                 Text(verbatim: title.uppercased()).laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
                 ForEach(records) { record in
-                    NavigationLink { LAAStudioRequestView(initial: record) } label: {
+                    NavigationLink {
+                        LAAStudioRequestView(initial: record, initialProject: snapshot.projects.first { $0.id == record.request.projectId })
+                    } label: {
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
                             Text(verbatim: snapshot.projects.first(where: { $0.id == record.request.projectId })?.title ?? record.request.create?.title ?? record.request.prompt)
                                 .laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text).lineLimit(2)
-                            Text(verbatim: "\(record.status.capitalized) · \(LAAWorkPresentation.date(record.updatedAt))").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            HStack(spacing: LAASpacing.x1) {
+                                if record.status == "approval" {
+                                    Label(LAACopy.Studio.needsApproval, systemImage: "exclamationmark.circle.fill")
+                                        .foregroundStyle(LAAColor.attention)
+                                } else {
+                                    Text(verbatim: LAAStudioPresentation.status(record.status)).foregroundStyle(LAAColor.secondaryText)
+                                }
+                                Text(verbatim: "· \(LAAWorkPresentation.date(record.updatedAt))").foregroundStyle(LAAColor.secondaryText)
+                            }.laaTextStyle(.secondary)
                         }.padding(LAASpacing.x4).frame(maxWidth: .infinity, alignment: .leading)
                             .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
                     }.buttonStyle(.plain).accessibilityIdentifier("laa.studio.request.\(record.id)")

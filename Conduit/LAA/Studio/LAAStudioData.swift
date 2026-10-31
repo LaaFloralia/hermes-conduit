@@ -5,6 +5,7 @@ extension LAACopy {
     enum Studio {
         static let works = "Works"
         static let requests = "Requests"
+        static let requestDetail = "Request"
         static let newRequest = "New request"
         static let newWork = "New work"
         static let work = "Work"
@@ -13,6 +14,7 @@ extension LAACopy {
         static let prompt = "Request"
         static let principle = "Principle"
         static let none = "None"
+        static let choose = "Choose"
         static let yes = "Yes"
         static let no = "No"
         static let send = "Send request"
@@ -27,6 +29,16 @@ extension LAACopy {
         static let askAgain = "Request with latest version"
         static let active = "In progress"
         static let finished = "Finished"
+        static let queued = "Queued"
+        static let notReceived = "Not received"
+        static let accepted = "Accepted"
+        static let running = "Running"
+        static let needsApproval = "Needs approval"
+        static let completed = "Completed"
+        static let failed = "Failed"
+        static let stopped = "Stopped"
+        static let interrupted = "Interrupted"
+        static let unknownStatus = "Unknown"
         static let deliverables = "Deliverables"
         static let assets = "Assets"
         static let pages = "Pages"
@@ -40,7 +52,8 @@ extension LAACopy {
         static let missing = "Studioに依頼が見つかりません。同じ内容で再送できます。"
         static let pendingAction = "操作の結果を確認中です。状態が変わらない場合はMacで確認してください。"
         static let saveFailed = "下書きを保存できません。保存できるまで送信しません。"
-        static let unsupported = "この形式はアプリで開けません。Macで確認してください。"
+        static let pageUnsupported = "このページはアプリでプレビューできません。LAA Studioで開いてください。"
+        static let unsupported = "この形式はアプリでプレビューできません。LAA Studioで開いてください。"
         static let approvalOnMac = "この確認はMacで操作してください。有料生成や認証情報はアプリから回答できません。"
         static let emptyWorks = "まだ作品がありません。"
         static let emptyRequests = "まだ依頼がありません。"
@@ -154,7 +167,7 @@ enum LAAStudioData {
         let request = LAAStudioRequest(id: requestID, projectId: projectID, expectedRevision: 3, prompt: "新しい紹介資料を作ってください。", create: nil, principle: nil)
         let record = LAAStudioRecord(request: request, status: "approval", bootId: projectID, updatedAt: "2026-10-31T09:00:00Z", report: report)
         let project = LAAStudioProject(id: projectID, title: "サービス紹介資料", revision: 3,
-                                       pages: [.init(id: "page1", name: "Cover", preview: nil)], assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: nil, deliveredRevision: nil)
+                                       pages: [.init(id: "page1", name: "Cover", preview: nil)], assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: "https://drive.google.com/file/d/1234567890/view", deliveredRevision: 3)
         let principle = LAAStudioPrinciple(id: "principle1", name: "LAA", version: "6", revision: 3, status: "adopted")
         return LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil, projects: mode == "empty" ? [] : [project], principles: [principle], requests: mode == "empty" ? [] : [record])
     }

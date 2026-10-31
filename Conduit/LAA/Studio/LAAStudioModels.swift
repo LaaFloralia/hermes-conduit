@@ -66,6 +66,31 @@ struct LAAStudioRecord: Codable, Identifiable {
     var canStop: Bool { ["queued", "accepted", "running", "approval"].contains(status) }
     var canRequestAgain: Bool { ["completed", "failed", "stopped", "interrupted"].contains(status) }
 }
+
+enum LAAStudioPresentation {
+    static func status(_ value: String) -> String {
+        switch value {
+        case "queued": LAACopy.Studio.queued
+        case "unreceived": LAACopy.Studio.notReceived
+        case "accepted": LAACopy.Studio.accepted
+        case "running": LAACopy.Studio.running
+        case "approval": LAACopy.Studio.needsApproval
+        case "completed": LAACopy.Studio.completed
+        case "failed": LAACopy.Studio.failed
+        case "stopped": LAACopy.Studio.stopped
+        case "interrupted": LAACopy.Studio.interrupted
+        default: LAACopy.Studio.unknownStatus
+        }
+    }
+    static func title(for record: LAAStudioRecord, project: LAAStudioProject?) -> String {
+        project?.title ?? record.request.create?.title ?? LAACopy.Studio.work
+    }
+    static func hasDeliverables(_ project: LAAStudioProject) -> Bool {
+        LAAStudioMedia.driveURL(project.driveUrl) != nil || project.deliveredRevision != nil ||
+            project.pages.contains { LAAStudioMedia.bridgePath($0.preview) != nil } ||
+            (project.assets?.contains { LAAStudioMedia.bridgePath($0.url) != nil } ?? false)
+    }
+}
 struct LAAStudioReport: Codable {
     let id: String
     let bootId: String

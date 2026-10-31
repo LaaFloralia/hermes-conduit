@@ -79,5 +79,34 @@ final class LAAStudioTests: XCTestCase {
         XCTAssertFalse(finished.active)
         XCTAssertTrue(finished.canRequestAgain)
     }
+
+    func testStatusNamesAndWorkTitle() {
+        let statuses = ["queued": "Queued", "unreceived": "Not received", "accepted": "Accepted", "running": "Running",
+                        "approval": "Needs approval", "completed": "Completed", "failed": "Failed", "stopped": "Stopped", "interrupted": "Interrupted"]
+        for (status, label) in statuses { XCTAssertEqual(LAAStudioPresentation.status(status), label) }
+        XCTAssertEqual(LAAStudioPresentation.status("new-state"), "Unknown")
+        let request = LAAStudioRequest(id: requestID, projectId: requestID, expectedRevision: 0, prompt: "test",
+                                       create: .init(title: "New work title"), principle: nil)
+        let record = LAAStudioRecord(request: request, status: "queued", bootId: nil, updatedAt: "now", report: nil)
+        XCTAssertEqual(LAAStudioPresentation.title(for: record, project: nil), "New work title")
+        XCTAssertEqual(LAAStudioPresentation.title(for: record, project: project()), "Work title")
+    }
+
+    func testDeliverablesRequireDriveRevisionOrValidMedia() {
+        XCTAssertFalse(LAAStudioPresentation.hasDeliverables(project()))
+        XCTAssertFalse(LAAStudioPresentation.hasDeliverables(project(driveURL: "https://example.com/file")))
+        XCTAssertTrue(LAAStudioPresentation.hasDeliverables(project(driveURL: "https://drive.google.com/file/d/1234567890/view")))
+        XCTAssertTrue(LAAStudioPresentation.hasDeliverables(project(deliveredRevision: 3)))
+        let media = "/api/studio/media/work-1/\(String(repeating: "a", count: 64)).png"
+        XCTAssertTrue(LAAStudioPresentation.hasDeliverables(project(pages: [.init(id: "page", name: "Page", preview: media)])))
+        let asset = LAAStudioAsset(id: "asset", name: "Film", kind: "video", url: media, poster: nil, unavailable: nil, previewOnly: nil)
+        XCTAssertTrue(LAAStudioPresentation.hasDeliverables(project(assets: [asset])))
+    }
+
+    private func project(driveURL: String? = nil, deliveredRevision: Int? = nil,
+                         pages: [LAAStudioPage] = [], assets: [LAAStudioAsset]? = nil) -> LAAStudioProject {
+        .init(id: "work-1", title: "Work title", revision: 1, pages: pages, assets: assets,
+              syncedAt: nil, driveUrl: driveURL, deliveredRevision: deliveredRevision)
+    }
 }
 #endif

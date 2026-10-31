@@ -9,10 +9,15 @@ struct LAAStudioWorkView: View {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
                 Text(verbatim: project.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 Text(verbatim: "\(project.kind) · \(LAAWorkPresentation.date(project.syncedAt))").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                if let url = LAAStudioMedia.driveURL(project.driveUrl) {
+                if LAAStudioMedia.driveURL(project.driveUrl) != nil || project.deliveredRevision != nil {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         Text(verbatim: LAACopy.Studio.deliverables.uppercased()).laaTextStyle(.section).fontWeight(.semibold)
-                        Link(destination: url) { Label(LAACopy.Studio.open, systemImage: "arrow.up.right.square") }
+                        if let url = LAAStudioMedia.driveURL(project.driveUrl) {
+                            Link(destination: url) {
+                                Label(LAACopy.Studio.open, systemImage: "arrow.up.right.square")
+                                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+                            }
+                        }
                         if let revision = project.deliveredRevision { Text(verbatim: "Revision \(revision)").laaTextStyle(.secondary) }
                     }
                 }
@@ -23,7 +28,7 @@ struct LAAStudioWorkView: View {
                             assetRow(name: page.name, subtitle: "Page", image: page.preview, symbol: "doc")
                         }.buttonStyle(.plain).disabled(LAAStudioMedia.bridgePath(page.preview) == nil)
                         if LAAStudioMedia.bridgePath(page.preview) == nil {
-                            Text(verbatim: LAACopy.Studio.unsupported).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            Text(verbatim: LAACopy.Studio.pageUnsupported).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                     }
                 }
@@ -45,6 +50,7 @@ struct LAAStudioWorkView: View {
             }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.works))
+        .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
     }
     private func assetRow(name: String, subtitle: String, image: String?, symbol: String) -> some View {
@@ -66,7 +72,8 @@ struct LAAStudioImageView: View {
         ScrollView {
             LAAStudioThumbnail(path: path, symbol: "photo")
                 .aspectRatio(1, contentMode: .fit).padding(LAASpacing.horizontal)
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: name)).navigationBarTitleDisplayMode(.inline)
+        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: name))
+            .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
     }
 }
 
@@ -83,7 +90,8 @@ struct LAAStudioPlayerView: View {
         Group {
             if let item { LAADrivePlayerView(item: item, bridge: bridge, studioPath: path) }
             else { Text(verbatim: LAACopy.Studio.unsupported) }
-        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: asset.name)).navigationBarTitleDisplayMode(.inline)
+        }.background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: asset.name))
+            .navigationBarTitleDisplayMode(.inline).tint(LAAColor.link)
     }
 }
 #endif

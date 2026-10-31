@@ -171,6 +171,7 @@ struct LAADrivePlayerView: View {
                 Button { model.toggle() } label: {
                     Label(model.playing ? LAACopy.Drive.pause : LAACopy.Drive.play,
                           systemImage: model.playing ? "pause.fill" : "play.fill")
+                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
                 }.accessibilityIdentifier("laa.drive.play")
                 Slider(value: Binding(get: { dragging ? dragPosition : min(model.position, max(model.duration, 1)) },
                                       set: { dragPosition = $0 }), in: 0...max(model.duration, 1),

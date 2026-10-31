@@ -35,8 +35,26 @@ final class LAAStudioUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
         app.buttons["Requests"].tap()
         let request = app.buttons["laa.studio.request.0f6b1c2e-6f1a-4c55-9d43-0d5f6f3b8a11"]
-        XCTAssertTrue(request.waitForExistence(timeout: 10)); request.tap()
+        XCTAssertTrue(request.waitForExistence(timeout: 10))
+        XCTAssertTrue(request.label.contains("Needs approval")); request.tap()
+        XCTAssertTrue(app.staticTexts["サービス紹介資料"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["laa.studio.deliverables"].exists)
+        let stop = app.buttons["laa.studio.stop"]
+        if !stop.isHittable { app.swipeUp() }
+        XCTAssertTrue(stop.waitForExistence(timeout: 10)); stop.tap()
+        let stopConfirmation = app.sheets.firstMatch
+        XCTAssertTrue(stopConfirmation.waitForExistence(timeout: 10))
+        XCTAssertTrue(stopConfirmation.buttons["Stop"].exists)
+        if app.buttons["Cancel"].exists {
+            app.buttons["Cancel"].tap()
+        } else {
+            let dismiss = app.otherElements["PopoverDismissRegion"]
+            XCTAssertTrue(dismiss.exists)
+            dismiss.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        }
+        XCTAssertFalse(stopConfirmation.waitForExistence(timeout: 2))
         let allow = app.buttons["laa.studio.approval.allow"]
+        if !allow.isHittable { app.swipeDown() }
         XCTAssertTrue(allow.waitForExistence(timeout: 10)); allow.tap()
         XCTAssertTrue(app.staticTexts["Running"].waitForExistence(timeout: 10))
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -46,9 +64,10 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 10)); title.tap(); title.typeText("New presentation")
         let body = app.textViews["laa.studio.composer.field"]
         XCTAssertTrue(body.waitForExistence(timeout: 10)); body.tap(); body.typeText("Make a short overview")
+        XCTAssertFalse(app.buttons["laa.studio.composer.textSize"].exists)
         let send = app.buttons["laa.studio.composer.send"]
         if !send.isHittable { app.swipeUp() }
-        XCTAssertTrue(send.waitForExistence(timeout: 10)); send.tap()
+        XCTAssertTrue(send.waitForExistence(timeout: 10)); XCTAssertGreaterThanOrEqual(send.frame.height, 44); send.tap()
         XCTAssertTrue(app.staticTexts["依頼を受け付けました。"].waitForExistence(timeout: 15))
     }
 }

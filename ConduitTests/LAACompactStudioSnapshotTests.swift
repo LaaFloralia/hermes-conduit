@@ -17,7 +17,7 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
             try capture("requests", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true, initialStudioSection: 1)) }
             try capture("work", style, bridge) { AnyView(LAAStudioWorkView(project: project)) }
             try capture("create", style, bridge) { AnyView(LAAStudioCreateView(snapshot: normal)) }
-            try capture("request-approval", style, bridge) { AnyView(LAAStudioRequestView(initial: record)) }
+            try capture("request-approval", style, bridge) { AnyView(LAAStudioRequestView(initial: record, initialProject: project)) }
             try capture("image", style, bridge) { AnyView(LAAStudioImageView(name: "Cover", path: nil)) }
             let path = "/v1/studio/media/\(project.id)/\(String(repeating: "a", count: 64)).mp4"
             let asset = LAAStudioAsset(id: "video1", name: "Film", kind: "video", url: nil, poster: nil, unavailable: nil, previewOnly: nil)
@@ -28,8 +28,9 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
             }
             for mode in ["unsupported", "long"] {
                 LAAStudioData.snapshotFixture = mode
-                let sample = try XCTUnwrap(LAAStudioData.sample(mode).requests.first)
-                try capture("request-\(mode)", style, bridge) { AnyView(LAAStudioRequestView(initial: sample)) }
+                let fixture = try LAAStudioData.sample(mode)
+                let sample = try XCTUnwrap(fixture.requests.first)
+                try capture("request-\(mode)", style, bridge) { AnyView(LAAStudioRequestView(initial: sample, initialProject: fixture.projects.first)) }
             }
         }
     }

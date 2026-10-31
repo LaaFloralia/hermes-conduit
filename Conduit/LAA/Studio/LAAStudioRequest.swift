@@ -38,13 +38,23 @@ struct LAAStudioRequestView: View {
     @State private var confirmStop = false
     @State private var project: LAAStudioProject?
     private var device: String { bridge.deviceID ?? "fixture" }
-    init(initial: LAAStudioRecord) { _record = State(initialValue: initial) }
+    init(initial: LAAStudioRecord, initialProject: LAAStudioProject? = nil) {
+        _record = State(initialValue: initial)
+        _project = State(initialValue: initialProject)
+    }
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x6) {
-                Text(verbatim: LAACopy.Studio.requests).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                Text(verbatim: LAAStudioPresentation.title(for: record, project: project))
+                    .font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    Text(verbatim: record.status.capitalized).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.link)
+                    if record.status == "approval" {
+                        Label(LAACopy.Studio.needsApproval, systemImage: "exclamationmark.circle.fill")
+                            .laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.attention)
+                    } else {
+                        Text(verbatim: LAAStudioPresentation.status(record.status))
+                            .laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.link)
+                    }
                     Text(verbatim: LAAWorkPresentation.date(record.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if record.status == "unreceived" { Text(verbatim: LAACopy.Studio.unreceived).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 }
@@ -65,21 +75,28 @@ struct LAAStudioRequestView: View {
                 if pending != nil { Text(verbatim: LAACopy.Studio.pendingAction).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
                 if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
                 if busy { ProgressView() }
-                if let project {
-                    NavigationLink(LAACopy.Studio.deliverables) { LAAStudioWorkView(project: project) }
+                if let project, LAAStudioPresentation.hasDeliverables(project) {
+                    NavigationLink { LAAStudioWorkView(project: project) } label: {
+                        Text(verbatim: LAACopy.Studio.deliverables).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }
                         .accessibilityIdentifier("laa.studio.deliverables")
                 }
                 if record.canStop {
-                    Button(LAACopy.Studio.stop) { confirmStop = true }.disabled(busy || pending != nil)
+                    Button(role: .destructive) { confirmStop = true } label: {
+                        Text(verbatim: LAACopy.Studio.stop).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }.buttonStyle(.bordered).tint(LAAColor.end).disabled(busy || pending != nil)
                         .accessibilityIdentifier("laa.studio.stop")
                 }
                 if record.canRequestAgain {
-                    NavigationLink(LAACopy.Studio.askAgain) { LAAStudioRerequestView(previous: record) }
+                    NavigationLink { LAAStudioRerequestView(previous: record) } label: {
+                        Text(verbatim: LAACopy.Studio.askAgain).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }
                         .accessibilityIdentifier("laa.studio.again")
                 }
             }.padding(LAASpacing.horizontal).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.requests))
+        .background(LAAColor.background.ignoresSafeArea()).navigationTitle(Text(verbatim: LAACopy.Studio.requestDetail))
+        .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(LAACopy.Studio.stop, isPresented: $confirmStop, titleVisibility: .visible) {
             Button(LAACopy.Studio.stop, role: .destructive) { Task { await perform(.init(action: "stop", id: record.id)) } }
@@ -145,17 +162,17 @@ private struct LAAStudioApprovalView: View {
                         Text(verbatim: field.title + (field.required ? " *" : "")).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         if let options = field.options, !options.isEmpty {
                             Picker(field.title, selection: binding(field.name)) {
-                                Text(verbatim: LAACopy.Studio.none).tag("")
+                                Text(verbatim: field.required ? LAACopy.Studio.choose : LAACopy.Studio.none).tag("")
                                 ForEach(options, id: \.self) { Text(verbatim: $0).tag($0) }
-                            }
+                            }.frame(minHeight: LAASpacing.minimumTouchTarget)
                         } else if field.type == "boolean" {
                             Picker(field.title, selection: binding(field.name)) {
-                                Text(verbatim: LAACopy.Studio.none).tag("")
+                                Text(verbatim: field.required ? LAACopy.Studio.choose : LAACopy.Studio.none).tag("")
                                 Text(verbatim: LAACopy.Studio.yes).tag("true")
                                 Text(verbatim: LAACopy.Studio.no).tag("false")
-                            }
+                            }.frame(minHeight: LAASpacing.minimumTouchTarget)
                         } else {
-                            TextField(field.title, text: binding(field.name)).textFieldStyle(.roundedBorder)
+                            TextField(field.title, text: binding(field.name)).studioInputField()
                                 .keyboardType(field.type == "number" || field.type == "integer" ? .decimalPad : .default)
                         }
                     }
@@ -163,12 +180,16 @@ private struct LAAStudioApprovalView: View {
                 if approval.allowSession { Toggle(LAACopy.Studio.persist, isOn: $persist) }
                 if invalid { Text(verbatim: LAACopy.Studio.invalid).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                 HStack(spacing: LAASpacing.x4) {
-                    Button(LAACopy.Studio.allow) {
+                    Button {
                         guard let content = LAAStudioAnswers.content(fields: approval.fields, raw: raw) else { invalid = true; return }
                         invalid = false; answer(true, content, persist)
-                    }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
+                    } label: {
+                        Text(verbatim: LAACopy.Studio.allow).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }.buttonStyle(.borderedProminent).tint(LAAColor.filledButton).foregroundStyle(LAAColor.filledButtonText)
                         .accessibilityIdentifier("laa.studio.approval.allow")
-                    Button(LAACopy.Studio.deny) { answer(false, [:], false) }
+                    Button { answer(false, [:], false) } label: {
+                        Text(verbatim: LAACopy.Studio.deny).frame(minHeight: LAASpacing.minimumTouchTarget)
+                    }.buttonStyle(.bordered).tint(LAAColor.secondaryText)
                         .accessibilityIdentifier("laa.studio.approval.deny")
                 }.disabled(disabled)
             }
