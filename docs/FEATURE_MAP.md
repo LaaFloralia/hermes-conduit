@@ -382,7 +382,7 @@ build (keeps its own chat and call controls)
 - Call state, existing voice adapter, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
 - LAA-only native presentation: `Conduit/LAA/Call/LAACallKitPresentation.swift`, `Conduit/Voice/HermesNativeCalls.swift`, `Conduit/Services/AppState.swift`
-- Catalyst fallback and checks: `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `ConduitTests/LAAMacCatalystTests.swift`, `ConduitUITests/LAAMacCatalystUITests.swift`
+- Catalyst fallback and checks: `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `ConduitTests/LAAMacCatalystTests.swift`
 - Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAAEmployeeGPTLiveTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`
 
 **Rulings**
@@ -455,7 +455,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
-- LAA Catalyst window, paste alternative, entitlements and release: `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `project-laa.yml`, `scripts/laa/entitlements/Conduit-mac.entitlements`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`, `scripts/laa/mac-release.sh`, `scripts/laa/mac-signing-keychain.py`, `ConduitTests/LAAMacCatalystTests.swift`, `ConduitUITests/LAAMacCatalystUITests.swift`
+- LAA Catalyst window, paste alternative, entitlements and release: `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAAMacUnavailable.swift`, `project-laa.yml`, `scripts/laa/entitlements/Conduit-mac.entitlements`, `scripts/laa/entitlements/ConduitNotificationService-mac.entitlements`, `scripts/laa/mac-release.sh`, `scripts/laa/mac-signing-keychain.py`, `ConduitTests/LAAMacCatalystTests.swift`
 
 **Rulings**
 - Only the LAA overlay enables the shell. Chats uses Conduit's existing list,
@@ -3488,10 +3488,10 @@ on top
 - Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
 - Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
 - LAA Catalyst compact window and content cap: `Conduit/ConduitApp.swift`, `Conduit/LAA/Mac/LAAMacWindow.swift`
-- Tests: `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
+- Tests: `ConduitTests/LAAMacCatalystTests.swift` (testWindowSceneCanGrowAndShrink), `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
 
 **Rulings**
-- LAA Catalyst keeps the compact one-column shell and caps it in the center of a wider resizable window; the upstream iPad and Mac layouts below remain unchanged.
+- LAA Catalyst keeps the compact one-column shell and caps it in the center of a wider resizable window. Its scene derives resize limits from the root content so the initial size does not also become the maximum; the upstream iPad and Mac layouts below remain unchanged.
 - Widths follow the window, not the device (2026-10-19, #949).
 - A chat's column is 760 pt until the chat's width passes about 1056 pt, then takes 72% of it, up to 1040 pt: an iPad beside the list keeps 760 pt, a maximized Mac or iPad window gets a wider column, with the list shown or hidden, in V2 and the drawer shell alike (2026-10-26, #1320, Eric: the column was too narrow on a maximized window). This replaces the 2026-10-23 ruling (#1169) that kept 760 pt with the list hidden.
 - A wider chat column shows bigger text rather than longer lines: the column's text goes up one system text size for each size whose lines still hold as many words as the 760 pt column does (none beside the list on an iPad, two with an iPad's list hidden, three on a maximized Mac). Everything in the column steps together, its chrome (timestamps, the reply's buttons, banners) with its text so they keep their proportions: transcript, thinking, step rows, cards, the composer and group rooms, on top of the user's Dynamic Type and the relevant chat or input text-size setting (group responses follow the chat setting, while composer fields use the separate input setting); it stops at the largest standard size, so an accessibility size stays as set. The list beside the chat and the top bar keep their size: the list's column doesn't widen (Eric, 2026-10-27, #1393: maximized on a Mac the chat looked small in a big empty space).
@@ -3500,7 +3500,7 @@ on top
 **Open gaps**
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
+**Checked:** 2026-10-31, BUS-322: Catalyst window resizing; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
 ## Voice on a profile the dashboard didn't start with
 

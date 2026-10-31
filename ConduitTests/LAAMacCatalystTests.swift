@@ -1,9 +1,27 @@
 #if LAA_BUILD && targetEnvironment(macCatalyst)
 import XCTest
+import UIKit
 @testable import Conduit
 
 @MainActor
 final class LAAMacCatalystTests: XCTestCase {
+    func testWindowSceneCanGrowAndShrink() async throws {
+        var scene: UIWindowScene?
+        for _ in 0..<30 {
+            scene = UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first { !$0.windows.isEmpty }
+            if scene?.sizeRestrictions != nil { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+
+        let restrictions = try XCTUnwrap(scene?.sizeRestrictions)
+        XCTAssertLessThan(restrictions.minimumSize.width, LAAMacWindow.initialWidth)
+        XCTAssertLessThan(restrictions.minimumSize.height, LAAMacWindow.initialHeight)
+        XCTAssertGreaterThan(restrictions.maximumSize.width, LAAMacWindow.initialWidth)
+        XCTAssertGreaterThan(restrictions.maximumSize.height, LAAMacWindow.initialHeight)
+    }
+
     func testInAppVoiceCanStartWithoutSystemCall() async {
         XCTAssertFalse(HermesNativeCalls.ringingBuilt)
         let host = VoicePlacedCallHost(

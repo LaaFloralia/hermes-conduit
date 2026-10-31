@@ -266,6 +266,7 @@ struct ConduitApp: App {
         }
         #if LAA_BUILD && targetEnvironment(macCatalyst)
         .defaultSize(width: LAAMacWindow.initialWidth, height: LAAMacWindow.initialHeight)
+        .windowResizability(.contentSize)
         #endif
     }
 
@@ -274,7 +275,8 @@ struct ConduitApp: App {
             #if LAA_BUILD && targetEnvironment(macCatalyst)
             .environment(\.horizontalSizeClass, .compact)
             .frame(maxWidth: LAAMacWindow.contentWidth)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minWidth: LAAMacWindow.minimumWidth, maxWidth: .infinity,
+                   minHeight: LAAMacWindow.minimumHeight, maxHeight: .infinity)
             .background(LAAColor.background.ignoresSafeArea())
             .background(LAAMacWindowConstraints())
             #endif
