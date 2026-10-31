@@ -348,7 +348,8 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       return statusFor(operations.finish({ deviceId: device.id, viewerId, key, status: 'succeeded', result }));
     } catch (error) {
       if (!sent) {
-        operations.finish({ deviceId: device.id, viewerId, key, status: preflightStatus(error), rejection: 'preflight_failed' });
+        operations.finish({ deviceId: device.id, viewerId, key, status: preflightStatus(error),
+          rejection: error.code === 'notification_not_found' ? 'notification_not_found' : 'preflight_failed' });
         throw error;
       }
       if (isDefiniteRejection(error)) {
@@ -422,11 +423,12 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       inFlight.add(operationId);
       let sent = false;
       let storageStarted = false;
+      let assetUrl = null;
       try {
         const issue = await source.getTaskInSession(personalSession, issueId);
         if (!issue?.task?.linearId) throw new BridgeError(404, 'task_not_found', 'the task was not found');
         storageStarted = true;
-        const assetUrl = await source.uploadFile(personalSession, { filename, contentType, bytes });
+        assetUrl = await source.uploadFile(personalSession, { filename, contentType, bytes });
         sent = true;
         const result = await source.createTaskItem(personalSession, 'attachment', {
           id: reserved.entry.targetId, issueId: issue.task.linearId, title: filename, url: assetUrl,
@@ -443,7 +445,11 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
           throw error;
         }
         if (isDefiniteRejection(error)) {
-          operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'linear_rejected' });
+          // Record the definite refusal before cleanup. A crash or cleanup
+          // failure must never turn the association into an automatic retry.
+          operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'linear_rejected',
+            cleanupAssetHash: createHash('sha256').update(assetUrl).digest('hex') });
+          try { await source.deleteUpload(personalSession, assetUrl); } catch { /* best effort; never leak URL */ }
           throw error;
         }
         try { operations.finish({ deviceId: device.id, viewerId, key, status: 'outcome_unknown' }); } catch { /* fail closed */ }
@@ -454,6 +460,22 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
   async function operationContext(device) {
     const session = await requestSession();
     return { deviceId: device.id, viewerId: session.viewer.id };
+  }
+  async function originalContext(device, body) {
+    if (typeof body.originalDeviceId !== 'string' || !/^dev_[a-f0-9]{16}$/.test(body.originalDeviceId)
+        || typeof body.expectedViewerId !== 'string' || !ID.test(body.expectedViewerId)) {
+      throw badRequest('payload_invalid', 'the original device and viewer are required');
+    }
+    // Re-pairing creates a new device ID; only previously registered devices
+    // and the very same configured viewer can recover a former operation.
+    if (!Object.hasOwn(store.read().devices, body.originalDeviceId)) {
+      throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');
+    }
+    const current = await operationContext(device);
+    if (current.viewerId !== body.expectedViewerId) {
+      throw new BridgeError(409, 'linear_viewer_changed', 'the original viewer is required');
+    }
+    return { deviceId: body.originalDeviceId, viewerId: current.viewerId };
   }
   return [
     read('/v1/personal-tasks', async ({ req }) => {
@@ -516,6 +538,38 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     write('PATCH', '/v1/personal-tasks/{id}', (ctx) => mutateIssue(ctx, false), DETAIL),
     write('POST', '/v1/personal-tasks/{id}/{section}', createTaskItem, SECTION),
     write('PATCH', '/v1/task-inbox/{id}', updateInbox, INBOX_ITEM),
+    // These explicit recovery actions never submit an old Linear mutation.
+    { method: 'POST', path: '/v1/task-operations/original-status', auth: true, scope: 'tasks:read', handler: guarded(async ({ device, req, rawBody }) => {
+      const body = parseObjectBody(rawBody);
+      if (Object.keys(body).sort().join(',') !== 'expectedViewerId,originalDeviceId') throw badRequest('payload_invalid', 'invalid recovery request');
+      const context = await originalContext(device, body);
+      const entry = operations.byKey({ ...context, key: requireKey(req) });
+      if (!entry) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');
+      return statusFor(entry);
+    }) },
+    { method: 'POST', path: '/v1/task-operations/original-abandon', auth: true, scope: 'tasks:read', handler: guarded(async ({ device, req, rawBody }) => {
+      const body = parseObjectBody(rawBody);
+      if (Object.keys(body).sort().join(',') !== 'expectedViewerId,originalDeviceId') throw badRequest('payload_invalid', 'invalid recovery request');
+      const context = await originalContext(device, body);
+      return statusFor(operations.abandonUnsent({ ...context, key: requireKey(req) }));
+    }) },
+    { method: 'POST', path: '/v1/task-operations/original-resolve', auth: true, scope: 'tasks:write', handler: guarded(async ({ device, req, rawBody }) => {
+      const body = parseObjectBody(rawBody);
+      if (Object.keys(body).sort().join(',') !== 'confirmed,expectedViewerId,operationId,originalDeviceId,originalKey,resolution'
+          || body.confirmed !== true || !['applied', 'not_applied'].includes(body.resolution)
+          || typeof body.operationId !== 'string' || !/^[0-9a-f-]+$/i.test(body.operationId)
+          || typeof body.originalKey !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(body.originalKey)) {
+        throw badRequest('payload_invalid', 'explicit confirmation and a reconciliation result are required');
+      }
+      const context = await originalContext(device, body);
+      const original = operations.byKey({ ...context, key: body.originalKey });
+      if (!original || original.operationId !== body.operationId) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');
+      if (inFlight.has(body.operationId)) throw new BridgeError(409, 'idempotency_key_in_flight', 'the operation is still running');
+      const fingerprint = operationFingerprint({ method: 'POST', path: '/v1/task-operations/original-resolve',
+        viewerId: context.viewerId, ifMatch: null, rawBody });
+      return statusFor(operations.resolve({ ...context, operationId: body.operationId,
+        resolution: body.resolution, key: requireKey(req), fingerprint }));
+    }) },
     read('/v1/task-operations/by-key', async ({ device, req }) => {
       const entry = operations.byKey({ ...await operationContext(device), key: requireKey(req) });
       if (!entry) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');

@@ -338,11 +338,15 @@ private struct LAAPersonalItemEditor: View {
                 if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
                 if let pending {
                     Section("Pending") {
-                        Text(verbatim: "保存結果を確認してください。結果不明の間は新しい操作を始めません。")
-                        if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
-                        Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
-                        if LAAWorkDrafts.canRepeat(pending) {
-                            Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                        if pending.personalOrigin != nil {
+                            Text(verbatim: "移した下書きはPendingで元の要求を照合してください。")
+                        } else {
+                            Text(verbatim: "保存結果を確認してください。結果不明の間は新しい操作を始めません。")
+                            if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
+                            Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
+                            if LAAWorkDrafts.canRepeat(pending) {
+                                Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                            }
                         }
                     }
                 }
@@ -465,11 +469,15 @@ private struct LAAPersonalCommentEditor: View {
                 if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
                 if let pending {
                     Section("Pending") {
-                        Text(verbatim: "送信結果を確認してください。結果が不明な間は新しい投稿を始めません。")
-                        if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
-                        Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
-                        if LAAWorkDrafts.canRepeat(pending) {
-                            Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                        if pending.personalOrigin != nil {
+                            Text(verbatim: "移した下書きはPendingで元の要求を照合してください。")
+                        } else {
+                            Text(verbatim: "送信結果を確認してください。結果が不明な間は新しい投稿を始めません。")
+                            if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
+                            Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
+                            if LAAWorkDrafts.canRepeat(pending) {
+                                Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                            }
                         }
                     }
                 }

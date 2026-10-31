@@ -16,7 +16,34 @@ import CryptoKit
                      key: LAABridgeIdempotencyKey) async throws -> LAAPersonalOperationResponse.Operation
 }
 
+@MainActor protocol LAAPersonalAbandonTransport {
+    func abandonUnsent(_ key: LAABridgeIdempotencyKey, viewer: String) async throws -> LAAPersonalOperationResponse.Operation
+}
+
+@MainActor enum LAAPersonalRefusalRecovery {
+    static func recover(code: String?, status: Int?, item: ComposerDraftStore.Submission,
+                        drafts: ComposerDraftStore, viewer: String, bridge: any LAAPersonalAbandonTransport) async -> Bool {
+        guard LAAPersonalReconciliation.isDefiniteRefusal(code: code, status: status),
+              let (_, key) = LAAWorkDrafts.request(item) else { return false }
+        do {
+            let operation = try await bridge.abandonUnsent(key, viewer: viewer)
+            guard LAAPersonalReconciliation.disposition(operation, mayCompare: false) == .restore,
+                  drafts.submissions.contains(where: { $0.id == item.id && $0.key == item.key && $0.personalOrigin == item.personalOrigin }) else { return false }
+            return drafts.finishSubmission(item.id, restoring: false)
+        } catch { return false }
+    }
+}
+
 #if !LAATASK_QUEUE_STANDALONE
+extension LAABridgeSession: LAAPersonalAbandonTransport {
+    func abandonUnsent(_ key: LAABridgeIdempotencyKey, viewer: String) async throws -> LAAPersonalOperationResponse.Operation {
+        let body = try JSONSerialization.data(withJSONObject: ["expectedViewerId": viewer], options: [.sortedKeys])
+        let result: LAABridgeResponse<LAAPersonalOperationResponse> = try await request(
+            method: "POST", path: "/v1/task-operations/abandon-unsent", jsonBody: body, idempotencyKey: key)
+        return result.data.operation
+    }
+}
+
 extension LAABridgeSession: LAAPersonalQueueTransport {
     func queueOperation(_ key: LAABridgeIdempotencyKey) async throws -> LAAPersonalOperationResponse.Operation? {
         do {
@@ -61,12 +88,56 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
         item.key.profile == "laa-bridge" && item.key.sessionID.hasPrefix("\(device):linear:\(viewer):dependency:")
     }
 
+    // After a move, an unapplied follow-up belongs in the normal editor for
+    // its verified parent, not under the internal queue key. Never merge JSON
+    // drafts or overwrite a draft that the user has already started there.
+    static func restoreMovedDependency(_ item: ComposerDraftStore.Submission, drafts: ComposerDraftStore,
+                                       device: String, viewer: String, child: LAAPersonalOperationResponse.Operation,
+                                       parent: LAAPersonalOperationResponse.Operation,
+                                       verified: LAAPersonalTaskResponse) -> Bool {
+        guard item.personalOrigin != nil, let origin = LAAWorkDrafts.origin(item), origin.viewer == viewer,
+              item.key == LAAWorkDrafts.destination(item, device: device, viewer: viewer),
+              drafts.submissions.contains(where: { $0.id == item.id && $0.key == item.key && $0.personalOrigin == item.personalOrigin }),
+              origin.target.hasPrefix("dependency:"), let (body, key) = LAAWorkDrafts.originalRequest(item),
+              let value = try? JSONDecoder().decode(LAAPersonalDependency.self, from: body),
+              value.childKey == key.value, origin.target == "dependency:\(value.childKey)",
+              value.deviceId == origin.device, value.viewerId == viewer,
+              (child.kind == expectedKind(value.kind) || (child.kind == "abandoned" && child.rejection == "abandoned_before_reservation")),
+              LAAPersonalReconciliation.disposition(child, mayCompare: false) == .restore,
+              let target = value.parentTarget(parent, device: origin.device, viewer: viewer),
+              verified.viewerId == viewer, let actual = verified.task.linearId.flatMap(UUID.init(uuidString:)),
+              actual == UUID(uuidString: target), !verified.task.id.isEmpty else { return false }
+
+        let taskID = verified.task.id
+        let draft: ComposerDraft
+        let targetKey: String
+        switch value.kind {
+        case .comment:
+            targetKey = "comment:\(taskID):root"
+            draft = ComposerDraft(text: value.first, attachments: [])
+        case .subtask:
+            targetKey = "new-subtask:\(taskID)"
+            var restored = LAAPersonalTaskDraft(viewerId: viewer, task: nil)
+            restored.title = value.first; restored.teamId = value.teamId; restored.parentId = target
+            guard let data = try? JSONEncoder().encode(restored) else { return false }
+            draft = ComposerDraft(text: String(decoding: data, as: UTF8.self), attachments: [])
+        case .relation, .link:
+            targetKey = "\(value.kind == .relation ? "relation" : "attachment"):\(taskID)"
+            let fields = ["first": value.first, "second": value.second, "relationType": value.relationType]
+            guard let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]) else { return false }
+            draft = ComposerDraft(text: String(decoding: data, as: UTF8.self), attachments: [])
+        }
+        let destination = LAAWorkDrafts.key(deviceID: device, target: "linear:\(viewer):\(targetKey)")
+        guard !drafts.hasDraft(for: destination), LAAWorkDrafts.pending(drafts, key: destination) == nil else { return false }
+        return drafts.finishSubmission(item.id, restoring: true, destination: destination, restoreDraft: draft)
+    }
+
     @discardableResult static func run(drafts: ComposerDraftStore, bridge: any LAAPersonalQueueTransport, viewer: String) async -> Bool {
         guard !running, let device = bridge.deviceID, !drafts.persistenceFailed else { return false }
         running = true; defer { running = false }
         let initialIDs = Set(drafts.submissions.map(\.id))
         let prefix = "\(device):linear:\(viewer):"
-        let items = drafts.submissions.filter { $0.key.profile == "laa-bridge" && $0.key.sessionID.hasPrefix(prefix) }
+        let items = drafts.submissions.filter { $0.personalOrigin == nil && $0.key.profile == "laa-bridge" && $0.key.sessionID.hasPrefix(prefix) }
         // Parents first, then their follow-ups, in reservation order.
         for item in items where isCreate(item, device: device, viewer: viewer) {
             guard !Task.isCancelled, bridge.deviceID == device else { return false }
@@ -108,7 +179,7 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
                 if operation.status != "preflight_retryable" || operation.kind != "create" { return }
             }
             guard LAAWorkDrafts.canRepeat(item), !Task.isCancelled, bridge.deviceID == device,
-                  drafts.submissions.contains(where: { $0.id == item.id }) else { return }
+                  drafts.submissions.contains(where: { $0.id == item.id && $0.key == item.key && $0.personalOrigin == nil }) else { return }
             let operation = try await bridge.queueWrite("POST", path: "/v1/personal-tasks", body: body, key: key, ifMatch: nil)
             guard operation.kind == "create", operation.status == "succeeded",
                   let target = UUID(uuidString: operation.targetId),
@@ -180,7 +251,7 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
                 if operation.status != "preflight_retryable" || operation.kind != request.kind { return }
             }
             guard LAAWorkDrafts.canRepeat(item), !Task.isCancelled, bridge.deviceID == device,
-                  drafts.submissions.contains(where: { $0.id == item.id }) else { return }
+                  drafts.submissions.contains(where: { $0.id == item.id && $0.key == item.key && $0.personalOrigin == nil }) else { return }
             let result: LAAPersonalOperationResponse.Operation
             if let metadata = request.upload {
                 guard item.draft.attachments.count == 1, let file = URL(string: item.draft.attachments[0].uri), file.isFileURL,
@@ -218,7 +289,7 @@ extension LAABridgeSession: LAAPersonalQueueTransport {
             let verified = try await bridge.queueTask(target)
             guard let request = value.request(parent: parent, verified: verified, device: device, viewer: viewer),
                   !Task.isCancelled, bridge.deviceID == device,
-                  drafts.submissions.contains(where: { $0.id == item.id }) else { return }
+                  drafts.submissions.contains(where: { $0.id == item.id && $0.key == item.key && $0.personalOrigin == nil }) else { return }
             let result = try await bridge.queueWrite("POST", path: request.path, body: request.body, key: childKey, ifMatch: nil)
             guard result.status == "succeeded", result.kind == expectedKind(value.kind) else { throw LAABridgeError.invalidResponse }
             _ = drafts.finishSubmission(item.id, restoring: false)

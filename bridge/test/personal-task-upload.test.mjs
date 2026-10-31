@@ -31,8 +31,15 @@ function fixture() {
         assetUrl: config.assetURL, uploadUrl: config.uploadURL, headers: config.headers,
       } } });
       if (query.includes('LAAPersonalAttachmentCreate')) {
+        if (config.failAttachment === 'rejected') return new Response(JSON.stringify({ data: null, errors: [{
+          path: ['attachmentCreate'], extensions: { userError: true, code: 'INPUT_ERROR' },
+        }] }), { status: 200 });
         if (config.failAttachment) throw new Error('fixture association response lost');
         return response({ attachmentCreate: { success: true, attachment: { id: variables.input.id } } });
+      }
+      if (query.includes('LAAPersonalDeleteUpload')) {
+        if (config.failCleanup) throw new Error('fixture cleanup failed');
+        return response({ fileUploadDangerouslyDelete: { success: true } });
       }
       throw new Error('unexpected fixture operation');
     },
@@ -94,13 +101,6 @@ test('incomplete and oversized streams do not reserve or attach a file; failed P
   } });
   assert.equal(lookup.status, 404);
   assert.equal(count(calls, 'LAAPersonalFileUpload'), 0);
-  const tooLarge = await new Promise((resolve, reject) => {
-    const req = httpRequest(`${api.base}/v1/personal-tasks/FIX-1/files`, { method: 'POST',
-      headers: { ...headers, 'idempotency-key': 'oversized', 'content-length': String(20 * 1024 * 1024 + 1) } },
-    (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
-    req.on('error', reject); req.end();
-  });
-  assert.equal(tooLarge, 413);
   config.failPut = true;
   assert.equal((await upload(api, token, 'failed-put')).status, 503);
   assert.equal((await upload(api, token, 'failed-put')).body.error.code, 'task_operation_rejected');
@@ -129,4 +129,75 @@ test('an ambiguous association never repeats; upload target and returned headers
   assert.equal((await upload(api, token, 'unknown')).body.error.code, 'idempotency_outcome_unknown');
   assert.equal(count(calls, 'LAAPersonalAttachmentCreate'), 1);
   assert.equal(calls.filter(({ options }) => options.method === 'PUT').length, 1);
+});
+
+
+// Real socket clients stream the entire body, exercising backpressure and the
+// response that previously arrived as ECONNRESET for large uploads.
+function streamLarge(api, token, key, size = 20 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const headers = { authorization: `Bearer ${token}`, 'idempotency-key': key,
+      'x-linear-viewer-id': owner.id, 'x-linear-file-name': Buffer.from('fixture.txt').toString('base64'),
+      'x-linear-content-sha256': '0'.repeat(64), 'content-type': 'text/plain', 'content-length': String(size) };
+    const req = httpRequest(`${api.base}/v1/personal-tasks/FIX-1/files`, { method: 'POST', headers }, (res) => {
+      const parts = []; res.on('data', (part) => parts.push(part));
+      res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(Buffer.concat(parts)) }));
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    const chunk = Buffer.alloc(64 * 1024); let sent = 0;
+    function write() {
+      while (sent < size) {
+        const remaining = Math.min(chunk.length, size - sent); sent += remaining;
+        if (!req.write(chunk.subarray(0, remaining))) { req.once('drain', write); return; }
+      }
+      req.end();
+    }
+    write();
+  });
+}
+
+test('rejected large uploads drain before returning 413, 429, 401 and 403', async (t) => {
+  const { source } = fixture();
+  let entered = 0, notify;
+  const waiting = new Promise((resolve) => { notify = resolve; });
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const originalSession = source.session;
+  source.session = async (...args) => { entered++; if (entered === 2) notify(); await blocked; return originalSession(...args); };
+  const api = await startBridge({ tasks: { personal: source } });
+  t.after(async () => { release(); await api.close(); });
+  const writer = await api.token(['tasks:read', 'tasks:write']);
+  const reader = await api.token(['tasks:read']);
+  for (const [token, size, status] of [[writer, 20 * 1024 * 1024 + 1, 413], ['bad-token', 20 * 1024 * 1024, 401], [reader, 20 * 1024 * 1024, 403]]) {
+    const result = await streamLarge(api, token, `large-${status}`, size);
+    assert.equal(result.status, status);
+  }
+  // Two legitimate requests occupy the upload slots while their sessions wait.
+  const held = [streamLarge(api, writer, 'held-one'), streamLarge(api, writer, 'held-two')];
+  await waiting;
+  assert.equal((await streamLarge(api, writer, 'large-429')).status, 429);
+  release(); await Promise.all(held);
+});
+
+
+test('definite attachment refusal attempts hashed-audit cleanup; unknown never deletes', async (t) => {
+  const { source, config, calls } = fixture();
+  const api = await startBridge({ tasks: { personal: source } }); t.after(() => api.close());
+  const token = await api.token(['tasks:read', 'tasks:write']);
+  config.failAttachment = 'rejected'; config.failCleanup = true;
+  assert.equal((await upload(api, token, 'cleanup-refusal')).body.error.code, 'linear_rejected');
+  assert.equal((await upload(api, token, 'cleanup-refusal')).body.error.code, 'task_operation_rejected');
+  assert.equal(count(calls, 'LAAPersonalDeleteUpload'), 1);
+  const ledger = readFileSync(join(api.stateDir, 'task-operations.json'), 'utf8');
+  assert.match(ledger, new RegExp(hash(Buffer.from(config.assetURL))));
+  assert.doesNotMatch(ledger, /uploads\.linear\.app|private note|signature=secret/);
+  config.failAttachment = true; config.failCleanup = false;
+  assert.equal((await upload(api, token, 'unknown-cleanup')).body.error.code, 'idempotency_outcome_unknown');
+  assert.equal(count(calls, 'LAAPersonalDeleteUpload'), 1);
+  config.failAttachment = 'rejected';
+  assert.equal((await upload(api, token, 'cleaned-refusal')).body.error.code, 'linear_rejected');
+  const cleanups = calls.filter(({ options }) => String(options.body).includes('LAAPersonalDeleteUpload'));
+  assert.equal(cleanups.length, 2);
+  assert.equal(JSON.parse(cleanups[1].options.body).variables.assetUrl, config.assetURL);
 });

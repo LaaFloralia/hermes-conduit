@@ -37,6 +37,29 @@ const LOOPBACK_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/;
 const ENROLL_FAILURE_WINDOW_MS = 60 * 1000;
 const ENROLL_FAILURE_LIMIT = 10;
 
+// Consume rejected upload bytes without buffering so a client still writing can
+// receive the HTTP error. Bound both time and traffic from a dishonest peer.
+function drainRejectedUpload(req) {
+  if (req.readableEnded) return Promise.resolve(true);
+  if (req.destroyed) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let bytes = 0, done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      req.off('data', onData); req.off('end', onEnd); req.off('error', onClose); req.off('aborted', onClose);
+      resolve(ok);
+    };
+    const onEnd = () => finish(true);
+    const onClose = () => finish(false);
+    const onData = (chunk) => { bytes += chunk.length; if (bytes > 32 * 1024 * 1024) { finish(false); req.destroy(); } };
+    const timer = setTimeout(() => { finish(false); req.destroy(); }, 60_000);
+    timer.unref();
+    req.on('data', onData); req.once('end', onEnd); req.once('error', onClose); req.once('aborted', onClose);
+    req.resume();
+  });
+}
+
 function parseJsonBody(raw) {
   if (raw.length === 0) return undefined;
   try {
@@ -229,6 +252,7 @@ export function createBridge({
       : url.pathname;
     let deviceId = null;
     let errorCode = null;
+    let streamingUpload = false;
 
     try {
       checkOrigin(req);
@@ -249,6 +273,7 @@ export function createBridge({
       // The one bounded upload route consumes its body only after device
       // authentication and scope checks. All existing routes keep their
       // original 64 KiB JSON behaviour.
+      streamingUpload = route.streamBody === true;
       const rawBody = route.streamBody ? Buffer.alloc(0) : await readBody(req);
       if (route.streamBody) res.shouldKeepAlive = false;
 
@@ -324,7 +349,7 @@ export function createBridge({
       if (!(err instanceof BridgeError) && log) {
         log({ level: 'error', requestId, error: err?.message ?? String(err) });
       }
-      if (!res.headersSent) fail(res, requestId, error);
+      if (!res.headersSent && (!streamingUpload || await drainRejectedUpload(req))) fail(res, requestId, error);
     } finally {
       if (log) {
         log({

@@ -23,7 +23,16 @@ function fixture() {
       const values = [...notifications.values()].filter((n) => n.user.id === OWNER.id && (variables.includeArchived || !n.archivedAt));
       return response({ notifications: page(values, variables.after ? null : 'next-page') });
     }
-    if (query.includes('LAAPersonalNotification(')) return response({ notification: notifications.get(variables.id) });
+    if (query.includes('LAAPersonalNotification(')) {
+      if (variables.id === 'unknown') return new Response(JSON.stringify({ data: { notification: null }, errors: [
+        { path: ['notification'], extensions: { userError: true, code: 'INPUT_ERROR' } },
+      ] }), { status: 200 });
+      if (variables.id === 'deleted') return response({ notification: null });
+      if (variables.id === 'nested-error') return new Response(JSON.stringify({ data: { notification: null }, errors: [
+        { path: ['notification', 'user'], extensions: { userError: true, code: 'INPUT_ERROR' } },
+      ] }), { status: 200 });
+      return response({ notification: notifications.get(variables.id) });
+    }
     const match = query.match(/mutation LAAPersonalNotification(Update|Archive|Unarchive)/);
     if (!match) throw new Error('unexpected fixture request');
     if (behavior === 'rejected') {
@@ -145,4 +154,19 @@ test('identical concurrent notification writes execute once and already-applied 
   assert.equal((await first).body.data.operation.status, 'succeeded');
   assert.equal((await change(api, token, 'already-read', 'read')).body.data.operation.status, 'succeeded');
   assert.equal(fake.calls.filter(({ query }) => query.includes('mutation LAAPersonalNotificationUpdate')).length, 1);
+});
+
+
+test('unknown, foreign and deleted notifications return 404 without a write', async (t) => {
+  const { fake, api, token } = await setup(t);
+  for (const id of ['unknown', 'foreign', 'deleted']) {
+    const get = await api.request(`/v1/task-inbox/${id}`, { token });
+    assert.equal(get.status, 404); assert.equal(get.body.error.code, 'notification_not_found');
+    const patch = await change(api, token, `missing-${id}`, 'read', id);
+    assert.equal(patch.status, 404); assert.equal(patch.body.error.code, 'notification_not_found');
+    const ledger = await api.request('/v1/task-operations/by-key', { token, key: `missing-${id}` });
+    assert.equal(ledger.body.data.operation.rejection, 'notification_not_found');
+  }
+  assert.equal((await api.request('/v1/task-inbox/nested-error', { token })).status, 503);
+  assert.equal(fake.calls.filter(({ query }) => query.startsWith('mutation')).length, 0);
 });

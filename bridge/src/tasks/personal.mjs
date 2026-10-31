@@ -76,6 +76,9 @@ export const PERSONAL_DOCUMENTS = Object.freeze({
       success uploadFile { assetUrl uploadUrl headers { key value } }
     }
   }`,
+  deleteUpload: `mutation LAAPersonalDeleteUpload($assetUrl: String!) {
+    fileUploadDangerouslyDelete(assetUrl: $assetUrl) { success }
+  }`,
   createComment: `mutation LAAPersonalCommentCreate($input: CommentCreateInput!) {
     commentCreate(input: $input) { success comment { id } }
   }`,
@@ -187,6 +190,7 @@ function notificationStatusValid(value) {
     && Object.hasOwn(value, 'archivedAt') && (value.archivedAt === null || typeof value.archivedAt === 'string');
 }
 function checkedNotification(value, viewerId) {
+  if (value === null) throw failure('notification_not_found', 'the notification was not found', { status: 404 });
   if (!notificationStatusValid(value) || typeof value.type !== 'string'
       || typeof value.createdAt !== 'string' || typeof value.updatedAt !== 'string') {
     throw failure('linear_response_invalid', 'Linear returned an incomplete notification');
@@ -271,6 +275,7 @@ export function createPersonalLinearSource({
     [PERSONAL_DOCUMENTS.archiveNotification, 'notificationArchive'],
     [PERSONAL_DOCUMENTS.unarchiveNotification, 'notificationUnarchive'],
   ]);
+  const nullableRoots = new Map([[PERSONAL_DOCUMENTS.issue, 'issue'], [PERSONAL_DOCUMENTS.notification, 'notification']]);
   function inputRejected(document, body) {
     const root = mutationRoots.get(document);
     if (!root || !Array.isArray(body?.errors) || !body.errors.length) return false;
@@ -305,10 +310,11 @@ export function createPersonalLinearSource({
       if (inputRejected(document, body)) {
         throw failure('linear_rejected', 'Linear refused the submitted input', { status: 400 });
       }
-      if (document === PERSONAL_DOCUMENTS.issue && body.data?.issue == null
-          && body.errors.every((error) => error?.path?.[0] === 'issue'
+      const nullableRoot = nullableRoots.get(document);
+      if (nullableRoot && body.data && Object.hasOwn(body.data, nullableRoot) && body.data[nullableRoot] === null
+          && body.errors.every((error) => Array.isArray(error?.path) && error.path.length === 1 && error.path[0] === nullableRoot
             && error?.extensions?.userError === true && error?.extensions?.code === 'INPUT_ERROR')) {
-        return { issue: null };
+        return { [nullableRoot]: null };
       }
     }
     if (!body || body.errors?.length || !body.data || typeof body.data !== 'object') {
@@ -487,6 +493,11 @@ export function createPersonalLinearSource({
     }
     return { ...result, viewerId: personalSession.viewer.id };
   }
+  async function deleteUpload(personalSession, assetUrl) {
+    if (!privateFileURL(assetUrl)) throw failure('linear_response_invalid', 'the uploaded asset URL is invalid');
+    const data = await personalSession.run(PERSONAL_DOCUMENTS.deleteUpload, { assetUrl });
+    if (data.fileUploadDangerouslyDelete?.success !== true) throw failure('linear_mutation_unconfirmed', 'Linear did not confirm asset cleanup');
+  }
   async function uploadFile(personalSession, { filename, contentType, bytes }) {
     const data = await personalSession.run(PERSONAL_DOCUMENTS.fileUpload, { filename, contentType, size: bytes.length });
     const payload = data.fileUpload;
@@ -599,6 +610,6 @@ export function createPersonalLinearSource({
     result.priorities = data.issuePriorityValues;
     return result;
   }
-  return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listTaskSection, listFiles, readFile, uploadFile,
+  return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listTaskSection, listFiles, readFile, uploadFile, deleteUpload,
     assertCommentInIssue, createTaskItem, listCollection, getNotification, getNotificationInSession, updateNotification, metadata, session };
 }

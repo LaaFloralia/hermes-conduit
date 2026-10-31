@@ -16,9 +16,11 @@ import XCTest
     var loseChildReply = false
     let target = "7ae6f09d-3879-47ea-8e0d-72cd834ac5bc"
 
-    func operation(_ status: String, kind: String = "create", resolution: String? = nil) throws -> LAAPersonalOperationResponse.Operation {
+    func operation(_ status: String, kind: String = "create", resolution: String? = nil,
+                   rejection: String? = nil) throws -> LAAPersonalOperationResponse.Operation {
         let data: [String: Any] = ["operationId": "operation", "kind": kind, "targetId": target, "status": status,
-            "resultId": status == "succeeded" ? target : NSNull(), "resolution": resolution as Any? ?? NSNull()]
+            "resultId": status == "succeeded" ? target : NSNull(), "resolution": resolution as Any? ?? NSNull(),
+            "rejection": rejection as Any? ?? NSNull()]
         return try JSONDecoder().decode(LAAPersonalOperationResponse.Operation.self, from: JSONSerialization.data(withJSONObject: data))
     }
     func queueOperation(_ key: LAABridgeIdempotencyKey) async throws -> LAAPersonalOperationResponse.Operation? {
@@ -46,6 +48,17 @@ import XCTest
                      key: LAABridgeIdempotencyKey) async throws -> LAAPersonalOperationResponse.Operation {
         calls.append("\(key.value):\(path)")
         return try operation("succeeded", kind: "file")
+    }
+}
+
+@MainActor private final class AbandonFixture: LAAPersonalAbandonTransport {
+    var calls = 0
+    var status = "rejected"
+    var onCall: (() -> Void)?
+    func abandonUnsent(_ key: LAABridgeIdempotencyKey, viewer: String) async throws -> LAAPersonalOperationResponse.Operation {
+        calls += 1
+        onCall?()
+        return try QueueFixture().operation(status, kind: "inbox_read")
     }
 }
 
@@ -87,6 +100,71 @@ import XCTest
         XCTAssertEqual(bridge.calls, ["child-key:/v1/personal-tasks/\(bridge.target)/comments"])
         XCTAssertEqual(reopened.submissions.count, 1)
         XCTAssertEqual(ComposerDraftStore(fileURL: file).submissions.count, 1)
+    }
+
+    func testMovedFollowupRestoresOnlyAfterBothResultsAndParentAreVerified() async throws {
+        let bridge = QueueFixture()
+        let parent = try bridge.operation("succeeded")
+        let verified = try await bridge.queueTask(bridge.target)
+        for kind in LAAPersonalDependency.Kind.allCases {
+            let store = ComposerDraftStore()
+            let second = kind == .link ? "https://example.com/path" : ""
+            let value = LAAPersonalDependency(viewerId: "viewer-a", deviceId: "device-a", parentKey: "parent-key",
+                childKey: "child-key", teamId: "team", kind: kind, first: "Content", second: second)
+            let bytes = try JSONEncoder().encode(value)
+            let old = LAAWorkDrafts.key(deviceID: "device-a", target: "linear:viewer-a:dependency:child-key")
+            let original = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: old, text: String(decoding: bytes, as: UTF8.self),
+                body: bytes, idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "child-key"))))
+            let movedKey = LAAWorkDrafts.key(deviceID: "device-b", target: "linear:viewer-a:dependency:child-key")
+            XCTAssertTrue(store.movePersonalSubmission(original.id, to: movedKey))
+            let moved = try XCTUnwrap(store.submissions.first)
+            let operationKind: String
+            switch kind {
+            case .comment: operationKind = "comment"
+            case .subtask: operationKind = "create"
+            case .relation: operationKind = "relation"
+            case .link: operationKind = "attachment"
+            }
+            let unknown = try bridge.operation("outcome_unknown", kind: operationKind)
+            XCTAssertTrue(!LAAPersonalTaskQueue.restoreMovedDependency(moved, drafts: store, device: "device-b", viewer: "viewer-a",
+                child: unknown, parent: parent, verified: verified))
+            let rejected = kind == .comment
+                ? try bridge.operation("rejected", kind: "abandoned", rejection: "abandoned_before_reservation")
+                : try bridge.operation("rejected", kind: operationKind)
+            let unresolvedParent = try bridge.operation("outcome_unknown")
+            XCTAssertTrue(!LAAPersonalTaskQueue.restoreMovedDependency(moved, drafts: store, device: "device-b", viewer: "viewer-a",
+                child: rejected, parent: unresolvedParent, verified: verified))
+            bridge.wrongViewer = true
+            let wrongViewer = try await bridge.queueTask(bridge.target)
+            bridge.wrongViewer = false
+            XCTAssertTrue(!LAAPersonalTaskQueue.restoreMovedDependency(moved, drafts: store, device: "device-b", viewer: "viewer-a",
+                child: rejected, parent: parent, verified: wrongViewer))
+            let target: String
+            switch kind {
+            case .comment: target = "comment:linear:T-1:root"
+            case .subtask: target = "new-subtask:linear:T-1"
+            case .relation: target = "relation:linear:T-1"
+            case .link: target = "attachment:linear:T-1"
+            }
+            let destination = LAAWorkDrafts.key(deviceID: "device-b", target: "linear:viewer-a:\(target)")
+            XCTAssertTrue(store.save(ComposerDraft(text: "existing", attachments: []), for: destination))
+            XCTAssertTrue(!LAAPersonalTaskQueue.restoreMovedDependency(moved, drafts: store, device: "device-b", viewer: "viewer-a",
+                child: rejected, parent: parent, verified: verified))
+            XCTAssertEqual(store.draft(for: destination).text, "existing")
+            XCTAssertTrue(store.save(ComposerDraft(text: "", attachments: []), for: destination))
+            XCTAssertTrue(LAAPersonalTaskQueue.restoreMovedDependency(moved, drafts: store, device: "device-b", viewer: "viewer-a",
+                child: rejected, parent: parent, verified: verified))
+            XCTAssertTrue(store.submissions.isEmpty)
+            let restored = store.draft(for: destination).text
+            if kind == .comment { XCTAssertEqual(restored, value.first) }
+            else if kind == .subtask {
+                let task = try JSONDecoder().decode(LAAPersonalTaskDraft.self, from: Data(restored.utf8))
+                XCTAssertEqual(task.title, value.first); XCTAssertEqual(task.parentId, bridge.target); XCTAssertEqual(task.teamId, "team")
+            } else {
+                let fields = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(restored.utf8)) as? [String: String])
+                XCTAssertEqual(fields["first"], value.first); XCTAssertEqual(fields["second"], value.second)
+            }
+        }
     }
 
     func testOrderedSendAndLostReplyNeverRepeatsAfterRestart() async throws {
@@ -229,5 +307,81 @@ import XCTest
         XCTAssertEqual(LAAWorkDrafts.request(saved)?.1.value, "inbox-key")
         XCTAssertEqual(LAAWorkDrafts.request(saved)?.0, body)
     }
+
+    func testMovedUnknownCreateKeepsOriginalKeyAndUUIDAndNeverAutomaticallyResends() async throws {
+        let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("drafts.json")
+        let store = ComposerDraftStore(fileURL: file); try reserve(store)
+        let original = try XCTUnwrap(store.submissions.first { $0.key.sessionID.hasSuffix(":new") })
+        let originalKey = try XCTUnwrap(LAAWorkDrafts.originalRequest(original)?.1.value)
+        let bridge = QueueFixture()
+        let unknown = try bridge.operation("outcome_unknown")
+        bridge.operations[originalKey] = unknown
+        bridge.deviceID = "device-b"
+        let destination = try XCTUnwrap(LAAWorkDrafts.destination(original, device: "device-b", viewer: "viewer-a"))
+        XCTAssertTrue(store.movePersonalSubmission(original.id, to: destination))
+        let reopened = ComposerDraftStore(fileURL: file)
+        let moved = try XCTUnwrap(reopened.submissions.first { $0.id == original.id })
+        XCTAssertEqual(moved.key, destination)
+        XCTAssertEqual(moved.personalOrigin, original.key)
+        XCTAssertEqual(LAAWorkDrafts.originalRequest(moved)?.1.value, originalKey)
+        XCTAssertEqual(LAAWorkDrafts.originalRequest(moved)?.0, LAAWorkDrafts.originalRequest(original)?.0)
+        XCTAssertEqual(LAAWorkDrafts.origin(moved)?.device, "device-a")
+        XCTAssertEqual(bridge.operations[originalKey]?.targetId, unknown.targetId)
+        XCTAssertEqual(bridge.operations[originalKey]?.status, "outcome_unknown")
+        XCTAssertTrue(LAAWorkDrafts.request(moved) == nil)
+        XCTAssertTrue(!LAAWorkDrafts.canRepeat(moved))
+        await LAAPersonalTaskQueue.run(drafts: reopened, bridge: bridge, viewer: "viewer-a")
+        XCTAssertTrue(bridge.calls.isEmpty)
+        XCTAssertEqual(reopened.submissions.count, 2)
+
+        // A further explicit move to another viewer keeps the first origin and
+        // original request; neither the old nor the new viewer auto-sends it.
+        let next = try XCTUnwrap(LAAWorkDrafts.destination(moved, device: "device-b", viewer: "viewer-b"))
+        XCTAssertTrue(reopened.movePersonalSubmission(moved.id, to: next))
+        let again = ComposerDraftStore(fileURL: file)
+        let transferred = try XCTUnwrap(again.submissions.first { $0.id == original.id })
+        XCTAssertEqual(transferred.personalOrigin, original.key)
+        XCTAssertEqual(LAAWorkDrafts.originalRequest(transferred)?.1.value, originalKey)
+        await LAAPersonalTaskQueue.run(drafts: again, bridge: bridge, viewer: "viewer-b")
+        XCTAssertTrue(bridge.calls.isEmpty)
+    }
+
+
+    func testInboxDefiniteRefusalClosesOnlyTheProvenUnsentKey() async throws {
+        for (code, ledgerStatus, shouldRemove, expectedCalls) in [
+            ("insufficient_scope", "rejected", true, 1), ("notification_not_found", "rejected", true, 1),
+            ("payload_invalid", "in_progress", false, 1), ("linear_viewer_changed", "outcome_unknown", false, 1),
+            ("idempotency_outcome_unknown", "rejected", false, 0)
+        ] {
+            let store = ComposerDraftStore()
+            let localKey = LAAWorkDrafts.key(deviceID: "device-a", target: "linear:viewer-a:inbox:n")
+            let body = Data("{\"expectedViewerId\":\"viewer-a\",\"action\":\"read\"}".utf8)
+            let item = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: localKey, text: "read", body: body,
+                idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "inbox-key"))))
+            let bridge = AbandonFixture(); bridge.status = ledgerStatus
+            let recovered = await LAAPersonalRefusalRecovery.recover(code: code, status: 403, item: item,
+                                                                       drafts: store, viewer: "viewer-a", bridge: bridge)
+            XCTAssertEqual(recovered, shouldRemove)
+            XCTAssertEqual(store.submissions.isEmpty, shouldRemove)
+            XCTAssertEqual(bridge.calls, expectedCalls)
+        }
+        // Re-pairing and a user move during the status request must not let
+        // its old completion discard the newly moved protected record.
+        let store = ComposerDraftStore()
+        let localKey = LAAWorkDrafts.key(deviceID: "device-a", target: "linear:viewer-a:inbox:n")
+        let body = Data("{\"expectedViewerId\":\"viewer-a\",\"action\":\"read\"}".utf8)
+        let item = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: localKey, text: "read", body: body,
+            idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "inbox-key"))))
+        let bridge = AbandonFixture()
+        let destination = try XCTUnwrap(LAAWorkDrafts.destination(item, device: "device-b", viewer: "viewer-a"))
+        bridge.onCall = { XCTAssertTrue(store.movePersonalSubmission(item.id, to: destination)) }
+        let recovered = await LAAPersonalRefusalRecovery.recover(code: "notification_not_found", status: 404,
+            item: item, drafts: store, viewer: "viewer-a", bridge: bridge)
+        XCTAssertTrue(!recovered)
+        XCTAssertEqual(store.submissions.first?.key, destination)
+        XCTAssertEqual(store.submissions.first?.personalOrigin, localKey)
+    }
+
 }
 #endif

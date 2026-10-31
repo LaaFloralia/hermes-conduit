@@ -156,6 +156,14 @@ struct LAAPersonalInboxView: View {
             await refresh()
         } catch {
             drafts.markSubmissionUnknown(submission.id)
+            if let failure = error as? LAABridgeHTTPError,
+               await LAAPersonalRefusalRecovery.recover(code: failure.code, status: failure.status, item: submission,
+                                                         drafts: drafts, viewer: viewerId, bridge: bridge) {
+                working = false
+                await loadOperations()
+                operationError = LAAWorkHTTP.message(failure)
+                return
+            }
             working = false
             operationError = "結果を確認できません。Pendingで状態を確認してください。自動で再送しません。"
             await loadOperations()

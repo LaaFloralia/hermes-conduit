@@ -550,7 +550,8 @@ store · the session and project API · the personal Linear task API
 - Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAPersonalTaskTests.swift`, `ConduitTests/LAAPersonalTaskQueueTests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `bridge/test/personal-task-writes.test.mjs`,
   `bridge/test/personal-task-details.test.mjs`, `bridge/test/personal-task-files.test.mjs`,
-  `bridge/test/personal-task-upload.test.mjs`, `bridge/test/personal-task-inbox.test.mjs`
+  `bridge/test/personal-task-upload.test.mjs`, `bridge/test/personal-task-inbox.test.mjs`,
+  `bridge/test/personal-task-compaction.test.mjs`
 
 **Rulings**
 - Session and successor writes keep the exact body, request ID and idempotency
@@ -581,6 +582,7 @@ store · the session and project API · the personal Linear task API
   unread, archive and restore actions. Viewing alone does not mark notifications
   read; an uncertain action remains in Pending until checked. The indicator is
   limited to fetched pages and does not imply background delivery.
+- Re-pairing or changing viewers leaves prior submissions under “別の端末・別の本人”; an explicit move retains the original key and stays quarantined until the original viewer reconciles it. Old terminal ledger entries compact to key hashes.
 - Pending decisions are read-only until Task 15; routines remain a placeholder.
 
 **Open gaps**

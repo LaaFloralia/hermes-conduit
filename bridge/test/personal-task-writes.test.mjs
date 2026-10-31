@@ -155,14 +155,15 @@ test('unknown outcomes are retained beyond seven days and require explicit recon
   assert.equal(mutations(personal).length, 1);
 });
 
-test('an old successful key is refused after seven days and points at its minimal record', async (t) => {
+test('an old successful key is refused after seven days as a hash-only tombstone', async (t) => {
   let clock = Date.parse('2026-11-01T00:00:00Z');
   const { personal, api, token } = await setup(t, { now: () => clock });
   assert.equal((await create(api, token, 'old')).status, 201);
   clock += 8 * 24 * 60 * 60 * 1000;
   const repeat = await create(api, token, 'old');
   assert.equal(repeat.body.error.code, 'idempotency_outcome_unknown');
-  assert.equal(repeat.body.error.details.operation.replayExpired, true);
+  assert.equal(repeat.body.error.details.operation, undefined);
+  assert.equal((await api.request('/v1/task-operations/by-key', { token, key: 'old' })).body.error.code, 'idempotency_outcome_unknown');
   assert.equal(mutations(personal).length, 1);
 });
 
@@ -512,4 +513,47 @@ test('ledger reserve and finish each replace and synchronously flush the whole J
   assert.ok(counts.reads >= 4, `observed ${counts.reads} ledger reads`);
   assert.equal(counts.replacements, 2);
   assert.ok(counts.fsyncs >= 4, `observed ${counts.fsyncs} synchronous flushes`);
+});
+
+test('re-paired device can reconcile original key and UUID without another create', async (t) => {
+  const personal = sourceFixture();
+  personal.createIssue = async (_session, input) => { personal.calls.push({ create: input }); throw new Error('lost create reply'); };
+  const { api, token: originalToken } = await setup(t, { personal });
+  const originalDeviceId = (await api.request('/v1/me', { token: originalToken })).body.data.deviceId;
+  assert.equal((await create(api, originalToken, 'orphan-create')).body.error.code, 'idempotency_outcome_unknown');
+  const reserved = (await api.request('/v1/task-operations/by-key', { token: originalToken, key: 'orphan-create' })).body.data.operation;
+  const newToken = await api.token(['tasks:read', 'tasks:write']);
+  const payload = { originalDeviceId, expectedViewerId: VIEWER.id };
+  const status = () => api.request('/v1/task-operations/original-status', { token: newToken, method: 'POST', key: 'orphan-create', body: payload });
+  const restored = await status();
+  assert.equal(restored.body.data.operation.targetId, reserved.targetId);
+  assert.equal(restored.body.data.operation.operationId, reserved.operationId);
+  assert.equal(restored.body.data.operation.status, 'outcome_unknown');
+  const abandoned = await api.request('/v1/task-operations/original-abandon', { token: newToken, method: 'POST', key: 'orphan-create', body: payload });
+  assert.equal(abandoned.body.data.operation.status, 'outcome_unknown');
+  assert.equal(mutations(personal).length, 1);
+  personal.viewer = { id: 'another-viewer' };
+  assert.equal((await status()).body.error.code, 'linear_viewer_changed');
+  personal.viewer = VIEWER;
+  assert.equal((await api.request('/v1/task-operations/original-status', { token: newToken, method: 'POST', key: 'orphan-create',
+    body: { ...payload, originalDeviceId: 'dev_0000000000000000' } })).status, 404);
+  const confirmation = { ...payload, originalKey: 'orphan-create', operationId: reserved.operationId, confirmed: true, resolution: 'applied' };
+  const wrongKey = await api.request('/v1/task-operations/original-resolve', { token: newToken, method: 'POST', key: 'resolve-wrong',
+    body: { ...confirmation, originalKey: 'another-key' } });
+  assert.equal(wrongKey.status, 404);
+  const readOnly = await api.token(['tasks:read']);
+  assert.equal((await api.request('/v1/task-operations/original-resolve', { token: readOnly, method: 'POST', key: 'resolve-read-only',
+    body: confirmation })).status, 403);
+  assert.equal((await status()).body.data.operation.status, 'outcome_unknown');
+  const resolve = await api.request('/v1/task-operations/original-resolve', { token: newToken, method: 'POST', key: 'resolve-original',
+    body: confirmation });
+  assert.equal(resolve.body.data.operation.status, 'resolved');
+  assert.equal((await status()).body.data.operation.targetId, reserved.targetId);
+  assert.equal((await create(api, originalToken, 'orphan-create')).body.error.code, 'operation_resolved');
+  assert.equal(mutations(personal).length, 1);
+
+  const neverSent = await api.request('/v1/task-operations/original-abandon', { token: newToken, method: 'POST', key: 'not-yet-sent', body: payload });
+  assert.equal(neverSent.body.data.operation.rejection, 'abandoned_before_reservation');
+  assert.equal((await create(api, originalToken, 'not-yet-sent')).body.error.code, 'idempotency_key_conflict');
+  assert.equal(mutations(personal).length, 1);
 });

@@ -126,16 +126,15 @@ struct LAAWorkView: View {
     private var connection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if bridge.status == .keychainError {
-                Label(LAAWorkPresentation.japanese("接続情報を読み取れません"), systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("キーチェーンの接続情報を読み取れません"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColor.attention)
-                Text(verbatim: "端末の接続情報を確認してください。")
-                Button(LAACopy.WorkTab.settings, action: onRequestSettings).buttonStyle(.bordered)
+                Text(verbatim: "iPhoneのロックを解除してアプリを開き直してください。改善しない場合は、Macとの接続情報を再設定してください。")
             } else {
                 Label { Text(verbatim: "未接続") } icon: { Image(systemName: "circle") }
                     .foregroundStyle(LAAColor.secondaryText)
                 Text(verbatim: bridge.status == .revoked || bridge.status == .unauthorized
                      ? "この端末の接続が無効です。新しいコードで接続してください。"
-                     : "この端末はMacのLAA Bridgeとペアリングされていません。")
+                     : "この端末はMacとペアリングされていません。")
                 Button(LAACopy.WorkTab.connect) { showPairing = true }
                     .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
                     .foregroundStyle(LAAColor.filledButtonText)

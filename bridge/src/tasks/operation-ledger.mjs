@@ -27,7 +27,7 @@ export function operationFingerprint({ method, path, viewerId, ifMatch, rawBody 
 export function createTaskOperationLedger({ store, now = () => Date.now() }) {
   if (!store?.dir) throw new Error('task operation ledger requires a Bridge store');
   const file = join(store.dir, 'task-operations.json');
-  const data = createJsonFile({ file, initial: () => ({ entries: {} }) });
+  const data = createJsonFile({ file, initial: () => ({ entries: {}, tombstones: [] }) });
   const unavailable = () => new BridgeError(503, 'task_ledger_unavailable', 'the task operation ledger requires operator recovery');
   function syncDirectory() {
     const fd = openSync(store.dir, 'r');
@@ -36,7 +36,20 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
 
   function checked(doc) {
     if (!doc.entries || typeof doc.entries !== 'object' || Array.isArray(doc.entries)) throw unavailable();
+    if (doc.tombstones === undefined) doc.tombstones = []; // upgrade existing ledgers
+    if (!Array.isArray(doc.tombstones) || doc.tombstones.some((hash) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))
+        || new Set(doc.tombstones).size !== doc.tombstones.length) throw unavailable();
     return doc.entries;
+  }
+  function compact(all, tombstones) {
+    const known = new Set(tombstones);
+    for (const [hash, entry] of Object.entries(all)) {
+      if (['succeeded', 'rejected'].includes(entry.status) && Number.isFinite(entry.updatedAt)
+          && now() - entry.updatedAt >= RECENT_MS) {
+        if (!known.has(hash)) { tombstones.push(hash); known.add(hash); }
+        delete all[hash];
+      }
+    }
   }
   function ready({ create = false } = {}) {
     try {
@@ -63,7 +76,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     try {
       const result = data.mutate((doc) => {
         if (!existsSync(file) || store.read().taskOperationsInitialized !== true) throw unavailable();
-        return fn(checked(doc));
+        return fn(checked(doc), doc.tombstones);
       });
       // The file helper fsyncs its temporary file before rename. Persist the
       // directory entry too before any Linear mutation is sent.
@@ -74,16 +87,18 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
       throw unavailable();
     }
   }
-  function entries() {
-    if (!ready()) return {};
+  function snapshot() {
+    if (!ready()) return { entries: {}, tombstones: [] };
     try {
       if (!existsSync(file)) throw unavailable();
-      return checked(data.read());
+      const doc = data.read(); checked(doc);
+      return doc;
     } catch (error) {
       if (error instanceof BridgeError) throw error;
       throw unavailable();
     }
   }
+  function entries() { return snapshot().entries; }
   function visible(entry) {
     const age = Math.max(0, now() - entry.createdAt);
     const status = entry.status === 'in_progress' && age >= INFLIGHT_MS && !processStillExists(entry.processId)
@@ -106,7 +121,9 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     reserve({ deviceId, viewerId, key, method, path, ifMatch, rawBody, kind, targetId, contextId }) {
       const hash = keyHash(deviceId, key);
       const fingerprint = operationFingerprint({ method, path, viewerId, ifMatch, rawBody });
-      return edit((all) => {
+      return edit((all, tombstones) => {
+        compact(all, tombstones);
+        if (tombstones.includes(hash)) return { action: 'expired' };
         const previous = all[hash];
         if (!previous && Object.values(all).some((entry) => entry.resolutionKeyHash === hash)) return { action: 'conflict' };
         if (previous) {
@@ -137,7 +154,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
         return { action: 'execute', entry: visible(entry) };
       });
     },
-    finish({ deviceId, viewerId, key, status, result, rejection }) {
+    finish({ deviceId, viewerId, key, status, result, rejection, cleanupAssetHash }) {
       return edit((all) => {
         const entry = all[keyHash(deviceId, key)];
         if (!owned(entry, deviceId, viewerId) || entry.status !== 'in_progress') throw unavailable();
@@ -145,13 +162,20 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
         entry.status = status;
         entry.updatedAt = now();
         if (status === 'succeeded') { entry.resultId = result.id; entry.identifier = result.identifier; }
-        if (status === 'rejected') entry.rejection = rejection;
+        if (status === 'rejected') {
+          entry.rejection = rejection;
+          if (cleanupAssetHash !== undefined) {
+            if (typeof cleanupAssetHash !== 'string' || !/^[a-f0-9]{64}$/.test(cleanupAssetHash)) throw unavailable();
+            entry.cleanupAssetHash = cleanupAssetHash;
+          }
+        }
         return visible(entry);
       });
     },
     byKey({ deviceId, viewerId, key }) {
-      const all = entries();
+      const { entries: all, tombstones } = snapshot();
       const hash = keyHash(deviceId, key);
+      if (tombstones.includes(hash)) throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled');
       let entry = all[hash] ?? Object.values(all).find((item) => item.resolutionKeyHash === hash);
       // Atomically close an expired no-write preflight before advertising it
       // as rejected. A concurrent retry can never be mistaken for a no-op.
@@ -169,7 +193,9 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     },
     abandonUnsent({ deviceId, viewerId, key }) {
       const hash = keyHash(deviceId, key);
-      return edit((all) => {
+      return edit((all, tombstones) => {
+        compact(all, tombstones);
+        if (tombstones.includes(hash)) throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled');
         const previous = all[hash];
         if (previous) {
           if (!owned(previous, deviceId, viewerId)) throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to another viewer');
@@ -203,9 +229,9 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     },
     resolve({ deviceId, viewerId, operationId, resolution, key, fingerprint }) {
-      return edit((all) => {
+      return edit((all, tombstones) => {
         const hash = keyHash(deviceId, key);
-        if (all[hash]) {
+        if (all[hash] || tombstones.includes(hash)) {
           throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
         }
         const prior = Object.values(all).find((item) => item.resolutionKeyHash === hash);

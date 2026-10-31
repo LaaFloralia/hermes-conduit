@@ -14,6 +14,14 @@ final class LAABridgeSession: ObservableObject {
     init(keychain: LAABridgeKeychain = .init(), client: LAABridgeClient = .init()) {
         self.keychain = keychain
         self.client = client
+        #if DEBUG
+        // Exercise the Keychain error screen without touching real credentials.
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-LAA_UI_TEST_ISOLATED_BRIDGE") && arguments.contains("-LAA_UI_TEST_KEYCHAIN_ERROR") {
+            status = .keychainError
+            return
+        }
+        #endif
         do {
             credentials = try keychain.read()
             status = credentials == nil ? .unpaired : .paired

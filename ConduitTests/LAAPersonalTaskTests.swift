@@ -115,15 +115,16 @@ final class LAAPersonalTaskTests: XCTestCase {
     }
 
     func testReconciliationRestoresOnlyKnownUnappliedAndRejectsUnsafeRetryAssumptions() throws {
-        for status in ["outcome_unknown", "in_progress", "preflight_retryable"] {
+        for status in ["outcome_unknown", "in_progress"] {
             XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: status), mayCompare: false), .wait)
         }
+        XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "preflight_retryable"), mayCompare: false), .unsent)
         XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "resolved", resolution: "applied"), mayCompare: false), .complete)
         XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "resolved", resolution: "not_applied"), mayCompare: false), .restore)
         XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "resolved"), mayCompare: false), .invalid)
         XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "rejected", rejection: "linear_rejected"), mayCompare: true), .restore)
         XCTAssertEqual(LAAPersonalReconciliation.disposition(try operation(status: "rejected", rejection: "version_mismatch"), mayCompare: true), .compare)
-        for code in ["insufficient_scope", "task_not_found", "linear_rejected", "payload_invalid"] {
+        for code in ["insufficient_scope", "task_not_found", "notification_not_found", "linear_rejected", "payload_invalid"] {
             XCTAssertTrue(LAAPersonalReconciliation.isDefiniteRefusal(code: code))
         }
         XCTAssertTrue(!LAAPersonalReconciliation.isDefiniteRefusal(code: "idempotency_outcome_unknown"))

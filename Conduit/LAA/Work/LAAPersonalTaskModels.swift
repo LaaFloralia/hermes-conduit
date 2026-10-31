@@ -372,10 +372,11 @@ enum LAAPersonalTaskDiff {
 }
 
 enum LAAPersonalReconciliation {
-    enum Disposition: Equatable { case complete, restore, compare, wait, invalid }
+    enum Disposition: Equatable { case complete, restore, compare, unsent, wait, invalid }
     static func disposition(_ operation: LAAPersonalOperationResponse.Operation, mayCompare: Bool) -> Disposition {
         switch operation.status {
         case "succeeded": return .complete
+        case "preflight_retryable": return .unsent
         case "resolved":
             if operation.resolution == "applied" { return .complete }
             if operation.resolution == "not_applied" { return .restore }
@@ -389,7 +390,7 @@ enum LAAPersonalReconciliation {
         guard let code else { return false }
         if code == "linear_request_failed" && status == 403 { return true }
         return ["payload_invalid", "expected_viewer_required", "if_match_required", "linear_viewer_changed",
-                "insufficient_scope", "task_id_invalid", "task_not_found", "linear_rejected",
+                "insufficient_scope", "task_id_invalid", "task_not_found", "notification_not_found", "linear_rejected",
                 "linear_viewer_mismatch", "linear_personal_credential_invalid", "linear_personal_not_configured"].contains(code)
     }
 }

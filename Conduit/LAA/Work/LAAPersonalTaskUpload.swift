@@ -29,11 +29,15 @@ struct LAAPersonalTaskUpload: View {
                 if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
                 if let pending {
                     Section("Pending") {
-                        Text(verbatim: "送信結果を確認するまで、別のファイルを送信しません。")
-                        if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
-                        Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
-                        if LAAWorkDrafts.canRepeat(pending) {
-                            Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                        if pending.personalOrigin != nil {
+                            Text(verbatim: "移した下書きはPendingで元の要求を照合してください。")
+                        } else {
+                            Text(verbatim: "送信結果を確認するまで、別のファイルを送信しません。")
+                            if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
+                            Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
+                            if LAAWorkDrafts.canRepeat(pending) {
+                                Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                            }
                         }
                     }
                 }

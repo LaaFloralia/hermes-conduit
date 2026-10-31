@@ -113,6 +113,16 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertFalse(app.buttons["New Session"].isEnabled)
     }
 
+    func testKeychainErrorExplainsRecoveryAndShowsOnlyToolbarSettings() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_KEYCHAIN_ERROR"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["キーチェーンの接続情報を読み取れません"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["iPhoneのロックを解除してアプリを開き直してください。改善しない場合は、Macとの接続情報を再設定してください。"].exists)
+        XCTAssertEqual(app.buttons.matching(identifier: "Settings").count, 1)
+        XCTAssertFalse(app.buttons["Connect to Mac"].exists)
+    }
+
     private func captureUnpairedDesign(_ appearance: String) {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",

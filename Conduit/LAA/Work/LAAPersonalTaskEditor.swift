@@ -165,21 +165,25 @@ struct LAAPersonalTaskEditor: View {
     }
     @ViewBuilder private func pendingSection(_ item: ComposerDraftStore.Submission) -> some View {
         Section("Pending") {
-            Text(verbatim: "保存結果は未確認です。同じ要求の状態を先に確認してください。")
-            if let operation {
-                Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled)
-            }
-            Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }
-            if initialTask == nil {
-                Button("Add Follow-up") { showFollowup = true }
-                Text(verbatim: "コメント・子課題・関連・リンクは、作成を確認した後に送ります。")
-                    .laaTextStyle(.secondary)
-            }
-            if !confirmedRejection && LAAWorkDrafts.canRepeat(item) {
-                Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(item) } }
-            }
-            if !LAAWorkDrafts.canRepeat(item) {
-                Text(verbatim: "再送期限を過ぎています。保存先を確認して照合してください。")
+            if item.personalOrigin != nil {
+                Text(verbatim: "移した下書きはPendingで元の要求を照合してください。自動送信しません。")
+            } else {
+                Text(verbatim: "保存結果は未確認です。同じ要求の状態を先に確認してください。")
+                if let operation {
+                    Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled)
+                }
+                Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }
+                if initialTask == nil {
+                    Button("Add Follow-up") { showFollowup = true }
+                    Text(verbatim: "コメント・子課題・関連・リンクは、作成を確認した後に送ります。")
+                        .laaTextStyle(.secondary)
+                }
+                if !confirmedRejection && LAAWorkDrafts.canRepeat(item) {
+                    Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(item) } }
+                }
+                if !LAAWorkDrafts.canRepeat(item) {
+                    Text(verbatim: "再送期限を過ぎています。保存先を確認して照合してください。")
+                }
             }
         }
     }
@@ -343,6 +347,11 @@ struct LAAPersonalTaskEditor: View {
             case .compare:
                 if LAAWorkConflictJournal.mark(item.id) { confirmedRejection = true; await loadConflict() }
                 else { error = "確認結果を端末に保存できません。" }
+            case .unsent:
+                // A queue sender can race a read-only status check. Close the
+                // key under the ledger lock before restoring any draft.
+                if !abandonIfUnsent { await check(item, abandonIfUnsent: true) }
+                else { error = "未送信の要求を確定できません。再確認してください。" }
             case .invalid: throw LAABridgeError.invalidResponse
             case .wait: error = "結果を確認できません。保存先を調べてから照合してください。"
             }
