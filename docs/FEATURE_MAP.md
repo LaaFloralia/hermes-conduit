@@ -3490,7 +3490,7 @@ on top
 - Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
 - Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
 - LAA Catalyst compact window and content cap: `Conduit/ConduitApp.swift`, `Conduit/LAA/Mac/LAAMacWindow.swift`
-- Tests: `ConduitTests/LAAMacCatalystTests.swift` (testWindowSceneCanGrowAndShrink), `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
+- Tests: `ConduitTests/LAAMacCatalystTests.swift` (testWindowSizeConstantsLeaveRoomToShrink), `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
 
 **Rulings**
 - LAA Catalyst keeps the compact one-column shell and caps it in the center of a wider resizable window. Its scene derives resize limits from the root content so the initial size does not also become the maximum; the upstream iPad and Mac layouts below remain unchanged.
