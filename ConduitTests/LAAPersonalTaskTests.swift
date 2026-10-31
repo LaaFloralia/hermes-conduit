@@ -67,13 +67,15 @@ final class LAAPersonalTaskTests: XCTestCase {
         XCTAssertTrue(long.count <= 202)
     }
 
-    func testCreateAndFractionalEstimate() throws {
+    func testCreateAndEstimateInput() throws {
         var draft = LAAPersonalTaskDraft(viewerId: "viewer", task: nil)
-        draft.teamId = "team"; draft.title = "起票"; draft.estimate = "1.5"
+        draft.teamId = "team"; draft.title = "起票"; draft.estimate = "3"
         let body = try payload(draft)
         XCTAssertEqual(body["teamId"] as? String, "team")
         XCTAssertEqual(body["expectedViewerId"] as? String, "viewer")
-        XCTAssertEqual(body["estimate"] as? Double, 1.5)
+        XCTAssertEqual(body["estimate"] as? Int, 3)
+        draft.estimate = "1.5"
+        XCTAssertThrowsError(try draft.requestBody())
         draft.estimate = "NaN"
         XCTAssertThrowsError(try draft.requestBody())
     }

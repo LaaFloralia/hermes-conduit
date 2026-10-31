@@ -166,7 +166,9 @@ struct LAAPersonalTaskDraft: Codable, Equatable {
         if priority != old.priority { changes["priority"] = priority }
         if estimate != old.estimate {
             if estimate.isEmpty { changes["estimate"] = NSNull() }
-            else if let number = Double(estimate), number.isFinite, (0...10000).contains(number) { changes["estimate"] = number }
+            else if let number = Double(estimate), number.isFinite, (0...10000).contains(number), number.rounded() == number {
+                changes["estimate"] = Int(number)
+            }
             else { throw Validation.invalidEstimate }
         }
         nullable("dueDate", dueDate, old.dueDate)

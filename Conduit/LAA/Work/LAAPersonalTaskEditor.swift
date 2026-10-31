@@ -99,7 +99,7 @@ struct LAAPersonalTaskEditor: View {
                         Text("None").tag("")
                         ForEach(cycles.filter { $0.team?.id == draft.teamId }) { Text(verbatim: $0.displayName).tag($0.id) }
                     }
-                    TextField("Estimate (optional)", text: $draft.estimate).keyboardType(.decimalPad)
+                    TextField("Estimate (whole number)", text: $draft.estimate).keyboardType(.numberPad)
                     TextField("Due date (YYYY-MM-DD)", text: $draft.dueDate).textInputAutocapitalization(.never)
                     if incompleteChoices {
                         Text(verbatim: "選択肢は一部のみ取得しています。未表示の値は変更されません。")
@@ -259,7 +259,7 @@ struct LAAPersonalTaskEditor: View {
             Task { await perform(item, firstAttempt: true) }
         } catch LAAPersonalTaskDraft.Validation.missingTitle { error = "タイトルを入力してください。" }
         catch LAAPersonalTaskDraft.Validation.missingTeam { error = "チームを選んでください。" }
-        catch LAAPersonalTaskDraft.Validation.invalidEstimate { error = "見積りは0以上の数値で入力してください。" }
+        catch LAAPersonalTaskDraft.Validation.invalidEstimate { error = "見積りは0以上の整数で入力してください。" }
         catch LAAPersonalTaskDraft.Validation.missingVersion { error = "本文の版を確認してから保存してください。" }
         catch LAAPersonalTaskDraft.Validation.incompleteLabels { error = "ラベルをすべて取得するまで変更できません。" }
         catch LAAPersonalTaskDraft.Validation.noChanges { error = "変更はありません。" }

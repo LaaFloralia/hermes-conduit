@@ -73,9 +73,8 @@ function issueInput(rawBody, creating) {
   if ('priority' in input && (!Number.isInteger(input.priority) || input.priority < 0 || input.priority > 4)) {
     throw badRequest('payload_invalid', 'priority must be between 0 and 4');
   }
-  if ('estimate' in input && input.estimate !== null && (typeof input.estimate !== 'number' || !Number.isFinite(input.estimate)
-      || input.estimate < 0 || input.estimate > 10000)) {
-    throw badRequest('payload_invalid', 'estimate must be a non-negative number or null');
+  if ('estimate' in input && input.estimate !== null && (!Number.isInteger(input.estimate) || input.estimate < 0 || input.estimate > 10000)) {
+    throw badRequest('payload_invalid', 'estimate must be a non-negative integer or null');
   }
   if ('dueDate' in input && input.dueDate !== null) {
     if (typeof input.dueDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)

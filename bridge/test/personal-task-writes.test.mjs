@@ -82,10 +82,11 @@ test('attribute updates are last-writer-wins and do not launch any worker', asyn
   assert.equal(changedVersion.body.error.code, 'idempotency_key_conflict');
 });
 
-test('fractional Linear estimates are accepted without relaxing validation', async (t) => {
+test('estimate writes use the public Linear input integer type', async (t) => {
   const { personal, api, token } = await setup(t);
-  assert.equal((await update(api, token, 'fraction', { estimate: 0.5 })).status, 200);
-  assert.equal(mutations(personal)[0].update.input.estimate, 0.5);
+  assert.equal((await update(api, token, 'whole', { estimate: 3 })).status, 200);
+  assert.equal(mutations(personal)[0].update.input.estimate, 3);
+  assert.equal((await update(api, token, 'fraction', { estimate: 0.5 })).status, 400);
   assert.equal((await update(api, token, 'invalid-estimate', { estimate: -0.5 })).status, 400);
 });
 
