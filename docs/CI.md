@@ -8,11 +8,6 @@ that date describes it.
 
 ## CI v5 at a glance
 
-In the LAA fork, `ci.yml` runs on `master` and `laa/*` pushes and PRs to
-`master`. After the default smoke suite, its existing macOS job builds the LAA
-scheme separately and runs the Brain save-and-recovery fixture. A zero-test
-result fails the same required `CI Gate`.
-
 CI v5 pairs CI v3's lightweight merge gate with CI v4's comprehensive
 coverage, moved to the nightly run. CI v4 ran three macOS jobs on every PR and
 every push to `main` (two unit shards with every unit class, plus UI smoke),
@@ -152,10 +147,6 @@ The UI step runs even when the unit step failed, so a run always reports
 both; only a failed build or a cancelled run skips it, and the job fails if
 either step failed.
 
-In the LAA fork, the same job then generates `project-laa.yml` and runs
-`LAABrainSaveTests/testSaveAndRecoveryFixture` on the booted simulator, using
-a separate DerivedData directory. A missing or failing test fails the job.
-
 Nightly unit shards run their classes as sequential `test-without-building`
 batches on the one booted simulator: the fewest batches of at most
 `UNIT_BATCH_SIZE` (45) classes, split evenly, so a shard of about 78 classes
@@ -231,7 +222,6 @@ The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
      UI smoke:   2 curated classes, ONE invocation, one targeted retry
                  (runs even if unit smoke failed)
      pushes only: save the full build cache
-     LAA fork:   build LAA scheme and run the Brain save fixture
                  |
                  v
           ci-gate  ->  "CI Gate" (the single required status check)
@@ -248,7 +238,7 @@ nightly-only families) and `ui` (one job per UI shard).
 |---|---|---|
 | `plan` | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `pulse` or `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), cheap CI-tooling tests, the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`), the **nightly partition** check (`plan-tests.py hosted`), and the smoke build's project (`ui-spec`). |
 | `self-test` | ubuntu | CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests the plan job skips) in one job, concurrent with `smoke`. |
-| `smoke` (`Smoke`) | macos-26 | The only macOS job: restores the default build cache, builds the app and tests while the simulator boots, and runs the curated unit and UI smoke classes. In the LAA fork it then builds the LAA scheme and runs the Brain save fixture on the same simulator. |
+| `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache (on a PR into `pulse` or `linked-rooms`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the curated unit classes (one invocation, no retry) and the curated UI classes (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `pulse` or `linked-rooms`. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites
@@ -371,9 +361,8 @@ caught. `SmokeSelectionTests` asserts they never enter the smoke set, and
 
 ### Cost
 
-CI v5: one macOS job per PR run or push run (one default build and boot, two
-default test invocations, plus a UI retry when needed; the LAA fork adds a
-separate LAA build and fixture invocation), against CI v4's three (each with
+CI v5: one macOS job per PR run or push run (one build, one boot, two test
+invocations, plus a UI retry when needed), against CI v4's three (each with
 its own build and boot, ~18 minutes of wall clock per run). The full unit
 suite's macOS minutes moved to the nightly run, which spends them once a day
 instead of on every push.
@@ -477,8 +466,7 @@ The `CI Gate` job is the single stable required status check for branch
 protection. It passes only when:
 
 * `plan`, `smoke` and `self-test` all succeed (CI v5). `smoke` fails when
-  its build, its unit smoke step, its UI smoke step, or the LAA Brain fixture
-  failed. Nothing is ever
+  its build, its unit smoke step or its UI smoke step failed. Nothing is ever
   legitimately skipped: `plan-tests.py smoke` fails closed on an empty curated
   selection and both smoke test steps refuse to run unfiltered, so a
   `skipped` job always means an upstream failure cascade — which fails the

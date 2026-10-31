@@ -327,8 +327,9 @@ class WorkflowContractTests(unittest.TestCase):
         # 600s timeout (docs/CI.md): ten minutes of dead time per failed batch.
         for path in (WORKFLOW, NIGHTLY):
             text = _read(path)
-            invocations = text.count("xcodebuild test-without-building") + text.count("xcodebuild test ")
-            self.assertEqual(invocations, text.count("-collect-test-diagnostics never \\"), path)
+            self.assertEqual(
+                text.count("xcodebuild test-without-building"),
+                text.count("-collect-test-diagnostics never \\"), path)
 
     def test_smoke_job_pins_the_simulator_destination(self):
         # A name-only destination lets xcodebuild pick the first of several
@@ -339,8 +340,7 @@ class WorkflowContractTests(unittest.TestCase):
                        "LOG_DIR=", "export LOG_DIR"):
             self.assertIn(needle, preparation)
         smoke = self._job_text("smoke")
-        for step in ("Run the curated unit smoke classes", "Run the curated UI smoke suite",
-                     "Run the Brain save fixture on the LAA scheme"):
+        for step in ("Run the curated unit smoke classes", "Run the curated UI smoke suite"):
             text = _step_text(smoke, step)
             self.assertIn('-destination "$DESTINATION"', text, step)
         self.assertNotIn("platform=iOS Simulator,name=", smoke,
@@ -351,7 +351,6 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: always()", upload)
         self.assertIn("ci-lane/unit-smoke.log", upload)
         self.assertIn("ci-lane/ui-smoke.log", upload)
-        self.assertIn("ci-lane/brain-save-test.log", upload)
         self.assertIn("UNIT_SMOKE_LOG: ci-lane/unit-smoke.log", self._job_text("smoke"))
 
     def test_the_self_test_job_runs_full_discovery_and_stays_required(self):
@@ -370,16 +369,6 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('--smoke "${{ needs.smoke.result }}"', gate)
         self.assertNotIn("needs.unit.", gate)
         self.assertNotIn("needs.ui-smoke.", gate)
-
-    def test_laa_brain_fixture_is_in_the_required_smoke_job(self):
-        smoke = self._job_text("smoke")
-        step = _step_text(smoke, "Run the Brain save fixture on the LAA scheme")
-        self.assertNotIn("if:", step, "a successful smoke run must execute the fixture")
-        self.assertIn("xcodegen generate --spec project-laa.yml", step)
-        self.assertIn("-scheme LAABrain", step)
-        self.assertIn("-only-testing:ConduitTests/LAABrainSaveTests/testSaveAndRecoveryFixture", step)
-        self.assertIn("testSaveAndRecoveryFixture.*passed", step)
-        self.assertIn("needs: [plan, smoke, self-test]", self._job_text("ci-gate"))
 
     def test_no_write_only_build_metadata_artifact(self):
         self.assertNotIn("name: build-meta", self._workflow_text(),

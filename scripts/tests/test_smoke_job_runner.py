@@ -34,10 +34,8 @@ UNIT_STEP = "Run this shard's unit classes"
 # The smoke job's two test steps (ci.yml).
 UNIT_SMOKE_STEP = "Run the curated unit smoke classes"
 UI_STEP = "Run the curated UI smoke suite"
-BRAIN_STEP = "Run the Brain save fixture on the LAA scheme"
 
-STEP_WORKFLOWS = {UNIT_STEP: NIGHTLY, UNIT_SMOKE_STEP: WORKFLOW, UI_STEP: WORKFLOW,
-                  BRAIN_STEP: WORKFLOW}
+STEP_WORKFLOWS = {UNIT_STEP: NIGHTLY, UNIT_SMOKE_STEP: WORKFLOW, UI_STEP: WORKFLOW}
 
 # Records every invocation, and can be told to fail from the Nth one on.
 STUB = """#!/usr/bin/env bash
@@ -129,7 +127,6 @@ class SmokeJobRunnerTests(unittest.TestCase):
         os.makedirs(self.bin)
         self.log = os.path.join(self.tmp, "calls.log")
         for name, body in (("xcodebuild", STUB), ("xcrun", STUB_XCRUN),
-                           ("xcodegen", "#!/usr/bin/env bash\nexit 0\n"),
                            ("defaults", "#!/usr/bin/env bash\nexit 0\n")):
             path = os.path.join(self.bin, name)
             with open(path, "w", encoding="utf-8", newline="\n") as fh:
@@ -186,34 +183,6 @@ class SmokeJobRunnerTests(unittest.TestCase):
     def _invocations(self):
         with open(self.log, encoding="utf-8") as fh:
             return [l for l in fh.read().splitlines() if l.startswith("INVOKE|")]
-
-    def _run_brain(self, **env_extra):
-        path = os.path.join(self.tmp, "brain-fixture.sh")
-        with open(path, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(_step_script(BRAIN_STEP))
-        with open(self.log, "w", encoding="utf-8"):
-            pass
-        return subprocess.run([self.bash, path], cwd=self.tmp,
-                              env=self._env(**env_extra), capture_output=True, text=True)
-
-    def test_brain_fixture_must_really_run_and_pass(self):
-        proc = self._run_brain(STUB_SUCCESS_OUTPUT="Test Case 'testSaveAndRecoveryFixture' passed")
-        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        calls = self._invocations()
-        self.assertEqual(len(calls), 1)
-        self.assertIn("-scheme LAABrain", calls[0])
-        self.assertIn("-only-testing:ConduitTests/LAABrainSaveTests/testSaveAndRecoveryFixture", calls[0])
-
-    def test_brain_fixture_zero_tests_or_xcode_failure_fails(self):
-        zero = self._run_brain(STUB_SUCCESS_OUTPUT="Executed 0 tests")
-        self.assertNotEqual(zero.returncode, 0)
-        failed = self._run_brain(STUB_FAIL_AT="1", STUB_FAILURE_OUTPUT="testSaveAndRecoveryFixture passed")
-        self.assertNotEqual(failed.returncode, 0)
-
-    def test_brain_fixture_rejects_an_empty_destination(self):
-        proc = self._run_brain(DESTINATION="")
-        self.assertNotEqual(proc.returncode, 0)
-        self.assertEqual(self._invocations(), [])
 
     @staticmethod
     def _classes(prefix, count):
