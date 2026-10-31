@@ -133,6 +133,7 @@ struct LAAEmployeeWidgetView: View {
         }
         .padding(LAASpacing.x3)
         .widgetURL(entry.usageLink.url)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility3)
     }
 
     @ViewBuilder
@@ -205,20 +206,17 @@ struct LAAEmployeeWidgetView: View {
         ViewThatFits(in: .vertical) {
             accessibleUsageLayout(maxMeters: 2).fixedSize(horizontal: false, vertical: true)
             accessibleUsageLayout(maxMeters: 1).fixedSize(horizontal: false, vertical: true)
-            accessibleUsageLayout(maxMeters: 1, compact: true).fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private func accessibleUsageLayout(maxMeters: Int, compact: Bool = false) -> some View {
+    private func accessibleUsageLayout(maxMeters: Int) -> some View {
         let notice = entry.usage.flatMap { Self.accessibleNotice(for: $0.meters, at: entry.date) }
         return VStack(alignment: .leading, spacing: LAASpacing.x1) {
             HStack(spacing: LAASpacing.x1) {
-                if !compact || notice == nil {
-                    Text(verbatim: "Usage").laaTextStyle(.section).fontWeight(.bold)
-                        .foregroundStyle(LAAColor.text).lineLimit(1).accessibilityAddTraits(.isHeader)
-                }
+                Text(verbatim: "Usage").laaTextStyle(.section).fontWeight(.bold)
+                    .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
                 if let notice {
-                    if !compact { Spacer(minLength: 0) }
+                    Spacer(minLength: 0)
                     Text(verbatim: notice.compactText).laaTextStyle(.section)
                         .foregroundStyle(notice == .manual ? LAAColor.secondaryText : LAAColor.attention)
                         .lineLimit(1).layoutPriority(1)
@@ -235,14 +233,11 @@ struct LAAEmployeeWidgetView: View {
                                 .lineLimit(1)
                             Spacer(minLength: 0)
                             Text(verbatim: percentage).font(LAAType.employeeName).monospacedDigit()
-                                .lineLimit(1).minimumScaleFactor(compact ? 0.65 : 1).layoutPriority(1)
                         }
                         .laaTextStyle(.section)
                         .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
-                        if !compact {
-                            ProgressView(value: meter.remainingPercent, total: 100)
-                                .tint(past ? LAAColor.attention : LAAColor.link)
-                        }
+                        ProgressView(value: meter.remainingPercent, total: 100)
+                            .tint(past ? LAAColor.attention : LAAColor.link)
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(meter.label), 残り \(percentage)\(past ? ", 最終取得、要確認" : "")")
@@ -256,18 +251,11 @@ struct LAAEmployeeWidgetView: View {
             }
             if let checked = entry.usage?.checkedAt {
                 let parts = Self.accessibleCheckedParts(checked, relativeTo: entry.date)
-                Group {
-                    if compact {
-                        Text(verbatim: "\(parts.date) \(parts.time)")
-                            .lineLimit(1).minimumScaleFactor(0.4)
-                    } else {
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(verbatim: parts.date)
-                                .lineLimit(1).minimumScaleFactor(0.8)
-                            Text(verbatim: "確認 \(parts.time)")
-                                .lineLimit(1).minimumScaleFactor(0.8)
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: parts.date)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                    Text(verbatim: "確認 \(parts.time)")
+                        .lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

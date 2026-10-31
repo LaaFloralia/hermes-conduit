@@ -77,10 +77,27 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(previousYear.time, "09:04")
     }
 
+    func testAccessibility5MatchesAccessibility3() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        let appearances: [(String, UIUserInterfaceStyle, WidgetRenderingMode)] = [
+            ("light", .light, .fullColor), ("dark", .dark, .fullColor), ("tinted", .light, .accented)
+        ]
+        for (name, style, mode) in appearances {
+            for otherOnly in [false, true] {
+                let state = otherOnly ? "no-quota" : "stale"
+                let reference = try capture(style: style, mode: mode, name: "compare-\(state)-\(name)-ax3",
+                    stale: !otherOnly, otherOnly: otherOnly, dynamicTypeSize: .accessibility3, now: now)
+                let maximum = try capture(style: style, mode: mode, name: "compare-\(state)-\(name)-ax5",
+                    stale: !otherOnly, otherOnly: otherOnly, dynamicTypeSize: .accessibility5, now: now)
+                XCTAssertEqual(maximum, reference, "\(state), \(name)")
+            }
+        }
+    }
+
+    @discardableResult
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
                          stale: Bool = false, otherOnly: Bool = false, dynamicTypeSize: DynamicTypeSize = .large,
-                         checkedAtOffset: TimeInterval = 0) throws {
-        let now = Date()
+                         checkedAtOffset: TimeInterval = 0, now: Date = Date()) throws -> Data {
         let meters = [("Claude · Session", 12.0), ("Codex · Weekly", 35.0), ("OpenCode · 5h", 72.0)]
             .enumerated().map { index, pair in
                 WidgetUsageMeter(id: "\(index)", label: pair.0, remainingPercent: pair.1,
@@ -117,6 +134,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+        return try XCTUnwrap(image.pngData())
     }
 }
 #endif
