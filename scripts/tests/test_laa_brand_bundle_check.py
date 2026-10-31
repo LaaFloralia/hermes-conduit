@@ -88,6 +88,19 @@ class LAABrandCheckTests(unittest.TestCase):
         with self.assertRaises(checker.CheckError):
             checker.check_bundle(Path(self.temp.name))
 
+    def test_additional_extension_cannot_bypass_inspection(self):
+        extension = self.app / "PlugIns/Future.appex"
+        write_plist(extension / "Info.plist", {
+            "CFBundleIdentifier": checker.APP_ID + ".future",
+            "CFBundleName": "LAA", "CFBundleDisplayName": "LAA"})
+        write_plist(extension / "en.lproj/Localizable.strings", {"title": "Open Hermes"})
+        self.assertTrue(checker.check_bundle(self.app))
+        write_plist(extension / "en.lproj/Localizable.strings", {"title": "Open Ciel"})
+        self.assertEqual(checker.check_bundle(self.app), [])
+        (extension / "Info.plist").unlink()
+        with self.assertRaises(checker.CheckError):
+            checker.check_bundle(self.app)
+
     def test_testflight_checks_archive_before_export(self):
         script = (ROOT / "scripts/laa/testflight.sh").read_text()
         self.assertLess(script.index('xcodebuild archive'), script.index('check-brand-bundle.py'))

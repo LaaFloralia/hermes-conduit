@@ -14,8 +14,13 @@ import AppIntents
 import Foundation
 
 struct TalkToHermesIntent: AppIntent {
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "Talk to Ciel"
+    static let description = IntentDescription("Starts a voice call to Ciel on your Watch.")
+    #else
     static let title: LocalizedStringResource = "Talk to Hermes"
     static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")
+    #endif
 
     /// watchOS before 26 (the Watch app's floor). A boolean literal: the
     /// App Intents metadata processor reads it.
@@ -40,12 +45,22 @@ struct TalkToHermesIntent: AppIntent {
 /// a control opens its app, so `perform()` runs in the app with its
 /// handler set rather than in the widget extension.
 struct OpenTalkToHermesIntent: OpenIntent {
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "Talk to Ciel"
+    static let description = IntentDescription("Starts a voice call to Ciel on your Watch.")
+    #else
     static let title: LocalizedStringResource = "Talk to Hermes"
     static let description = IntentDescription("Starts a voice call to Hermes on your Watch.")
+    #endif
     static let isDiscoverable: Bool = false
 
+    #if LAA_BUILD
+    @Parameter(title: "Talk to Ciel")
+    var target: WatchCallTarget
+    #else
     @Parameter(title: "Talk to Hermes")
     var target: WatchCallTarget
+    #endif
 
     init() { target = .call }
 
@@ -60,10 +75,17 @@ struct OpenTalkToHermesIntent: OpenIntent {
 enum WatchCallTarget: String, AppEnum {
     case call
 
+    #if LAA_BUILD
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to Ciel"
+    static let caseDisplayRepresentations: [WatchCallTarget: DisplayRepresentation] = [
+        .call: "Talk to Ciel",
+    ]
+    #else
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Talk to Hermes"
     static let caseDisplayRepresentations: [WatchCallTarget: DisplayRepresentation] = [
         .call: "Talk to Hermes",
     ]
+    #endif
 }
 
 /// Where a call asked for from outside the app goes: the Watch app sets

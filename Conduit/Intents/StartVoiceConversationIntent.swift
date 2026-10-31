@@ -8,7 +8,11 @@ import Foundation
 
 @available(iOS 16.0, *)
 struct ConduitProfileEntity: AppEntity, Identifiable {
+    #if LAA_BUILD
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "LAA profile")
+    #else
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Conduit profile")
+    #endif
     static let defaultQuery = ConduitProfileEntityQuery()
 
     let id: String
@@ -144,6 +148,17 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
         )
         #endif
         // Siri asks what to send, and speaks Hermes's answer.
+        #if LAA_BUILD
+        AppShortcut(
+            intent: SendToHermesIntent(),
+            phrases: [
+                "Ask Ciel in \(.applicationName)",
+                "Send to Ciel in \(.applicationName)"
+            ],
+            shortTitle: "Ask Ciel",
+            systemImageName: "paperplane.fill"
+        )
+        #else
         AppShortcut(
             intent: SendToHermesIntent(),
             phrases: [
@@ -153,6 +168,7 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             shortTitle: "Ask Hermes",
             systemImageName: "paperplane.fill"
         )
+        #endif
     }
 }
 

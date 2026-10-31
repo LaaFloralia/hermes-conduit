@@ -36,10 +36,17 @@ enum ShortcutEventKindEntity: String, AppEnum {
 /// Background-only: the event goes to the host without Conduit opening.
 @available(iOS 16.0, *)
 struct LogToHermesIntent: AppIntent {
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "Log to Ciel"
+    static let description = IntentDescription(
+        "Keep information from an automation for Ciel to look up later. Ciel does not reply, and sign-in codes are never kept."
+    )
+    #else
     static let title: LocalizedStringResource = "Log to Hermes"
     static let description = IntentDescription(
         "Keep what an automation hands over, such as a notification, a message, an email or a payment, for Hermes to look up later. Hermes doesn't reply, and sign-in codes are never kept."
     )
+    #endif
 
     /// iOS 17–25 declaration; see `StartVoiceConversationIntent`. Must stay
     /// a boolean literal for the App Intents metadata processor.
@@ -54,12 +61,21 @@ struct LogToHermesIntent: AppIntent {
     @Parameter(title: "Kind", default: .other)
     var kind: ShortcutEventKindEntity
 
+    #if LAA_BUILD
+    @Parameter(
+        title: "Details",
+        requestValueDialog: "What should Ciel keep?",
+        inputConnectionBehavior: .connectToPreviousIntentResult
+    )
+    var details: String?
+    #else
     @Parameter(
         title: "Details",
         requestValueDialog: "What should Hermes keep?",
         inputConnectionBehavior: .connectToPreviousIntentResult
     )
     var details: String?
+    #endif
 
     @Parameter(title: "From")
     var source: String?
@@ -74,12 +90,21 @@ struct LogToHermesIntent: AppIntent {
     var happenedAt: Date?
 
     static var parameterSummary: some ParameterSummary {
+        #if LAA_BUILD
+        Summary("Log \(\.$details) to Ciel as \(\.$kind)") {
+            \.$source
+            \.$subject
+            \.$amount
+            \.$happenedAt
+        }
+        #else
         Summary("Log \(\.$details) to Hermes as \(\.$kind)") {
             \.$source
             \.$subject
             \.$amount
             \.$happenedAt
         }
+        #endif
     }
 
     init() {}

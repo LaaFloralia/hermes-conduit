@@ -115,10 +115,17 @@ struct ScreenQuestionStagingError: LocalizedError {
 /// the chat once Hermes is connected.
 @available(iOS 16.0, *)
 struct AskHermesAboutScreenIntent: AppIntent {
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "Ask Ciel About Screen"
+    static let description = IntentDescription(
+        "Open LAA with this screenshot attached to a chat, ready for your question."
+    )
+    #else
     static let title: LocalizedStringResource = "Ask Hermes About Screen"
     static let description = IntentDescription(
         "Open Conduit with this screenshot attached to a chat, ready for your question."
     )
+    #endif
 
     /// iOS 17–25 declaration; see `StartVoiceConversationIntent`. Must stay
     /// a boolean literal for the App Intents metadata processor.
@@ -150,12 +157,21 @@ struct AskHermesAboutScreenIntent: AppIntent {
     var chat: ScreenQuestionChatAppEnum?
 
     static var parameterSummary: some ParameterSummary {
+        #if LAA_BUILD
+        Summary("Ask Ciel about \(\.$screenshot)") {
+            \.$question
+            \.$startWith
+            \.$profile
+            \.$chat
+        }
+        #else
         Summary("Ask Hermes about \(\.$screenshot)") {
             \.$question
             \.$startWith
             \.$profile
             \.$chat
         }
+        #endif
     }
 
     init() {}

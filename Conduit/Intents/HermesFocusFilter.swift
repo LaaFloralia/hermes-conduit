@@ -17,6 +17,15 @@ import Foundation
 
 @available(iOS 16.0, *)
 struct HermesFocusFilter: SetFocusFilterIntent {
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "Tell Ciel"
+    static let description: IntentDescription? = IntentDescription(
+        "Let Ciel know which Focus you're in, and hold calls while it's on.")
+    @Parameter(title: "Name for Ciel", default: "")
+    var label: String
+    @Parameter(title: "Hold calls from Ciel", default: false)
+    var holdCalls: Bool
+    #else
     static let title: LocalizedStringResource = "Tell Hermes"
     static let description: IntentDescription? = IntentDescription(
         "Let your Hermes agent know which Focus you're in, and hold its calls while it's on.")
@@ -26,12 +35,19 @@ struct HermesFocusFilter: SetFocusFilterIntent {
 
     @Parameter(title: "Hold calls from Hermes", default: false)
     var holdCalls: Bool
+    #endif
 
     var displayRepresentation: DisplayRepresentation {
         let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
+        #if LAA_BUILD
+        let held: LocalizedStringResource = "Hold calls from Ciel"
+        let defaultTitle: LocalizedStringResource = "Tell Ciel"
+        #else
         let held: LocalizedStringResource = "Hold Hermes calls"
+        let defaultTitle: LocalizedStringResource = "Tell Hermes"
+        #endif
         if name.isEmpty {
-            let title: LocalizedStringResource = holdCalls ? held : "Tell Hermes"
+            let title: LocalizedStringResource = holdCalls ? held : defaultTitle
             return DisplayRepresentation(title: title)
         }
         let subtitle: LocalizedStringResource? = holdCalls ? held : nil

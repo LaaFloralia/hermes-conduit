@@ -357,10 +357,17 @@ struct ShortcutSender {
 /// Background-only: the text goes to Hermes without Conduit opening.
 @available(iOS 16.0, *)
 struct SendToHermesIntent: AppIntent {
+    #if LAA_BUILD
+    static let title: LocalizedStringResource = "Send to Ciel"
+    static let description = IntentDescription(
+        "Send Ciel a chat message. With Wait for Answer on, the reply comes back to the shortcut."
+    )
+    #else
     static let title: LocalizedStringResource = "Send to Hermes"
     static let description = IntentDescription(
         "Send text to your Hermes agent as a chat message. With Wait for Answer on, Hermes's reply comes back to the shortcut."
     )
+    #endif
 
     /// iOS 17–25 declaration; see `StartVoiceConversationIntent`. Must stay
     /// a boolean literal for the App Intents metadata processor.
@@ -372,12 +379,21 @@ struct SendToHermesIntent: AppIntent {
         .background
     }
 
+    #if LAA_BUILD
+    @Parameter(
+        title: "Message",
+        requestValueDialog: "What should Ciel get?",
+        inputConnectionBehavior: .connectToPreviousIntentResult
+    )
+    var message: String
+    #else
     @Parameter(
         title: "Message",
         requestValueDialog: "What should Hermes get?",
         inputConnectionBehavior: .connectToPreviousIntentResult
     )
     var message: String
+    #endif
 
     @Parameter(title: "Wait for Answer", default: true)
     var waitForAnswer: Bool
@@ -389,11 +405,19 @@ struct SendToHermesIntent: AppIntent {
     var profile: ConduitProfileEntity?
 
     static var parameterSummary: some ParameterSummary {
+        #if LAA_BUILD
+        Summary("Send \(\.$message) to Ciel") {
+            \.$waitForAnswer
+            \.$chatName
+            \.$profile
+        }
+        #else
         Summary("Send \(\.$message) to Hermes") {
             \.$waitForAnswer
             \.$chatName
             \.$profile
         }
+        #endif
     }
 
     init() {}

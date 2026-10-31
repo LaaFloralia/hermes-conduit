@@ -87,15 +87,18 @@ def check_bundle(bundle):
     if root_info.get("CFBundleIdentifier") != APP_ID:
         raise CheckError("the supplied app is not the LAA bundle")
     found = {APP_ID: bundle}
-    for info_path in bundle.rglob("Info.plist"):
-        if info_path.parent == bundle:
+    # Inspect every embedded app and extension, not just today's known IDs:
+    # adding another extension must not silently bypass the display check.
+    for part in bundle.rglob("*"):
+        if not part.is_dir() or part.suffix not in {".app", ".appex"}:
             continue
-        info = load_resource(info_path)
-        identifier = info.get("CFBundleIdentifier") if isinstance(info, dict) else None
-        if identifier in REQUIRED:
-            if identifier in found:
-                raise CheckError(f"duplicate required bundle: {identifier}")
-            found[identifier] = info_path.parent
+        info = bundle_info(part)
+        identifier = info.get("CFBundleIdentifier")
+        if not isinstance(identifier, str) or not identifier:
+            raise CheckError(f"missing bundle identifier: {part}")
+        if identifier in found:
+            raise CheckError(f"duplicate bundle: {identifier}")
+        found[identifier] = part
     missing = REQUIRED - found.keys()
     if missing:
         raise CheckError("missing required bundles: " + ", ".join(sorted(missing)))
