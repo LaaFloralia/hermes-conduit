@@ -1,7 +1,7 @@
 # LAA Conduit project rules
 
 - Start with `docs/laa/SESSION-HANDOFF.md`: current state, team, the owner's open issues and the merge gate. The owner calls this project "AIアプリ" or "LAAアプリ".
-- The owner assigns iOS implementation to GPT-6.1 Terra at max effort and independent reviews to DeepSeek V4.1 Flash at max effort.
+- The owner's split (2026-10-31): work that operates the Mac (simulators, screenshots, launching the Mac app) goes to GPT-6.1 Terra at max effort; other code (Bridge, scripts; CLI builds and unit tests), independent reviews, research and docs go to DeepSeek V4.1 Flash (DSH) at max effort. The reviewer is always the other lineage. No Claude subagents except design-worker.
 - Design and verify first for the owner's single-screen iPhone 16 Pro Max (440 × 956 pt). iPhone Duo is optional.
 - Simulators on this Mac: the `LAA 16 Pro Max` simulator (iOS 27.0, the owner's device) is the default for UI tests and screenshots. The iOS 27.1 runtime supports only iPhone Duo. Keep the compact 440 × 956 pt snapshot tests, such as `LAACompactChatSnapshotTests`, and confirm on the real device through TestFlight. Do not add simulator runtimes without the parent session's approval.
 - Across the shared Mac, run at most three concurrent `xcodebuild` processes, each with `-jobs 4`. Boot only one simulator at a time and shut it down immediately after testing. Check `laa-storage-guard status` and keep at least 80 GiB free.
