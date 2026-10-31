@@ -9,7 +9,8 @@ name: CI
 #                           job's ui-spec) and all test targets once, and runs
 #                           the curated unit smoke classes and the curated UI
 #                           smoke classes (scripts/smoke-suite.json) on that
-#                           build and simulator.
+#                           build and simulator, then tests LAA Brain's save
+#                           fixture using its own project and scheme.
 #   Nightly (nightly.yml)   EVERY unit class in balanced shards, the
 #                           timing/performance/dormancy families with repeats,
 #                           and the complete UI suite. Also how a release is
@@ -262,16 +263,16 @@ jobs:
           python3 scripts/ci-self-test.py
 
   smoke:
-    # The only macOS job of a PR or push run: one build, one booted simulator,
-    # then the unit smoke classes and the UI smoke classes on them.
+    # One macOS job and one booted simulator: the default smoke classes, then
+    # the LAA Brain save fixture built with its own project and scheme.
     name: Smoke
     needs: plan
     runs-on: macos-26
-    # 75: the UI smoke job alone needed 45 (a stalled first attempt plus the
+    # 100: the UI smoke job alone needed 45 (a stalled first attempt plus the
     # one targeted retry ran past 30 minutes, which GitHub reports as
     # "cancelled" instead of a failure), and the unit smoke invocation now
-    # runs on the same runner first.
-    timeout-minutes: 75
+    # runs on the same runner first, and the LAA scheme needs a separate build.
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v7
 
@@ -532,6 +533,26 @@ jobs:
             !ci-derived-data/Logs
           key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
 
+      - name: Run the Brain save fixture on the LAA scheme
+        # CI Gate already requires this smoke job. Reuse its simulator, but
+        # keep the LAA build separate from the saved default-scheme cache.
+        run: |
+          set -euo pipefail
+          if [ -z "${DESTINATION:-}" ]; then
+            echo "::error::DESTINATION is empty - cannot run the LAA Brain test"
+            exit 1
+          fi
+          xcodegen generate --spec project-laa.yml
+          mkdir -p ci-lane
+          xcodebuild test -project Conduit.xcodeproj -scheme LAABrain -configuration Debug \
+            -destination "$DESTINATION" -derivedDataPath "$RUNNER_TEMP/laa-brain-derived-data" \
+            -parallel-testing-enabled NO -collect-test-diagnostics never \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 180 \
+            -only-testing:ConduitTests/LAABrainSaveTests/testSaveAndRecoveryFixture \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee ci-lane/brain-save-test.log
+          # A successful invocation selecting zero tests is not a passing gate.
+          grep -E 'testSaveAndRecoveryFixture.*passed' ci-lane/brain-save-test.log
+
       - name: Dump simulator state (failure diagnostics)
         if: failure()
         run: |
@@ -547,6 +568,7 @@ jobs:
             ci-lane/destination/preparation.json
             ci-lane/unit-smoke.log
             ci-lane/ui-smoke.log
+            ci-lane/brain-save-test.log
             ci-lane/ui-retry.json
           retention-days: 3
           if-no-files-found: ignore
