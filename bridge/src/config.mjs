@@ -182,9 +182,9 @@ export function resolveUsageFeedUrl(env = process.env) {
 // USAGE.md §4: live/local readings go stale after 20 minutes.
 export function resolveUsageAutoStaleMs(env = process.env) {
   const raw = env.LAA_BRIDGE_USAGE_AUTO_STALE_MS;
-  if (raw === undefined || raw === '') return 20 * 60 * 1000;
+  if (raw === undefined || raw === '') return 10 * 60 * 1000;
   const value = Number(raw);
-  return Number.isFinite(value) && value > 0 ? value : 20 * 60 * 1000;
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 10 * 60 * 1000) : 10 * 60 * 1000;
 }
 
 // The proxy answers from its own 30 s upstream budget; the Bridge caps the wait

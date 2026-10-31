@@ -9,18 +9,12 @@
 // items. That keeps the app's "no data" state separate from "Bridge is broken",
 // and no missing reading is ever reported as 0.
 //
-// A slow proxy is its own case (2026-10-29): `/widget` takes 19–25 s under load,
-// far beyond the request cap. `usage/feed.mjs` answers such a request with the
-// last successful payload — original timestamps included, so the normal
-// stale/expired rules still label it — while the slow read finishes in the
-// background for the next request. Without a snapshot the answer stays
-// `unavailable`, as before.
+// The feed is refreshed in the background; requests never wait for upstream.
 
 import {
   resolveStorageStatusFile,
   resolveUsageAutoStaleMs,
   resolveUsageFeedStateFile,
-  resolveUsageFeedTimeoutMs,
   resolveUsageFeedUrl,
   resolveUsageRefreshTimeoutMs,
 } from '../config.mjs';
@@ -36,17 +30,16 @@ import { unavailableUsageItems, usageItemsFromFeed } from '../usage/proxy.mjs';
 export function usageRoutes({
   feedUrl,
   fetcher,
-  feedTimeoutMs,
   refreshTimeoutMs,
   feedStateFile,
   stateDir,
   autoStaleMs,
   sampler,
   storageStatusFile,
+  registerCleanup,
   now = () => Date.now(),
 } = {}) {
   const url = feedUrl ?? resolveUsageFeedUrl();
-  const timeoutMs = feedTimeoutMs ?? resolveUsageFeedTimeoutMs();
   const staleMs = autoStaleMs ?? resolveUsageAutoStaleMs();
   const host = sampler ?? createHostSampler({ now });
   const statusFile = storageStatusFile ?? resolveStorageStatusFile();
@@ -54,10 +47,10 @@ export function usageRoutes({
     file: feedStateFile ?? resolveUsageFeedStateFile({ stateDir }),
     url,
     fetcher,
-    timeoutMs,
     refreshTimeoutMs: refreshTimeoutMs ?? resolveUsageRefreshTimeoutMs(),
     now,
   });
+  registerCleanup?.(feedSource.close);
 
   async function usage() {
     let items;

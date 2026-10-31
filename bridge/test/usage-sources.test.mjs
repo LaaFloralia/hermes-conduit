@@ -56,20 +56,12 @@ test('the quota value is the window with the least remaining, extras included', 
   assert.equal(item.expired, false);
 });
 
-test('a passed resetsAt marks the binding window expired and keeps the value', () => {
-  const items = projection([{
-    id: 'claude',
-    kind: 'quota',
-    available: true,
-    updatedAt: '2026-10-29T04:58:00Z',
-    windows: [
-      { label: 'Session', remaining: 62, resetsAt: '2026-10-29T04:00:00Z' },
-      { label: 'Weekly', remaining: 90, resetsAt: '2026-11-02T00:00:00Z' },
-    ],
-  }]);
-  const item = byId(items, 'provider.claude.quota');
-  assert.equal(item.value, 62);
-  assert.equal(item.expired, true);
+test('a passed reset removes the entire quota value', () => {
+  const item = byId(projection([{ id: 'claude', available: true, updatedAt: '2026-10-29T04:58:00Z',
+    windows: [{ label: 'Session', remaining: 62, resetsAt: '2026-10-29T04:00:00Z' }] }]), 'provider.claude.quota');
+  assert.equal(item.availability, 'unavailable');
+  assert.equal(item.value, null);
+  assert.equal(item.detail, undefined);
 });
 
 test('a provider without windows is unavailable instead of zero', () => {
@@ -97,17 +89,15 @@ test('an invalid or excessive quota window cannot hide a potentially binding lim
   assert.equal(extras.value, 0);
 });
 
-test('a zero balance is a real reading; a missing one is not', () => {
+test('a live zero balance is a real reading; the old Gemini row is ignored', () => {
   const items = projection([
-    { id: 'fal', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-29T04:00:00Z', currency: 'USD', amount: 0 },
-    { id: 'gemini', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-29T04:00:00Z', currency: 'JPY', amount: 48725.03 },
-    { id: 'venice', kind: 'balance', available: false, updatedAt: null },
+    { id: 'fal', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 0 },
+    { id: 'gemini', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', amount: 42 },
+    { id: 'venice', available: false, updatedAt: null },
   ]);
   assert.equal(byId(items, 'provider.fal.balance').value, 0);
   assert.equal(byId(items, 'provider.fal.balance').availability, 'available');
-  const gemini = byId(items, 'provider.gemini.balance');
-  assert.equal(gemini.unit, 'jpy');
-  assert.equal(gemini.value, 48725.03);
+  assert.equal(items.some(item => item.id.includes('gemini')), false);
   assert.equal(byId(items, 'provider.venice.balance').nullReason, 'fetch_failed');
 });
 
@@ -123,53 +113,31 @@ test('Venice USD and DIEM remain distinct when the proxy has no amount field', (
   assert.equal(diemOnly.availability, 'unavailable'); // Do not call DIEM USD.
 });
 
-test('a balance is expired when every remaining component has expired', () => {
+test('expired and manually verified balances do not return numeric details', () => {
   const items = projection([
-    {
-      id: 'claude-api',
-      kind: 'balance',
-      source: 'verified',
-      available: true,
-      updatedAt: '2026-10-12T00:20:14Z',
-      currency: 'USD',
-      amount: 58.51,
-      components: [
-        { kind: 'monthly', amount: 58.51, grantedAmount: 100, expiresOnUtc: '2026-10-26' },
-        { kind: 'purchased', amount: 0 },
-      ],
-    },
-    {
-      id: 'jev',
-      kind: 'balance',
-      source: 'verified',
-      available: true,
-      updatedAt: '2026-10-23T10:34:25Z',
-      currency: 'USD',
-      amount: 9.98,
-      components: [
-        { kind: 'monthly', amount: 4.98, grantedAmount: 5, expiresOnUtc: '2026-11-19' },
-        { kind: 'purchased', amount: 5, grantedAmount: 5, expiresOnUtc: '2027-10-11' },
-      ],
-    },
+    { id: 'fal', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 5,
+      components: [{ kind: 'monthly', amount: 5, expiresOnUtc: '2026-10-26' }] },
+    { id: 'jev', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 8 },
   ]);
-  assert.equal(byId(items, 'provider.claude-api.balance').expired, true);
-  assert.equal(byId(items, 'provider.jev.balance').expired, false);
-  assert.equal(byId(items, 'provider.jev.balance').detail.currency, 'USD');
-  assert.deepEqual(byId(items, 'provider.jev.balance').detail.components[0], {
-    kind: 'monthly',
-    amount: 4.98,
-    grantedAmount: 5,
-    expiresOnUtc: '2026-11-19',
-  });
+  for (const id of ['provider.fal.balance', 'provider.jev.balance']) {
+    const item = byId(items, id);
+    assert.equal(item.value, null);
+    assert.equal(item.detail, undefined);
+  }
+  assert.equal(byId(items, 'provider.jev.balance').nullReason, 'not_auto');
 });
 
-test('a verified reading is never stale; a live one is after 20 minutes', () => {
+test('verified and ten-minute-old live readings are unavailable', () => {
   const items = projection([
-    { id: 'jev', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-23T10:34:25Z', currency: 'USD', amount: 1 },
-    { id: 'codex', kind: 'quota', available: true, updatedAt: '2026-10-29T04:58:00Z', windows: [{ label: 'Weekly', remaining: 48, resetsAt: '2026-11-01T00:00:00Z' }] },
-  ], { now: NOW + 40 * 60 * 1000 });
-  assert.equal(byId(items, 'provider.jev.balance').stale, false);
-  assert.equal(byId(items, 'provider.codex.quota').stale, true);
+    { id: 'jev', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 1 },
+    { id: 'codex', available: true, updatedAt: '2026-10-29T04:50:00Z', windows: [{ label: 'Weekly', remaining: 48 }] },
+  ]);
+  for (const id of ['provider.jev.balance', 'provider.codex.quota']) {
+    const item = byId(items, id);
+    assert.equal(item.availability, 'unavailable');
+    assert.equal(item.value, null);
+    assert.equal(item.detail, undefined);
+  }
 });
 
 test('unit credits and recorded usage keep their own units and details', () => {
@@ -194,9 +162,10 @@ test('unit credits and recorded usage keep their own units and details', () => {
     },
   ]);
   const flow = byId(items, 'provider.google-flow.credits');
-  assert.equal(flow.value, 0);
+  assert.equal(flow.value, null);
   assert.equal(flow.unit, 'credits');
-  assert.deepEqual(flow.detail, { monthlyGrantedAmount: 1000, sourceKind: 'verified' });
+  assert.equal(flow.nullReason, 'not_auto');
+  assert.equal(flow.detail, undefined);
   const liquid = byId(items, 'provider.liquid.usage');
   assert.equal(liquid.value, 32007029);
   assert.equal(liquid.unit, 'tokens');
@@ -206,43 +175,32 @@ test('unit credits and recorded usage keep their own units and details', () => {
   assert.deepEqual(liquid.detail.models, [{ model: 'd1.1 / d1-ultra', inputTokens: 32007029, outputTokens: 0 }]);
 });
 
-test('projection keeps quota extras and the original freshness without inventing timestamps', () => {
-  const [item] = projection([{
-    id: 'claude', kind: 'quota', source: 'live', available: true,
-    updatedAt: '2026-10-29T04:50:00Z',
+test('projection respects provider deadlines and separately ages quota extras', () => {
+  const [item] = projection([{ id: 'claude', source: 'live', available: true,
+    updatedAt: '2026-10-29T04:51:00Z', freshUntil: '2026-10-29T05:00:30Z',
     windows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
     extraWindows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
-    credits: { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' },
-    resetPasses: { available: false, updatedAt: '2026-10-29T04:49:00Z', expiresAt: '2026-10-29T07:00:00Z' },
+    credits: { remaining: 0, updatedAt: '2026-10-29T04:52:00Z' },
+    resetPasses: { available: true, remaining: 7, updatedAt: '2026-10-29T04:59:00Z' },
   }]);
   assert.equal(item.detail.windows.length, 1);
-  assert.equal(item.detail.windows[0].remainingPercent, 0);
-  assert.equal(item.detail.freshUntil, '2026-10-29T05:10:00.000Z');
-  assert.deepEqual(item.detail.credits, { remaining: 0, updatedAt: '2026-10-29T04:49:00Z' });
-  assert.equal(item.detail.resetPasses.available, false);
-  assert.equal(item.detail.resetPasses.remaining, null);
-  const missing = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
-    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
-  assert.equal(missing.observedAt, null);
-  assert.equal(missing.stale, true);
-  assert.equal(missing.detail.freshUntil, undefined);
-  const future = byId(projection([{ id: 'codex', kind: 'quota', source: 'live', available: true,
-    updatedAt: '2026-10-29T05:03:00Z', fetchedAt: '2026-10-29T04:59:00Z',
-    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
-  assert.equal(future.detail.freshUntil, undefined);
-  assert.equal(future.stale, true);
-  const defaultLive = byId(projection([{ id: 'codex', kind: 'quota', available: true,
-    updatedAt: '2026-10-29T04:59:00Z',
-    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
-  assert.equal(defaultLive.detail.freshUntil, '2026-10-29T05:19:00.000Z');
-  const unknownSource = byId(projection([{ id: 'codex', kind: 'quota', source: 'unknown', available: true,
-    updatedAt: '2026-10-29T04:59:00Z',
-    windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }] }]), 'provider.codex.quota');
-  assert.equal(unknownSource.detail.freshUntil, undefined);
-  assert.equal(unknownSource.stale, true);
-  const verifiedMissing = byId(projection([{ id: 'fal', source: 'verified', available: true, amount: 2 }]), 'provider.fal.balance');
-  assert.equal(verifiedMissing.observedAt, null);
-  assert.equal(verifiedMissing.stale, true);
+  assert.equal(item.value, 0);
+  assert.equal(item.detail.freshUntil, '2026-10-29T05:00:30.000Z');
+  assert.equal(item.detail.credits.remaining, 0);
+  assert.equal(item.detail.resetPasses, undefined);
+  for (const changes of [{ updatedAt: null }, { updatedAt: '2026-10-29T05:00:01Z' },
+                         { source: 'unknown' }, { freshUntil: '2026-10-29T05:00:00Z' },
+                         { freshUntil: 'bad' }, { available: undefined }]) {
+    const invalid = byId(projection([{ id: 'codex', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
+      windows: [{ label: 'Weekly', remaining: 24, resetsAt: null }], ...changes }]), 'provider.codex.quota');
+    assert.equal(invalid.availability, 'unavailable');
+    assert.equal(invalid.value, null);
+    assert.equal(invalid.detail, undefined);
+  }
+  const oldCredits = byId(projection([{ id: 'codex', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
+    windows: [{ label: 'Weekly', remaining: 24 }], credits: { remaining: 8, updatedAt: '2026-10-29T04:50:00Z' } }]), 'provider.codex.quota');
+  assert.equal(oldCredits.value, 24);
+  assert.equal(oldCredits.detail.credits, undefined);
 });
 
 test('text from the feed is sanitised and never carries a credential or a path', () => {
@@ -273,28 +231,31 @@ test('an unknown provider id is ignored and a duplicate is rejected', () => {
   ]), UsageFeedError);
 });
 
-test('a feed dated in the future or with another version is rejected', () => {
-  assert.throws(
-    () => usageItemsFromFeed({ version: 1, fetchedAt: '2026-10-29T05:02:00Z', providers: [] }, { now: NOW }),
-    (error) => error instanceof UsageFeedError && error.code === 'fetched_at_in_future',
-  );
-  assert.throws(
-    () => usageItemsFromFeed({ version: 2, fetchedAt: '2026-10-29T04:59:00Z', providers: [] }, { now: NOW }),
-    (error) => error instanceof UsageFeedError && error.code === 'invalid_version',
-  );
-  // 60 s of clock skew is tolerated.
-  const items = usageItemsFromFeed(
-    { version: 1, fetchedAt: '2026-10-29T05:00:30Z', providers: [] },
-    { now: NOW },
-  );
-  assert.equal(items.length, 16);
+test('a future-dated feed, missing time zone, or another version is rejected', () => {
+  for (const fetchedAt of ['2026-10-29T05:00:01Z', '2026-10-29T04:59:00']) {
+    assert.throws(() => usageItemsFromFeed({ version: 1, fetchedAt, providers: [] }, { now: NOW }), UsageFeedError);
+  }
+  assert.throws(() => usageItemsFromFeed({ version: 2, fetchedAt: '2026-10-29T04:59:00Z', providers: [] }, { now: NOW }), UsageFeedError);
 });
 
-test('no cost or token items are produced in v1', () => {
-  const items = projection([]);
-  assert.equal(items.some((item) => item.kind === 'cost'), false);
-  assert.equal(items.some((item) => item.id.startsWith('profile.')), false);
-  assert.ok(items.every((item) => item.availability === 'unavailable' && item.value === null));
+test('cost readings carry UTC periods and declared lag without inventing a watermark', () => {
+  const base = { kind: 'cost', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
+    currency: 'USD', periodTimezone: 'UTC', todayAmount: 0, monthAmount: 1.25 };
+  const items = projection([{ ...base, id: 'claude-api', sourceLag: 'typical-5m' },
+    { ...base, id: 'openai-api', sourceLag: 'undisclosed' }]);
+  for (const id of ['claude-api', 'openai-api']) {
+    const today = byId(items, `provider.${id}.cost-today`);
+    const month = byId(items, `provider.${id}.cost-month`);
+    assert.equal(today.value, 0);
+    assert.equal(month.value, 1.25);
+    assert.equal(today.detail.periodTimezone, 'UTC');
+    assert.equal(today.detail.reflectedThrough, undefined);
+  }
+  for (const changes of [{ sourceLag: null }, { periodTimezone: 'JST' }, { currency: 'JPY' }]) {
+    const item = byId(projection([{ ...base, id: 'claude-api', sourceLag: 'typical-5m', ...changes }]), 'provider.claude-api.cost-today');
+    assert.equal(item.value, null);
+    assert.equal(item.nullReason, 'freshness_unknown');
+  }
 });
 
 test('the host sampler computes CPU from a tick delta and caches for 10 seconds', async () => {

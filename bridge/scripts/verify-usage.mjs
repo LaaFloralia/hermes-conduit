@@ -45,20 +45,36 @@ const expected = new Map();
 for (const row of feed.providers) {
   if (!row || typeof row !== 'object') continue;
   // `clef` reports a text status, which no v1 item kind carries (README).
-  if (row.id === 'clef') continue;
-  if (row.kind === 'quota' && Array.isArray(row.windows)) {
-    const remaining = row.windows.map((window) => numberAt(window?.remaining)).filter((value) => value !== null);
-    if (remaining.length > 0) expected.set(`provider.${row.id}.quota`, Math.min(...remaining));
+  if (['clef', 'gemini', 'deepseek', 'refuseless'].includes(row.id)) continue;
+  const current = Date.now();
+  const observed = Date.parse(row.updatedAt);
+  const fetched = Date.parse(feed.fetchedAt);
+  const until = row.freshUntil == null ? Infinity : Date.parse(row.freshUntil);
+  const fresh = row.available === true && ['live', 'local', 'codexbar-cli', undefined].includes(row.source)
+    && Number.isFinite(observed) && observed <= current && Number.isFinite(fetched) && fetched <= current
+    && current < Math.min(observed + 600000, fetched + 600000, until);
+  if (row.kind === 'cost') {
+    for (const period of ['today', 'month']) {
+      expected.set(`provider.${row.id}.cost-${period}`, fresh ? numberAt(row[`${period}Amount`]) : null);
+    }
+  } else if (row.kind === 'quota' && Array.isArray(row.windows)) {
+    const all = [...row.windows, ...(Array.isArray(row.extraWindows) ? row.extraWindows : [])];
+    const remaining = all.map((window) => numberAt(window?.remaining)).filter((value) => value !== null);
+    const passed = all.some((window) => window?.resetsAt && Date.parse(window.resetsAt) <= current);
+    if (!fresh || passed) expected.set(`provider.${row.id}.quota`, null);
+    else if (remaining.length > 0) expected.set(`provider.${row.id}.quota`, Math.min(...remaining));
   } else if (row.kind === 'balance' && numberAt(row.amount) !== null) {
-    expected.set(`provider.${row.id}.balance`, row.amount);
+    expected.set(`provider.${row.id}.balance`, fresh ? row.amount : null);
+  } else if (row.id === 'venice' && numberAt(row.usd) !== null) {
+    expected.set('provider.venice.balance', fresh ? row.usd : null);
   } else if (row.kind === 'unitCredits' && numberAt(row.remaining) !== null) {
-    expected.set(`provider.${row.id}.credits`, row.remaining);
+    expected.set(`provider.${row.id}.credits`, fresh ? row.remaining : null);
   } else if (row.kind === 'usage' && row.recordedUsage) {
     const input = numberAt(row.recordedUsage.inputTokens);
     const output = numberAt(row.recordedUsage.outputTokens);
-    if (input !== null && output !== null) expected.set(`provider.${row.id}.usage`, input + output);
+    if (input !== null && output !== null) expected.set(`provider.${row.id}.usage`, fresh ? input + output : null);
   }
-  if (row.available === false) expected.set(
+  if (row.available === false && row.kind !== 'cost') expected.set(
     `provider.${row.id}.${row.kind === 'quota' ? 'quota' : row.kind === 'unitCredits' ? 'credits' : row.kind === 'usage' ? 'usage' : 'balance'}`,
     null,
   );
@@ -71,9 +87,9 @@ for (const [id, value] of expected) {
     continue;
   }
   if (value === null) {
-    check(id, item.value === null, `value ${item.value}`);
+    check(id, item.value === null, 'expected unavailable');
   } else {
-    check(id, item.value === value, `item ${item.value} source ${value}`);
+    check(id, item.value === value, 'value mismatch');
   }
 }
 

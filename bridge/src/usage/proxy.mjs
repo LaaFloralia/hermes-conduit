@@ -5,18 +5,8 @@
 // (same display projection as the Console collector: code-owned ids, labels and
 // units, no provider URL, cookie, raw error or billing payload passes through).
 //
-// Rules taken from USAGE.md §4:
-//   * `value` is null whenever there is no reading, never 0.
-//   * a provider absent from the feed is `unavailable` with `fetch_failed`.
-//   * `fetchedAt` more than 60 s in the future discards the whole response.
-//   * `source: verified` is a screen-checked value with no auto refresh: it is
-//     never marked stale; its `observedAt` and expiry carry the freshness.
-//   * live/local readings go stale after `autoStaleMs` (20 minutes) from the
-//     older of the provider `updatedAt` and the feed `fetchedAt`.
-//   * a passed `resetsAt` / `expiresOnUtc` sets `expired` and keeps the value.
-//
-// Cost and token items are deliberately absent: USAGE.md §6 (parent decision 1)
-// keeps them on the app's direct dashboard path so no new credential is added.
+// A reading must be automatic, successful, and younger than ten minutes.
+// Unknown, failed, expired, and manually checked values carry no numeric data.
 // `clef` (proxy kind `status`) is the one provider left out: its reading is a
 // text status, which none of the four v1 item kinds can carry. It is reported as
 // an open item in bridge/README.md instead of being shown as a fake balance.
@@ -37,7 +27,6 @@ export const USAGE_FEED_VERSION = 1;
 const MAX_PROVIDERS = 32;
 const MAX_WINDOWS = 32;
 const MAX_COMPONENTS = 30;
-const FUTURE_TOLERANCE_MS = 60 * 1000;
 const DEFAULT_MAX_BYTES = 512 * 1024;
 
 // Fixed order, so the list is stable between polls and between providers that
@@ -49,9 +38,11 @@ export const USAGE_PROVIDERS = Object.freeze([
   { id: 'jev', label: 'Jev', kind: 'balance' },
   { id: 'google-cloud', label: 'Google Cloud', kind: 'balance' },
   { id: 'venice', label: 'Venice', kind: 'balance' },
-  { id: 'claude-api', label: 'Claude API', kind: 'balance' },
+  { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
+  { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'month' },
+  { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'today' },
+  { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'month' },
   { id: 'fal', label: 'fal', kind: 'balance' },
-  { id: 'gemini', label: 'Gemini API', kind: 'balance' },
   { id: 'google-flow', label: 'Google Flow', kind: 'unitCredits' },
   { id: 'liquid', label: 'Liquid AI', kind: 'usage' },
   { id: 'deepseek', label: 'DeepSeek API', kind: 'balance' },
@@ -66,6 +57,7 @@ const SHAPES = Object.freeze({
   balance: { itemKind: 'balance', unit: 'usd', suffix: 'balance' },
   unitCredits: { itemKind: 'balance', unit: 'credits', suffix: 'credits' },
   usage: { itemKind: 'usage', unit: 'tokens', suffix: 'usage' },
+  cost: { itemKind: 'cost', unit: 'usd', suffix: 'cost' },
 });
 
 export class UsageFeedError extends Error {
@@ -81,7 +73,7 @@ function shapeOf(provider) {
 }
 
 function itemId(provider) {
-  return `provider.${provider.id}.${shapeOf(provider).suffix}`;
+  return `provider.${provider.id}.${shapeOf(provider).suffix}${provider.period ? `-${provider.period}` : ""}`;
 }
 
 function baseOf(provider) {
@@ -103,8 +95,12 @@ export async function readUsageFeed({
   fetcher = fetch,
   timeoutMs = 5000,
   maxBytes = DEFAULT_MAX_BYTES,
+  signal,
 } = {}) {
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) controller.abort();
+  else signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetcher(url, {
@@ -131,6 +127,7 @@ export async function readUsageFeed({
     throw new UsageFeedError('fetch_failed');
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 }
 
@@ -194,11 +191,10 @@ function balanceExpired(row, now) {
 
 function isStale(row, feedFetchedAt, now, autoStaleMs) {
   const observed = isoTime(row.updatedAt);
-  if (observed === null || Date.parse(observed) > now + FUTURE_TOLERANCE_MS) return true;
+  if (observed === null || Date.parse(observed) > now) return true;
   if (row.source != null && !['live', 'local', 'codexbar-cli', 'verified'].includes(row.source)) return true;
-  // A verified value is a screen check with no auto refresh: age is expected,
-  // and `observedAt` plus the expiry already say how old it is.
-  if (row.source === 'verified') return false;
+  if (row.source === 'verified') return true;
+  if (row.freshUntil != null && (isoTime(row.freshUntil) === null || Date.parse(row.freshUntil) <= now)) return true;
   const times = [observed, feedFetchedAt]
     .filter((value) => value !== null)
     .map((value) => Date.parse(value));
@@ -221,10 +217,10 @@ function quotaItem(row, provider, context) {
   const detail = { windows };
   if (row.source === 'verified') detail.sourceKind = 'verified';
   const extraCredits = finiteNumber(row.credits?.remaining);
-  if (extraCredits !== null) detail.credits = { remaining: extraCredits, updatedAt: isoTime(row.credits?.updatedAt) };
-  if (row.resetPasses && typeof row.resetPasses.available === 'boolean') {
-    detail.resetPasses = { available: row.resetPasses.available, remaining: finiteNumber(row.resetPasses.remaining),
-      updatedAt: isoTime(row.resetPasses.updatedAt), expiresAt: isoTime(row.resetPasses.expiresAt) };
+  const creditsTime = isoTime(row.credits?.updatedAt);
+  if (extraCredits !== null && creditsTime !== null && Date.parse(creditsTime) <= context.now &&
+      context.now - Date.parse(creditsTime) < context.autoStaleMs) {
+    detail.credits = { remaining: extraCredits, updatedAt: creditsTime };
   }
   return availableItem({
     ...baseOf(provider),
@@ -328,11 +324,22 @@ function recordedUsageItem(row, provider, context) {
   });
 }
 
+function costItem(row, provider, context) {
+  const amount = finiteNumber(row[provider.period === 'today' ? 'todayAmount' : 'monthAmount']);
+  const expectedLag = provider.id === 'claude-api' ? 'typical-5m' : 'undisclosed';
+  if (amount === null || row.sourceLag !== expectedLag || row.periodTimezone !== 'UTC' || row.currency !== 'USD') {
+    return unavailableItem({ ...baseOf(provider), reason: 'freshness_unknown' });
+  }
+  return availableItem({ ...baseOf(provider), value: amount,
+    observedAt: observedAtOf(row, context.fetchedAt),
+    detail: { sourceLag: expectedLag, periodTimezone: 'UTC' } });
+}
+
 function itemFromRow(row, provider, context) {
-  if (row.available === false) {
+  if (row.available !== true) {
     return unavailableItem({
       ...baseOf(provider),
-      reason: 'fetch_failed',
+      reason: ['not_configured', 'auth_required', 'not_auto', 'freshness_unknown', 'fetch_failed'].includes(row.reason) ? row.reason : 'fetch_failed',
       expired: provider.kind === 'balance' || provider.kind === 'unitCredits'
         ? balanceExpired(row, context.now)
         : false,
@@ -343,6 +350,7 @@ function itemFromRow(row, provider, context) {
     case 'balance': return balanceItem(row, provider, context);
     case 'unitCredits': return creditsItem(row, provider, context);
     case 'usage': return recordedUsageItem(row, provider, context);
+    case 'cost': return costItem(row, provider, context);
     default: return unavailableItem({ ...baseOf(provider), reason: 'unsupported' });
   }
 }
@@ -355,7 +363,7 @@ function validateFeed(raw, now) {
   }
   const fetchedAt = isoTime(raw.fetchedAt);
   if (fetchedAt === null) throw new UsageFeedError('invalid_fetched_at');
-  if (Date.parse(fetchedAt) > now + FUTURE_TOLERANCE_MS) throw new UsageFeedError('fetched_at_in_future');
+  if (Date.parse(fetchedAt) > now) throw new UsageFeedError('fetched_at_in_future');
   return fetchedAt;
 }
 
@@ -369,11 +377,18 @@ export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolv
     if (byId.has(provider.id)) throw new UsageFeedError('duplicate_provider');
     byId.set(provider.id, entry);
   }
-  const context = { now, fetchedAt, autoStaleMs };
+  const context = { now, fetchedAt, autoStaleMs: Math.min(autoStaleMs, 10 * 60 * 1000) };
   return USAGE_PROVIDERS.map((provider) => {
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
+    if (row.available === true && isStale(row, fetchedAt, now, context.autoStaleMs)) {
+      return unavailableItem({ ...baseOf(provider), reason: row.source === 'verified' ? 'not_auto' : 'fetch_failed' });
+    }
     const item = itemFromRow(row, provider, context);
+    if (item.availability === 'available' && (item.stale || item.expired ||
+        item.detail?.windows?.some((window) => window.resetsAt !== null && Date.parse(window.resetsAt) <= now))) {
+      return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
+    }
     // usage-meters/usage-proxy.py normalize() intentionally omits source for
     // ordinary CodexBar live rows; inventory/collector/usage.ts also supplies
     // live for them. Manual credit rows explicitly carry source: verified.
@@ -381,9 +396,11 @@ export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolv
     const source = row.source ?? 'live';
     if (item.availability === 'available' && ['live', 'local', 'codexbar-cli'].includes(source)) {
       const updated = isoTime(row.updatedAt);
-      if (updated !== null && Date.parse(updated) <= now + FUTURE_TOLERANCE_MS) {
+      if (updated !== null && Date.parse(updated) <= now) {
         item.detail ??= {};
-        item.detail.freshUntil = new Date(Math.min(Date.parse(updated), Date.parse(fetchedAt)) + autoStaleMs).toISOString();
+        const deadline = Math.min(Date.parse(updated) + context.autoStaleMs, Date.parse(fetchedAt) + context.autoStaleMs,
+          row.freshUntil == null ? Infinity : Date.parse(row.freshUntil));
+        item.detail.freshUntil = new Date(deadline).toISOString();
       }
     }
     return item;

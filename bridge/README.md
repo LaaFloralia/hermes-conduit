@@ -273,17 +273,14 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: b1' \
 
 ROADMAP 09。契約は `docs/laa/USAGE.md` §4、応答例は `docs/laa/fixtures/usage/`。実装は `src/routes/usage.mjs` と `src/usage/`（items / proxy / feed / host）。読取専用で `usage:read` だけを要求し、資格情報・請求データ・provider の URL・cookie・エラー原文は返さない。
 
-| 項目 | 決定 | 理由 |
-|---|---|---|
-| 利用枠・残高 | `http://127.0.0.1:8081/widget`（version 1）を読む。`provider.<id>.quota` / `.balance` / `.credits` / `.usage` の16件を固定順で返す | USAGE.md §1。Console collector と同じ表示射影（code-owned の id・ラベル・単位）で、provider 側の任意テキストは通さない |
-| 欠測 | フィードに無い provider も `unavailable`＋`value:null`＋`nullReason:"fetch_failed"` で並べる。proxy 停止・タイムアウト（既定5秒、`LAA_BRIDGE_USAGE_FEED_TIMEOUT_MS`）・不正 JSON・`fetchedAt` が60秒超未来、は全件 unavailable の **200** | §4。0 で埋めない。Bridge の障害と「値が無い」を混ぜない |
-| 遅いproxy | 5秒（既定）で応答が無ければ、最後に成功した `/widget` payload を**元の時刻のまま**返す。`observedAt`・`stale`・`expired` は既存規則で判定し、古い値を新しい値として見せない。その読みは背景で最大30秒（`LAA_BRIDGE_USAGE_REFRESH_TIMEOUT_MS`）続き、同時1本まで。成功 payload が無ければ従来どおり全件 unavailable | 2026-10-29の実測で `/widget` は19–25秒。snapshot は `state/usage-feed.json`（0600、資格情報なし）。再起動時に読み戻し、破損・別schemaは無視する |
-| 鮮度 | `live`/`local`/`codexbar-cli` は provider `updatedAt` と `fetchedAt` の古い方から20分（`LAA_BRIDGE_USAGE_AUTO_STALE_MS`）で `stale`。`source:"verified"` は画面確認値なので stale にしない | §4。verified は `observedAt` と期限で鮮度を示す |
-| 期限切れ | quota は `value` を決めた窓の `resetsAt` 経過、balance は `expiresOnUtc` 経過（日付は当日UTC末まで有効）または残高のある component が全期限切れ、で `expired:true`。値は保持する | §4。`claude-api` のような「一部だけ期限到来」は期限切れと呼ばない |
-| 費用・トークン | v1 には含めない（`profile.*` の item を作らない）。アプリは現行どおり dashboard を直接読む | USAGE.md §6 親の決定1。新しい読取チケットを増やさない。dashboard は実測401で、Bridge専用の認可が未決のため |
-| CPU・メモリ | Bridge プロセス内のサンプラ。CPU は `os.cpus()` のtick差分、メモリは `vm_stat` のページ数と `sysctl vm.swapusage`（`host_statistics64` と同じカーネル値）。10秒キャッシュで、常駐は増やさない | §6 親の決定2。`os.freemem()` だけだと reclaim 可能なキャッシュを「使用中」に見せる。非Darwin・取得失敗は `unsupported`／`fetch_failed` で null |
-| 空き容量 | `~/.local/state/laa-storage-guard/status.json` を読むだけ（`LAA_BRIDGE_STORAGE_STATUS`）。`checked_at` が26時間超で `stale`、ファイル無しは `not_configured`、JSON不正は `fetch_failed` | §4。`laa-storage-guard status` は約50秒かかるので起動しない |
-| 対象外 | proxy の `clef`（kind `status`＝テキスト）と `codex` の `credits` は v1 の4種類の item に載せない。`antigravity` の `extraWindows` は `windows` に合算して最小値を採る | 値の意味を変えて見せない。追加はアプリ側の表示要件が決まってから |
+| 項目 | 現在の契約 |
+|---|---|
+| 利用枠・残高 | ローカルproxy `/widget` の自動取得値を返す。手動確認のみの値は `not_auto` で数値なし |
+| 背景取得 | Bridgeが定期的に取得し要求は待たない。失敗時はキャッシュと保存ファイルを消し、再起動時は以前のsnapshotを使わない |
+| 鮮度 | provider取得時刻とfeed取得時刻の古い方から最大10分。期限、reset、失敗、未来時刻では数値とdetailを返さない |
+| API使用額 | Anthropic従来Cost APIとOpenAI Costs APIの今日・今月。日付はUTC、取得時刻と各社の反映遅れの説明を分ける。管理者鍵が無ければ `not_configured` |
+| CPU・メモリ | Bridgeプロセス内サンプラ、10秒キャッシュ。非Darwin・失敗は数値なし |
+| 空き容量 | storage-guardの状態ファイルを読むだけ。26時間超はstale、欠測は数値なし |
 
 ```sh
 curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/usage
@@ -292,7 +289,7 @@ curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/mac/status
 
 `items[]` は `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。`availability:"unavailable"` の時だけ `value:null`・`nullReason` が付き、`observedAt` は null になる。`availability:"available"` は `value` が数値（0 も実値）。`detail` は quota=`{windows[{label,remainingPercent,resetsAt,windowMinutes?}]}`、balance=`{currency,components[]?,expiresOnUtc?}`、credits=`{renewsAt?,grantedAmount?,monthlyGrantedAmount?,dailyRemaining?,dailyGrantedAmount?}`、usage=`{periodDays,models[{model,inputTokens,outputTokens}]}`、CPU=`{windowSeconds,userPercent,systemPercent}`、メモリ=`{totalBytes,availableBytes,swapUsedBytes?}`、disk=`{volume,totalGb,level?,findings[]}`。
 
-検証: `npm test` の `test/usage.test.mjs` は HTTP 経由で fixture と同じ読みを1件ずつ照合し、`test/usage-sources.test.mjs` は射影・鮮度・期限・サニタイズ・10秒キャッシュ・状態ファイルの異常を、`test/usage-feed.test.mjs` は遅いproxyの直前値（成功値あり／なし）・単一in-flight・再起動時のsnapshot読み戻し・破損snapshotの無視を固定する。実機は `node bridge/scripts/verify-usage.mjs`（proxy と状態ファイルを直接読み、独立計算と突き合わせる。資格情報なし）。
+検証: `npm test` はHTTP認証、取得失敗、期限、背景取得、保存値と再起動、射影をfixtureで確認する。実接続は別途 `node bridge/scripts/verify-usage.mjs` で確認する。
 
 ## 停止・再起動・クラッシュ復帰
 
