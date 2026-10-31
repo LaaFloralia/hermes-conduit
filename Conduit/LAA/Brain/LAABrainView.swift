@@ -1,8 +1,9 @@
 #if LAA_BUILD
 import SwiftUI
+import UniformTypeIdentifiers
 
-private struct BrainLoadKey: Equatable { let revision: Int; let inbox: Bool }
-private struct BrainSearchKey: Equatable { let revision: Int; let inbox: Bool; let query: String }
+private struct BrainLoadKey: Equatable { let revision: Int; let localRevision: Int; let inbox: Bool }
+private struct BrainSearchKey: Equatable { let revision: Int; let localRevision: Int; let inbox: Bool; let query: String; let count: Int }
 
 struct LAABrainPending: Codable {
     let request: LAABrainCreateBody
@@ -13,6 +14,7 @@ struct LAABrainPending: Codable {
 
 struct LAABrainView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @StateObject private var local = LAABrainLocalVault()
     let onRequestSettings: () -> Void
     @State private var path: [LAABrainRoute] = []
     @State private var files: [LAABrainFile] = []
@@ -28,6 +30,8 @@ struct LAABrainView: View {
     @State private var searchError: LAABridgeError?
     @State private var showPairing = false
     @State private var showCreate = false
+    @State private var chooseFolder = false
+    @State private var localError: String?
     @State private var pending: LAABrainPending?
 
     var body: some View {
@@ -37,7 +41,10 @@ struct LAABrainView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: LAASpacing.section) {
                         heading
-                        if LAABrainData.available(bridge) {
+                        sourceSelector
+                        if local.state == .needsAccess {
+                            localAccessView
+                        } else if local.isReady || LAABrainData.available(bridge) {
                             browser
                         } else {
                             connectionView
@@ -54,7 +61,7 @@ struct LAABrainView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
-                if LAABrainData.available(bridge) {
+                if !local.isSelected && LAABrainData.available(bridge) {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { showCreate = true } label: { Image(systemName: "square.and.pencil") }
                             .accessibilityLabel(Text(verbatim: LAACopy.Brain.newNote))
@@ -90,7 +97,7 @@ struct LAABrainView: View {
                         }
                     }
                 case .note(let reference):
-                    LAABrainNoteView(reference: reference, files: files, path: $path)
+                    LAABrainNoteView(reference: reference, files: files, local: local, isLocal: local.isReady, path: $path)
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
@@ -103,8 +110,42 @@ struct LAABrainView: View {
                 path.append(.note(LAABrainReference(path: created.path, includeInbox: true)))
             }.environmentObject(bridge)
         }
-        .task(id: BrainLoadKey(revision: bridge.revision, inbox: includeInbox)) { await load() }
-        .task(id: BrainSearchKey(revision: bridge.revision, inbox: includeInbox, query: query)) { await search() }
+        .fileImporter(isPresented: $chooseFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+            do {
+                guard let selected = try result.get().first else { return }
+                try local.connect(selected)
+                localError = nil; path = []; query = ""
+            } catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message }
+        }
+        .task(id: BrainLoadKey(revision: bridge.revision, localRevision: local.revision, inbox: includeInbox)) { await load() }
+        .task(id: BrainSearchKey(revision: bridge.revision, localRevision: local.revision, inbox: includeInbox, query: query, count: files.count)) { await search() }
+    }
+
+    private var sourceSelector: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            HStack {
+                Label { Text(verbatim: local.isSelected ? LAACopy.Brain.localFolder : LAACopy.Brain.macConnection) }
+                    icon: { Image(systemName: local.isSelected ? "folder" : "desktopcomputer") }
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Spacer()
+                Button(local.isSelected ? LAACopy.Brain.changeFolder : LAACopy.Brain.chooseFolder) { chooseFolder = true }
+                    .laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.chooseFolder")
+            }
+            if local.isSelected {
+                Button(LAACopy.Brain.useMac) {
+                    do { try local.disconnect(); localError = nil; path = []; query = "" }
+                    catch { localError = LAABrainVaultError.unreadable.message }
+                }.laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.useMac")
+            }
+            if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
+        }
+    }
+
+    private var localAccessView: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: LAABrainVaultError.access.message).foregroundStyle(LAAColor.attention)
+            Button(LAACopy.Brain.chooseFolder) { chooseFolder = true }.buttonStyle(.borderedProminent)
+        }
     }
 
     private var heading: some View {
@@ -143,10 +184,14 @@ struct LAABrainView: View {
                 }
             }
             Text(verbatim: LAACopy.Brain.tagsUnavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            Toggle(isOn: $includeInbox) { Text(verbatim: LAACopy.Brain.includeInbox).laaTextStyle(.secondary) }
-                .accessibilityIdentifier("laa.brain.inbox")
+            if !local.isSelected {
+                Toggle(isOn: $includeInbox) { Text(verbatim: LAACopy.Brain.includeInbox).laaTextStyle(.secondary) }
+                    .accessibilityIdentifier("laa.brain.inbox")
+            }
             if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 searchResults
+            } else if local.isSelected, localError != nil {
+                Button(LAACopy.Brain.retry) { Task { await load() } }
             } else if let listError {
                 failure(listError)
             } else if isLoading && files.isEmpty {
@@ -259,7 +304,7 @@ struct LAABrainView: View {
         else if isSearching { ProgressView().accessibilityLabel(Text(verbatim: "検索中")) }
         else if hits.isEmpty { Text(verbatim: "検索結果はありません。 ").foregroundStyle(LAAColor.secondaryText) }
         else {
-            Text(verbatim: "検索結果（最大10件）").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: local.isReady ? "Search results" : "検索結果（最大10件）").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             ForEach(hits) { hit in
                 NavigationLink(value: LAABrainRoute.note(LAABrainReference(path: hit.path, includeInbox: includeInbox))) {
                     VStack(alignment: .leading, spacing: LAASpacing.x1) {
@@ -281,6 +326,17 @@ struct LAABrainView: View {
     }
 
     @MainActor private func load() async {
+        if local.isSelected {
+            files = []; listError = nil; isLoading = true
+            do {
+                let root = try local.snapshot()
+                let result = try await Task.detached(priority: .userInitiated) { try LAABrainVaultIO.files(root: root) }.value
+                try Task.checkCancellation()
+                files = result; isLoading = false; localError = nil
+            } catch is CancellationError { return }
+            catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message; isLoading = false }
+            return
+        }
         guard LAABrainData.available(bridge) else { files = []; listError = nil; isLoading = false; return }
         let inbox = includeInbox
         files = []; listError = nil; isLoading = true
@@ -307,6 +363,31 @@ struct LAABrainView: View {
 
     @MainActor private func search() async {
         let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if local.isSelected {
+            hits = []; searchError = nil
+            guard !term.isEmpty, local.isReady else { isSearching = false; return }
+            isSearching = true
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+                let root = try local.snapshot()
+                let candidates = files
+                let results = try await Task.detached(priority: .userInitiated) {
+                    try candidates.compactMap { file -> LAABrainHit? in
+                        let note = try LAABrainVaultIO.note(root: root, path: file.path)
+                        guard let range = note.text.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) else {
+                            return file.path.localizedCaseInsensitiveContains(term) ? LAABrainHit(path: file.path, section: "", text: "") : nil
+                        }
+                        let start = note.text.index(range.lowerBound, offsetBy: -40, limitedBy: note.text.startIndex) ?? note.text.startIndex
+                        let end = note.text.index(range.upperBound, offsetBy: 80, limitedBy: note.text.endIndex) ?? note.text.endIndex
+                        return LAABrainHit(path: file.path, section: "", text: String(note.text[start..<end]))
+                    }
+                }.value
+                try Task.checkCancellation()
+                hits = results; isSearching = false
+            } catch is CancellationError { return }
+            catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message; isSearching = false }
+            return
+        }
         guard LAABrainData.available(bridge), !term.isEmpty else { hits = []; searchError = nil; isSearching = false; return }
         let inbox = includeInbox
         hits = []; searchError = nil; isSearching = true

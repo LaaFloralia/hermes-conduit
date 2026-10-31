@@ -1,13 +1,18 @@
 #if LAA_BUILD
 import SwiftUI
 
+private struct BrainNoteLoadKey: Equatable { let reference: LAABrainReference; let revision: Int; let isLocal: Bool }
+
 struct LAABrainNoteView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     let reference: LAABrainReference
     let files: [LAABrainFile]
+    @ObservedObject var local: LAABrainLocalVault
+    let isLocal: Bool
     @Binding var path: [LAABrainRoute]
     @State private var note: LAABrainNote?
     @State private var error: LAABridgeError?
+    @State private var localError: String?
     @State private var loading = true
     @State private var raw = false
 
@@ -18,7 +23,10 @@ struct LAABrainNoteView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
                     Text(verbatim: reference.path).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if loading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
-                    else if let error {
+                    else if let localError {
+                        Text(verbatim: localError).foregroundStyle(LAAColor.attention)
+                        Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }
+                    } else if let error {
                         Text(verbatim: error.japaneseText).foregroundStyle(LAAColor.attention)
                         Button { Task { await load() } } label: { Text(verbatim: LAACopy.Brain.retry) }
                     } else if let note {
@@ -89,11 +97,22 @@ struct LAABrainNoteView: View {
             }
             return url.scheme == nil || url.scheme == "laabrain" ? .discarded : .systemAction
         })
-        .task(id: reference) { await load() }
+        .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : 0, isLocal: isLocal)) { await load() }
     }
 
     @MainActor private func load() async {
-        loading = true; error = nil; note = nil
+        loading = true; error = nil; localError = nil; note = nil
+        if isLocal {
+            do {
+                let root = try local.snapshot()
+                let path = reference.path
+                let result = try await Task.detached(priority: .userInitiated) { try LAABrainVaultIO.note(root: root, path: path) }.value
+                try Task.checkCancellation()
+                note = result; loading = false
+            } catch is CancellationError { return }
+            catch { localError = (error as? LAABrainVaultError)?.message ?? LAABrainVaultError.unreadable.message; loading = false }
+            return
+        }
         guard let route = LAABrainPaths.request("/v1/brain/files/" + reference.id, includeInbox: reference.inbox) else {
             error = .invalidResponse; loading = false; return
         }

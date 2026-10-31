@@ -184,5 +184,18 @@ final class LAABrainUITests: XCTestCase {
         let app = launch()
         XCTAssertTrue(app.buttons["laa.bridge.openPairing"].waitForExistence(timeout: 30))
     }
+
+    func testLocalFixtureCanBeBrowsedWithoutMac() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["On this iPhone"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
+        XCTAssertFalse(app.buttons["laa.brain.create"].exists)
+        app.staticTexts["Start"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 10))
+        app.buttons["laa.brain.rawToggle"].tap()
+        XCTAssertTrue(app.staticTexts["laa.brain.raw"].label.contains("オフラインの検索本文"))
+    }
 }
 #endif
