@@ -66,7 +66,7 @@ final class BridgeMockProtocol: URLProtocol {
         require(normal.items.first { $0.label == "Gemini API" }?.isExpired() == true, "expired balance")
         require(degraded.items.first { $0.label == "Claude" }?.stale == true, "stale quota")
         require(degraded.items.first { $0.label == "Codex" }?.availableValue == nil, "unavailable quota")
-        require(mac.items.first { $0.kind == "host.memory" }?.detail?.totalBytes != nil, "memory total")
+        require(mac.items.first { $0.kind == "host.memory" }?.availableValue != nil, "available memory reading")
         require(unavailable.items.first { $0.kind == "host.cpu" }?.availableValue == nil, "missing CPU")
         require(unavailable.items.first { $0.kind == "host.disk" }?.stale == true, "stale disk")
         require(LAAUsageItem.date("2026-10-29T04:49:23.123Z") != nil, "fractional timestamp")
