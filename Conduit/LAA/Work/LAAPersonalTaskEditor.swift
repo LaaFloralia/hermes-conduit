@@ -6,6 +6,7 @@ struct LAAPersonalTaskEditor: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var drafts: ComposerDraftStore
     private let initialTask: LAAPersonalTask?
+    private let parentTask: LAAPersonalTask?
     private let viewerId: String
     @State private var draft: LAAPersonalTaskDraft
     @State private var metadata: LAAPersonalMetadata?
@@ -27,12 +28,14 @@ struct LAAPersonalTaskEditor: View {
     @State private var confirmedRejection = false
     @State private var operation: LAAPersonalOperationResponse.Operation?
 
-    init(task: LAAPersonalTask?, viewerId: String, drafts: ComposerDraftStore) {
-        initialTask = task; self.viewerId = viewerId; self.drafts = drafts
-        _draft = State(initialValue: LAAPersonalTaskDraft(viewerId: viewerId, task: task))
+    init(task: LAAPersonalTask?, viewerId: String, drafts: ComposerDraftStore, parent: LAAPersonalTask? = nil) {
+        initialTask = task; parentTask = parent; self.viewerId = viewerId; self.drafts = drafts
+        var initial = LAAPersonalTaskDraft(viewerId: viewerId, task: task)
+        if task == nil, let parent { initial.parentId = parent.linearId; initial.teamId = parent.team?.id ?? "" }
+        _draft = State(initialValue: initial)
     }
     private var key: ComposerDraftKey? {
-        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "linear:\(viewerId):\(initialTask?.id ?? "new")") }
+        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "linear:\(viewerId):\(initialTask?.id ?? parentTask.map { "new-subtask:\($0.id)" } ?? "new")") }
     }
     private var pending: ComposerDraftStore.Submission? { key.flatMap { LAAWorkDrafts.pending(drafts, key: $0) } }
     private var hasFullTask: Bool { initialTask == nil || draft.base?.description != nil }
@@ -63,6 +66,7 @@ struct LAAPersonalTaskEditor: View {
                     }
                 }
                 Section("Title") {
+                    if let parentTask { Text(verbatim: "Parent: \(parentTask.sourceId) · \(parentTask.title)") }
                     TextField("Task Title", text: $draft.title, axis: .vertical)
                         .accessibilityIdentifier("work.task.title")
                 }.disabled(!ready || pending != nil)
@@ -305,6 +309,7 @@ struct LAAPersonalTaskEditor: View {
                 if drafts.finishSubmission(item.id, restoring: false) { dismiss() }
                 else { error = "保存結果を端末に記録できません。" }
             case "resolved":
+                guard ["applied", "not_applied"].contains(result.data.operation.resolution ?? "") else { throw LAABridgeError.invalidResponse }
                 let restore = result.data.operation.resolution == "not_applied"
                 if drafts.finishSubmission(item.id, restoring: restore) { if restore { restoreDraft() } else { dismiss() } }
                 else { error = "照合結果を端末に記録できません。" }

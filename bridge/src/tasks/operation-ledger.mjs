@@ -90,6 +90,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
       ? 'outcome_unknown' : entry.status;
     return {
       operationId: entry.operationId, kind: entry.kind, targetId: entry.targetId,
+      ...(entry.contextId ? { contextId: entry.contextId } : {}),
       status, createdAt: new Date(entry.createdAt).toISOString(), updatedAt: new Date(entry.updatedAt).toISOString(),
       ...(entry.resultId ? { resultId: entry.resultId, identifier: entry.identifier } : {}),
       ...(entry.status === 'rejected' ? { rejection: entry.rejection ?? 'preflight_failed' } : {}),
@@ -102,7 +103,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
   }
   return {
     file,
-    reserve({ deviceId, viewerId, key, method, path, ifMatch, rawBody, kind, targetId }) {
+    reserve({ deviceId, viewerId, key, method, path, ifMatch, rawBody, kind, targetId, contextId }) {
       const hash = keyHash(deviceId, key);
       const fingerprint = operationFingerprint({ method, path, viewerId, ifMatch, rawBody });
       return edit((all) => {
@@ -117,7 +118,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
         if (Object.keys(all).length >= MAX_RECORDS) throw new BridgeError(503, 'task_ledger_full', 'the task operation ledger needs operator maintenance');
         const timestamp = now();
         const entry = {
-          operationId: randomUUID(), deviceId, viewerId, fingerprint, kind, targetId,
+          operationId: randomUUID(), deviceId, viewerId, fingerprint, kind, targetId, ...(contextId ? { contextId } : {}),
           status: 'in_progress', processId: process.pid, createdAt: timestamp, updatedAt: timestamp,
         };
         all[hash] = entry;

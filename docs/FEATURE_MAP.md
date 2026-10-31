@@ -538,12 +538,14 @@ store · the session and project API · the personal Linear task API
 - Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
   `Conduit/LAA/Work/LAAWorkCopy.swift`, `Conduit/LAA/Work/LAAPersonalTaskList.swift`,
-  `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskModels.swift`
+  `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskModels.swift`,
+  `Conduit/LAA/Work/LAAPersonalTaskConnections.swift`, `Conduit/LAA/Work/LAAPersonalPending.swift`
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
 - Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAPersonalTaskTests.swift`,
-  `ConduitUITests/LAAWorkUITests.swift`, `bridge/test/personal-task-writes.test.mjs`
+  `ConduitUITests/LAAWorkUITests.swift`, `bridge/test/personal-task-writes.test.mjs`,
+  `bridge/test/personal-task-details.test.mjs`
 
 **Rulings**
 - Session and successor writes keep the exact body, request ID and idempotency
@@ -563,14 +565,20 @@ store · the session and project API · the personal Linear task API
   a mismatch keeps both texts for an explicit choice. Linear does not provide
   an atomic conditional update here, so a short race remains. Attribute edits
   are last-write-wins. Assigning a task does not start a session.
+- Task detail pages comments, replies, children, directional relationships,
+  external links and a subset of activity independently. The app can post
+  comments/replies, create child tasks, add relationships and external links.
+  A device-local journal and owner-confirmed reconciliation retain ambiguous
+  writes; attachment upserts can resolve to a different existing link ID.
 - Pending decisions are read-only until Task 15; routines remain a placeholder.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
-- Personal task comments, activity, relationships, attachment handling and
-  Inbox actions are pending. The personal credential and real Linear connection
-  require the operator; no APNs path for Linear has been established.
+- Private Linear file upload/download, the full activity vocabulary, dependent
+  operations on a not-yet-created task and Inbox actions remain pending. The
+  personal credential and real Linear connection require the operator; no APNs
+  path for Linear has been established.
 - The personal task Swift screens have CLI type checks and model fixtures only;
   the simulator, accessibility, keyboard and live-device checks remain pending.
 

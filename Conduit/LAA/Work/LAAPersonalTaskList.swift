@@ -61,6 +61,10 @@ struct LAAPersonalTaskList: View {
                     .buttonStyle(.borderedProminent).disabled(viewerId == nil)
                     .accessibilityIdentifier("work.tasks.create")
             }
+            if let viewerId {
+                NavigationLink("Pending", destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId))
+                    .accessibilityIdentifier("work.tasks.pending")
+            }
             TextField(LAACopy.WorkTab.searchTasks, text: $search)
                 .submitLabel(.search).textInputAutocapitalization(.never)
                 .onSubmit { customView = ""; submittedSearch = search.trimmingCharacters(in: .whitespacesAndNewlines) }

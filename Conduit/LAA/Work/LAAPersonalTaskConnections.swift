@@ -1,0 +1,492 @@
+#if LAA_BUILD
+import SwiftUI
+
+struct LAAPersonalComment: Decodable, Identifiable {
+    struct User: Decodable { let id: String; let name: String?; let app: Bool? }
+    let id: String
+    let body: String
+    let issueId: String?
+    let parentId: String?
+    let createdAt: String?
+    let updatedAt: String?
+    let user: User?
+}
+struct LAAPersonalHistory: Decodable, Identifiable {
+    struct Name: Decodable { let id: String; let name: String? }
+    let id: String
+    let createdAt: String?
+    let actor: Name?
+    let fromState: Name?
+    let toState: Name?
+    let fromAssignee: Name?
+    let toAssignee: Name?
+    let fromPriority: Double?
+    let toPriority: Double?
+    let fromTitle: String?
+    let toTitle: String?
+    let updatedDescription: Bool?
+}
+struct LAAPersonalRelation: Decodable, Identifiable {
+    struct Issue: Decodable { let id: String; let identifier: String; let title: String }
+    let id: String
+    let type: String
+    let issue: Issue
+    let relatedIssue: Issue
+}
+struct LAAPersonalAttachment: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String?
+    let url: String
+    let sourceType: String?
+}
+
+private enum LAAPersonalPath {
+    static func task(_ id: String) -> String {
+        "/v1/personal-tasks/" + (id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "")
+    }
+    static func component(_ id: String) -> String {
+        id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? ""
+    }
+}
+
+@MainActor private final class LAAPersonalConnection<Item: Decodable & Identifiable>: ObservableObject {
+    @Published var items: [Item] = []
+    @Published var cursor: String?
+    @Published var observedAt: String?
+    @Published var loaded = false
+    @Published var loading = false
+    @Published var error: String?
+    private var cursors = Set<String>()
+    private var generation = UUID()
+
+    func load(bridge: LAABridgeSession, path: String, viewerId: String, reset: Bool) async {
+        if !reset && (loading || cursor == nil) { return }
+        let current = reset ? UUID() : generation
+        if reset { generation = current; cursor = nil; cursors = [] }
+        loading = true; error = nil
+        defer { if generation == current { loading = false } }
+        var query = [URLQueryItem(name: "limit", value: "50")]
+        if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+        do {
+            let page: LAAPersonalPage<Item> = try await bridge.read(LAAWorkPresentation.path(path, query: query))
+            guard !Task.isCancelled, generation == current else { return }
+            guard page.viewerId == viewerId else { throw LAABridgeError.conflict }
+            if let next = page.nextCursor, !cursors.insert(next).inserted { throw LAABridgeError.invalidResponse }
+            if reset { items = [] }
+            var known = Set(items.map(\.id))
+            items.append(contentsOf: page.items.filter { known.insert($0.id).inserted })
+            cursor = page.nextCursor; observedAt = page.observedAt; loaded = true
+        } catch is CancellationError {
+        } catch let failure as LAABridgeError {
+            if generation == current { error = failure.japaneseText }
+        } catch { if generation == current { self.error = "読み取れませんでした。" } }
+    }
+}
+
+private struct LAAPersonalDetailSection<Item: Decodable & Identifiable, Row: View>: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
+    @StateObject private var state = LAAPersonalConnection<Item>()
+    let title: String
+    let path: String
+    let viewerId: String
+    let revision: Int
+    let row: (Item) -> Row
+
+    init(_ title: String, path: String, viewerId: String, revision: Int, @ViewBuilder row: @escaping (Item) -> Row) {
+        self.title = title; self.path = path; self.viewerId = viewerId; self.revision = revision; self.row = row
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: title).fontWeight(.semibold).accessibilityAddTraits(.isHeader)
+            if let error = state.error {
+                Text(verbatim: error).foregroundStyle(LAAColor.attention)
+                if !state.items.isEmpty { Text(verbatim: "前回取得した内容です。") }
+                Button(LAACopy.WorkTab.retry) { Task { await load(reset: true) } }
+            }
+            if state.loading { ProgressView() }
+            if state.loaded && state.items.isEmpty && state.error == nil && !state.loading {
+                Text(verbatim: "表示する項目はありません。 ").foregroundStyle(LAAColor.secondaryText)
+            }
+            ForEach(state.items) { item in row(item) }
+            if state.cursor != nil {
+                Text(verbatim: "続きがあります。").foregroundStyle(LAAColor.secondaryText)
+                Button(LAACopy.WorkTab.loadMore) { Task { await load(reset: false) } }.disabled(state.loading)
+            }
+            if let date = state.observedAt {
+                Text(verbatim: "取得: \(LAAWorkPresentation.date(date))").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
+        }.workCard().task(id: "\(bridge.revision)-\(revision)-\(path)-\(viewerId)") { await load(reset: true) }
+    }
+    private func load(reset: Bool) async { await state.load(bridge: bridge, path: path, viewerId: viewerId, reset: reset) }
+}
+
+struct LAAPersonalTaskConnections: View {
+    @ObservedObject var drafts: ComposerDraftStore
+    let task: LAAPersonalTask
+    let viewerId: String
+    @State private var revision = 0
+    @State private var reply: LAAPersonalCommentTarget?
+    @State private var showSubtask = false
+    @State private var itemMode: LAAPersonalItemMode?
+    private var path: String { LAAPersonalPath.task(task.id) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+            Button("New Comment") { reply = LAAPersonalCommentTarget(parentId: nil) }.buttonStyle(.bordered)
+                .accessibilityIdentifier("work.task.new-comment")
+            LAAPersonalDetailSection("Comments", path: path + "/comments", viewerId: viewerId, revision: revision) { (comment: LAAPersonalComment) in
+                LAAPersonalCommentRow(comment: comment, taskPath: path, viewerId: viewerId, revision: revision) { parent in
+                    reply = LAAPersonalCommentTarget(parentId: parent)
+                }
+            }
+            Button("New Subtask") { showSubtask = true }.buttonStyle(.bordered).disabled(task.linearId == nil || task.team == nil)
+            LAAPersonalDetailSection("Subtasks", path: path + "/children", viewerId: viewerId, revision: revision) { (child: LAAPersonalTask) in
+                NavigationLink(destination: LAAWorkTaskDetailView(id: child.id, drafts: drafts)) {
+                    Text(verbatim: "\(child.sourceId) · \(child.title)")
+                }
+            }
+            Button("New Relation") { itemMode = .relation }.buttonStyle(.bordered)
+            relationSection("Relations", section: "relations")
+            relationSection("Referenced By", section: "inverse-relations")
+            Button("New Link") { itemMode = .attachment }.buttonStyle(.bordered)
+            LAAPersonalDetailSection("Attachments", path: path + "/attachments", viewerId: viewerId, revision: revision) { (item: LAAPersonalAttachment) in
+                VStack(alignment: .leading) {
+                    if let url = URL(string: item.url), url.scheme?.lowercased() == "https",
+                       url.host?.lowercased() != "uploads.linear.app", url.user == nil, url.password == nil {
+                        Link(item.title, destination: url)
+                    } else {
+                        Text(verbatim: item.title)
+                        Text(verbatim: "Linear内のファイルはLinearで開いてください。").laaTextStyle(.secondary)
+                    }
+                    if let subtitle = item.subtitle { Text(verbatim: subtitle).laaTextStyle(.secondary) }
+                }
+            }
+            Text(verbatim: "活動はタイトル・状態・担当・優先度・本文の更新を表示します。")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            LAAPersonalDetailSection("Activity", path: path + "/history", viewerId: viewerId, revision: revision) { (item: LAAPersonalHistory) in
+                LAAPersonalHistoryRow(item: item)
+            }
+        }
+        .sheet(item: $reply, onDismiss: { revision += 1 }) { target in
+            LAAPersonalCommentEditor(taskId: task.id, viewerId: viewerId, parentId: target.parentId, drafts: drafts)
+        }
+        .sheet(isPresented: $showSubtask, onDismiss: { revision += 1 }) {
+            LAAPersonalTaskEditor(task: nil, viewerId: viewerId, drafts: drafts, parent: task)
+        }
+        .sheet(item: $itemMode, onDismiss: { revision += 1 }) { mode in
+            LAAPersonalItemEditor(mode: mode, taskId: task.id, viewerId: viewerId, drafts: drafts)
+        }
+    }
+
+    private func relationSection(_ title: String, section: String) -> some View {
+        LAAPersonalDetailSection(title, path: path + "/" + section, viewerId: viewerId, revision: revision) { (relation: LAAPersonalRelation) in
+            VStack(alignment: .leading) {
+                Text(verbatim: "\(relation.issue.identifier) → \(relation.relatedIssue.identifier) · \(relation.type)")
+                    .laaTextStyle(.secondary)
+                let other = section == "relations" ? relation.relatedIssue : relation.issue
+                NavigationLink(destination: LAAWorkTaskDetailView(id: "linear:\(other.identifier)", drafts: drafts)) {
+                    Text(verbatim: other.title)
+                }
+            }
+        }
+    }
+}
+
+private struct LAAPersonalCommentRow: View {
+    let comment: LAAPersonalComment
+    let taskPath: String
+    let viewerId: String
+    let revision: Int
+    let onReply: (String) -> Void
+    @State private var showReplies = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: "\(comment.user?.name ?? "不明") · \(LAAWorkPresentation.date(comment.createdAt))")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            if comment.parentId != nil { Text(verbatim: "返信").laaTextStyle(.secondary) }
+            MarkdownText(source: comment.body, foregroundStyle: LAAColor.text)
+            HStack {
+                Button("Reply") { onReply(comment.id) }
+                Button(showReplies ? "Hide Replies" : "Show Replies") { showReplies.toggle() }
+            }.buttonStyle(.bordered)
+            if showReplies {
+                LAAPersonalDetailSection("Replies", path: taskPath + "/comments/" + LAAPersonalPath.component(comment.id) + "/replies",
+                                         viewerId: viewerId, revision: revision) { (child: LAAPersonalComment) in
+                    AnyView(LAAPersonalCommentRow(comment: child, taskPath: taskPath, viewerId: viewerId,
+                                                  revision: revision, onReply: onReply))
+                }
+            }
+        }.padding(.vertical, LAASpacing.x2)
+    }
+}
+
+private struct LAAPersonalHistoryRow: View {
+    let item: LAAPersonalHistory
+    var body: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            Text(verbatim: "\(item.actor?.name ?? "不明") · \(LAAWorkPresentation.date(item.createdAt))").laaTextStyle(.secondary)
+            if item.fromTitle != nil || item.toTitle != nil { Text(verbatim: "タイトル: \(item.fromTitle ?? "—") → \(item.toTitle ?? "—")") }
+            if item.fromState != nil || item.toState != nil { Text(verbatim: "状態: \(item.fromState?.name ?? "—") → \(item.toState?.name ?? "—")") }
+            if item.fromAssignee != nil || item.toAssignee != nil { Text(verbatim: "担当: \(item.fromAssignee?.name ?? "—") → \(item.toAssignee?.name ?? "—")") }
+            if item.fromPriority != nil || item.toPriority != nil {
+                Text(verbatim: "優先度: \(item.fromPriority.map { String($0) } ?? "—") → \(item.toPriority.map { String($0) } ?? "—")")
+            }
+            if item.updatedDescription == true { Text(verbatim: "本文を更新") }
+            if item.fromTitle == nil && item.toTitle == nil && item.fromState == nil && item.toState == nil
+                && item.fromAssignee == nil && item.toAssignee == nil && item.fromPriority == nil && item.toPriority == nil
+                && item.updatedDescription != true { Text(verbatim: "その他の更新（詳細は未対応）") }
+        }.padding(.vertical, LAASpacing.x1)
+    }
+}
+
+private struct LAAPersonalCommentTarget: Identifiable {
+    let parentId: String?
+    var id: String { parentId ?? "root" }
+}
+
+private enum LAAPersonalItemMode: String, Identifiable {
+    case relation, attachment
+    var id: String { rawValue }
+    var section: String { self == .relation ? "relations" : "attachments" }
+    var title: String { self == .relation ? "New Relation" : "New Link" }
+}
+
+private struct LAAPersonalItemEditor: View {
+    private struct Draft: Codable { var first = ""; var second = ""; var relationType = "related" }
+    @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.dismiss) private var dismiss
+    let mode: LAAPersonalItemMode
+    let taskId: String
+    let viewerId: String
+    @ObservedObject var drafts: ComposerDraftStore
+    @State private var draft = Draft()
+    @State private var ready = false
+    @State private var busy = false
+    @State private var error: String?
+    @State private var operation: LAAPersonalOperationResponse.Operation?
+    private var key: ComposerDraftKey? {
+        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "linear:\(viewerId):\(mode.rawValue):\(taskId)") }
+    }
+    private var pending: ComposerDraftStore.Submission? { key.flatMap { LAAWorkDrafts.pending(drafts, key: $0) } }
+    private var path: String { LAAPersonalPath.task(taskId) + "/" + mode.section }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
+                if let pending {
+                    Section("Pending") {
+                        Text(verbatim: "保存結果を確認してください。結果不明の間は新しい操作を始めません。")
+                        if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
+                        Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
+                        if LAAWorkDrafts.canRepeat(pending) {
+                            Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                        }
+                    }
+                }
+                if mode == .relation {
+                    Section("Related Task") {
+                        TextField("Task ID", text: $draft.first).textInputAutocapitalization(.characters)
+                        Picker("Relation", selection: $draft.relationType) {
+                            Text("Related").tag("related"); Text("Blocks").tag("blocks")
+                            Text("Duplicate").tag("duplicate"); Text("Similar").tag("similar")
+                        }
+                        Text(verbatim: "このタスクから入力したタスクへの関係です。").laaTextStyle(.secondary)
+                    }.disabled(!ready || pending != nil)
+                } else {
+                    Section("Link") {
+                        TextField("Title", text: $draft.first)
+                        TextField("HTTPS URL", text: $draft.second).keyboardType(.URL).textInputAutocapitalization(.never)
+                        Text(verbatim: "外部リンクを追加します。Linear内のファイルのアップロードは準備中です。").laaTextStyle(.secondary)
+                    }.disabled(!ready || pending != nil)
+                }
+                Button("Save") { submit() }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || draft.first.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .disabled(busy).navigationTitle(mode.title)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .task(id: bridge.revision) { restore() }
+            .onChange(of: draft.first) { _, _ in saveDraft() }
+            .onChange(of: draft.second) { _, _ in saveDraft() }
+            .onChange(of: draft.relationType) { _, _ in saveDraft() }
+        }
+    }
+    private func restore() {
+        ready = false
+        let value = pending?.draft.text ?? key.map { drafts.draft(for: $0).text } ?? ""
+        if let bytes = value.data(using: .utf8), let saved = try? JSONDecoder().decode(Draft.self, from: bytes) { draft = saved }
+        ready = key != nil
+    }
+    private func saveDraft() {
+        guard ready, pending == nil else { return }
+        guard let key, let data = try? JSONEncoder().encode(draft),
+              drafts.save(ComposerDraft(text: String(decoding: data, as: UTF8.self), attachments: []), for: key) else {
+            error = "下書きを端末に保存できませんでした。"; return
+        }
+    }
+    private func submit() {
+        guard let key, pending == nil else { return }
+        let payload: [String: String] = mode == .relation
+            ? ["expectedViewerId": viewerId, "relatedIssueId": draft.first.trimmingCharacters(in: .whitespacesAndNewlines), "type": draft.relationType]
+            : ["expectedViewerId": viewerId, "title": draft.first, "url": draft.second.trimmingCharacters(in: .whitespacesAndNewlines)]
+        guard let encoded = try? JSONEncoder().encode(draft),
+              let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              let item = LAAWorkDrafts.reserve(drafts, key: key, text: String(decoding: encoded, as: UTF8.self),
+                                               body: body, idempotency: LAABridgeIdempotencyKey()) else {
+            error = "保存前の記録を作れませんでした。"; return
+        }
+        Task { await perform(item, firstAttempt: true) }
+    }
+    @MainActor private func perform(_ item: ComposerDraftStore.Submission, firstAttempt: Bool) async {
+        guard LAAWorkDrafts.canRepeat(item), let (body, requestKey) = LAAWorkDrafts.request(item) else {
+            error = LAAWorkDrafts.expiredMessage; return
+        }
+        busy = true; defer { busy = false }
+        do {
+            let result: LAABridgeResponse<LAAPersonalOperationResponse> = try await bridge.request(
+                method: "POST", path: path, jsonBody: body, idempotencyKey: requestKey, timeout: 90)
+            guard result.data.operation.status == "succeeded" else { throw LAABridgeError.invalidResponse }
+            if drafts.finishSubmission(item.id, restoring: false) { dismiss() }
+            else { error = "保存結果を端末に記録できません。" }
+        } catch let failure as LAABridgeHTTPError {
+            drafts.markSubmissionUnknown(item.id)
+            if firstAttempt && ["payload_invalid", "expected_viewer_required", "linear_viewer_changed"].contains(failure.code ?? "") {
+                if drafts.finishSubmission(item.id, restoring: true) { restore() }
+            }
+            error = LAAWorkHTTP.message(failure)
+        } catch let failure as LAABridgeError {
+            drafts.markSubmissionUnknown(item.id); error = failure.japaneseText
+        } catch { drafts.markSubmissionUnknown(item.id); self.error = "保存結果を確認できませんでした。" }
+    }
+    @MainActor private func check(_ item: ComposerDraftStore.Submission) async {
+        guard let (_, requestKey) = LAAWorkDrafts.request(item) else { error = "要求記録を読み取れません。"; return }
+        busy = true; defer { busy = false }
+        do {
+            let result: LAABridgeResponse<LAAPersonalOperationResponse> = try await bridge.request(
+                method: "GET", path: "/v1/task-operations/by-key", idempotencyKey: requestKey)
+            operation = result.data.operation
+            switch result.data.operation.status {
+            case "succeeded": if drafts.finishSubmission(item.id, restoring: false) { dismiss() }
+            case "rejected": if drafts.finishSubmission(item.id, restoring: true) { restore(); error = "保存前に拒否されました。" }
+            case "resolved":
+                guard ["applied", "not_applied"].contains(result.data.operation.resolution ?? "") else { throw LAABridgeError.invalidResponse }
+                let restoring = result.data.operation.resolution == "not_applied"
+                if drafts.finishSubmission(item.id, restoring: restoring) { if restoring { restore() } else { dismiss() } }
+            default: error = "結果を確認できません。保存先を調べてから照合してください。"
+            }
+        } catch let failure as LAABridgeHTTPError {
+            error = failure.code == "operation_not_found" ? "要求記録がありません。同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)
+        } catch { self.error = "保存状況を読み取れませんでした。" }
+    }
+}
+
+private struct LAAPersonalCommentEditor: View {
+    @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.dismiss) private var dismiss
+    let taskId: String
+    let viewerId: String
+    let parentId: String?
+    @ObservedObject var drafts: ComposerDraftStore
+    @State private var text = ""
+    @State private var ready = false
+    @State private var busy = false
+    @State private var error: String?
+    @State private var operation: LAAPersonalOperationResponse.Operation?
+    private var path: String { LAAPersonalPath.task(taskId) + "/comments" }
+    private var key: ComposerDraftKey? {
+        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "linear:\(viewerId):comment:\(taskId):\(parentId ?? "root")") }
+    }
+    private var pending: ComposerDraftStore.Submission? { key.flatMap { LAAWorkDrafts.pending(drafts, key: $0) } }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
+                if let pending {
+                    Section("Pending") {
+                        Text(verbatim: "送信結果を確認してください。結果が不明な間は新しい投稿を始めません。")
+                        if let operation { Text(verbatim: "\(operation.status) · \(operation.targetId)").textSelection(.enabled) }
+                        Button(LAACopy.WorkTab.checkStatus) { Task { await check(pending) } }
+                        if LAAWorkDrafts.canRepeat(pending) {
+                            Button(LAACopy.WorkTab.retrySameRequest) { Task { await perform(pending, firstAttempt: false) } }
+                        }
+                    }
+                }
+                Section(parentId == nil ? "Comment" : "Reply") {
+                    TextEditor(text: $text).frame(minHeight: 180).disabled(!ready || pending != nil)
+                        .accessibilityIdentifier("work.task.comment")
+                }
+                Button("Post") { submit() }.disabled(!ready || busy || pending != nil || drafts.persistenceFailed || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .disabled(busy)
+            .navigationTitle(parentId == nil ? "New Comment" : "Reply")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(LAACopy.WorkTab.close) { dismiss() } } }
+            .task(id: bridge.revision) { restore() }
+            .onChange(of: text) { _, value in if ready && pending == nil { saveDraft(value) } }
+        }
+    }
+    private func restore() {
+        ready = false
+        if let pending { text = pending.draft.text }
+        else if let key { text = drafts.draft(for: key).text }
+        ready = key != nil
+    }
+    private func saveDraft(_ value: String) {
+        guard let key, drafts.save(ComposerDraft(text: value, attachments: []), for: key) else {
+            error = "下書きを端末に保存できませんでした。"; return
+        }
+    }
+    private func submit() {
+        guard let key, pending == nil else { return }
+        var payload: [String: String] = ["expectedViewerId": viewerId, "body": text]
+        if let parentId { payload["parentId"] = parentId }
+        guard let body = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              let item = LAAWorkDrafts.reserve(drafts, key: key, text: text, body: body, idempotency: LAABridgeIdempotencyKey()) else {
+            error = "送信前の記録を保存できませんでした。"; return
+        }
+        Task { await perform(item, firstAttempt: true) }
+    }
+    @MainActor private func perform(_ item: ComposerDraftStore.Submission, firstAttempt: Bool) async {
+        guard LAAWorkDrafts.canRepeat(item), let (body, requestKey) = LAAWorkDrafts.request(item) else {
+            error = LAAWorkDrafts.expiredMessage; return
+        }
+        busy = true; defer { busy = false }
+        do {
+            let response: LAABridgeResponse<LAAPersonalOperationResponse> = try await bridge.request(
+                method: "POST", path: path, jsonBody: body, idempotencyKey: requestKey, timeout: 90)
+            guard response.data.operation.status == "succeeded" else { throw LAABridgeError.invalidResponse }
+            if drafts.finishSubmission(item.id, restoring: false) { dismiss() }
+            else { error = "送信結果を端末に記録できません。" }
+        } catch let failure as LAABridgeHTTPError {
+            drafts.markSubmissionUnknown(item.id)
+            if firstAttempt && ["payload_invalid", "expected_viewer_required", "linear_viewer_changed"].contains(failure.code ?? "") {
+                if drafts.finishSubmission(item.id, restoring: true) { restore() }
+            }
+            error = LAAWorkHTTP.message(failure)
+        } catch let failure as LAABridgeError {
+            drafts.markSubmissionUnknown(item.id); error = failure.japaneseText
+        } catch { drafts.markSubmissionUnknown(item.id); self.error = "送信結果を確認できませんでした。" }
+    }
+    @MainActor private func check(_ item: ComposerDraftStore.Submission) async {
+        guard let (_, requestKey) = LAAWorkDrafts.request(item) else { error = "送信記録を読み取れません。"; return }
+        busy = true; defer { busy = false }
+        do {
+            let response: LAABridgeResponse<LAAPersonalOperationResponse> = try await bridge.request(
+                method: "GET", path: "/v1/task-operations/by-key", idempotencyKey: requestKey)
+            operation = response.data.operation
+            switch response.data.operation.status {
+            case "succeeded": if drafts.finishSubmission(item.id, restoring: false) { dismiss() }
+            case "rejected": if drafts.finishSubmission(item.id, restoring: true) { restore(); error = "送信前に拒否されました。" }
+            case "resolved":
+                guard ["applied", "not_applied"].contains(response.data.operation.resolution ?? "") else { throw LAABridgeError.invalidResponse }
+                let restoring = response.data.operation.resolution == "not_applied"
+                if drafts.finishSubmission(item.id, restoring: restoring) { if restoring { restore() } else { dismiss() } }
+            default: error = "結果を確認できません。送信先を調べてから照合してください。"
+            }
+        } catch let failure as LAABridgeHTTPError {
+            error = failure.code == "operation_not_found" ? "要求記録がありません。同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)
+        } catch { self.error = "送信状況を読み取れませんでした。" }
+    }
+}
+#endif

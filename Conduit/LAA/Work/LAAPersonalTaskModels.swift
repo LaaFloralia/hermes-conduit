@@ -71,19 +71,23 @@ struct LAAPersonalMetadata: Decodable {
     let priorities: [Priority]
 }
 struct LAAPersonalOperationResponse: Decodable {
-    struct Operation: Decodable {
+    struct Operation: Decodable, Identifiable {
         let operationId: String
         let kind: String
         let targetId: String
+        let contextId: String?
         let status: String
+        let createdAt: String?
         let resultId: String?
         let identifier: String?
         let resolution: String?
         let rejection: String?
         let replayExpired: Bool?
+        var id: String { operationId }
     }
     let operation: Operation
 }
+struct LAAPersonalOperationList: Decodable { let items: [LAAPersonalOperationResponse.Operation]; let viewerId: String }
 
 /// The base and viewer travel with the protected draft, so a restored edit
 /// neither changes unrelated fields nor crosses to a different Linear user.
@@ -99,6 +103,7 @@ struct LAAPersonalTaskDraft: Codable, Equatable {
     var projectId: String
     var milestoneId: String
     var cycleId: String
+    var parentId: String?
     var estimate: String
     var dueDate: String
     var labelIds: [String]
@@ -115,6 +120,7 @@ struct LAAPersonalTaskDraft: Codable, Equatable {
         projectId = task?.project?.id ?? ""
         milestoneId = task?.milestone?.id ?? ""
         cycleId = task?.cycle?.id ?? ""
+        parentId = task?.parent?.id
         estimate = task?.estimate.map { String($0) } ?? ""
         dueDate = task?.dueDate ?? ""
         labelIds = task?.labels?.map(\.id).sorted() ?? []
@@ -136,6 +142,7 @@ struct LAAPersonalTaskDraft: Codable, Equatable {
         if projectId == old.projectId { projectId = fresh.projectId }
         if milestoneId == old.milestoneId { milestoneId = fresh.milestoneId }
         if cycleId == old.cycleId { cycleId = fresh.cycleId }
+        if parentId == old.parentId { parentId = fresh.parentId }
         if estimate == old.estimate { estimate = fresh.estimate }
         if dueDate == old.dueDate { dueDate = fresh.dueDate }
         if labelIds.sorted() == old.labelIds.sorted() { labelIds = fresh.labelIds }
@@ -163,6 +170,7 @@ struct LAAPersonalTaskDraft: Codable, Equatable {
         nullable("projectId", projectId, old.projectId)
         nullable("projectMilestoneId", milestoneId, old.milestoneId)
         nullable("cycleId", cycleId, old.cycleId)
+        if parentId != old.parentId { changes["parentId"] = parentId as Any? ?? NSNull() }
         if priority != old.priority { changes["priority"] = priority }
         if estimate != old.estimate {
             if estimate.isEmpty { changes["estimate"] = NSNull() }

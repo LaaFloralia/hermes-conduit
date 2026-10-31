@@ -18,4 +18,11 @@ test('the UI fixture serves synthetic tasks and a reproducible description confl
     body: { expectedViewerId: 'fixture-viewer', teamId: 'fixture-team', title: 'Fixture new task' } });
   assert.equal(created.status, 201);
   assert.equal((await api.request('/v1/personal-tasks?view=mine', { token })).body.data.items.length, 2);
+  const reply = await api.request('/v1/personal-tasks/linear%3AFIX-1/comments', { token, method: 'POST', key: 'fixture-reply',
+    body: { expectedViewerId: 'fixture-viewer', parentId: 'fixture-comment-1', body: 'Fixture reply' } });
+  assert.equal(reply.status, 201);
+  const thread = await api.request('/v1/personal-tasks/linear%3AFIX-1/comments/fixture-comment-1/replies', { token });
+  assert.equal(thread.body.data.items[0].body, 'Fixture reply');
+  const pending = await api.request('/v1/task-operations', { token });
+  assert.equal(pending.body.data.viewerId, 'fixture-viewer');
 });

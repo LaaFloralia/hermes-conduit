@@ -275,6 +275,26 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Fixture new task"].waitForExistence(timeout: 20))
     }
 
+    func testPersonalTaskFixtureComment() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "taskfixture" else {
+            throw XCTSkip("The synthetic personal-task Bridge was not selected.")
+        }
+        let app = launchWork()
+        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 30))
+        app.buttons["Tasks"].tap()
+        let row = app.staticTexts["Fixture task"]
+        XCTAssertTrue(row.waitForExistence(timeout: 30)); row.tap()
+        let newComment = app.buttons["work.task.new-comment"]
+        for _ in 0..<6 where !newComment.isHittable { app.swipeUp() }
+        XCTAssertTrue(waitUntilReady(newComment, timeout: 20)); newComment.tap()
+        let editor = app.textViews["work.task.comment"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 20)); editor.tap(); editor.typeText("Fixture UI comment")
+        let post = app.buttons["Post"]
+        if !post.isHittable { app.swipeUp() }
+        XCTAssertTrue(waitUntilReady(post, timeout: 10)); post.tap()
+        XCTAssertTrue(app.staticTexts["Fixture UI comment"].waitForExistence(timeout: 20))
+    }
+
     func testLiveWorkspaceCreationEntry() throws {
         let app = launchWork()
         if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {

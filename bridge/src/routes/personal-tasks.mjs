@@ -9,6 +9,8 @@ import { createPersonalLinearSource } from '../tasks/personal.mjs';
 import { TaskSourceError } from '../tasks/errors.mjs';
 
 const DETAIL = /^\/v1\/personal-tasks\/([^/]+)$/;
+const SECTION = /^\/v1\/personal-tasks\/([^/]+)\/(comments|children|history|relations|inverse-relations|attachments)$/;
+const REPLIES = /^\/v1\/personal-tasks\/([^/]+)\/comments\/([^/]+)\/replies$/;
 const OPERATION = /^\/v1\/task-operations\/([0-9a-f-]+)$/i;
 const RESOLUTION = /^\/v1\/task-operations\/([0-9a-f-]+)\/resolve$/i;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,200}$/;
@@ -86,6 +88,36 @@ function issueInput(rawBody, creating) {
   if ('labelIds' in input && (!Array.isArray(input.labelIds) || input.labelIds.length > 100
       || input.labelIds.some((id) => typeof id !== 'string' || !ID.test(id)))) {
     throw badRequest('payload_invalid', 'labelIds must be an array of at most 100 ids');
+  }
+  return { input, expectedViewerId };
+}
+
+function taskItemInput(rawBody, kind) {
+  const { expectedViewerId, ...input } = parseObjectBody(rawBody);
+  if (typeof expectedViewerId !== 'string' || !ID.test(expectedViewerId)) {
+    throw badRequest('expected_viewer_required', 'the original Linear viewer is required');
+  }
+  const allowed = { comment: ['body', 'parentId'], relation: ['relatedIssueId', 'type'], attachment: ['title', 'url', 'subtitle'] }[kind];
+  if (!allowed || Object.keys(input).some((name) => !allowed.includes(name))) {
+    throw badRequest('payload_invalid', 'the task item contains an unsupported field');
+  }
+  const validId = (value) => typeof value === 'string' && ID.test(value);
+  if (kind === 'comment' && (typeof input.body !== 'string' || input.body.trim() === ''
+      || Buffer.byteLength(input.body, 'utf8') > 48 * 1024 || ('parentId' in input && !validId(input.parentId)))) {
+    throw badRequest('payload_invalid', 'a comment needs text of at most 48 KiB and an optional parent');
+  }
+  if (kind === 'relation' && (!validId(input.relatedIssueId)
+      || !['blocks', 'duplicate', 'related', 'similar'].includes(input.type))) {
+    throw badRequest('payload_invalid', 'the related task or relation type is invalid');
+  }
+  if (kind === 'attachment') {
+    let url;
+    try { url = new URL(input.url); } catch { /* handled below */ }
+    if (typeof input.title !== 'string' || input.title.trim() === '' || input.title.length > 512
+        || typeof input.url !== 'string' || input.url.length > 2048 || !url || url.protocol !== 'https:'
+        || url.username || url.password || ('subtitle' in input && (typeof input.subtitle !== 'string' || input.subtitle.length > 512))) {
+      throw badRequest('payload_invalid', 'the attachment needs a title and an HTTPS link');
+    }
   }
   return { input, expectedViewerId };
 }
@@ -179,6 +211,66 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       inFlight.delete(operationId);
     }
   }
+  async function createTaskItem({ req, device, rawBody, params }) {
+    const section = params[1];
+    const kind = { comments: 'comment', relations: 'relation', attachments: 'attachment' }[section];
+    if (!kind) throw badRequest('payload_invalid', 'this task section cannot be created');
+    const key = requireKey(req);
+    const { input, expectedViewerId } = taskItemInput(rawBody, kind);
+    const issueId = requestedId(params[0]);
+    const personalSession = await requestSession();
+    const viewerId = personalSession.viewer.id;
+    if (viewerId !== expectedViewerId) {
+      throw new BridgeError(409, 'linear_viewer_changed', 'the task item was prepared for a different Linear viewer');
+    }
+    const path = `/v1/personal-tasks/${encodeURIComponent(issueId)}/${section}`;
+    const reserved = operations.reserve({ deviceId: device.id, viewerId, key, method: req.method, path,
+      ifMatch: null, rawBody, kind, targetId: randomUUID(), contextId: issueId });
+    if (reserved.action === 'conflict') throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
+    if (reserved.action === 'expired') {
+      throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
+    }
+    if (reserved.action === 'existing') {
+      const previous = reserved.entry;
+      if (previous.status === 'succeeded') return statusFor(previous);
+      if (previous.status === 'rejected') throw new BridgeError(409, 'task_operation_rejected', 'the previous request was refused before the Linear write');
+      if (previous.status === 'in_progress') {
+        throw new BridgeError(409, 'idempotency_key_in_flight', 'the same operation is still in progress', { details: { operation: previous } });
+      }
+      throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier operation must be reconciled', { details: { operation: previous } });
+    }
+    const operationId = reserved.entry.operationId;
+    inFlight.add(operationId);
+    let sent = false;
+    try {
+      const issue = await source.getTaskInSession(personalSession, issueId);
+      if (!issue?.task?.linearId) throw new BridgeError(404, 'task_not_found', 'the task was not found');
+      const fields = { ...input, id: reserved.entry.targetId, issueId: issue.task.linearId };
+      if (kind === 'comment' && input.parentId) await source.assertCommentInIssue(personalSession, input.parentId, issue.task.linearId);
+      if (kind === 'relation') {
+        const related = await source.getTaskInSession(personalSession, input.relatedIssueId);
+        if (!related?.task?.linearId) throw new BridgeError(404, 'task_not_found', 'the related task was not found');
+        if (related.task.linearId === issue.task.linearId) throw badRequest('payload_invalid', 'a task cannot relate to itself');
+        fields.relatedIssueId = related.task.linearId;
+      }
+      sent = true;
+      const result = await source.createTaskItem(personalSession, kind, fields);
+      // Attachment creation can upsert an existing link by URL, while new
+      // comments and relations are created with the reserved UUID.
+      if (kind !== 'attachment' && result.id !== reserved.entry.targetId) throw new Error('Linear returned a different task item');
+      const finished = operations.finish({ deviceId: device.id, viewerId, key, status: 'succeeded', result });
+      return { status: 201, data: { operation: finished } };
+    } catch (error) {
+      if (!sent) {
+        operations.finish({ deviceId: device.id, viewerId, key, status: 'rejected', rejection: 'preflight_failed' });
+        throw error;
+      }
+      try { operations.finish({ deviceId: device.id, viewerId, key, status: 'outcome_unknown' }); } catch { /* fail closed */ }
+      throw new BridgeError(409, 'idempotency_outcome_unknown', 'Linear may have received the operation; reconcile before retrying', {
+        details: { operationId },
+      });
+    } finally { inFlight.delete(operationId); }
+  }
   async function operationContext(device) {
     const session = await requestSession();
     return { deviceId: device.id, viewerId: session.viewer.id };
@@ -197,6 +289,19 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       if (!result) throw new BridgeError(404, 'task_not_found', 'the task was not found');
       return { status: 200, data: result };
     }, DETAIL),
+    read('/v1/personal-tasks/{id}/{section}', async ({ req, params }) => {
+      const query = parameters(req);
+      const section = params[1] === 'inverse-relations' ? 'inverseRelations' : params[1];
+      return { status: 200, data: await source.listTaskSection(section, requestedId(params[0]), {
+        cursor: query.get('cursor'), limit: query.get('limit'),
+      }) };
+    }, SECTION),
+    read('/v1/personal-tasks/{id}/comments/{commentId}/replies', async ({ req, params }) => {
+      const query = parameters(req);
+      return { status: 200, data: await source.listTaskSection('commentReplies', requestedId(params[0]), {
+        commentId: requestedId(params[1]), cursor: query.get('cursor'), limit: query.get('limit'),
+      }) };
+    }, REPLIES),
     read('/v1/task-metadata', async () => ({ status: 200, data: await source.metadata() })),
     read('/v1/task-projects', collection('projects')),
     read('/v1/task-cycles', collection('cycles')),
@@ -212,14 +317,16 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     }),
     write('POST', '/v1/personal-tasks', (ctx) => mutateIssue(ctx, true)),
     write('PATCH', '/v1/personal-tasks/{id}', (ctx) => mutateIssue(ctx, false), DETAIL),
+    write('POST', '/v1/personal-tasks/{id}/{section}', createTaskItem, SECTION),
     write('GET', '/v1/task-operations/by-key', async ({ device, req }) => {
       const entry = operations.byKey({ ...await operationContext(device), key: requireKey(req) });
       if (!entry) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');
       return statusFor(entry);
     }),
-    write('GET', '/v1/task-operations', async ({ device }) => ({ status: 200, data: {
-      items: operations.list(await operationContext(device)), nextCursor: null,
-    } })),
+    write('GET', '/v1/task-operations', async ({ device }) => {
+      const context = await operationContext(device);
+      return { status: 200, data: { items: operations.list(context), nextCursor: null, viewerId: context.viewerId } };
+    }),
     write('GET', '/v1/task-operations/{id}', async ({ device, params }) => {
       const entry = operations.get({ ...await operationContext(device), operationId: params[0] });
       if (!entry) throw new BridgeError(404, 'operation_not_found', 'the task operation was not found');

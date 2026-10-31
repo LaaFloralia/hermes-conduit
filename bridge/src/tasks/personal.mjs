@@ -15,6 +15,18 @@ const ISSUE_FIELDS = `
   labels(first: 100) { nodes { id name color } pageInfo { hasNextPage endCursor } }
 `;
 const PAGE = 'pageInfo { hasNextPage endCursor }';
+const COMMENT_FIELDS = `id body issueId parentId createdAt updatedAt url user { id name app }`;
+const RELATION_FIELDS = `id type issue { id identifier title } relatedIssue { id identifier title }`;
+const SECTION_FIELDS = Object.freeze({
+  comments: COMMENT_FIELDS,
+  children: ISSUE_FIELDS,
+  history: `id createdAt actor { id name app } fromState { id name } toState { id name }
+    fromAssignee { id name app } toAssignee { id name app } fromPriority toPriority
+    fromTitle toTitle updatedDescription`,
+  relations: RELATION_FIELDS,
+  inverseRelations: RELATION_FIELDS,
+  attachments: `id title subtitle url sourceType createdAt`,
+});
 
 // Documents are fixed here, never supplied by a device. They are exported so
 // tests can validate them against the public Linear schema, without credentials.
@@ -30,6 +42,23 @@ export const PERSONAL_DOCUMENTS = Object.freeze({
     customView(id: $id) { id name modelName issues(first: $first, after: $after) { nodes { ${ISSUE_FIELDS} } ${PAGE} } }
   }`,
   issue: `query LAAPersonalIssue($id: String!) { issue(id: $id) { ${ISSUE_FIELDS} description } }`,
+  ...Object.fromEntries(Object.entries(SECTION_FIELDS).map(([name, fields]) => [name,
+    `query LAAPersonalSection_${name}($id: String!, $first: Int!, $after: String) {
+      issue(id: $id) { id ${name}(first: $first, after: $after) { nodes { ${fields} } ${PAGE} } }
+    }`])),
+  commentReplies: `query LAAPersonalCommentReplies($id: String!, $first: Int!, $after: String) {
+    comment(id: $id) { id issueId children(first: $first, after: $after) { nodes { ${COMMENT_FIELDS} } ${PAGE} } }
+  }`,
+  commentParent: `query LAAPersonalCommentParent($id: String!) { comment(id: $id) { id issueId } }`,
+  createComment: `mutation LAAPersonalCommentCreate($input: CommentCreateInput!) {
+    commentCreate(input: $input) { success comment { id } }
+  }`,
+  createRelation: `mutation LAAPersonalRelationCreate($input: IssueRelationCreateInput!) {
+    issueRelationCreate(input: $input) { success issueRelation { id } }
+  }`,
+  createAttachment: `mutation LAAPersonalAttachmentCreate($input: AttachmentCreateInput!) {
+    attachmentCreate(input: $input) { success attachment { id } }
+  }`,
   createIssue: `mutation LAAPersonalIssueCreate($input: IssueCreateInput!) {
     issueCreate(input: $input) { success issue { id identifier updatedAt } }
   }`,
@@ -236,6 +265,55 @@ export function createPersonalLinearSource({
     }
     return result.issue;
   }
+  async function listTaskSection(name, id, options = {}) {
+    if (!Object.hasOwn(SECTION_FIELDS, name) && name !== 'commentReplies') {
+      throw failure('filter_invalid', 'task section is invalid', { status: 400 });
+    }
+    const issueId = text(id, 'id', { required: true }).replace(/^linear:/, '');
+    const commentId = name === 'commentReplies' ? text(options.commentId, 'commentId', { required: true }) : null;
+    const first = pageSize(options.limit);
+    const personalSession = await session();
+    const { viewer, run } = personalSession;
+    const cursorFilter = { section: name, issueId, commentId, viewerId: viewer.id };
+    const after = decodeCursor(options.cursor, cursorFilter);
+    let connection;
+    if (name === 'commentReplies') {
+      const issue = await getTaskInSession(personalSession, issueId);
+      if (!issue) throw failure('task_not_found', 'the task was not found', { status: 404 });
+      const data = await run(PERSONAL_DOCUMENTS.commentReplies, { id: commentId, first, after });
+      if (!data.comment || data.comment.issueId !== issue.task.linearId) {
+        throw failure('comment_not_found', 'the comment was not found for this task', { status: 404 });
+      }
+      connection = data.comment.children;
+    } else {
+      const data = await run(PERSONAL_DOCUMENTS[name], { id: issueId, first, after });
+      if (!data.issue) throw failure('task_not_found', 'the task was not found', { status: 404 });
+      connection = data.issue[name];
+    }
+    const map = name === 'children' ? (node) => issueToTask(node, viewer.id) : (node) => node;
+    return { ...makePage(connection, cursorFilter, map), observedAt: new Date(now()).toISOString(), viewerId: viewer.id };
+  }
+  async function assertCommentInIssue(personalSession, commentId, issueId) {
+    const data = await personalSession.run(PERSONAL_DOCUMENTS.commentParent, { id: commentId });
+    if (!data.comment || data.comment.issueId !== issueId) {
+      throw failure('comment_not_found', 'the comment was not found for this task', { status: 404 });
+    }
+  }
+  async function createTaskItem(personalSession, kind, input) {
+    const mapping = {
+      comment: ['createComment', 'commentCreate', 'comment'],
+      relation: ['createRelation', 'issueRelationCreate', 'issueRelation'],
+      attachment: ['createAttachment', 'attachmentCreate', 'attachment'],
+    };
+    const [document, field, resultName] = mapping[kind] ?? [];
+    if (!document) throw failure('filter_invalid', 'task item is invalid', { status: 400 });
+    const data = await personalSession.run(PERSONAL_DOCUMENTS[document], { input });
+    const result = data[field];
+    if (result?.success !== true || typeof result[resultName]?.id !== 'string') {
+      throw failure('linear_mutation_unconfirmed', 'Linear did not confirm the task operation');
+    }
+    return result[resultName];
+  }
   async function listCollection(name, options = {}) {
     if (!['projects', 'cycles', 'views', 'inbox', 'teams', 'users', 'states', 'labels', 'milestones'].includes(name)) {
       throw failure('filter_invalid', 'collection is invalid', { status: 400 });
@@ -265,5 +343,6 @@ export function createPersonalLinearSource({
     result.priorities = data.issuePriorityValues;
     return result;
   }
-  return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listCollection, metadata, session };
+  return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listTaskSection,
+    assertCommentInIssue, createTaskItem, listCollection, metadata, session };
 }

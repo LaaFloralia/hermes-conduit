@@ -69,11 +69,16 @@ final class LAAPersonalTaskTests: XCTestCase {
 
     func testCreateAndEstimateInput() throws {
         var draft = LAAPersonalTaskDraft(viewerId: "viewer", task: nil)
-        draft.teamId = "team"; draft.title = "起票"; draft.estimate = "3"
+        draft.teamId = "team"; draft.title = "起票"; draft.estimate = "3"; draft.parentId = "parent-id"
         let body = try payload(draft)
         XCTAssertEqual(body["teamId"] as? String, "team")
         XCTAssertEqual(body["expectedViewerId"] as? String, "viewer")
         XCTAssertEqual(body["estimate"] as? Int, 3)
+        XCTAssertEqual(body["parentId"] as? String, "parent-id")
+        var oldDraft = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(draft)) as? [String: Any])
+        oldDraft.removeValue(forKey: "parentId")
+        let restoredOldDraft = try JSONDecoder().decode(LAAPersonalTaskDraft.self, from: JSONSerialization.data(withJSONObject: oldDraft))
+        XCTAssertNil(restoredOldDraft.parentId)
         draft.estimate = "1.5"
         XCTAssertThrowsError(try draft.requestBody())
         draft.estimate = "NaN"

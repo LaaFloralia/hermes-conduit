@@ -47,6 +47,9 @@ struct LAAWorkTaskDetailView: View {
                         if let description = task.description, !description.isEmpty {
                             MarkdownText(source: description, foregroundStyle: LAAColor.text).workCard()
                         }
+                        if let viewerId {
+                            LAAPersonalTaskConnections(drafts: drafts, task: task, viewerId: viewerId)
+                        }
                         if let raw = task.url, let url = URL(string: raw), url.scheme?.lowercased() == "https" {
                             Link(LAACopy.WorkTab.openLinear, destination: url).buttonStyle(.bordered)
                         }

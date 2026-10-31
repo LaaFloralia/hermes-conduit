@@ -15,6 +15,10 @@ const initial = () => ({ id: 'linear:FIX-1', linearId: 'fixture-issue-1', source
 
 export async function startPersonalTaskUIFixture() {
   const tasks = [initial()];
+  const comments = [{ id: 'fixture-comment-1', issueId: 'fixture-issue-1', parentId: null,
+    body: 'Fixture comment', createdAt: '2026-11-01T00:00:00.000Z', updatedAt: '2026-11-01T00:00:00.000Z', user: viewer }];
+  const relations = [];
+  const attachments = [];
   let conflictPending = true;
   const copy = (value) => structuredClone(value);
   const find = (id) => tasks.find((task) => [task.id, task.sourceId, task.linearId].includes(id));
@@ -30,6 +34,35 @@ export async function startPersonalTaskUIFixture() {
       return task ? { task: copy(task), viewerId: viewer.id } : null;
     },
     async listCollection() { return { items: [], nextCursor: null, observedAt: '2026-11-01T00:00:00.000Z', viewerId: viewer.id }; },
+    async listTaskSection(name, id, options = {}) {
+      const task = find(id);
+      if (!task) throw new Error('fixture target missing');
+      const lists = {
+        comments: comments.filter((item) => item.issueId === task.linearId && !item.parentId),
+        commentReplies: comments.filter((item) => item.issueId === task.linearId && item.parentId === options.commentId),
+        children: tasks.filter((item) => item.parent?.id === task.linearId),
+        relations: relations.filter((item) => item.issue.id === task.linearId),
+        inverseRelations: relations.filter((item) => item.relatedIssue.id === task.linearId),
+        attachments: attachments.filter((item) => item.issueId === task.linearId), history: [],
+      };
+      return { items: copy(lists[name] ?? []), nextCursor: null, observedAt: '2026-11-01T00:00:00.000Z', viewerId: viewer.id };
+    },
+    async assertCommentInIssue(_session, commentId, issueId) {
+      if (!comments.some((item) => item.id === commentId && item.issueId === issueId)) throw new Error('fixture parent missing');
+    },
+    async createTaskItem(_session, kind, input) {
+      if (kind === 'comment') comments.push({ id: input.id, issueId: input.issueId, parentId: input.parentId ?? null,
+        body: input.body, createdAt: '2026-11-01T00:02:00.000Z', updatedAt: '2026-11-01T00:02:00.000Z', user: viewer });
+      if (kind === 'attachment') attachments.push({ id: input.id, issueId: input.issueId, title: input.title,
+        url: input.url, subtitle: input.subtitle ?? null, sourceType: null });
+      if (kind === 'relation') {
+        const a = find(input.issueId), b = find(input.relatedIssueId);
+        if (!a || !b) throw new Error('fixture relation missing');
+        relations.push({ id: input.id, type: input.type, issue: { id: a.linearId, identifier: a.sourceId, title: a.title },
+          relatedIssue: { id: b.linearId, identifier: b.sourceId, title: b.title } });
+      }
+      return { id: input.id };
+    },
     async metadata() {
       const group = (items) => ({ items, complete: true });
       return { viewer, teams: group([team]), users: group([{ ...viewer, active: true }]), workflowStates: group([state]),
@@ -40,7 +73,8 @@ export async function startPersonalTaskUIFixture() {
     async createIssue(_session, input) {
       const identifier = `FIX-${tasks.length + 1}`;
       const task = { ...initial(), id: `linear:${identifier}`, sourceId: identifier, linearId: input.id,
-        title: input.title, description: input.description ?? '' };
+        title: input.title, description: input.description ?? '',
+        parent: input.parentId ? { id: input.parentId, identifier: find(input.parentId)?.sourceId, title: find(input.parentId)?.title } : null };
       tasks.push(task);
       return { id: input.id, identifier, updatedAt: task.updatedAt };
     },
