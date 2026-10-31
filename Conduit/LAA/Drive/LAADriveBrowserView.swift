@@ -9,18 +9,22 @@ import UIKit
 struct LAADriveBrowserView: View {
     typealias Loader = LAADriveBrowseController.Loader
     typealias ThumbnailLoader = @MainActor (LAADriveListingItem) async throws -> Data?
+    typealias ShortcutLoader = @MainActor (LAADriveListingItem, Set<String>) async throws -> LAADriveListingItem
 
     let revision: Int
     let load: Loader
     let loadThumbnail: ThumbnailLoader
+    let resolveShortcut: ShortcutLoader
     let errorMessage: (Error) -> String
     let open: (LAADriveListingItem) -> Void
 
     init(revision: Int, load: @escaping Loader, loadThumbnail: @escaping ThumbnailLoader,
+         resolveShortcut: @escaping ShortcutLoader,
          errorMessage: @escaping (Error) -> String, open: @escaping (LAADriveListingItem) -> Void) {
         self.revision = revision
         self.load = load
         self.loadThumbnail = loadThumbnail
+        self.resolveShortcut = resolveShortcut
         self.errorMessage = errorMessage
         self.open = open
     }
@@ -33,6 +37,9 @@ struct LAADriveBrowserView: View {
     @State private var waiting = true
     @State private var displayedKey: LoadKey?
     @State private var navigationError: String?
+    @State private var resolvingID: String?
+    @State private var resolutionGeneration: UInt64 = 0
+    @State private var resolutionTask: Task<Void, Never>?
     @FocusState private var searchFocused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -76,6 +83,8 @@ struct LAADriveBrowserView: View {
             search = ""
             section = .my
         }
+        .onChange(of: key) { _, _ in cancelResolution() }
+        .onDisappear { cancelResolution() }
     }
 
     private var sections: some View {
@@ -158,6 +167,7 @@ struct LAADriveBrowserView: View {
             if let navigationError {
                 Text(verbatim: navigationError).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
             }
+            if resolvingID != nil { ProgressView("Opening shortcut") }
             if let error = controller.error {
                 Text(verbatim: errorMessage(error)).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                 Button("Retry") {
@@ -196,17 +206,7 @@ struct LAADriveBrowserView: View {
     }
 
     private func cell(_ entry: LAADriveListingItem, grid: Bool) -> some View {
-        Button {
-            if entry.item.isFolder {
-                guard !folders.contains(where: { $0.id == entry.id }) else {
-                    navigationError = "This folder is already in the current path."
-                    return
-                }
-                folders.append(entry)
-                search = ""
-                searchFocused = false
-            } else { open(entry) }
-        } label: {
+        Button { select(entry) } label: {
             Group {
                 if grid {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
@@ -227,10 +227,11 @@ struct LAADriveBrowserView: View {
             .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
         }
         .buttonStyle(.plain)
+        .disabled(resolvingID != nil)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: entry.item.name))
-        .accessibilityValue(Text(verbatim: entry.item.kindTitle))
-        .accessibilityHint(entry.item.isFolder ? "Open folder" : "Open file")
+        .accessibilityValue(Text(verbatim: kind(entry)))
+        .accessibilityHint(entry.item.isFolder ? "Open folder" : entry.item.kind == "shortcut" ? "Open shortcut" : "Open file")
         .accessibilityIdentifier("laa.drive.browser.item.\(entry.id)")
     }
 
@@ -238,8 +239,57 @@ struct LAADriveBrowserView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
             Text(verbatim: entry.item.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(verbatim: entry.item.kindTitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: kind(entry)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func kind(_ entry: LAADriveListingItem) -> String {
+        entry.item.kind == "shortcut" ? "Shortcut" : entry.item.kindTitle
+    }
+
+    private func select(_ entry: LAADriveListingItem) {
+        guard resolvingID == nil else { return }
+        navigationError = nil
+        guard entry.item.kind == "shortcut" else { navigateOrOpen(entry); return }
+        let requested = key
+        let visited = Set(folders.map(\.id))
+        resolutionGeneration &+= 1
+        let generation = resolutionGeneration
+        resolvingID = entry.id
+        resolutionTask = Task {
+            do {
+                let target = try await resolveShortcut(entry, visited)
+                try Task.checkCancellation()
+                guard key == requested, generation == resolutionGeneration else { return }
+                resolvingID = nil
+                resolutionTask = nil
+                navigateOrOpen(target)
+            } catch {
+                guard key == requested, generation == resolutionGeneration, !Task.isCancelled else { return }
+                resolvingID = nil
+                resolutionTask = nil
+                navigationError = (error as? LAADriveShortcutError)?.message ?? errorMessage(error)
+            }
+        }
+    }
+
+    private func navigateOrOpen(_ entry: LAADriveListingItem) {
+        if entry.item.isFolder {
+            guard !folders.contains(where: { $0.id == entry.id }) else {
+                navigationError = "This folder is already in the current path."
+                return
+            }
+            folders.append(entry)
+            search = ""
+            searchFocused = false
+        } else { open(entry) }
+    }
+
+    private func cancelResolution() {
+        resolutionGeneration &+= 1
+        resolutionTask?.cancel()
+        resolutionTask = nil
+        resolvingID = nil
     }
 
     private func thumbnail(_ entry: LAADriveListingItem) -> some View {
@@ -301,7 +351,8 @@ private struct LAADriveBrowserThumbnail: View {
                 Image(uiImage: image).resizable().scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: LAARadius.card))
             } else {
-                Image(systemName: entry.item.symbol).laaTextStyle(.body).foregroundStyle(LAAColor.link)
+                Image(systemName: entry.item.kind == "shortcut" ? "arrow.turn.up.right" : entry.item.symbol)
+                    .laaTextStyle(.body).foregroundStyle(LAAColor.link)
             }
         }
         .task(id: key) {

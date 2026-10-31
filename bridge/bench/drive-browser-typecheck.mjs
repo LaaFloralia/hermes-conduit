@@ -30,7 +30,8 @@ try {
   execFileSync(swift, ['-swift-version', '5', '-D', 'LAA_BUILD', '-target', 'arm64-apple-ios17.0',
     '-sdk', sdk, '-typecheck', models, source('LAAColors.swift'), source('Design/LAATokens.swift'),
     source('Drive/LAADriveBrowseModels.swift'), source('Drive/LAADriveBrowseController.swift'),
-    source('Drive/LAADriveBrowserView.swift'), source('Drive/LAADriveOfflineStore.swift'),
+    source('Drive/LAADriveShortcutResolver.swift'), source('Drive/LAADriveBrowserView.swift'),
+    source('Drive/LAADriveOfflineStore.swift'),
     source('Drive/LAADriveOfflineList.swift')], { stdio: 'inherit' });
   console.log('Drive browser and offline list iOS typecheck passed');
 } finally {
