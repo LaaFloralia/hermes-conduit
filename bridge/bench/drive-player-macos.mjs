@@ -1,6 +1,6 @@
 // Reproducible, synthetic-only measurement of the current iOS player class
 // compiled against macOS AVFoundation. No Google account or simulator is used.
-// Run: node bridge/bench/drive-player-macos.mjs [repetitions] [chunkKiB] [idealCacheMs] [bytes|blocks]
+// Run: node bridge/bench/drive-player-macos.mjs [repetitions] [chunkKiB] [idealCacheMs] [bytes|blocks] [rttMs] [megabitsPerSecond]
 // Requires ffmpeg/libx264 and swiftc. Temporary fixture and binary are removed.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -19,10 +19,14 @@ const repetitions = Number(process.argv[2] ?? '10');
 const chunkKiB = Number(process.argv[3] ?? '256');
 const idealCacheMs = Number(process.argv[4] ?? '0');
 const transport = process.argv[5] ?? 'bytes';
+const rttMs = Number(process.argv[6] ?? '50');
+const megabitsPerSecond = Number(process.argv[7] ?? '20');
 assert.ok(Number.isInteger(repetitions) && repetitions >= 1 && repetitions <= 100);
 assert.ok(Number.isInteger(chunkKiB) && chunkKiB >= 1 && chunkKiB <= 2048);
 assert.ok(Number.isInteger(idealCacheMs) && idealCacheMs >= 0 && idealCacheMs <= 5000);
 assert.ok(['bytes', 'blocks'].includes(transport));
+assert.ok(Number.isInteger(rttMs) && rttMs >= 0 && rttMs <= 2000);
+assert.ok(Number.isFinite(megabitsPerSecond) && megabitsPerSecond > 0 && megabitsPerSecond <= 1000);
 const tmp = mkdtempSync(join(tmpdir(), 'laa-drive-bench-'));
 let bridge;
 try {
@@ -48,7 +52,7 @@ try {
       const cached = idealCache.get(id);
       if (cached && cached.expires > Date.now()) return cached.found;
       state.metadata += 1;
-      await sleep(50); // Bridge-to-Google RTT, metadata request.
+      await sleep(rttMs); // Bridge-to-Google RTT, metadata request.
       const found = /^fixture_video_\d+$/.test(id) ? { item: { ...item, id } } : null;
       // Idealized cache assumes a constant version/permission; this is only a
       // performance bound, not a safe implementation of a Drive cache.
@@ -58,7 +62,7 @@ try {
     async open(id, { range, signal }) {
       state.media += 1;
       state.ranges.push(range);
-      await sleep(50, undefined, { signal }); // Bridge-to-Google RTT, media request.
+      await sleep(rttMs, undefined, { signal }); // Bridge-to-Google RTT, media request.
       if (!/^fixture_video_\d+$/.test(id)) return null;
       const parsed = parseRange(range, size);
       assert.equal(parsed.kind, 'range');
@@ -69,10 +73,10 @@ try {
         'content-range': `bytes ${start}-${end}/${size}`, 'content-length': String(end - start + 1),
       });
       const stream = Readable.from((async function* () {
-        // 20 Mbit/s. Both 20 Mbit/s hops pipeline, so rate-limit only once.
+        // Equal-rate hops pipeline, so rate-limit only once.
         for (let offset = start; offset <= end; offset += 32 * 1024) {
           const part = video.subarray(offset, Math.min(end + 1, offset + 32 * 1024));
-          await sleep(part.length * 8 / 20_000, undefined, { signal });
+          await sleep(part.length * 8 / (megabitsPerSecond * 1_000), undefined, { signal });
           state.bytes += part.length;
           yield part;
         }
@@ -92,13 +96,13 @@ try {
   const swiftSource = join(tmp, 'bench.swift');
   writeFileSync(swiftSource, `${harness}\n${playerSource.slice(start, end)}\n`);
   const binary = join(tmp, 'drive-player-bench');
-  execFileSync('swiftc', ['-D', 'LAA_BUILD', '-O', '-parse-as-library', swiftSource,
+  execFileSync('swiftc', ['-swift-version', '5', '-D', 'LAA_BUILD', '-O', '-parse-as-library', swiftSource,
     join(root, 'Conduit/LAA/Drive/LAADriveRangeTransfer.swift'), '-o', binary], { stdio: ['ignore', 'pipe', 'pipe'] });
   const result = await new Promise((resolveProcess, reject) => {
     const child = spawn(binary, [], {
       env: { ...process.env, LAA_BENCH_BASE: bridge.base, LAA_BENCH_FAKE_TOKEN: token,
         LAA_BENCH_REPETITIONS: String(repetitions), LAA_BENCH_CHUNK_BYTES: String(chunkKiB * 1024),
-        LAA_BENCH_TRANSPORT: transport },
+        LAA_BENCH_TRANSPORT: transport, LAA_BENCH_RTT_MS: String(rttMs) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
@@ -116,7 +120,7 @@ try {
     return Math.round(sorted[Math.ceil(sorted.length * 0.9) - 1]);
   }
   console.log(JSON.stringify({ fixtureBytes: size, fixtureSeconds: 6,
-    network: '50 ms RTT per hop; 20 Mbit/s per hop; no packet loss',
+    network: `${rttMs} ms RTT per hop; ${megabitsPerSecond} Mbit/s per hop; no packet loss`,
     platform: 'macOS AVFoundation; current iOS player class; modeled transport; not iPhone',
     repetitions, chunkKiB, transport, idealizedMetadataCacheMs: idealCacheMs,
     startupP90Ms: p90('startupMs'), seekP90Ms: p90('seekMs'),

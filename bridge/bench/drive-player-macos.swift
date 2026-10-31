@@ -32,6 +32,58 @@ struct RangeResult {
     let total: Int64
     let mimeType: String?
 }
+
+private struct TransferMeasurement {
+    let result: RangeResult
+    let timings: [String: Double]
+}
+
+// The iOS session is MainActor-isolated, but its LAABridgeClient.driveRange
+// implementation is a nonisolated async method. Run both modeled transports on
+// the generic executor as well, so per-byte processing does not occupy the UI
+// actor and skew the comparison.
+private func measuredTransfer(_ request: URLRequest, offset: Int64, length: Int,
+                              blocks: Bool) async throws -> TransferMeasurement {
+    let started = Date()
+    // Simulated iPhone-to-Bridge RTT, before the request goes to loopback.
+    let rttMs = Int(ProcessInfo.processInfo.environment["LAA_BENCH_RTT_MS"] ?? "50") ?? 50
+    try await Task.sleep(for: .milliseconds(rttMs))
+    if blocks {
+        let response = try await LAADriveRangeTransfer.shared.read(request, offset: offset, length: length)
+        guard response.response.statusCode == 206, let total = response.total else {
+            throw LAADriveRangeError.invalidRange
+        }
+        return .init(result: .init(data: response.data, total: total, mimeType: response.response.mimeType),
+                     timings: ["size": Double(response.data.count),
+                               "totalMs": Date().timeIntervalSince(started) * 1_000])
+    }
+    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+    let headersAt = Date()
+    defer { bytes.task.cancel() }
+    guard let http = response as? HTTPURLResponse, http.statusCode == 206,
+          let header = http.value(forHTTPHeaderField: "Content-Range"),
+          header.hasPrefix("bytes ") else { throw LAADriveRangeError.invalidRange }
+    let halves = header.dropFirst(6).split(separator: "/")
+    guard halves.count == 2, let total = Int64(halves[1]) else { throw LAADriveRangeError.invalidRange }
+    let bounds = halves[0].split(separator: "-")
+    guard bounds.count == 2, let start = Int64(bounds[0]), let end = Int64(bounds[1]),
+          start == offset, end >= start, end < total, end < offset + Int64(length) else {
+        throw LAADriveRangeError.invalidRange
+    }
+    let expected = Int(end - start + 1)
+    var data = Data(capacity: expected)
+    for try await byte in bytes {
+        try Task.checkCancellation()
+        guard data.count < expected else { throw LAADriveRangeError.invalidRange }
+        data.append(byte)
+    }
+    guard data.count == expected else { throw LAADriveRangeError.invalidRange }
+    return .init(result: .init(data: data, total: total, mimeType: http.mimeType),
+                 timings: ["size": Double(data.count),
+                           "headersMs": headersAt.timeIntervalSince(started) * 1_000,
+                           "bodyMs": Date().timeIntervalSince(headersAt) * 1_000])
+}
+
 @MainActor final class LAABridgeSession {
     let baseURL: URL
     let token: String
@@ -46,46 +98,13 @@ enum LAADriveContent {
     @MainActor static func range(_ item: LAADriveItem, offset: Int64, length: Int,
                                  bridge: LAABridgeSession) async throws -> RangeResult {
         requests += 1
-        let started = Date()
-        // Simulated iPhone-to-Bridge RTT, before the request goes to loopback.
-        try await Task.sleep(for: .milliseconds(50))
         var request = URLRequest(url: bridge.baseURL.appendingPathComponent("v1/drive/files/\(item.id)/content"))
         request.setValue("Bearer \(bridge.token)", forHTTPHeaderField: "Authorization")
         request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
-        if ProcessInfo.processInfo.environment["LAA_BENCH_TRANSPORT"] == "blocks" {
-            let response = try await LAADriveRangeTransfer.shared.read(request, offset: offset, length: length)
-            guard response.response.statusCode == 206, let total = response.total else {
-                throw LAADriveRangeError.invalidRange
-            }
-            completedRanges.append(["size": Double(response.data.count),
-                                    "totalMs": Date().timeIntervalSince(started) * 1_000])
-            return .init(data: response.data, total: total, mimeType: response.response.mimeType)
-        }
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
-        let headersAt = Date()
-        defer { bytes.task.cancel() }
-        guard let http = response as? HTTPURLResponse, http.statusCode == 206,
-              let header = http.value(forHTTPHeaderField: "Content-Range"),
-              header.hasPrefix("bytes ") else { throw LAADriveRangeError.invalidRange }
-        let halves = header.dropFirst(6).split(separator: "/")
-        guard halves.count == 2, let total = Int64(halves[1]) else { throw LAADriveRangeError.invalidRange }
-        let bounds = halves[0].split(separator: "-")
-        guard bounds.count == 2, let start = Int64(bounds[0]), let end = Int64(bounds[1]),
-              start == offset, end >= start, end < total, end < offset + Int64(length) else {
-            throw LAADriveRangeError.invalidRange
-        }
-        let expected = Int(end - start + 1)
-        var data = Data(capacity: expected)
-        for try await byte in bytes {
-            try Task.checkCancellation()
-            guard data.count < expected else { throw LAADriveRangeError.invalidRange }
-            data.append(byte)
-        }
-        guard data.count == expected else { throw LAADriveRangeError.invalidRange }
-        completedRanges.append(["size": Double(data.count),
-                                "headersMs": headersAt.timeIntervalSince(started) * 1_000,
-                                "bodyMs": Date().timeIntervalSince(headersAt) * 1_000])
-        return .init(data: data, total: total, mimeType: http.mimeType)
+        let measurement = try await measuredTransfer(request, offset: offset, length: length,
+            blocks: ProcessInfo.processInfo.environment["LAA_BENCH_TRANSPORT"] == "blocks")
+        completedRanges.append(measurement.timings)
+        return measurement.result
     }
 }
 
