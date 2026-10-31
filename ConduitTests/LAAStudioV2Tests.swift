@@ -116,6 +116,14 @@ final class LAAStudioV2Tests: XCTestCase {
         XCTAssertFalse(LAAStudioData.isAuthorizationFailure(LAABridgeError.networkUnreachable))
     }
 
+    func testUnavailableDocumentRetainsDriveFallback() throws {
+        let json = #"{"id":"fixture-document","title":"Sample document","category":"Cards","detail":"Fixture","format":"PDF","driveUrl":"https://drive.google.com/file/d/1234567890/view","unavailable":"source_unreadable"}"#
+        let document = try JSONDecoder().decode(LAAStudioCatalog.Document.self, from: Data(json.utf8))
+        XCTAssertEqual(document.unavailable, "source_unreadable")
+        XCTAssertNil(document.media)
+        XCTAssertNotNil(LAAStudioMedia.driveURL(document.driveUrl))
+    }
+
     #if DEBUG
     func testV2CatalogAndOtherVersionFixture() throws {
         let catalog = try LAAStudioData.sampleCatalog()

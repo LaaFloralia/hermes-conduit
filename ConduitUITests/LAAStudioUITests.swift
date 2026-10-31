@@ -151,6 +151,12 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(principle.waitForExistence(timeout: 10)); principle.tap()
         XCTAssertTrue(app.staticTexts["Fixture principle"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["この原則で始める"].exists)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let document = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample document")).firstMatch
+        if !document.isHittable { app.swipeUp() }
+        XCTAssertTrue(document.waitForExistence(timeout: 10)); document.tap()
+        XCTAssertTrue(app.staticTexts["アプリ用の資料を読み込めません。Driveで開いてください。"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "laa.studio.document.drive").firstMatch.exists)
     }
 }
 #endif

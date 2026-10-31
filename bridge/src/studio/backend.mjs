@@ -15,7 +15,7 @@ export function createStudioBackend({
   directory = join(homedir(), 'Library', 'Application Support', 'LAA Creative Studio', 'Remote'),
   launch = () => execFileAsync(join(homedir(), 'dev', 'studio', 'bin', 'studio'), ['{"operation":"intake.snapshot"}'],
     { timeout: 8000, maxBuffer: 1024 * 1024 }),
-  now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, statPath = lstat,
+  now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, catalogTimeoutMs = 20000, statPath = lstat,
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   const socketPath = join(directory, 'intake.sock');
@@ -39,13 +39,13 @@ export function createStudioBackend({
     } catch { throw unavailable(); }
   }
 
-  function rawRequest(info, { path, method = 'GET', body, range, ifNoneMatch, signal }) {
+  function rawRequest(info, { path, method = 'GET', body, range, ifNoneMatch, signal, timeoutMs = requestTimeoutMs }) {
     return new Promise((resolve, reject) => {
       const headers = { authorization: `Bearer ${info.token}`, accept: 'application/json' };
       if (body !== undefined) headers['content-type'] = 'application/json';
       if (range) headers.range = range;
       if (ifNoneMatch) headers['if-none-match'] = ifNoneMatch;
-      const request = http.request({ socketPath, path, method, headers, signal, timeout: requestTimeoutMs }, resolve);
+      const request = http.request({ socketPath, path, method, headers, signal, timeout: timeoutMs }, resolve);
       request.on('timeout', () => request.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })));
       request.on('error', reject);
       if (body !== undefined) request.end(JSON.stringify(body)); else request.end();
@@ -129,7 +129,7 @@ export function createStudioBackend({
   }
   return {
     snapshot: () => json({ path: '/api/studio/snapshot' }),
-    catalog: (ifNoneMatch) => json({ path: '/api/studio/catalog', ifNoneMatch }, undefined, { catalog: true }),
+    catalog: (ifNoneMatch) => json({ path: '/api/studio/catalog', ifNoneMatch, timeoutMs: catalogTimeoutMs }, undefined, { catalog: true }),
     project: (id) => json({ path: `/api/studio/projects/${id}` }),
     review: (body) => json({ path: '/api/studio/reviews', method: 'POST', body }, undefined, { withStatus: true }),
     getRequest: (id) => json({ path: `/api/studio/requests/${id}` }),

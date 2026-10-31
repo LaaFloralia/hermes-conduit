@@ -119,11 +119,12 @@ final class BridgeMockProtocol: URLProtocol {
         BridgeMockProtocol.headers = ["ETag": "\"opaque-catalog\""]
         BridgeMockProtocol.handler = { request in
             require(request.value(forHTTPHeaderField: "If-None-Match") == "\"opaque-catalog\"", "conditional catalog header")
+            require(request.timeoutInterval == 45, "catalog timeout reaches URLSession")
             return (304, Data())
         }
         do {
             let _: LAABridgeResponse<LAAUsagePage> = try await client.request(
-                method: "GET", path: "/v1/studio/catalog", credentials: creds, ifNoneMatch: "\"opaque-catalog\"")
+                method: "GET", path: "/v1/studio/catalog", credentials: creds, ifNoneMatch: "\"opaque-catalog\"", timeout: 45)
             require(false, "304 must retain its status and ETag")
         } catch let error as LAABridgeHTTPError {
             require(error.status == 304 && error.currentETag == "\"opaque-catalog\"", "304 metadata")

@@ -160,6 +160,7 @@ private struct LAAStudioDocumentView: View {
                 Text(verbatim: "\(document.category) · \(document.detail)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let url = LAAStudioMedia.driveURL(document.driveUrl) {
                     Link(destination: url) { Label("Driveで開く", systemImage: "arrow.up.right.square").frame(minHeight: LAASpacing.minimumTouchTarget) }
+                        .accessibilityIdentifier("laa.studio.document.drive")
                 }
                 if LAAStudioMedia.bridgePath(document.media, allowed: ["pdf"]) != nil { LAAStudioFilePreview(path: document.media, driveURL: document.driveUrl) }
                 else { Text(verbatim: "アプリ用の資料を読み込めません。Driveで開いてください。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }

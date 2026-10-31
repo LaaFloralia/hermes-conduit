@@ -19,7 +19,9 @@ const token = 'c'.repeat(64);
 const now = '2026-11-01T03:00:00.000Z';
 const project = { id: projectId, title: 'Fixture', revision: 7, pages: [{ id: 'page1', name: 'Cover' }], assets: [] };
 const catalog = { etag: 'b'.repeat(64), updatedAt: now, principles: [], adoptedPrincipleId: null,
-  documents: [{ id: 'doc1', title: 'Fixture', media: `/api/studio/media/catalog/${digest}.pdf` }], capabilities: [], brief: [] };
+  documents: [{ id: 'doc1', title: 'Fixture', media: `/api/studio/media/catalog/${digest}.pdf` },
+    { id: 'doc2', title: 'Unavailable fixture', driveUrl: 'https://drive.google.com/file/d/1234567890/view', unavailable: 'source_unreadable' }],
+  capabilities: [], brief: [] };
 const detail = { project, versions: [
   { id: digest, revision: 7, kind: 'video', name: 'preview.mp4', createdAt: now, bytes: 200 * mib,
     media: `/api/studio/media/${projectId}/${digest}.mp4`, previewOnly: true },
@@ -34,7 +36,8 @@ const response = (res, status, data) => {
 
 describe('Studio v2 mock socket contract', () => {
   let dir, socket, server, bridge, readToken, writeToken, allToken, clock = 1_000_000;
-  const state = { reviews: new Map(), calls: [], forcedError: null, dropReviewResponse: false, v2: true, closedStream: false, catalogFault: null };
+  const state = { reviews: new Map(), calls: [], forcedError: null, dropReviewResponse: false, v2: true, closedStream: false,
+    catalogFault: null, catalogDelayMs: 0, projectDelayMs: 0 };
 
   before(async () => {
     dir = mkdtempSync(join(tmpdir(), 'laa-studio-v2-'));
@@ -46,13 +49,19 @@ describe('Studio v2 mock socket contract', () => {
       if (req.url === '/api/studio/snapshot') return response(res, 200, { online: true, accepting: true, contract: state.v2 ? 2 : 1, projects: [], principles: [], requests: [] });
       if (!state.v2) return response(res, 404, { error: 'not_found' });
       if (req.url === '/api/studio/catalog') {
+        if (state.catalogDelayMs) await new Promise((resolve) => setTimeout(resolve, state.catalogDelayMs));
+        if (res.destroyed) return;
         if (state.catalogFault === 'unexpected304') { res.writeHead(304, { etag: tag }); return res.end(); }
         const matches = (req.headers['if-none-match'] ?? '').split(',').some((item) => item.trim().replace(/^W\//, '') === tag);
         if (matches) { res.writeHead(304, state.catalogFault === 'missingTag' ? {} : { etag: tag }); return res.end(); }
         if (state.catalogFault !== 'missingTag') res.setHeader('etag', tag);
         return response(res, 200, catalog);
       }
-      if (req.url === `/api/studio/projects/${projectId}`) return response(res, 200, detail);
+      if (req.url === `/api/studio/projects/${projectId}`) {
+        if (state.projectDelayMs) await new Promise((resolve) => setTimeout(resolve, state.projectDelayMs));
+        if (!res.destroyed) return response(res, 200, detail);
+        return;
+      }
       if (req.url?.startsWith('/api/studio/projects/')) return response(res, 404, { error: 'studio_project_missing' });
       if (req.url === '/api/studio/reviews' && req.method === 'POST') {
         const chunks = [];
@@ -126,6 +135,29 @@ describe('Studio v2 mock socket contract', () => {
     state.catalogFault = 'unexpected304';
     assert.equal((await bridge.request('/v1/studio/catalog', { token: readToken })).status, 502);
     state.catalogFault = null;
+  });
+
+  it('waits for a slow initial catalog through the Bridge', async () => {
+    state.catalogDelayMs = 12_250; // Longer than the former 12-second socket timeout.
+    try {
+      const result = await bridge.request('/v1/studio/catalog', { token: readToken });
+      assert.equal(result.status, 200);
+      assert.equal(result.body.data.documents[1].unavailable, 'source_unreadable');
+      assert.equal(result.body.data.documents[1].driveUrl, catalog.documents[1].driveUrl);
+    } finally { state.catalogDelayMs = 0; }
+  });
+
+  it('uses a separate, bounded catalog timeout without extending project requests', async () => {
+    const timed = createStudioBackend({ directory: dir, launch: async () => {}, requestTimeoutMs: 100, catalogTimeoutMs: 1000 });
+    try {
+      state.catalogDelayMs = 350;
+      assert.equal((await timed.catalog()).status, 200);
+      assert.equal((await timed.catalog(tag)).status, 304);
+      state.projectDelayMs = 350;
+      await assert.rejects(timed.project(projectId), { code: 'studio_not_connected' });
+      state.catalogDelayMs = 1600;
+      await assert.rejects(timed.catalog(), { code: 'studio_not_connected' });
+    } finally { state.catalogDelayMs = 0; state.projectDelayMs = 0; }
   });
 
   it('returns project details without erasing preparing, other, or previewOnly, and maps missing projects', async () => {

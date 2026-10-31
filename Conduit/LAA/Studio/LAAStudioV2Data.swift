@@ -53,7 +53,7 @@ extension LAAStudioData {
         let cached = LAAStudioCatalogStore.load(deviceID: deviceID)
         do {
             let response: LAABridgeResponse<LAAStudioCatalog> = try await bridge.request(
-                method: "GET", path: "/v1/studio/catalog", ifNoneMatch: cached?.etag)
+                method: "GET", path: "/v1/studio/catalog", ifNoneMatch: cached?.etag, timeout: 45)
             if let etag = response.etag {
                 LAAStudioCatalogStore.save(.init(etag: etag, catalog: response.data), deviceID: deviceID)
             }
