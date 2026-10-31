@@ -30,6 +30,8 @@
 | AI UsageとMac容量 | 既存Console／usage-meters／CodexBarの収集を再利用。推計・実請求・利用枠を混ぜない | P1／DSH | 出典・時刻・単位・未取得／古い値を表示。Mac空き容量・CPU・メモリを表示し、未取得を0にしない |
 | BrainをNotion風・Markdownネイティブに | SyncTrain／Syncthing・Obsidian・Gitが別writer。無損失編集と競合保全が前提 | P3／DSH・design-worker | 見出し・リスト・チェック・表・画像・コード、検索・最近・タグ・ギャラリー、原文切替。frontmatter・wikiリンク・未知構文・相対画像を保持し同時編集の両版を復旧できる |
 | Drive動画・Photos・審美眼 | Drive blobのRange取得をAVPlayerへ渡す。Photos既存全件の自由な一覧同期を前提にせずGoogle Photos Pickerで選択 | P3／DSH・design-worker | 実機で一覧・検索・再生・seek・回線断・非対応形式を確認。選択した写真だけ取り込み、出典・好きな理由・用途・採用状態を保存 |
+| Mac版（MacBook・Mac mini） | 同じLAA版をMac Catalystでビルドし、Developer ID署名と公証を通したDMGで配る。bundle IDはiOSと同じ。Watch・ウィジェット・共有拡張・CarPlay・HealthKit・CallKitの純正画面はMacに入れない | P1／Terra・親 | 両Macで起動・ペアリングし、会話・各タブ・通知・アプリ内通話を確認。Gatekeeperが公証済みとして受け入れる |
+| Studioへの資料作成依頼 | Assets › StudioからLAA Bridge経由でLAA Studioへ依頼する。実行はStudio、アプリは依頼・状態・質問への回答・停止／再開・成果物の表示だけ。BridgeとStudioはMac mini内のローカル接続。Studioのモバイル Web（studio.laa-inc.com）は、依頼口の実機確認後にStudio側で撤去 | P1／Terra・親 | iPhoneとMacで、新規・既存作品への依頼、状態の更新、質問への回答、停止／再開、成果物の表示を実Studioで確認 |
 | 古い会話とデータをDriveへ保持 | 稼働中SQLiteをDriveで双方向同期しない。整合したsnapshotをmanifestとhash付きで保管し、初版は自動削除しない | P3／DSH | Driveのアップロード後に読戻し・hash照合、別環境で本文・添付を復元。閲覧復元とruntime再開を別表示 |
 | Liquid Glass・Studio iPhone Lab | Glassは操作層、本文は読みやすい面。既存Studioの素材・参考・版管理を使い、Web試作とSwiftUI実機確認を分ける | P0–P3／design-worker・DSH | 参考1〜3件の採用理由、色・文字・余白、通常／空／失敗／オフライン／競合の比較版を残し、社長が実物を選べる |
 
@@ -89,6 +91,8 @@ P0 基準版：署名／発信の並行作業の結果を取り込み、設計�
 | 30 | 履歴snapshot・Drive保管（DSH） | 06、14、28 | 整合性照合・別環境復元。自動削除なし |
 | 31 | Mac実画面配信の調査・試作（DSH） | 23 | 既存資産・OS権限・GUI排他と接続の実測 |
 | 32 | 実機総合検証・Lab版照合（親） | 08–12、18、22、26–31 | 実機、オフライン、復旧、アクセシビリティ、採用デザインを確認 |
+| 33 | Mac版（Catalyst・Developer ID配布）（Terra） | 07 | 両Macで導入・起動・ペアリングし、主要画面・通知・アプリ内通話を確認 |
+| 34 | Studio依頼（Assets › Studio）（Terra） | 06、Studioのローカル受付API | 実Studioで依頼から成果物の表示まで確認し、Web版撤去の判断材料をそろえる |
 
 ## 根拠・未確認
 

@@ -8,7 +8,7 @@
 
 - LAAアプリ（LaaFloralia/hermes-conduit のmaster。Conduitのフォーク）は社長の主窓口。裏側はMac miniのHermes（会話・通話・通知）とLAA Bridge（`bridge/`。仕事・Brain・素材・Usage）。
 - Paseo・Obsidian（Brainの表示）・Google Drive・Linear・Grok Botの操作を、順にこのアプリへ集約する。置き換えは道具ごとに [ROADMAP](ROADMAP.md) の移行ゲートを満たしてから行い、満たすまで旧い道具を残す。
-- iPhone版（社長の端末はiPhone 16 Pro Max）を先に仕上げ、Mac版はその後に作る。
+- iPhone版（社長の端末はiPhone 16 Pro Max）とMac版（MacBook・Mac mini。Mac Catalyst、Developer ID署名・公証のDMG）を同じmasterから作る。資料作成はLAAアプリから依頼し、実行はLAA Studio（Mac専用の別アプリ）が担う。
 
 ## 始め方
 
@@ -59,12 +59,13 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
   3. `xcodegen generate --spec project-personal.yml` の後、`xcodebuild build -quiet -project Conduit.xcodeproj -scheme Conduit -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO` が成功すること。生成したprojectはcommitしない。
   4. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
 - 既知の基準（master `21cec9ed`）: `LAA 16 Pro Max` では既知の失敗なし。`iPhone Duo` では `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件が既知の失敗。
+- Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。
 - TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みはビルド6（2610300121、LAA Internal）。ビルド7はXcode 27.2（27B52）をApp Store Connectが拒否して止まっている（BUS-320）。
 
 ## 現在の状態（2026-10-31）
 
 - 完了: ROADMAP 01–14・24・25・28、デザインv2、W3の仕上げ（プラグイン更新表示の撤去、社員呼出しボタンの表示条件）。
-- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証。
+- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（branch `laa/mac-catalyst` で実装中）、34 Studio依頼（アプリとBridgeは模擬のStudioで先に作り、LAA Studioのローカル受付APIができたら接続）。
 - Driveの閲覧・再生は実装済み。認可がないため、Bridgeは `503 drive_not_configured` を返す（BUS-318）。
 - 再生画面の再生ボタンとシークバーは素の部品のままで、デザインの手直しが要る。
 - Bridgeで有効な端末は社長のiPhone 1台だけ。試験用の端末はすべて失効済み。
@@ -77,7 +78,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 | BUS-319 | HermesのChatGPT再ログイン（GPT-Liveの通話） |
 | BUS-320 | TestFlight用のXcode（27.1を併設するか27.2正式版を待つか）と自動更新 |
 | BUS-321 | Brainの既存ノートを編集する方式 |
-| BUS-322 | MacBook・Mac miniでiPhone版を使うか |
+| BUS-322 | Mac版をMacBook・Mac miniで使えるようにする（実装中。最後に社長がMacBookへ導入してペアリング） |
 | BUS-317 | CallKit発信の実機確認（登録・署名・配信は済み） |
 | BUS-323 | GitHub CIがmasterへのpushで動かない原因の調査（エージェントが進める。それまでは代替ゲート） |
 
