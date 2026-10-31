@@ -1,8 +1,8 @@
 #!/bin/bash
-# Developer ID distribution; run only with the team's App Store Connect key:
-# /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/mac-release.env.tpl scripts/laa/mac-release.sh
-# In addition to ASC_KEY, ASC_KEY_ID and ASC_ISSUER_ID, supply the Developer ID
-# PKCS#12 and its password as LAA_DEVID_P12_B64 and LAA_DEVID_P12_PASSWORD.
+# Developer ID distribution: signed archive, Developer ID export, notarized app and DMG.
+# Run with: /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/mac-release.env.tpl scripts/laa/mac-release.sh
+# The template supplies ASC_KEY, ASC_KEY_ID, ASC_ISSUER_ID and the Developer ID
+# PKCS#12 as LAA_DEVID_P12_B64 with LAA_DEVID_P12_PASSWORD.
 set -euo pipefail
 set +x
 cd "$(dirname "$0")/../.."
@@ -21,30 +21,40 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Develope
 export GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/usr/bin/false SSH_ASKPASS=/usr/bin/false GIT_CONFIG_GLOBAL=/dev/null
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 command -v xcodegen >/dev/null || fail 'xcodegen is required'
+command -v python3 >/dev/null || fail 'python3 is required'
 team="${LAA_TEAM_ID:-PAW258GB42}"
 build_number="${CURRENT_PROJECT_VERSION:-$(date -u +%y%m%d%H%M)}"
 case "$build_number" in ''|*[!0-9]*) fail 'CURRENT_PROJECT_VERSION must contain digits only';; esac
 work="$repo/build/laa/mac/$build_number"
 [ ! -e "$work" ] || fail "build folder already exists: $work"
 mkdir -p "$work"
+key_path=""
+key_root=""
+local_spec=""
+cleanup() {
+    [ -z "$key_root" ] || rm -rf "$key_root"
+    [ -z "$local_spec" ] || rm -f "$local_spec"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 auth=()
 if [ "$archive_only" -eq 0 ]; then
     [ -n "${ASC_KEY:-}" ] && [ -n "${ASC_KEY_ID:-}" ] && [ -n "${ASC_ISSUER_ID:-}" ] || fail 'ASC_KEY, ASC_KEY_ID and ASC_ISSUER_ID are required'
     mkdir -p "$HOME/.config/laa/tmp-secrets"
     chmod 700 "$HOME/.config/laa/tmp-secrets"
     key_root="$(mktemp -d "$HOME/.config/laa/tmp-secrets/mac-auth.XXXXXX")"
-    cleanup() { rm -rf "$key_root"; }
-    trap cleanup EXIT
-    trap 'exit 130' INT
-    trap 'exit 143' TERM
     chmod 700 "$key_root"
     key_path="$key_root/AuthKey.p8"
     (umask 077; printf '%s\n' "$ASC_KEY" > "$key_path")
     unset ASC_KEY
     [ -s "$key_path" ] || fail 'the API key file is empty'
-    auth=(-allowProvisioningUpdates -authenticationKeyPath "$key_path" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+    auth=(-allowProvisioningUpdates -allowProvisioningDeviceRegistration -authenticationKeyPath "$key_path" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
 fi
 
+# xcodegen resolves a spec's `type: folder` resources against the spec's own
+# directory (not the include), so the WebRTC overlay stays at the repo root and
+# names project-laa.yml without a path. Under build/ the resource paths shift.
 spec=project-laa.yml
 if [ -n "${LAA_WEBRTC_XCFRAMEWORK:-}" ]; then
     [ -f "$LAA_WEBRTC_XCFRAMEWORK/Info.plist" ] || fail 'LAA_WEBRTC_XCFRAMEWORK must name the pinned xcframework'
@@ -56,23 +66,30 @@ if [ -n "${LAA_WEBRTC_XCFRAMEWORK:-}" ]; then
 import PackageDescription
 let package = Package(name: "WebRTC", platforms: [.iOS(.v17)], products: [.library(name: "WebRTC", targets: ["WebRTC"])], targets: [.binaryTarget(name: "WebRTC", path: "WebRTC.xcframework")])
 SWIFT
-    spec="$work/project-laa-local.yml"
-    cat > "$spec" <<YAML
+    local_spec="$repo/project-laa-local-$build_number.yml"
+    spec="$local_spec"
+    cat > "$local_spec" <<YAML
 include:
-  - path: ../../../../project-laa.yml
+  - path: project-laa.yml
 packages:REPLACE:
   WebRTC:
     path: $package
 YAML
 fi
 xcodegen generate --spec "$spec" --project "$repo" >/dev/null
+if [ -n "$local_spec" ]; then
+    rm -f "$local_spec"
+    local_spec=""
+fi
+signing=()
+[ "$archive_only" -eq 1 ] && signing=(CODE_SIGNING_ALLOWED=NO)
 archive="$work/LAA.xcarchive"
 printf 'Archiving universal Mac Catalyst build %s...\n' "$build_number"
 if ! xcodebuild archive -hideShellScriptEnvironment -project Conduit.xcodeproj -scheme Conduit -configuration Release \
     -destination 'generic/platform=macOS,variant=Mac Catalyst' -archivePath "$archive" -derivedDataPath "$work/DerivedData" \
     -jobs 4 -packageAuthorizationProvider netrc ${auth[@]+"${auth[@]}"} DEVELOPMENT_TEAM="$team" \
     CURRENT_PROJECT_VERSION="$build_number" 'ARCHS=arm64 x86_64' ONLY_ACTIVE_ARCH=NO \
-    CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- > "$work/archive.log" 2>&1; then
+    ${signing[@]+"${signing[@]}"} > "$work/archive.log" 2>&1; then
     fail "archive failed; see $work/archive.log"
 fi
 if [ "$archive_only" -eq 1 ]; then
@@ -86,20 +103,45 @@ if [ "$archive_only" -eq 1 ]; then
     printf 'Archive: %s\n' "$archive"
     exit 0
 fi
-cat > "$work/ExportOptions.plist" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>method</key><string>developer-id</string>
-<key>destination</key><string>export</string>
-<key>teamID</key><string>$team</string>
-<key>signingStyle</key><string>automatic</string>
-<key>manageAppVersionAndBuildNumber</key><false/>
-</dict></plist>
-PLIST
+
+# Manual Developer ID export: automatic signing with the API key goes to Apple's
+# cloud-managed certificate and fails with "Cloud signing permission error".
+# The identity comes from the temporary keychain; the profiles must name the
+# same certificate, so read its serial from that keychain (never hardcode it).
+certificate_serial() {
+    /usr/bin/security find-certificate -c "Developer ID Application" -p "$1" 2>/dev/null \
+        | /usr/bin/openssl x509 -noout -serial 2>/dev/null \
+        | /usr/bin/sed -n 's/^serial=//p' \
+        | /usr/bin/head -n 1 || true
+}
+keychain_list="$(/usr/bin/security list-keychains -d user 2>/dev/null | /usr/bin/sed -n 's/^[[:space:]]*"\(.*\)"$/\1/p')"
+serial=""
+while IFS= read -r keychain; do
+    [ -n "$keychain" ] || continue
+    serial="$(certificate_serial "$keychain")"
+    [ -z "$serial" ] || break
+done <<< "$keychain_list"
+[ -n "$serial" ] || fail 'no Developer ID Application certificate in the keychain search list'
+profile_json="$work/profiles.json"
+ASC_KEY_PATH="$key_path" ASC_KEY_ID="$ASC_KEY_ID" ASC_ISSUER_ID="$ASC_ISSUER_ID" \
+    /usr/bin/python3 "$repo/scripts/laa/mac-profiles.py" "$profile_json" --serial "$serial" \
+    || fail 'could not prepare the Developer ID provisioning profiles'
+/usr/bin/python3 - "$profile_json" "$work/ExportOptions.plist" "$team" <<'PY' || fail 'could not write ExportOptions.plist'
+import json, plistlib, sys
+profiles = json.load(open(sys.argv[1], encoding="utf-8"))
+plistlib.dump({
+    "method": "developer-id",
+    "destination": "export",
+    "teamID": sys.argv[3],
+    "signingStyle": "manual",
+    "signingCertificate": "Developer ID Application",
+    "provisioningProfiles": {bundle: entry["uuid"] for bundle, entry in profiles.items()},
+    "manageAppVersionAndBuildNumber": False,
+}, open(sys.argv[2], "wb"))
+PY
 printf 'Exporting Developer ID application...\n'
 if ! xcodebuild -exportArchive -archivePath "$archive" -exportPath "$work/export" \
-    -exportOptionsPlist "$work/ExportOptions.plist" "${auth[@]}" > "$work/export.log" 2>&1; then
+    -exportOptionsPlist "$work/ExportOptions.plist" > "$work/export.log" 2>&1; then
     fail "export failed; see $work/export.log"
 fi
 app="$work/export/LAA.app"
@@ -127,8 +169,8 @@ ditto "$app" "$stage/LAA.app"
 ln -s /Applications "$stage/Applications"
 dmg="$work/LAA-$build_number.dmg"
 /usr/bin/hdiutil create -volname LAA -srcfolder "$stage" -format UDZO "$dmg" >/dev/null
-# The automatic export chooses the application's Developer ID. Sign the DMG
-# with that same identity; never guess among the user's installed identities.
+# Sign the DMG with the identity the export chose; never guess among the
+# user's installed identities.
 identity="$(/usr/bin/codesign -dvv "$app" 2>&1 | /usr/bin/sed -n 's/^Authority=\(Developer ID Application:.*\)$/\1/p' | /usr/bin/head -n 1)"
 [ -n "$identity" ] || fail 'exported application has no Developer ID Application signature'
 /usr/bin/codesign --force --timestamp --sign "$identity" "$dmg"
