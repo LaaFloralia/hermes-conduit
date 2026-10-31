@@ -384,6 +384,26 @@ import XCTest
         XCTAssertTrue(ComposerDraftStore(fileURL: file).submissions.isEmpty)
     }
 
+    func testOfflinePendingListsOnlyPersonalRecordsAndExplicitRejectionRestoresSafely() throws {
+        let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("drafts.json")
+        let store = ComposerDraftStore(fileURL: file); try reserve(store)
+        let otherKey = LAAWorkDrafts.key(deviceID: "device-a", target: "project:unrelated")
+        _ = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: otherKey, text: "not a task", body: Data("{}".utf8),
+            idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "other-key"))))
+        XCTAssertEqual(LAAWorkDrafts.personalSubmissions(store).count, 2)
+        let parent = try XCTUnwrap(store.submissions.first { $0.key.sessionID.hasSuffix(":new") })
+        XCTAssertEqual(LAAWorkDrafts.restoreConfirmedRejection(store, item: parent, isInbox: false), .restored)
+        XCTAssertEqual(ComposerDraftStore(fileURL: file).draft(for: parent.key).text, parent.draft.text)
+        XCTAssertEqual(LAAWorkDrafts.personalSubmissions(store).count, 1)
+        XCTAssertEqual(LAAWorkDrafts.restoreConfirmedRejection(store, item: parent, isInbox: false), .missing)
+        let child = try XCTUnwrap(LAAWorkDrafts.personalSubmissions(store).first)
+        XCTAssertTrue(store.save(ComposerDraft(text: "existing", attachments: []), for: child.key))
+        XCTAssertEqual(LAAWorkDrafts.restoreConfirmedRejection(store, item: child, isInbox: false), .draftExists)
+        XCTAssertEqual(store.draft(for: child.key).text, "existing")
+        XCTAssertEqual(LAAWorkDrafts.personalSubmissions(store).count, 1)
+    }
+
 
     func testInboxDefiniteRefusalClosesOnlyTheProvenUnsentKey() async throws {
         for (code, ledgerStatus, shouldRemove, expectedCalls) in [

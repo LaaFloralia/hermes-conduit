@@ -26,6 +26,18 @@ enum LAAWorkDrafts {
     @MainActor static func pending(_ store: ComposerDraftStore, key: ComposerDraftKey) -> ComposerDraftStore.Submission? {
         store.submissions.first { $0.key == key }
     }
+    @MainActor static func personalSubmissions(_ store: ComposerDraftStore) -> [ComposerDraftStore.Submission] {
+        store.submissions.filter { $0.key.dashboardID == dashboardID && $0.key.profile == "laa-bridge" &&
+            $0.key.sessionID.contains(":linear:") }
+    }
+    enum RejectionRestore: Equatable { case restored, cleared, draftExists, missing, saveFailed }
+    @MainActor static func restoreConfirmedRejection(_ store: ComposerDraftStore, item: ComposerDraftStore.Submission,
+                                                      isInbox: Bool) -> RejectionRestore {
+        guard store.submissions.contains(item) else { return .missing }
+        guard isInbox || !store.hasDraft(for: item.key) else { return .draftExists }
+        guard store.finishSubmission(item.id, restoring: !isInbox) else { return .saveFailed }
+        return isInbox ? .cleared : .restored
+    }
     @MainActor static func reserve(_ store: ComposerDraftStore, key: ComposerDraftKey,
                                    text: String, body: Data, idempotency: LAABridgeIdempotencyKey,
                                    expectedVersion: String? = nil, attachments: [Attachment] = [],

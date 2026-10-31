@@ -160,6 +160,24 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertTrue(LAAWorkHTTP.isVersionConflict(error(412, "version_mismatch")))
     }
 
+    func testCompactedResultAllowsOnlyExplicitConfirmedRejectionToRestore() {
+        func error(_ result: String?, status: Int = 410, code: String = "task_operation_compacted") -> LAABridgeHTTPError {
+            var details: [String: LAABridgeJSONValue] = ["tombstone": .bool(true)]
+            if let result { details["result"] = .string(result) }
+            return LAABridgeHTTPError(status: status, code: code, message: nil, retryable: nil,
+                                      details: .object(details), requestId: nil, currentETag: nil)
+        }
+        let rejected = error("rejected"), succeeded = error("succeeded"), unknown = error(nil)
+        XCTAssertTrue(LAAWorkHTTP.mayRestoreCompacted(rejected, explicitlyRequested: true))
+        XCTAssertFalse(LAAWorkHTTP.mayRestoreCompacted(rejected, explicitlyRequested: false))
+        XCTAssertFalse(LAAWorkHTTP.mayRestoreCompacted(succeeded, explicitlyRequested: true))
+        XCTAssertFalse(LAAWorkHTTP.mayRestoreCompacted(unknown, explicitlyRequested: true))
+        XCTAssertFalse(LAAWorkHTTP.mayRestoreCompacted(error("rejected", status: 409, code: "other"), explicitlyRequested: true))
+        XCTAssertTrue(LAAWorkHTTP.message(succeeded).contains("適用済み"))
+        XCTAssertTrue(LAAWorkHTTP.operationNotFound(canRepeat: false).contains("再送期限も過ぎています"))
+        XCTAssertTrue(LAAWorkHTTP.operationNotFound(canRepeat: true).contains("再試行できます"))
+    }
+
     func testProjectConflictRecordSurvivesUntilTheOwnerChooses() {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: folder) }

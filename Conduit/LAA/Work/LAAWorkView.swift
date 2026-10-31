@@ -48,6 +48,10 @@ struct LAAWorkView: View {
                         routinePlaceholder
                     } else if bridge.status != .paired {
                         connection
+                        if section == 2 {
+                            NavigationLink("Pending", destination: LAAPersonalPendingOfflineView(drafts: drafts))
+                                .accessibilityIdentifier("work.tasks.pending")
+                        }
                     } else {
                         content
                     }

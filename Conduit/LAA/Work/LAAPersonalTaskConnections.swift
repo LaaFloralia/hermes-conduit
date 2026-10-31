@@ -440,7 +440,7 @@ private struct LAAPersonalItemEditor: View {
             default: error = "結果を確認できません。保存先を調べてから照合してください。"
             }
         } catch let failure as LAABridgeHTTPError {
-            error = failure.code == "operation_not_found" ? "要求記録がありません。同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)
+            error = failure.code == "operation_not_found" ? LAAWorkHTTP.operationNotFound(canRepeat: LAAWorkDrafts.canRepeat(item)) : LAAWorkHTTP.message(failure)
         } catch { self.error = "保存状況を読み取れませんでした。" }
     }
 }
@@ -553,7 +553,7 @@ private struct LAAPersonalCommentEditor: View {
             default: error = "結果を確認できません。送信先を調べてから照合してください。"
             }
         } catch let failure as LAABridgeHTTPError {
-            error = failure.code == "operation_not_found" ? "要求記録がありません。同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)
+            error = failure.code == "operation_not_found" ? LAAWorkHTTP.operationNotFound(canRepeat: LAAWorkDrafts.canRepeat(item)) : LAAWorkHTTP.message(failure)
         } catch { self.error = "送信状況を読み取れませんでした。" }
     }
 }

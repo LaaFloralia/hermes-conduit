@@ -188,19 +188,31 @@ test('compacted successful and rejected creates report tombstones without preven
   clock += 8 * 24 * 60 * 60 * 1000;
   assert.equal((await create(api, token, 'fresh-key')).status, 201); // compacts both earlier entries
   const newToken = await api.token(['tasks:read', 'tasks:write']);
-  for (const key of ['succeeded-key', 'rejected-key']) {
+  for (const [key, expectedResult] of [['succeeded-key', 'succeeded'], ['rejected-key', 'rejected']]) {
     const results = [
       await api.request('/v1/task-operations/by-key', { token, key }),
       await api.request('/v1/task-operations/abandon-unsent', { token, key, method: 'POST', body: { expectedViewerId: VIEWER.id } }),
       await api.request('/v1/task-operations/original-status', { token: newToken, key, method: 'POST',
+        body: { expectedViewerId: VIEWER.id, originalDeviceId } }),
+      await api.request('/v1/task-operations/original-abandon', { token: newToken, key, method: 'POST',
         body: { expectedViewerId: VIEWER.id, originalDeviceId } }),
     ];
     for (const result of results) {
       assert.equal(result.status, 410);
       assert.equal(result.body.error.code, 'task_operation_compacted');
       assert.equal(result.body.error.details.tombstone, true);
+      assert.equal(result.body.error.details.result, expectedResult);
     }
   }
+  clock += 30 * 24 * 60 * 60 * 1000 + 1;
+  const late = await api.request('/v1/task-operations/abandon-unsent', { token, key: 'succeeded-key', method: 'POST',
+    body: { expectedViewerId: VIEWER.id } });
+  assert.equal(late.status, 410);
+  assert.equal(late.body.error.details.result, 'succeeded');
+  const lateMoved = await api.request('/v1/task-operations/original-abandon', { token: newToken, key: 'succeeded-key', method: 'POST',
+    body: { expectedViewerId: VIEWER.id, originalDeviceId } });
+  assert.equal(lateMoved.status, 410);
+  assert.equal(lateMoved.body.error.details.result, 'succeeded');
   assert.equal(mutations(personal).length, 2);
 });
 

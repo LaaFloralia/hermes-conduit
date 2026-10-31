@@ -4,6 +4,27 @@ import Foundation
 /// Work-specific policy around the shared Bridge client. Transport, credentials,
 /// response decoding and retries remain owned by LAABridgeSession.
 enum LAAWorkHTTP {
+    enum CompactedResult: Equatable { case succeeded, rejected, unknown }
+
+    static func compactedResult(_ error: LAABridgeHTTPError) -> CompactedResult? {
+        guard error.status == 410, error.code == "task_operation_compacted",
+              case .object(let details)? = error.details,
+              case .bool(true)? = details["tombstone"] else { return nil }
+        switch details["result"] {
+        case .string("succeeded")?: return .succeeded
+        case .string("rejected")?: return .rejected
+        default: return .unknown
+        }
+    }
+
+    static func mayRestoreCompacted(_ error: LAABridgeHTTPError, explicitlyRequested: Bool) -> Bool {
+        explicitlyRequested && compactedResult(error) == .rejected
+    }
+
+    static func operationNotFound(canRepeat: Bool) -> String {
+        canRepeat ? "Macに記録がありません。同じ要求を再試行できます。"
+            : "Macに記録がなく、再送期限も過ぎています。Linearを確認し、Pendingで破棄してください。"
+    }
     @MainActor static func write<T: Decodable>(_ bridge: LAABridgeSession, path: String,
                                                body: Data, key: LAABridgeIdempotencyKey,
                                                method: String = "POST", etag: String? = nil) async throws -> T {
@@ -45,7 +66,12 @@ enum LAAWorkHTTP {
         case "session_not_stopped": return "停止を確認できていないため再開できません。"
         case "stop_unconfirmed": return "停止要求は届きましたが、停止を確認できていません。"
         case "idempotency_key_in_flight": return "前の要求は処理中です。状態を確認してください。"
-        case "task_operation_compacted": return "前の要求は完了後に整理され、成功と拒否を区別できません。Linearを確認し、必要ならPendingで破棄してください。"
+        case "task_operation_compacted":
+            switch compactedResult(error) {
+            case .succeeded: return "前の要求は適用済みです。Linearを確認し、Pendingで破棄してください。"
+            case .rejected: return "前の要求は未適用です。Pendingで下書きに戻せます。"
+            default: return "前の要求は完了後に整理され、成功と拒否を区別できません。Linearを確認し、Pendingで破棄してください。"
+            }
         case "idempotency_outcome_unknown", "creation_outcome_unknown", "send_outcome_unknown":
             return "前の要求の結果を確認できません。同じIDの状態を確認してください。"
         case "profile_unsupported": return "このプロファイルは利用できません。名前を確認してください。"

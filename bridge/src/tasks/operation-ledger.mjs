@@ -9,12 +9,10 @@ import { createJsonFile } from '../routes/state-file.mjs';
 
 const MAX_RECORDS = 20_000;
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
-// Keep compacted keys for a further 30 days after compaction. The phone stops
-// retries after six days; this also allows for slow requests and clock skew.
-const TOMBSTONE_MS = 30 * 24 * 60 * 60 * 1000;
 const INFLIGHT_MS = 90 * 1000;
 const digest = (data) => createHash('sha256').update(data).digest('hex');
 const keyHash = (deviceId, key) => digest(JSON.stringify([deviceId, key]));
+const ownerHash = (deviceId, viewerId) => digest(JSON.stringify([deviceId, viewerId]));
 function processStillExists(pid) {
   // A live but suspended Bridge must not be mistaken for a crashed writer.
   // A reused PID can delay recovery, but cannot allow a second write.
@@ -32,8 +30,9 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
   const file = join(store.dir, 'task-operations.json');
   const data = createJsonFile({ file, initial: () => ({ entries: {}, tombstones: {} }) });
   const unavailable = () => new BridgeError(503, 'task_ledger_unavailable', 'the task operation ledger requires operator recovery');
-  const compacted = () => new BridgeError(410, 'task_operation_compacted',
-    'the completed operation was compacted; its result is no longer available', { details: { tombstone: true } });
+  const compacted = (record, deviceId, viewerId) => new BridgeError(410, 'task_operation_compacted',
+    'the completed operation was compacted', { details: { tombstone: true,
+      result: record.ownerHash === ownerHash(deviceId, viewerId) ? record.status : 'unknown' } });
   function syncDirectory() {
     const fd = openSync(store.dir, 'r');
     try { fsyncSync(fd); } finally { closeSync(fd); }
@@ -42,27 +41,33 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
   function checked(doc) {
     if (!doc.entries || typeof doc.entries !== 'object' || Array.isArray(doc.entries)) throw unavailable();
     if (doc.tombstones === undefined) doc.tombstones = {};
-    // Previous versions had no timestamps. Start a full retention period on
-    // migration rather than guessing how old those hashes are.
+    // Older formats cannot prove the result or owner. Preserve their keys
+    // indefinitely without ever treating them as a confirmed rejection.
     if (Array.isArray(doc.tombstones)) {
       if (new Set(doc.tombstones).size !== doc.tombstones.length ||
           doc.tombstones.some((hash) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))) throw unavailable();
-      doc.tombstones = Object.fromEntries(doc.tombstones.map((hash) => [hash, now()]));
+      doc.tombstones = Object.fromEntries(doc.tombstones.map((hash) => [hash, { compactedAt: now(), status: 'unknown' }]));
     }
-    if (!doc.tombstones || typeof doc.tombstones !== 'object' ||
-        Object.entries(doc.tombstones).some(([hash, timestamp]) => !/^[a-f0-9]{64}$/.test(hash) ||
-          !Number.isSafeInteger(timestamp) || timestamp < 0)) throw unavailable();
+    if (!doc.tombstones || typeof doc.tombstones !== 'object') throw unavailable();
+    for (const [hash, value] of Object.entries(doc.tombstones)) {
+      if (!/^[a-f0-9]{64}$/.test(hash)) throw unavailable();
+      const record = typeof value === 'number' ? { compactedAt: value, status: 'unknown' } : value;
+      if (!record || typeof record !== 'object' || Array.isArray(record) ||
+          !Number.isSafeInteger(record.compactedAt) || record.compactedAt < 0 ||
+          !['succeeded', 'rejected', 'unknown'].includes(record.status) ||
+          (record.status === 'unknown' ? record.ownerHash !== undefined : !/^[a-f0-9]{64}$/.test(record.ownerHash ?? ''))) throw unavailable();
+      doc.tombstones[hash] = record;
+    }
     return doc.entries;
   }
   function compact(all, tombstones) {
     const timestamp = now();
-    for (const [hash, compactedAt] of Object.entries(tombstones)) {
-      if (timestamp - compactedAt >= TOMBSTONE_MS) delete tombstones[hash];
-    }
     for (const [hash, entry] of Object.entries(all)) {
       if (['succeeded', 'rejected'].includes(entry.status) && Number.isFinite(entry.updatedAt)
           && timestamp - entry.updatedAt >= RECENT_MS) {
-        if (!Object.hasOwn(tombstones, hash)) tombstones[hash] = timestamp;
+        if (!Object.hasOwn(tombstones, hash)) tombstones[hash] = {
+          compactedAt: timestamp, status: entry.status, ownerHash: ownerHash(entry.deviceId, entry.viewerId),
+        };
         delete all[hash];
       }
     }
@@ -191,7 +196,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     byKey({ deviceId, viewerId, key }) {
       const { entries: all, tombstones } = snapshot();
       const hash = keyHash(deviceId, key);
-      if (Object.hasOwn(tombstones, hash)) throw compacted();
+      if (Object.hasOwn(tombstones, hash)) throw compacted(tombstones[hash], deviceId, viewerId);
       let entry = all[hash] ?? Object.values(all).find((item) => item.resolutionKeyHash === hash);
       // Atomically close an expired no-write preflight before advertising it
       // as rejected. A concurrent retry can never be mistaken for a no-op.
@@ -209,9 +214,9 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     },
     abandonUnsent({ deviceId, viewerId, key }) {
       const hash = keyHash(deviceId, key);
-      return edit((all, tombstones) => {
+      const result = edit((all, tombstones) => {
         compact(all, tombstones);
-        if (Object.hasOwn(tombstones, hash)) throw compacted();
+        if (Object.hasOwn(tombstones, hash)) return { compacted: tombstones[hash] };
         const previous = all[hash];
         if (previous) {
           if (!owned(previous, deviceId, viewerId)) throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to another viewer');
@@ -219,7 +224,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
           if (previous.status === 'preflight_retryable') {
             previous.status = 'rejected'; previous.rejection = 'preflight_abandoned'; previous.updatedAt = now();
           }
-          return visible(previous);
+          return { entry: visible(previous) };
         }
         if (Object.values(all).some((entry) => entry.resolutionKeyHash === hash)) {
           throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a reconciliation');
@@ -232,8 +237,10 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
           kind: 'abandoned', targetId: 'not_sent', status: 'rejected', rejection: 'abandoned_before_reservation',
           createdAt: timestamp, updatedAt: timestamp };
         all[hash] = entry;
-        return visible(entry);
+        return { entry: visible(entry) };
       });
+      if (result.compacted) throw compacted(result.compacted, deviceId, viewerId);
+      return result.entry;
     },
     get({ deviceId, viewerId, operationId }) {
       const entry = Object.values(entries()).find((item) => item.operationId === operationId && owned(item, deviceId, viewerId));

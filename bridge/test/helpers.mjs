@@ -12,7 +12,7 @@ import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
 import { issuePairing } from '../src/pairing.mjs';
 
-export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, brain = null, usage = null } = {}) {
+export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, brain = null, usage = null, rejectedUploadDrainer } = {}) {
   const clock = now ?? (() => Date.now());
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-test-'));
   const stateDir = join(dir, 'state');
@@ -28,7 +28,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     ...(usage ? { usage } : {}),
   };
 
-  let bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null, routeOptions });
+  let bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null, routeOptions, rejectedUploadDrainer });
   let address = await bridge.listen({ port: 0, host: '127.0.0.1' });
 
   async function request(path, { method = 'GET', body, token, key, headers = {} } = {}) {
@@ -73,7 +73,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     },
     async restart() {
       await bridge.close();
-      bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null, routeOptions });
+      bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null, routeOptions, rejectedUploadDrainer });
       address = await bridge.listen({ port: 0, host: '127.0.0.1' });
     },
     async close() {

@@ -175,7 +175,7 @@ struct LAAPersonalTaskUpload: View {
             default: error = "結果は未確認です。課題の添付を確認してから照合してください。"
             }
         } catch let failure as LAABridgeHTTPError {
-            error = failure.code == "operation_not_found" ? "Macに記録がありません。同じ要求を再試行できます。" : LAAWorkHTTP.message(failure)
+            error = failure.code == "operation_not_found" ? LAAWorkHTTP.operationNotFound(canRepeat: LAAWorkDrafts.canRepeat(item)) : LAAWorkHTTP.message(failure)
         } catch { self.error = "送信状況を読み取れませんでした。" }
     }
 }

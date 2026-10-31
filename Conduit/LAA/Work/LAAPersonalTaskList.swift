@@ -64,8 +64,8 @@ struct LAAPersonalTaskList: View {
                     .buttonStyle(.borderedProminent).disabled(viewerId == nil)
                     .accessibilityIdentifier("work.tasks.create")
             }
-            if let viewerId {
-                HStack {
+            HStack {
+                if let viewerId {
                     NavigationLink(destination: LAAPersonalInboxView(drafts: drafts, viewerId: viewerId, onExit: { inboxRevision += 1 })) {
                         VStack(alignment: .leading, spacing: LAASpacing.x1) {
                             Text(verbatim: "Inbox · \(inboxSummary)")
@@ -75,10 +75,13 @@ struct LAAPersonalTaskList: View {
                             }
                         }
                     }.accessibilityIdentifier("work.tasks.inbox")
-                    Spacer()
-                    NavigationLink("Pending", destination: LAAPersonalPendingView(drafts: drafts, viewerId: viewerId))
-                        .accessibilityIdentifier("work.tasks.pending")
                 }
+                Spacer()
+                NavigationLink {
+                    if let viewerId { LAAPersonalPendingView(drafts: drafts, viewerId: viewerId) }
+                    else { LAAPersonalPendingOfflineView(drafts: drafts) }
+                } label: { Text(verbatim: "Pending") }
+                    .accessibilityIdentifier("work.tasks.pending")
             }
             TextField(LAACopy.WorkTab.searchTasks, text: $search)
                 .submitLabel(.search).textInputAutocapitalization(.never)

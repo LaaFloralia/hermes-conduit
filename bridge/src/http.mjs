@@ -39,9 +39,9 @@ const ENROLL_FAILURE_LIMIT = 10;
 
 // Consume rejected upload bytes without buffering so a client still writing can
 // receive the HTTP error. Bound both time and traffic from a dishonest peer.
-function drainRejectedUpload(req) {
-  if (req.readableEnded) return Promise.resolve(true);
-  if (req.destroyed) return Promise.resolve(false);
+function drainRejectedUpload(req, { timeoutMs, maxBytes }) {
+  if (req.readableEnded) return Promise.resolve('complete');
+  if (req.destroyed) return Promise.resolve('closed');
   return new Promise((resolve) => {
     let bytes = 0, done = false;
     const finish = (ok) => {
@@ -50,10 +50,11 @@ function drainRejectedUpload(req) {
       req.off('data', onData); req.off('end', onEnd); req.off('error', onClose); req.off('aborted', onClose);
       resolve(ok);
     };
-    const onEnd = () => finish(true);
-    const onClose = () => finish(false);
-    const onData = (chunk) => { bytes += chunk.length; if (bytes > 32 * 1024 * 1024) { finish(false); req.destroy(); } };
-    const timer = setTimeout(() => { finish(false); req.destroy(); }, 5 * 60_000);
+    const onEnd = () => finish('complete');
+    const onClose = () => finish('closed');
+    const onLimit = () => { req.pause(); finish('limit'); };
+    const onData = (chunk) => { bytes += chunk.length; if (bytes > maxBytes) onLimit(); };
+    const timer = setTimeout(onLimit, timeoutMs);
     timer.unref();
     req.on('data', onData); req.once('end', onEnd); req.once('error', onClose); req.once('aborted', onClose);
     req.resume();
@@ -62,14 +63,14 @@ function drainRejectedUpload(req) {
 
 // A rejected request still occupies a connection while it drains. Bound those
 // connections separately from the slots used by valid uploads.
-export function createRejectedUploadDrainer() {
+export function createRejectedUploadDrainer({ timeoutMs = 5 * 60_000, maxBytes = 32 * 1024 * 1024, maxConcurrent = 4 } = {}) {
   let draining = 0;
   return async (req) => {
-    if (req.readableEnded) return true;
-    if (req.destroyed) return false;
-    if (draining >= 4) { req.destroy(); return false; }
+    if (req.readableEnded) return 'complete';
+    if (req.destroyed) return 'closed';
+    if (draining >= maxConcurrent) { req.pause(); return 'limit'; }
     draining += 1;
-    try { return await drainRejectedUpload(req); }
+    try { return await drainRejectedUpload(req, { timeoutMs, maxBytes }); }
     finally { draining -= 1; }
   };
 }
@@ -100,10 +101,10 @@ export function createBridge({
   now = () => Date.now(),
   log = defaultLog(),
   routeOptions = {},
+  rejectedUploadDrainer = createRejectedUploadDrainer(),
 } = {}) {
   const startedAt = now();
   const enrollFailures = [];
-  const drainRejectedUploadBounded = createRejectedUploadDrainer();
 
   function sendJson(res, status, body, requestId, headers = {}) {
     const payload = `${JSON.stringify(body)}\n`;
@@ -122,7 +123,7 @@ export function createBridge({
     sendJson(res, status, { data, requestId }, requestId, headers);
   }
 
-  function fail(res, requestId, error) {
+  function fail(res, requestId, error, headers = {}) {
     sendJson(
       res,
       error.status,
@@ -136,6 +137,7 @@ export function createBridge({
         requestId,
       },
       requestId,
+      headers,
     );
   }
 
@@ -364,7 +366,16 @@ export function createBridge({
       if (!(err instanceof BridgeError) && log) {
         log({ level: 'error', requestId, error: err?.message ?? String(err) });
       }
-      if (!res.headersSent && (!streamingUpload || await drainRejectedUploadBounded(req))) fail(res, requestId, error);
+      if (!res.headersSent) {
+        const drain = streamingUpload ? await rejectedUploadDrainer(req) : 'complete';
+        if (drain === 'complete') fail(res, requestId, error);
+        else if (drain === 'limit' && !req.destroyed) {
+          // Deliver the original refusal before closing an oversized, slow or
+          // excess stream. Never keep that connection alive for another request.
+          res.shouldKeepAlive = false;
+          fail(res, requestId, error, { connection: 'close' });
+        }
+      }
     } finally {
       if (log) {
         log({

@@ -124,6 +124,24 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Connect to Mac"].exists)
     }
 
+    func testPendingOpensAndDiscardsAnonymouslyWithoutKeychain() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
+                                "-LAA_UI_TEST_KEYCHAIN_ERROR", "-LAA_UI_TEST_ORPHAN_DRAFT"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["キーチェーンの接続情報を読み取れません"].waitForExistence(timeout: 15))
+        app.buttons["Tasks"].tap()
+        let pending = app.buttons["work.tasks.pending"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 5)); pending.tap()
+        let count = app.staticTexts["work.pending.offline.count"]
+        XCTAssertTrue(count.waitForExistence(timeout: 5)); XCTAssertTrue(count.label.contains("1件"))
+        XCTAssertFalse(app.staticTexts["Fixture orphan private text"].exists)
+        XCTAssertFalse(app.buttons["この端末の下書きへ移す"].exists)
+        app.buttons["work.pending.offline.discard"].tap()
+        app.buttons["端末から破棄"].tap()
+        XCTAssertTrue(app.staticTexts["保留中の要求はありません。"].waitForExistence(timeout: 5))
+    }
+
     private func captureUnpairedDesign(_ appearance: String) {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",

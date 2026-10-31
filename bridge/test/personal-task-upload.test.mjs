@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { createServer, request as httpRequest } from 'node:http';
+import { request as httpRequest } from 'node:http';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import test from 'node:test';
@@ -197,62 +197,102 @@ test('slow rejected 20 MiB upload receives the HTTP error', async (t) => {
   assert.ok(Date.now() - started >= 2500);
 });
 
-test('at most four rejected uploads drain concurrently and a released slot is reusable', async () => {
-  const drain = createRejectedUploadDrainer();
-  const streams = Array.from({ length: 4 }, () => new PassThrough());
-  const pending = streams.map((stream) => drain(stream));
-  const excess = new PassThrough();
-  assert.equal(await drain(excess), false);
-  assert.equal(excess.destroyed, true);
-  streams[0].end('one');
-  assert.equal(await pending[0], true);
-  const replacement = new PassThrough();
-  const replacementPending = drain(replacement);
-  assert.equal(replacement.destroyed, false);
-  replacement.end('replacement');
-  streams.slice(1).forEach((stream) => stream.end('done'));
-  assert.deepEqual(await Promise.all([...pending.slice(1), replacementPending]), [true, true, true, true]);
+test('rejected drain bounds time and bytes without destroying the request before response', async () => {
+  const drain = createRejectedUploadDrainer({ timeoutMs: 20 });
+  const timed = new PassThrough();
+  const timedResult = drain(timed);
+  // The timer is unref'd, so keep the test process alive while it expires.
+  const keeper = setTimeout(() => {}, 100);
+  assert.equal(await timedResult, 'limit'); clearTimeout(keeper);
+  assert.equal(timed.destroyed, false);
+  const byteDrain = createRejectedUploadDrainer();
+  const oversized = new PassThrough();
+  const byteResult = byteDrain(oversized);
+  oversized.write(Buffer.alloc(32 * 1024 * 1024 + 1));
+  assert.equal(await byteResult, 'limit');
+  assert.equal(oversized.destroyed, false);
+  timed.destroy(); oversized.destroy();
 });
 
-test('concurrent rejected socket uploads are capped and recover after a stream ends', { timeout: 5000 }, async (t) => {
+function heldUpload(api, token, key, length) {
+  let req, responded = false;
+  const finished = new Promise((resolve, reject) => {
+    req = httpRequest(`${api.base}/v1/personal-tasks/FIX-1/files`, { method: 'POST', headers: {
+      authorization: `Bearer ${token}`, 'idempotency-key': key, 'x-linear-viewer-id': owner.id,
+      'x-linear-file-name': Buffer.from('fixture.txt').toString('base64'),
+      'x-linear-content-sha256': '0'.repeat(64), 'content-type': 'text/plain', 'content-length': String(length),
+    } }, (res) => {
+      responded = true; const parts = [];
+      res.on('data', (part) => parts.push(part));
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: JSON.parse(Buffer.concat(parts)) }));
+      res.on('error', reject);
+    });
+    req.on('error', (error) => { if (!responded) reject(error); });
+    req.flushHeaders(); req.write('x');
+  });
+  finished.catch(() => {});
+  const closed = new Promise((resolve) => req.once('close', resolve));
+  return { req, finished, closed };
+}
+
+test('real Bridge returns 413 on the fifth rejected upload before closing it', { timeout: 10000 }, async (t) => {
+  const { source } = fixture();
   const drain = createRejectedUploadDrainer();
   let entered = 0, ready;
   const fourEntered = new Promise((resolve) => { ready = resolve; });
-  const server = createServer(async (req, res) => {
+  const observed = (req) => {
     const result = drain(req);
-    entered += 1;
-    if (entered === 4) ready();
-    if (await result) { res.writeHead(401); res.end(); }
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const sockets = [];
-  t.after(async () => {
-    sockets.forEach(({ req }) => req.destroy());
-    await new Promise((resolve) => server.close(resolve));
-  });
-  const open = () => {
-    let req;
-    const finished = new Promise((resolve, reject) => {
-      req = httpRequest({ host: '127.0.0.1', port: server.address().port, method: 'POST', headers: { 'content-length': '4' } },
-        (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
-      req.on('error', reject);
-      req.flushHeaders(); req.write('x');
-    });
-    finished.catch(() => {}); // Cleanup may close a still-held request after a failed assertion.
-    const item = { req, finished }; sockets.push(item); return item;
+    if (++entered === 4) ready();
+    return result;
   };
-  const held = Array.from({ length: 4 }, open);
+  const api = await startBridge({ tasks: { personal: source }, rejectedUploadDrainer: observed });
+  const writer = await api.token(['tasks:read', 'tasks:write']);
+  const held = Array.from({ length: 4 }, (_, i) => heldUpload(api, 'invalid-token', `held-${i}`, 4));
+  t.after(async () => { held.forEach(({ req }) => req.destroy()); await api.close(); });
   await fourEntered;
-  const excess = open();
-  await assert.rejects(excess.finished, { code: 'ECONNRESET' });
-  held[0].req.end('yyy');
-  assert.equal(await held[0].finished, 401);
-  const replacement = open(); replacement.req.end('yyy');
-  assert.equal(await replacement.finished, 401);
-  held.slice(1).forEach(({ req }) => req.end('yyy'));
-  assert.deepEqual(await Promise.all(held.slice(1).map(({ finished }) => finished)), [401, 401, 401]);
+  const excess = heldUpload(api, writer, 'fifth-too-large', 20 * 1024 * 1024 + 1);
+  t.after(() => excess.req.destroy());
+  const response = await excess.finished;
+  assert.equal(response.status, 413);
+  assert.equal(response.body.error.code, 'file_too_large');
+  assert.equal(response.headers.connection, 'close');
+  await excess.closed;
+  held.forEach(({ req }) => req.end('yyy'));
+  assert.deepEqual((await Promise.all(held.map(({ finished }) => finished))).map((r) => r.status), [401, 401, 401, 401]);
+  const replacement = heldUpload(api, 'invalid-token', 'replacement', 4);
+  replacement.req.end('yyy');
+  assert.equal((await replacement.finished).status, 401);
 });
 
+test('real Bridge returns the refusal at the rejected drain time and byte limits', { timeout: 10000 }, async (t) => {
+  const { source } = fixture();
+  const api = await startBridge({ tasks: { personal: source },
+    rejectedUploadDrainer: createRejectedUploadDrainer({ timeoutMs: 50, maxBytes: 1024 }) });
+  t.after(() => api.close());
+  const writer = await api.token(['tasks:read', 'tasks:write']);
+  const slow = heldUpload(api, writer, 'slow-limit', 20 * 1024 * 1024 + 1);
+  t.after(() => slow.req.destroy());
+  assert.equal((await slow.finished).status, 413);
+  const tooMany = heldUpload(api, writer, 'bytes-limit', 40 * 1024 * 1024);
+  t.after(() => tooMany.req.destroy());
+  tooMany.req.write(Buffer.alloc(1024));
+  const response = await tooMany.finished;
+  assert.equal(response.status, 413);
+  assert.equal(response.headers.connection, 'close');
+});
+
+test('real Bridge returns 413 after more than 32 MiB of a rejected upload', { timeout: 10000 }, async (t) => {
+  const { source } = fixture();
+  const api = await startBridge({ tasks: { personal: source } });
+  t.after(() => api.close());
+  const writer = await api.token(['tasks:read', 'tasks:write']);
+  const upload = heldUpload(api, writer, 'default-byte-limit', 40 * 1024 * 1024);
+  t.after(() => upload.req.destroy());
+  upload.req.write(Buffer.alloc(32 * 1024 * 1024));
+  const response = await upload.finished;
+  assert.equal(response.status, 413);
+  assert.equal(response.headers.connection, 'close');
+});
 
 test('definite attachment refusal attempts hashed-audit cleanup; unknown never deletes', async (t) => {
   const { source, config, calls } = fixture();

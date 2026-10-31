@@ -1,6 +1,49 @@
 #if LAA_BUILD
 import SwiftUI
 
+/// Pending must remain accessible even if Keychain or the Mac is unavailable.
+/// Until the viewer can be verified, only anonymous local entries may be
+/// discarded; their content and all network actions remain unavailable.
+struct LAAPersonalPendingOfflineView: View {
+    @ObservedObject var drafts: ComposerDraftStore
+    @State private var selected: ComposerDraftStore.Submission?
+    @State private var showDiscard = false
+    @State private var error: String?
+    private var items: [ComposerDraftStore.Submission] { LAAWorkDrafts.personalSubmissions(drafts) }
+
+    var body: some View {
+        List {
+            if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
+            if drafts.persistenceFailed {
+                Text(verbatim: "端末の保留を読み取れないか保存できません。ロックを解除して再起動してください。")
+                    .foregroundStyle(LAAColor.attention)
+            }
+            Section("この端末の保留") {
+                Text(verbatim: "本人と接続先を確認できないため、内容は表示しません。\(items.count)件。")
+                    .accessibilityIdentifier("work.pending.offline.count")
+                if items.isEmpty && !drafts.persistenceFailed { Text(verbatim: "保留中の要求はありません。") }
+                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    HStack {
+                        Text(verbatim: "保留 \(index + 1)")
+                        Spacer()
+                        Button("破棄", role: .destructive) { selected = item; showDiscard = true }
+                            .accessibilityIdentifier("work.pending.offline.discard")
+                    }
+                }
+            }
+        }
+        .navigationTitle("Pending")
+        .confirmationDialog("この保留を端末から破棄しますか？", isPresented: $showDiscard, titleVisibility: .visible) {
+            Button("端末から破棄", role: .destructive) {
+                if let item = selected {
+                    error = drafts.finishSubmission(item.id, restoring: false) ? nil : "記録を破棄できませんでした。"
+                }
+            }
+            Button(LAACopy.WorkTab.close, role: .cancel) { }
+        } message: { Text(verbatim: "Linearで状態を確認してください。破棄しても元の要求が適用済み、または処理中の可能性があります。Mac側の記録は変更しません。") }
+    }
+}
+
 /// The Bridge only exposes this device and the current personal viewer. Local
 /// submissions remain protected until the matching result is actually read.
 struct LAAPersonalPendingView: View {
@@ -16,6 +59,7 @@ struct LAAPersonalPendingView: View {
     @State private var orphanToDiscard: ComposerDraftStore.Submission?
     @State private var showDiscard = false
     @State private var originalResults: [UUID: LAAPersonalOperationResponse.Operation] = [:]
+    @State private var compactedResults: [UUID: LAAWorkHTTP.CompactedResult] = [:]
     @State private var verifiedTaskIDs: [String: String] = [:]
     @State private var originalToResolve: ComposerDraftStore.Submission?
     @State private var showOriginalConfirmation = false
@@ -65,7 +109,9 @@ struct LAAPersonalPendingView: View {
                                 }
                             }
                             Button("元の要求の状態を確認") { Task { await checkOriginal(item) } }.disabled(busy)
-                            Button("未送信なら下書きに戻す") { Task { await checkOriginal(item, abandonIfUnsent: true) } }.disabled(busy)
+                            if compactedResults[item.id] == nil || compactedResults[item.id] == .rejected {
+                                Button("未送信・未適用なら下書きに戻す") { Task { await checkOriginal(item, abandonIfUnsent: true) } }.disabled(busy)
+                            }
                         } else if let device = bridge.deviceID, LAAPersonalTaskQueue.isDependency(item, device: device, viewer: viewerId) {
                             if let value = LAAPersonalTaskQueue.dependency(item, device: device, viewer: viewerId) {
                                 Text(verbatim: "作成待ちへの \(value.kind.title)").fontWeight(.semibold)
@@ -88,7 +134,9 @@ struct LAAPersonalPendingView: View {
                                 Text(verbatim: item.key.sessionID).textSelection(.enabled).laaTextStyle(.secondary)
                             }
                             Button(LAACopy.WorkTab.checkStatus) { Task { await check(item) } }.disabled(busy)
-                            Button("Return to Draft if Unsent") { Task { await check(item, abandonIfUnsent: true) } }.disabled(busy)
+                            if compactedResults[item.id] == nil || compactedResults[item.id] == .rejected {
+                                Button("Return to Draft if Unsent") { Task { await check(item, abandonIfUnsent: true) } }.disabled(busy)
+                            }
                         }
                         if item.personalOrigin == nil && !LAAWorkDrafts.canRepeat(item) {
                             Text(verbatim: "期限を過ぎているため再送できません。保存先を確認して照合してください。")
@@ -202,6 +250,7 @@ struct LAAPersonalPendingView: View {
               let (_, key) = LAAWorkDrafts.originalRequest(item) else {
             error = "元の本人に接続してから、この要求を照合してください。"; return
         }
+        let deviceAtStart = bridge.deviceID
         busy = true; defer { busy = false }
         do {
             let body = try JSONSerialization.data(withJSONObject: ["expectedViewerId": origin.viewer, "originalDeviceId": origin.device], options: [.sortedKeys])
@@ -235,7 +284,9 @@ struct LAAPersonalPendingView: View {
             case .compare, .invalid: throw LAABridgeError.invalidResponse
             }
         } catch let failure as LAABridgeHTTPError {
-            error = failure.code == "operation_not_found" ? "元のMacに記録がありません。未送信なら下書きに戻す操作で確定してください。" : LAAWorkHTTP.message(failure)
+            if !handleCompacted(failure, item: item, explicitlyRequested: abandonIfUnsent, deviceAtStart: deviceAtStart, original: true) {
+                error = failure.code == "operation_not_found" ? "元のMacに記録がありません。未送信なら下書きに戻す操作で確定してください。" : LAAWorkHTTP.message(failure)
+            }
         } catch { self.error = "元の要求の結果を読み取れませんでした。" }
     }
     @MainActor private func restoreMovedDependency(_ item: ComposerDraftStore.Submission, origin: LAAWorkDrafts.Origin,
@@ -296,6 +347,7 @@ struct LAAPersonalPendingView: View {
     }
     @MainActor private func check(_ item: ComposerDraftStore.Submission, abandonIfUnsent: Bool = false) async {
         guard let (_, requestKey) = LAAWorkDrafts.request(item) else { error = "要求記録を読み取れません。"; return }
+        let deviceAtStart = bridge.deviceID
         busy = true; defer { busy = false }
         do {
             let body = abandonIfUnsent ? try JSONSerialization.data(withJSONObject: ["expectedViewerId": viewerId], options: [.sortedKeys]) : nil
@@ -322,7 +374,9 @@ struct LAAPersonalPendingView: View {
             case .wait: error = "結果は未確認です。Mac側の記録から対象を確認してください。"
             }
         } catch let failure as LAABridgeHTTPError {
-            if failure.code == "operation_not_found" {
+            if handleCompacted(failure, item: item, explicitlyRequested: abandonIfUnsent, deviceAtStart: deviceAtStart, original: false) {
+                return
+            } else if failure.code == "operation_not_found" {
                 if !LAAWorkDrafts.canRepeat(item) {
                     error = "Macに記録がなく、再送期限も過ぎています。Linearを確認し、必要ならPendingで破棄してください。"
                 } else {
@@ -332,6 +386,35 @@ struct LAAPersonalPendingView: View {
                 }
             } else { error = LAAWorkHTTP.message(failure) }
         } catch { self.error = "要求の結果を読み取れませんでした。" }
+    }
+
+    @MainActor private func handleCompacted(_ failure: LAABridgeHTTPError, item: ComposerDraftStore.Submission,
+                                             explicitlyRequested: Bool, deviceAtStart: String?, original: Bool) -> Bool {
+        guard let result = LAAWorkHTTP.compactedResult(failure) else { return false }
+        guard let deviceAtStart, bridge.deviceID == deviceAtStart, bridge.status == .paired,
+              drafts.submissions.contains(item) else {
+            error = "接続先または保留が変わりました。確認してからやり直してください。"; return true
+        }
+        compactedResults[item.id] = result
+        guard LAAWorkHTTP.mayRestoreCompacted(failure, explicitlyRequested: explicitlyRequested) else {
+            error = LAAWorkHTTP.message(failure); return true
+        }
+        let target = original ? LAAWorkDrafts.origin(item)?.target : nil
+        if original && target == nil {
+            error = "元の要求を読み取れません。記録は保留に残しています。"; return true
+        }
+        if target?.hasPrefix("dependency:") == true {
+            error = "元のタスクを確認する必要があります。内容をコピーしてから破棄できます。"; return true
+        }
+        let isInbox = original ? target?.hasPrefix("inbox:") == true : inboxTarget(item) != nil
+        switch LAAWorkDrafts.restoreConfirmedRejection(drafts, item: item, isInbox: isInbox) {
+        case .restored: error = "未適用を確認し、下書きに戻しました。"
+        case .cleared: error = "未適用を確認しました。"
+        case .draftExists: error = "同じ場所に下書きがあります。内容は保留に残しています。"
+        case .missing: error = "保留が変わりました。確認してからやり直してください。"
+        case .saveFailed: error = "下書きに戻せませんでした。"
+        }
+        return true
     }
     @MainActor private func resolve(_ operation: LAAPersonalOperationResponse.Operation, as resolution: String) async {
         guard let key = LAABridgeIdempotencyKey(restoring: "resolve-\(operation.operationId)-\(resolution)"),
