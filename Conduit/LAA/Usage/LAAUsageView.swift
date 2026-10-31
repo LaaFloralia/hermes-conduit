@@ -37,7 +37,7 @@ struct LAAUsageView: View {
                     VStack(alignment: .leading, spacing: LAASpacing.section) {
                         header
                         if bridge.status != .paired { connectionCard }
-                        else { services }
+                        else { TimelineView(.periodic(from: .now, by: 1)) { _ in services } }
                     }
                     .padding(.horizontal, geometry.size.width < 360 ? LAASpacing.compactHorizontal : LAASpacing.horizontal)
                     .padding(.top, LAASpacing.x4)
@@ -58,16 +58,8 @@ struct LAAUsageView: View {
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .onAppear {
             guard automaticallyRefresh else { return }
-            Task { await state.refreshOnTabOpen(bridge: bridge, minimumInterval: tabRefreshInterval) }
+            Task { await state.refreshOnTabOpen(bridge: bridge, minimumInterval: 0) }
         }
-    }
-
-    private var tabRefreshInterval: TimeInterval {
-        #if DEBUG
-        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
-           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_USAGE_FAST_REFRESH") { return 2 }
-        #endif
-        return 60
     }
 
     private var header: some View {
@@ -169,21 +161,24 @@ struct LAAUsageView: View {
     @ViewBuilder
     private func usageItem(_ item: LAAUsageItem) -> some View {
         let warning = past(item)
-        if item.availability != "available" {
-            caption(unavailable(item))
+        if item.availability != "available" || warning {
+            caption(item.availability == "available" ? "更新待ち・取得できません" : unavailable(item))
         } else if item.kind == "quota", let windows = item.detail?.windows, !windows.isEmpty {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
                 meter(window, item: item)
             }
             if let credits = item.detail?.credits {
-                metric("追加クレジット", value(credits.remaining, unit: "credits"), warning: warning || outdated(credits.updatedAt))
-                caption((outdated(credits.updatedAt) ? "古い値・要確認 " : "確認 ") + time(LAAUsageItem.date(credits.updatedAt)) + " · 枠の%とは別単位")
+                if outdated(credits.updatedAt) { caption("追加クレジットは取得待ち") }
+                else {
+                    metric("追加クレジット", value(credits.remaining, unit: "credits"))
+                    caption("取得 " + clockTime(LAAUsageItem.date(credits.updatedAt)) + " · 枠の%とは別単位")
+                }
             }
-            if let passes = item.detail?.resetPasses {
-                let warning = !passes.available || outdated(passes.updatedAt) || (LAAUsageItem.date(passes.expiresAt).map { $0 <= Date() } ?? true)
-                metric("リセットパス", passes.available ? value(passes.remaining, unit: "count") : "利用不可", warning: warning || past(item))
-                caption((warning ? "要確認 · " : "") + "期限 " + time(LAAUsageItem.date(passes.expiresAt)) + " · 手動確認 " + time(LAAUsageItem.date(passes.updatedAt)))
-            }
+        } else if item.kind == "cost" {
+            metric(item.id.hasSuffix("cost-today") ? "今日" : "今月", value(item.availableValue, unit: "usd"), warning: false, prominent: true)
+            let lag = item.id.hasPrefix("provider.claude-api.")
+                ? "反映は通常5分程度遅れ（Anthropic公表）" : "反映の遅れは非公表（OpenAI）"
+            caption("取得 " + clockTime(LAAUsageItem.date(item.observedAt)) + " · UTC · " + lag)
         } else if item.id == "provider.liquid.usage" {
             metric("記録済み費用", money(item.detail?.recordedCostUsd, precision: 12), warning: warning, prominent: true)
             if let input = item.detail?.models?.first?.inputTokens { metric("記録済み入力", value(input, unit: "tokens"), warning: warning) }
@@ -214,11 +209,12 @@ struct LAAUsageView: View {
                 }
             }
         }
-        flags(item)
-        if let renews = LAAUsageItem.date(item.detail?.renewsAt) { caption("更新予定 " + time(renews)) }
-        if let expires = item.detail?.expiresOnUtc { caption("有効期限 " + expires + " UTC") }
-        if item.availability == "available" {
-            caption((item.detail?.sourceKind == "verified" ? "画面確認・自動更新なし " : "データ確認 ") + time(LAAUsageItem.date(item.observedAt)))
+        if let url = billingURL(item), item.availability != "available" { Link("公式画面で確認", destination: url).laaTextStyle(.secondary) }
+        if item.availability == "available" && !warning {
+            flags(item)
+            if let renews = LAAUsageItem.date(item.detail?.renewsAt) { caption("更新予定 " + time(renews)) }
+            if let expires = item.detail?.expiresOnUtc { caption("有効期限 " + expires + " UTC") }
+            if item.kind != "cost" { caption("取得 " + clockTime(LAAUsageItem.date(item.observedAt))) }
         }
     }
 
@@ -230,15 +226,15 @@ struct LAAUsageView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
                     Text(verbatim: windowLabel(window)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if expired || stale {
-                        Text(verbatim: expired ? "リセット時刻経過" : "古い値・要確認")
+                        Text(verbatim: expired ? "リセット時刻経過" : "更新待ち")
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
                     }
                 }
                 Spacer()
-                Text(verbatim: value(window.remainingPercent, unit: "percent"))
+                Text(verbatim: expired || stale ? "未取得" : value(window.remainingPercent, unit: "percent"))
                     .font(LAAType.usageValue).foregroundStyle(expired || stale ? LAAColor.attention : LAAColor.text)
             }
-            if let remaining = window.remainingPercent, remaining.isFinite, (0...100).contains(remaining) {
+            if !expired && !stale, let remaining = window.remainingPercent, remaining.isFinite, (0...100).contains(remaining) {
                 ProgressView(value: remaining, total: 100)
                     .tint(expired || stale ? LAAColor.attention : LAAColor.link)
                     .accessibilityLabel(Text(verbatim: item.label + " " + window.label + " 残り"))
@@ -251,6 +247,13 @@ struct LAAUsageView: View {
 
     private func past(_ item: LAAUsageItem) -> Bool {
         if LAAUsageFreshness.isStale(item, retained: state.retainedUsageIDs.contains(item.id), failed: state.usage.error != nil) { return true }
+        if item.kind == "cost" {
+            let lag: String
+            if item.id.hasPrefix("provider.claude-api.") { lag = "typical-5m" }
+            else if item.id.hasPrefix("provider.openai-api.") { lag = "undisclosed" }
+            else { return true }
+            if item.detail?.sourceLag != lag || item.detail?.periodTimezone != "UTC" { return true }
+        }
         // A quota item's expired bit describes only its lowest remaining window.
         return item.kind != "quota" && (item.isExpired() || needsRenewal(item))
     }
@@ -274,7 +277,7 @@ struct LAAUsageView: View {
     @ViewBuilder private func flags(_ item: LAAUsageItem) -> some View {
         if item.availability == "available" {
             let expiredWindow = item.kind == "quota" && (item.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0) }
-            let flags = [state.retainedUsageIDs.contains(item.id) || state.usage.error != nil ? "更新失敗・前回の値" : nil,
+            let flags = [state.retainedUsageIDs.contains(item.id) || state.usage.error != nil ? "更新失敗" : nil,
                          expiredWindow ? "一部の枠がリセット済み" : nil,
                          item.kind != "quota" && item.isExpired() ? "期限切れ" : nil,
                          needsRenewal(item) ? "追加項目・期限を要確認" : nil,
@@ -287,8 +290,8 @@ struct LAAUsageView: View {
     }
 
     private func groupWarning(_ group: LAAUsageGroup) -> String? {
-        if group.items.contains(where: { state.retainedUsageIDs.contains($0.id) || state.usage.error != nil }) { return "更新失敗・前回の値" }
-        if group.items.contains(where: { LAAUsageFreshness.isStale($0) && $0.availability == "available" }) { return "古い値・要確認" }
+        if group.items.contains(where: { state.retainedUsageIDs.contains($0.id) || state.usage.error != nil }) { return "更新失敗" }
+        if group.items.contains(where: { LAAUsageFreshness.isStale($0) && $0.availability == "available" }) { return "更新待ち" }
         if group.items.contains(where: { $0.kind == "quota" && ($0.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0) } }) { return "一部の枠がリセット済み" }
         if group.items.contains(where: { $0.availability == "available" && ($0.isExpired() || needsRenewal($0)) }) { return "期限・追加項目 要確認" }
         if group.items.contains(where: { $0.availability == "available" && $0.detail?.sourceKind != "verified" && $0.detail?.freshUntil == nil }) { return "旧Bridge・鮮度は目安" }
@@ -332,12 +335,22 @@ struct LAAUsageView: View {
 
     private func unavailable(_ item: LAAUsageItem) -> String {
         switch item.nullReason {
-        case "not_configured": return "利用不可・未設定"
+        case "not_configured": return item.kind == "cost" ? "管理者キー未設定" : "利用不可・未設定"
+        case "not_auto": return "自動取得なし"
+        case "freshness_unknown": return "使用額を確認できません"
         case "fetch_failed": return "未取得・取得失敗"
         case "unsupported": return "利用不可・未対応"
         case "auth_required": return "利用不可・認証が必要"
         default: return "未取得"
         }
+    }
+
+    private func billingURL(_ item: LAAUsageItem) -> URL? {
+        let paths = ["jev": "https://app.typesafe.ai/", "google-cloud": "https://console.cloud.google.com/billing",
+                     "google-flow": "https://labs.google/fx/tools/flow"]
+        let pieces = item.id.split(separator: ".")
+        guard pieces.count >= 3, let raw = paths[String(pieces[1])] else { return nil }
+        return URL(string: raw)
     }
 
     private func money(_ number: Double?, precision: Int = 2) -> String {
@@ -367,6 +380,13 @@ struct LAAUsageView: View {
         var style = Date.FormatStyle(date: .abbreviated, time: .shortened)
         style.locale = locale; style.timeZone = .autoupdatingCurrent
         return date.formatted(style)
+    }
+
+    private func clockTime(_ date: Date?) -> String {
+        guard let date else { return "未取得" }
+        let calendar = Calendar.autoupdatingCurrent
+        let parts = calendar.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
     }
 
     private func refresh() async {

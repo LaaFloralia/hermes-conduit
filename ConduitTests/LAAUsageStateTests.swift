@@ -26,7 +26,7 @@ final class LAAUsageStateTests: XCTestCase {
         """)
     }
 
-    func testRefreshUsageSuccessFailureRetainsAndEmptySuccessClears() async throws {
+    func testRefreshFailureClearsValuesAndUnavailableSuccessDoesNotRestoreThem() async throws {
         let state = LAAUsageState()
         let first = try quota()
         let firstTime = Date(timeIntervalSince1970: 100)
@@ -35,15 +35,15 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(state.usage.value?.first?.value, 62)
         XCTAssertEqual(state.updatedAt, firstTime)
         await state.refreshUsage({ throw LAABridgeError.networkUnreachable }, now: { later })
-        XCTAssertEqual(state.usage.value?.first?.value, 62)
-        XCTAssertEqual(state.usage.fetchedAt, firstTime)
-        XCTAssertEqual(state.updatedAt, firstTime)
+        XCTAssertNil(state.usage.value)
+        XCTAssertNil(state.usage.fetchedAt)
+        XCTAssertNil(state.updatedAt)
         XCTAssertEqual(state.usage.error, .bridge(.networkUnreachable))
         await state.refreshUsage({ [try self.unavailable()] }, now: { later })
-        XCTAssertEqual(state.retainedUsageIDs, [first.id])
-        XCTAssertEqual(state.usage.value?.first?.value, 62)
-        XCTAssertEqual(state.usage.fetchedAt, firstTime)
-        XCTAssertEqual(state.updatedAt, firstTime)
+        XCTAssertTrue(state.retainedUsageIDs.isEmpty)
+        XCTAssertNil(state.usage.value?.first?.value)
+        XCTAssertEqual(state.usage.fetchedAt, later)
+        XCTAssertEqual(state.updatedAt, later)
         await state.refreshUsage({ [] }, now: { later })
         XCTAssertEqual(state.usage.value?.count, 0)
         XCTAssertNil(state.usage.error)
@@ -103,6 +103,27 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(calls, 2)
     }
 
+    func testFailedRefreshClearsWidgetSnapshotAndReloads() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = WidgetSnapshotStore(directory: directory)
+        let reading = try quota()
+        let bridge = LAABridgeSession(statusForTesting: .paired)
+        var fail = false
+        var reloads = 0
+        let state = LAAUsageState(widgetStore: store, reloadWidgets: { reloads += 1 }, loader: { _ in
+            if fail { throw LAABridgeError.networkUnreachable }
+            return [reading]
+        })
+        await state.refreshAndPublish(bridge: bridge)
+        XCTAssertEqual(store.read()?.usage?.meters.first?.remainingPercent, 62)
+        fail = true
+        await state.refreshAndPublish(bridge: bridge)
+        XCTAssertNil(state.usage.value)
+        XCTAssertNil(store.read()?.usage)
+        XCTAssertEqual(reloads, 2)
+    }
+
     func testOpeningUsageThrottlesAttemptsButManualRefreshBypassesInterval() async {
         let bridge = LAABridgeSession(statusForTesting: .paired)
         var current = Date(timeIntervalSince1970: 1_000)
@@ -140,6 +161,8 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(calls, 5)
         await state.refreshOnTabOpen(bridge: LAABridgeSession(statusForTesting: .unpaired), now: { current })
         XCTAssertEqual(calls, 5)
+        await state.refreshOnTabOpen(bridge: bridge, now: { current }, minimumInterval: 0)
+        XCTAssertEqual(calls, 6)
     }
 
     func testTabRefreshAndShellStartupShareAnInFlightRequest() async {
@@ -161,9 +184,11 @@ final class LAAUsageStateTests: XCTestCase {
 
     func testLegacyFreshnessAndVerifiedSources() throws {
         let reading = try quota()
-        let at = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
+        let at = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:09:59Z"))
+        let deadline = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
         let later = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:20:00Z"))
         XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: at))
+        XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: deadline))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: later))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: at, retained: true))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: at, failed: true))
@@ -172,7 +197,7 @@ final class LAAUsageStateTests: XCTestCase {
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified"}}
         """)
-        XCTAssertFalse(LAAUsageFreshness.isStale(verified, at: later.addingTimeInterval(86_400)))
+        XCTAssertTrue(LAAUsageFreshness.isStale(verified, at: at))
         XCTAssertTrue(LAAUsageFreshness.isStale(verified, at: at.addingTimeInterval(-3600)))
     }
 
@@ -186,7 +211,7 @@ final class LAAUsageStateTests: XCTestCase {
                    "credits":{"remaining":10,"updatedAt":"2026-10-30T20:00:00Z"},
                    "resetPasses":{"available":false,"remaining":0,"updatedAt":"2026-10-31T00:00:00Z","expiresAt":"2026-11-02T00:00:00Z"}}}
         """)
-        let now = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
+        let now = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:09:00Z"))
         let windows = try XCTUnwrap(reading.detail?.windows)
         XCTAssertTrue(LAAUsageFreshness.windowExpired(windows[0], at: now))
         XCTAssertFalse(LAAUsageFreshness.windowExpired(windows[1], at: now))

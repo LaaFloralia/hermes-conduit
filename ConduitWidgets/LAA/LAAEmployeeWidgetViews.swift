@@ -59,7 +59,7 @@ struct LAAEmployeeTimelineProvider: AppIntentTimelineProvider {
 
     static func makeTimeline(configuration: LAAEmployeeWidgetIntent, snapshot: WidgetSnapshot?) -> Timeline<LAAEmployeeWidgetEntry> {
         let entry = LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot)
-        let futureDates = Set((snapshot?.usage?.meters ?? []).flatMap { [$0.freshUntil, $0.resetsAt].compactMap { $0 } }
+        let futureDates = Set((snapshot?.usage?.meters ?? []).flatMap { [$0.freshUntil, $0.resetsAt, $0.observedAt?.addingTimeInterval(10 * 60)].compactMap { $0 } }
             .filter { $0 > entry.date }).sorted()
         let future = futureDates.map { LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot, date: $0) }
         return Timeline(entries: [entry] + future, policy: future.isEmpty ? .never : .atEnd)
@@ -158,30 +158,28 @@ struct LAAEmployeeWidgetView: View {
                         HStack(spacing: LAASpacing.x1) {
                             Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.8)
                             Spacer(minLength: 0)
-                            Text(verbatim: percentage)
+                            Text(verbatim: past ? "未取得" : percentage)
                                 .font(LAAType.employeeName).monospacedDigit()
                         }
                         .laaTextStyle(.section)
                         .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
-                        ProgressView(value: meter.remainingPercent, total: 100)
-                            .tint(past ? LAAColor.attention : LAAColor.link)
+                        if !past {
+                            ProgressView(value: meter.remainingPercent, total: 100).tint(LAAColor.link)
+                        }
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(meter.label), 残り \(percentage)\(past ? ", 最終取得、要確認" : "")")
+                    .accessibilityLabel(past ? "\(meter.label), 取得できません" : "\(meter.label), 残り \(percentage)")
                 }
                 Spacer(minLength: 0)
                 if displayed.contains(where: { $0.isPast(at: entry.date) }) {
-                    Text(verbatim: "一部 最終取得・要確認").laaTextStyle(.section)
+                    Text(verbatim: "一部 取得できません").laaTextStyle(.section)
                         .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
                 } else if displayed.contains(where: { $0.legacyFreshness == true || ($0.freshUntil == nil && $0.verified != true) }) {
-                    Text(verbatim: displayed.contains(where: { $0.verified == true }) ? "鮮度は目安・一部手動確認" : "旧Bridge・鮮度は目安").laaTextStyle(.section)
+                    Text(verbatim: "旧Bridge・鮮度は目安").laaTextStyle(.section)
                         .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
-                } else if displayed.contains(where: { $0.verified == true }) {
-                    Text(verbatim: "画面確認・自動更新なし").laaTextStyle(.section)
-                        .foregroundStyle(LAAColor.secondaryText).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 if let checked = usage.checkedAt {
-                    Text("データ確認 \(checked, format: .dateTime.month().day().hour().minute())")
+                    Text("\(checked, format: .dateTime.hour().minute()) 時点")
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1).minimumScaleFactor(0.75)
                 } else {
@@ -191,7 +189,7 @@ struct LAAEmployeeWidgetView: View {
                 Text(verbatim: entry.usage?.hasOtherUsage == true ? "枠は未取得・他のUsageあり" : LAACopy.notFetched)
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 if let checked = entry.usage?.checkedAt {
-                    Text("データ確認 \(checked, format: .dateTime.month().day().hour().minute())")
+                    Text("\(checked, format: .dateTime.hour().minute()) 時点")
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                         .lineLimit(1).minimumScaleFactor(0.75)
                 }
@@ -218,7 +216,7 @@ struct LAAEmployeeWidgetView: View {
                 if let notice {
                     Spacer(minLength: 0)
                     Text(verbatim: notice.compactText).laaTextStyle(.section)
-                        .foregroundStyle(notice == .manual ? LAAColor.secondaryText : LAAColor.attention)
+                        .foregroundStyle(LAAColor.attention)
                         .lineLimit(1).layoutPriority(1)
                         .accessibilityLabel(notice.text)
                 }
@@ -232,15 +230,16 @@ struct LAAEmployeeWidgetView: View {
                             Text(verbatim: meter.label.components(separatedBy: " · ").first ?? meter.label)
                                 .lineLimit(1)
                             Spacer(minLength: 0)
-                            Text(verbatim: percentage).font(LAAType.employeeName).monospacedDigit()
+                            Text(verbatim: past ? "未取得" : percentage).font(LAAType.employeeName).monospacedDigit()
                         }
                         .laaTextStyle(.section)
                         .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
-                        ProgressView(value: meter.remainingPercent, total: 100)
-                            .tint(past ? LAAColor.attention : LAAColor.link)
+                        if !past {
+                            ProgressView(value: meter.remainingPercent, total: 100).tint(LAAColor.link)
+                        }
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("\(meter.label), 残り \(percentage)\(past ? ", 最終取得、要確認" : "")")
+                    .accessibilityLabel(past ? "\(meter.label), 取得できません" : "\(meter.label), 残り \(percentage)")
                 }
             } else {
                 let hasOtherUsage = entry.usage?.hasOtherUsage == true
@@ -254,7 +253,7 @@ struct LAAEmployeeWidgetView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(verbatim: parts.date)
                         .lineLimit(1).minimumScaleFactor(0.8)
-                    Text(verbatim: "確認 \(parts.time)")
+                    Text(verbatim: "\(parts.time) 時点")
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
@@ -270,13 +269,12 @@ struct LAAEmployeeWidgetView: View {
     }
 
     enum AccessibleNotice: Equatable {
-        case stale, uncertain, manual
+        case stale, uncertain
 
         var text: String {
             switch self {
             case .stale: return "古い・要確認"
             case .uncertain: return "要確認"
-            case .manual: return "手動確認"
             }
         }
 
@@ -284,7 +282,6 @@ struct LAAEmployeeWidgetView: View {
             switch self {
             case .stale: return "古い"
             case .uncertain: return "注意"
-            case .manual: return "手動"
             }
         }
     }
@@ -295,7 +292,6 @@ struct LAAEmployeeWidgetView: View {
         if meters.contains(where: { $0.legacyFreshness == true || ($0.freshUntil == nil && $0.verified != true) }) {
             return .uncertain
         }
-        if meters.contains(where: { $0.verified == true }) { return .manual }
         return nil
     }
 

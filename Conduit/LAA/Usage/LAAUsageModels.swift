@@ -56,6 +56,8 @@ struct LAAUsageItem: Decodable, Identifiable {
         let models: [RecordedUsage]?
         let expiresOnUtc: String?
         let renewsAt: String?
+        let sourceLag: String?
+        let periodTimezone: String?
     }
     let id: String
     let kind: String
@@ -93,14 +95,14 @@ struct LAAUsageItem: Decodable, Identifiable {
 enum LAAUsageFreshness {
     static func isStale(_ item: LAAUsageItem, at now: Date = Date(), retained: Bool = false, failed: Bool = false) -> Bool {
         if item.stale || retained || failed { return true }
-        guard let observed = LAAUsageItem.date(item.observedAt), observed <= now.addingTimeInterval(60) else { return true }
-        if item.detail?.sourceKind == "verified" { return false }
+        guard let observed = LAAUsageItem.date(item.observedAt), observed <= now else { return true }
+        if item.detail?.sourceKind == "verified" { return true }
         if let raw = item.detail?.freshUntil {
             guard let deadline = LAAUsageItem.date(raw) else { return true }
-            return deadline <= now
+            return min(deadline, observed.addingTimeInterval(10 * 60)) <= now
         }
         // Older Bridges do not supply freshUntil, but do send observedAt and stale.
-        return observed.addingTimeInterval(20 * 60) <= now
+        return observed.addingTimeInterval(10 * 60) <= now
     }
 
     static func windowExpired(_ window: LAAUsageItem.Window, at now: Date = Date()) -> Bool {
@@ -109,7 +111,7 @@ enum LAAUsageFreshness {
 
     static func outdated(_ text: String?, at now: Date = Date()) -> Bool {
         guard let date = LAAUsageItem.date(text) else { return true }
-        return date > now.addingTimeInterval(60) || now.timeIntervalSince(date) >= 20 * 60
+        return date > now || now.timeIntervalSince(date) >= 10 * 60
     }
 
     static func extraNeedsAttention(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {

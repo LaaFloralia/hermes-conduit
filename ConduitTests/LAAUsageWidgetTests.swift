@@ -26,8 +26,8 @@ final class LAAUsageWidgetTests: XCTestCase {
         XCTAssertEqual(result.meters.map(\.remainingPercent), [0, 10, 25])
         XCTAssertEqual(result.checkedAt, LAAUsageItem.date("2026-10-31T00:00:00Z"))
         XCTAssertTrue(result.meters[1].retained)
-        let fresh = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
-        let expired = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:21:00Z"))
+        let fresh = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:09:59Z"))
+        let expired = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
         XCTAssertFalse(result.meters[0].isPast(at: fresh))
         XCTAssertTrue(result.meters[0].isPast(at: expired))
         XCTAssertTrue(result.meters[1].isPast(at: fresh))
@@ -62,11 +62,11 @@ final class LAAUsageWidgetTests: XCTestCase {
         let observed = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:00:00Z"))
         let legacy = WidgetUsageMeter(id: "legacy", label: "Claude", remainingPercent: 0, observedAt: observed,
             freshUntil: nil, resetsAt: nil, stale: false, retained: false)
-        XCTAssertFalse(legacy.isPast(at: observed.addingTimeInterval(600)))
-        XCTAssertTrue(legacy.isPast(at: observed.addingTimeInterval(1200)))
+        XCTAssertFalse(legacy.isPast(at: observed.addingTimeInterval(599)))
+        XCTAssertTrue(legacy.isPast(at: observed.addingTimeInterval(600)))
         let verified = WidgetUsageMeter(id: "manual", label: "Claude", remainingPercent: 20, observedAt: observed,
             freshUntil: nil, resetsAt: nil, stale: false, retained: false, verified: true)
-        XCTAssertFalse(verified.isPast(at: observed.addingTimeInterval(86_400)))
+        XCTAssertTrue(verified.isPast(at: observed.addingTimeInterval(1)))
         XCTAssertTrue(verified.isPast(at: observed.addingTimeInterval(-120)))
         let old = Data("""
         {"id":"old","label":"Claude","remainingPercent":20,"observedAt":0,"freshUntil":null,"resetsAt":null,"stale":false,"retained":false}

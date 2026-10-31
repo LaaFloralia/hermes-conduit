@@ -170,10 +170,10 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     }
 
     func isPast(at date: Date) -> Bool {
-        guard !stale, !retained, let observedAt, observedAt <= date.addingTimeInterval(60) else { return true }
+        guard !stale, !retained, let observedAt, observedAt <= date else { return true }
         if resetsAt.map({ $0 <= date }) == true { return true }
-        if verified == true { return false }
-        return (freshUntil ?? observedAt.addingTimeInterval(20 * 60)) <= date
+        if verified == true { return true }
+        return min(freshUntil ?? observedAt.addingTimeInterval(10 * 60), observedAt.addingTimeInterval(10 * 60)) <= date
     }
 }
 
