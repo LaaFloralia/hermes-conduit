@@ -11,6 +11,7 @@ struct LAAChatsFixtureView: View {
     @State private var selection: Selection?
     @State private var showingGroupCreator = false
     @State private var createdGroup: String?
+    @Environment(\.laaSettingsAction) private var settings
 
     private var mode: String {
         let args = ProcessInfo.processInfo.arguments
@@ -66,7 +67,9 @@ struct LAAChatsFixtureView: View {
                         openSession: { selection = Selection(label: "session:\($0.id)") },
                         newChat: { selection = Selection(label: "new-chat") },
                         newGroup: { showingGroupCreator = true },
-                        openSettings: { selection = Selection(label: "settings") }, retry: {}, searchChanged: {})
+                        openSettings: {
+                            if let settings { settings() } else { selection = Selection(label: "settings") }
+                        }, retry: {}, searchChanged: {})
         .overlay(alignment: .bottom) {
             if let createdGroup {
                 Text(verbatim: "created:\(createdGroup)").accessibilityIdentifier("laa.chats.fixture.created")

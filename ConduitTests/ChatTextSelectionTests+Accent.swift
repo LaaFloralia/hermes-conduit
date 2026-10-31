@@ -13,18 +13,25 @@ extension ChatTextSelectionTests {
                     traits.conduitAccent = .preset(choice)
                     traits.userInterfaceStyle = dark ? .dark : .light
                 })
+                #if LAA_BUILD
+                let expected = UIColor(LAAColor.link).resolvedColor(with: traits)
+                #else
+                let expected = choice.color(dark: dark)
+                #endif
                 XCTAssertTrue(
-                    Self.isClose(UIColor.conduitAccent.resolvedColor(with: traits), choice.color(dark: dark)),
+                    Self.isClose(UIColor.conduitAccent.resolvedColor(with: traits), expected),
                     "\(choice) dark=\(dark)"
                 )
             }
         }
+        #if !LAA_BUILD
         // No choice made: the original amber.
         let unset = UITraitCollection(userInterfaceStyle: .dark)
         XCTAssertTrue(Self.isClose(
             UIColor.conduitAccent.resolvedColor(with: unset),
             UIColor(red: 0.88, green: 0.67, blue: 0.28, alpha: 1)
         ))
+        #endif
     }
 
     @MainActor
@@ -64,7 +71,14 @@ extension ChatTextSelectionTests {
         let window = Self.window(hosting: host)
         defer { Self.close(window) }
 
-        XCTAssertTrue(Self.isClose(try Self.centerColor(of: host.view), ConduitAccentChoice.amber.color(dark: true), tolerance: 0.05))
+        #if LAA_BUILD
+        let initial = UIColor(LAAColor.link).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        let changed = initial
+        #else
+        let initial = ConduitAccentChoice.amber.color(dark: true)
+        let changed = ConduitAccentChoice.blue.color(dark: true)
+        #endif
+        XCTAssertTrue(Self.isClose(try Self.centerColor(of: host.view), initial, tolerance: 0.05))
         let swatch = try XCTUnwrap(Self.subviews(of: AccentProbeUIView.self, in: host.view).first)
         XCTAssertEqual(swatch.traitCollection.conduitAccent, .preset(.amber))
 
@@ -72,7 +86,7 @@ extension ChatTextSelectionTests {
         Self.settle(host)
 
         XCTAssertTrue(
-            Self.isClose(try Self.centerColor(of: host.view), ConduitAccentChoice.blue.color(dark: true), tolerance: 0.05),
+            Self.isClose(try Self.centerColor(of: host.view), changed, tolerance: 0.05),
             "SwiftUI fills redraw in the new accent"
         )
         XCTAssertEqual(swatch.traitCollection.conduitAccent, .preset(.blue), "UIKit views see the new accent too")
@@ -88,17 +102,27 @@ extension ChatTextSelectionTests {
 
         let textView = try XCTUnwrap(Self.subviews(of: UITextView.self, in: host.view).first)
         XCTAssertEqual(textView.traitCollection.conduitAccent, .preset(.pink))
+        #if LAA_BUILD
+        let pinkTint = UIColor.conduitSelectionOnAccent.resolvedColor(with: textView.traitCollection)
+        #else
+        let pinkTint = ConduitAccent.preset(.pink).selectionColorOnBubble
+        #endif
         XCTAssertTrue(Self.isClose(
             textView.tintColor.resolvedColor(with: textView.traitCollection),
-            ConduitAccent.preset(.pink).selectionColorOnBubble
+            pinkTint
         ))
 
         model.choice = .purple
         Self.settle(host)
         XCTAssertEqual(textView.traitCollection.conduitAccent, .preset(.purple))
+        #if LAA_BUILD
+        let purpleTint = UIColor.conduitSelectionOnAccent.resolvedColor(with: textView.traitCollection)
+        #else
+        let purpleTint = ConduitAccent.preset(.purple).selectionColorOnBubble
+        #endif
         XCTAssertTrue(Self.isClose(
             textView.tintColor.resolvedColor(with: textView.traitCollection),
-            ConduitAccent.preset(.purple).selectionColorOnBubble
+            purpleTint
         ))
     }
 
@@ -151,9 +175,14 @@ extension ChatTextSelectionTests {
 
         XCTAssertEqual(window.traitCollection.conduitAccent, .preset(.blue))
         XCTAssertEqual(sheet.traitCollection.conduitAccent, .preset(.blue), "the sheet sees the pick")
+        #if LAA_BUILD
+        let sheetAccent = UIColor(LAAColor.link).resolvedColor(with: sheet.traitCollection)
+        #else
+        let sheetAccent = ConduitAccentChoice.blue.color(dark: true)
+        #endif
         XCTAssertTrue(Self.isClose(
             UIColor.conduitAccent.resolvedColor(with: sheet.traitCollection),
-            ConduitAccentChoice.blue.color(dark: true)
+            sheetAccent
         ), "and draws its accent in it")
 
         model.choice = .green

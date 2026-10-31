@@ -27,7 +27,7 @@ extension ConnectionFailureTests {
         XCTAssertEqual(
             timeline.report,
             """
-            Conduit connection timeline: cold launch, password sign-in
+            \(LAAProductBrand.appName) connection timeline: cold launch, password sign-in
             +0.10 s   Connecting
             +0.60 s   Socket open (0.50 s)
             """
