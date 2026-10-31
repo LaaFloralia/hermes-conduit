@@ -1,6 +1,6 @@
 # LAA iPhoneアプリ：構成と実装順
 
-2026-10-29。対象はLaaFloralia/hermes-conduitのLAA版。これは実装計画であり、接続・実機稼働を示さない。各タスクは最大2作業日、日付や期限の約束ではない。iOS実装・独立レビューは [PROJECT-RULES](../../PROJECT-RULES.md) を優先し、その他の実装は公式DSH、デザインはdesign-worker、判断・統合・検証は親。D1・Jevの判断、指定モデル・認証・停止状態を維持する。
+2026-10-29。対象はLaaFloralia/hermes-conduitのLAA版。これは実装計画であり、接続・実機稼働を示さない。各タスクは最大2作業日、日付や期限の約束ではない。iOS実装・独立レビューは表の担当欄より [PROJECT-RULES](../../PROJECT-RULES.md) を優先し、その他の実装は公式DSH、デザインはdesign-worker、判断・統合・検証は親。D1・Jevの判断、指定モデル・認証・停止状態を維持する。
 
 現在の進捗・次の作業・判断待ちは [SESSION-HANDOFF](SESSION-HANDOFF.md) とLinear「LAAアプリ」に置き、この計画には書かない。
 

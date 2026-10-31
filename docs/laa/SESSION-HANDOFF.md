@@ -2,7 +2,7 @@
 
 最初に読む入口。社長の呼び名は「AIアプリ」「LAAアプリ」。ここには現行の進め方と状態だけを置き、経緯はgit logとLinearに任せる。古くなった記述は書き足さずに置き換える。
 
-最終更新: 2026-10-31（master `21cec9ed`）
+最終更新: 2026-10-31（アプリのコードはmaster `21cec9ed` 時点。以降の更新は文書だけ）
 
 ## 位置づけ
 
@@ -41,7 +41,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 
 ## 指摘の回し方
 
-1. 社長の指摘は1件1課題でLinear「LAAアプリ」に登録する。担当なし・Todo、題名に番号を付けず、画面（会話・仕事・Brain・素材・Usage・通話・ウィジェット・設定）が分かる短い文にする。社長の判断や本人操作が要るものだけLAA担当にする。
+1. 社長の指摘は1件1課題でLinear「LAAアプリ」に登録する。担当なし・Todo、題名に番号を付けず、画面（会話・仕事・Brain・素材・Usage・通話・ウィジェット・設定）が分かる短い文にする。指摘はエージェントが直す作業なので、共通指示の「社長の新規タスク」とは扱いを分ける。社長の判断や本人操作が要るものだけLAA担当にする。登録は接続済みのLinear MCP（`save_issue`、team `LAA`、project `LAAアプリ`）で行う。
 2. 親は同じ画面の指摘を束ね、所有ファイルが重ならない単位でTerraへ並行に渡す。指示は下の「worker共通指示」に、課題ID・対象・所有ファイル・完了条件を足す。
 3. 候補は1件ずつ下のゲートを通してmasterへ入れる。まとまったら親がTestFlightへ出し、社長が実機で確かめてから課題を閉じる。
 
@@ -69,7 +69,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 - 再生画面の再生ボタンとシークバーは素の部品のままで、デザインの手直しが要る。
 - Bridgeで有効な端末は社長のiPhone 1台だけ。試験用の端末はすべて失効済み。
 
-## 判断待ち（Linear「LAAアプリ」）
+## 判断待ちと未解決（Linear「LAAアプリ」）
 
 | 課題 | 内容 |
 |---|---|
@@ -79,6 +79,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 | BUS-321 | Brainの既存ノートを編集する方式 |
 | BUS-322 | MacBook・Mac miniでiPhone版を使うか |
 | BUS-317 | CallKit発信の実機確認（登録・署名・配信は済み） |
+| BUS-323 | GitHub CIがmasterへのpushで動かない原因の調査（エージェントが進める。それまでは代替ゲート） |
 
 ## 環境の注意
 
