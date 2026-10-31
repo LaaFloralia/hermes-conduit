@@ -234,5 +234,37 @@ final class LAABrainUITests: XCTestCase {
         switcher.tap()
         XCTAssertTrue(app.buttons["laa.brain.quickSwitch.note"].firstMatch.waitForExistence(timeout: 10))
     }
+
+    func testLocalExchangeRetainsAndRestoresInterveningVersion() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+                                "-laa-brain-save-fixture", "-laa-brain-save-race-fixture"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
+        app.staticTexts["Start"].tap()
+        let edit = app.buttons["laa.brain.edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 10))
+        edit.tap()
+        let editor = app.textViews["laa.brain.edit.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.tap()
+        editor.typeText("\nMY-FIXTURE-DRAFT")
+        app.buttons["laa.brain.edit.save"].tap()
+        XCTAssertTrue(app.otherElements["laa.brain.conflict"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["INTERVENING-FIXTURE"].exists)
+        app.buttons["laa.brain.history"].tap()
+        let displaced = app.buttons["laa.brain.history.version.displaced"].firstMatch
+        XCTAssertTrue(displaced.waitForExistence(timeout: 10))
+        displaced.tap()
+        XCTAssertTrue(app.staticTexts["INTERVENING-FIXTURE"].waitForExistence(timeout: 5))
+        app.buttons["laa.brain.history.use"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertEqual(editor.value as? String, "INTERVENING-FIXTURE")
+        app.buttons["laa.brain.edit.save"].tap()
+        let raw = app.buttons["laa.brain.rawToggle"]
+        XCTAssertTrue(raw.waitForExistence(timeout: 15))
+        raw.tap()
+        XCTAssertEqual(app.staticTexts["laa.brain.raw"].label, "INTERVENING-FIXTURE")
+    }
 }
 #endif

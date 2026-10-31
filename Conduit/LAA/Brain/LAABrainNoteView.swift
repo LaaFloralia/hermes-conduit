@@ -19,6 +19,7 @@ struct LAABrainNoteView: View {
     @State private var loading = true
     @State private var raw = false
     @State private var showQuickSwitch = false
+    @State private var editorRoot: URL?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -73,6 +74,13 @@ struct LAABrainNoteView: View {
                         .accessibilityLabel(Text(verbatim: "Switch note"))
                         .accessibilityIdentifier("laa.brain.quickSwitch")
                 }
+                if isLocal && LAABrainEditingGate.enabled && note != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { editorRoot = try? local.snapshot() } label: { Image(systemName: "square.and.pencil") }
+                            .accessibilityLabel(Text(verbatim: "Edit note"))
+                            .accessibilityIdentifier("laa.brain.edit")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: togglePin) { Image(systemName: isPinned ? "pin.fill" : "pin") }
                         .accessibilityLabel(Text(verbatim: isPinned ? LAACopy.Brain.unpin : LAACopy.Brain.pin))
@@ -116,6 +124,11 @@ struct LAABrainNoteView: View {
                 LAABrainQuickSwitch(files: files) { file in
                     showQuickSwitch = false
                     path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox)))
+                }
+            }
+            .sheet(isPresented: Binding(get: { editorRoot != nil }, set: { if !$0 { editorRoot = nil } })) {
+                if let editorRoot {
+                    LAABrainSaveEditor(root: editorRoot, path: reference.path) { Task { await load() } }
                 }
             }
             .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : 0, isLocal: isLocal)) { await load() }
