@@ -8,7 +8,7 @@
 
 - LAAアプリ（LaaFloralia/hermes-conduit のmaster。Conduitのフォーク）は社長の主窓口。裏側はMac miniのHermes（会話・通話・通知）とLAA Bridge（`bridge/`。仕事・Brain・素材・Usage）。
 - Paseo・Obsidian（Brainの表示）・Google Drive・Linear・Grok Botの操作を、順にこのアプリへ集約する。置き換えは道具ごとに [ROADMAP](ROADMAP.md) の移行ゲートを満たしてから行い、満たすまで旧い道具を残す。
-- iPhone版（社長の端末はiPhone 16 Pro Max）を先に仕上げ、Mac版はその後に作る。
+- iPhone版（社長の端末はiPhone 16 Pro Max）とMac版（MacBook・Mac mini。Mac Catalyst、Developer ID署名・公証のDMG）を同じmasterから作る。資料作成はLAAアプリから依頼し、実行はLAA Studio（Mac専用の別アプリ）が担う。
 
 ## 始め方
 
@@ -20,10 +20,12 @@
 
 | 役 | モデル・経路 | 担当 |
 |---|---|---|
-| 親 | 社長が選んだモデル（現在 Opus 5.5） | 指摘の登録、分担、統合、検証、TestFlight（秘密を扱うため親だけ） |
-| iOS実装 | GPT-6.1 Terra max（Paseo codex） | アプリとBridgeの実装・試験 |
-| 独立レビュー・その他 | DeepSeek V4.1 Flash max（Paseo dsh） | レビュー、調査、文書 |
+| 親 | 社長が選んだモデル（現在 Opus 5.5） | 指摘の登録、分担、統合、検証、TestFlightとMac版の署名・公証（秘密を扱うため親だけ） |
+| PC操作を伴う実装・試験 | GPT-6.1 Terra max（Paseo codex） | シミュレーター・画面撮影・Macでの起動確認を伴うアプリの実装と試験 |
+| それ以外の実装・レビュー | DeepSeek V4.1 Flash max（Paseo dsh） | Bridge・スクリプト等のコード（CLIのビルドと単体テストまで）、独立レビュー、調査、文書 |
 | デザイン | design-worker | Studioでの視覚案（必要な時だけ） |
+
+独立レビューは実装者と別系統にする（Terraの実装はDSH、DSHの実装はTerraが見る。2026-10-31 社長指示）。
 
 Claudeのサブエージェントは使わない（design-workerだけ例外）。起動例:
 
@@ -47,9 +49,9 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 
 ## シミュレーターとMacの負荷
 
-- シミュレーターは同時に1台だけ起動する。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で空きを待ってから渡す。
+- このプロジェクトの端末は同時に1台だけ起動する。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で下の2台の停止を待ってから渡す。
 - 検証用の端末は2台。`LAA 16 Pro Max`（iOS 27.0、`DFFD3966-F54E-4C7A-A161-59201C7EA105`、社長の端末と同じ画面）と `iPhone Duo`（iOS 27.1、`228F6BE7-98B2-4AF6-861F-F76BC8CA0DE7`）。作業用に端末を増やしたら、終了時に削除する。
-- xcodebuildは同時3本・各 `-jobs 4` まで、空き容量は80 GiB以上を保つ。作業後はDerivedData・xcresult・一時端末を消す。
+- xcodebuildは同時3本・各 `-jobs 4` まで。空き容量はビルド中だけ75 GiBまで下がってよく、75.0 GiBを切ったら止める。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。
 
 ## マージとTestFlight
 
@@ -58,13 +60,15 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
   2. `python3 scripts/plan-tests.py smoke --repo-root . --suite scripts/smoke-suite.json --changed-from <mergeしたmasterのSHA> --out <file>` で選ばれたunit・UIクラスを、既定のConduit scheme（`project.yml`。LAA版ではない）で流す。端末は言語と地域を英語（米国）に設定して読み戻したものを使う（`-AppleLanguages` だけでは効かなかった）。同じクラスをmasterでも流し、候補だけの失敗が0であること。
   3. `xcodegen generate --spec project-personal.yml` の後、`xcodebuild build -quiet -project Conduit.xcodeproj -scheme Conduit -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO` が成功すること。生成したprojectはcommitしない。
   4. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
-- 既知の基準（master `21cec9ed`）: `LAA 16 Pro Max` では既知の失敗なし。`iPhone Duo` では `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件が既知の失敗。
+- 既知の失敗: `LAA 16 Pro Max`（master `d4bab91a`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests.testTappingTheCardBodyInvokesSelection` 1件（タップ位置が画面外）。`iPhone Duo`（master `21cec9ed`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件。
+- Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。
+- Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
 - TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みはビルド6（2610300121、LAA Internal）。ビルド7はXcode 27.2（27B52）をApp Store Connectが拒否して止まっている（BUS-320）。
 
 ## 現在の状態（2026-10-31）
 
 - 完了: ROADMAP 01–14・24・25・28、デザインv2、W3の仕上げ（プラグイン更新表示の撤去、社員呼出しボタンの表示条件）。
-- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証。
+- 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（branch `laa/mac-catalyst` で実装中）、34 Studio依頼（アプリとBridgeは模擬のStudioで先に作り、LAA Studioのローカル受付APIができたら接続）。
 - Driveの閲覧・再生は実装済み。認可がないため、Bridgeは `503 drive_not_configured` を返す（BUS-318）。
 - 再生画面の再生ボタンとシークバーは素の部品のままで、デザインの手直しが要る。
 - Bridgeで有効な端末は社長のiPhone 1台だけ。試験用の端末はすべて失効済み。
@@ -77,7 +81,7 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 | BUS-319 | HermesのChatGPT再ログイン（GPT-Liveの通話） |
 | BUS-320 | TestFlight用のXcode（27.1を併設するか27.2正式版を待つか）と自動更新 |
 | BUS-321 | Brainの既存ノートを編集する方式 |
-| BUS-322 | MacBook・Mac miniでiPhone版を使うか |
+| BUS-322 | Mac版をMacBook・Mac miniで使えるようにする（実装中。最後に社長がMacBookへ導入してペアリング） |
 | BUS-317 | CallKit発信の実機確認（登録・署名・配信は済み） |
 | BUS-323 | GitHub CIがmasterへのpushで動かない原因の調査（エージェントが進める。それまでは代替ゲート） |
 

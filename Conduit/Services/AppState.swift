@@ -942,6 +942,9 @@ final class AppState: ObservableObject {
     /// A pin change that stayed on this phone because Hermes didn't take
     /// it, shown for a moment with Hermes' reason (#555).
     @Published private(set) var pinSyncNotice: PinSyncNotice?
+    #if LAA_BUILD
+    @Published var laaWidgetUsagePending = false
+    #endif
     /// The refusal `showCallRefusal` left on the drawer shell's error line (V2 off).
     private var callRefusalOnErrorLine: String?
     /// What the user has and hasn't seen, per conversation (#454).

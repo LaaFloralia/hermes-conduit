@@ -147,12 +147,57 @@ struct WidgetWorkspaceSnapshot: Codable, Hashable {
     }
 }
 
+#if LAA_BUILD
+struct WidgetUsageMeter: Codable, Equatable, Identifiable {
+    let id: String
+    let label: String
+    let remainingPercent: Double
+    let observedAt: Date?
+    let freshUntil: Date?
+    let resetsAt: Date?
+    let stale: Bool
+    let retained: Bool
+    // Optional so snapshots written by the previous app remain readable.
+    let verified: Bool?
+    let legacyFreshness: Bool?
+
+    init(id: String, label: String, remainingPercent: Double, observedAt: Date?, freshUntil: Date?,
+         resetsAt: Date?, stale: Bool, retained: Bool, verified: Bool = false, legacyFreshness: Bool = false) {
+        self.id = id; self.label = label; self.remainingPercent = remainingPercent
+        self.observedAt = observedAt; self.freshUntil = freshUntil; self.resetsAt = resetsAt
+        self.stale = stale; self.retained = retained; self.verified = verified
+        self.legacyFreshness = legacyFreshness
+    }
+
+    func isPast(at date: Date) -> Bool {
+        guard !stale, !retained, let observedAt, observedAt <= date.addingTimeInterval(60) else { return true }
+        if resetsAt.map({ $0 <= date }) == true { return true }
+        if verified == true { return false }
+        return (freshUntil ?? observedAt.addingTimeInterval(20 * 60)) <= date
+    }
+}
+
+struct WidgetUsageSnapshot: Codable, Equatable {
+    let meters: [WidgetUsageMeter]
+    let checkedAt: Date?
+    // A balance or recorded usage exists even when no quota can be shown.
+    let hasOtherUsage: Bool?
+
+    init(meters: [WidgetUsageMeter], checkedAt: Date?, hasOtherUsage: Bool = false) {
+        self.meters = meters; self.checkedAt = checkedAt; self.hasOtherUsage = hasOtherUsage
+    }
+}
+#endif
+
 struct WidgetSnapshot: Codable, Equatable {
     static let currentSchemaVersion = 1
     let schemaVersion: Int
     let appLanguage: String
     let currentWorkspaceID: WidgetWorkspaceID?
     let workspaces: [WidgetWorkspaceSnapshot]
+    #if LAA_BUILD
+    private(set) var usage: WidgetUsageSnapshot? = nil
+    #endif
 
     init(appLanguage: String, currentWorkspaceID: WidgetWorkspaceID?, workspaces: [WidgetWorkspaceSnapshot]) {
         schemaVersion = Self.currentSchemaVersion
@@ -167,7 +212,11 @@ struct WidgetSnapshot: Codable, Equatable {
         }.prefix(100))
     }
 
-    private enum CodingKeys: String, CodingKey { case schemaVersion, appLanguage, currentWorkspaceID, workspaces }
+    private enum CodingKeys: String, CodingKey { case schemaVersion, appLanguage, currentWorkspaceID, workspaces
+        #if LAA_BUILD
+        case usage
+        #endif
+    }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decode(Int.self, forKey: .schemaVersion)
@@ -177,6 +226,20 @@ struct WidgetSnapshot: Codable, Equatable {
         let language = try values.decode(String.self, forKey: .appLanguage)
         let current = try values.decodeIfPresent(WidgetWorkspaceID.self, forKey: .currentWorkspaceID)
         let records = try values.decode([WidgetWorkspaceSnapshot].self, forKey: .workspaces)
+        #if LAA_BUILD
+        let usage = try values.decodeIfPresent(WidgetUsageSnapshot.self, forKey: .usage)
+        #endif
         self.init(appLanguage: language, currentWorkspaceID: current, workspaces: records)
+        #if LAA_BUILD
+        self.usage = usage
+        #endif
     }
+
+    #if LAA_BUILD
+    func withUsage(_ usage: WidgetUsageSnapshot?) -> WidgetSnapshot {
+        var copy = self
+        copy.usage = usage
+        return copy
+    }
+    #endif
 }
