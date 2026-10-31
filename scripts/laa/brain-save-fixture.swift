@@ -57,9 +57,13 @@ import Darwin
         guard case .saved(.exchange) = try coordinator.save(root: root, snapshot: normal, draft: Data("DRAFT".utf8)) else { throw FixtureFailure() }
         let normalText = try read("normal.md")
         let normalHistory = try journal.versions(vault: normal.vault, path: normal.path)
+        let normalSummaries = try journal.summaries(vault: normal.vault, path: normal.path)
         try check(normalText == "DRAFT", "exchange did not save draft")
         try check(Set(normalHistory.map(\.kind.rawValue)) == Set(["original", "draft", "displaced"]), "exchange history incomplete")
         try check(normalHistory.filter { $0.kind != .draft }.allSatisfy { $0.bytes == Data("BASE".utf8) }, "base history incorrect")
+        guard let normalDraft = normalSummaries.first(where: { $0.kind == .draft }) else { throw FixtureFailure() }
+        let loadedDraft = try journal.version(normalDraft)
+        try check(loadedDraft.bytes == Data("DRAFT".utf8), "history did not load selected bytes")
 
         try put("conflict.md", "BASE")
         let conflict = try coordinator.begin(root: root, path: "conflict.md")
@@ -101,10 +105,43 @@ import Darwin
         let stage = try journal.stageURL(outstanding[0])
         let stageData = try Data(contentsOf: stage)
         try check(stageData == Data("BETWEEN".utf8), "interrupted displaced stage missing")
+        do { try coordinator.acknowledgeMissingStage(outstanding[0]); throw FixtureFailure() }
+        catch is LAABrainSaveJournal.JournalError {}
+        let stageAfterRefusal = try Data(contentsOf: stage)
+        try check(stageAfterRefusal == stageData, "existing interrupted stage was removed without being recorded")
         let preserved = try coordinator.preservePending(outstanding[0])
-        try check(preserved?.bytes == Data("BETWEEN".utf8), "interrupted version not preserved")
+        try check(preserved.bytes == Data("BETWEEN".utf8), "interrupted version not preserved")
         let remaining = try journal.pending(vault: interruptedSnapshot.vault, path: interruptedSnapshot.path)
         try check(remaining.isEmpty && !manager.fileExists(atPath: stage.path), "preserved stage not cleaned")
+
+        try put("non-utf8-race.md", "BASE")
+        var binaryRace = LAABrainSaveCoordinator(journal: journal)
+        let binarySnapshot = try binaryRace.begin(root: root, path: "non-utf8-race.md")
+        let nonUTF8 = Data([0xff, 0xfe, 0x80])
+        binaryRace.fixtureAfterComparison = { try nonUTF8.write(to: root.appendingPathComponent("non-utf8-race.md")) }
+        guard case let .intervening(bytes, _) = try binaryRace.save(root: root, snapshot: binarySnapshot, draft: Data("DRAFT".utf8)) else { throw FixtureFailure() }
+        let binaryHistory = try journal.versions(vault: binarySnapshot.vault, path: binarySnapshot.path)
+        try check(bytes == nonUTF8 && binaryHistory.contains { $0.kind == .displaced && $0.bytes == nonUTF8 }, "non-UTF-8 intervening bytes lost")
+
+        try put("corrupt.md", "BASE")
+        let corrupt = try coordinator.begin(root: root, path: "corrupt.md")
+        let corruptVersion = try journal.record(vault: corrupt.vault, path: corrupt.path, kind: .draft, bytes: Data("SAVED".utf8))
+        guard let enumerator = manager.enumerator(at: privateDir.appendingPathComponent("versions"), includingPropertiesForKeys: nil),
+              let corruptFile = enumerator.allObjects.compactMap({ $0 as? URL }).first(where: { $0.lastPathComponent == corruptVersion.id.uuidString + ".json" }) else { throw FixtureFailure() }
+        var json = try JSONSerialization.jsonObject(with: Data(contentsOf: corruptFile)) as! [String: Any]
+        json["bytes"] = Data("TAMPERED".utf8).base64EncodedString()
+        try JSONSerialization.data(withJSONObject: json).write(to: corruptFile)
+        do { _ = try coordinator.save(root: root, snapshot: corrupt, draft: Data("MINE".utf8)); throw FixtureFailure() }
+        catch is LAABrainSaveJournal.JournalError {}
+        do { _ = try coordinator.begin(root: root, path: "corrupt.md"); throw FixtureFailure() }
+        catch is LAABrainSaveJournal.JournalError {}
+        let corruptSummaries = try journal.summaries(vault: corrupt.vault, path: corrupt.path)
+        guard let corruptSummary = corruptSummaries.first(where: { $0.id == corruptVersion.id }) else { throw FixtureFailure() }
+        do { _ = try journal.version(corruptSummary); throw FixtureFailure() }
+        catch is LAABrainSaveJournal.JournalError {}
+        let corruptText = try read("corrupt.md")
+        let unaffected = try journal.versions(vault: normal.vault, path: normal.path)
+        try check(corruptText == "BASE" && !unaffected.isEmpty, "corrupt journal changed note or blocked another note")
 
         // A private-storage write failure must happen before touching the note.
         try put("storage-failure.md", "BASE")
@@ -123,7 +160,11 @@ import Darwin
         let failedVersions = try journal.versions(vault: failedSnapshot.vault, path: failedSnapshot.path)
         try check(failedText == "BASE" && failedPending.count == 1, "storage failure modified the note or lost the manifest")
         try check(failedVersions.contains { $0.kind == .draft && $0.bytes == Data("DRAFT".utf8) }, "draft lost on storage failure")
-        _ = try coordinator.preservePending(failedPending[0])
+        do { _ = try coordinator.preservePending(failedPending[0]); throw FixtureFailure() }
+        catch LAABrainSaveCoordinator.SaveError.missingStage {}
+        let notCleared = try journal.pending(vault: failedSnapshot.vault, path: failedSnapshot.path)
+        try check(notCleared.count == 1, "missing stage silently cleared")
+        try coordinator.acknowledgeMissingStage(failedPending[0])
 
         let outside = work.appendingPathComponent("outside.md")
         try Data("OUTSIDE".utf8).write(to: outside)
@@ -141,8 +182,8 @@ import Darwin
         let outsideText = try String(contentsOf: outside, encoding: .utf8)
         try check(stillPending.count == 1 && outsideText == "OUTSIDE", "unsafe stage was followed or manifest removed")
         try manager.removeItem(at: suspiciousStage)
-        _ = try coordinator.preservePending(suspicious)
-        print("PASS: real Swift journal and save coordinator: exchange, conflict, fallback, interruption and storage failure recovery, path checks")
+        try coordinator.acknowledgeMissingStage(suspicious)
+        print("PASS: Swift exchange, conflict, fallback, interruption, storage and corruption failures, binary recovery, path checks")
     }
 }
 #endif

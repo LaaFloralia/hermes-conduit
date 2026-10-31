@@ -18,7 +18,7 @@ struct LAABrainSaveCoordinator {
         case intervening(displaced: Data, draft: Data)
     }
     enum SaveError: Error {
-        case invalidPath, notRegularFile, tooLarge, invalidText, pendingRecovery, unsafeStage, storage, coordination
+        case invalidPath, notRegularFile, tooLarge, invalidText, pendingRecovery, unsafeStage, missingStage, storage, coordination
         case exchange(Int32)
     }
 
@@ -38,6 +38,7 @@ struct LAABrainSaveCoordinator {
         let file = try Self.noteURL(root: root, path: path)
         let vault = LAABrainSaveJournal.vaultID(root)
         guard try journal.pending(vault: vault, path: path).isEmpty else { throw SaveError.pendingRecovery }
+        try journal.validate(vault: vault, path: path)
         var result: Result<Data, Error> = .failure(SaveError.coordination)
         var coordinationError: NSError?
         NSFileCoordinator().coordinate(readingItemAt: file, options: [], error: &coordinationError) { coordinated in
@@ -61,6 +62,7 @@ struct LAABrainSaveCoordinator {
         let file = try Self.noteURL(root: root, path: snapshot.path)
         guard try journal.pending(vault: snapshot.vault, path: snapshot.path).isEmpty else { throw SaveError.pendingRecovery }
         try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .draft, bytes: draft)
+        try journal.validate(vault: snapshot.vault, path: snapshot.path)
         let transaction = try journal.makePending(vault: snapshot.vault, path: snapshot.path, base: snapshot.base, draft: draft)
         let stage = try journal.stageURL(transaction)
         var result: Result<Outcome, Error> = .failure(SaveError.coordination)
@@ -125,15 +127,19 @@ struct LAABrainSaveCoordinator {
     /// Preserve an interrupted transaction's stage before dismissing it. Its
     /// contents can be either a draft or a displaced file; never guess which.
     @discardableResult
-    func preservePending(_ pending: LAABrainSaveJournal.Pending) throws -> LAABrainSaveJournal.Version? {
+    func preservePending(_ pending: LAABrainSaveJournal.Pending) throws -> LAABrainSaveJournal.Version {
         let stage = try journal.stageURL(pending)
-        var version: LAABrainSaveJournal.Version?
-        if try journal.stageExists(pending) {
-            version = try journal.record(vault: pending.vault, path: pending.path, kind: .interrupted,
+        guard try journal.stageExists(pending) else { throw SaveError.missingStage }
+        let version = try journal.record(vault: pending.vault, path: pending.path, kind: .interrupted,
                                          bytes: Data(contentsOf: stage))
-        }
         try journal.finish(pending)
         return version
+    }
+
+    /// The recovery UI requires an explicit acknowledgement before clearing a
+    /// manifest whose stage is missing. It might have contained another version.
+    func acknowledgeMissingStage(_ pending: LAABrainSaveJournal.Pending) throws {
+        try journal.finishMissingStage(pending)
     }
 
     private static let excluded: Set<String> = [".obsidian", ".git", ".trash", ".stfolder", ".stversions"]

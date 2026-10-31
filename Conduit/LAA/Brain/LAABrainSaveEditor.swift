@@ -30,13 +30,18 @@ struct LAABrainSaveEditor: View {
     @State private var draft = ""
     @State private var conflict: BrainSaveConflict?
     @State private var pending: [LAABrainSaveJournal.Pending] = []
-    @State private var versions: [LAABrainSaveJournal.Version] = []
+    @State private var versions: [LAABrainSaveJournal.VersionSummary] = []
     @State private var busy = true
+    @State private var recoveryUnavailable = false
     @State private var message: String?
     @State private var showHistory = false
     @State private var showFallbackWarning = false
+    @State private var missingStageID: UUID?
+    @State private var pendingToClear: LAABrainSaveJournal.Pending?
+    @State private var showMissingStageAlert = false
     #if DEBUG
     @State private var injectFixtureRace = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-race-fixture")
+    @State private var injectFixtureMissingStage = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-missing-stage-fixture")
     #endif
 
     var body: some View {
@@ -78,7 +83,7 @@ struct LAABrainSaveEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await save() } }
-                        .disabled(busy || snapshot == nil || conflict != nil || !pending.isEmpty)
+                        .disabled(busy || recoveryUnavailable || snapshot == nil || conflict != nil || !pending.isEmpty)
                         .accessibilityIdentifier("laa.brain.edit.save")
                 }
             }
@@ -86,7 +91,8 @@ struct LAABrainSaveEditor: View {
         .interactiveDismissDisabled()
         .task { await open() }
         .sheet(isPresented: $showHistory) {
-            BrainHistoryView(versions: versions, canUse: snapshot != nil && pending.isEmpty) { version in
+            BrainHistoryView(versions: versions, journal: coordinator.journal,
+                             canUse: snapshot != nil && pending.isEmpty && !recoveryUnavailable) { version in
                 showHistory = false
                 if let text = String(data: version.bytes, encoding: .utf8) {
                     Task { await resolve(using: text) }
@@ -97,6 +103,14 @@ struct LAABrainSaveEditor: View {
             Button("OK") { didSave(); dismiss() }
         } message: {
             Text("This location cannot exchange files atomically. A change made immediately after the final check may not be retained.")
+        }
+        .alert("Clear missing stage?", isPresented: $showMissingStageAlert) {
+            Button("Clear pending", role: .destructive) {
+                if let item = pendingToClear { Task { await clearMissing(item) } }
+            }
+            Button("Cancel", role: .cancel) { pendingToClear = nil }
+        } message: {
+            Text("The staged file is missing. A version may be unavailable; review History before clearing this record.")
         }
     }
 
@@ -110,6 +124,11 @@ struct LAABrainSaveEditor: View {
                     }
                     .disabled(busy)
                     .accessibilityIdentifier("laa.brain.recovery.preserve")
+                    if missingStageID == item.id {
+                        Text("The staged file is missing. Its contents may not be recoverable.")
+                            .foregroundStyle(LAAColor.attention)
+                        Button("Clear missing stage") { pendingToClear = item; showMissingStageAlert = true }.disabled(busy)
+                    }
                 }
             }
             Section { Button("Review saved versions") { showHistory = true } }
@@ -150,10 +169,13 @@ struct LAABrainSaveEditor: View {
 
     @MainActor private func open() async {
         busy = true; message = nil
+        recoveryUnavailable = true
         do {
             let vault = LAABrainSaveJournal.vaultID(root)
-            let stored = try coordinator.journal.versions(vault: vault, path: path)
-            let unfinished = try coordinator.journal.pending(vault: vault, path: path)
+            let (stored, unfinished) = try await Task.detached(priority: .userInitiated) {
+                (try coordinator.journal.summaries(vault: vault, path: path),
+                 try coordinator.journal.pending(vault: vault, path: path))
+            }.value
             versions = stored; pending = unfinished
             if unfinished.isEmpty {
                 let entry = try await Task.detached(priority: .userInitiated) {
@@ -161,8 +183,11 @@ struct LAABrainSaveEditor: View {
                 }.value
                 snapshot = entry
                 draft = String(decoding: entry.base, as: UTF8.self)
-                versions = try coordinator.journal.versions(vault: vault, path: path)
+                versions = try await Task.detached(priority: .userInitiated) {
+                    try coordinator.journal.summaries(vault: vault, path: path)
+                }.value
             }
+            recoveryUnavailable = false
         } catch { message = "The note or its recovery history is unavailable." }
         busy = false
     }
@@ -174,6 +199,8 @@ struct LAABrainSaveEditor: View {
         #if DEBUG
         let inject = injectFixtureRace
         injectFixtureRace = false
+        let injectMissing = injectFixtureMissingStage
+        injectFixtureMissingStage = false
         #endif
         do {
             let outcome = try await Task.detached(priority: .userInitiated) {
@@ -184,10 +211,15 @@ struct LAABrainSaveEditor: View {
                         try Data("INTERVENING-FIXTURE".utf8).write(to: root.appendingPathComponent(path))
                     }
                 }
+                if injectMissing {
+                    worker.fixtureBeforeStage = { throw LAABrainSaveCoordinator.SaveError.storage }
+                }
                 #endif
                 return try worker.save(root: root, snapshot: snapshot, draft: data)
             }.value
-            versions = try coordinator.journal.versions(vault: snapshot.vault, path: path)
+            versions = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.summaries(vault: snapshot.vault, path: path)
+            }.value
             switch outcome {
             case .saved(.exchange):
                 didSave(); dismiss()
@@ -201,8 +233,17 @@ struct LAABrainSaveEditor: View {
                                              draft: String(decoding: mine, as: UTF8.self), afterExchange: true)
             }
         } catch {
-            pending = (try? coordinator.journal.pending(vault: snapshot.vault, path: path)) ?? []
-            message = "Save could not be completed. Review History before trying again."
+            do {
+                let (stored, unfinished) = try await Task.detached(priority: .userInitiated) {
+                    (try coordinator.journal.summaries(vault: snapshot.vault, path: path),
+                     try coordinator.journal.pending(vault: snapshot.vault, path: path))
+                }.value
+                versions = stored; pending = unfinished
+                message = "The save result is uncertain. Review the note and History before trying again."
+            } catch {
+                recoveryUnavailable = true
+                message = "The save result and recovery history are unavailable. Keep this draft and check storage."
+            }
         }
         busy = false
     }
@@ -214,7 +255,9 @@ struct LAABrainSaveEditor: View {
                 try coordinator.begin(root: root, path: path)
             }.value
             snapshot = entry; draft = text; conflict = nil
-            versions = try coordinator.journal.versions(vault: entry.vault, path: path)
+            versions = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.summaries(vault: entry.vault, path: path)
+            }.value
         } catch { message = "The current note is unavailable. Your versions remain in History." }
         busy = false
     }
@@ -224,13 +267,33 @@ struct LAABrainSaveEditor: View {
         do {
             _ = try await Task.detached(priority: .userInitiated) { try coordinator.preservePending(item) }.value
             await open()
+        } catch LAABrainSaveCoordinator.SaveError.missingStage {
+            missingStageID = item.id; busy = false
         } catch { message = "The interrupted version could not be preserved. It has not been removed."; busy = false }
+    }
+
+    @MainActor private func clearMissing(_ item: LAABrainSaveJournal.Pending) async {
+        busy = true; pendingToClear = nil; message = nil
+        do {
+            try await Task.detached(priority: .userInitiated) { try coordinator.acknowledgeMissingStage(item) }.value
+            missingStageID = nil
+            await open()
+        } catch { message = "The pending record could not be cleared."; busy = false }
     }
 
     @MainActor private func close() async {
         if let snapshot, Data(draft.utf8) != snapshot.base {
-            do { try coordinator.journal.record(vault: snapshot.vault, path: path, kind: .draft, bytes: Data(draft.utf8)) }
-            catch { message = "Your draft could not be saved to History. Keep this screen open and check storage."; return }
+            busy = true
+            let bytes = Data(draft.utf8)
+            do {
+                _ = try await Task.detached(priority: .userInitiated) {
+                    try coordinator.journal.record(vault: snapshot.vault, path: path, kind: .draft, bytes: bytes)
+                }.value
+            } catch {
+                message = "Your draft could not be saved to History. Keep this screen open and check storage."
+                busy = false
+                return
+            }
         }
         dismiss()
     }
@@ -238,7 +301,8 @@ struct LAABrainSaveEditor: View {
 
 private struct BrainHistoryView: View {
     @Environment(\.dismiss) private var dismiss
-    let versions: [LAABrainSaveJournal.Version]
+    let versions: [LAABrainSaveJournal.VersionSummary]
+    let journal: LAABrainSaveJournal
     let canUse: Bool
     let use: (LAABrainSaveJournal.Version) -> Void
 
@@ -248,16 +312,7 @@ private struct BrainHistoryView: View {
                 if versions.isEmpty { Text("No saved versions for this note.") }
                 ForEach(versions) { version in
                     NavigationLink {
-                        ScrollView {
-                            if let text = String(data: version.bytes, encoding: .utf8) {
-                                Text(verbatim: text).font(.body.monospaced()).textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading).padding()
-                                Button("Use as draft") { use(version) }
-                                    .buttonStyle(.borderedProminent).disabled(!canUse)
-                                    .accessibilityIdentifier("laa.brain.history.use")
-                            } else { Text("This version is not UTF-8 text.").padding() }
-                        }
-                        .navigationTitle(version.kind.label)
+                        BrainHistoryDetail(summary: version, journal: journal, canUse: canUse, use: use)
                     } label: {
                         VStack(alignment: .leading) {
                             Text(version.kind.label)
@@ -268,7 +323,41 @@ private struct BrainHistoryView: View {
                 }
             }
             .navigationTitle("History")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) {
+                Button("Close") { dismiss() }.accessibilityIdentifier("laa.brain.history.close")
+            } }
+        }
+    }
+}
+
+private struct BrainHistoryDetail: View {
+    let summary: LAABrainSaveJournal.VersionSummary
+    let journal: LAABrainSaveJournal
+    let canUse: Bool
+    let use: (LAABrainSaveJournal.Version) -> Void
+    @State private var version: LAABrainSaveJournal.Version?
+    @State private var failed = false
+
+    var body: some View {
+        ScrollView {
+            if let version, let text = String(data: version.bytes, encoding: .utf8) {
+                Text(verbatim: text).font(.body.monospaced()).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding()
+                Button("Use as draft") { use(version) }
+                    .buttonStyle(.borderedProminent).disabled(!canUse)
+                    .accessibilityIdentifier("laa.brain.history.use")
+            } else if version != nil {
+                Text("This version is not UTF-8 text.").padding()
+            } else if failed {
+                Text("This version could not be verified.").padding()
+            } else {
+                ProgressView().padding()
+            }
+        }
+        .navigationTitle(summary.kind.label)
+        .task {
+            do { version = try await Task.detached(priority: .userInitiated) { try journal.version(summary) }.value }
+            catch { failed = true }
         }
     }
 }

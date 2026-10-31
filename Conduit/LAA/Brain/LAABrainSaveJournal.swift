@@ -17,6 +17,17 @@ struct LAABrainSaveJournal {
         let digest: String
     }
 
+    /// The history list does not keep the potentially large note bodies in
+    /// memory. A selected record is checked and loaded separately.
+    struct VersionSummary: Decodable, Identifiable {
+        let id: UUID
+        let vault: String
+        let path: String
+        let kind: Kind
+        let created: Date
+        let digest: String
+    }
+
     /// Written before replacement. A remaining stage must be retained until
     /// the person has reviewed it; its contents may be the displaced file.
     struct Pending: Codable, Identifiable {
@@ -80,9 +91,51 @@ struct LAABrainSaveJournal {
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
         return try files.filter { $0.pathExtension == "json" }.map { file in
             let entry = try JSONDecoder().decode(Version.self, from: Data(contentsOf: file))
-            guard Self.digest(entry.bytes) == entry.digest, entry.vault == vault, entry.path == path else { throw JournalError.invalidRecord }
+            guard Self.digest(entry.bytes) == entry.digest, entry.vault == vault, entry.path == path,
+                  file.lastPathComponent == entry.id.uuidString + ".json" else { throw JournalError.invalidRecord }
             return entry
         }.sorted { $0.created > $1.created }
+    }
+
+    /// Verify one record at a time so saving a note does not retain every
+    /// previous copy in memory as its history grows.
+    func validate(vault: String, path: String) throws {
+        try prepare()
+        let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
+        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+        for file in files where file.pathExtension == "json" {
+            try autoreleasepool {
+                let entry = try JSONDecoder().decode(Version.self, from: Data(contentsOf: file))
+                guard Self.digest(entry.bytes) == entry.digest, entry.vault == vault, entry.path == path,
+                      file.lastPathComponent == entry.id.uuidString + ".json" else {
+                    throw JournalError.invalidRecord
+                }
+            }
+        }
+    }
+
+    func summaries(vault: String, path: String) throws -> [VersionSummary] {
+        try prepare()
+        let folder = try itemDirectory(versionsDirectory, vault: vault, path: path)
+        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+        return try files.filter { $0.pathExtension == "json" }.map { file in
+            let entry = try JSONDecoder().decode(VersionSummary.self, from: Data(contentsOf: file))
+            guard entry.vault == vault, entry.path == path, file.lastPathComponent == entry.id.uuidString + ".json" else {
+                throw JournalError.invalidRecord
+            }
+            return entry
+        }.sorted { $0.created > $1.created }
+    }
+
+    func version(_ summary: VersionSummary) throws -> Version {
+        try prepare()
+        let folder = try itemDirectory(versionsDirectory, vault: summary.vault, path: summary.path)
+        let file = folder.appendingPathComponent(summary.id.uuidString + ".json")
+        let entry = try JSONDecoder().decode(Version.self, from: Data(contentsOf: file))
+        guard entry.id == summary.id, entry.vault == summary.vault, entry.path == summary.path,
+              entry.kind == summary.kind, entry.created == summary.created, entry.digest == summary.digest,
+              Self.digest(entry.bytes) == entry.digest else { throw JournalError.invalidRecord }
+        return entry
     }
 
     func makePending(vault: String, path: String, base: Data, draft: Data) throws -> Pending {
@@ -131,6 +184,14 @@ struct LAABrainSaveJournal {
     func finish(_ item: Pending) throws {
         let stage = try stageURL(item)
         if try stageExists(item) { try FileManager.default.removeItem(at: stage) }
+        let manifest = try pendingURL(item)
+        if FileManager.default.fileExists(atPath: manifest.path) { try FileManager.default.removeItem(at: manifest) }
+    }
+
+    /// Used only after a person acknowledges an absent stage. Never delete a
+    /// stage that could have appeared after the absence check.
+    func finishMissingStage(_ item: Pending) throws {
+        guard try !stageExists(item) else { throw JournalError.invalidStage }
         let manifest = try pendingURL(item)
         if FileManager.default.fileExists(atPath: manifest.path) { try FileManager.default.removeItem(at: manifest) }
     }

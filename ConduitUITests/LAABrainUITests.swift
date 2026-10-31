@@ -266,5 +266,42 @@ final class LAABrainUITests: XCTestCase {
         raw.tap()
         XCTAssertEqual(app.staticTexts["laa.brain.raw"].label, "INTERVENING-FIXTURE")
     }
+
+    func testMissingStageRequiresExplicitReview() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+                                "-laa-brain-save-fixture", "-laa-brain-save-missing-stage-fixture"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))
+        app.staticTexts["Start"].tap()
+        XCTAssertTrue(app.buttons["laa.brain.edit"].waitForExistence(timeout: 10))
+        app.buttons["laa.brain.edit"].tap()
+        let editor = app.textViews["laa.brain.edit.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.tap()
+        editor.typeText("\nSAVED-DRAFT")
+        app.buttons["laa.brain.edit.save"].tap()
+        let preserve = app.buttons["laa.brain.recovery.preserve"]
+        XCTAssertTrue(preserve.waitForExistence(timeout: 15))
+        preserve.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'staged file is missing'")).firstMatch.waitForExistence(timeout: 10))
+        app.buttons["Review saved versions"].tap()
+        let draft = app.buttons["laa.brain.history.version.draft"].firstMatch
+        XCTAssertTrue(draft.waitForExistence(timeout: 10))
+        draft.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'SAVED-DRAFT'")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["laa.brain.history.use"].isEnabled)
+        app.buttons["laa.brain.history.close"].tap()
+        app.buttons["Clear missing stage"].tap()
+        app.alerts.buttons["Clear pending"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 15))
+        app.buttons["laa.brain.history"].tap()
+        XCTAssertTrue(draft.waitForExistence(timeout: 10))
+        draft.tap()
+        XCTAssertTrue(app.buttons["laa.brain.history.use"].waitForExistence(timeout: 10))
+        app.buttons["laa.brain.history.use"].tap()
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        XCTAssertTrue((editor.value as? String ?? "").contains("SAVED-DRAFT"))
+    }
 }
 #endif
