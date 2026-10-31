@@ -35,10 +35,11 @@ struct CharacterLauncherWidget: Widget {
 @main
 struct ConduitWidgets: WidgetBundle {
     var body: some Widget {
-        NativeLauncherWidget()
-        CharacterLauncherWidget()
         #if LAA_BUILD
         LAAEmployeeWidget()
+        #else
+        NativeLauncherWidget()
+        CharacterLauncherWidget()
         #endif
         HermesTurnLiveActivity()
     }

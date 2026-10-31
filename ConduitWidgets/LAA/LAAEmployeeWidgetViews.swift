@@ -17,7 +17,7 @@ extension LAAWidgetEmployee: AppEnum {
 
 struct LAAEmployeeWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Employee"
-    static let description = IntentDescription("ホーム画面から社員の会話や電話を開きます。")
+    static let description = IntentDescription("Open an employee's chat or call from the Home Screen.")
     @Parameter(title: "Employee", default: .ciel) var employee: LAAWidgetEmployee
     init() { employee = .defaultEmployee }
 }
@@ -74,7 +74,7 @@ struct LAAEmployeeWidget: Widget {
             LAAEmployeeWidgetView(entry: entry)
         }
         .configurationDisplayName(Text(verbatim: LAACopy.widgetDisplayName))
-        .description("社員を選び、会話や電話を開きます。")
+        .description(Text(verbatim: LAACopy.widgetDescription))
         .supportedFamilies(Self.supportedFamilies)
         .contentMarginsDisabled()
     }
@@ -82,6 +82,7 @@ struct LAAEmployeeWidget: Widget {
 
 private extension LAACopy {
     static let widgetDisplayName = "LAA Employee"
+    static let widgetDescription = "Open employee chats and calls, and check AI usage."
     static let widgetCall = "Call"
     static let widgetChat = "Chat"
     static let widgetBrand = "LAA"
