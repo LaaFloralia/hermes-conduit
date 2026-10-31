@@ -530,7 +530,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 - LAA Catalyst hides location settings and does not start background location sharing because its sandbox has no location entitlement. Other builds keep their existing behavior.
-- In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
+- In the LAA Catalyst notification extension, a Keychain read error logs its status without logging key material; an unavailable App Group container is logged once per extension process. The owner confirmed that the signed app and extension profiles allow the existing App Group identifiers; end-to-end decryption and push delivery still require a signed Mac check.
 - A preliminary Developer ID archive, export, app and DMG notarization and Gatekeeper check succeeded. The owner will repeat signed distribution after review; local ad-hoc tests do not establish push or App Group access.
 
 **Checked:** 2026-10-31, BUS-322 (Catalyst app; distribution verification pending); 2026-10-30, laa/v2-shell (design v2 common shell); laa/usage-design-v2-04-urgent based on aec30021 (Usage); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
@@ -3490,7 +3490,7 @@ on top
 - Calls: `Conduit/Views/VoiceConversationSheet.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Views/LiveVoiceConsentViews.swift` (ReadableWidth.call)
 - Sign-in: `Conduit/Views/Login/LoginScreens.swift` (LoginReadableWidth, 560 pt scaled with the text size)
 - LAA Catalyst compact window and content cap: `Conduit/ConduitApp.swift`, `Conduit/LAA/Mac/LAAMacWindow.swift`
-- Tests: `ConduitTests/LAAMacCatalystTests.swift` (testWindowSizeConstantsLeaveRoomToShrink), `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
+- Tests: `ConduitTests/LAAMacCatalystTests.swift` (testWindowSizeConstants; constants only), `ConduitTests/V2SplitLayoutTests.swift` (testChatColumnWidensWithTheWindowUpToItsCap, testChatTextStepsUpWithTheColumn, testWideColumnStepsResolveTranscriptFontsAtTheLargerSize)
 
 **Rulings**
 - LAA Catalyst keeps the compact one-column shell and caps it in the center of a wider resizable window. Its scene derives resize limits from the root content so the initial size does not also become the maximum; the upstream iPad and Mac layouts below remain unchanged.
@@ -3500,9 +3500,10 @@ on top
 - Settings (720 pt), a list shown alone (720 pt) and calls (640 pt) keep fixed widths: rows, cards and captions don't read better wider. The sign-in screens keep their own 560 pt column, which follows the text size (2026-10-26, #1320).
 
 **Open gaps**
+- The Mac Catalyst window's actual dimensions, safe area and title bar still need measurement on the Mac; the unit test checks constants only.
 - Resizing a wide window changes the chat's column, so a card or picture's kept height is for another width and it grows once more (the gap in Cards drawn in web pages).
 
-**Checked:** 2026-10-31, BUS-322: Catalyst window resizing; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
+**Checked:** 2026-10-31, BUS-322: Catalyst window size constants; 2026-10-29, d7e98a56: independent input sizing; 2026-10-27, #1393: the chat's text steps up with the column. Earlier 2026-10-26, #1320.
 
 ## Voice on a profile the dashboard didn't start with
 

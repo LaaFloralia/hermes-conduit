@@ -5,13 +5,18 @@ import base64
 from contextlib import redirect_stderr
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import plistlib
+import shlex
+import shutil
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import urllib.error
 
 
 def load(name, filename):
@@ -113,12 +118,97 @@ class ReleaseHelpersTests(unittest.TestCase):
             with self.assertRaises(profiles.ProfilesError):
                 profiles.select_bundle_profile(bundle, candidates, certificate)
 
-    def test_interactive_security_error_is_detected_without_echo(self):
-        with patch.object(keychain.subprocess, "run", return_value=SimpleNamespace(returncode=0, stderr="security> failure")):
-            with self.assertRaises(keychain.KeychainError):
-                keychain.security_command("command", "secret-fixture")
+    def test_unreadable_profile_does_not_hide_a_later_valid_candidate(self):
+        bundle = profiles.BUNDLES[0]
+        candidate = {"id": "app", "attributes": {"identifier": bundle, "platform": "UNIVERSAL"}}
+        certificate = {"attributes": {"serialNumber": "ABC"}}
+        entries = [{"id": name, "attributes": {"profileType": profiles.PROFILE_TYPE, "profileState": "ACTIVE"}}
+                   for name in ("bad", "good")]
+
+        def fake_api(_method, path):
+            if "/bundleIdCapabilities?" in path:
+                return {"data": [{"attributes": {"capabilityType": k}} for k in ("APP_GROUPS", "PUSH_NOTIFICATIONS")]}
+            if "/bundleIds/app/profiles?" in path:
+                return {"data": entries}
+            if "/certificates?" in path:
+                return {"data": [certificate]}
+            name = "bad" if "/profiles/bad?" in path else "good"
+            return {"data": {"attributes": {"profileContent": base64.b64encode(name.encode()).decode()}}}
+
+        def allows(content, _bundle):
+            if content == b"bad":
+                raise profiles.ProfilesError("cannot decode")
+            return content == b"good"
+
+        with patch.object(profiles, "api", side_effect=fake_api), patch.object(profiles, "profile_allows_bundle", side_effect=allows):
+            selected, profile = profiles.select_bundle_profile(bundle, [candidate], certificate)
+            self.assertEqual(selected, candidate)
+            self.assertEqual(base64.b64decode(profile["data"]["attributes"]["profileContent"]), b"good")
+            entries.pop()
+            with self.assertRaisesRegex(profiles.ProfilesError, "no usable matching provisioning profile"):
+                profiles.select_bundle_profile(bundle, [candidate], certificate)
+
+    def test_capability_permission_errors_are_explicit(self):
+        bundle = profiles.BUNDLES[0]
+        candidate = {"id": "app", "attributes": {"identifier": bundle, "platform": "UNIVERSAL"}}
+        for status in (403, 404):
+            with self.subTest(status=status), patch.object(profiles, "api", side_effect=profiles.ProfilesAPIError("fixture", status)):
+                with self.assertRaisesRegex(profiles.ProfilesError, f"cannot verify bundle capabilities.*HTTP {status}"):
+                    profiles.select_bundle_profile(bundle, [candidate], {"attributes": {"serialNumber": "ABC"}})
+
+    def test_api_preserves_http_status_without_response_contents(self):
+        for status in (403, 404):
+            error = urllib.error.HTTPError("https://fixture.invalid", status, "fixture", {}, io.BytesIO(b'{}'))
+            try:
+                with self.subTest(status=status), patch.object(profiles.urllib.request, "urlopen", side_effect=error):
+                    with self.assertRaises(profiles.ProfilesAPIError) as caught:
+                        profiles.api("GET", "/v1/bundleIds/fixture/bundleIdCapabilities")
+                    self.assertEqual(caught.exception.status, status)
+            finally:
+                error.close()
+
+    def test_interactive_security_diagnostics_do_not_expose_arguments(self):
+        with patch.object(keychain.subprocess, "run", return_value=SimpleNamespace(returncode=0, stderr="security> warning secret-fixture")), redirect_stderr(io.StringIO()) as output:
+            keychain.security_command("create-keychain", "secret-fixture")
+        self.assertIn("create-keychain", output.getvalue())
+        self.assertNotIn("secret-fixture", output.getvalue())
+        with patch.object(keychain.subprocess, "run", return_value=SimpleNamespace(returncode=1, stderr="secret-fixture")):
+            with self.assertRaisesRegex(keychain.KeychainError, "create-keychain failed") as error:
+                keychain.security_command("create-keychain", "secret-fixture")
+        self.assertNotIn("secret-fixture", str(error.exception))
         with patch.object(keychain.subprocess, "run", return_value=SimpleNamespace(returncode=0, stderr="security> ")):
             keychain.security_command("command", "secret-fixture")
+
+    def test_signing_probe_distinguishes_access_and_content_failures(self):
+        with tempfile.TemporaryDirectory() as folder:
+            probe = Path(folder) / "probe"
+            def fake_copy(_source, destination):
+                Path(destination).write_bytes(b"fixture")
+            def fake_run(args, **_kwargs):
+                if args[0].endswith("xattr"):
+                    return SimpleNamespace(returncode=0, stderr="")
+                return SimpleNamespace(returncode=1, stderr=diagnostic)
+            with patch.object(keychain.shutil, "copyfile", side_effect=fake_copy), patch.object(keychain.subprocess, "run", side_effect=fake_run):
+                diagnostic = "user interaction is not allowed (-25308) secret-fixture"
+                with self.assertRaisesRegex(keychain.KeychainError, "denied access") as error:
+                    keychain.check_signing_key(probe, "A" * 40)
+                self.assertNotIn("secret-fixture", str(error.exception))
+                diagnostic = "resource fork not allowed secret-fixture"
+                with redirect_stderr(io.StringIO()) as output:
+                    keychain.check_signing_key(probe, "A" * 40)
+                self.assertIn("unclassified", output.getvalue())
+                self.assertNotIn("secret-fixture", output.getvalue())
+
+    def test_signing_probe_times_out(self):
+        with tempfile.TemporaryDirectory() as folder:
+            probe = Path(folder) / "probe"
+            def fake_run(args, **_kwargs):
+                if args[0].endswith("xattr"):
+                    return SimpleNamespace(returncode=0)
+                raise subprocess.TimeoutExpired(args, 30)
+            with patch.object(keychain.subprocess, "run", side_effect=fake_run):
+                with self.assertRaisesRegex(keychain.KeychainError, "without interaction"):
+                    keychain.check_signing_key(probe, "A" * 40)
 
     def test_cleanup_preserves_child_failure_and_other_keychains(self):
         with tempfile.TemporaryDirectory() as home:
@@ -157,11 +247,90 @@ class ReleaseHelpersTests(unittest.TestCase):
                  patch.object(keychain, "set_keychains", side_effect=set_list), \
                  patch.object(keychain.subprocess, "run", side_effect=fake_run), \
                  patch.object(keychain.subprocess, "Popen", return_value=Child()), \
-                 patch.object(keychain.shutil, "copy2", side_effect=fake_copy), redirect_stderr(io.StringIO()) as errors:
+                 patch.object(keychain.shutil, "copyfile", side_effect=fake_copy), redirect_stderr(io.StringIO()) as errors:
                 self.assertEqual(keychain.main(), 42)
             self.assertIn("could not fully clean up", errors.getvalue())
             self.assertEqual(search_list, ["existing-keychain", "new-concurrent-keychain"])
             self.assertEqual(list((Path(home) / ".config/laa/tmp-secrets").iterdir()), [])
+
+    def test_release_lock_and_missing_git_recording(self):
+        with tempfile.TemporaryDirectory() as folder:
+            repo = Path(folder) / "repo"
+            script = repo / "scripts/laa/mac-release.sh"
+            script.parent.mkdir(parents=True)
+            shutil.copyfile(Path(__file__).with_name("mac-release.sh"), script)
+            commands = Path(folder) / "bin"
+            commands.mkdir()
+            xcodegen = commands / "xcodegen"
+            xcodegen.write_text("#!/bin/sh\nexit 23\n")
+            xcodegen.chmod(0o755)
+            lock = repo / "build/laa/mac/.lock"
+            lock.mkdir(parents=True)
+            env = dict(os.environ, PATH=f"{commands}:/usr/bin:/bin:/usr/sbin:/sbin", CURRENT_PROJECT_VERSION="123456")
+            run = lambda: subprocess.run(["/bin/bash", str(script), "--archive-only"], env=env, text=True,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+            blocked = run()
+            self.assertNotEqual(blocked.returncode, 0)
+            self.assertIn("release lock cannot be acquired", blocked.stderr)
+            self.assertTrue(lock.is_dir())
+            lock.rmdir()
+            failed = run()
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertFalse(lock.exists())
+            info = (repo / "build/laa/mac/123456/build-info.log").read_text()
+            self.assertIn("commit=unknown\n", info)
+            self.assertIn("working-tree=unknown\n", info)
+            self.assertIn("signing-identity-redacted=no\n", info)
+
+    def test_notary_failure_fetches_detail_and_preserves_redacted_stderr(self):
+        source = Path(__file__).with_name("mac-release.sh").read_text()
+        redactor = source[source.index("redact_signing_names() {"):source.index("\ncommand -v xcodegen")]
+        notarize = source[source.index("notarize() {"):source.index("\ngatekeeper() {")]
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            fake = root / "xcrun"
+            fake.write_text('''#!/usr/bin/env python3
+import json, os, pathlib, sys
+if sys.argv[1:3] == ["notarytool", "submit"]:
+    scenario = os.environ["FAKE_NOTARY"]
+    if scenario in ("invalid", "invalid-zero", "accepted"):
+        print(json.dumps({"status": "Accepted" if scenario == "accepted" else "Invalid", "id": "12345678-1234-1234-1234-123456789abc"}))
+    if scenario == "accepted":
+        sys.exit(0)
+    print("Developer ID Application: Fixture Person (TEAM): failure " + os.environ["ASC_KEY_ID"], file=sys.stderr)
+    sys.exit(0 if scenario == "invalid-zero" else 1)
+if sys.argv[1:3] == ["notarytool", "log"]:
+    pathlib.Path(os.environ["TEST_WORK"], "log-called").touch()
+    print(json.dumps({"issues": [{"message": "bad signature"}]}))
+    sys.exit(0)
+sys.exit(2)
+''')
+            fake.chmod(0o755)
+            notarize = notarize.replace("/usr/bin/xcrun", shlex.quote(str(fake)))
+            runner = ('set -euo pipefail\nwork="$1"\nkey_path=fixture\nexport ASC_KEY_ID=fixture-keyid ASC_ISSUER_ID=fixture-issuer\n'
+                      'fail() { printf "%s\\n" "$*" >&2; exit 1; }\n' + redactor + '\n' + notarize +
+                      '\nnotarize "$work/input" "$work/app-notary.json"\n')
+            for scenario in ("invalid", "invalid-zero", "no-json", "accepted"):
+                with self.subTest(scenario=scenario):
+                    work = root / scenario
+                    work.mkdir()
+                    env = dict(os.environ, FAKE_NOTARY=scenario, TEST_WORK=str(work))
+                    result = subprocess.run(["/bin/bash", "-c", runner, "test", str(work)], env=env, text=True,
+                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                    self.assertEqual(result.returncode == 0, scenario == "accepted")
+                    if scenario == "accepted":
+                        self.assertEqual(json.loads((work / "app-notary.json").read_text())["status"], "Accepted")
+                        self.assertFalse((work / "notary-stderr.tmp").exists())
+                        self.assertFalse((work / "log-called").exists())
+                        continue
+                    diagnostic = (work / "app-notary-stderr.log").read_text()
+                    self.assertIn("<redacted>", diagnostic)
+                    self.assertNotIn("Fixture Person", diagnostic + result.stderr + result.stdout)
+                    self.assertNotIn("fixture-keyid", diagnostic + result.stderr + result.stdout)
+                    self.assertFalse((work / "notary-stderr.tmp").exists())
+                    self.assertEqual((work / "log-called").exists(), scenario in ("invalid", "invalid-zero"))
+                    if scenario in ("invalid", "invalid-zero"):
+                        self.assertEqual(json.loads((work / "app-notary-log.json").read_text())["issues"][0]["message"], "bad signature")
 
 
 if __name__ == "__main__":

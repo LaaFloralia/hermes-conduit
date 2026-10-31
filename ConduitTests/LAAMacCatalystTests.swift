@@ -5,7 +5,8 @@ import UIKit
 
 @MainActor
 final class LAAMacCatalystTests: XCTestCase {
-    func testWindowSizeConstantsLeaveRoomToShrink() {
+    // Window geometry, safe area and title bar are measured manually on Mac.
+    func testWindowSizeConstants() {
         XCTAssertEqual(LAAMacWindow.minimumWidth, 520)
         XCTAssertEqual(LAAMacWindow.minimumHeight, 790)
         XCTAssertEqual(LAAMacWindow.initialWidth, 598)

@@ -25,6 +25,15 @@ fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
 redact_signing_names() {
     /usr/bin/sed -E 's/(Apple Development|Apple Distribution|Developer ID Application|Developer ID Installer|iPhone Developer|iPhone Distribution|Mac Developer): [^(]*\(/\1: <redacted> (/g; s/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/<redacted-id>/g; s/[[:xdigit:]]{8}-[[:xdigit:]]{16}/<redacted-id>/g; s/[[:xdigit:]]{40,}/<redacted-id>/g'
 }
+redact_notary_output() {
+    /usr/bin/python3 -c 'import os, sys
+data = sys.stdin.read()
+for key in ("ASC_KEY_ID", "ASC_ISSUER_ID"):
+    value = os.environ.get(key, "")
+    if value:
+        data = data.replace(value, "<redacted-id>")
+sys.stdout.write(data)' | redact_signing_names
+}
 command -v xcodegen >/dev/null || fail 'xcodegen is required'
 command -v python3 >/dev/null || fail 'python3 is required'
 team="${LAA_TEAM_ID:-PAW258GB42}"
@@ -33,7 +42,7 @@ build_number="${CURRENT_PROJECT_VERSION:-$(date -u +%y%m%d%H%M)}"
 case "$build_number" in ''|*[!0-9]*) fail 'CURRENT_PROJECT_VERSION must contain digits only';; esac
 work="$repo/build/laa/mac/$build_number"
 mkdir -p "$repo/build/laa/mac"
-mkdir "$work" 2>/dev/null || fail "build folder already exists or could not be created: $work"
+lock="$repo/build/laa/mac/.lock"
 key_path=""
 key_root=""
 local_spec=""
@@ -43,22 +52,41 @@ sha_file="$work/LAA-$build_number.sha256"
 archive_complete=0
 dmg_complete=0
 sha_complete=0
+work_created=0
+lock_acquired=0
 cleanup() {
-    local result=$? cleanup_failed=0
+    local result=$? cleanup_failed=0 redaction_failed=0 identity_redacted=no
     trap - EXIT INT TERM
-    [ -z "$key_root" ] || rm -rf "$key_root" || cleanup_failed=1
-    [ -z "$local_spec" ] || rm -f "$local_spec" || cleanup_failed=1
-    # This is xcarchive metadata, not the signed app. Embedded profiles and
-    # certificates necessarily retain the identity used for distribution.
-    if [ "$archive_complete" -eq 1 ] && /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:SigningIdentity' "$archive/Info.plist" >/dev/null 2>&1; then
-        /usr/libexec/PlistBuddy -c 'Set :ApplicationProperties:SigningIdentity <redacted>' "$archive/Info.plist" >/dev/null 2>&1 || cleanup_failed=1
+    if [ "$work_created" -eq 1 ]; then
+        [ -z "$key_root" ] || rm -rf "$key_root" || cleanup_failed=1
+        [ -z "$local_spec" ] || rm -f "$local_spec" || cleanup_failed=1
+        # Embedded profiles and certificates necessarily retain the identity.
+        if [ "$archive_complete" -eq 1 ]; then
+            if /usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:SigningIdentity' "$archive/Info.plist" >/dev/null 2>&1; then
+                if /usr/libexec/PlistBuddy -c 'Set :ApplicationProperties:SigningIdentity <redacted>' "$archive/Info.plist" >/dev/null 2>&1; then
+                    identity_redacted=yes
+                else
+                    redaction_failed=1
+                fi
+            elif [ "$archive_only" -eq 0 ]; then
+                printf 'warning: archive signing identity was unavailable for redaction\n' >&2
+            fi
+        fi
+        printf 'signing-identity-redacted=%s\n' "$identity_redacted" >> "$work/build-info.log" || cleanup_failed=1
+        rm -rf "$work/DerivedData" "$work/WebRTC-local" "$work/dmg-root" "$work/export" "$work/app-certs" || cleanup_failed=1
+        rm -f "$work/LAA.zip" "$work/profiles.json" "$work/ExportOptions.plist" "$work/notary-stderr.tmp" || cleanup_failed=1
+        [ "$archive_complete" -eq 1 ] || rm -rf "$archive" || cleanup_failed=1
+        [ "$dmg_complete" -eq 1 ] || rm -f "$dmg" || cleanup_failed=1
+        [ "$sha_complete" -eq 1 ] || rm -f "$sha_file" || cleanup_failed=1
+        rmdir "$work" 2>/dev/null || true
     fi
-    rm -rf "$work/DerivedData" "$work/WebRTC-local" "$work/dmg-root" "$work/export" "$work/app-certs" || cleanup_failed=1
-    rm -f "$work/LAA.zip" "$work/profiles.json" "$work/ExportOptions.plist" || cleanup_failed=1
-    [ "$archive_complete" -eq 1 ] || rm -rf "$archive" || cleanup_failed=1
-    [ "$dmg_complete" -eq 1 ] || rm -f "$dmg" || cleanup_failed=1
-    [ "$sha_complete" -eq 1 ] || rm -f "$sha_file" || cleanup_failed=1
-    rmdir "$work" 2>/dev/null || true
+    if [ "$lock_acquired" -eq 1 ]; then
+        rmdir "$lock" 2>/dev/null || cleanup_failed=1
+    fi
+    if [ "$redaction_failed" -ne 0 ]; then
+        printf 'error: could not redact the archive signing identity\n' >&2
+        result=1
+    fi
     if [ "$cleanup_failed" -ne 0 ]; then
         printf 'error: failed to remove temporary release files\n' >&2
         result=1
@@ -68,10 +96,19 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
+mkdir "$lock" 2>/dev/null || fail 'another Mac release is running or the release lock cannot be acquired'
+lock_acquired=1
+mkdir "$work" 2>/dev/null || fail "build folder already exists or could not be created: $work"
+work_created=1
+commit="$(git rev-parse HEAD 2>/dev/null)" || { commit=unknown; printf 'warning: git commit could not be recorded\n' >&2; }
+if git_status="$(git status --porcelain 2>/dev/null)"; then
+    if [ -z "$git_status" ]; then tree_status=clean; else tree_status=dirty; fi
+else
+    tree_status=unknown
+    printf 'warning: git working-tree status could not be recorded\n' >&2
+fi
 {
-    printf 'commit='
-    git rev-parse HEAD
-    if [ -z "$(git status --porcelain)" ]; then printf 'working-tree=clean\n'; else printf 'working-tree=dirty\n'; fi
+    printf 'commit=%s\nworking-tree=%s\n' "$commit" "$tree_status"
 } > "$work/build-info.log"
 auth=()
 if [ "$archive_only" -eq 0 ]; then
@@ -193,23 +230,31 @@ for architecture in arm64 x86_64; do
 done
 ditto -c -k --keepParent "$app" "$work/LAA.zip"
 notarize() {
-    local input="$1" result="$2" response status submission log
-    if ! response="$(/usr/bin/xcrun notarytool submit "$input" --key "$key_path" --key-id "$ASC_KEY_ID" \
-        --issuer "$ASC_ISSUER_ID" --wait --output-format json 2> >(redact_signing_names >&2))"; then
-        printf '%s\n' "$response" | redact_signing_names > "$result"
-        fail "notary submission failed; see $result"
+    local input="$1" result="$2" response status submission log submit_status=0
+    local stderr_tmp="$work/notary-stderr.tmp" stderr_log="${result%.json}-stderr.log" details
+    (umask 077; : > "$stderr_tmp") || fail 'could not create the notary diagnostic file'
+    response="$(/usr/bin/xcrun notarytool submit "$input" --key "$key_path" --key-id "$ASC_KEY_ID" \
+        --issuer "$ASC_ISSUER_ID" --wait --output-format json 2> "$stderr_tmp")" || submit_status=$?
+    printf '%s\n' "$response" | redact_notary_output > "$result"
+    details="$result"
+    if [ -s "$stderr_tmp" ]; then
+        (umask 077; redact_notary_output < "$stderr_tmp" > "$stderr_log")
+        details="$result and $stderr_log"
     fi
-    printf '%s\n' "$response" | redact_signing_names > "$result"
-    status="$(printf '%s' "$response" | /usr/bin/plutil -extract status raw -o - -)" || fail "invalid notary response; see $result"
-    if [ "$status" != Accepted ]; then
-        submission="$(printf '%s' "$response" | /usr/bin/plutil -extract id raw -o - -)" || fail "notarization was not accepted; see $result"
+    rm -f "$stderr_tmp"
+    status="$(printf '%s' "$response" | /usr/bin/plutil -extract status raw -o - - 2>/dev/null)" || status=""
+    submission="$(printf '%s' "$response" | /usr/bin/plutil -extract id raw -o - - 2>/dev/null)" || submission=""
+    if [ "$submit_status" -ne 0 ] || [ "$status" != Accepted ]; then
+        if [ -z "$submission" ]; then
+            fail "notary submission failed or was not accepted; see $details"
+        fi
         case "$submission" in *[![:xdigit:]-]*|'') fail "invalid notary submission id; see $result";; esac
         log="${result%.json}-log.json"
         if ! /usr/bin/xcrun notarytool log "$submission" --key "$key_path" --key-id "$ASC_KEY_ID" \
-            --issuer "$ASC_ISSUER_ID" 2>&1 | redact_signing_names > "$log"; then
-            fail "notarization was not accepted; could not retrieve details; see $result"
+            --issuer "$ASC_ISSUER_ID" 2>&1 | redact_notary_output > "$log"; then
+            fail "notary submission failed or was not accepted; could not retrieve details; see $details"
         fi
-        fail "notarization was not accepted; see $log"
+        fail "notary submission failed or was not accepted; see $log and $details"
     fi
 }
 gatekeeper() {

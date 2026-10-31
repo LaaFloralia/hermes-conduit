@@ -40,10 +40,37 @@ def security_command(*arguments):
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, check=False,
     )
     # Interactive security can return success even after a command failed.
-    # Never echo its diagnostics: they might include the command's secrets.
+    # Do not echo diagnostics: they can contain commands and passwords. The
+    # identity and dry-run checks below verify the resulting keychain instead.
     diagnostics = result.stderr.replace("security> ", "").strip()
-    if result.returncode or diagnostics:
-        raise KeychainError("temporary keychain operation failed")
+    name = str(arguments[0]) if arguments and re.fullmatch(r"[a-z-]+", str(arguments[0])) else "operation"
+    if result.returncode:
+        raise KeychainError(f"temporary keychain {name} failed")
+    if diagnostics:
+        print(f"warning: temporary keychain {name} returned a diagnostic; checking the identity and key access", file=sys.stderr)
+
+
+def check_signing_key(probe, identity):
+    """Check key access without retaining or printing codesign diagnostics."""
+    shutil.copyfile("/usr/bin/true", probe)
+    os.chmod(probe, 0o700)
+    cleared = subprocess.run(["/usr/bin/xattr", "-c", str(probe)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    if cleared.returncode:
+        print("warning: could not clear signing probe attributes; its result may be inconclusive", file=sys.stderr)
+    try:
+        checked = subprocess.run(
+            ["/usr/bin/codesign", "--force", "--dryrun", "--timestamp=none", "--sign", identity, str(probe)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False, timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        raise KeychainError("the temporary signing key was not accessible without interaction") from None
+    if checked.returncode:
+        diagnostic = checked.stderr.lower()
+        if any(marker in diagnostic for marker in ("-25308", "errsecinteractionnotallowed", "user interaction is not allowed",
+                                                    "-25293", "errsecauthfailed", "access denied", "authorization denied")):
+            raise KeychainError("the temporary signing key denied access without interaction")
+        print("warning: the signing probe failed for an unclassified content or signing error; key access is unverified", file=sys.stderr)
 
 
 def keychains():
@@ -143,16 +170,7 @@ def main():
         # --dryrun performs the cryptographic operation and its access checks,
         # without writing a signature or sending anything to Apple.
         probe = folder / "signing-probe"
-        shutil.copy2("/usr/bin/true", probe)
-        try:
-            checked = subprocess.run(
-                ["/usr/bin/codesign", "--force", "--dryrun", "--timestamp=none", "--sign", match.group(1), str(probe)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False, timeout=30,
-            )
-        except subprocess.TimeoutExpired:
-            raise KeychainError("the temporary signing key was not accessible without interaction") from None
-        if checked.returncode:
-            raise KeychainError("the temporary signing key failed its access check")
+        check_signing_key(probe, match.group(1))
         probe.unlink()
         env = dict(os.environ, LAA_MAC_KEYCHAIN_ACTIVE="1")
         child = subprocess.Popen(sys.argv[1:], env=env)

@@ -44,6 +44,12 @@ class ProfilesError(Exception):
     pass
 
 
+class ProfilesAPIError(ProfilesError):
+    def __init__(self, message, status):
+        super().__init__(message)
+        self.status = status
+
+
 def base64url(data):
     return base64.urlsafe_b64encode(data).rstrip(b"=")
 
@@ -130,7 +136,7 @@ def api(method, path, body=None):
         except (ValueError, TypeError, AttributeError):
             pass
         suffix = f" ({', '.join(sorted(set(codes)))})" if codes else ""
-        raise ProfilesError(f"{method} {path.split('?')[0]} -> HTTP {error.code}{suffix}") from None
+        raise ProfilesAPIError(f"{method} {path.split('?')[0]} -> HTTP {error.code}{suffix}", error.code) from None
     except (urllib.error.URLError, TimeoutError):
         raise ProfilesError(f"{method} {path.split('?')[0]} -> unreachable") from None
 
@@ -168,7 +174,7 @@ def profile_allows_bundle(content, bundle):
     try:
         entitlements = plistlib.loads(result.stdout)["Entitlements"]
         groups = set(entitlements.get("com.apple.security.application-groups", []))
-    except (ValueError, TypeError, KeyError, plistlib.InvalidFileException):
+    except (ValueError, TypeError, KeyError, AttributeError, plistlib.InvalidFileException):
         raise ProfilesError("downloaded provisioning profile has invalid entitlements") from None
     required = {NOTIFICATION_GROUP}
     if bundle == BUNDLES[0]:
@@ -189,12 +195,18 @@ def select_bundle_profile(bundle, bundle_ids, certificate):
     if not candidates:
         raise ProfilesError(f"bundle id missing or has an unsupported platform: {bundle}")
     eligible = []
+    failed_profiles = False
     required = {"APP_GROUPS"}
     if bundle == BUNDLES[0]:
         required.add("PUSH_NOTIFICATIONS")
     for bundle_id in candidates:
         query = urllib.parse.urlencode({"fields[bundleIdCapabilities]": "capabilityType", "limit": "200"})
-        capabilities = api("GET", f"/v1/bundleIds/{bundle_id['id']}/bundleIdCapabilities?" + query).get("data", [])
+        try:
+            capabilities = api("GET", f"/v1/bundleIds/{bundle_id['id']}/bundleIdCapabilities?" + query).get("data", [])
+        except ProfilesAPIError as error:
+            if error.status in (403, 404):
+                raise ProfilesError(f"cannot verify bundle capabilities for {bundle}: HTTP {error.status}") from None
+            raise
         enabled = {item["attributes"]["capabilityType"] for item in capabilities}
         if not required.issubset(enabled):
             continue
@@ -202,22 +214,34 @@ def select_bundle_profile(bundle, bundle_ids, certificate):
         query = urllib.parse.urlencode({
             "fields[profiles]": "name,profileType,profileState,uuid,expirationDate", "limit": "200",
         })
-        for entry in api("GET", f"/v1/bundleIds/{bundle_id['id']}/profiles?" + query).get("data", []):
-            attrs = entry["attributes"]
-            if attrs["profileType"] != PROFILE_TYPE or attrs["profileState"] != "ACTIVE":
-                continue
-            query = urllib.parse.urlencode({"fields[certificates]": "serialNumber", "limit": "50"})
-            linked = api("GET", f"/v1/profiles/{entry['id']}/certificates?" + query).get("data", [])
-            if not any(item["attributes"]["serialNumber"].upper() == certificate["attributes"]["serialNumber"].upper()
-                       for item in linked):
-                continue
-            query = urllib.parse.urlencode({"fields[profiles]": "name,uuid,profileContent,expirationDate"})
-            profile = api("GET", f"/v1/profiles/{entry['id']}?" + query)
-            content = base64.b64decode(profile["data"]["attributes"]["profileContent"], validate=True)
-            if profile_allows_bundle(content, bundle):
-                return bundle_id, profile
+        try:
+            entries = api("GET", f"/v1/bundleIds/{bundle_id['id']}/profiles?" + query).get("data", [])
+        except (ProfilesError, AttributeError, TypeError):
+            failed_profiles = True
+            continue
+        for entry in entries:
+            try:
+                attrs = entry["attributes"]
+                if attrs["profileType"] != PROFILE_TYPE or attrs["profileState"] != "ACTIVE":
+                    continue
+                query = urllib.parse.urlencode({"fields[certificates]": "serialNumber", "limit": "50"})
+                linked = api("GET", f"/v1/profiles/{entry['id']}/certificates?" + query).get("data", [])
+                if not any(item["attributes"]["serialNumber"].upper() == certificate["attributes"]["serialNumber"].upper()
+                           for item in linked):
+                    continue
+                query = urllib.parse.urlencode({"fields[profiles]": "name,uuid,profileContent,expirationDate"})
+                profile = api("GET", f"/v1/profiles/{entry['id']}?" + query)
+                content = base64.b64decode(profile["data"]["attributes"]["profileContent"], validate=True)
+                if profile_allows_bundle(content, bundle):
+                    return bundle_id, profile
+                failed_profiles = True
+            except (ProfilesError, KeyError, ValueError, TypeError, AttributeError):
+                # Do not let a damaged or unreadable profile hide a later match.
+                failed_profiles = True
     if not eligible:
         raise ProfilesError(f"required App Groups or Push capability missing for bundle: {bundle}")
+    if failed_profiles:
+        raise ProfilesError(f"no usable matching provisioning profile could be checked for bundle: {bundle}")
     first_platform = eligible[0]["attributes"]["platform"]
     if sum(item["attributes"]["platform"] == first_platform for item in eligible) != 1:
         raise ProfilesError(f"multiple equally eligible App IDs for bundle: {bundle}")

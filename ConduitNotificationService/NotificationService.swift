@@ -1,4 +1,7 @@
 import UserNotifications
+#if LAA_BUILD && targetEnvironment(macCatalyst)
+import os.log
+#endif
 
 /// Decrypts end-to-end encrypted Conduit notifications on the iPhone (#431).
 ///
@@ -13,6 +16,15 @@ import UserNotifications
 /// nowhere. Conduit itself re-verifies the envelope on tap; nothing this
 /// extension writes into the notification is trusted on its own.
 final class NotificationService: UNNotificationServiceExtension {
+    #if LAA_BUILD && targetEnvironment(macCatalyst)
+    private static let checkAppGroup: Void = {
+        if FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: NotificationE2E.appGroup) == nil {
+            os_log("Notification App Group container is unavailable",
+                   log: OSLog(subsystem: "com.milim.relay", category: "NotificationE2E"), type: .error)
+        }
+    }()
+    #endif
+
     // didReceive and serviceExtensionTimeWillExpire may run on different
     // threads; the lock makes sure the handler is called exactly once.
     private let lock = NSLock()
@@ -20,6 +32,9 @@ final class NotificationService: UNNotificationServiceExtension {
     private var fallback: UNMutableNotificationContent?
 
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        _ = Self.checkAppGroup
+        #endif
         lock.withLock { self.contentHandler = contentHandler }
         AppLocalization.adopt(appLanguage: NotificationSharedSettings.appLanguage)
         guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
