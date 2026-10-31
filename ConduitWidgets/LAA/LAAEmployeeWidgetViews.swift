@@ -29,6 +29,7 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
     let call: WidgetLaunchLink
     let mediumChat: WidgetLaunchLink
     let mediumCall: WidgetLaunchLink
+    let usageLink: WidgetLaunchLink
     let usage: WidgetUsageSnapshot?
 
     static func make(employee: LAAWidgetEmployee, snapshot: WidgetSnapshot?, date: Date = Date()) -> Self {
@@ -37,11 +38,12 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
              call: LAAEmployeeWidgetLinks.link(employee: employee, action: .talk, snapshot: snapshot),
              mediumChat: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .employeeChat, snapshot: snapshot),
              mediumCall: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .talk, snapshot: snapshot),
+             usageLink: WidgetLaunchLink(action: .usage, workspace: nil, reference: nil)!,
              usage: snapshot?.usage)
     }
 
     func defaultLink(for family: WidgetFamily) -> WidgetLaunchLink {
-        if family == .systemMedium { return mediumChat }
+        if family == .systemMedium { return usageLink }
         return family == .systemSmall ? chat : call
     }
 }
@@ -91,6 +93,7 @@ struct LAAEmployeeWidgetView: View {
     var renderingModeOverride: WidgetRenderingMode? = nil
     @Environment(\.widgetFamily) private var family
     @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var effectiveRenderingMode: WidgetRenderingMode { renderingModeOverride ?? renderingMode }
 
     var body: some View {
@@ -129,7 +132,7 @@ struct LAAEmployeeWidgetView: View {
             usageSummary.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .padding(LAASpacing.x3)
-        .widgetURL(entry.mediumChat.url)
+        .widgetURL(entry.usageLink.url)
     }
 
     private var usageSummary: some View {
@@ -137,7 +140,8 @@ struct LAAEmployeeWidgetView: View {
             Text(verbatim: "AI Usage").laaTextStyle(.section).fontWeight(.bold)
                 .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
             if let usage = entry.usage, !usage.meters.isEmpty {
-                ForEach(usage.meters) { meter in
+                let displayed = dynamicTypeSize.isAccessibilitySize ? Array(usage.meters.prefix(2)) : usage.meters
+                ForEach(displayed) { meter in
                     let past = meter.isPast(at: entry.date)
                     let percentage = percentageText(meter.remainingPercent)
                     VStack(alignment: .leading, spacing: 0) {
@@ -145,21 +149,27 @@ struct LAAEmployeeWidgetView: View {
                             Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.8)
                             Spacer(minLength: 0)
                             Text(verbatim: percentage)
-                                .monospacedDigit().fontWeight(.semibold)
+                                .font(LAAType.employeeName).monospacedDigit()
                         }
                         .laaTextStyle(.section)
                         .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
                         ProgressView(value: meter.remainingPercent, total: 100)
                             .tint(past ? LAAColor.attention : LAAColor.link)
-                        if past {
-                            Text(verbatim: "最終取得・要確認").laaTextStyle(.section)
-                                .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
-                        }
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(meter.label), 残り \(percentage)\(past ? ", 最終取得、要確認" : "")")
                 }
                 Spacer(minLength: 0)
+                if displayed.contains(where: { $0.isPast(at: entry.date) }) {
+                    Text(verbatim: "一部 最終取得・要確認").laaTextStyle(.section)
+                        .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
+                } else if displayed.contains(where: { $0.legacyFreshness == true || ($0.freshUntil == nil && $0.verified != true) }) {
+                    Text(verbatim: displayed.contains(where: { $0.verified == true }) ? "鮮度は目安・一部手動確認" : "旧Bridge・鮮度は目安").laaTextStyle(.section)
+                        .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
+                } else if displayed.contains(where: { $0.verified == true }) {
+                    Text(verbatim: "画面確認・自動更新なし").laaTextStyle(.section)
+                        .foregroundStyle(LAAColor.secondaryText).lineLimit(1).minimumScaleFactor(0.8)
+                }
                 if let checked = usage.checkedAt {
                     Text("データ確認 \(checked, format: .dateTime.month().day().hour().minute())")
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
@@ -168,7 +178,13 @@ struct LAAEmployeeWidgetView: View {
                     Text(verbatim: "確認時刻 未取得").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                 }
             } else {
-                Text(verbatim: "未取得").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Text(verbatim: entry.usage?.hasOtherUsage == true ? "枠は未取得・他のUsageあり" : LAACopy.notFetched)
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                if let checked = entry.usage?.checkedAt {
+                    Text("データ確認 \(checked, format: .dateTime.month().day().hour().minute())")
+                        .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                        .lineLimit(1).minimumScaleFactor(0.75)
+                }
                 Spacer(minLength: 0)
             }
         }

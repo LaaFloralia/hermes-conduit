@@ -157,16 +157,35 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     let resetsAt: Date?
     let stale: Bool
     let retained: Bool
+    // Optional so snapshots written by the previous app remain readable.
+    let verified: Bool?
+    let legacyFreshness: Bool?
+
+    init(id: String, label: String, remainingPercent: Double, observedAt: Date?, freshUntil: Date?,
+         resetsAt: Date?, stale: Bool, retained: Bool, verified: Bool = false, legacyFreshness: Bool = false) {
+        self.id = id; self.label = label; self.remainingPercent = remainingPercent
+        self.observedAt = observedAt; self.freshUntil = freshUntil; self.resetsAt = resetsAt
+        self.stale = stale; self.retained = retained; self.verified = verified
+        self.legacyFreshness = legacyFreshness
+    }
 
     func isPast(at date: Date) -> Bool {
-        stale || retained || observedAt == nil || freshUntil == nil ||
-            (freshUntil.map { $0 <= date } ?? true) || (resetsAt.map { $0 <= date } ?? false)
+        guard !stale, !retained, let observedAt, observedAt <= date.addingTimeInterval(60) else { return true }
+        if resetsAt.map({ $0 <= date }) == true { return true }
+        if verified == true { return false }
+        return (freshUntil ?? observedAt.addingTimeInterval(20 * 60)) <= date
     }
 }
 
 struct WidgetUsageSnapshot: Codable, Equatable {
     let meters: [WidgetUsageMeter]
     let checkedAt: Date?
+    // A balance or recorded usage exists even when no quota can be shown.
+    let hasOtherUsage: Bool?
+
+    init(meters: [WidgetUsageMeter], checkedAt: Date?, hasOtherUsage: Bool = false) {
+        self.meters = meters; self.checkedAt = checkedAt; self.hasOtherUsage = hasOtherUsage
+    }
 }
 #endif
 

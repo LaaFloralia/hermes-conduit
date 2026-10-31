@@ -10,6 +10,12 @@ extension AppState {
               components.host?.lowercased() == "widget" else { return false }
         guard var link = WidgetLaunchLink(url: url) else { return true }
         #if LAA_BUILD
+        // Usage does not need a dashboard or a chat session. Keep the request
+        // until the LAA shell is mounted, including on a cold launch.
+        if link.action == .usage {
+            laaWidgetUsagePending = true
+            return true
+        }
         // The widget may have been installed before its first snapshot. Bind
         // that link to the app's current dashboard, without guessing a host.
         if let workspace = link.workspace,
@@ -147,6 +153,8 @@ extension AppState {
         case .talk:
             return await openWidgetVoice(workspace: workspace, lease: lease)
         #if LAA_BUILD
+        case .usage:
+            return .handled // Normally consumed by routeWidgetLaunchURL.
         case .employeeChat:
             // Prefer the profile's saved dashboard chat, then its latest
             // available chat. Create only after a successful empty catalog.

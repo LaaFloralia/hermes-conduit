@@ -3,6 +3,24 @@ import UIKit
 import XCTest
 
 final class LAAUsageUITests: XCTestCase {
+    func testWidgetUsageLinkSelectsUsageOnColdAndWarmLaunch() {
+        for delivery in ["cold", "warm"] {
+            let app = XCUIApplication()
+            app.launchEnvironment["CONDUIT_UITEST"] = "1"
+            app.launchArguments = ["-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
+                                   "-CONDUIT_UI_TEST_WIDGET_URL", "conduit://widget/v1/usage",
+                                   "-CONDUIT_UI_TEST_WIDGET_DELIVERY", delivery]
+            app.launch()
+            if delivery == "warm" {
+                let deliver = app.buttons["widgetUITestDeliverURL"]
+                XCTAssertTrue(deliver.waitForExistence(timeout: 15))
+                deliver.tap()
+            }
+            XCTAssertTrue(app.buttons["laa.usage.menu"].waitForExistence(timeout: 20))
+            app.terminate()
+        }
+    }
+
     private func helper(_ route: String) throws -> String {
         let data = try Data(contentsOf: URL(string: "http://127.0.0.1:19493/\(route)")!)
         return String(data: data, encoding: .utf8) ?? ""
@@ -109,9 +127,30 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/empty")
-        refresh.tap()
-        XCTAssertTrue(app.staticTexts["表示できるサービスはありません。"].waitForExistence(timeout: 30))
+        // Start with no in-memory last-good values, as on an actual first run.
+        app.terminate()
+        app.launch()
+        // The isolated test Keychain deliberately uses a new service per launch.
+        let reconnect = app.buttons["laa.bridge.openPairing"]
+        XCTAssertTrue(reconnect.waitForExistence(timeout: 15))
+        reconnect.tap()
+        try pair(app, port: 19492, codeRoute: "fixture-code")
+        XCTAssertTrue(app.staticTexts["未取得・取得失敗"].firstMatch.waitForExistence(timeout: 30))
         screenshot("usage-ui-empty")
+
+        _ = try helper("mode/slow")
+        let before = Int(try helper("counts")) ?? -1
+        let again = app.buttons["laa.usage.refresh"]
+        XCTAssertTrue(enabled(again))
+        again.tap()
+        XCTAssertTrue(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == false"), object: again)], timeout: 5) == .completed)
+        XCTAssertTrue(enabled(again))
+        XCTAssertEqual(Int(try helper("counts")), before + 1)
+
+        _ = try helper("mode/revoked")
+        again.tap()
+        XCTAssertTrue(app.buttons["laa.bridge.openPairing"].waitForExistence(timeout: 30))
+        XCTAssertTrue(text(containing: "接続が無効", app: app).exists)
     }
 }
 #endif

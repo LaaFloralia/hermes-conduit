@@ -1,6 +1,11 @@
 import Foundation
 
 struct WidgetSnapshotStore {
+    #if LAA_BUILD
+    // Both app publishers perform read/merge/write on this file. The widget
+    // only reads it, so a process-wide lock prevents their updates being lost.
+    private static let writeLock = NSLock()
+    #endif
     /// The App Group this build shares with the app and the widgets: the one
     /// the build names in its Info.plist (`ConduitLauncherAppGroup`, from
     /// `CONDUIT_LAUNCHER_APP_GROUP`), else upstream's. Every target that reads
@@ -46,6 +51,8 @@ struct WidgetSnapshotStore {
     @discardableResult
     func write(_ snapshot: WidgetSnapshot) throws -> Bool {
         #if LAA_BUILD
+        Self.writeLock.lock()
+        defer { Self.writeLock.unlock() }
         // Chat catalogue publications predate usage and must not erase it.
         let snapshot = snapshot.usage == nil ? snapshot.withUsage(read()?.usage) : snapshot
         #endif
@@ -55,6 +62,8 @@ struct WidgetSnapshotStore {
     #if LAA_BUILD
     @discardableResult
     func writeUsage(_ usage: WidgetUsageSnapshot?) throws -> Bool {
+        Self.writeLock.lock()
+        defer { Self.writeLock.unlock() }
         let snapshot = read() ?? WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
         return try writeRaw(snapshot.withUsage(usage))
     }

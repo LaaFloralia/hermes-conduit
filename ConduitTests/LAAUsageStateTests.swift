@@ -9,122 +9,133 @@ final class LAAUsageStateTests: XCTestCase {
         try JSONDecoder().decode(LAAUsageItem.self, from: Data(json.utf8))
     }
 
-    private func quota(_ percentage: String = "62", id: String = "provider.claude.quota") throws -> LAAUsageItem {
+    private func quota(_ percentage: Int = 62) throws -> LAAUsageItem {
         try item("""
-        {"id":"\(id)","kind":"quota","label":"Claude","value":\(percentage),"unit":"percent",
-         "source":"test","observedAt":"2026-10-29T04:49:23Z","availability":"available",
+        {"id":"provider.claude.quota","kind":"quota","label":"Claude","value":\(percentage),"unit":"percent",
+         "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,
          "detail":{"windows":[{"label":"Session","remainingPercent":\(percentage),"resetsAt":"2026-11-02T00:00:00Z"}]}}
         """)
     }
 
-    private func unavailable(_ id: String = "provider.claude.quota") throws -> LAAUsageItem {
+    private func unavailable() throws -> LAAUsageItem {
         try item("""
-        {"id":"\(id)","kind":"quota","label":"Claude","value":null,"unit":"percent",
-         "source":"test","observedAt":null,"availability":"unavailable","nullReason":"fetch_failed",
+        {"id":"provider.claude.quota","kind":"quota","label":"Claude","value":null,"unit":"percent",
+         "source":"codexbar-usage-proxy","observedAt":null,"availability":"unavailable","nullReason":"fetch_failed",
          "stale":false,"estimated":false,"expired":false}
         """)
     }
 
-    func testOverviewRequiresARealWindowAndKeepsZeroDistinctFromMissing() throws {
-        let now = Date(timeIntervalSince1970: 1_793_318_400)
-        let zero = try quota("0")
-        XCTAssertEqual(LAAUsageOverview.first(from: [zero], now: now)?.remainingPercent, 0)
-        XCTAssertNil(LAAUsageOverview.first(from: [try quota("null")], now: now))
-        XCTAssertNil(LAAUsageOverview.first(from: [try quota("101")], now: now))
-        XCTAssertNil(LAAUsageOverview.first(from: [try unavailable()], now: now))
-        XCTAssertTrue(LAAUsageOverview.first(from: [zero], now: Date.distantFuture)?.expired == true)
-    }
-
-    func testDashboardKeepsModelsSeparateAndDoesNotInventValues() throws {
-        let models: [String: Any] = ["models": [
-            ["provider": "one", "model": "small", "input_tokens": 0, "output_tokens": NSNull(), "actual_cost": 0],
-            ["provider": "two", "model": "large", "input_tokens": 50, "output_tokens": 2,
-             "actual_cost": 1.25, "estimated_cost": 1.5]
-        ] as [[String: Any]]]
-        let rows = try LAADashboardUsageRow.parse(usage: [:], models: models)
-        XCTAssertEqual(rows.count, 2)
-        XCTAssertEqual(rows[0].inputTokens, 0)
-        XCTAssertNil(rows[0].outputTokens)
-        XCTAssertNil(rows[0].actualCost) // The server cannot distinguish missing from billed zero.
-        XCTAssertNil(rows[0].estimatedCost)
-        XCTAssertEqual(rows[1].actualCost, 1.25)
-        XCTAssertEqual(rows[1].estimatedCost, 1.5)
-        XCTAssertThrowsError(try LAADashboardUsageRow.parse(usage: [:], models: nil))
-    }
-
-    func testFailureKeepsValuesAndTheirTimeAndEmptySuccessClearsThem() async throws {
+    func testRefreshUsageSuccessFailureRetainsAndEmptySuccessClears() async throws {
         let state = LAAUsageState()
         let first = try quota()
         let firstTime = Date(timeIntervalSince1970: 100)
         let later = Date(timeIntervalSince1970: 200)
-        await state.refresh(usage: { [first] }, mac: { [first] }, analytics: { [] }, now: { firstTime })
-        await state.refresh(usage: { throw LAABridgeError.networkUnreachable },
-                            mac: { throw LAABridgeError.unavailable },
-                            analytics: { throw LAAUsageProblem.dashboardFailed }, now: { later })
+        await state.refreshUsage({ [first] }, now: { firstTime })
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
+        XCTAssertEqual(state.updatedAt, firstTime)
+        await state.refreshUsage({ throw LAABridgeError.networkUnreachable }, now: { later })
         XCTAssertEqual(state.usage.value?.first?.value, 62)
         XCTAssertEqual(state.usage.fetchedAt, firstTime)
         XCTAssertEqual(state.updatedAt, firstTime)
         XCTAssertEqual(state.usage.error, .bridge(.networkUnreachable))
-        XCTAssertEqual(state.mac.error, .bridge(.unavailable))
-        XCTAssertEqual(state.analytics.value?.count, 0)
-        XCTAssertEqual(state.analytics.fetchedAt, firstTime)
-        XCTAssertEqual(state.analytics.error, .dashboardFailed)
-        await state.refresh(usage: { [first] }, mac: { [first] },
-                            analytics: { throw LAAUsageProblem.dashboardFailed }, now: { later })
+        await state.refreshUsage({ [try self.unavailable()] }, now: { later })
+        XCTAssertEqual(state.retainedUsageIDs, [first.id])
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
+        XCTAssertEqual(state.usage.fetchedAt, firstTime)
         XCTAssertEqual(state.updatedAt, firstTime)
-        await state.refresh(usage: { [] }, mac: { [] }, analytics: { [] }, now: { later })
+        await state.refreshUsage({ [] }, now: { later })
         XCTAssertEqual(state.usage.value?.count, 0)
         XCTAssertNil(state.usage.error)
+        XCTAssertTrue(state.retainedUsageIDs.isEmpty)
         XCTAssertEqual(state.updatedAt, later)
     }
 
-    func testFailedItemKeepsPreviousValueAndTime() async throws {
+    func testRefreshUsageDeduplicatesAndOldScopeCannotPublish() async throws {
         let state = LAAUsageState()
-        let first = try quota()
-        let failed = try unavailable()
-        let firstTime = Date(timeIntervalSince1970: 100)
-        await state.refresh(usage: { [first] }, mac: { [] }, analytics: { [] }, now: { firstTime })
-        await state.refresh(usage: { [failed] }, mac: { [] }, analytics: { [] },
-                            now: { Date(timeIntervalSince1970: 200) })
-        XCTAssertEqual(state.usage.value?.first?.value, 62)
-        XCTAssertEqual(state.usage.value?.first?.observedAt, first.observedAt)
-        XCTAssertEqual(state.retainedUsageIDs, [first.id])
-        XCTAssertEqual(state.usage.fetchedAt, firstTime)
-        XCTAssertEqual(state.updatedAt, firstTime)
-    }
-
-    func testRefreshDeduplicatesAndScopeChangesWaitForOldRequest() async throws {
-        let state = LAAUsageState()
-        let started = expectation(description: "first refresh has started")
+        let started = expectation(description: "first refresh started")
         var calls = 0
         let first = try quota()
-        state.selectScope(bridgeRevision: 0, dashboardScope: "one")
+        state.selectScope(bridgeRevision: 0)
         let inFlight = Task {
-            await state.refresh(usage: {
+            await state.refreshUsage {
                 calls += 1
                 started.fulfill()
-                try await Task.sleep(nanoseconds: 2_000_000_000)
+                try await Task.sleep(nanoseconds: 300_000_000)
                 return [first]
-            },
-                                mac: { [] }, analytics: { [] })
+            }
         }
         defer { inFlight.cancel() }
         await fulfillment(of: [started], timeout: 10)
-        guard state.isRefreshing else { return XCTFail("Refresh did not start") }
-        XCTAssertTrue(state.isRefreshing)
-        await state.refresh(usage: { calls += 1; return [] }, mac: { [] }, analytics: { [] })
+        await state.refreshUsage { calls += 1; return [] }
         XCTAssertEqual(calls, 1)
-        XCTAssertTrue(state.selectScope(bridgeRevision: 1, dashboardScope: "two"))
-        XCTAssertTrue(state.isRefreshing)
-        await state.refresh(usage: { calls += 1; return [] }, mac: { [] }, analytics: { [] })
-        XCTAssertEqual(calls, 1)
+        XCTAssertTrue(state.selectScope(bridgeRevision: 1))
         await inFlight.value
         await state.waitUntilIdle()
-        XCTAssertFalse(state.isRefreshing)
-        XCTAssertNil(state.usage.value) // The old identity's response cannot cross scopes.
-        await state.refresh(usage: { [first] }, mac: { [] }, analytics: { [] })
+        XCTAssertNil(state.usage.value)
+        await state.refreshUsage { [first] }
         XCTAssertEqual(state.usage.value?.first?.value, 62)
+    }
+
+    func testShellLifecycleRefreshesWidgetWithoutOpeningUsageAndClearsOnUnpair() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = WidgetSnapshotStore(directory: directory)
+        let reading = try quota()
+        let bridge = LAABridgeSession(statusForTesting: .paired)
+        var calls = 0
+        var reloads = 0
+        let state = LAAUsageState(widgetStore: store, reloadWidgets: { reloads += 1 }, loader: { _ in
+            calls += 1
+            return [reading]
+        })
+        await state.synchronize(bridge: bridge, active: false)
+        XCTAssertEqual(calls, 0)
+        await state.synchronize(bridge: bridge, active: true)
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(store.read()?.usage?.meters.first?.remainingPercent, 62)
+        XCTAssertEqual(reloads, 1)
+        await state.synchronize(bridge: bridge, active: true)
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(reloads, 1) // The same snapshot does not reload WidgetKit twice.
+        await state.synchronize(bridge: LAABridgeSession(statusForTesting: .unpaired), active: true)
+        XCTAssertNil(store.read()?.usage)
+        XCTAssertEqual(calls, 2)
+    }
+
+    func testLegacyFreshnessAndVerifiedSources() throws {
+        let reading = try quota()
+        let at = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
+        let later = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:20:00Z"))
+        XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: at))
+        XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: later))
+        XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: at, retained: true))
+        XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: at, failed: true))
+        let verified = try item("""
+        {"id":"provider.fal.balance","kind":"balance","label":"fal","value":1,"unit":"usd",
+         "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
+         "stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified"}}
+        """)
+        XCTAssertFalse(LAAUsageFreshness.isStale(verified, at: later.addingTimeInterval(86_400)))
+        XCTAssertTrue(LAAUsageFreshness.isStale(verified, at: at.addingTimeInterval(-3600)))
+    }
+
+    func testWindowExpirationAndExtraCreditFreshnessAreIndependent() throws {
+        let reading = try item("""
+        {"id":"provider.claude.quota","kind":"quota","label":"Claude","value":0,"unit":"percent",
+         "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
+         "stale":false,"estimated":false,"expired":true,
+         "detail":{"windows":[{"label":"Session","remainingPercent":0,"resetsAt":"2026-10-31T00:05:00Z"},
+                               {"label":"Weekly","remainingPercent":80,"resetsAt":"2026-11-02T00:00:00Z"}],
+                   "credits":{"remaining":10,"updatedAt":"2026-10-30T20:00:00Z"},
+                   "resetPasses":{"available":false,"remaining":0,"updatedAt":"2026-10-31T00:00:00Z","expiresAt":"2026-11-02T00:00:00Z"}}}
+        """)
+        let now = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
+        let windows = try XCTUnwrap(reading.detail?.windows)
+        XCTAssertTrue(LAAUsageFreshness.windowExpired(windows[0], at: now))
+        XCTAssertFalse(LAAUsageFreshness.windowExpired(windows[1], at: now))
+        XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: now))
+        XCTAssertTrue(LAAUsageFreshness.extraNeedsAttention(reading, at: now))
     }
 }
 #endif

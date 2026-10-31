@@ -135,12 +135,16 @@ export async function readUsageFeed({
 }
 
 function normalizeWindows(row) {
+  // Do not discard a bad/extra window: it may be the limiting quota.
+  for (const key of ['windows', 'extraWindows']) {
+    if (row[key] !== undefined && (!Array.isArray(row[key]) || row[key].length > MAX_WINDOWS)) return null;
+  }
   const raw = [...(Array.isArray(row.windows) ? row.windows : []), ...(Array.isArray(row.extraWindows) ? row.extraWindows : [])];
   const windows = [];
-  for (const entry of raw.slice(0, MAX_WINDOWS)) {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
     const remaining = finiteNumber(entry.remaining, { max: 100 });
-    if (remaining === null) continue;
+    if (remaining === null) return null;
     const window = {
       label: safeText(entry.label, 64) ?? `Window ${windows.length + 1}`,
       remainingPercent: remaining,
@@ -189,14 +193,16 @@ function balanceExpired(row, now) {
 }
 
 function isStale(row, feedFetchedAt, now, autoStaleMs) {
+  const observed = isoTime(row.updatedAt);
+  if (observed === null || Date.parse(observed) > now + FUTURE_TOLERANCE_MS) return true;
+  if (row.source != null && !['live', 'local', 'codexbar-cli', 'verified'].includes(row.source)) return true;
   // A verified value is a screen check with no auto refresh: age is expected,
   // and `observedAt` plus the expiry already say how old it is.
   if (row.source === 'verified') return false;
-  const times = [isoTime(row.updatedAt), feedFetchedAt]
+  const times = [observed, feedFetchedAt]
     .filter((value) => value !== null)
     .map((value) => Date.parse(value));
-  if (times.length === 0) return false;
-  return now - Math.min(...times) > autoStaleMs;
+  return now - Math.min(...times) >= autoStaleMs;
 }
 
 function observedAtOf(row, feedFetchedAt) {
@@ -205,7 +211,7 @@ function observedAtOf(row, feedFetchedAt) {
 
 function quotaItem(row, provider, context) {
   const windows = normalizeWindows(row);
-  if (windows.length === 0) {
+  if (!windows || windows.length === 0) {
     return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
   }
   const binding = windows.reduce((lowest, window) => (
@@ -231,8 +237,11 @@ function quotaItem(row, provider, context) {
 }
 
 function balanceItem(row, provider, context) {
-  const currency = row.currency === 'JPY' ? 'JPY' : row.currency === 'USD' ? 'USD' : null;
-  const amount = finiteNumber(row.amount);
+  const veniceUsd = provider.id === 'venice' ? finiteNumber(row.usd) : null;
+  const explicitAmount = finiteNumber(row.amount);
+  const currency = explicitAmount === null && veniceUsd !== null ? 'USD'
+    : row.currency === 'JPY' ? 'JPY' : row.currency === 'USD' || veniceUsd !== null ? 'USD' : null;
+  const amount = explicitAmount ?? veniceUsd;
   const expired = balanceExpired(row, context.now);
   const base = { ...baseOf(provider), unit: currency === 'JPY' ? 'jpy' : 'usd' };
   if (amount === null) {
@@ -365,8 +374,10 @@ export function usageItemsFromFeed(raw, { now = Date.now(), autoStaleMs = resolv
     const row = byId.get(provider.id);
     if (!row) return unavailableItem({ ...baseOf(provider), reason: 'fetch_failed' });
     const item = itemFromRow(row, provider, context);
-    // Console's projection uses the feed time for every provider and treats a
-    // missing source as live; the raw /widget response has no row.fetchedAt.
+    // usage-meters/usage-proxy.py normalize() intentionally omits source for
+    // ordinary CodexBar live rows; inventory/collector/usage.ts also supplies
+    // live for them. Manual credit rows explicitly carry source: verified.
+    // The raw /widget response has no row.fetchedAt.
     const source = row.source ?? 'live';
     if (item.availability === 'available' && ['live', 'local', 'codexbar-cli'].includes(source)) {
       const updated = isoTime(row.updatedAt);

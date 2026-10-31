@@ -6,9 +6,11 @@ import SwiftUI
 struct LAAAppShell: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scenePhase) private var scenePhase
     let onRequestSettings: () -> Void
 
     @StateObject private var bridge = LAABridgeSession()
+    @StateObject private var usageState = LAAUsageState()
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var chatsPath: [V2Route] = []
@@ -47,6 +49,15 @@ struct LAAAppShell: View {
             .tint(LAAColor.link)
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
+            .task(id: "\(bridge.revision)|\(scenePhase == .active)") {
+                await usageState.synchronize(bridge: bridge, active: scenePhase == .active)
+            }
+            .onChange(of: appState.laaWidgetUsagePending, initial: true) { _, pending in
+                guard pending else { return }
+                selectedTab = .usage
+                appState.laaWidgetUsagePending = false
+                appState.requestSettingsDismissal()
+            }
             .environment(\.v2Shell, V2ShellContext(
                 pickProfile: { profile in
                     guard profile != appState.activeProfile, !appState.isProfileSwitching else { return }
@@ -146,7 +157,7 @@ struct LAAAppShell: View {
                     } else {
                         NavigationStack {
                             if tab == .usage {
-                                LAAUsageView(onRequestSettings: onRequestSettings)
+                                LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                             } else if tab == .work {
                                 LAAWorkView(onRequestSettings: onRequestSettings)
                             } else {

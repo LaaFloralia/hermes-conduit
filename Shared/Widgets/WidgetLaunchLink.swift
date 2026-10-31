@@ -7,6 +7,7 @@ enum WidgetLaunchAction: String, Codable, CaseIterable {
     case talk
     #if LAA_BUILD
     case employeeChat
+    case usage
     #endif
 }
 
@@ -31,6 +32,8 @@ struct WidgetLaunchLink: Equatable {
         case .newChat, .talk:
             guard workspace != nil, canonicalReference == nil else { return nil }
         #if LAA_BUILD
+        case .usage:
+            guard workspace == nil, canonicalReference == nil else { return nil }
         case .employeeChat:
             guard let workspace, LAAWidgetEmployee.forProfile(workspace.profile) != nil,
                   canonicalReference == nil else { return nil }

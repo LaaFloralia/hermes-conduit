@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import Combine
 import Foundation
+import WidgetKit
 
 struct LAAUsageSnapshot<Value> {
     var value: Value?
@@ -21,21 +22,18 @@ struct LAAUsageSnapshot<Value> {
 
 enum LAAUsageProblem: Error, Equatable {
     case bridge(LAABridgeError)
-    case dashboardNotConnected, dashboardSignIn, dashboardUnsupported, dashboardFailed
+    case failed
 
     init(_ error: Error) {
         if let problem = error as? LAAUsageProblem { self = problem }
         else if let problem = error as? LAABridgeError { self = .bridge(problem) }
-        else { self = .dashboardFailed }
+        else { self = .failed }
     }
 
     var message: String {
         switch self {
         case .bridge(let error): return error.japaneseText
-        case .dashboardNotConnected: return AppLocalization.string("Connect to Hermes to see usage.")
-        case .dashboardSignIn: return AppLocalization.string("Sign in to this dashboard again to see usage.")
-        case .dashboardUnsupported: return AppLocalization.string("This Hermes doesn't report usage. Update Hermes to see it here.")
-        case .dashboardFailed: return AppLocalization.string("Couldn't load usage. Pull down to try again.")
+        case .failed: return AppLocalization.string("Couldn't load usage. Pull down to try again.")
         }
     }
 }
@@ -44,33 +42,84 @@ enum LAAUsageProblem: Error, Equatable {
 @MainActor
 final class LAAUsageState: ObservableObject {
     @Published private(set) var usage = LAAUsageSnapshot<[LAAUsageItem]>()
-    @Published private(set) var mac = LAAUsageSnapshot<[LAAUsageItem]>()
-    @Published private(set) var analytics = LAAUsageSnapshot<[LAADashboardUsageRow]>()
     @Published private(set) var retainedUsageIDs: Set<String> = []
-    @Published private(set) var retainedMacIDs: Set<String> = []
     @Published private(set) var updatedAt: Date?
     @Published private(set) var isRefreshing = false
     private var generation = 0
     private var bridgeRevision: Int?
-    private var dashboardScope: String?
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
+    private let widgetStore: WidgetSnapshotStore?
+    private let reloadWidgets: @MainActor () -> Void
+    private let loadUsage: @MainActor (LAABridgeSession) async throws -> [LAAUsageItem]
+
+    init(widgetStore: WidgetSnapshotStore? = WidgetSnapshotStore.production,
+         reloadWidgets: @escaping @MainActor () -> Void = { WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.employee) },
+         loader: (@MainActor (LAABridgeSession) async throws -> [LAAUsageItem])? = nil) {
+        self.widgetStore = widgetStore
+        self.reloadWidgets = reloadWidgets
+        self.loadUsage = loader ?? { try await Self.loadPages(bridge: $0) }
+    }
+
+    /// The shell owns this state so widgets update even if Usage is never opened.
+    func synchronize(bridge: LAABridgeSession, active: Bool) async {
+        let changed = selectScope(bridgeRevision: bridge.revision)
+        if changed || bridge.status != .paired { publish(nil) }
+        guard active, bridge.status == .paired else { return }
+        await waitUntilIdle()
+        guard !Task.isCancelled else { return }
+        await refreshAndPublish(bridge: bridge)
+    }
+
+    func refreshAndPublish(bridge: LAABridgeSession) async {
+        guard bridge.status == .paired, !isRefreshing else { return }
+        let revision = bridge.revision
+        await refreshUsage { try await self.loadUsage(bridge) }
+        guard !Task.isCancelled, bridge.status == .paired, bridge.revision == revision else { return }
+        if let items = usage.value {
+            publish(LAAWidgetUsageBuilder.make(items: items, retained: retainedUsageIDs,
+                                              failed: usage.error != nil, checkedAt: usage.fetchedAt))
+        } else if usage.error != nil, let old = widgetStore?.read()?.usage {
+            let meters = old.meters.map { meter in
+                WidgetUsageMeter(id: meter.id, label: meter.label, remainingPercent: meter.remainingPercent,
+                                 observedAt: meter.observedAt, freshUntil: meter.freshUntil, resetsAt: meter.resetsAt,
+                                 stale: meter.stale, retained: true, verified: meter.verified == true,
+                                 legacyFreshness: meter.legacyFreshness == true)
+            }
+            publish(WidgetUsageSnapshot(meters: meters, checkedAt: old.checkedAt, hasOtherUsage: old.hasOtherUsage == true))
+        }
+    }
+
+    private func publish(_ snapshot: WidgetUsageSnapshot?) {
+        guard let store = widgetStore else { return }
+        do { if try store.writeUsage(snapshot) { reloadWidgets() } }
+        catch { /* Keep the last valid widget snapshot. */ }
+    }
+
+    private static func loadPages(bridge: LAABridgeSession) async throws -> [LAAUsageItem] {
+        var items: [LAAUsageItem] = []
+        var cursor: String?
+        var seen = Set<String>()
+        repeat {
+            var parts = URLComponents(); parts.path = "/v1/usage"
+            if let cursor { parts.queryItems = [URLQueryItem(name: "cursor", value: cursor)] }
+            guard let route = parts.string else { throw LAABridgeError.invalidResponse }
+            let page: LAAUsagePage = try await bridge.read(route)
+            items.append(contentsOf: page.items)
+            cursor = page.nextCursor
+            if let cursor, !seen.insert(cursor).inserted || seen.count > 100 { throw LAABridgeError.invalidResponse }
+        } while cursor != nil
+        return items
+    }
 
     @discardableResult
-    func selectScope(bridgeRevision revision: Int, dashboardScope scope: String) -> Bool {
+    func selectScope(bridgeRevision revision: Int) -> Bool {
         let bridgeChanged = bridgeRevision != nil && bridgeRevision != revision
-        let dashboardChanged = dashboardScope != nil && dashboardScope != scope
         bridgeRevision = revision
-        dashboardScope = scope
-        guard bridgeChanged || dashboardChanged else { return false }
+        guard bridgeChanged else { return false }
         generation += 1
-        if bridgeChanged {
-            usage = .init()
-            mac = .init()
-            retainedUsageIDs = []
-            retainedMacIDs = []
-            updatedAt = nil
-        }
-        if dashboardChanged { analytics = .init() }
+        usage = .init()
+        retainedUsageIDs = []
+        updatedAt = nil
         return true
     }
 
@@ -99,38 +148,6 @@ final class LAAUsageState: ObservableObject {
         let finished = now()
         Self.apply(result, to: &usage, retainedIDs: &retainedUsageIDs, at: finished)
         if case .success = result, retainedUsageIDs.isEmpty { updatedAt = finished }
-    }
-
-    func refresh(
-        usage loadUsage: @escaping @MainActor () async throws -> [LAAUsageItem],
-        mac loadMac: @escaping @MainActor () async throws -> [LAAUsageItem],
-        analytics loadAnalytics: @escaping @MainActor () async throws -> [LAADashboardUsageRow],
-        now: @escaping () -> Date = Date.init
-    ) async {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        generation += 1
-        let mine = generation
-        defer {
-            isRefreshing = false
-            let waiters = idleWaiters
-            idleWaiters.removeAll()
-            waiters.forEach { $0.resume() }
-        }
-        async let usageResult = Self.capture(loadUsage)
-        async let macResult = Self.capture(loadMac)
-        async let analyticsResult = Self.capture(loadAnalytics)
-        let (newUsage, newMac, newAnalytics) = await (usageResult, macResult, analyticsResult)
-        guard mine == generation, !Task.isCancelled else { return }
-        let finishedAt = now()
-        Self.apply(newUsage, to: &usage, retainedIDs: &retainedUsageIDs, at: finishedAt)
-        Self.apply(newMac, to: &mac, retainedIDs: &retainedMacIDs, at: finishedAt)
-        analytics.apply(newAnalytics, at: finishedAt)
-        let analyticsKeptPrevious: Bool
-        if case .failure = newAnalytics { analyticsKeptPrevious = analytics.value != nil }
-        else { analyticsKeptPrevious = false }
-        if case .success = newUsage, case .success = newMac,
-           retainedUsageIDs.isEmpty, retainedMacIDs.isEmpty, !analyticsKeptPrevious { updatedAt = finishedAt }
     }
 
     private static func capture<T>(_ load: @MainActor () async throws -> T) async -> Result<T, Error> {
@@ -194,16 +211,23 @@ struct LAAUsageGroup: Identifiable {
 
 enum LAAWidgetUsageBuilder {
     static func make(items: [LAAUsageItem], retained: Set<String>, failed: Bool,
-                     checkedAt: Date?) -> WidgetUsageSnapshot {
-        let meters = LAAUsageGroup.consoleGroups(items).flatMap(\.items).flatMap { item -> [WidgetUsageMeter] in
+                     checkedAt _: Date?) -> WidgetUsageSnapshot {
+        let visible = LAAUsageGroup.consoleGroups(items).flatMap(\.items)
+        let meters = visible.flatMap { item -> [WidgetUsageMeter] in
             guard item.kind == "quota", item.availability == "available" else { return [] }
             return (item.detail?.windows ?? []).enumerated().compactMap { index, window in
                 guard let value = window.remainingPercent, value.isFinite, (0...100).contains(value) else { return nil }
+                let observed = LAAUsageItem.date(item.observedAt)
+                let verified = item.detail?.sourceKind == "verified"
+                let rawDeadline = item.detail?.freshUntil
+                let deadline = rawDeadline == nil && !verified
+                    ? observed?.addingTimeInterval(20 * 60) : LAAUsageItem.date(rawDeadline)
                 return WidgetUsageMeter(id: "\(item.id).\(index)", label: "\(item.label) · \(window.label)",
-                    remainingPercent: value, observedAt: LAAUsageItem.date(item.observedAt),
-                    freshUntil: LAAUsageItem.date(item.detail?.freshUntil),
-                    resetsAt: LAAUsageItem.date(window.resetsAt), stale: item.stale,
-                    retained: failed || retained.contains(item.id))
+                    remainingPercent: value, observedAt: observed, freshUntil: deadline,
+                    resetsAt: LAAUsageItem.date(window.resetsAt),
+                    stale: item.stale || (rawDeadline != nil && deadline == nil),
+                    retained: failed || retained.contains(item.id), verified: verified,
+                    legacyFreshness: rawDeadline == nil && !verified)
             }
         }.sorted {
             if $0.remainingPercent != $1.remainingPercent { return $0.remainingPercent < $1.remainingPercent }
@@ -214,32 +238,12 @@ enum LAAWidgetUsageBuilder {
         // Only show a confirmation time if all displayed meters have one.
         let observations = selected.compactMap(\.observedAt)
         let oldestObservation = observations.count == selected.count ? observations.min() : nil
-        return WidgetUsageSnapshot(meters: selected, checkedAt: selected.isEmpty ? checkedAt : oldestObservation)
+        let otherUsage = visible.filter { $0.availability == "available" && $0.kind != "quota" }
+        let otherObservations = otherUsage.compactMap { LAAUsageItem.date($0.observedAt) }
+        let oldestOther = otherObservations.count == otherUsage.count ? otherObservations.min() : nil
+        return WidgetUsageSnapshot(meters: selected, checkedAt: selected.isEmpty ? oldestOther : oldestObservation,
+                                   hasOtherUsage: !otherUsage.isEmpty)
     }
 }
 
-struct LAAUsageOverview {
-    let itemID: String
-    let label: String
-    let window: String
-    let remainingPercent: Double
-    let resetsAt: Date?
-    let observedAt: Date?
-    let stale: Bool
-    let expired: Bool
-
-    static func first(from items: [LAAUsageItem], now: Date = Date()) -> LAAUsageOverview? {
-        for item in items where item.kind == "quota" && item.availability == "available" {
-            for window in item.detail?.windows ?? [] {
-                guard let remaining = window.remainingPercent, remaining.isFinite,
-                      (0...100).contains(remaining) else { continue }
-                let reset = LAAUsageItem.date(window.resetsAt)
-                return .init(itemID: item.id, label: item.label, window: window.label, remainingPercent: remaining,
-                             resetsAt: reset, observedAt: LAAUsageItem.date(item.observedAt),
-                             stale: item.stale, expired: item.isExpired(now: now) || (reset.map { $0 < now } ?? false))
-            }
-        }
-        return nil
-    }
-}
 #endif

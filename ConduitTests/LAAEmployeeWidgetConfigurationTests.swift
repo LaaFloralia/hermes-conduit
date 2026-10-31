@@ -26,7 +26,9 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
             XCTAssertEqual(entry.employee, employee)
             XCTAssertEqual(entry.employee.heroImage, "LAAEmployee-\(employee.rawValue)-hero")
             XCTAssertEqual(entry.defaultLink(for: .systemSmall).url, entry.chat.url)
-            XCTAssertEqual(entry.defaultLink(for: .systemMedium).workspace?.profile, "laa-ciel")
+            XCTAssertEqual(entry.defaultLink(for: .systemMedium).action, .usage)
+            XCTAssertEqual(WidgetLaunchLink(url: entry.usageLink.url)?.action, .usage)
+            XCTAssertNil(WidgetLaunchLink(action: .usage, workspace: workspace, reference: nil))
             XCTAssertEqual(entry.defaultLink(for: .accessoryRectangular).url, entry.call.url)
             XCTAssertEqual(entry.defaultLink(for: .accessoryCircular).url, entry.call.url)
             for (link, action) in [(entry.call, WidgetLaunchAction.talk), (entry.chat, .employeeChat)] {
@@ -36,6 +38,21 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
                 XCTAssertEqual(decoded.workspace?.profile, employee.profile)
             }
         }
+    }
+
+    func testTimelineIncludesFreshnessAndResetDeadlines() throws {
+        let now = Date()
+        let first = now.addingTimeInterval(600)
+        let second = now.addingTimeInterval(900)
+        let meter = WidgetUsageMeter(id: "one", label: "Claude", remainingPercent: 12,
+            observedAt: now, freshUntil: first, resetsAt: second, stale: false, retained: false)
+        let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
+            .withUsage(WidgetUsageSnapshot(meters: [meter], checkedAt: now))
+        let timeline = LAAEmployeeTimelineProvider.makeTimeline(configuration: LAAEmployeeWidgetIntent(), snapshot: snapshot)
+        XCTAssertEqual(timeline.entries.count, 3)
+        XCTAssertEqual(timeline.entries.dropFirst().map(\.date), [first, second])
+        XCTAssertFalse(timeline.entries[0].usage!.meters[0].isPast(at: timeline.entries[0].date))
+        XCTAssertTrue(timeline.entries[1].usage!.meters[0].isPast(at: timeline.entries[1].date))
     }
 
     func testDefaultTimelineWithoutSnapshotKeepsCielAndUnresolvedDashboard() throws {
