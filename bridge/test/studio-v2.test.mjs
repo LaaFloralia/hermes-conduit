@@ -59,6 +59,7 @@ describe('Studio v2 mock socket contract', () => {
   let dir, socket, server, bridge, readToken, writeToken, allToken, clock = 1_000_000;
   const state = { reviews: new Map(), calls: [], forcedError: null, dropReviewResponse: false, v2: true, closedStream: false,
     catalog, catalogTag: tag, catalogFault: null, catalogDelayMs: 0, projectDelayMs: 0, snapshotDelayMs: 0,
+    reviewDelayMs: 0, catalogPdfDelayMs: 0,
     detail, retiredVersion: null, retiredPdfKey: null };
 
   before(async () => {
@@ -107,7 +108,9 @@ describe('Studio v2 mock socket contract', () => {
         const record = { ...review, createdAt: now };
         state.reviews.set(review.id, record);
         if (state.dropReviewResponse) { state.dropReviewResponse = false; return req.socket.destroy(); }
-        return response(res, 201, record);
+        if (state.reviewDelayMs) await new Promise((resolve) => setTimeout(resolve, state.reviewDelayMs));
+        if (!res.destroyed) return response(res, 201, record);
+        return;
       }
       const media = /^\/api\/studio\/media\/([\w-]+)\/([a-f0-9]{64})\.(mp4|mp3|pdf|usdz)$/.exec(req.url ?? '');
       if (media) {
@@ -115,6 +118,8 @@ describe('Studio v2 mock socket contract', () => {
         const type = { mp4: 'video/mp4', mp3: 'audio/mpeg', pdf: 'application/pdf', usdz: 'model/vnd.usdz+zip' }[ext];
         if (ext === 'pdf' && mediaKey === state.retiredPdfKey) return response(res, 404, { error: 'not_found' });
         if (ext === 'pdf' && [pdfKey, nextPdfKey].includes(mediaKey)) {
+          if (state.catalogPdfDelayMs) await new Promise((resolve) => setTimeout(resolve, state.catalogPdfDelayMs));
+          if (res.destroyed) return;
           const range = /^bytes=(\d+)-(\d*)$/.exec(req.headers.range ?? '');
           if (req.headers.range && (!range || Number(range[1]) >= pdf.length || (range[2] && Number(range[2]) < Number(range[1])))) {
             res.writeHead(416, { 'content-range': `bytes */${pdf.length}` }); return res.end();
@@ -212,40 +217,70 @@ describe('Studio v2 mock socket contract', () => {
     } finally { state.catalog = catalog; state.catalogTag = tag; }
   });
 
-  it('waits for slow initial catalog and project responses through the Bridge', async () => {
+  it('keeps the catalog and online-only document waits longer than the three control operations', async () => {
     state.catalogDelayMs = 12_250; // Longer than the former 12-second socket timeout.
-    state.projectDelayMs = 12_250;
+    state.catalogPdfDelayMs = 12_250;
+    state.snapshotDelayMs = 8_500;
+    state.projectDelayMs = 8_500;
+    state.reviewDelayMs = 8_500;
+    const review = { id: randomUUID(), projectId, revision: 7, target: { kind: 'project' }, verdict: 'adopt' };
+    const reviewCalls = state.calls.filter((call) => call.path === '/api/studio/reviews').length;
     try {
-      const [result, work] = await Promise.all([
+      const [result, document, snapshot, work, saved] = await Promise.all([
         bridge.request('/v1/studio/catalog', { token: readToken }),
+        fetch(`${bridge.base}/v1/studio/media/catalog/${pdfKey}.pdf`, { headers: { authorization: `Bearer ${readToken}`, range: 'bytes=0-3' } }),
+        bridge.request('/v1/studio/snapshot', { token: readToken }),
         bridge.request(`/v1/studio/projects/${projectId}`, { token: readToken }),
+        bridge.request('/v1/studio/reviews', { method: 'POST', token: allToken, key: 'slow-review', body: review }),
       ]);
       assert.equal(result.status, 200);
       assert.equal(result.body.data.documents[1].unavailable, 'source_unreadable');
       assert.equal(result.body.data.documents[1].driveUrl, catalog.documents[1].driveUrl);
-      assert.equal(work.status, 200);
-      assert.deepEqual(work.body.data, detail);
-    } finally { state.catalogDelayMs = 0; state.projectDelayMs = 0; }
+      assert.equal(document.status, 206);
+      assert.equal(document.headers.get('content-range'), `bytes 0-3/${pdf.length}`);
+      assert.deepEqual(Buffer.from(await document.arrayBuffer()), pdf.subarray(0, 4));
+      assert.equal(snapshot.status, 503);
+      assert.equal(work.status, 503);
+      assert.equal(saved.status, 503);
+      assert.equal(state.reviews.get(review.id)?.createdAt, now); // Persisted, even though the response timed out.
+      assert.equal(state.calls.filter((call) => call.path === '/api/studio/reviews').length, reviewCalls + 1);
+      const retry = await bridge.request('/v1/studio/reviews', { method: 'POST', token: allToken, key: 'slow-review-retry', body: review });
+      assert.equal(retry.status, 200);
+      assert.equal(retry.body.data.id, review.id);
+      assert.equal(retry.body.data.createdAt, now);
+      assert.equal(state.reviews.size, 1);
+    } finally {
+      state.catalogDelayMs = 0; state.catalogPdfDelayMs = 0; state.projectDelayMs = 0;
+      state.snapshotDelayMs = 0; state.reviewDelayMs = 0; state.reviews.delete(review.id);
+    }
   });
 
-  it('bounds catalog and project waits independently without extending other requests', async () => {
-    const timed = createStudioBackend({ directory: dir, launch: async () => {}, requestTimeoutMs: 100, catalogTimeoutMs: 1000, projectTimeoutMs: 1000 });
+  it('bounds catalog and document waits independently of control and ordinary media requests', async () => {
+    const timed = createStudioBackend({ directory: dir, launch: async () => {}, requestTimeoutMs: 100,
+      controlTimeoutMs: 100, catalogTimeoutMs: 1000, catalogMediaTimeoutMs: 1000 });
     try {
       state.catalogDelayMs = 350;
-      state.projectDelayMs = 350;
-      const [result, work] = await Promise.all([timed.catalog(), timed.project(projectId)]);
+      state.catalogPdfDelayMs = 350;
+      const [result, document] = await Promise.all([
+        timed.catalog(), timed.media(`/api/studio/media/catalog/${pdfKey}.pdf`, { range: 'bytes=0-3' }),
+        assert.rejects(timed.media(`/api/studio/media/${projectId}/${pdfKey}.pdf`), { code: 'studio_not_connected' }),
+      ]);
       assert.equal(result.status, 200);
-      assert.deepEqual(work, detail);
+      assert.equal(document.statusCode, 206); document.resume();
       assert.equal((await timed.catalog(tag)).status, 304);
       state.snapshotDelayMs = 350;
-      await assert.rejects(timed.snapshot(), { code: 'studio_not_connected' });
-      state.catalogDelayMs = 1600;
-      state.projectDelayMs = 1600;
+      state.projectDelayMs = 350;
       await Promise.all([
-        assert.rejects(timed.catalog(), { code: 'studio_not_connected' }),
+        assert.rejects(timed.snapshot(), { code: 'studio_not_connected' }),
         assert.rejects(timed.project(projectId), { code: 'studio_not_connected' }),
       ]);
-    } finally { state.catalogDelayMs = 0; state.projectDelayMs = 0; state.snapshotDelayMs = 0; }
+      state.catalogDelayMs = 1600;
+      state.catalogPdfDelayMs = 1600;
+      await Promise.all([
+        assert.rejects(timed.catalog(), { code: 'studio_not_connected' }),
+        assert.rejects(timed.media(`/api/studio/media/catalog/${pdfKey}.pdf`), { code: 'studio_not_connected' }),
+      ]);
+    } finally { state.catalogDelayMs = 0; state.catalogPdfDelayMs = 0; state.projectDelayMs = 0; state.snapshotDelayMs = 0; }
   });
 
   it('returns project details without erasing preparing, other, or previewOnly, and maps missing projects', async () => {

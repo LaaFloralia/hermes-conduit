@@ -174,6 +174,13 @@ final class LAAStudioUITests: XCTestCase {
         let video = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Example.mp4")).firstMatch
         for _ in 0..<4 where !video.exists { app.swipeUp() }
         XCTAssertTrue(video.waitForExistence(timeout: 10)); XCTAssertTrue(video.label.contains("Video"))
+        XCTAssertFalse(video.label.contains("00:")) // The fixture has no duration.
+        let preparing = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Preparing.mp4")).firstMatch
+        if !preparing.isHittable { app.swipeUp() }
+        XCTAssertTrue(preparing.waitForExistence(timeout: 10))
+        XCTAssertTrue(preparing.label.contains("閲覧用コピーを準備中")); preparing.tap()
+        XCTAssertTrue(app.staticTexts["閲覧用コピーを準備中です。時間をおいて作品を更新してください。"].waitForExistence(timeout: 10))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
         let image = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Example.png")).firstMatch
         if !image.isHittable { app.swipeUp() }
         XCTAssertTrue(image.waitForExistence(timeout: 10)); image.tap()
@@ -199,6 +206,34 @@ final class LAAStudioUITests: XCTestCase {
         if !retry.isHittable { app.swipeUp() }
         XCTAssertTrue(retry.waitForExistence(timeout: 10)); retry.tap()
         XCTAssertTrue(app.buttons["入力し直す"].waitForExistence(timeout: 20))
+    }
+
+    func testDocumentShowsLoadingWhileDriveRetrievesIt() throws {
+        guard (try? helper("health")) == "ok" else { throw XCTSkip("Start scripts/laa/studio-ui-fixture.mjs first") }
+        _ = try helper("reset"); _ = try helper("mode/v2-document-wait")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:19582"
+        app.launch()
+        XCTAssertTrue(app.buttons["Studio"].waitForExistence(timeout: 30)); app.buttons["Studio"].tap()
+        XCTAssertTrue(app.buttons["laa.studio.pair"].waitForExistence(timeout: 10)); app.buttons["laa.studio.pair"].tap()
+        let code = app.secureTextFields["laa.bridge.code"]
+        XCTAssertTrue(code.waitForExistence(timeout: 10)); code.tap(); code.typeText("TEST-TEST")
+        let pair = app.buttons["laa.bridge.pair"]
+        if !pair.isHittable { app.swipeUp() }
+        pair.tap()
+        let library = app.buttons["Library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 30)); library.tap()
+        let document = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample document")).firstMatch
+        if !document.isHittable { app.swipeUp() }
+        XCTAssertTrue(document.waitForExistence(timeout: 10)); document.tap()
+        let loading = app.descendants(matching: .any).matching(identifier: "laa.studio.document.loading").firstMatch
+        XCTAssertTrue(loading.waitForExistence(timeout: 3))
+        XCTAssertTrue(loading.label.contains("資料を読み込んでいます"))
+        let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: loading)
+        wait(for: [gone], timeout: 10)
+        XCTAssertFalse(app.staticTexts["プレビューを開けません。Driveの納品を確認してください。"].exists)
     }
 }
 #endif

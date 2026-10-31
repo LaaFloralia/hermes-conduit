@@ -91,7 +91,7 @@ enum LAAStudioData {
         #if DEBUG
         if let fixture { return try sample(fixture) }
         #endif
-        let result: LAABridgeResponse<LAAStudioSnapshot> = try await bridge.request(method: "GET", path: "/v1/studio/snapshot")
+        let result: LAABridgeResponse<LAAStudioSnapshot> = try await bridge.request(method: "GET", path: "/v1/studio/snapshot", timeout: 15)
         return result.data
     }
     @MainActor static func requestID(_ bridge: LAABridgeSession) async throws -> String {

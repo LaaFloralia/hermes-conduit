@@ -15,7 +15,8 @@ export function createStudioBackend({
   directory = join(homedir(), 'Library', 'Application Support', 'LAA Creative Studio', 'Remote'),
   launch = () => execFileAsync(join(homedir(), 'dev', 'studio', 'bin', 'studio'), ['{"operation":"intake.snapshot"}'],
     { timeout: 8000, maxBuffer: 1024 * 1024 }),
-  now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, catalogTimeoutMs = 20000, projectTimeoutMs = 20000, statPath = lstat,
+  now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, catalogTimeoutMs = 20000,
+  controlTimeoutMs = 8000, catalogMediaTimeoutMs = 120000, statPath = lstat,
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   const socketPath = join(directory, 'intake.sock');
@@ -128,10 +129,10 @@ export function createStudioBackend({
     throw new BridgeError(502, 'studio_response_invalid', 'Studio could not process the request');
   }
   return {
-    snapshot: () => json({ path: '/api/studio/snapshot' }),
+    snapshot: () => json({ path: '/api/studio/snapshot', timeoutMs: controlTimeoutMs }),
     catalog: (ifNoneMatch) => json({ path: '/api/studio/catalog', ifNoneMatch, timeoutMs: catalogTimeoutMs }, undefined, { catalog: true }),
-    project: (id) => json({ path: `/api/studio/projects/${id}`, timeoutMs: projectTimeoutMs }),
-    review: (body) => json({ path: '/api/studio/reviews', method: 'POST', body }, undefined, { withStatus: true }),
+    project: (id) => json({ path: `/api/studio/projects/${id}`, timeoutMs: controlTimeoutMs }),
+    review: (body) => json({ path: '/api/studio/reviews', method: 'POST', body, timeoutMs: controlTimeoutMs }, undefined, { withStatus: true }),
     getRequest: (id) => json({ path: `/api/studio/requests/${id}` }),
     async createRequest(body) {
       const args = { path: '/api/studio/requests', method: 'POST', body };
@@ -144,6 +145,8 @@ export function createStudioBackend({
       }
     },
     action: (body) => json({ path: '/api/studio/action', method: 'POST', body }),
-    media: (path, options = {}) => request({ path, ...options }),
+    // Drive may need to materialize an online-only document before it can send headers.
+    media: (path, options = {}) => request({ path, timeoutMs: /^\/api\/studio\/media\/catalog\/[a-f0-9]{64}\.pdf$/.test(path)
+      ? catalogMediaTimeoutMs : requestTimeoutMs, ...options }),
   };
 }

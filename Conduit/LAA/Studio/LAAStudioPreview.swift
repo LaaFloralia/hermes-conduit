@@ -89,7 +89,15 @@ struct LAAStudioFilePreview: View {
     var driveURL: String? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            if loader.loading { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+            if loader.loading {
+                if LAAStudioMedia.bridgePath(path)?.hasPrefix("/v1/studio/media/catalog/") == true {
+                    ProgressView {
+                        Text(verbatim: "資料を読み込んでいます。Driveからの取得に時間がかかる場合があります。")
+                    }.accessibilityIdentifier("laa.studio.document.loading")
+                } else {
+                    ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading))
+                }
+            }
             if let image = loader.image { Image(uiImage: image).resizable().scaledToFit() }
             else if let file = loader.file, file.pathExtension == "pdf" {
                 LAAStudioPDFView(url: file).frame(minHeight: 520)

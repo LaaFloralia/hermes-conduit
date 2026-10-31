@@ -74,7 +74,7 @@ extension LAAStudioData {
         if let fixture { return try sampleProject(fixture) }
         #endif
         let result: LAABridgeResponse<LAAStudioProjectDetail> = try await bridge.request(
-            method: "GET", path: "/v1/studio/projects/\(id)", timeout: 45)
+            method: "GET", path: "/v1/studio/projects/\(id)", timeout: 15)
         guard result.data.project.id == id else { throw LAABridgeError.invalidResponse }
         return result.data
     }
@@ -89,7 +89,7 @@ extension LAAStudioData {
         }
         #endif
         let result: LAABridgeResponse<LAAStudioReview> = try await bridge.request(
-            method: "POST", path: "/v1/studio/reviews", jsonBody: body, idempotencyKey: key, timeout: 30)
+            method: "POST", path: "/v1/studio/reviews", jsonBody: body, idempotencyKey: key, timeout: 15)
         guard [200, 201].contains(result.status), result.data.createdAt != nil,
               review.sameSubmission(as: result.data) else { throw LAABridgeError.invalidResponse }
         return result.data

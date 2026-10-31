@@ -13,12 +13,15 @@ const stamp = '2026-10-31T09:00:00Z';
 const project = { id: projectId, title: 'サービス紹介資料', revision: 3, pages: [{ id: 'page1', name: 'Cover' }], assets: [], syncedAt: stamp };
 const imageKey = 'a'.repeat(64);
 const rotatedImageKey = 'd'.repeat(64);
+const documentKey = 'e'.repeat(64);
 const media = `/api/studio/media/${projectId}/${imageKey}.png`;
 const v2Project = { ...project, pages: [{ id: 'page1', name: 'Cover', preview: media }],
-  assets: [{ id: 'model1', name: 'Example model', kind: 'model', preparing: true }] };
+  assets: [{ id: 'model1', name: 'Example model', kind: 'model', preparing: true },
+    { id: 'video-pending', name: 'Preparing asset.mp4', kind: 'video', preparing: true }] };
 const versions = [
   { id: '6'.repeat(64), revision: 3, kind: 'video', name: 'Example.mp4', createdAt: stamp, bytes: 321,
     media: `/api/studio/media/${projectId}/${'6'.repeat(64)}.mp4` },
+  { id: '5'.repeat(64), revision: 3, kind: 'video', name: 'Preparing.mp4', createdAt: stamp, bytes: 321, preparing: true },
   { id: imageKey, revision: 3, kind: 'image', name: 'Example.png', createdAt: stamp, bytes: 70, media },
   { id: 'b'.repeat(64), revision: 2, kind: 'other', name: 'Website.zip', createdAt: stamp, bytes: 1024, unavailable: 'unsupported_format' },
 ];
@@ -31,6 +34,18 @@ const catalog = { etag: 'c'.repeat(64), updatedAt: stamp,
     driveUrl: 'https://drive.google.com/file/d/1234567890/view', unavailable: 'source_unreadable' }],
   capabilities: [{ id: 'image', title: 'Image', description: 'Sample', prompt: '画像を作ってください。' }], brief: ['用途と相手'] };
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQUlL6DwACNgFm9i22cwAAAABJRU5ErkJggg==', 'base64');
+const pdf = (() => {
+  let body = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [index, object] of ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>'].entries()) {
+    offsets.push(Buffer.byteLength(body));
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(body);
+  body += `xref\n0 4\n0000000000 65535 f \n${offsets.slice(1).map((value) => `${String(value).padStart(10, '0')} 00000 n \n`).join('')}`;
+  return Buffer.from(`${body}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+})();
 const makeRecord = () => ({ request: { id: requestId, projectId, expectedRevision: 3, prompt: '新しい紹介資料を作ってください。' }, status: 'approval', bootId: projectId, updatedAt: stamp,
   report: { id: requestId, bootId: projectId, sequence: 1, status: 'approval', text: '構成を確認しています。', approvals: [{ id: approvalId, message: '画面操作を許可しますか。', supported: true, allowSession: true, fields: [] }] } });
 const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers }); res.end(JSON.stringify(data)); };
@@ -100,10 +115,22 @@ export function createStudioUIFixture() {
       }
       if (req.url === '/v1/studio/request-id') { ok(res, 200, { id: randomUUID() }); return; }
       if (req.url === '/v1/studio/catalog' && req.method === 'GET') {
-        const etag = `"${catalog.etag}"`;
+        const currentCatalog = mode === 'v2-document-wait' ? { ...catalog, etag: documentKey,
+          documents: [{ ...catalog.documents[0], unavailable: undefined, media: `/api/studio/media/catalog/${documentKey}.pdf`, bytes: pdf.length }] } : catalog;
+        const etag = `"${currentCatalog.etag}"`;
         if (req.headers['if-none-match'] === etag) { res.writeHead(304, { etag, 'cache-control': 'no-store' }); res.end(); }
-        else ok(res, 200, catalog, { etag });
+        else ok(res, 200, currentCatalog, { etag });
         return;
+      }
+      if (req.url === `/v1/studio/media/catalog/${documentKey}.pdf` && req.method === 'GET') {
+        const match = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
+        if (!match || Number(match[1]) >= pdf.length) { res.writeHead(416, { 'content-range': `bytes */${pdf.length}` }); res.end(); return; }
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        if (res.destroyed) return;
+        const start = Number(match[1]), end = Math.min(Number(match[2]), pdf.length - 1);
+        res.writeHead(206, { 'content-type': 'application/pdf', 'content-length': end - start + 1,
+          'content-range': `bytes ${start}-${end}/${pdf.length}`, 'cache-control': 'no-store' });
+        res.end(pdf.subarray(start, end + 1)); return;
       }
       if (req.url === `/v1/studio/projects/${projectId}` && req.method === 'GET') {
         const currentVersions = mode === 'v2-rotated' ? versions.map((version) => version.id === imageKey
