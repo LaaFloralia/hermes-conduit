@@ -263,10 +263,10 @@ def run_fixture(root, *, retention):
     sync_a, gui_a, sync_b, gui_b = free_ports(4)
     phone = Peer(root, "phone-model", sync_a, gui_a)
     mac = Peer(root, "mac-model", sync_b, gui_b)
-    # Model connect on the phone with the production Swift routine; the parent
-    # separately configures the Mac. Both vaults here are disposable fixtures.
+    # Start with no ignore on either disposable peer. A positive control below
+    # proves the Mac would receive an unignored temporary file.
     (phone.notes / ".stignore").write_text("// existing setting\n", encoding="utf-8")
-    (mac.notes / ".stignore").write_text(".laa-tmp\n", encoding="utf-8")
+    (mac.notes / ".stignore").write_text("// no ignore yet\n", encoding="utf-8")
     phone.configure(mac, versioning=False)
     mac.configure(phone, versioning=True)
     try:
@@ -277,16 +277,29 @@ def run_fixture(root, *, retention):
         wait_for("loopback peer connection", lambda: phone.api("system/connections")["connections"].get(
             mac.device_id, {}).get("connected") is True, (phone, mac))
 
+        temporary_dir = phone.notes / ".laa-tmp"
+        temporary_dir.mkdir()
+        control = str(uuid.uuid4()).upper() + ".tmp"
+        send(phone, mac, ".laa-tmp/" + control, b"UNIGNORED_CONTROL")
+        (temporary_dir / control).unlink()
+        temporary_dir.rmdir()
+        phone.scan()
+        wait_for("unignored control deletion", lambda: not (mac.notes / ".laa-tmp").exists(), (phone, mac))
+
         # Append through the actual connect routine while Syncthing is running.
+        # The Mac still has no ignore, so it cannot mask a leak from the phone.
         subprocess.run([str(swift_fixture), "prepare-ignore", str(phone.notes)], check=True, timeout=30)
         assert (phone.notes / ".stignore").read_text(encoding="utf-8") == "// existing setting\n.laa-tmp\n"
-        temporary_dir = phone.notes / ".laa-tmp"
         temporary_dir.mkdir()
         temporary_file = temporary_dir / (str(uuid.uuid4()).upper() + ".tmp")
         temporary_file.write_bytes(b"TEMP_DRAFT_MUST_NOT_SYNC")
         send(phone, mac, "ignore-scan-sentinel.md", b"SCAN_COMPLETED")
         assert temporary_file.exists() and not (mac.notes / ".laa-tmp" / temporary_file.name).exists()
         temporary_file.unlink()
+        # The parent separately configures the real Mac; model that only after
+        # proving the phone's own rule prevents transmission.
+        (mac.notes / ".stignore").write_text(".laa-tmp\n", encoding="utf-8")
+        mac.scan()
         send(mac, phone, "swift-fallback.md", b"FALLBACK_BASE")
         subprocess.run([str(swift_fixture), "fallback", str(phone.notes), str(root / "fallback-private"),
                         "swift-fallback.md", "FALLBACK_DRAFT"], check=True, timeout=30, capture_output=True)
