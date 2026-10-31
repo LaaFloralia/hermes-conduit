@@ -205,6 +205,11 @@ echo "Archived: $archive"
 echo "  version $(plutil -extract ApplicationProperties.CFBundleShortVersionString raw -o - "$archive/Info.plist" 2>/dev/null || echo '?')" \
      "build $(plutil -extract ApplicationProperties.CFBundleVersion raw -o - "$archive/Info.plist" 2>/dev/null || echo '?')"
 
+# Fail before export/upload if any shipped LAA component still shows the old
+# product names or a required component/resource cannot be inspected.
+python3 "$repo/scripts/laa/check-brand-bundle.py" "$archive/Products/Applications/Conduit.app" \
+  || fail "LAA branding inspection failed; nothing was exported or uploaded"
+
 # 5. Export and upload. `app-store-connect` is the App Store Connect
 #    destination; with `destination=upload` xcodebuild uploads the .ipa itself.
 options="$work/ExportOptions.plist"

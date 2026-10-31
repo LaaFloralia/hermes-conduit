@@ -5,32 +5,60 @@ import json
 import plistlib
 import re
 import subprocess
+import unicodedata
 from pathlib import Path
 
 # Each target's default home-screen name. A build that needs another one (the
 # personal build keeps upstream's identity) passes --name.
 names = {"app": "LAA", "watch": "LAA", "watch-widget": "LAA Watch Widgets",
          "widgets": "LAA Widgets", "notification": "LAA Notifications", "share": "LAA"}
+# CFBundleName can also be displayed by the system. Keep executable names,
+# bundle IDs and on-disk paths untouched; only supply short visible names.
+bundle_names = {"watch": "LAA Watch", "watch-widget": "LAA Watch",
+                "widgets": "LAA Widgets", "notification": "LAA Notices", "share": "LAA Share"}
 
 # A value that is an identifier, link or address keeps its spelling: only
 # display copy is rebranded (BUS-330).
-identifier = re.compile(r"^(?:[A-Za-z0-9_.:/@+-]+[._:/@+][A-Za-z0-9_.:/@+-]*|Conduit[A-Za-z0-9]*[A-Z][A-Za-z0-9]*)$")
-
-
 def is_identifier(value):
-    # "ConduitAppGroup" is a symbol; "Conduitを開く" is a sentence, and its
-    # format specifier (%2$@) must not read as an address.
-    return not any(c.isspace() for c in value) and identifier.match(value) is not None
+    # Match specific forms, not arbitrary punctuation: "Conduit." and
+    # "Conduit/LAA" can be display text; conduit:// is an internal link.
+    return bool(re.fullmatch(r"(?:https?://|conduit://)[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%+-]+", value, re.I)
+                or re.fullmatch(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", value)
+                or re.fullmatch(r"group\.[A-Za-z0-9.-]+", value)
+                or re.fullmatch(r"(?:Conduit|Hermes)[A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*", value))
 
 
-def display(value):
-    for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Ciel"),
-                     ("Conduit plugin", "Hermes plugin"), ("Conduit", "LAA")):
-        value = value.replace(old, new)
+def validate_name(value):
+    if (not value or value != value.strip() or len(value) > 64 or "/" in value
+            or any(unicodedata.category(char) == "Cc" for char in value)):
+        raise ValueError("name must be 1–64 visible characters without surrounding whitespace or '/'")
     return value
 
 
-def values_only(value):
+def validate_bundle_name(value):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 ._-]{0,15}", value) or value != value.strip():
+        raise ValueError("bundle name must be 1–16 ASCII letters, digits, spaces, dots, underscores or hyphens")
+    return value
+
+
+def display(value, source_key=None):
+    # Agent and connection are different things. Keep each translation and
+    # its format arguments; only replace the product names in display values.
+    for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Ciel"),
+                     ("Conduit plugin", "connection service"),
+                     ("Hermes server", "Mac"), ("Hermes host", "Mac"),
+                     ("Hermes gateway", "Mac"), ("Hermes dashboard", "Mac"),
+                     ("Hermes installation", "Mac"), ("Hermesサーバー", "Mac"),
+                     ("Conduit", "LAA")):
+        value = value.replace(old, new)
+    # The key gives context to translated strings whose word order differs.
+    # Other occurrences address the agent, Ciel.
+    connection = source_key and re.search(r"Hermes (?:server|host|gateway|dashboard|installation)", source_key, re.I)
+    value = value.replace("Hermes", "Mac" if connection else "Ciel")
+    return value
+
+
+def values_only(value, source_key=None):
     if isinstance(value, dict):
         result = {}
         for key, item in value.items():
@@ -39,13 +67,13 @@ def values_only(value):
             # do not transfer upstream's developer-visibility claim to LAA.
             if isinstance(item, str) and "Conduit's developer can't see it." in key:
                 item = re.split(r"(?<=[.。])\s*", item, maxsplit=1)[0]
-            result[key] = values_only(item)
+            result[key] = values_only(item, source_key if source_key is not None else key)
         return result
     if isinstance(value, list):
-        return [values_only(item) for item in value]
+        return [values_only(item, source_key) for item in value]
     if not isinstance(value, str):
         return value
-    return value if is_identifier(value) else display(value)
+    return value if is_identifier(value) else display(value, source_key)
 
 
 def read_plist(path):
@@ -70,15 +98,21 @@ def permission_strings(catalog, locale):
             if not match:
                 raise ValueError(f"Cannot isolate upstream-developer sentence for {key}/{locale}")
             text = match.group(1).strip()
-        result[key] = display(text)
+        result[key] = display(text, english)
     return result
 
 
 def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
+    if name is not None:
+        validate_name(name)
+    if bundle_name is not None:
+        validate_bundle_name(bundle_name)
+    elif kind != "app":
+        bundle_name = bundle_names[kind]
     info_path = bundle / "Info.plist"
     info = read_plist(info_path)
-    info["CFBundleDisplayName"] = name or names[kind]
-    if bundle_name:
+    info["CFBundleDisplayName"] = name if name is not None else names[kind]
+    if bundle_name is not None:
         info["CFBundleName"] = bundle_name
     if kind in ("app", "watch"):
         catalog_path = source / ("Conduit/InfoPlist.xcstrings" if kind == "app" else "ConduitWatch/InfoPlist.xcstrings")
@@ -90,6 +124,10 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
         for path in bundle.glob("*.lproj/InfoPlist.strings"):
             strings = read_plist(path)
             strings.update(permission_strings(catalog, path.parent.stem))
+            if "CFBundleDisplayName" in strings:
+                strings["CFBundleDisplayName"] = info["CFBundleDisplayName"]
+            if "CFBundleName" in strings and bundle_name is not None:
+                strings["CFBundleName"] = bundle_name
             with path.open("wb") as stream:
                 plistlib.dump(strings, stream, fmt=plistlib.FMT_BINARY)
     with info_path.open("wb") as stream:
@@ -113,7 +151,7 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
     english_path = english_dir / "Localizable.strings"
     english = read_plist(english_path) if english_path.exists() else {}
     for key in catalog:
-        if "Conduit" in key and key not in english:
+        if ("Conduit" in key or "Hermes" in key) and key not in english:
             english[key] = values_only({key: key})[key]
     with english_path.open("wb") as stream:
         plistlib.dump(english, stream, fmt=plistlib.FMT_BINARY, sort_keys=False)

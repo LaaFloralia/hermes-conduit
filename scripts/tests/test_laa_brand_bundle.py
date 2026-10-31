@@ -33,8 +33,7 @@ class LAABrandBundleTests(unittest.TestCase):
             strings = brand.permission_strings(catalog, language)
             self.assertEqual(len(strings), 15)
             self.assertTrue(all("Conduit" not in value for value in strings.values()), language)
-            self.assertTrue(all("Hermes" in strings[key] for key in (
-                "NSCalendarsFullAccessUsageDescription", "NSHealthShareUsageDescription")), language)
+            self.assertTrue(all("Hermes" not in value for value in strings.values()), language)
         self.assertIn("マイク", brand.permission_strings(catalog, "ja")["NSMicrophoneUsageDescription"])
         self.assertNotIn("開発者", brand.permission_strings(catalog, "ja")["NSHealthShareUsageDescription"])
         self.assertNotIn("developer", brand.permission_strings(catalog, "en")["NSHealthShareUsageDescription"])
@@ -66,8 +65,8 @@ class LAABrandBundleTests(unittest.TestCase):
                 english = plistlib.load(stream)
             self.assertEqual(english["Open Conduit"], "Open LAA")
             source_keys = json.loads((ROOT / "Conduit/Localizable.xcstrings").read_text())["strings"]
-            self.assertFalse([key for key in source_keys if "Conduit" in key and key not in english])
-            self.assertTrue(all("Conduit" not in value for value in english.values()))
+            self.assertFalse([key for key in source_keys if ("Conduit" in key or "Hermes" in key) and key not in english])
+            self.assertTrue(all("Conduit" not in value and "Hermes" not in value for value in english.values()))
             health = next(value for key, value in english.items()
                           if "Conduit's developer can't see it." in key)
             self.assertNotIn("developer", health)
@@ -171,3 +170,45 @@ class LAABrandBundleTests(unittest.TestCase):
             self.assertEqual(localized["address"], "ops@conduit.example")
             self.assertEqual(localized["symbol"], "ConduitAppGroup")
             self.assertEqual(localized["sentence"], "LAAを開く")
+
+    def test_punctuation_does_not_hide_display_names(self):
+        for value in ("Conduit.", "Conduit:", "Conduit/LAA", "Conduit.LAA"):
+            with self.subTest(value=value):
+                self.assertIn("LAA", brand.values_only({"copy": value})["copy"])
+                self.assertNotIn("Conduit", brand.values_only({"copy": value})["copy"])
+
+    def test_invalid_name_does_not_modify_bundle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = self.make_app_bundle(Path(tmp))
+            before = self.read_bundle(bundle)
+            for name in ("", "  ", "LAA/Other", " LAA", "LAA\n", "LAA\x00"):
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    brand.brand_bundle(bundle, "app", ROOT, name=name)
+                self.assertEqual(self.read_bundle(bundle), before)
+            for name in ("", "LAA/Other", "LAA\n", "x" * 17, "日本語"):
+                with self.subTest(bundle_name=name), self.assertRaises(ValueError):
+                    brand.brand_bundle(bundle, "app", ROOT, bundle_name=name)
+                self.assertEqual(self.read_bundle(bundle), before)
+
+    def test_agent_and_connection_copy_keeps_format_arguments(self):
+        self.assertEqual(brand.display("Connect to Hermes server %@", "Connect to Hermes server %@"), "Connect to Mac %@")
+        self.assertEqual(brand.display("Hermes replied to %@", "Hermes replied to %@"), "Ciel replied to %@")
+        self.assertEqual(brand.display("Hermesサーバーが応答しました", "Hermes server replied"), "Macが応答しました")
+
+    def test_all_catalog_translations_keep_format_arguments(self):
+        for file in ("Conduit/Localizable.xcstrings", "ConduitWatch/Localizable.xcstrings"):
+            catalog = json.loads((ROOT / file).read_text())["strings"]
+            for key, entry in catalog.items():
+                for language, local in entry.get("localizations", {}).items():
+                    value = local.get("stringUnit", {}).get("value")
+                    if not value or ("Hermes" not in value and "Conduit" not in value):
+                        continue
+                    result = brand.values_only({key: value})[key]
+                    with self.subTest(file=file, key=key, language=language):
+                        self.assertNotIn("Hermes", result)
+                        self.assertNotIn("Conduit", result)
+                        # The privacy copy deliberately drops an unrelated
+                        # developer claim; the data destination stays intact.
+                        if "Conduit's developer can't see it." not in key:
+                            self.assertEqual(re.findall(r"%(?:\d+\$)?[@dfsi]", value),
+                                             re.findall(r"%(?:\d+\$)?[@dfsi]", result))
