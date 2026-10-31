@@ -378,6 +378,7 @@ build (keeps its own chat and call controls)
 
 **Code**
 - Staff names, bundled assets and playback conditions: `Conduit/LAA/Staff/StaffAssets.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `project-laa.yml`, `project-personal.yml`
+- The chat's idle audio policy (BUS-332): `Conduit/LAA/Audio/LAAChatAudioSession.swift`, `Conduit/LAA/Staff/StaffAvatarView.swift`, `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `ConduitTests/LAAChatAudioSessionTests.swift`
 - Chat header, composer controls, photo glass and unavailable reasons: `Conduit/LAA/Staff/LAAEmployeeChatToolbar.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/Components/ComposerBar.swift`, `Conduit/LAA/Backgrounds/LAAConversationBackground.swift`
 - Call state, existing voice adapter, controls, route labels and return bar: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
@@ -386,7 +387,8 @@ build (keeps its own chat and call controls)
 
 **Rulings**
 - Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
-- The muted loop runs only while visible and active; Reduce Motion, Low Power Mode and scrolling use the still. The loop does not change the audio session.
+- The muted loop runs only while visible and active; Reduce Motion, Low Power Mode and scrolling use the still. The loop itself never activates the session.
+- Opening a conversation does not stop another app's music (BUS-332). Before the idle video plays, the chat's idle policy sets `.ambient` with `.mixWithOthers` and never activates the session; the idle assets carry no audio track and the player stays muted. While a call, read aloud or dictation holds the session, the idle policy writes nothing, so `VoiceAudioSessionCoordinator`'s `.playAndRecord`/`.voiceChat` and CallKit's own session are untouched. When the call ends, the open chat sets the mixing category back and releases the session with `.notifyOthersOnDeactivation`, so the other app's playback resumes; it skips both while CallKit still owns the call.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
 - The call screen follows the selected light or dark appearance using the v2 background, text, surface and control tokens; either the top back control or Chat returns to the originating conversation.
@@ -404,7 +406,7 @@ build (keeps its own chat and call controls)
 - ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-10-31, the idle audio policy (BUS-332; fake-session unit tests, real-device music check pending); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
