@@ -103,6 +103,62 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(calls, 2)
     }
 
+    func testOpeningUsageThrottlesAttemptsButManualRefreshBypassesInterval() async {
+        let bridge = LAABridgeSession(statusForTesting: .paired)
+        var current = Date(timeIntervalSince1970: 1_000)
+        var calls = 0
+        var fail = false
+        let state = LAAUsageState(widgetStore: nil, loader: { _ in
+            calls += 1
+            if fail { throw LAABridgeError.networkUnreachable }
+            return []
+        })
+        await state.refreshOnTabOpen(bridge: bridge, now: { current })
+        XCTAssertEqual(calls, 1)
+        current.addTimeInterval(59)
+        await state.refreshOnTabOpen(bridge: bridge, now: { current })
+        XCTAssertEqual(calls, 1)
+        current.addTimeInterval(1)
+        await state.refreshOnTabOpen(bridge: bridge, now: { current })
+        XCTAssertEqual(calls, 2)
+        current.addTimeInterval(1)
+        await state.refreshAndPublish(bridge: bridge, attemptedAt: current)
+        XCTAssertEqual(calls, 3)
+        current.addTimeInterval(59)
+        await state.refreshOnTabOpen(bridge: bridge, now: { current })
+        XCTAssertEqual(calls, 3)
+        current.addTimeInterval(1)
+        fail = true
+        await state.refreshOnTabOpen(bridge: bridge, now: { current })
+        XCTAssertEqual(calls, 4)
+        current.addTimeInterval(1)
+        await state.refreshOnTabOpen(bridge: bridge, now: { current })
+        XCTAssertEqual(calls, 4)
+        state.selectScope(bridgeRevision: 99)
+        fail = false
+        await state.refreshOnTabOpen(bridge: bridge, now: { current })
+        XCTAssertEqual(calls, 5)
+        await state.refreshOnTabOpen(bridge: LAABridgeSession(statusForTesting: .unpaired), now: { current })
+        XCTAssertEqual(calls, 5)
+    }
+
+    func testTabRefreshAndShellStartupShareAnInFlightRequest() async {
+        let bridge = LAABridgeSession(statusForTesting: .paired)
+        let started = expectation(description: "tab refresh started")
+        var calls = 0
+        let state = LAAUsageState(widgetStore: nil, loader: { _ in
+            calls += 1
+            started.fulfill()
+            try await Task.sleep(nanoseconds: 300_000_000)
+            return []
+        })
+        let tabRefresh = Task { await state.refreshOnTabOpen(bridge: bridge) }
+        await fulfillment(of: [started], timeout: 10)
+        await state.synchronize(bridge: bridge, active: true)
+        await tabRefresh.value
+        XCTAssertEqual(calls, 1)
+    }
+
     func testLegacyFreshnessAndVerifiedSources() throws {
         let reading = try quota()
         let at = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))

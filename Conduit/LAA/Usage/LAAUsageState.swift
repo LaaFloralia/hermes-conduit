@@ -46,7 +46,9 @@ final class LAAUsageState: ObservableObject {
     @Published private(set) var updatedAt: Date?
     @Published private(set) var isRefreshing = false
     private var generation = 0
+    private var completedGeneration: Int?
     private var bridgeRevision: Int?
+    private var lastRefreshAttempt: Date?
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []
     private let widgetStore: WidgetSnapshotStore?
     private let reloadWidgets: @MainActor () -> Void
@@ -65,13 +67,35 @@ final class LAAUsageState: ObservableObject {
         let changed = selectScope(bridgeRevision: bridge.revision)
         if changed || bridge.status != .paired { publish(nil) }
         guard active, bridge.status == .paired else { return }
+        let revision = bridge.revision
+        let inFlight = isRefreshing ? generation : nil
         await waitUntilIdle()
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, bridge.status == .paired, bridge.revision == revision else { return }
+        // A refresh already running for this scope also updates the widget.
+        if !changed, let inFlight, completedGeneration == inFlight { return }
         await refreshAndPublish(bridge: bridge)
     }
 
-    func refreshAndPublish(bridge: LAABridgeSession) async {
+    /// Opening Usage refreshes after a quiet interval; explicit refresh bypasses it.
+    func refreshOnTabOpen(bridge: LAABridgeSession, now: () -> Date = Date.init,
+                          minimumInterval: TimeInterval = 60) async {
+        let changed = selectScope(bridgeRevision: bridge.revision)
+        if changed || bridge.status != .paired { publish(nil) }
+        guard bridge.status == .paired else { return }
+        let revision = bridge.revision
+        await waitUntilIdle()
+        guard !Task.isCancelled, bridge.status == .paired, bridge.revision == revision else { return }
+        let current = now()
+        if let lastRefreshAttempt {
+            let elapsed = current.timeIntervalSince(lastRefreshAttempt)
+            if elapsed >= 0 && elapsed < minimumInterval { return }
+        }
+        await refreshAndPublish(bridge: bridge, attemptedAt: current)
+    }
+
+    func refreshAndPublish(bridge: LAABridgeSession, attemptedAt: Date? = nil) async {
         guard bridge.status == .paired, !isRefreshing else { return }
+        lastRefreshAttempt = attemptedAt ?? Date()
         let revision = bridge.revision
         await refreshUsage { try await self.loadUsage(bridge) }
         guard !Task.isCancelled, bridge.status == .paired, bridge.revision == revision else { return }
@@ -117,6 +141,8 @@ final class LAAUsageState: ObservableObject {
         bridgeRevision = revision
         guard bridgeChanged else { return false }
         generation += 1
+        completedGeneration = nil
+        lastRefreshAttempt = nil
         usage = .init()
         retainedUsageIDs = []
         updatedAt = nil
@@ -148,6 +174,7 @@ final class LAAUsageState: ObservableObject {
         let finished = now()
         Self.apply(result, to: &usage, retainedIDs: &retainedUsageIDs, at: finished)
         if case .success = result, retainedUsageIDs.isEmpty { updatedAt = finished }
+        completedGeneration = mine
     }
 
     private static func capture<T>(_ load: @MainActor () async throws -> T) async -> Result<T, Error> {

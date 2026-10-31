@@ -13,15 +13,18 @@ struct LAAUsageView: View {
     @Environment(\.locale) private var locale
     @ObservedObject private var state: LAAUsageState
     @State private var showPairing = false
+    private let automaticallyRefresh: Bool
     let onRequestSettings: () -> Void
     init(state: LAAUsageState, onRequestSettings: @escaping () -> Void) {
         self.onRequestSettings = onRequestSettings
+        self.automaticallyRefresh = true
         _state = ObservedObject(wrappedValue: state)
     }
 
     #if DEBUG
     init(snapshotState: LAAUsageState, onRequestSettings: @escaping () -> Void = {}) {
         self.onRequestSettings = onRequestSettings
+        self.automaticallyRefresh = false
         _state = ObservedObject(wrappedValue: snapshotState)
     }
     #endif
@@ -53,6 +56,18 @@ struct LAAUsageView: View {
         .tint(LAAColor.link)
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
+        .onAppear {
+            guard automaticallyRefresh else { return }
+            Task { await state.refreshOnTabOpen(bridge: bridge, minimumInterval: tabRefreshInterval) }
+        }
+    }
+
+    private var tabRefreshInterval: TimeInterval {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_USAGE_FAST_REFRESH") { return 2 }
+        #endif
+        return 60
     }
 
     private var header: some View {

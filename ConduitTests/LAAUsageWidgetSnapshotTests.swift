@@ -29,6 +29,9 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try capture(style: .light, mode: .fullColor, name: "medium-no-quota-accessibility-light", otherOnly: true, accessibility: true)
         try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-accessibility-dark", otherOnly: true, accessibility: true)
         try capture(style: .light, mode: .accented, name: "medium-no-quota-accessibility-tinted", otherOnly: true, accessibility: true)
+        try capture(style: .light, mode: .fullColor, name: "medium-no-quota-older-accessibility-light", otherOnly: true, accessibility: true, checkedAtOffset: -370 * 86_400)
+        try capture(style: .dark, mode: .fullColor, name: "medium-no-quota-older-accessibility-dark", otherOnly: true, accessibility: true, checkedAtOffset: -370 * 86_400)
+        try capture(style: .light, mode: .accented, name: "medium-no-quota-older-accessibility-tinted", otherOnly: true, accessibility: true, checkedAtOffset: -370 * 86_400)
     }
 
     func testAccessibilityNoticeIncludesHiddenStaleMeterAndCheckedDate() throws {

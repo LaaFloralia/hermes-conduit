@@ -242,9 +242,11 @@ struct LAAEmployeeWidgetView: View {
                     .accessibilityLabel("\(meter.label), 残り \(percentage)\(past ? ", 最終取得、要確認" : "")")
                 }
             } else {
-                Text(verbatim: entry.usage?.hasOtherUsage == true ? "枠は未取得・他のUsageあり" : LAACopy.notFetched)
+                let hasOtherUsage = entry.usage?.hasOtherUsage == true
+                Text(verbatim: hasOtherUsage ? "枠未取得" : LAACopy.notFetched)
                     .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .accessibilityLabel(hasOtherUsage ? "枠は未取得、他のUsageあり" : LAACopy.notFetched)
             }
             if let checked = entry.usage?.checkedAt {
                 let parts = Self.accessibleCheckedParts(checked, relativeTo: entry.date)

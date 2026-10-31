@@ -69,6 +69,42 @@ final class LAAUsageUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
+    func testReturningToUsageAfterIntervalRefreshes() throws {
+        guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
+        continueAfterFailure = false
+        _ = try helper("mode/normal")
+        let app = XCUIApplication()
+        app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_USAGE_FAST_REFRESH",
+                               "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
+                               "-laa-tab", "usage"]
+        app.launch()
+        defer { app.terminate() }
+        let connect = app.buttons["laa.bridge.openPairing"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 15))
+        connect.tap()
+        try pair(app, port: 19492, codeRoute: "fixture-code")
+        XCTAssertTrue(app.staticTexts["Claude"].waitForExistence(timeout: 30))
+        XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
+
+        let chats = app.buttons["Chats"]
+        XCTAssertTrue(chats.waitForExistence(timeout: 10))
+        chats.tap()
+        // This UI-only interval is two seconds; the real 60-second boundary is unit tested.
+        RunLoop.current.run(until: Date().addingTimeInterval(3))
+        let before = try XCTUnwrap(Int(helper("counts")))
+        XCTAssertGreaterThan(before, 0)
+        app.buttons["Usage"].tap()
+        let deadline = Date().addingTimeInterval(15)
+        var after = before
+        while Date() < deadline && after == before {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            after = try XCTUnwrap(Int(helper("counts")))
+        }
+        XCTAssertEqual(after, before + 1)
+        XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
+    }
+
     func testUsageRefreshAndFailureStates() throws {
         guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
         continueAfterFailure = false

@@ -480,9 +480,11 @@ App Store build · the Bridge API, Brain and Usage data contracts
   usage-proxy projection. Quota windows, reset times, balances, credits and D1's
   recorded cost, input/output tokens and request counts stay in their own units;
   model names, Hermes token usage and Mac status are not
-  part of this screen. It retains previous readings and their times on failure,
-  disables duplicate refreshes and distinguishes missing, zero, stale, expired
-  and unavailable data. Hermes' existing Settings report remains available.
+  part of this screen. Opening the tab refreshes after a 60-second quiet interval;
+  manual refresh and app foreground refresh remain available. It retains previous
+  readings and their times on failure, disables duplicate refreshes and
+  distinguishes missing, zero, stale, expired and unavailable data. Hermes'
+  existing Settings report remains available.
 - Brain lists the default permitted areas, optionally adds Inbox on request,
   searches locally through the Bridge, and opens Markdown or its exact source.
   Frontmatter remains available, unresolved syntax and image references remain
