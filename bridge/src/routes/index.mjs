@@ -50,7 +50,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
 
   return [
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
-    ...personalTaskRoutes({ ...(options.tasks ?? {}), now }),
+    ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
     ...brainRoutes({ store, now, options: options.brain ?? {} }),
     ...createProjectRoutes({ projects: projectStore, now }),
     ...createWorkspaceRoutes({

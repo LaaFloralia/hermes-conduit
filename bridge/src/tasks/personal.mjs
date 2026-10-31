@@ -30,6 +30,12 @@ export const PERSONAL_DOCUMENTS = Object.freeze({
     customView(id: $id) { id name modelName issues(first: $first, after: $after) { nodes { ${ISSUE_FIELDS} } ${PAGE} } }
   }`,
   issue: `query LAAPersonalIssue($id: String!) { issue(id: $id) { ${ISSUE_FIELDS} description } }`,
+  createIssue: `mutation LAAPersonalIssueCreate($input: IssueCreateInput!) {
+    issueCreate(input: $input) { success issue { id identifier updatedAt } }
+  }`,
+  updateIssue: `mutation LAAPersonalIssueUpdate($id: String!, $input: IssueUpdateInput!) {
+    issueUpdate(id: $id, input: $input) { success issue { id identifier updatedAt } }
+  }`,
   metadata: `query LAAPersonalMetadata {
     teams(first: 100) { nodes { id key name } ${PAGE} }
     users(first: 100) { nodes { id name app active } ${PAGE} }
@@ -206,12 +212,29 @@ export function createPersonalLinearSource({
     const connection = customView ? data.customView?.issues : term ? data.searchIssues : data.issues;
     return { ...makePage(connection, cursorFilter, (node) => issueToTask(node, viewer.id)), observedAt: new Date(now()).toISOString(), viewerId: viewer.id };
   }
-  async function getTask(id) {
+  async function getTaskInSession(personalSession, id) {
     const issueId = text(id, 'id', { required: true });
-    const { viewer, run } = await session();
+    const { viewer, run } = personalSession;
     const data = await run(PERSONAL_DOCUMENTS.issue, { id: issueId.replace(/^linear:/, '') });
     if (!data.issue) return null;
     return { task: issueToTask(data.issue, viewer.id), viewerId: viewer.id };
+  }
+  async function getTask(id) { return getTaskInSession(await session(), id); }
+  async function createIssue(personalSession, input) {
+    const data = await personalSession.run(PERSONAL_DOCUMENTS.createIssue, { input });
+    const result = data.issueCreate;
+    if (result?.success !== true || typeof result.issue?.id !== 'string' || typeof result.issue?.identifier !== 'string') {
+      throw failure('linear_mutation_unconfirmed', 'Linear did not confirm the issue creation');
+    }
+    return result.issue;
+  }
+  async function updateIssue(personalSession, id, input) {
+    const data = await personalSession.run(PERSONAL_DOCUMENTS.updateIssue, { id: id.replace(/^linear:/, ''), input });
+    const result = data.issueUpdate;
+    if (result?.success !== true || typeof result.issue?.id !== 'string' || typeof result.issue?.identifier !== 'string') {
+      throw failure('linear_mutation_unconfirmed', 'Linear did not confirm the issue update');
+    }
+    return result.issue;
   }
   async function listCollection(name, options = {}) {
     if (!['projects', 'cycles', 'views', 'inbox', 'teams', 'users', 'states', 'labels', 'milestones'].includes(name)) {
@@ -242,5 +265,5 @@ export function createPersonalLinearSource({
     result.priorities = data.issuePriorityValues;
     return result;
   }
-  return { listTasks, getTask, listCollection, metadata, session };
+  return { listTasks, getTask, getTaskInSession, createIssue, updateIssue, listCollection, metadata, session };
 }
