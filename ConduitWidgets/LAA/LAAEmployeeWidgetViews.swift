@@ -247,9 +247,17 @@ struct LAAEmployeeWidgetView: View {
                     .lineLimit(2)
             }
             if let checked = entry.usage?.checkedAt {
-                Text(verbatim: Self.accessibleCheckedTime(checked, relativeTo: entry.date))
-                    .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                let parts = Self.accessibleCheckedParts(checked, relativeTo: entry.date)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: parts.date)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                    Text(verbatim: "確認 \(parts.time)")
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
+                .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("確認 \(parts.date) \(parts.time)")
             } else {
                 Text(verbatim: "未確認").laaTextStyle(.section)
                     .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
@@ -288,17 +296,16 @@ struct LAAEmployeeWidgetView: View {
         return nil
     }
 
-    static func accessibleCheckedTime(_ checked: Date, relativeTo reference: Date,
-                                      calendar: Calendar = .autoupdatingCurrent) -> String {
+    static func accessibleCheckedParts(_ checked: Date, relativeTo reference: Date,
+                                       calendar: Calendar = .autoupdatingCurrent) -> (date: String, time: String) {
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: checked)
         let time = String(format: "%02d:%02d", components.hour ?? 0, components.minute ?? 0)
-        if calendar.isDate(checked, inSameDayAs: reference) { return "確認 \(time)" }
         let month = components.month ?? 0
         let day = components.day ?? 0
         if components.year == calendar.component(.year, from: reference) {
-            return "確認 \(month)/\(day) \(time)"
+            return ("\(month)/\(day)", time)
         }
-        return "確認 \(components.year ?? 0)/\(month)/\(day) \(time)"
+        return ("\(components.year ?? 0)/\(month)/\(day)", time)
     }
 
     private func percentageText(_ value: Double) -> String {

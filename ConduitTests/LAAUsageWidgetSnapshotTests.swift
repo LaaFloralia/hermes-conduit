@@ -51,9 +51,15 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, uncertain], at: now), .uncertain)
         XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, manual], at: now), .manual)
         XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [manual, stale], at: now), .stale)
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleCheckedTime(now, relativeTo: now, calendar: calendar), "確認 23:34")
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleCheckedTime(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar), "確認 10/30 09:04")
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleCheckedTime(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar), "確認 2025/12/31 09:04")
+        let today = LAAEmployeeWidgetView.accessibleCheckedParts(now, relativeTo: now, calendar: calendar)
+        XCTAssertEqual(today.date, "10/31")
+        XCTAssertEqual(today.time, "23:34")
+        let yesterday = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar)
+        XCTAssertEqual(yesterday.date, "10/30")
+        XCTAssertEqual(yesterday.time, "09:04")
+        let previousYear = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar)
+        XCTAssertEqual(previousYear.date, "2025/12/31")
+        XCTAssertEqual(previousYear.time, "09:04")
     }
 
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
