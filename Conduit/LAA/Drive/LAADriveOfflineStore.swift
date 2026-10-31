@@ -21,7 +21,7 @@ struct LAADriveOfflinePDF: Sendable {
 
 enum LAADriveOfflineError: Error, Equatable {
     case invalidItem, permissionUnknown, forbidden, notFound, versionUnavailable, versionChanged
-    case invalidRange, invalidDocument, insufficientSpace, alreadySaving, accessChanged, corruptIndex, unavailable
+    case invalidRange, invalidDocument, insufficientSpace, alreadySaving, accessChanged, corruptIndex, unavailable, cleanupFailed
 }
 
 enum LAADriveOfflineAccess: String, Codable, Sendable {
@@ -89,6 +89,40 @@ actor LAADriveOfflineStore {
 
     func records(pairingID: String) throws -> [LAADriveOfflineRecord] {
         try readIndex().filter { $0.pairingID == pairingID }.sorted { $0.savedAt > $1.savedAt }
+    }
+
+    /// Only call after the user explicitly removes a saved copy. Index-first
+    /// makes a crash leave an orphan for startup cleanup, rather than a record
+    /// pointing at bytes that were already deleted.
+    @discardableResult
+    func remove(pairingID: String, id: String) throws -> Bool {
+        guard validText(pairingID, maximum: 200), validText(id, maximum: 200) else {
+            throw LAADriveOfflineError.invalidItem
+        }
+        guard !saving.contains(itemKey(pairingID: pairingID, id: id)) else {
+            throw LAADriveOfflineError.alreadySaving
+        }
+        let previous = try readIndex()
+        guard let entry = previous.first(where: { $0.pairingID == pairingID && $0.id == id }) else { return false }
+        let body = files.appendingPathComponent(entry.bodyName, isDirectory: false)
+        do {
+            let attributes = try fileManager.attributesOfItem(atPath: body.path)
+            guard attributes[.type] as? FileAttributeType == .typeRegular else {
+                throw LAADriveOfflineError.unavailable
+            }
+        } catch {
+            if !isMissingFile(error) { throw error }
+        }
+        try writeIndex(previous.filter { $0.pairingID != pairingID || $0.id != id })
+        do {
+            try fileManager.removeItem(at: body)
+        } catch {
+            if isMissingFile(error) { return true }
+            do { try writeIndex(previous) }
+            catch { throw LAADriveOfflineError.cleanupFailed }
+            throw error
+        }
+        return true
     }
 
     /// Returns no file for known denial, deletion, or unknown permission.
@@ -280,6 +314,12 @@ actor LAADriveOfflineStore {
     }
 
     private func itemKey(pairingID: String, id: String) -> String { "\(pairingID.utf8.count):\(pairingID)\(id)" }
+    private func isMissingFile(_ error: Error) -> Bool {
+        let failure = error as NSError
+        return (failure.domain == NSCocoaErrorDomain &&
+                (failure.code == NSFileNoSuchFileError || failure.code == NSFileReadNoSuchFileError)) ||
+            (failure.domain == NSPOSIXErrorDomain && failure.code == 2)
+    }
     private func checkedMetadata(_ reader: MetadataReader, pairingID: String, id: String) async throws -> LAADriveOfflineMetadata {
         let result: LAADriveOfflineMetadata
         do { result = try await reader() }

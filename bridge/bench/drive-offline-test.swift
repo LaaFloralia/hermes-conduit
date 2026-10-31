@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 private func expect(_ condition: Bool, _ message: String) {
     guard condition else { fatalError(message) }
@@ -164,6 +165,7 @@ private actor Gate {
         }
         await gate.waitUntilEntered()
         await expectError(.alreadySaving) { _ = try await save(next, to: store) }
+        await expectError(.alreadySaving) { _ = try await store.remove(pairingID: "pairing-a", id: "file-a") }
         try await store.recordCheck(pairingID: "pairing-a", id: "file-a", result: .denied)
         await gate.release()
         await expectError(.accessChanged) { _ = try await inFlight.value }
@@ -263,6 +265,46 @@ private actor Gate {
         expect(try await store.localFile(pairingID: "pairing-a", id: "workspace-a") == nil &&
                FileManager.default.fileExists(atPath: pdfURL.path), "PDF denial blocks access without erasing saved bytes")
 
+        expect(try await store.remove(pairingID: "pairing-a", id: "workspace-a"), "explicitly remove denied saved PDF")
+        let recordsAfterRemoval = try await store.records(pairingID: "pairing-a")
+        expect(!FileManager.default.fileExists(atPath: pdfURL.path) &&
+               !recordsAfterRemoval.contains(where: { $0.id == "workspace-a" }),
+               "removed record and its local bytes")
+        let removedAgain = try await store.remove(pairingID: "pairing-a", id: "workspace-a")
+        expect(!removedAgain, "repeated removal is harmless")
+        expect(try await store.remove(pairingID: "pairing-b", id: "file-a"), "remove another pairing's own save")
+        expect(!FileManager.default.fileExists(atPath: otherURL.path) &&
+               FileManager.default.fileExists(atPath: firstURL.path), "removal is isolated by pairing")
+
+        let absentSource = Source(data: otherBytes, version: "1")
+        _ = try await save(absentSource, to: store, id: "absent-body")
+        let absentURL = try await store.localFile(pairingID: "pairing-a", id: "absent-body")!
+        try FileManager.default.removeItem(at: absentURL)
+        expect(try await store.remove(pairingID: "pairing-a", id: "absent-body"), "missing bytes can be removed from the index")
+
+        let displaced = pending.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.moveItem(at: newReplacement, to: displaced)
+        try FileManager.default.createDirectory(at: newReplacement, withIntermediateDirectories: false)
+        let sentinel = newReplacement.appendingPathComponent("unrelated")
+        try Data([5]).write(to: sentinel)
+        await expectError(.unavailable) { _ = try await store.remove(pairingID: "pairing-a", id: "replacement") }
+        expect(FileManager.default.fileExists(atPath: sentinel.path), "unexpected directory is not recursively deleted")
+        try FileManager.default.removeItem(at: newReplacement)
+        try FileManager.default.moveItem(at: displaced, to: newReplacement)
+
+        if geteuid() != 0 {
+            let directory = root.appendingPathComponent("files")
+            try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+            defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path) }
+            var removalFailed = false
+            do { _ = try await store.remove(pairingID: "pairing-a", id: "replacement") }
+            catch { removalFailed = true }
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            let restored = try await store.records(pairingID: "pairing-a")
+            expect(removalFailed && restored.contains(where: { $0.id == "replacement" }) &&
+                   FileManager.default.fileExists(atPath: newReplacement.path), "failed removal restores its record")
+        }
+
         let oldMeta = LAADriveOfflineMetadata(version: "1", size: Int64(bytes.count), downloadable: true)
         try await store.recordCheck(pairingID: "pairing-a", id: "file-a", result: .metadata(oldMeta))
         var corrupted = bytes
@@ -282,6 +324,7 @@ private actor Gate {
         let index = root.appendingPathComponent("index.json")
         try Data("broken".utf8).write(to: index)
         await expectError(.corruptIndex) { try await store.discardIncompleteSaves() }
+        await expectError(.corruptIndex) { _ = try await store.remove(pairingID: "pairing-a", id: "file-a") }
         expect(FileManager.default.fileExists(atPath: firstURL.path), "corrupt index cannot erase saved bytes")
         print("Drive offline fixture passed")
     }

@@ -1,4 +1,4 @@
-// Check the Drive-only view against the real shared models and iOS SDK without
+// Check the Drive-only views against the real shared models and iOS SDK without
 // invoking xcodebuild, a simulator, or any network/Drive account.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -30,8 +30,9 @@ try {
   execFileSync(swift, ['-swift-version', '5', '-D', 'LAA_BUILD', '-target', 'arm64-apple-ios17.0',
     '-sdk', sdk, '-typecheck', models, source('LAAColors.swift'), source('Design/LAATokens.swift'),
     source('Drive/LAADriveBrowseModels.swift'), source('Drive/LAADriveBrowseController.swift'),
-    source('Drive/LAADriveBrowserView.swift')], { stdio: 'inherit' });
-  console.log('Drive browser iOS typecheck passed');
+    source('Drive/LAADriveBrowserView.swift'), source('Drive/LAADriveOfflineStore.swift'),
+    source('Drive/LAADriveOfflineList.swift')], { stdio: 'inherit' });
+  console.log('Drive browser and offline list iOS typecheck passed');
 } finally {
   rmSync(temporary, { recursive: true, force: true });
 }
