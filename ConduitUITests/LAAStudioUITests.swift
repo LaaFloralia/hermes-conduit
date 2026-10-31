@@ -102,5 +102,55 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["依頼を受け付けました。"].waitForExistence(timeout: 15))
         XCTAssertEqual(try helper("create-consistent"), "true")
     }
+
+    func testV2ReviewRetryAndLibraryThroughMockBridge() throws {
+        guard (try? helper("health")) == "ok" else { throw XCTSkip("Start scripts/laa/studio-ui-fixture.mjs first") }
+        _ = try helper("reset")
+        _ = try helper("mode/v2")
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Studio"].waitForExistence(timeout: 30)); app.buttons["Studio"].tap()
+        let connect = app.buttons["laa.studio.pair"]
+        XCTAssertTrue(connect.waitForExistence(timeout: 10)); connect.tap()
+        let address = app.textFields["laa.bridge.address"]
+        XCTAssertTrue(address.waitForExistence(timeout: 10)); address.tap()
+        let current = address.value as? String ?? ""
+        address.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+        address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count + 5))
+        address.typeText("http://127.0.0.1:19582")
+        let code = app.secureTextFields["laa.bridge.code"]
+        code.tap(); code.typeText("TEST-TEST")
+        let pair = app.buttons["laa.bridge.pair"]
+        if !pair.isHittable { app.swipeUp() }
+        pair.tap()
+        let work = app.buttons["laa.studio.work.70175325-5cf4-421f-8a6f-95beae8fca92"]
+        XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
+        let review = app.buttons["作品への講評"]
+        XCTAssertTrue(review.waitForExistence(timeout: 10)); review.tap()
+        XCTAssertTrue(app.buttons["直す"].waitForExistence(timeout: 10)); app.buttons["直す"].tap()
+        let comment = app.textViews["laa.studio.review.comment"]
+        XCTAssertTrue(comment.waitForExistence(timeout: 10)); comment.tap(); comment.typeText("Fixture comment")
+        let send = app.buttons["laa.studio.review.send"]
+        if !send.isHittable { app.swipeUp() }
+        _ = try helper("mode/v2-review-lost")
+        XCTAssertTrue(send.waitForExistence(timeout: 10)); send.tap()
+        let retry = app.buttons["laa.studio.review.retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 20))
+        if !retry.isHittable { app.swipeUp() }
+        retry.tap()
+        XCTAssertTrue(app.staticTexts["講評を保存しました。"].waitForExistence(timeout: 20))
+        XCTAssertEqual(try helper("review-count"), "1")
+        XCTAssertEqual(try helper("review-consistent"), "true")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let library = app.buttons["Library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 10)); library.tap()
+        let principle = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Sample")).firstMatch
+        XCTAssertTrue(principle.waitForExistence(timeout: 10)); principle.tap()
+        XCTAssertTrue(app.staticTexts["Fixture principle"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["この原則で始める"].exists)
+    }
 }
 #endif

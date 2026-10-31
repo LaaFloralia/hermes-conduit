@@ -7,14 +7,18 @@ struct LAAStudioCreateView: View {
     var initialProject: LAAStudioProject? = nil
     var initialPrompt: String = ""
     var draftID: String? = nil
+    var initialPrinciple: LAAStudioRequest.Principle? = nil
     @State private var draft = LAAStudioDraft()
     @State private var initialized = false
+    @State private var storageBlocked = false
     @State private var done = false
     @State private var revision: UInt64 = 0
     @State private var sending = false
     @State private var canRetry = false
     @State private var error: String?
     @State private var created: LAAStudioRecord?
+    @State private var catalog: LAAStudioCatalog?
+    @State private var catalogNote: String?
     private var device: String { bridge.deviceID ?? "fixture" }
     private var selection: Binding<String> {
         Binding(get: { draft.projectID ?? "" }, set: { value in
@@ -51,34 +55,57 @@ struct LAAStudioCreateView: View {
                             Text(verbatim: LAACopy.Studio.newWork).tag("")
                             ForEach(snapshot.projects) { project in Text(verbatim: project.title).tag(project.id) }
                         }.labelsHidden().frame(minHeight: LAASpacing.minimumTouchTarget)
-                            .disabled(draft.pending || sending).accessibilityIdentifier("laa.studio.project")
+                            .disabled(draft.pending || sending || storageBlocked).accessibilityIdentifier("laa.studio.project")
                     }
                     if draft.isNew {
                         TextField(LAACopy.Studio.title, text: $draft.title)
-                            .studioInputField().disabled(draft.pending || sending)
+                            .studioInputField().disabled(draft.pending || sending || storageBlocked)
                             .accessibilityIdentifier("laa.studio.title")
                     }
                     LabeledContent(LAACopy.Studio.principle) {
                         Picker(LAACopy.Studio.principle, selection: principleSelection) {
                             Text(verbatim: LAACopy.Studio.none).tag("")
+                            if let selected = draft.principle, !snapshot.principles.contains(where: { $0.id == selected.id }) {
+                                Text(verbatim: "\(selected.id) · v\(selected.version)").tag(selected.id)
+                            }
                             ForEach(snapshot.principles) { item in Text(verbatim: "\(item.name) · \(item.status)").tag(item.id) }
-                        }.labelsHidden().frame(minHeight: LAASpacing.minimumTouchTarget).disabled(draft.pending || sending)
+                        }.labelsHidden().frame(minHeight: LAASpacing.minimumTouchTarget).disabled(draft.pending || sending || storageBlocked)
                     }
                     LAAWorkComposer(text: $draft.prompt, revision: $revision, placeholder: LAACopy.Studio.prompt,
-                                    enabled: !draft.pending && !sending,
+                                    enabled: !draft.pending && !sending && !storageBlocked,
                                     canSend: draft.prompt.utf16.count <= 10000 && (!draft.isNew || !draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty),
                                     onChange: { _ in }, onSubmit: { Task { await submit() } },
                                     submitLabel: LAACopy.Studio.send, accessibilityPrefix: "laa.studio.composer", showsTextSize: false)
                     Text(verbatim: "\(draft.prompt.utf16.count) / 10,000").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    if let catalog {
+                        DisclosureGroup("依頼の型と書き方") {
+                            VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                                ForEach(catalog.capabilities) { capability in
+                                    Button { appendTemplate(capability.prompt) } label: {
+                                        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                            Text(verbatim: "＋ \(capability.title)").fontWeight(.semibold)
+                                            Text(verbatim: capability.description).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                        }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                                    }.disabled(draft.pending || sending || storageBlocked)
+                                }
+                                ForEach(Array(catalog.brief.enumerated()), id: \.offset) { _, item in
+                                    Button { appendTemplate(item) } label: {
+                                        Text(verbatim: "＋ \(item)").frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                                    }.disabled(draft.pending || sending || storageBlocked)
+                                }
+                            }
+                        }
+                    }
+                    if let catalogNote { Text(verbatim: catalogNote).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
                     if draft.pending {
                         Button { Task { await check() } } label: {
                             Text(verbatim: LAACopy.Studio.check).frame(minHeight: LAASpacing.minimumTouchTarget)
-                        }.disabled(sending)
+                        }.disabled(sending || storageBlocked)
                             .accessibilityIdentifier("laa.studio.check")
                         if canRetry {
                             Button { Task { await submit() } } label: {
                                 Text(verbatim: LAACopy.Studio.retry).frame(minHeight: LAASpacing.minimumTouchTarget)
-                            }.disabled(sending)
+                            }.disabled(sending || storageBlocked)
                                 .accessibilityIdentifier("laa.studio.retry")
                         }
                     }
@@ -92,20 +119,54 @@ struct LAAStudioCreateView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             guard !initialized else { return }
-            draft = LAAStudioDraftStore.load(deviceID: device, draftID: draftID) ?? LAAStudioDraft()
+            let saved: LAAStudioDraft?
+            switch LAAStudioDraftStore.loadResult(deviceID: device, draftID: draftID) {
+            case .missing: saved = nil
+            case .loaded(let value): saved = value
+            case .unreadable:
+                storageBlocked = true
+                error = "保存済みの下書きを読み取れません。内容を保持するため送信を止めています。"
+                initialized = true
+                return
+            }
+            draft = saved ?? LAAStudioDraft()
             canRetry = draft.pending && draft.workBusy == true
-            if draft.prompt.isEmpty && !draft.pending, let initialProject {
-                draft.projectID = initialProject.id; draft.expectedRevision = initialProject.revision; draft.prompt = initialPrompt
+            if saved == nil {
+                if let initialProject {
+                    draft.projectID = initialProject.id; draft.expectedRevision = initialProject.revision; draft.prompt = initialPrompt
+                }
+                draft.principle = initialPrinciple
+                if (initialProject != nil || initialPrinciple != nil) && !LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) {
+                    storageBlocked = true; error = LAACopy.Studio.saveFailed
+                }
             }
             initialized = true
         }
         .onChange(of: draft) { _, value in
-            guard initialized && !done else { return }
-            if !LAAStudioDraftStore.save(value, deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
+            guard initialized && !done && !storageBlocked else { return }
+            if !LAAStudioDraftStore.save(value, deviceID: device, draftID: draftID) { storageBlocked = true; error = LAACopy.Studio.saveFailed }
+        }
+        .task(id: bridge.revision) {
+            guard snapshot.supportsV2 else { return }
+            do {
+                let result = try await LAAStudioData.catalog(bridge)
+                catalog = result.catalog
+                catalogNote = result.stale ? "依頼の型は端末に保存した内容です。" : nil
+            } catch is CancellationError { }
+            catch {
+                if let failure = error as? LAABridgeHTTPError, [401, 403].contains(failure.status) { catalog = nil }
+                catalogNote = "依頼の型を読み込めません。本文はそのまま入力できます。"
+            }
         }
     }
+    private func appendTemplate(_ text: String) {
+        guard !draft.pending, !sending, !storageBlocked else { return }
+        let next = draft.prompt.isEmpty ? text : draft.prompt + "\n" + text
+        guard next.utf16.count <= 10000 else { error = LAACopy.Studio.tooLong; return }
+        draft.prompt = next; revision += 1
+    }
     @MainActor private func submit() async {
-        guard !sending && (!draft.pending || canRetry) else { return }
+        guard !sending && !storageBlocked && (!draft.pending || canRetry) else { return }
         sending = true; error = nil
         defer { sending = false }
         do {
@@ -136,7 +197,7 @@ struct LAAStudioCreateView: View {
         } catch { self.error = LAAStudioData.message(error) }
     }
     @MainActor private func check() async {
-        guard let id = draft.requestID, !sending else { return }
+        guard let id = draft.requestID, !sending, !storageBlocked else { return }
         sending = true; error = nil
         defer { sending = false }
         do {

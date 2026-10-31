@@ -450,7 +450,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
-- Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-mock.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
+- Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio*.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAAStudioV2Tests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
@@ -507,7 +507,13 @@ App Store build · the Bridge API, Brain and Usage data contracts
   remains the executor; media and Drive delivery are linked from the work.
   Unsupported approvals require the Mac, and terminal requests can be submitted
   anew against the current work revision. A busy creation keeps the same ID,
-  body and key for an explicit retry; real intake connection remains to be verified.
+  body and key for an explicit retry. With Studio contract v2, the work board
+  adds search, media filters, versions and target-specific review history;
+  uncertain reviews retain their UUID and body for an explicit retry. Library
+  shows principles, reference materials and reusable request text. PDF and
+  USDZ previews use iOS components. Video and audio call the shared Drive player
+  through one Studio adapter; its improved public API is pending integration.
+  The v2 app screens, real intake and iPhone playback remain to be verified.
 - Brain shows Recent and Folders with Tags disabled until supported; the note
   body uses an opaque surface and all existing links and create-only flow remain.
 - Settings opens from the gear. New chat and voice remain reachable from the
