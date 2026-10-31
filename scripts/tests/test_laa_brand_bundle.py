@@ -237,6 +237,15 @@ class LAABrandBundleTests(unittest.TestCase):
                 self.assertEqual(result[source], brand.COPY[copy_name][language])
                 self.assertNotRegex(result[source], re.compile(r"Conduit|Hermes", re.I))
 
+    def test_open_source_notices_preserve_the_original_mit_texts(self):
+        notice = (ROOT / "assets/laa/LAAOpenSourceNotices.txt").read_text()
+        self.assertIn((ROOT / "LICENSE").read_text().strip(), notice)
+        metal = (ROOT / "Conduit/Views/LiquidOrb/LiquidOrb.metal").read_text().splitlines()
+        start = metal.index("// MIT License")
+        end = metal.index("// SOFTWARE.", start) + 1
+        shader_license = "\n".join(line[3:] if line.startswith("// ") else "" for line in metal[start:end])
+        self.assertIn(shader_license, notice)
+
     def test_only_fixed_examples_and_watch_messages_are_rewritten(self):
         example = next(key for key in brand.EXAMPLE_KEYS if "hermes.example.com" in key)
         rewritten = brand.values_only({example: example})[example]

@@ -127,6 +127,16 @@ final class LAAChromeUITests: XCTestCase {
             XCTAssertFalse(app.links["Support"].exists)
             XCTAssertFalse(app.links["GitHub"].exists)
             capture("remnants-about-\(appearance)")
+
+            let licenses = app.buttons["Open-source licenses"]
+            for _ in 0..<6 where !licenses.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            XCTAssertTrue(licenses.isHittable)
+            licenses.tap()
+            let notice = app.staticTexts["laa.licenses.text"]
+            XCTAssertTrue(notice.waitForExistence(timeout: 10))
+            XCTAssertTrue(notice.label.contains("Copyright (c) 2026 kaishi00"))
+            XCTAssertTrue(notice.label.contains("Copyright (c) 2026 LerSent001"))
+            capture("remnants-licenses-\(appearance)")
             app.terminate()
         }
     }

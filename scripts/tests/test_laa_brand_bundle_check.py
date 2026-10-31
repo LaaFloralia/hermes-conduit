@@ -1,5 +1,6 @@
 import importlib.util
 import plistlib
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -38,6 +39,7 @@ class LAABrandCheckTests(unittest.TestCase):
             if identifier in checker.INTENTS:
                 write_plist(part / "Metadata.appintents/extract.actionsdata", {
                     "typeName": "ConduitProfileEntity", "title": "Talk to LAA"})
+        shutil.copyfile(checker.NOTICE_SOURCE, self.app / checker.NOTICE_NAME)
 
     def test_complete_bundle_passes_and_preserves_internal_identifiers(self):
         self.assertEqual(checker.check_bundle(self.app), [])
@@ -88,6 +90,15 @@ class LAABrandCheckTests(unittest.TestCase):
         write_plist(local, {"key": "LAA"})
         metadata = self.app / "Metadata.appintents/extract.actionsdata"
         metadata.write_bytes(b"unknown metadata format")
+        with self.assertRaises(checker.CheckError):
+            checker.check_bundle(self.app)
+
+    def test_open_source_notices_must_be_present_and_complete(self):
+        notice = self.app / checker.NOTICE_NAME
+        notice.unlink()
+        with self.assertRaises(checker.CheckError):
+            checker.check_bundle(self.app)
+        notice.write_text("MIT License")
         with self.assertRaises(checker.CheckError):
             checker.check_bundle(self.app)
 

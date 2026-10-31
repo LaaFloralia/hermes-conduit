@@ -4418,7 +4418,9 @@ private struct AboutSettingsDetail: View {
                 #endif
                 deleteSavedChatsButton
             }
-            #if !LAA_BUILD
+            #if LAA_BUILD
+            LAAOpenSourceLicenses()
+            #else
             ConduitSettingsSection(title: AppLocalization.string("Links"), symbol: "link", tint: .conduitAccent) {
                 Link(destination: URL(string: "https://kaishi00.github.io/hermes-conduit-notifier/privacy/")!) {
                     HStack {

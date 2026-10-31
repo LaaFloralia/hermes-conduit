@@ -24,6 +24,8 @@ settings:
 targets:
   Conduit:
     sources:
+      - path: assets/laa/LAAOpenSourceNotices.txt
+        buildPhase: resources
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
       - path: docs/laa/assets/staff

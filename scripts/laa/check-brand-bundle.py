@@ -19,6 +19,8 @@ REQUIRED = {APP_ID, APP_ID + ".widgets", APP_ID + ".ShareExtension",
             APP_ID + ".watchkitapp.widgets"}
 INTENTS = {APP_ID, APP_ID + ".watchkitapp", APP_ID + ".watchkitapp.widgets"}
 BRAND = re.compile(r"Conduit|Hermes", re.I)
+NOTICE_NAME = "LAAOpenSourceNotices.txt"
+NOTICE_SOURCE = Path(__file__).resolve().parents[2] / "assets/laa" / NOTICE_NAME
 
 # Internal metadata names identify Swift types / intents and are not display
 # strings. They are kept to preserve registered shortcuts and compatibility.
@@ -90,6 +92,9 @@ def check_bundle(bundle):
     root_info = bundle_info(bundle)
     if root_info.get("CFBundleIdentifier") != APP_ID:
         raise CheckError("the supplied app is not the LAA bundle")
+    notices = bundle / NOTICE_NAME
+    if not notices.is_file() or notices.read_bytes() != NOTICE_SOURCE.read_bytes():
+        raise CheckError("missing or altered open-source notices in the app")
     found = {APP_ID: bundle}
     # Inspect every embedded app and extension, not just today's known IDs:
     # adding another extension must not silently bypass the display check.
