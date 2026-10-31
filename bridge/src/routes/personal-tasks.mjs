@@ -146,6 +146,9 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
   });
   async function requestSession() { return source.session(); }
   const statusFor = (entry) => ({ status: 200, data: { operation: entry } });
+  const expiredOperation = (entry) => entry
+    ? new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: entry } })
+    : new BridgeError(410, 'task_operation_compacted', 'the completed operation was compacted; its result is no longer available', { details: { tombstone: true } });
   const preflightStatus = (error) => asBridgeError(error).retryable ? 'preflight_retryable' : 'rejected';
   const isDefiniteRejection = (error) => error instanceof TaskSourceError && error.code === 'linear_rejected';
   function resolved(previous) {
@@ -172,7 +175,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       ifMatch: typeof ifMatch === 'string' ? ifMatch : null, rawBody, kind: creating ? 'create' : 'update', targetId: target });
     if (reserved.action === 'conflict') throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
     if (reserved.action === 'expired') {
-      throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
+      throw expiredOperation(reserved.entry);
     }
     if (reserved.action === 'existing') {
       const previous = reserved.entry;
@@ -249,7 +252,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       ifMatch: null, rawBody, kind, targetId: randomUUID(), contextId: issueId });
     if (reserved.action === 'conflict') throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
     if (reserved.action === 'expired') {
-      throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
+      throw expiredOperation(reserved.entry);
     }
     if (reserved.action === 'existing') {
       const previous = reserved.entry;
@@ -315,7 +318,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
     const reserved = operations.reserve({ deviceId: device.id, viewerId, key, method: 'PATCH', path,
       ifMatch: null, rawBody, kind: `inbox_${body.action}`, targetId: id });
     if (reserved.action === 'conflict') throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
-    if (reserved.action === 'expired') throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
+    if (reserved.action === 'expired') throw expiredOperation(reserved.entry);
     if (reserved.action === 'existing') {
       const previous = reserved.entry;
       resolved(previous);
@@ -410,7 +413,7 @@ export function personalTaskRoutes({ personal, personalConfig, store, now = () =
       const reserved = operations.reserve({ deviceId: device.id, viewerId, key, method: 'POST', path,
         ifMatch: null, rawBody, kind: 'file', targetId: randomUUID(), contextId: issueId });
       if (reserved.action === 'conflict') throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
-      if (reserved.action === 'expired') throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled', { details: { operation: reserved.entry } });
+      if (reserved.action === 'expired') throw expiredOperation(reserved.entry);
       if (reserved.action === 'existing') {
         const previous = reserved.entry;
         resolved(previous);

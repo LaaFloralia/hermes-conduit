@@ -53,11 +53,25 @@ function drainRejectedUpload(req) {
     const onEnd = () => finish(true);
     const onClose = () => finish(false);
     const onData = (chunk) => { bytes += chunk.length; if (bytes > 32 * 1024 * 1024) { finish(false); req.destroy(); } };
-    const timer = setTimeout(() => { finish(false); req.destroy(); }, 60_000);
+    const timer = setTimeout(() => { finish(false); req.destroy(); }, 5 * 60_000);
     timer.unref();
     req.on('data', onData); req.once('end', onEnd); req.once('error', onClose); req.once('aborted', onClose);
     req.resume();
   });
+}
+
+// A rejected request still occupies a connection while it drains. Bound those
+// connections separately from the slots used by valid uploads.
+export function createRejectedUploadDrainer() {
+  let draining = 0;
+  return async (req) => {
+    if (req.readableEnded) return true;
+    if (req.destroyed) return false;
+    if (draining >= 4) { req.destroy(); return false; }
+    draining += 1;
+    try { return await drainRejectedUpload(req); }
+    finally { draining -= 1; }
+  };
 }
 
 function parseJsonBody(raw) {
@@ -89,6 +103,7 @@ export function createBridge({
 } = {}) {
   const startedAt = now();
   const enrollFailures = [];
+  const drainRejectedUploadBounded = createRejectedUploadDrainer();
 
   function sendJson(res, status, body, requestId, headers = {}) {
     const payload = `${JSON.stringify(body)}\n`;
@@ -349,7 +364,7 @@ export function createBridge({
       if (!(err instanceof BridgeError) && log) {
         log({ level: 'error', requestId, error: err?.message ?? String(err) });
       }
-      if (!res.headersSent && (!streamingUpload || await drainRejectedUpload(req))) fail(res, requestId, error);
+      if (!res.headersSent && (!streamingUpload || await drainRejectedUploadBounded(req))) fail(res, requestId, error);
     } finally {
       if (log) {
         log({

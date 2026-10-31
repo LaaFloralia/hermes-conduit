@@ -7,13 +7,14 @@ import XCTest
 #endif
 
 @MainActor private final class QueueFixture: LAAPersonalQueueTransport {
-    enum Failure: Error { case lostReply }
+    enum Failure: Error { case lostReply, compacted }
     var deviceID: String? = "device-a"
     var operations: [String: LAAPersonalOperationResponse.Operation] = [:]
     var calls: [String] = []
     var ifMatches: [String: String] = [:]
     var wrongViewer = false
     var loseChildReply = false
+    var compactedKeys: Set<String> = []
     let target = "7ae6f09d-3879-47ea-8e0d-72cd834ac5bc"
 
     func operation(_ status: String, kind: String = "create", resolution: String? = nil,
@@ -24,7 +25,8 @@ import XCTest
         return try JSONDecoder().decode(LAAPersonalOperationResponse.Operation.self, from: JSONSerialization.data(withJSONObject: data))
     }
     func queueOperation(_ key: LAABridgeIdempotencyKey) async throws -> LAAPersonalOperationResponse.Operation? {
-        operations[key.value]
+        if compactedKeys.contains(key.value) { throw Failure.compacted }
+        return operations[key.value]
     }
     func queueTask(_ id: String) async throws -> LAAPersonalTaskResponse {
         let data: [String: Any] = ["viewerId": wrongViewer ? "other-viewer" : "viewer-a",
@@ -345,6 +347,41 @@ import XCTest
         XCTAssertEqual(LAAWorkDrafts.originalRequest(transferred)?.1.value, originalKey)
         await LAAPersonalTaskQueue.run(drafts: again, bridge: bridge, viewer: "viewer-b")
         XCTAssertTrue(bridge.calls.isEmpty)
+    }
+
+    func testDiscardingAnOldCreateReopensTheNewTaskSlot() throws {
+        let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("drafts.json")
+        let store = ComposerDraftStore(fileURL: file)
+        let key = LAAWorkDrafts.key(deviceID: "device-a", target: "linear:viewer-a:new")
+        let body = Data("{\"expectedViewerId\":\"viewer-a\",\"teamId\":\"team\",\"title\":\"old\"}".utf8)
+        let old = try XCTUnwrap(LAAWorkDrafts.reserve(store, key: key, text: "old", body: body,
+            idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "old-key")), now: Date(timeIntervalSinceNow: -8 * 24 * 60 * 60)))
+        XCTAssertTrue(!LAAWorkDrafts.canRepeat(old))
+        XCTAssertTrue(LAAWorkDrafts.reserve(store, key: key, text: "new", body: body,
+            idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "new-key"))) == nil)
+        XCTAssertTrue(store.finishSubmission(old.id, restoring: false))
+        let reopened = ComposerDraftStore(fileURL: file)
+        XCTAssertTrue(LAAWorkDrafts.pending(reopened, key: key) == nil)
+        let next = try XCTUnwrap(LAAWorkDrafts.reserve(reopened, key: key, text: "new", body: body,
+            idempotency: try XCTUnwrap(LAABridgeIdempotencyKey(restoring: "new-key"))))
+        XCTAssertEqual(LAAWorkDrafts.originalRequest(next)?.1.value, "new-key")
+    }
+
+    func testDependencyWithCompactedParentRemainsUnsentAndCanBeDiscarded() async throws {
+        let folder = location(); defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("drafts.json")
+        let store = ComposerDraftStore(fileURL: file); try reserve(store)
+        let parent = try XCTUnwrap(store.submissions.first { $0.key.sessionID.hasSuffix(":new") })
+        XCTAssertTrue(store.finishSubmission(parent.id, restoring: false))
+        let child = try XCTUnwrap(store.submissions.first)
+        let bridge = QueueFixture(); bridge.compactedKeys.insert("parent-key")
+        await LAAPersonalTaskQueue.run(drafts: store, bridge: bridge, viewer: "viewer-a")
+        XCTAssertTrue(bridge.calls.isEmpty)
+        XCTAssertEqual(LAAPersonalTaskQueue.dependency(child, device: "device-a", viewer: "viewer-a")?.first, "Child text")
+        XCTAssertEqual(store.submissions.count, 1)
+        XCTAssertTrue(store.finishSubmission(child.id, restoring: false))
+        XCTAssertTrue(ComposerDraftStore(fileURL: file).submissions.isEmpty)
     }
 
 

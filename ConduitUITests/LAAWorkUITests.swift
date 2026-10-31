@@ -118,7 +118,8 @@ final class LAAWorkUITests: XCTestCase {
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_KEYCHAIN_ERROR"]
         app.launch()
         XCTAssertTrue(app.staticTexts["キーチェーンの接続情報を読み取れません"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["iPhoneのロックを解除してアプリを開き直してください。改善しない場合は、Macとの接続情報を再設定してください。"].exists)
+        XCTAssertTrue(app.staticTexts["iPhoneのロックを解除してアプリを再起動してください。"].exists)
+        XCTAssertFalse(app.staticTexts["改善しない場合は、Macとの接続情報を再設定してください。"].exists)
         XCTAssertEqual(app.buttons.matching(identifier: "Settings").count, 1)
         XCTAssertFalse(app.buttons["Connect to Mac"].exists)
     }
@@ -283,6 +284,41 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(waitUntilReady(create, timeout: 20))
         create.tap()
         XCTAssertTrue(app.staticTexts["Fixture new task"].waitForExistence(timeout: 20))
+    }
+
+    // Uses an in-memory draft store and the dedicated synthetic Bridge only.
+    func testPersonalTaskFixtureOrphanMoveAndDiscard() throws {
+        guard ProcessInfo.processInfo.environment["LAA_WORK_LIVE_STAGE"] == "taskfixture-orphan" else {
+            throw XCTSkip("The synthetic orphan fixture was not selected.")
+        }
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ORPHAN_DRAFT"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 30))
+        app.buttons["Tasks"].tap()
+        let pending = app.buttons["work.tasks.pending"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 30)); pending.tap()
+        let count = app.staticTexts["work.pending.orphan.count"]
+        XCTAssertTrue(count.waitForExistence(timeout: 20))
+        XCTAssertTrue(count.label.hasPrefix("1件"))
+        XCTAssertFalse(app.staticTexts["Fixture orphan private text"].exists)
+        XCTAssertTrue(app.buttons["work.pending.orphan.discard"].exists)
+        let move = app.buttons["work.pending.orphan.move"]
+        XCTAssertTrue(move.exists); move.tap()
+        XCTAssertTrue(app.staticTexts["移した下書き。元の要求の結果を確認するまで自動送信しません。"].waitForExistence(timeout: 20))
+        XCTAssertTrue(count.label.hasPrefix("0件"))
+        XCTAssertFalse(app.staticTexts["Fixture orphan private text"].exists)
+        app.buttons["work.pending.discard.local"].tap()
+        app.buttons["端末から破棄"].tap()
+        XCTAssertTrue(app.staticTexts["保留中の要求はありません。"].waitForExistence(timeout: 20))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let newTask = app.buttons["New Task"]
+        XCTAssertTrue(waitUntilReady(newTask, timeout: 20)); newTask.tap()
+        let title = app.textFields["work.task.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 20)); title.tap(); title.typeText("After discard")
+        let create = app.buttons["Create"]
+        XCTAssertTrue(waitUntilReady(create, timeout: 20)); create.tap()
+        XCTAssertTrue(app.staticTexts["After discard"].waitForExistence(timeout: 20))
     }
 
     // Run with a freshly started synthetic server for each scenario.

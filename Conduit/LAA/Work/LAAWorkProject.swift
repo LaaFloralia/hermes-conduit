@@ -37,7 +37,7 @@ struct LAAWorkProjectDetail: View {
                             let text = current.instructions ?? ""
                             Text(verbatim: text.isEmpty ? "共通指示はありません。" : text).textSelection(.enabled)
                         } else {
-                            Text(verbatim: "Bridgeが指示本文を返すまで、内容の確認と編集はできません。")
+                            Text(verbatim: "Macから指示本文を受け取るまで、内容の確認と編集はできません。")
                                 .foregroundStyle(LAAColor.secondaryText)
                         }
                     }.workCard()
@@ -170,7 +170,7 @@ struct LAAWorkProjectEditor: View {
                             .scrollContentBackground(.hidden).background(LAAColor.surface)
                             .accessibilityIdentifier("work.project.instructions")
                     } else {
-                        Text(verbatim: "Bridgeが指示本文を返すまで編集できません。")
+                        Text(verbatim: "Macから指示本文を受け取るまで編集できません。")
                             .foregroundStyle(LAAColor.secondaryText)
                     }
                 }

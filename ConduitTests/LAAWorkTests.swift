@@ -152,6 +152,7 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertFalse(LAAWorkHTTP.outcomeUnknown(error(409, "pending_decision_requires_reply")))
         XCTAssertFalse(LAAWorkHTTP.outcomeUnknown(error(409, "session_busy")))
         XCTAssertTrue(LAAWorkHTTP.outcomeUnknown(error(409, "idempotency_outcome_unknown")))
+        XCTAssertTrue(LAAWorkHTTP.outcomeUnknown(error(410, "task_operation_compacted")))
         XCTAssertTrue(LAAWorkHTTP.outcomeUnknown(error(409, "send_outcome_unknown")))
         XCTAssertTrue(LAAWorkHTTP.outcomeUnknown(error(409, "message_id_conflict")))
         XCTAssertFalse(LAAWorkHTTP.outcomeUnknown(error(409, "message_limit_reached")))

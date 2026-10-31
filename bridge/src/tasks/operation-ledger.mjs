@@ -9,6 +9,9 @@ import { createJsonFile } from '../routes/state-file.mjs';
 
 const MAX_RECORDS = 20_000;
 const RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+// Keep compacted keys for a further 30 days after compaction. The phone stops
+// retries after six days; this also allows for slow requests and clock skew.
+const TOMBSTONE_MS = 30 * 24 * 60 * 60 * 1000;
 const INFLIGHT_MS = 90 * 1000;
 const digest = (data) => createHash('sha256').update(data).digest('hex');
 const keyHash = (deviceId, key) => digest(JSON.stringify([deviceId, key]));
@@ -27,8 +30,10 @@ export function operationFingerprint({ method, path, viewerId, ifMatch, rawBody 
 export function createTaskOperationLedger({ store, now = () => Date.now() }) {
   if (!store?.dir) throw new Error('task operation ledger requires a Bridge store');
   const file = join(store.dir, 'task-operations.json');
-  const data = createJsonFile({ file, initial: () => ({ entries: {}, tombstones: [] }) });
+  const data = createJsonFile({ file, initial: () => ({ entries: {}, tombstones: {} }) });
   const unavailable = () => new BridgeError(503, 'task_ledger_unavailable', 'the task operation ledger requires operator recovery');
+  const compacted = () => new BridgeError(410, 'task_operation_compacted',
+    'the completed operation was compacted; its result is no longer available', { details: { tombstone: true } });
   function syncDirectory() {
     const fd = openSync(store.dir, 'r');
     try { fsyncSync(fd); } finally { closeSync(fd); }
@@ -36,17 +41,28 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
 
   function checked(doc) {
     if (!doc.entries || typeof doc.entries !== 'object' || Array.isArray(doc.entries)) throw unavailable();
-    if (doc.tombstones === undefined) doc.tombstones = []; // upgrade existing ledgers
-    if (!Array.isArray(doc.tombstones) || doc.tombstones.some((hash) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))
-        || new Set(doc.tombstones).size !== doc.tombstones.length) throw unavailable();
+    if (doc.tombstones === undefined) doc.tombstones = {};
+    // Previous versions had no timestamps. Start a full retention period on
+    // migration rather than guessing how old those hashes are.
+    if (Array.isArray(doc.tombstones)) {
+      if (new Set(doc.tombstones).size !== doc.tombstones.length ||
+          doc.tombstones.some((hash) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))) throw unavailable();
+      doc.tombstones = Object.fromEntries(doc.tombstones.map((hash) => [hash, now()]));
+    }
+    if (!doc.tombstones || typeof doc.tombstones !== 'object' ||
+        Object.entries(doc.tombstones).some(([hash, timestamp]) => !/^[a-f0-9]{64}$/.test(hash) ||
+          !Number.isSafeInteger(timestamp) || timestamp < 0)) throw unavailable();
     return doc.entries;
   }
   function compact(all, tombstones) {
-    const known = new Set(tombstones);
+    const timestamp = now();
+    for (const [hash, compactedAt] of Object.entries(tombstones)) {
+      if (timestamp - compactedAt >= TOMBSTONE_MS) delete tombstones[hash];
+    }
     for (const [hash, entry] of Object.entries(all)) {
       if (['succeeded', 'rejected'].includes(entry.status) && Number.isFinite(entry.updatedAt)
-          && now() - entry.updatedAt >= RECENT_MS) {
-        if (!known.has(hash)) { tombstones.push(hash); known.add(hash); }
+          && timestamp - entry.updatedAt >= RECENT_MS) {
+        if (!Object.hasOwn(tombstones, hash)) tombstones[hash] = timestamp;
         delete all[hash];
       }
     }
@@ -88,7 +104,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     }
   }
   function snapshot() {
-    if (!ready()) return { entries: {}, tombstones: [] };
+    if (!ready()) return { entries: {}, tombstones: {} };
     try {
       if (!existsSync(file)) throw unavailable();
       const doc = data.read(); checked(doc);
@@ -123,7 +139,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
       const fingerprint = operationFingerprint({ method, path, viewerId, ifMatch, rawBody });
       return edit((all, tombstones) => {
         compact(all, tombstones);
-        if (tombstones.includes(hash)) return { action: 'expired' };
+        if (Object.hasOwn(tombstones, hash)) return { action: 'expired' };
         const previous = all[hash];
         if (!previous && Object.values(all).some((entry) => entry.resolutionKeyHash === hash)) return { action: 'conflict' };
         if (previous) {
@@ -175,7 +191,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     byKey({ deviceId, viewerId, key }) {
       const { entries: all, tombstones } = snapshot();
       const hash = keyHash(deviceId, key);
-      if (tombstones.includes(hash)) throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled');
+      if (Object.hasOwn(tombstones, hash)) throw compacted();
       let entry = all[hash] ?? Object.values(all).find((item) => item.resolutionKeyHash === hash);
       // Atomically close an expired no-write preflight before advertising it
       // as rejected. A concurrent retry can never be mistaken for a no-op.
@@ -195,7 +211,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
       const hash = keyHash(deviceId, key);
       return edit((all, tombstones) => {
         compact(all, tombstones);
-        if (tombstones.includes(hash)) throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier result must be reconciled');
+        if (Object.hasOwn(tombstones, hash)) throw compacted();
         const previous = all[hash];
         if (previous) {
           if (!owned(previous, deviceId, viewerId)) throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to another viewer');
@@ -231,7 +247,7 @@ export function createTaskOperationLedger({ store, now = () => Date.now() }) {
     resolve({ deviceId, viewerId, operationId, resolution, key, fingerprint }) {
       return edit((all, tombstones) => {
         const hash = keyHash(deviceId, key);
-        if (all[hash] || tombstones.includes(hash)) {
+        if (all[hash] || Object.hasOwn(tombstones, hash)) {
           throw new BridgeError(409, 'idempotency_key_conflict', 'the key belongs to a different request');
         }
         const prior = Object.values(all).find((item) => item.resolutionKeyHash === hash);

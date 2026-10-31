@@ -128,6 +128,7 @@ final class LAAPersonalTaskTests: XCTestCase {
             XCTAssertTrue(LAAPersonalReconciliation.isDefiniteRefusal(code: code))
         }
         XCTAssertTrue(!LAAPersonalReconciliation.isDefiniteRefusal(code: "idempotency_outcome_unknown"))
+        XCTAssertTrue(!LAAPersonalReconciliation.isDefiniteRefusal(code: "task_operation_compacted", status: 410))
         XCTAssertTrue(LAAPersonalReconciliation.isDefiniteRefusal(code: "linear_request_failed", status: 403))
         XCTAssertTrue(!LAAPersonalReconciliation.isDefiniteRefusal(code: "linear_request_failed", status: 503))
     }
@@ -135,6 +136,17 @@ final class LAAPersonalTaskTests: XCTestCase {
         let data: [String: Any] = ["viewerId": viewer, "task": ["id": "linear:T-1", "sourceId": "T-1",
                                                                    "linearId": issue, "title": "Parent"]]
         return try JSONDecoder().decode(LAAPersonalTaskResponse.self, from: JSONSerialization.data(withJSONObject: data))
+    }
+
+    func testPendingTaskLinkUsesOnlyAReadBackMatchingTheViewerAndReservedIssue() throws {
+        let create = try operation(status: "outcome_unknown", result: nil)
+        XCTAssertEqual(LAAPersonalReconciliation.taskLookup(create), "7ae6f09d-3879-47ea-8e0d-72cd834ac5bc")
+        XCTAssertEqual(LAAPersonalReconciliation.verifiedTaskID(try verifiedTask(), operation: create, viewer: "viewer-a"), "linear:T-1")
+        XCTAssertNil(LAAPersonalReconciliation.verifiedTaskID(try verifiedTask(viewer: "other"), operation: create, viewer: "viewer-a"))
+        XCTAssertNil(LAAPersonalReconciliation.verifiedTaskID(try verifiedTask(issue: "b71cc6b7-0656-4ce7-aa19-0bfa867ec2b9"), operation: create, viewer: "viewer-a"))
+        let differentResult = try operation(status: "succeeded", result: "b71cc6b7-0656-4ce7-aa19-0bfa867ec2b9")
+        XCTAssertNil(LAAPersonalReconciliation.verifiedTaskID(try verifiedTask(), operation: differentResult, viewer: "viewer-a"))
+        XCTAssertNil(LAAPersonalReconciliation.taskLookup(try operation(status: "outcome_unknown", kind: "comment")))
     }
 
     func testFollowUpWaitsForConfirmedParentAndReadback() throws {

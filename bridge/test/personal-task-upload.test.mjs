@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { request as httpRequest } from 'node:http';
+import { createServer, request as httpRequest } from 'node:http';
 import { join } from 'node:path';
+import { PassThrough } from 'node:stream';
 import test from 'node:test';
+import { createRejectedUploadDrainer } from '../src/http.mjs';
 import { createPersonalLinearSource } from '../src/tasks/personal.mjs';
 import { startBridge } from './helpers.mjs';
 
@@ -134,7 +136,7 @@ test('an ambiguous association never repeats; upload target and returned headers
 
 // Real socket clients stream the entire body, exercising backpressure and the
 // response that previously arrived as ECONNRESET for large uploads.
-function streamLarge(api, token, key, size = 20 * 1024 * 1024) {
+function streamLarge(api, token, key, size = 20 * 1024 * 1024, delayMs = 0) {
   return new Promise((resolve, reject) => {
     const headers = { authorization: `Bearer ${token}`, 'idempotency-key': key,
       'x-linear-viewer-id': owner.id, 'x-linear-file-name': Buffer.from('fixture.txt').toString('base64'),
@@ -145,11 +147,17 @@ function streamLarge(api, token, key, size = 20 * 1024 * 1024) {
       res.on('error', reject);
     });
     req.on('error', reject);
-    const chunk = Buffer.alloc(64 * 1024); let sent = 0;
+    const chunk = Buffer.alloc(delayMs ? 1024 * 1024 : 64 * 1024); let sent = 0;
     function write() {
       while (sent < size) {
         const remaining = Math.min(chunk.length, size - sent); sent += remaining;
-        if (!req.write(chunk.subarray(0, remaining))) { req.once('drain', write); return; }
+        const ready = req.write(chunk.subarray(0, remaining));
+        if (delayMs) {
+          const next = () => setTimeout(write, delayMs);
+          if (ready) next(); else req.once('drain', next);
+          return;
+        }
+        if (!ready) { req.once('drain', write); return; }
       }
       req.end();
     }
@@ -178,6 +186,71 @@ test('rejected large uploads drain before returning 413, 429, 401 and 403', asyn
   await waiting;
   assert.equal((await streamLarge(api, writer, 'large-429')).status, 429);
   release(); await Promise.all(held);
+});
+
+test('slow rejected 20 MiB upload receives the HTTP error', async (t) => {
+  const { source } = fixture();
+  const api = await startBridge({ tasks: { personal: source } }); t.after(() => api.close());
+  const started = Date.now();
+  const result = await streamLarge(api, 'bad-token', 'slow-401', 20 * 1024 * 1024, 150);
+  assert.equal(result.status, 401);
+  assert.ok(Date.now() - started >= 2500);
+});
+
+test('at most four rejected uploads drain concurrently and a released slot is reusable', async () => {
+  const drain = createRejectedUploadDrainer();
+  const streams = Array.from({ length: 4 }, () => new PassThrough());
+  const pending = streams.map((stream) => drain(stream));
+  const excess = new PassThrough();
+  assert.equal(await drain(excess), false);
+  assert.equal(excess.destroyed, true);
+  streams[0].end('one');
+  assert.equal(await pending[0], true);
+  const replacement = new PassThrough();
+  const replacementPending = drain(replacement);
+  assert.equal(replacement.destroyed, false);
+  replacement.end('replacement');
+  streams.slice(1).forEach((stream) => stream.end('done'));
+  assert.deepEqual(await Promise.all([...pending.slice(1), replacementPending]), [true, true, true, true]);
+});
+
+test('concurrent rejected socket uploads are capped and recover after a stream ends', { timeout: 5000 }, async (t) => {
+  const drain = createRejectedUploadDrainer();
+  let entered = 0, ready;
+  const fourEntered = new Promise((resolve) => { ready = resolve; });
+  const server = createServer(async (req, res) => {
+    const result = drain(req);
+    entered += 1;
+    if (entered === 4) ready();
+    if (await result) { res.writeHead(401); res.end(); }
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const sockets = [];
+  t.after(async () => {
+    sockets.forEach(({ req }) => req.destroy());
+    await new Promise((resolve) => server.close(resolve));
+  });
+  const open = () => {
+    let req;
+    const finished = new Promise((resolve, reject) => {
+      req = httpRequest({ host: '127.0.0.1', port: server.address().port, method: 'POST', headers: { 'content-length': '4' } },
+        (res) => { res.resume(); res.on('end', () => resolve(res.statusCode)); });
+      req.on('error', reject);
+      req.flushHeaders(); req.write('x');
+    });
+    finished.catch(() => {}); // Cleanup may close a still-held request after a failed assertion.
+    const item = { req, finished }; sockets.push(item); return item;
+  };
+  const held = Array.from({ length: 4 }, open);
+  await fourEntered;
+  const excess = open();
+  await assert.rejects(excess.finished, { code: 'ECONNRESET' });
+  held[0].req.end('yyy');
+  assert.equal(await held[0].finished, 401);
+  const replacement = open(); replacement.req.end('yyy');
+  assert.equal(await replacement.finished, 401);
+  held.slice(1).forEach(({ req }) => req.end('yyy'));
+  assert.deepEqual(await Promise.all(held.slice(1).map(({ finished }) => finished)), [401, 401, 401]);
 });
 
 

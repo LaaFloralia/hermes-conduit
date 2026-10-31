@@ -582,7 +582,7 @@ store · the session and project API · the personal Linear task API
   unread, archive and restore actions. Viewing alone does not mark notifications
   read; an uncertain action remains in Pending until checked. The indicator is
   limited to fetched pages and does not imply background delivery.
-- Re-pairing or changing viewers leaves prior submissions under “別の端末・別の本人”; an explicit move retains the original key and stays quarantined until the original viewer reconciles it. Old terminal ledger entries compact to key hashes.
+- Re-pairing or changing viewers leaves prior submissions under “別の端末・別の本人”; an explicit move retains the original key and stays quarantined until the original viewer reconciles it. Old terminal ledger entries compact to key hashes and timestamps; tombstones expire 30 days after compaction. Pending offers explicit local discard after the owner checks the outcome.
 - Pending decisions are read-only until Task 15; routines remain a placeholder.
 
 **Open gaps**

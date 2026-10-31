@@ -161,10 +161,47 @@ test('an old successful key is refused after seven days as a hash-only tombstone
   assert.equal((await create(api, token, 'old')).status, 201);
   clock += 8 * 24 * 60 * 60 * 1000;
   const repeat = await create(api, token, 'old');
-  assert.equal(repeat.body.error.code, 'idempotency_outcome_unknown');
-  assert.equal(repeat.body.error.details.operation, undefined);
-  assert.equal((await api.request('/v1/task-operations/by-key', { token, key: 'old' })).body.error.code, 'idempotency_outcome_unknown');
+  assert.equal(repeat.status, 410);
+  assert.equal(repeat.body.error.code, 'task_operation_compacted');
+  assert.equal(repeat.body.error.details.tombstone, true);
+  for (const [path, method] of [['/v1/task-operations/by-key', 'GET'], ['/v1/task-operations/abandon-unsent', 'POST']]) {
+    const status = await api.request(path, { token, key: 'old', method, ...(method === 'POST' ? { body: { expectedViewerId: VIEWER.id } } : {}) });
+    assert.equal(status.status, 410);
+    assert.equal(status.body.error.code, 'task_operation_compacted');
+    assert.equal(status.body.error.details.tombstone, true);
+  }
   assert.equal(mutations(personal).length, 1);
+});
+
+test('compacted successful and rejected creates report tombstones without preventing a fresh key', async (t) => {
+  let clock = Date.parse('2026-11-01T00:00:00Z');
+  const personal = sourceFixture();
+  const createIssue = personal.createIssue.bind(personal);
+  personal.createIssue = async (session, input) => {
+    if (input.title === 'rejected') throw new TaskSourceError('linear_rejected', 'fixture rejection', { status: 400 });
+    return createIssue(session, input);
+  };
+  const { api, token } = await setup(t, { personal, now: () => clock });
+  const originalDeviceId = (await api.request('/v1/me', { token })).body.data.deviceId;
+  assert.equal((await create(api, token, 'succeeded-key')).status, 201);
+  assert.equal((await create(api, token, 'rejected-key', { teamId: 'team', title: 'rejected' })).status, 400);
+  clock += 8 * 24 * 60 * 60 * 1000;
+  assert.equal((await create(api, token, 'fresh-key')).status, 201); // compacts both earlier entries
+  const newToken = await api.token(['tasks:read', 'tasks:write']);
+  for (const key of ['succeeded-key', 'rejected-key']) {
+    const results = [
+      await api.request('/v1/task-operations/by-key', { token, key }),
+      await api.request('/v1/task-operations/abandon-unsent', { token, key, method: 'POST', body: { expectedViewerId: VIEWER.id } }),
+      await api.request('/v1/task-operations/original-status', { token: newToken, key, method: 'POST',
+        body: { expectedViewerId: VIEWER.id, originalDeviceId } }),
+    ];
+    for (const result of results) {
+      assert.equal(result.status, 410);
+      assert.equal(result.body.error.code, 'task_operation_compacted');
+      assert.equal(result.body.error.details.tombstone, true);
+    }
+  }
+  assert.equal(mutations(personal).length, 2);
 });
 
 test('a missing ledger fails closed before another Linear write', async (t) => {

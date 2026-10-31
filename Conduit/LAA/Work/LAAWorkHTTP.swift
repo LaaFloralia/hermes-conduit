@@ -27,7 +27,7 @@ enum LAAWorkHTTP {
     /// the operation did not run. Delivery and idempotency uncertainty must
     /// keep the original request and key available for reconciliation.
     static func outcomeUnknown(_ error: LAABridgeHTTPError) -> Bool {
-        let ambiguous: Set<String> = ["idempotency_key_in_flight", "idempotency_outcome_unknown",
+        let ambiguous: Set<String> = ["idempotency_key_in_flight", "idempotency_outcome_unknown", "task_operation_compacted",
             "idempotency_key_conflict", "request_id_conflict", "creation_outcome_unknown",
             "send_outcome_unknown", "message_id_conflict", "model_effort_mismatch"]
         if let code = error.code, ambiguous.contains(code) { return true }
@@ -45,6 +45,7 @@ enum LAAWorkHTTP {
         case "session_not_stopped": return "停止を確認できていないため再開できません。"
         case "stop_unconfirmed": return "停止要求は届きましたが、停止を確認できていません。"
         case "idempotency_key_in_flight": return "前の要求は処理中です。状態を確認してください。"
+        case "task_operation_compacted": return "前の要求は完了後に整理され、成功と拒否を区別できません。Linearを確認し、必要ならPendingで破棄してください。"
         case "idempotency_outcome_unknown", "creation_outcome_unknown", "send_outcome_unknown":
             return "前の要求の結果を確認できません。同じIDの状態を確認してください。"
         case "profile_unsupported": return "このプロファイルは利用できません。名前を確認してください。"

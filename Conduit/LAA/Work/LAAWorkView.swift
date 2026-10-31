@@ -5,7 +5,7 @@ struct LAAWorkView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     let onRequestSettings: () -> Void
 
-    @StateObject private var drafts = ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
+    @StateObject private var drafts = LAAWorkView.makeDrafts()
     @State private var section = 0
     @State private var projects: [LAAWorkProject] = []
     @State private var workspaces: [LAAWorkWorkspace] = []
@@ -21,6 +21,21 @@ struct LAAWorkView: View {
     @State private var showNewProject = false
     @State private var refreshID = 0
     @State private var loadID = UUID()
+
+    @MainActor private static func makeDrafts() -> ComposerDraftStore {
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_ORPHAN_DRAFT") {
+            let store = ComposerDraftStore(capacity: .max)
+            let key = LAAWorkDrafts.key(deviceID: "dev_0000000000000000", target: "linear:fixture-viewer:new")
+            let body = Data("{\"expectedViewerId\":\"fixture-viewer\",\"teamId\":\"fixture-team\",\"title\":\"Fixture orphan private text\"}".utf8)
+            if let idempotency = LAABridgeIdempotencyKey(restoring: "fixture-orphan-key") {
+                _ = LAAWorkDrafts.reserve(store, key: key, text: "Fixture orphan private text", body: body, idempotency: idempotency)
+            }
+            return store
+        }
+#endif
+        return ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
+    }
 
     var body: some View {
         ZStack {
@@ -128,7 +143,7 @@ struct LAAWorkView: View {
             if bridge.status == .keychainError {
                 Label(LAAWorkPresentation.japanese("キーチェーンの接続情報を読み取れません"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColor.attention)
-                Text(verbatim: "iPhoneのロックを解除してアプリを開き直してください。改善しない場合は、Macとの接続情報を再設定してください。")
+                Text(verbatim: "iPhoneのロックを解除してアプリを再起動してください。")
             } else {
                 Label { Text(verbatim: "未接続") } icon: { Image(systemName: "circle") }
                     .foregroundStyle(LAAColor.secondaryText)

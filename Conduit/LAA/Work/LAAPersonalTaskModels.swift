@@ -373,6 +373,26 @@ enum LAAPersonalTaskDiff {
 
 enum LAAPersonalReconciliation {
     enum Disposition: Equatable { case complete, restore, compare, unsent, wait, invalid }
+    static func taskLookup(_ operation: LAAPersonalOperationResponse.Operation) -> String? {
+        guard ["create", "update"].contains(operation.kind) else { return nil }
+        let id = operation.kind == "create" ? operation.targetId : (operation.resultId ?? operation.targetId)
+        guard id.range(of: #"^[A-Za-z0-9][A-Za-z0-9._:-]{0,200}$"#, options: .regularExpression) != nil else { return nil }
+        return id
+    }
+    static func verifiedTaskID(_ response: LAAPersonalTaskResponse, operation: LAAPersonalOperationResponse.Operation,
+                               viewer: String) -> String? {
+        guard response.viewerId == viewer, let lookup = taskLookup(operation),
+              !response.task.sourceId.isEmpty, response.task.id == "linear:\(response.task.sourceId)" else { return nil }
+        if let expected = UUID(uuidString: lookup) {
+            guard let actual = response.task.linearId.flatMap(UUID.init(uuidString:)), actual == expected else { return nil }
+            if operation.kind == "create", let result = operation.resultId,
+               UUID(uuidString: result) != expected { return nil }
+        } else {
+            guard operation.kind == "update",
+                  lookup == response.task.id || lookup == response.task.sourceId else { return nil }
+        }
+        return response.task.id
+    }
     static func disposition(_ operation: LAAPersonalOperationResponse.Operation, mayCompare: Bool) -> Disposition {
         switch operation.status {
         case "succeeded": return .complete
