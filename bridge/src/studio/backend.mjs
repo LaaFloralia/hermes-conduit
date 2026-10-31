@@ -15,7 +15,7 @@ export function createStudioBackend({
   directory = join(homedir(), 'Library', 'Application Support', 'LAA Creative Studio', 'Remote'),
   launch = () => execFileAsync(join(homedir(), 'dev', 'studio', 'bin', 'studio'), ['{"operation":"intake.snapshot"}'],
     { timeout: 8000, maxBuffer: 1024 * 1024 }),
-  now = () => Date.now(), startupIntervalMs = 30000,
+  now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, statPath = lstat,
 } = {}) {
   const socketPath = join(directory, 'intake.sock');
   const metadataPath = join(directory, 'intake.json');
@@ -24,7 +24,7 @@ export function createStudioBackend({
 
   async function metadata() {
     try {
-      const [folder, file, socket] = await Promise.all([lstat(directory), lstat(metadataPath), lstat(socketPath)]);
+      const [folder, file, socket] = await Promise.all([statPath(directory), statPath(metadataPath), statPath(socketPath)]);
       const uid = process.getuid?.();
       if (!folder.isDirectory() || !file.isFile() || !socket.isSocket() ||
           (folder.mode & 0o777) !== 0o700 || (file.mode & 0o777) !== 0o600 || (socket.mode & 0o777) !== 0o600 ||
@@ -43,7 +43,7 @@ export function createStudioBackend({
       const headers = { authorization: `Bearer ${info.token}`, accept: 'application/json' };
       if (body !== undefined) headers['content-type'] = 'application/json';
       if (range) headers.range = range;
-      const request = http.request({ socketPath, path, method, headers, signal, timeout: 12000 }, resolve);
+      const request = http.request({ socketPath, path, method, headers, signal, timeout: requestTimeoutMs }, resolve);
       request.on('timeout', () => request.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })));
       request.on('error', reject);
       if (body !== undefined) request.end(JSON.stringify(body)); else request.end();

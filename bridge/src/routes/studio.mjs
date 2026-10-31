@@ -9,6 +9,7 @@ const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-
 const mediaPattern = /^\/v1\/studio\/media\/([a-zA-Z0-9-]{1,100})\/([a-f0-9]{64}\.(?:jpg|png|webp|mp4|mp3|glb))$/;
 const requestPattern = new RegExp(`^/v1/studio/requests/(${UUID})$`);
 const MAX_MEDIA = 16 * 1024 * 1024;
+const MEDIA_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', mp3: 'audio/mpeg', glb: 'model/gltf-binary' };
 
 function validateAnswer(action, record) {
   const approval = record?.report?.approvals?.find((item) => item.id === action.approvalId);
@@ -43,6 +44,10 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
     const body = validateRequest(parseBody(rawBody));
     return { status: 202, data: await backend.createRequest(body) };
   }
+  async function replayRequest({ rawBody }) {
+    // A replay confirms the original mutation but must report current state.
+    return backend.getRequest(validateRequest(parseBody(rawBody)).id);
+  }
   async function action({ rawBody }) {
     const body = validateAction(parseBody(rawBody));
     if (body.action === 'answer') validateAnswer(body, await backend.getRequest(body.id));
@@ -58,10 +63,10 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
         { method: 'GET', range: req.headers.range, signal: abort.signal });
       const status = upstream.statusCode;
       if (status === 416) {
-        const headers = { 'content-type': 'application/json', 'accept-ranges': 'bytes', 'x-request-id': requestId };
+        const headers = { 'content-type': 'application/json', 'accept-ranges': 'bytes', 'cache-control': 'no-store', 'x-request-id': requestId };
         if (upstream.headers['content-range']) headers['content-range'] = upstream.headers['content-range'];
         upstream.resume();
-        res.writeHead(416, headers); res.end(JSON.stringify({ error: { code: 'range_not_satisfiable', message: 'Requested range is outside the media' }, requestId }));
+        res.writeHead(416, headers); res.end(JSON.stringify({ error: { code: 'range_not_satisfiable', message: 'Requested range is outside the media', retryable: false }, requestId }));
         return;
       }
       if (status !== 200 && status !== 206) {
@@ -74,7 +79,10 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
       const total = totalMatch ? Number(totalMatch[3]) : length;
       const start = totalMatch ? Number(totalMatch[1]) : 0;
       const end = totalMatch ? Number(totalMatch[2]) : 0;
+      const extension = params[1].split('.').pop();
+      const contentType = String(upstream.headers['content-type'] ?? '').split(';', 1)[0].trim().toLowerCase();
       if (!Number.isSafeInteger(length) || length < 0 || !Number.isSafeInteger(total) || total > MAX_MEDIA ||
+          contentType !== MEDIA_TYPES[extension] ||
           (status === 206 && (!totalMatch || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
             end < start || end >= total || end - start + 1 !== length))) {
         upstream.destroy(); throw new BridgeError(502, 'studio_media_invalid', 'Studio media exceeds the limit or has invalid headers');
@@ -84,7 +92,7 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
         if (upstream.headers[name] !== undefined) headers[name] = upstream.headers[name];
       }
       res.writeHead(status, headers);
-      if (req.method === 'HEAD') { upstream.resume(); res.end(); return; }
+      if (req.method === 'HEAD') { upstream.destroy(); res.end(); return; }
       let bytes = 0;
       const bounded = new Transform({ transform(chunk, _encoding, done) {
         bytes += chunk.length;
@@ -101,7 +109,7 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
     { method: 'GET', path: '/v1/studio/snapshot', auth: true, scope: 'studio:read', handler: snapshot },
     { method: 'GET', path: '/v1/studio/request-id', auth: true, scope: 'studio:request', handler: () => ({ status: 200, data: { id: randomUUID() } }) },
     { method: 'GET', pattern: requestPattern, auth: true, scope: 'studio:read', handler: getRequest },
-    { method: 'POST', path: '/v1/studio/requests', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: createRequest },
+    { method: 'POST', path: '/v1/studio/requests', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: createRequest, replay: replayRequest },
     { method: 'POST', path: '/v1/studio/action', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: action },
     { method: 'GET', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },
     { method: 'HEAD', pattern: mediaPattern, auth: true, scope: 'studio:read', handler: media },

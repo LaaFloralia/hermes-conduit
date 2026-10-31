@@ -27,6 +27,53 @@ final class LAAStudioTests: XCTestCase {
         XCTAssertNil(LAAStudioDraftStore.load(deviceID: "device-1", directory: directory))
     }
 
+    func testRerequestDraftDoesNotOverwriteAnotherDraft() {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var original = LAAStudioDraft(); original.prompt = "Different unsent draft"; original.pending = true
+        var again = LAAStudioDraft(); again.prompt = "Previous prompt"; again.expectedRevision = 4
+        XCTAssertTrue(LAAStudioDraftStore.save(original, deviceID: "device-1", directory: directory))
+        XCTAssertTrue(LAAStudioDraftStore.save(again, deviceID: "device-1", draftID: requestID, directory: directory))
+        XCTAssertEqual(LAAStudioDraftStore.load(deviceID: "device-1", draftID: requestID, directory: directory), again)
+        XCTAssertTrue(LAAStudioDraftStore.clear(deviceID: "device-1", draftID: requestID, directory: directory))
+        XCTAssertEqual(LAAStudioDraftStore.load(deviceID: "device-1", directory: directory), original)
+        XCTAssertFalse(LAAStudioDraftStore.save(again, deviceID: "device-1", draftID: "../other", directory: directory))
+    }
+
+    func testUnknownActionRecoveryRequiresFreshChecksAndKeepsOriginalPayload() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("studio-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let approvalID = UUID().uuidString
+        let action = LAAStudioAction(action: "answer", id: requestID, approvalId: approvalID,
+                                     accept: true, content: ["value": .integer(3)], persist: true)
+        let marker = LAAStudioPendingAction(action: "answer", approvalId: approvalID, payload: action, attemptedAt: Date())
+        XCTAssertTrue(LAAStudioActionGuard.save(marker, device: "device-1", id: requestID, directory: directory))
+        let saved = try XCTUnwrap(LAAStudioActionGuard.load(device: "device-1", id: requestID, directory: directory))
+        XCTAssertEqual(saved.payload?.content, action.content)
+        XCTAssertEqual(saved.payload?.persist, true)
+        XCTAssertNotNil(saved.attemptedAt)
+        let request = LAAStudioRequest(id: requestID, projectId: "work-1", expectedRevision: 1, prompt: "test", create: nil, principle: nil)
+        let approval = LAAStudioApproval(id: approvalID, message: "?", supported: true, allowSession: true, fields: [])
+        let report = LAAStudioReport(id: requestID, bootId: requestID, sequence: 1, status: "approval", text: "", revision: nil, approvals: [approval], computerCalls: nil)
+        let waiting = LAAStudioRecord(request: request, status: "approval", bootId: nil, updatedAt: "now", report: report)
+        let running = LAAStudioRecord(request: request, status: "running", bootId: nil, updatedAt: "now", report: nil)
+        XCTAssertFalse(LAAStudioActionGuard.mayRetry(saved, record: waiting, checks: 2))
+        XCTAssertTrue(LAAStudioActionGuard.mayRetry(saved, record: waiting, checks: 3))
+        XCTAssertEqual(LAAStudioActionGuard.nextChecks(previous: waiting, latest: waiting, count: 2), 3)
+        XCTAssertEqual(LAAStudioActionGuard.nextChecks(previous: waiting, latest: running, count: 2), 0)
+        XCTAssertTrue(LAAStudioActionGuard.resolved(saved, record: running))
+        XCTAssertFalse(LAAStudioActionGuard.mayRetry(saved, record: running, checks: 3))
+        let old = Data("{\"action\":\"answer\",\"approvalId\":\"\(approvalID)\"}".utf8)
+        let legacy = try JSONDecoder().decode(LAAStudioPendingAction.self, from: old)
+        XCTAssertNil(legacy.payload)
+        XCTAssertTrue(LAAStudioActionGuard.mayRetry(legacy, record: waiting, checks: 3))
+        let stopping = LAAStudioPendingAction(action: "stop", approvalId: nil, payload: .init(action: "stop", id: requestID), attemptedAt: Date())
+        XCTAssertTrue(LAAStudioActionGuard.mayRetry(stopping, record: running, checks: 3))
+        let stopped = LAAStudioRecord(request: request, status: "stopped", bootId: nil, updatedAt: "now", report: nil)
+        XCTAssertTrue(LAAStudioActionGuard.resolved(stopping, record: stopped))
+        XCTAssertTrue(LAAStudioActionGuard.clear(device: "device-1", id: requestID, directory: directory))
+    }
+
     func testExistingWorkRevisionAndPromptLimit() throws {
         var draft = LAAStudioDraft()
         draft.requestID = requestID

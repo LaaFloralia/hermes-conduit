@@ -70,7 +70,7 @@ enum LAABridgeError: Error, Equatable {
     }
 }
 
-/// Generate once per logical write and retain the same key when checking its result.
+/// Generate once per logical write to prevent replay; use the relevant GET endpoint to check current state.
 struct LAABridgeIdempotencyKey: Hashable {
     let value: String
     init() { value = UUID().uuidString.lowercased() }

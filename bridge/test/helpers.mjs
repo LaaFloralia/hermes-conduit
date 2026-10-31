@@ -7,12 +7,12 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_SCOPES, IDEMPOTENCY_RETENTION_MS, PAIRING_TTL_MS } from '../src/config.mjs';
+import { DEFAULT_SCOPES, IDEMPOTENCY_RETENTION_MS, PAIRING_TTL_MS, STUDIO_SCOPES } from '../src/config.mjs';
 import { createStore } from '../src/store.mjs';
 import { createBridge } from '../src/http.mjs';
-import { issuePairing } from '../src/pairing.mjs';
+import { grantStudio, issuePairing } from '../src/pairing.mjs';
 
-export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, brain = null, usage = null, studio = null } = {}) {
+export async function startBridge({ now, testEndpoints = true, drive = null, workspace, tasks = null, sessions = null, brain = null, usage = null, studio = null, log = null } = {}) {
   const clock = now ?? (() => Date.now());
   const dir = mkdtempSync(join(tmpdir(), 'laa-bridge-test-'));
   const stateDir = join(dir, 'state');
@@ -29,7 +29,7 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     ...(studio ? { studio } : {}),
   };
 
-  let bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null, routeOptions });
+  let bridge = createBridge({ store, testEndpoints, drive, now: clock, log, routeOptions });
   let address = await bridge.listen({ port: 0, host: '127.0.0.1' });
 
   async function request(path, { method = 'GET', body, token, key, headers = {} } = {}) {
@@ -68,13 +68,20 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
       return response;
     },
     async token(scopes = DEFAULT_SCOPES) {
-      const paired = await this.pair({ scopes });
+      const pairScopes = scopes.filter((scope) => !STUDIO_SCOPES.includes(scope));
+      const paired = await this.pair({ scopes: pairScopes });
       const enrolled = await this.enroll(paired.code);
+      if (scopes.some((scope) => STUDIO_SCOPES.includes(scope))) {
+        const id = enrolled.body.data.deviceId;
+        grantStudio(store, { target: id, now: clock() });
+        // Fixtures may model a partially granted legacy device for scope tests.
+        store.mutate((state) => { state.devices[id].scopes = [...scopes]; });
+      }
       return enrolled.body.data.token;
     },
     async restart() {
       await bridge.close();
-      bridge = createBridge({ store, testEndpoints, drive, now: clock, log: null, routeOptions });
+      bridge = createBridge({ store, testEndpoints, drive, now: clock, log, routeOptions });
       address = await bridge.listen({ port: 0, host: '127.0.0.1' });
     },
     async close() {

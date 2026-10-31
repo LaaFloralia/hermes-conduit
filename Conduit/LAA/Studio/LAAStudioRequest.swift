@@ -1,29 +1,41 @@
 #if LAA_BUILD
 import SwiftUI
 
-private struct LAAStudioPendingAction: Codable {
+struct LAAStudioPendingAction: Codable {
     let action: String
     let approvalId: String?
+    var payload: LAAStudioAction? = nil
+    var attemptedAt: Date? = nil
 }
-private enum LAAStudioActionGuard {
-    static func file(device: String, id: String) -> URL? {
-        guard let root = LAAStudioDraftStore.file(deviceID: device), UUID(uuidString: id) != nil else { return nil }
+enum LAAStudioActionGuard {
+    static func resolved(_ pending: LAAStudioPendingAction, record: LAAStudioRecord) -> Bool {
+        pending.action == "stop" ? !record.canStop :
+            record.status != "approval" || !(record.report?.approvals.contains(where: { $0.id == pending.approvalId }) ?? false)
+    }
+    static func mayRetry(_ pending: LAAStudioPendingAction, record: LAAStudioRecord, checks: Int) -> Bool {
+        checks >= 3 && !resolved(pending, record: record)
+    }
+    static func nextChecks(previous: LAAStudioRecord, latest: LAAStudioRecord, count: Int) -> Int {
+        previous.status == latest.status && previous.updatedAt == latest.updatedAt && previous.report?.sequence == latest.report?.sequence ? count + 1 : 0
+    }
+    static func file(device: String, id: String, directory: URL = LAAStudioDraftStore.directory()) -> URL? {
+        guard let root = LAAStudioDraftStore.file(deviceID: device, directory: directory), UUID(uuidString: id) != nil else { return nil }
         return root.deletingLastPathComponent().appendingPathComponent("action-\(device)-\(id).json")
     }
-    static func load(device: String, id: String) -> LAAStudioPendingAction? {
-        guard let file = file(device: device, id: id), let data = try? Data(contentsOf: file) else { return nil }
+    static func load(device: String, id: String, directory: URL = LAAStudioDraftStore.directory()) -> LAAStudioPendingAction? {
+        guard let file = file(device: device, id: id, directory: directory), let data = try? Data(contentsOf: file) else { return nil }
         return try? JSONDecoder().decode(LAAStudioPendingAction.self, from: data)
     }
-    static func save(_ pending: LAAStudioPendingAction, device: String, id: String) -> Bool {
-        guard let file = file(device: device, id: id) else { return false }
+    static func save(_ pending: LAAStudioPendingAction, device: String, id: String, directory: URL = LAAStudioDraftStore.directory()) -> Bool {
+        guard let file = file(device: device, id: id, directory: directory) else { return false }
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(pending).write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return true
         } catch { return false }
     }
-    static func clear(device: String, id: String) -> Bool {
-        guard let file = file(device: device, id: id) else { return false }
+    static func clear(device: String, id: String, directory: URL = LAAStudioDraftStore.directory()) -> Bool {
+        guard let file = file(device: device, id: id, directory: directory) else { return false }
         do { if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }; return true }
         catch { return false }
     }
@@ -33,6 +45,7 @@ struct LAAStudioRequestView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @State private var record: LAAStudioRecord
     @State private var pending: LAAStudioPendingAction?
+    @State private var unchangedChecks = 0
     @State private var error: String?
     @State private var busy = false
     @State private var confirmStop = false
@@ -72,7 +85,17 @@ struct LAAStudioRequestView: View {
                         }
                     }
                 }
-                if pending != nil { Text(verbatim: LAACopy.Studio.pendingAction).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
+                if let pending {
+                    Text(verbatim: LAACopy.Studio.pendingAction).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
+                    if LAAStudioActionGuard.mayRetry(pending, record: record, checks: unchangedChecks) {
+                        Text(verbatim: pending.payload == nil ? LAACopy.Studio.reenterAction : LAACopy.Studio.retryAction)
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        Button { Task { await retryPending() } } label: {
+                            Text(verbatim: pending.payload == nil ? LAACopy.Studio.reenter : LAACopy.Studio.retry)
+                                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                        }.buttonStyle(.bordered).disabled(busy).accessibilityIdentifier("laa.studio.action.retry")
+                    }
+                }
                 if let error { Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention) }
                 if busy { ProgressView() }
                 if let project, LAAStudioPresentation.hasDeliverables(project) {
@@ -84,7 +107,7 @@ struct LAAStudioRequestView: View {
                 if record.canStop {
                     Button(role: .destructive) { confirmStop = true } label: {
                         Text(verbatim: LAACopy.Studio.stop).frame(minHeight: LAASpacing.minimumTouchTarget)
-                    }.buttonStyle(.bordered).tint(LAAColor.end).disabled(busy || pending != nil)
+                    }.buttonStyle(.bordered).tint(LAAColor.end).disabled(busy)
                         .accessibilityIdentifier("laa.studio.stop")
                 }
                 if record.canRequestAgain {
@@ -117,21 +140,37 @@ struct LAAStudioRequestView: View {
     @MainActor private func refresh() async {
         do {
             let latest = try await LAAStudioData.record(record.id, bridge: bridge)
+            let checks = LAAStudioActionGuard.nextChecks(previous: record, latest: latest, count: unchangedChecks)
             record = latest
             if let pending {
-                let resolved = pending.action == "stop" ? !latest.canStop :
-                    latest.status != "approval" || !(latest.report?.approvals.contains(where: { $0.id == pending.approvalId }) ?? false)
-                if resolved && LAAStudioActionGuard.clear(device: device, id: record.id) { self.pending = nil }
+                if LAAStudioActionGuard.resolved(pending, record: latest) {
+                    if LAAStudioActionGuard.clear(device: device, id: record.id) { self.pending = nil; unchangedChecks = 0 }
+                } else { unchangedChecks = checks }
             }
             if pending == nil { error = nil }
         } catch is CancellationError { }
-        catch { self.error = LAAStudioData.message(error) }
+        catch { unchangedChecks = 0; self.error = LAAStudioData.message(error) }
     }
-    @MainActor private func perform(_ action: LAAStudioAction) async {
-        guard !busy && pending == nil else { return }
-        let marker = LAAStudioPendingAction(action: action.action, approvalId: action.approvalId)
+    @MainActor private func retryPending() async {
+        guard !busy, let pending, LAAStudioActionGuard.mayRetry(pending, record: record, checks: unchangedChecks) else { return }
+        // Recheck immediately before allowing a manual retry; never retry automatically.
+        busy = true
+        await refresh()
+        busy = false
+        guard let current = self.pending, LAAStudioActionGuard.mayRetry(current, record: record, checks: unchangedChecks) else { return }
+        guard let payload = current.payload else {
+            if LAAStudioActionGuard.clear(device: device, id: record.id) { self.pending = nil; unchangedChecks = 0 }
+            else { error = LAACopy.Studio.saveFailed }
+            return
+        }
+        await perform(payload, retry: true)
+    }
+    @MainActor private func perform(_ action: LAAStudioAction, retry: Bool = false) async {
+        // Stop remains available even if an earlier answer has an unknown outcome.
+        guard !busy && (pending == nil || retry || action.action == "stop") else { return }
+        let marker = LAAStudioPendingAction(action: action.action, approvalId: action.approvalId, payload: action, attemptedAt: Date())
         guard LAAStudioActionGuard.save(marker, device: device, id: record.id) else { error = LAACopy.Studio.saveFailed; return }
-        pending = marker; busy = true; error = nil
+        pending = marker; unchangedChecks = 0; busy = true; error = nil
         defer { busy = false }
         do {
             record = try await LAAStudioData.action(action, key: .init(), bridge: bridge)
@@ -208,7 +247,7 @@ private struct LAAStudioRerequestView: View {
     var body: some View {
         Group {
             if let snapshot, let project = snapshot.projects.first(where: { $0.id == previous.request.projectId }) {
-                LAAStudioCreateView(snapshot: snapshot, initialProject: project, initialPrompt: previous.request.prompt)
+                LAAStudioCreateView(snapshot: snapshot, initialProject: project, initialPrompt: previous.request.prompt, draftID: previous.id)
             } else if let error {
                 Text(verbatim: error).foregroundStyle(LAAColor.attention).padding(LAASpacing.horizontal)
             } else { ProgressView() }

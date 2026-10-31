@@ -38,9 +38,9 @@ export const DEFAULT_SCOPES = Object.freeze([
   'usage:read',
   'archives:read',
   'archives:create',
-  'studio:read',
-  'studio:request',
 ]);
+
+export const STUDIO_SCOPES = Object.freeze(['studio:read', 'studio:request']);
 
 // `brain:create` (new files only) is deliberately NOT in DEFAULT_SCOPES: BRIDGE
 // §9 fixes the initial grant set, and docs/laa/BRAIN-WRITE.md §7 only establishes
@@ -48,6 +48,7 @@ export const DEFAULT_SCOPES = Object.freeze([
 // It stays opt-in per device: `laa-bridge pair --scopes brain:read,brain:create`.
 export const ALL_SCOPES = Object.freeze([
   ...DEFAULT_SCOPES,
+  ...STUDIO_SCOPES,
   'brain:create',
   'brain:write',
   'gui:operate',

@@ -11,6 +11,7 @@ const makeRecord = () => ({ request: { id: requestId, projectId, expectedRevisio
   report: { id: requestId, bootId: projectId, sequence: 1, status: 'approval', text: '構成を確認しています。', approvals: [{ id: approvalId, message: '画面操作を許可しますか。', supported: true, allowSession: true, fields: [] }] } });
 let mode = 'normal';
 let record = makeRecord();
+let actionCalls = 0;
 const records = new Map();
 const send = (res, status, data) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(data)); };
 const ok = (res, status, data) => send(res, status, { data, requestId: 'fixture' });
@@ -36,6 +37,8 @@ createServer(async (req, res) => {
     }
     if (req.method === 'POST' && req.url === '/v1/studio/action') {
       const action = await read(req);
+      actionCalls += 1;
+      if (mode === 'action-fail-once') { mode = 'normal'; fail(res, 503, 'studio_not_connected'); return; }
       record = { ...record, status: action.action === 'stop' ? 'stopped' : 'running', report: { ...record.report, approvals: [] } };
       ok(res, 200, record); return;
     }
@@ -51,7 +54,8 @@ createServer(async (req, res) => {
 
 createServer((req, res) => {
   if (req.url === '/health') { res.end('ok'); return; }
-  if (req.url === '/reset') { mode = 'normal'; record = makeRecord(); records.clear(); res.end('ok'); return; }
+  if (req.url === '/reset') { mode = 'normal'; record = makeRecord(); actionCalls = 0; records.clear(); res.end('ok'); return; }
+  if (req.url === '/action-count') { res.end(String(actionCalls)); return; }
   if (req.url?.startsWith('/mode/')) { mode = req.url.slice('/mode/'.length); res.end('ok'); return; }
   res.writeHead(404); res.end();
 }).listen(19583, '127.0.0.1');

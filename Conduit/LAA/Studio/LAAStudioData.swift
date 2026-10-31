@@ -50,7 +50,10 @@ extension LAACopy {
         static let draft = "下書きはこの端末に保存されています。まだ送信していません。"
         static let uncertain = "送信結果を確認できていません。同じ依頼を照合してください。"
         static let missing = "Studioに依頼が見つかりません。同じ内容で再送できます。"
-        static let pendingAction = "操作の結果を確認中です。状態が変わらない場合はMacで確認してください。"
+        static let pendingAction = "操作の結果を確認中です。自動では再送しません。"
+        static let retryAction = "状態が変わらないため、同じ内容を再試行できます。"
+        static let reenterAction = "以前の操作内容を保存できていません。解除して入力し直せます。"
+        static let reenter = "Enter again"
         static let saveFailed = "下書きを保存できません。保存できるまで送信しません。"
         static let pageUnsupported = "このページはアプリでプレビューできません。LAA Studioで開いてください。"
         static let unsupported = "この形式はアプリでプレビューできません。LAA Studioで開いてください。"
@@ -198,25 +201,27 @@ enum LAAStudioDraftStore {
     static func directory() -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Studio", isDirectory: true)
     }
-    static func file(deviceID: String, directory: URL = directory()) -> URL? {
+    static func file(deviceID: String, draftID: String? = nil, directory: URL = directory()) -> URL? {
         guard !deviceID.isEmpty, deviceID.count <= 100,
-              deviceID.unicodeScalars.allSatisfy(CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_").contains) else { return nil }
-        return directory.appendingPathComponent("draft-\(deviceID).json")
+              deviceID.unicodeScalars.allSatisfy(CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_").contains),
+              draftID.map({ UUID(uuidString: $0) != nil }) ?? true else { return nil }
+        let suffix = draftID.map { "-again-\($0.lowercased())" } ?? ""
+        return directory.appendingPathComponent("draft-\(deviceID)\(suffix).json")
     }
-    static func load(deviceID: String, directory: URL = directory()) -> LAAStudioDraft? {
-        guard let url = file(deviceID: deviceID, directory: directory), let data = try? Data(contentsOf: url) else { return nil }
+    static func load(deviceID: String, draftID: String? = nil, directory: URL = directory()) -> LAAStudioDraft? {
+        guard let url = file(deviceID: deviceID, draftID: draftID, directory: directory), let data = try? Data(contentsOf: url) else { return nil }
         return try? JSONDecoder().decode(LAAStudioDraft.self, from: data)
     }
-    static func save(_ draft: LAAStudioDraft, deviceID: String, directory: URL = directory()) -> Bool {
-        guard let url = file(deviceID: deviceID, directory: directory) else { return false }
+    static func save(_ draft: LAAStudioDraft, deviceID: String, draftID: String? = nil, directory: URL = directory()) -> Bool {
+        guard let url = file(deviceID: deviceID, draftID: draftID, directory: directory) else { return false }
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try JSONEncoder().encode(draft).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return true
         } catch { return false }
     }
-    static func clear(deviceID: String, directory: URL = directory()) -> Bool {
-        guard let url = file(deviceID: deviceID, directory: directory) else { return false }
+    static func clear(deviceID: String, draftID: String? = nil, directory: URL = directory()) -> Bool {
+        guard let url = file(deviceID: deviceID, draftID: draftID, directory: directory) else { return false }
         do { if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }; return true }
         catch { return false }
     }

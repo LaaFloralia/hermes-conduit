@@ -6,6 +6,7 @@ struct LAAStudioCreateView: View {
     let snapshot: LAAStudioSnapshot
     var initialProject: LAAStudioProject? = nil
     var initialPrompt: String = ""
+    var draftID: String? = nil
     @State private var draft = LAAStudioDraft()
     @State private var initialized = false
     @State private var done = false
@@ -91,7 +92,7 @@ struct LAAStudioCreateView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             guard !initialized else { return }
-            draft = LAAStudioDraftStore.load(deviceID: device) ?? LAAStudioDraft()
+            draft = LAAStudioDraftStore.load(deviceID: device, draftID: draftID) ?? LAAStudioDraft()
             if draft.prompt.isEmpty && !draft.pending, let initialProject {
                 draft.projectID = initialProject.id; draft.expectedRevision = initialProject.revision; draft.prompt = initialPrompt
             }
@@ -99,7 +100,7 @@ struct LAAStudioCreateView: View {
         }
         .onChange(of: draft) { _, value in
             guard initialized && !done else { return }
-            if !LAAStudioDraftStore.save(value, deviceID: device) { error = LAACopy.Studio.saveFailed }
+            if !LAAStudioDraftStore.save(value, deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
         }
     }
     @MainActor private func submit() async {
@@ -110,14 +111,14 @@ struct LAAStudioCreateView: View {
             if draft.requestID == nil { draft.requestID = try await LAAStudioData.requestID(bridge) }
             guard let request = draft.request() else { error = LAACopy.Studio.invalid; return }
             draft.pending = true
-            guard LAAStudioDraftStore.save(draft, deviceID: device) else { draft.pending = false; error = LAACopy.Studio.saveFailed; return }
+            guard LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) else { draft.pending = false; error = LAACopy.Studio.saveFailed; return }
             let record = try await LAAStudioData.submit(request, bridge: bridge)
             done = true
-            if !LAAStudioDraftStore.clear(deviceID: device) { error = LAACopy.Studio.saveFailed }
+            if !LAAStudioDraftStore.clear(deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
             created = record
         } catch let failure as LAABridgeHTTPError {
             let refused = ["studio_revision_changed", "studio_principle_changed", "studio_work_busy", "invalid_request", "studio_payload_invalid", "insufficient_scope"].contains(failure.code ?? "")
-            if refused { draft.pending = false; draft.requestID = nil; _ = LAAStudioDraftStore.save(draft, deviceID: device) }
+            if refused { draft.pending = false; draft.requestID = nil; _ = LAAStudioDraftStore.save(draft, deviceID: device, draftID: draftID) }
             error = LAAStudioData.message(failure)
         } catch { self.error = LAAStudioData.message(error) }
     }
@@ -128,7 +129,7 @@ struct LAAStudioCreateView: View {
         do {
             let record = try await LAAStudioData.record(id, bridge: bridge)
             done = true
-            if !LAAStudioDraftStore.clear(deviceID: device) { error = LAACopy.Studio.saveFailed }
+            if !LAAStudioDraftStore.clear(deviceID: device, draftID: draftID) { error = LAACopy.Studio.saveFailed }
             created = record
         } catch let failure as LAABridgeHTTPError {
             canRetry = failure.code == "studio_request_missing"

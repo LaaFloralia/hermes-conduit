@@ -55,8 +55,17 @@ final class LAAStudioUITests: XCTestCase {
         XCTAssertFalse(stopConfirmation.waitForExistence(timeout: 2))
         let allow = app.buttons["laa.studio.approval.allow"]
         if !allow.isHittable { app.swipeDown() }
+        _ = try helper("mode/action-fail-once")
         XCTAssertTrue(allow.waitForExistence(timeout: 10)); allow.tap()
+        let retry = app.buttons["laa.studio.action.retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 18))
+        XCTAssertEqual(try helper("action-count"), "1")
+        if !stop.isHittable { app.swipeUp() }
+        XCTAssertTrue(stop.isEnabled)
+        if !retry.isHittable { app.swipeDown() }
+        retry.tap()
         XCTAssertTrue(app.staticTexts["Running"].waitForExistence(timeout: 10))
+        XCTAssertEqual(try helper("action-count"), "2")
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let create = app.buttons["laa.studio.new"]
         XCTAssertTrue(create.waitForExistence(timeout: 10)); create.tap()

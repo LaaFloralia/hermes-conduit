@@ -12,6 +12,7 @@ import { randomBytes } from 'node:crypto';
 import {
   BODY_LIMIT_BYTES,
   IDEMPOTENCY_INFLIGHT_GRACE_MS,
+  STUDIO_SCOPES,
   VERSION,
   testEndpointsEnabled,
 } from './config.mjs';
@@ -159,7 +160,9 @@ export function createBridge({
       if (pairing.expiresAt < t) return { error: new BridgeError(401, 'pairing_code_expired', 'pairing code has expired') };
 
       const token = randomToken();
-      const device = newDevice({ id: randomDeviceId(), name, scopes: pairing.scopes, platform, now: t });
+      // Pairing codes issued by older versions must not bypass the explicit grant.
+      const scopes = pairing.scopes.filter((scope) => !STUDIO_SCOPES.includes(scope));
+      const device = newDevice({ id: randomDeviceId(), name, scopes, platform, now: t });
       device.tokenHash = hashToken(token);
       state.devices[device.id] = device;
       pairing.usedAt = t;
@@ -292,7 +295,8 @@ export function createBridge({
           throw new BridgeError(409, 'idempotency_outcome_unknown', 'the earlier request never finished; reconcile before retrying');
         }
         if (outcome.action === 'replay') {
-          ok(res, outcome.entry.httpStatus ?? 200, outcome.entry.response, requestId, {
+          const data = route.replay ? await route.replay({ rawBody, device, entry: outcome.entry }) : outcome.entry.response;
+          ok(res, outcome.entry.httpStatus ?? 200, data, requestId, {
             'idempotency-replayed': 'true',
           });
           return;
