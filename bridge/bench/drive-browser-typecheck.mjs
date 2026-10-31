@@ -32,7 +32,8 @@ try {
     source('Drive/LAADriveBrowseModels.swift'), source('Drive/LAADriveBrowseController.swift'),
     source('Drive/LAADriveShortcutResolver.swift'), source('Drive/LAADriveBrowserView.swift'),
     source('Drive/LAADriveOfflineStore.swift'),
-    source('Drive/LAADriveOfflineAccess.swift'), source('Drive/LAADriveOfflineList.swift')], { stdio: 'inherit' });
+    source('Drive/LAADriveOfflineAccess.swift'), source('Drive/LAADriveOfflineList.swift'),
+    source('Drive/LAADriveShareFiles.swift'), source('Drive/LAADriveShareSheet.swift')], { stdio: 'inherit' });
   console.log('Drive browser and offline list iOS typecheck passed');
 } finally {
   rmSync(temporary, { recursive: true, force: true });
