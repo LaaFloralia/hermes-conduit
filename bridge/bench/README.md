@@ -5,14 +5,15 @@ Drive adapter. They do not access a Google account, a simulator, or user data.
 `ffmpeg` with `libx264`, `swiftc`, and macOS AVFoundation are required.
 
 ```sh
-node bridge/bench/drive-range-transfer-test.mjs
 node bridge/bench/drive-player-macos.mjs 10 256 0 bytes 50 20
-node bridge/bench/drive-player-macos.mjs 10 256 0 blocks 50 20
 node bridge/bench/drive-player-macos.mjs 10 256 0 bytes 150 10
-node bridge/bench/drive-player-macos.mjs 10 256 0 blocks 150 10
 node bridge/bench/drive-player-macos.mjs 10 1024 0 bytes 150 10
 node bridge/bench/drive-player-macos.mjs 10 256 2000 bytes 150 10
 ```
+
+The experimental block transport and its comparison harness are preserved in
+commit `6dd10343`. They were removed from the app and current fixture because
+the requested improvement threshold was not met.
 
 The benchmark compiles the actual `LAADrivePlayer` class from the current iOS
 source with a modeled Range transport and macOS AVFoundation. It measures the
@@ -47,7 +48,7 @@ that a cache itself increases seek latency. That cache assumes the version and
 permissions never change and is not a safe production design. On this small
 fixture, neither larger chunks nor the experimental block transport showed a
 clear 30% improvement in startup or seek; keep the existing 256 KiB transport.
-The experimental transport has not been wired into the iOS client.
+The experimental transport was never wired into the iOS client.
 
 These are Mac-side fixture measurements, not iPhone display timings or real
 Drive results. They do not establish behavior for long videos, other codecs,

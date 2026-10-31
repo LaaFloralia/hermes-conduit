@@ -39,24 +39,13 @@ private struct TransferMeasurement {
 }
 
 // The iOS session is MainActor-isolated, but its LAABridgeClient.driveRange
-// implementation is a nonisolated async method. Run both modeled transports on
-// the generic executor as well, so per-byte processing does not occupy the UI
-// actor and skew the comparison.
-private func measuredTransfer(_ request: URLRequest, offset: Int64, length: Int,
-                              blocks: Bool) async throws -> TransferMeasurement {
+// implementation is a nonisolated async method. Run the modeled transport on
+// the generic executor too, so per-byte processing does not occupy the UI actor.
+private func measuredTransfer(_ request: URLRequest, offset: Int64, length: Int) async throws -> TransferMeasurement {
     let started = Date()
     // Simulated iPhone-to-Bridge RTT, before the request goes to loopback.
     let rttMs = Int(ProcessInfo.processInfo.environment["LAA_BENCH_RTT_MS"] ?? "50") ?? 50
     try await Task.sleep(for: .milliseconds(rttMs))
-    if blocks {
-        let response = try await LAADriveRangeTransfer.shared.read(request, offset: offset, length: length)
-        guard response.response.statusCode == 206, let total = response.total else {
-            throw LAADriveRangeError.invalidRange
-        }
-        return .init(result: .init(data: response.data, total: total, mimeType: response.response.mimeType),
-                     timings: ["size": Double(response.data.count),
-                               "totalMs": Date().timeIntervalSince(started) * 1_000])
-    }
     let (bytes, response) = try await URLSession.shared.bytes(for: request)
     let headersAt = Date()
     defer { bytes.task.cancel() }
@@ -101,8 +90,7 @@ enum LAADriveContent {
         var request = URLRequest(url: bridge.baseURL.appendingPathComponent("v1/drive/files/\(item.id)/content"))
         request.setValue("Bearer \(bridge.token)", forHTTPHeaderField: "Authorization")
         request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
-        let measurement = try await measuredTransfer(request, offset: offset, length: length,
-            blocks: ProcessInfo.processInfo.environment["LAA_BENCH_TRANSPORT"] == "blocks")
+        let measurement = try await measuredTransfer(request, offset: offset, length: length)
         completedRanges.append(measurement.timings)
         return measurement.result
     }

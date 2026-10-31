@@ -1,6 +1,6 @@
 // Reproducible, synthetic-only measurement of the current iOS player class
 // compiled against macOS AVFoundation. No Google account or simulator is used.
-// Run: node bridge/bench/drive-player-macos.mjs [repetitions] [chunkKiB] [idealCacheMs] [bytes|blocks] [rttMs] [megabitsPerSecond]
+// Run: node bridge/bench/drive-player-macos.mjs [repetitions] [chunkKiB] [idealCacheMs] [bytes] [rttMs] [megabitsPerSecond]
 // Requires ffmpeg/libx264 and swiftc. Temporary fixture and binary are removed.
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
@@ -24,7 +24,7 @@ const megabitsPerSecond = Number(process.argv[7] ?? '20');
 assert.ok(Number.isInteger(repetitions) && repetitions >= 1 && repetitions <= 100);
 assert.ok(Number.isInteger(chunkKiB) && chunkKiB >= 1 && chunkKiB <= 2048);
 assert.ok(Number.isInteger(idealCacheMs) && idealCacheMs >= 0 && idealCacheMs <= 5000);
-assert.ok(['bytes', 'blocks'].includes(transport));
+assert.equal(transport, 'bytes', 'only the existing transport is retained');
 assert.ok(Number.isInteger(rttMs) && rttMs >= 0 && rttMs <= 2000);
 assert.ok(Number.isFinite(megabitsPerSecond) && megabitsPerSecond > 0 && megabitsPerSecond <= 1000);
 const tmp = mkdtempSync(join(tmpdir(), 'laa-drive-bench-'));
@@ -97,12 +97,12 @@ try {
   writeFileSync(swiftSource, `${harness}\n${playerSource.slice(start, end)}\n`);
   const binary = join(tmp, 'drive-player-bench');
   execFileSync('swiftc', ['-swift-version', '5', '-D', 'LAA_BUILD', '-O', '-parse-as-library', swiftSource,
-    join(root, 'Conduit/LAA/Drive/LAADriveRangeTransfer.swift'), '-o', binary], { stdio: ['ignore', 'pipe', 'pipe'] });
+    '-o', binary], { stdio: ['ignore', 'pipe', 'pipe'] });
   const result = await new Promise((resolveProcess, reject) => {
     const child = spawn(binary, [], {
       env: { ...process.env, LAA_BENCH_BASE: bridge.base, LAA_BENCH_FAKE_TOKEN: token,
         LAA_BENCH_REPETITIONS: String(repetitions), LAA_BENCH_CHUNK_BYTES: String(chunkKiB * 1024),
-        LAA_BENCH_TRANSPORT: transport, LAA_BENCH_RTT_MS: String(rttMs) },
+        LAA_BENCH_RTT_MS: String(rttMs) },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let stdout = '';
