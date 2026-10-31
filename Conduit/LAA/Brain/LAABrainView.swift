@@ -30,6 +30,7 @@ struct LAABrainView: View {
     @State private var searchError: LAABridgeError?
     @State private var showPairing = false
     @State private var showCreate = false
+    @State private var showRecovery = false
     @State private var chooseFolder = false
     @State private var localError: String?
     @State private var localReadFailed = false
@@ -118,6 +119,13 @@ struct LAABrainView: View {
                 path.append(.note(LAABrainReference(path: created.path, includeInbox: true)))
             }.environmentObject(bridge)
         }
+        .sheet(isPresented: $showRecovery) {
+            if let root = try? local.snapshot() {
+                LAABrainRecoveryCatalogueView(root: root) { Task { await load() } }
+            } else {
+                Text("Folder access is unavailable.")
+            }
+        }
         .fileImporter(isPresented: $chooseFolder, allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
             do {
                 guard let selected = try result.get().first else { return }
@@ -144,6 +152,10 @@ struct LAABrainView: View {
                     do { try local.disconnect(); localError = nil; path = []; query = ""; selectedTag = nil }
                     catch { localError = LAABrainVaultError.unreadable.message }
                 }.laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.useMac")
+            }
+            if local.isReady && LAABrainEditingGate.enabled {
+                Button("Recovery history") { showRecovery = true }
+                    .laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.recovery.open")
             }
             if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }

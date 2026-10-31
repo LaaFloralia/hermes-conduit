@@ -16,6 +16,20 @@ import Darwin
         guard args.count >= 3 else { throw FixtureFailure() }
         let root = URL(fileURLWithPath: args[2], isDirectory: true)
         if args[1] == "selftest" { try selftest(root); return }
+        if args[1] == "recover-binary", args.count == 5 {
+            let journal = LAABrainSaveJournal(directory: URL(fileURLWithPath: args[3], isDirectory: true))
+            let vault = LAABrainSaveJournal.vaultID(root)
+            let oldPath = args[4]
+            let binary = Data([0xff, 0xfe, 0x80, 0x00])
+            _ = try journal.record(vault: vault, path: oldPath, kind: .displaced, bytes: binary)
+            try FileManager.default.removeItem(at: root.appendingPathComponent(oldPath))
+            let catalogue = try journal.catalogue(vault: vault)
+            guard let version = catalogue.notes.first(where: { $0.path == oldPath })?.versions.first(where: { $0.kind == .displaced }),
+                  case let .restored(path) = try LAABrainSaveCoordinator(journal: journal).restoreCopy(root: root, summary: version) else { throw FixtureFailure() }
+            try check(tryData(root.appendingPathComponent(path)) == binary, "recovered bytes differ")
+            print(String(decoding: try JSONSerialization.data(withJSONObject: ["path": path]), as: UTF8.self))
+            return
+        }
         guard args[1] == "race", args.count == 7 || args.count == 8 else { throw FixtureFailure() }
         let journal = LAABrainSaveJournal(directory: URL(fileURLWithPath: args[3], isDirectory: true))
         var coordinator = LAABrainSaveCoordinator(journal: journal)
@@ -41,6 +55,8 @@ import Darwin
         let json: [String: Any] = ["outcome": "intervening", "journalKinds": versions.map { $0.kind.rawValue }]
         print(String(decoding: try JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]), as: UTF8.self))
     }
+
+    static func tryData(_ url: URL) -> Data? { try? Data(contentsOf: url) }
 
     static func selftest(_ work: URL) throws {
         let manager = FileManager.default
@@ -102,6 +118,9 @@ import Darwin
         } catch is FixtureFailure {}
         let outstanding = try journal.pending(vault: interruptedSnapshot.vault, path: interruptedSnapshot.path)
         try check(outstanding.count == 1, "interrupted exchange manifest missing")
+        try manager.moveItem(at: root.appendingPathComponent("interrupted.md"), to: root.appendingPathComponent("renamed-interrupted.md"))
+        let interruptedCatalogue = try journal.catalogue(vault: interruptedSnapshot.vault)
+        try check(interruptedCatalogue.notes.contains { $0.path == "interrupted.md" && $0.pending.count == 1 }, "renamed note's interrupted stage is not discoverable")
         let stage = try journal.stageURL(outstanding[0])
         let stageData = try Data(contentsOf: stage)
         try check(stageData == Data("BETWEEN".utf8), "interrupted displaced stage missing")
@@ -123,6 +142,41 @@ import Darwin
         let binaryHistory = try journal.versions(vault: binarySnapshot.vault, path: binarySnapshot.path)
         try check(bytes == nonUTF8 && binaryHistory.contains { $0.kind == .displaced && $0.bytes == nonUTF8 }, "non-UTF-8 intervening bytes lost")
 
+        try manager.removeItem(at: root.appendingPathComponent("normal.md"))
+        try manager.moveItem(at: root.appendingPathComponent("non-utf8-race.md"), to: root.appendingPathComponent("renamed-binary.md"))
+        _ = try journal.record(vault: "another-vault", path: "private.md", kind: .draft, bytes: Data("OTHER VAULT".utf8))
+        let catalogue = try journal.catalogue(vault: normal.vault)
+        guard let deleted = catalogue.notes.first(where: { $0.path == "normal.md" }),
+              let deletedDraft = deleted.versions.first(where: { $0.id == normalDraft.id }),
+              let renamed = catalogue.notes.first(where: { $0.path == "non-utf8-race.md" }),
+              let binaryVersion = renamed.versions.first(where: { $0.kind == .displaced }) else { throw FixtureFailure() }
+        try check(!catalogue.notes.contains { $0.path == "private.md" }, "catalogue exposed another vault")
+        guard case let .restored(deletedCopy) = try coordinator.restoreCopy(root: root, summary: deletedDraft),
+              case let .restored(binaryCopy) = try coordinator.restoreCopy(root: root, summary: binaryVersion) else { throw FixtureFailure() }
+        let deletedBytes = try Data(contentsOf: root.appendingPathComponent(deletedCopy))
+        let binaryBytes = try Data(contentsOf: root.appendingPathComponent(binaryCopy))
+        let renamedText = try read("renamed-binary.md")
+        try check(deletedBytes == Data("DRAFT".utf8) && binaryBytes == nonUTF8 && renamedText == "DRAFT", "deleted or renamed recovery was not byte-exact")
+        try check(!manager.fileExists(atPath: root.appendingPathComponent("normal.md").path), "recovery recreated or replaced the old path")
+
+        var collision = LAABrainSaveCoordinator(journal: journal)
+        var collisionURL: URL?
+        collision.fixtureBeforeRecoveryRename = { destination in
+            collisionURL = destination
+            try Data("EXISTING".utf8).write(to: destination)
+        }
+        do { _ = try collision.restoreCopy(root: root, summary: binaryVersion); throw FixtureFailure() }
+        catch LAABrainSaveCoordinator.SaveError.recoveryDestinationExists {}
+        guard let collisionURL else { throw FixtureFailure() }
+        let collisionBytes = try Data(contentsOf: collisionURL)
+        try check(collisionBytes == Data("EXISTING".utf8), "recovery overwrote a concurrently created file")
+        var unsupported = LAABrainSaveCoordinator(journal: journal)
+        unsupported.fixtureForceRecoveryFallback = true
+        do { _ = try unsupported.restoreCopy(root: root, summary: binaryVersion); throw FixtureFailure() }
+        catch LAABrainSaveCoordinator.SaveError.recoveryExportRequired {}
+        let stillSaved = try journal.version(binaryVersion)
+        try check(stillSaved.bytes == nonUTF8, "unsupported recovery lost the journal version")
+
         try put("corrupt.md", "BASE")
         let corrupt = try coordinator.begin(root: root, path: "corrupt.md")
         let corruptVersion = try journal.record(vault: corrupt.vault, path: corrupt.path, kind: .draft, bytes: Data("SAVED".utf8))
@@ -139,6 +193,11 @@ import Darwin
         guard let corruptSummary = corruptSummaries.first(where: { $0.id == corruptVersion.id }) else { throw FixtureFailure() }
         do { _ = try journal.version(corruptSummary); throw FixtureFailure() }
         catch is LAABrainSaveJournal.JournalError {}
+        do { _ = try coordinator.restoreCopy(root: root, summary: corruptSummary); throw FixtureFailure() }
+        catch is LAABrainSaveJournal.JournalError {}
+        try Data("invalid json".utf8).write(to: corruptFile.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".json"))
+        let partiallyDamaged = try journal.catalogue(vault: normal.vault)
+        try check(partiallyDamaged.unreadable > 0 && partiallyDamaged.notes.contains { $0.path == "normal.md" }, "one invalid record blocked the recovery catalogue")
         let corruptText = try read("corrupt.md")
         let unaffected = try journal.versions(vault: normal.vault, path: normal.path)
         try check(corruptText == "BASE" && !unaffected.isEmpty, "corrupt journal changed note or blocked another note")
@@ -183,7 +242,7 @@ import Darwin
         try check(stillPending.count == 1 && outsideText == "OUTSIDE", "unsafe stage was followed or manifest removed")
         try manager.removeItem(at: suspiciousStage)
         try coordinator.acknowledgeMissingStage(suspicious)
-        print("PASS: Swift exchange, conflict, fallback, interruption, storage and corruption failures, binary recovery, path checks")
+        print("PASS: Swift exchange, conflict, fallback, interruption, corruption, deleted/renamed catalogue, byte-exact and collision-safe recovery")
     }
 }
 #endif

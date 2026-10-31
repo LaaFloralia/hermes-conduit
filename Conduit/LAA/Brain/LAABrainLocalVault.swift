@@ -27,6 +27,16 @@ import Foundation
                 try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
                 guard let image = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+X2sAAAAASUVORK5CYII=") else { throw LAABrainVaultError.unreadable }
                 try image.write(to: root.appendingPathComponent("Assets/fixture.png"))
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-save-fixture") &&
+                    ProcessInfo.processInfo.arguments.contains("-laa-brain-history-fixture") {
+                    let journal = LAABrainSaveJournal()
+                    let vault = LAABrainSaveJournal.vaultID(root)
+                    _ = try journal.record(vault: vault, path: "Company/Deleted.md", kind: .original, bytes: Data("DELETED-FIXTURE".utf8))
+                    _ = try journal.record(vault: vault, path: "Company/Renamed.md", kind: .displaced, bytes: Data([0xff, 0xfe, 0x80]))
+                    let pending = try journal.makePending(vault: vault, path: "Company/Deleted.md", base: Data(), draft: Data())
+                    try Data("INTERRUPTED-FIXTURE".utf8).write(to: journal.stageURL(pending), options: .atomic)
+                    try Data("RENAMED-CURRENT".utf8).write(to: root.appendingPathComponent("Company/Renamed-current.md"))
+                }
                 activate(root, scoped: false)
             } catch { state = .needsAccess }
             return

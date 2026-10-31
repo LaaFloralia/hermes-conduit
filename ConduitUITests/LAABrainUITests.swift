@@ -303,5 +303,71 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 10))
         XCTAssertTrue((editor.value as? String ?? "").contains("SAVED-DRAFT"))
     }
+
+    func testDeletedNoteHistoryPreservesAndRestoresInterruptedVersion() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+                                "-laa-brain-save-fixture", "-laa-brain-history-fixture"]
+        app.launch()
+        let recovery = app.buttons["laa.brain.recovery.open"]
+        XCTAssertTrue(recovery.waitForExistence(timeout: 30))
+        recovery.tap()
+        let deleted = app.staticTexts["Company/Deleted.md"]
+        XCTAssertTrue(deleted.waitForExistence(timeout: 15))
+        deleted.tap()
+        let preserve = app.buttons["laa.brain.recovery.preserve"]
+        XCTAssertTrue(preserve.waitForExistence(timeout: 10))
+        preserve.tap()
+        let interrupted = app.buttons["laa.brain.recovery.version.interrupted"].firstMatch
+        XCTAssertTrue(interrupted.waitForExistence(timeout: 10))
+        interrupted.tap()
+        XCTAssertTrue(app.staticTexts["INTERRUPTED-FIXTURE"].waitForExistence(timeout: 10))
+        app.buttons["laa.brain.recovery.restore"].tap()
+        let result = app.staticTexts["laa.brain.recovery.result"]
+        XCTAssertTrue(result.waitForExistence(timeout: 15))
+        XCTAssertTrue(result.label.contains("Restored copy in vault root"))
+    }
+
+    func testRenamedNoteHistoryRestoresNonUTF8VersionAsCopy() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+                                "-laa-brain-save-fixture", "-laa-brain-history-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["laa.brain.recovery.open"].waitForExistence(timeout: 30))
+        app.buttons["laa.brain.recovery.open"].tap()
+        let renamed = app.staticTexts["Company/Renamed.md"]
+        XCTAssertTrue(renamed.waitForExistence(timeout: 15))
+        renamed.tap()
+        let displaced = app.buttons["laa.brain.recovery.version.displaced"].firstMatch
+        XCTAssertTrue(displaced.waitForExistence(timeout: 10))
+        displaced.tap()
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'not UTF-8'")).firstMatch.waitForExistence(timeout: 10))
+        app.buttons["laa.brain.recovery.restore"].tap()
+        let result = app.staticTexts["laa.brain.recovery.result"]
+        XCTAssertTrue(result.waitForExistence(timeout: 15))
+        XCTAssertTrue(result.label.contains("Restored copy in vault root"))
+    }
+
+    func testRecoveryOffersFilesWhenExclusiveRenameIsUnavailable() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture",
+                                "-laa-brain-save-fixture", "-laa-brain-history-fixture", "-laa-brain-history-force-export-fixture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["laa.brain.recovery.open"].waitForExistence(timeout: 30))
+        app.buttons["laa.brain.recovery.open"].tap()
+        let renamed = app.staticTexts["Company/Renamed.md"]
+        XCTAssertTrue(renamed.waitForExistence(timeout: 15))
+        renamed.tap()
+        let displaced = app.buttons["laa.brain.recovery.version.displaced"].firstMatch
+        XCTAssertTrue(displaced.waitForExistence(timeout: 10))
+        displaced.tap()
+        let restore = app.buttons["laa.brain.recovery.restore"]
+        XCTAssertTrue(restore.waitForExistence(timeout: 10))
+        restore.tap()
+        let result = app.staticTexts["laa.brain.recovery.result"]
+        XCTAssertTrue(result.waitForExistence(timeout: 15))
+        XCTAssertTrue(result.label.contains("Use Export copy to Files"))
+        XCTAssertTrue(app.buttons["laa.brain.recovery.export"].exists)
+    }
 }
 #endif

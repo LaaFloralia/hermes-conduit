@@ -17,8 +17,13 @@ struct LAABrainSaveCoordinator {
         case conflict(current: Data, draft: Data)
         case intervening(displaced: Data, draft: Data)
     }
+    enum RecoveryOutcome {
+        case restored(path: String)
+        case uncertain(path: String)
+    }
     enum SaveError: Error {
         case invalidPath, notRegularFile, tooLarge, invalidText, pendingRecovery, unsafeStage, missingStage, storage, coordination
+        case recoveryExportRequired, recoveryDestinationExists
         case exchange(Int32)
     }
 
@@ -29,6 +34,8 @@ struct LAABrainSaveCoordinator {
     var fixtureStagePrepared: ((URL) throws -> Void)? = nil
     var fixtureAfterComparison: (() throws -> Void)? = nil
     var fixtureAfterExchange: (() throws -> Void)? = nil
+    var fixtureBeforeRecoveryRename: ((URL) throws -> Void)? = nil
+    var fixtureForceRecoveryFallback = false
     var fixtureForceFallback = false
     #endif
 
@@ -142,6 +149,49 @@ struct LAABrainSaveCoordinator {
         try journal.finishMissingStage(pending)
     }
 
+    /// Restore exact journal bytes as a new uniquely named file at the vault
+    /// root. The original path is never replaced, even if it reappears.
+    func restoreCopy(root: URL, summary: LAABrainSaveJournal.VersionSummary) throws -> RecoveryOutcome {
+        guard summary.vault == LAABrainSaveJournal.vaultID(root) else { throw SaveError.invalidPath }
+        let version = try journal.version(summary)
+        let stage = try journal.makeRecoveryStage(version.bytes)
+        defer { try? journal.discardRecoveryStage(stage) }
+
+        let name = "Recovered-" + UUID().uuidString + ".md"
+        var moved = false
+        var verified = false
+        var operationError: Error?
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: root, options: [], error: &coordinationError) { coordinatedRoot in
+            do {
+                let values = try coordinatedRoot.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                guard values.isDirectory == true, values.isSymbolicLink != true else { throw SaveError.invalidPath }
+                let destination = coordinatedRoot.appendingPathComponent(name)
+                #if DEBUG
+                try fixtureBeforeRecoveryRename?(destination)
+                let error = fixtureForceRecoveryFallback ? EXDEV : Self.renameExclusive(stage, destination)
+                #else
+                let error = Self.renameExclusive(stage, destination)
+                #endif
+                if error == EEXIST { throw SaveError.recoveryDestinationExists }
+                if Self.supportsFallback(error: error) { throw SaveError.recoveryExportRequired }
+                guard error == 0 else { throw SaveError.exchange(error) }
+                moved = true
+                let restored = try Data(contentsOf: destination)
+                let fd = open(coordinatedRoot.path, O_RDONLY)
+                guard fd >= 0 else { return }
+                defer { close(fd) }
+                verified = LAABrainSaveJournal.digest(restored) == version.digest && fsync(fd) == 0
+            } catch { operationError = error }
+        }
+        if moved {
+            return verified && coordinationError == nil && operationError == nil ? .restored(path: name) : .uncertain(path: name)
+        }
+        if let coordinationError { throw coordinationError }
+        if let operationError { throw operationError }
+        throw SaveError.coordination
+    }
+
     private static let excluded: Set<String> = [".obsidian", ".git", ".trash", ".stfolder", ".stversions"]
 
     private static func noteURL(root: URL, path: String) throws -> URL {
@@ -210,6 +260,16 @@ struct LAABrainSaveCoordinator {
             b.withUnsafeFileSystemRepresentation { second in
                 guard let first, let second else { return Int32(-1) }
                 return renamex_np(first, second, UInt32(RENAME_SWAP))
+            }
+        }
+        return result == 0 ? 0 : errno
+    }
+
+    private static func renameExclusive(_ a: URL, _ b: URL) -> Int32 {
+        let result = a.withUnsafeFileSystemRepresentation { first in
+            b.withUnsafeFileSystemRepresentation { second in
+                guard let first, let second else { return Int32(-1) }
+                return renamex_np(first, second, UInt32(RENAME_EXCL))
             }
         }
         return result == 0 ? 0 : errno

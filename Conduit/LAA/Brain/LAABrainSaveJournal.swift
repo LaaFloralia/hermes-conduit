@@ -28,6 +28,17 @@ struct LAABrainSaveJournal {
         let digest: String
     }
 
+    struct Catalogue {
+        struct Note: Identifiable {
+            let path: String
+            var versions: [VersionSummary] = []
+            var pending: [Pending] = []
+            var id: String { path }
+        }
+        let notes: [Note]
+        let unreadable: Int
+    }
+
     /// Written before replacement. A remaining stage must be retained until
     /// the person has reviewed it; its contents may be the displaced file.
     struct Pending: Codable, Identifiable {
@@ -138,6 +149,75 @@ struct LAABrainSaveJournal {
         return entry
     }
 
+    /// Find history by its recorded path, without requiring the original note
+    /// (or even its containing directory) to still exist in the vault.
+    func catalogue(vault: String) throws -> Catalogue {
+        try prepare()
+        var notes: [String: Catalogue.Note] = [:]
+        var unreadable = 0
+        for (base, pendingRecords) in [(versionsDirectory, false), (pendingDirectory, true)] {
+            let folders = try FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            for folder in folders {
+                guard let values = try? folder.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { unreadable += 1; continue }
+                guard values.isDirectory == true, values.isSymbolicLink != true else { unreadable += 1; continue }
+                let files: [URL]
+                do { files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) }
+                catch { unreadable += 1; continue }
+                for file in files where file.pathExtension == "json" {
+                    do {
+                        try autoreleasepool {
+                            let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                            guard values.isRegularFile == true, values.isSymbolicLink != true else { throw JournalError.invalidRecord }
+                            let data = try Data(contentsOf: file)
+                            if pendingRecords {
+                                let item = try JSONDecoder().decode(Pending.self, from: data)
+                                _ = try stageURL(item)
+                                guard folder.lastPathComponent == Self.itemKey(vault: item.vault, path: item.path),
+                                      file.lastPathComponent == item.id.uuidString + ".json" else { throw JournalError.invalidRecord }
+                                if item.vault == vault {
+                                    var note = notes[item.path] ?? Catalogue.Note(path: item.path)
+                                    note.pending.append(item); notes[item.path] = note
+                                }
+                            } else {
+                                let item = try JSONDecoder().decode(VersionSummary.self, from: data)
+                                guard folder.lastPathComponent == Self.itemKey(vault: item.vault, path: item.path),
+                                      file.lastPathComponent == item.id.uuidString + ".json" else { throw JournalError.invalidRecord }
+                                if item.vault == vault {
+                                    var note = notes[item.path] ?? Catalogue.Note(path: item.path)
+                                    note.versions.append(item); notes[item.path] = note
+                                }
+                            }
+                        }
+                    } catch { unreadable += 1 }
+                }
+            }
+        }
+        let sorted = notes.values.map { note in
+            var result = note
+            result.versions.sort { $0.created > $1.created }
+            result.pending.sort { $0.created > $1.created }
+            return result
+        }.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
+        return Catalogue(notes: sorted, unreadable: unreadable)
+    }
+
+    /// A recovery stage is only a duplicate of an already checked journal
+    /// record. It never holds an unrecorded file displaced from the vault.
+    func makeRecoveryStage(_ bytes: Data) throws -> URL {
+        try prepare()
+        let url = stagingDirectory.appendingPathComponent(UUID().uuidString + ".recovery")
+        do { try writeProtected(bytes, to: url); return url }
+        catch { try? FileManager.default.removeItem(at: url); throw error }
+    }
+
+    func discardRecoveryStage(_ url: URL) throws {
+        guard url.deletingLastPathComponent().standardizedFileURL == stagingDirectory.standardizedFileURL,
+              url.pathExtension == "recovery", UUID(uuidString: url.deletingPathExtension().lastPathComponent) != nil else {
+            throw JournalError.invalidStage
+        }
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    }
+
     func makePending(vault: String, path: String, base: Data, draft: Data) throws -> Pending {
         try prepare()
         let id = UUID()
@@ -202,7 +282,7 @@ struct LAABrainSaveJournal {
     }
 
     private func itemDirectory(_ base: URL, vault: String, path: String) throws -> URL {
-        let key = Self.digest(Data((vault + "\u{0}" + path).utf8))
+        let key = Self.itemKey(vault: vault, path: path)
         let folder = base.appendingPathComponent(key, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
@@ -213,6 +293,10 @@ struct LAABrainSaveJournal {
         #endif
         try synchronizeDirectory(base)
         return folder
+    }
+
+    private static func itemKey(vault: String, path: String) -> String {
+        digest(Data((vault + "\u{0}" + path).utf8))
     }
 
     private func writeProtected(_ data: Data, to url: URL) throws {

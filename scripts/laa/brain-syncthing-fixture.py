@@ -452,6 +452,22 @@ def run_fixture(root, *, retention):
         wait_for("changed-metadata note to sync", lambda: file_is(mac.notes / name, b"METADATA_DRAFT"), (phone, mac))
         assert phone_note.read_text() == (mac.notes / name).read_text() == "METADATA_DRAFT"
         print("PASS: changed creation time, xattr and permissions do not prevent two-peer sync or filesystem reads")
+
+        # An old path can disappear while its non-UTF-8 version remains in the
+        # app journal. Restore a distinct file and compare exact bytes on both peers.
+        old_name = "swift-deleted-recovery.md"
+        send(mac, phone, old_name, b"RECOVERY_ORIGINAL")
+        recovered = subprocess.run([
+            str(swift_fixture), "recover-binary", str(phone.notes), str(swift_journal), old_name,
+        ], check=True, timeout=30, text=True, capture_output=True)
+        recovered_name = json.loads(recovered.stdout)["path"]
+        binary = b"\xff\xfe\x80\x00"
+        assert not (phone.notes / old_name).exists()
+        assert file_is(phone.notes / recovered_name, binary)
+        phone.scan()
+        wait_for("byte-exact recovery to sync", lambda: file_is(mac.notes / recovered_name, binary), (phone, mac))
+        wait_for("old path to remain deleted", lambda: not (mac.notes / old_name).exists(), (phone, mac))
+        print("PASS: deleted-path binary history restores as a distinct byte-exact file on both peers")
         print("PENDING: actual Obsidian reading and the iOS simulator/device remain separate checks")
 
         if retention:

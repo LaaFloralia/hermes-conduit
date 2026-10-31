@@ -1,5 +1,6 @@
 #if LAA_BUILD
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Original-note editing remains available only to the disposable simulator
 /// fixture until the recovery UI and cross-device gate have been verified.
@@ -91,7 +92,7 @@ struct LAABrainSaveEditor: View {
         .interactiveDismissDisabled()
         .task { await open() }
         .sheet(isPresented: $showHistory) {
-            BrainHistoryView(versions: versions, journal: coordinator.journal,
+            BrainHistoryView(root: root, versions: versions, journal: coordinator.journal, didRestore: didSave,
                              canUse: snapshot != nil && pending.isEmpty && !recoveryUnavailable) { version in
                 showHistory = false
                 if let text = String(data: version.bytes, encoding: .utf8) {
@@ -301,8 +302,10 @@ struct LAABrainSaveEditor: View {
 
 private struct BrainHistoryView: View {
     @Environment(\.dismiss) private var dismiss
+    let root: URL
     let versions: [LAABrainSaveJournal.VersionSummary]
     let journal: LAABrainSaveJournal
+    let didRestore: () -> Void
     let canUse: Bool
     let use: (LAABrainSaveJournal.Version) -> Void
 
@@ -312,7 +315,8 @@ private struct BrainHistoryView: View {
                 if versions.isEmpty { Text("No saved versions for this note.") }
                 ForEach(versions) { version in
                     NavigationLink {
-                        BrainHistoryDetail(summary: version, journal: journal, canUse: canUse, use: use)
+                        BrainHistoryDetail(root: root, summary: version, journal: journal, canUse: canUse,
+                                           didRestore: didRestore, use: use)
                     } label: {
                         VStack(alignment: .leading) {
                             Text(version.kind.label)
@@ -331,23 +335,48 @@ private struct BrainHistoryView: View {
 }
 
 private struct BrainHistoryDetail: View {
+    let root: URL
     let summary: LAABrainSaveJournal.VersionSummary
     let journal: LAABrainSaveJournal
     let canUse: Bool
-    let use: (LAABrainSaveJournal.Version) -> Void
+    let didRestore: () -> Void
+    let use: ((LAABrainSaveJournal.Version) -> Void)?
     @State private var version: LAABrainSaveJournal.Version?
     @State private var failed = false
+    @State private var restoring = false
+    @State private var message: String?
+    @State private var exportDocument: BrainRecoveryDocument?
+    @State private var exportName = ""
+    @State private var showExport = false
 
     var body: some View {
         ScrollView {
-            if let version, let text = String(data: version.bytes, encoding: .utf8) {
-                Text(verbatim: text).font(.body.monospaced()).textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding()
-                Button("Use as draft") { use(version) }
-                    .buttonStyle(.borderedProminent).disabled(!canUse)
-                    .accessibilityIdentifier("laa.brain.history.use")
-            } else if version != nil {
-                Text("This version is not UTF-8 text.").padding()
+            if let version {
+                VStack(alignment: .leading, spacing: LAASpacing.x3) {
+                    if let text = String(data: version.bytes, encoding: .utf8) {
+                        Text(verbatim: text).font(.body.monospaced()).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let use {
+                            Button("Use as draft") { use(version) }
+                                .buttonStyle(.borderedProminent).disabled(!canUse || restoring)
+                                .accessibilityIdentifier("laa.brain.history.use")
+                        }
+                    } else {
+                        Text("This version is not UTF-8 text. Restore its original bytes as a copy.")
+                    }
+                    Button("Restore copy in vault") { Task { await restoreCopy() } }
+                        .disabled(restoring).accessibilityIdentifier("laa.brain.recovery.restore")
+                    Button("Export copy to Files") {
+                        exportDocument = BrainRecoveryDocument(bytes: version.bytes)
+                        exportName = "Recovered-" + UUID().uuidString + ".md"
+                        showExport = true
+                    }.disabled(restoring).accessibilityIdentifier("laa.brain.recovery.export")
+                    Text("Restoring creates a new file. For export, keep the suggested name to avoid replacing another note. The saved version stays in History.").font(.footnote)
+                    if let message {
+                        Text(verbatim: message).foregroundStyle(LAAColor.attention)
+                            .accessibilityIdentifier("laa.brain.recovery.result")
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading).padding()
             } else if failed {
                 Text("This version could not be verified.").padding()
             } else {
@@ -359,6 +388,216 @@ private struct BrainHistoryDetail: View {
             do { version = try await Task.detached(priority: .userInitiated) { try journal.version(summary) }.value }
             catch { failed = true }
         }
+        .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .data,
+                      defaultFilename: exportName) { result in
+            switch result {
+            case .success(let url):
+                restoring = true
+                Task {
+                    let verified = await Task.detached(priority: .userInitiated) {
+                        Self.verifyExport(url, digest: summary.digest)
+                    }.value
+                    message = verified ? "Exported copy verified." : "Export finished, but the copy could not be verified."
+                    restoring = false
+                    didRestore()
+                }
+            case .failure:
+                message = "The copy could not be exported. The saved version remains in History."
+            }
+        }
+    }
+
+    @MainActor private func restoreCopy() async {
+        restoring = true; message = nil
+        #if DEBUG
+        let forceExport = ProcessInfo.processInfo.arguments.contains("-laa-brain-history-force-export-fixture")
+        #endif
+        do {
+            let outcome = try await Task.detached(priority: .userInitiated) {
+                var worker = LAABrainSaveCoordinator(journal: journal)
+                #if DEBUG
+                worker.fixtureForceRecoveryFallback = forceExport
+                #endif
+                return try worker.restoreCopy(root: root, summary: summary)
+            }.value
+            switch outcome {
+            case .restored(let path): message = "Restored copy in vault root: \(path)"
+            case .uncertain(let path): message = "A copy may exist at \(path), but could not be verified."
+            }
+            didRestore()
+        } catch LAABrainSaveCoordinator.SaveError.recoveryExportRequired {
+            message = "This location cannot create the copy directly. Use Export copy to Files."
+        } catch {
+            message = "The copy could not be restored. The saved version remains in History."
+        }
+        restoring = false
+    }
+
+    nonisolated private static func verifyExport(_ url: URL, digest: String) -> Bool {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        var matches = false
+        var coordinationError: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { coordinated in
+            if let bytes = try? Data(contentsOf: coordinated) { matches = LAABrainSaveJournal.digest(bytes) == digest }
+        }
+        return coordinationError == nil && matches
+    }
+}
+
+private struct BrainRecoveryDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.data] }
+    var bytes: Data
+    init(bytes: Data) { self.bytes = bytes }
+    init(configuration: ReadConfiguration) throws {
+        guard let bytes = configuration.file.regularFileContents else { throw CocoaError(.fileReadCorruptFile) }
+        self.bytes = bytes
+    }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: bytes)
+    }
+}
+
+/// This entry point lists saved paths from the journal, including paths that
+/// no longer appear in the selected vault's index.
+struct LAABrainRecoveryCatalogueView: View {
+    @Environment(\.dismiss) private var dismiss
+    let root: URL
+    let didRestore: () -> Void
+    private let journal = LAABrainSaveJournal()
+    @State private var catalogue: LAABrainSaveJournal.Catalogue?
+    @State private var failed = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let catalogue {
+                    if catalogue.notes.isEmpty { Text("No saved versions for this folder.") }
+                    ForEach(catalogue.notes) { note in
+                        NavigationLink {
+                            BrainRecoveryPathView(root: root, path: note.path, didRestore: didRestore)
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(verbatim: note.path)
+                                if !note.pending.isEmpty { Text("Interrupted save").font(.caption).foregroundStyle(LAAColor.attention) }
+                            }
+                        }.accessibilityIdentifier("laa.brain.recovery.note")
+                    }
+                    if catalogue.unreadable > 0 {
+                        Text("Some saved records could not be read. They have not been removed.")
+                            .foregroundStyle(LAAColor.attention)
+                    }
+                } else if failed {
+                    Text("Recovery history is unavailable. Check storage and try again.")
+                } else { ProgressView() }
+            }
+            .navigationTitle("Recovery history")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            .task { await refresh() }
+            .refreshable { await refresh() }
+        }
+    }
+
+    @MainActor private func refresh() async {
+        do {
+            catalogue = try await Task.detached(priority: .userInitiated) {
+                try journal.catalogue(vault: LAABrainSaveJournal.vaultID(root))
+            }.value
+            failed = false
+        } catch { failed = true }
+    }
+}
+
+private struct BrainRecoveryPathView: View {
+    let root: URL
+    let path: String
+    let didRestore: () -> Void
+    private let coordinator = LAABrainSaveCoordinator()
+    @State private var note: LAABrainSaveJournal.Catalogue.Note?
+    @State private var busy = true
+    @State private var message: String?
+    @State private var missingID: UUID?
+    @State private var pendingToClear: LAABrainSaveJournal.Pending?
+    @State private var showClearAlert = false
+
+    var body: some View {
+        List {
+            if let note {
+                if !note.pending.isEmpty {
+                    Section("Interrupted save") {
+                        ForEach(note.pending) { item in
+                            Button("Preserve interrupted version") { Task { await preserve(item) } }
+                                .disabled(busy).accessibilityIdentifier("laa.brain.recovery.preserve")
+                            if missingID == item.id {
+                                Text("The staged file is missing. Its contents may not be recoverable.")
+                                    .foregroundStyle(LAAColor.attention)
+                                Button("Clear missing stage") { pendingToClear = item; showClearAlert = true }.disabled(busy)
+                            }
+                        }
+                    }
+                }
+                Section("Saved versions") {
+                    if note.versions.isEmpty { Text("No readable saved versions.") }
+                    ForEach(note.versions) { version in
+                        NavigationLink {
+                            BrainHistoryDetail(root: root, summary: version, journal: coordinator.journal,
+                                               canUse: false, didRestore: didRestore, use: nil)
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(version.kind.label)
+                                Text(version.created, style: .date).font(.caption)
+                                Text(version.created, style: .time).font(.caption)
+                            }
+                        }.accessibilityIdentifier("laa.brain.recovery.version.\(version.kind.rawValue)")
+                    }
+                }
+            } else if busy { ProgressView() }
+            if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
+        }
+        .navigationTitle(Text(verbatim: path))
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await refresh() }
+        .refreshable { await refresh() }
+        .alert("Clear missing stage?", isPresented: $showClearAlert) {
+            Button("Clear pending", role: .destructive) {
+                if let item = pendingToClear { Task { await clearMissing(item) } }
+            }
+            Button("Cancel", role: .cancel) { pendingToClear = nil }
+        } message: {
+            Text("The staged file is missing. A version may be unavailable; review saved versions before clearing this record.")
+        }
+    }
+
+    @MainActor private func refresh() async {
+        busy = true
+        do {
+            let catalogue = try await Task.detached(priority: .userInitiated) {
+                try coordinator.journal.catalogue(vault: LAABrainSaveJournal.vaultID(root))
+            }.value
+            note = catalogue.notes.first(where: { $0.path == path }) ?? LAABrainSaveJournal.Catalogue.Note(path: path)
+            message = catalogue.unreadable > 0 ? "Some saved records could not be read. They have not been removed." : nil
+        } catch { message = "Recovery history is unavailable. Check storage and try again." }
+        busy = false
+    }
+
+    @MainActor private func preserve(_ item: LAABrainSaveJournal.Pending) async {
+        busy = true; message = nil
+        do {
+            _ = try await Task.detached(priority: .userInitiated) { try coordinator.preservePending(item) }.value
+            missingID = nil
+            await refresh()
+        } catch LAABrainSaveCoordinator.SaveError.missingStage {
+            missingID = item.id; busy = false
+        } catch { message = "The interrupted version could not be preserved. It has not been removed."; busy = false }
+    }
+
+    @MainActor private func clearMissing(_ item: LAABrainSaveJournal.Pending) async {
+        busy = true; pendingToClear = nil
+        do {
+            try await Task.detached(priority: .userInitiated) { try coordinator.acknowledgeMissingStage(item) }.value
+            missingID = nil
+            await refresh()
+        } catch { message = "The pending record could not be cleared."; busy = false }
     }
 }
 
