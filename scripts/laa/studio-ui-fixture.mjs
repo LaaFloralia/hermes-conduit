@@ -11,6 +11,41 @@ const requestId = '0f6b1c2e-6f1a-4c55-9d43-0d5f6f3b8a11';
 const approvalId = '5e2c1c2e-6f1a-4c55-9d43-0d5f6f3b8a11';
 const stamp = '2026-10-31T09:00:00Z';
 const project = { id: projectId, title: 'サービス紹介資料', revision: 3, pages: [{ id: 'page1', name: 'Cover' }], assets: [], syncedAt: stamp };
+const imageKey = 'a'.repeat(64);
+const rotatedImageKey = 'd'.repeat(64);
+const documentKey = 'e'.repeat(64);
+const media = `/api/studio/media/${projectId}/${imageKey}.png`;
+const v2Project = { ...project, pages: [{ id: 'page1', name: 'Cover', preview: media }],
+  assets: [{ id: 'model1', name: 'Example model', kind: 'model', preparing: true },
+    { id: 'video-pending', name: 'Preparing asset.mp4', kind: 'video', preparing: true }] };
+const versions = [
+  { id: '6'.repeat(64), revision: 3, kind: 'video', name: 'Example.mp4', createdAt: stamp, bytes: 321,
+    media: `/api/studio/media/${projectId}/${'6'.repeat(64)}.mp4` },
+  { id: '5'.repeat(64), revision: 3, kind: 'video', name: 'Preparing.mp4', createdAt: stamp, bytes: 321, preparing: true },
+  { id: imageKey, revision: 3, kind: 'image', name: 'Example.png', createdAt: stamp, bytes: 70, media },
+  { id: 'b'.repeat(64), revision: 2, kind: 'other', name: 'Website.zip', createdAt: stamp, bytes: 1024, unavailable: 'unsupported_format' },
+];
+const catalog = { etag: 'c'.repeat(64), updatedAt: stamp,
+  principles: [{ id: 'principle1', name: 'Sample', version: '1', revision: 1, status: 'adopted', description: 'Fixture principle',
+    colors: [{ name: 'Ink', value: '#222222', rgb: [34, 34, 34] }], fonts: [{ name: 'Body', family: 'System', weight: 400, size: 16 }],
+    references: [{ name: 'Sample image', role: 'primary', adoptedElements: '余白', media }], templates: ['Cards'],
+    priorities: [{ title: 'Clarity', description: 'Keep the purpose clear.' }] }], adoptedPrincipleId: 'principle1',
+  documents: [{ id: 'fixture-document', title: 'Sample document', category: 'Cards', detail: 'Fixture', format: 'PDF',
+    driveUrl: 'https://drive.google.com/file/d/1234567890/view', unavailable: 'source_unreadable' }],
+  capabilities: [{ id: 'image', title: 'Image', description: 'Sample', prompt: '画像を作ってください。' }], brief: ['用途と相手'] };
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNQUlL6DwACNgFm9i22cwAAAABJRU5ErkJggg==', 'base64');
+const pdf = (() => {
+  let body = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [index, object] of ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>'].entries()) {
+    offsets.push(Buffer.byteLength(body));
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(body);
+  body += `xref\n0 4\n0000000000 65535 f \n${offsets.slice(1).map((value) => `${String(value).padStart(10, '0')} 00000 n \n`).join('')}`;
+  return Buffer.from(`${body}trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+})();
 const makeRecord = () => ({ request: { id: requestId, projectId, expectedRevision: 3, prompt: '新しい紹介資料を作ってください。' }, status: 'approval', bootId: projectId, updatedAt: stamp,
   report: { id: requestId, bootId: projectId, sequence: 1, status: 'approval', text: '構成を確認しています。', approvals: [{ id: approvalId, message: '画面操作を許可しますか。', supported: true, allowSession: true, fields: [] }] } });
 const send = (res, status, data, headers = {}) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers }); res.end(JSON.stringify(data)); };
@@ -20,12 +55,15 @@ const read = async (req) => { const parts = []; for await (const part of req) pa
 
 export function createStudioUIFixture() {
   let mode = 'normal';
+  let fixtureDeviceId = `studio-${randomUUID()}`;
   let record = makeRecord();
   let actionCalls = 0;
   let actionRequests = 0;
   const createAttempts = [];
+  const reviewAttempts = [];
   let clockOffset = 0;
   const records = new Map();
+  const reviews = new Map();
   const ledger = { idempotency: {} };
   const now = () => Date.now() + clockOffset;
   const unavailable = (res) => {
@@ -48,9 +86,9 @@ export function createStudioUIFixture() {
       // Studio routes replay a completed ledger entry with the current record.
       if (unavailable(res)) return null;
       const id = JSON.parse(rawBody.toString('utf8')).id;
-      const current = findRecord(id);
+      const current = req.url === '/v1/studio/reviews' ? reviews.get(id) : findRecord(id);
       if (!current) { fail(res, 404, 'studio_request_missing'); return null; }
-      ok(res, outcome.entry.httpStatus, current, { 'idempotency-replayed': 'true' });
+      ok(res, req.url === '/v1/studio/reviews' ? 200 : outcome.entry.httpStatus, current, { 'idempotency-replayed': 'true' });
       return null;
     }
     return { deviceId: 'studio_fixture', key, fingerprint: outcome.entry.fingerprint, createdAt: outcome.entry.createdAt };
@@ -63,15 +101,76 @@ export function createStudioUIFixture() {
   const api = createServer(async (req, res) => {
     try {
       if (req.url === '/v1/devices/enroll' && req.method === 'POST') {
-        req.resume(); ok(res, 201, { deviceId: 'studio_fixture', token: 'fixture-token', scopes: ['studio:read', 'studio:request'] }); return;
+        req.resume(); ok(res, 201, { deviceId: fixtureDeviceId, token: 'fixture-token', scopes: ['studio:read', 'studio:request'] }); return;
       }
       if (req.headers.authorization !== 'Bearer fixture-token') { fail(res, 401, 'unauthorized'); return; }
       if (mode === 'offline') { req.socket.destroy(); return; }
       if (req.url === '/v1/studio/snapshot') {
-        if (!unavailable(res)) ok(res, 200, { online: true, accepting: true, lastSeen: stamp, projects: mode === 'empty' ? [] : [project], principles: [], requests: mode === 'empty' ? [] : [record] });
+        if (!unavailable(res)) {
+          const isV2 = mode.startsWith('v2');
+          ok(res, 200, { online: true, accepting: true, lastSeen: stamp, projects: mode === 'empty' ? [] : [isV2 ? v2Project : project],
+            principles: isV2 ? catalog.principles : [], requests: mode === 'empty' ? [] : [record], ...(isV2 ? { contract: 2 } : {}) });
+        }
         return;
       }
       if (req.url === '/v1/studio/request-id') { ok(res, 200, { id: randomUUID() }); return; }
+      if (req.url === '/v1/studio/catalog' && req.method === 'GET') {
+        const currentCatalog = mode === 'v2-document-wait' ? { ...catalog, etag: documentKey,
+          documents: [{ ...catalog.documents[0], unavailable: undefined, media: `/api/studio/media/catalog/${documentKey}.pdf`, bytes: pdf.length }] } : catalog;
+        const etag = `"${currentCatalog.etag}"`;
+        if (req.headers['if-none-match'] === etag) { res.writeHead(304, { etag, 'cache-control': 'no-store' }); res.end(); }
+        else ok(res, 200, currentCatalog, { etag });
+        return;
+      }
+      if (req.url === `/v1/studio/media/catalog/${documentKey}.pdf` && req.method === 'GET') {
+        const match = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
+        if (!match || Number(match[1]) >= pdf.length) { res.writeHead(416, { 'content-range': `bytes */${pdf.length}` }); res.end(); return; }
+        await new Promise((resolve) => setTimeout(resolve, 8000));
+        if (res.destroyed) return;
+        const start = Number(match[1]), end = Math.min(Number(match[2]), pdf.length - 1);
+        res.writeHead(206, { 'content-type': 'application/pdf', 'content-length': end - start + 1,
+          'content-range': `bytes ${start}-${end}/${pdf.length}`, 'cache-control': 'no-store' });
+        res.end(pdf.subarray(start, end + 1)); return;
+      }
+      if (req.url === `/v1/studio/projects/${projectId}` && req.method === 'GET') {
+        const currentVersions = mode === 'v2-rotated' ? versions.map((version) => version.id === imageKey
+          ? { ...version, id: rotatedImageKey, media: `/api/studio/media/${projectId}/${rotatedImageKey}.png` } : version) : versions;
+        ok(res, 200, { project: v2Project, versions: currentVersions, delivery: { driveUrl: 'https://drive.google.com/file/d/1234567890/view', revision: 2 },
+          reviews: [...reviews.values()].reverse() }); return;
+      }
+      if ([imageKey, rotatedImageKey].some((key) => req.url === `/v1/studio/media/${projectId}/${key}.png`) && req.method === 'GET') {
+        if (mode === 'v2-rotated' && req.url === `/v1/studio/media/${projectId}/${imageKey}.png`) {
+          fail(res, 404, 'studio_media_not_found'); return;
+        }
+        const match = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
+        if (!match || Number(match[1]) >= png.length) { res.writeHead(416, { 'content-range': `bytes */${png.length}` }); res.end(); return; }
+        const start = Number(match[1]), end = Math.min(Number(match[2]), png.length - 1);
+        res.writeHead(206, { 'content-type': 'image/png', 'content-length': end - start + 1,
+          'content-range': `bytes ${start}-${end}/${png.length}`, 'cache-control': 'no-store' });
+        res.end(png.subarray(start, end + 1)); return;
+      }
+      if (req.method === 'POST' && req.url === '/v1/studio/reviews') {
+        const rawBody = await read(req);
+        reviewAttempts.push({ key: req.headers['idempotency-key'], body: rawBody.toString('utf8') });
+        const reservation = begin(req, res, rawBody);
+        if (reservation === null || unavailable(res)) return;
+        const body = JSON.parse(rawBody.toString('utf8'));
+        const previous = reviews.get(body.id);
+        const comparable = (value) => JSON.stringify([value.projectId, value.revision, value.target, value.verdict ?? null, value.comment ?? null]);
+        if (previous && comparable(previous) !== comparable(body)) {
+          release(ledger, reservation); fail(res, 409, 'studio_review_id_conflict'); return;
+        }
+        if (!previous && mode === 'v2-rotated' && body.target.kind === 'version' && body.target.id === imageKey) {
+          release(ledger, reservation); fail(res, 404, 'studio_review_target_missing'); return;
+        }
+        const saved = previous ?? { ...body, createdAt: stamp };
+        reviews.set(body.id, saved);
+        if (mode === 'v2-review-lost') {
+          mode = 'v2'; complete(ledger, { deviceId: 'studio_fixture', key: reservation.key, httpStatus: 201, response: saved, now: now() });
+          req.socket.destroy(); return;
+        }
+        finish(res, reservation.key, previous ? 200 : 201, saved); return;
+      }
       if (req.method === 'POST' && (req.url === '/v1/studio/requests' || req.url === '/v1/studio/action')) {
         const rawBody = await read(req);
         if (req.url === '/v1/studio/action') actionRequests += 1;
@@ -106,13 +205,17 @@ export function createStudioUIFixture() {
   const control = createServer((req, res) => {
     if (req.url === '/health') { res.end('ok'); return; }
     if (req.url === '/reset') {
-      mode = 'normal'; record = makeRecord(); actionCalls = 0; actionRequests = 0; clockOffset = 0;
-      records.clear(); createAttempts.length = 0; ledger.idempotency = {}; res.end('ok'); return;
+      mode = 'normal'; fixtureDeviceId = `studio-${randomUUID()}`; record = makeRecord(); actionCalls = 0; actionRequests = 0; clockOffset = 0;
+      records.clear(); reviews.clear(); createAttempts.length = 0; reviewAttempts.length = 0; ledger.idempotency = {}; res.end('ok'); return;
     }
     if (req.url === '/action-count') { res.end(String(actionCalls)); return; }
     if (req.url === '/action-requests') { res.end(String(actionRequests)); return; }
     if (req.url === '/create-consistent') {
       res.end(String(createAttempts.length === 2 && createAttempts[0].key === createAttempts[1].key && createAttempts[0].body === createAttempts[1].body)); return;
+    }
+    if (req.url === '/review-count') { res.end(String(reviews.size)); return; }
+    if (req.url === '/review-consistent') {
+      res.end(String(reviewAttempts.length === 2 && reviewAttempts[0].key !== reviewAttempts[1].key && reviewAttempts[0].body === reviewAttempts[1].body)); return;
     }
     if (req.url === '/advance-clock/61001') { clockOffset += 61001; res.end('ok'); return; }
     if (req.url?.startsWith('/mode/')) { mode = req.url.slice('/mode/'.length); res.end('ok'); return; }
