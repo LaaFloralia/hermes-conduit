@@ -14,6 +14,7 @@ struct LAAAppShell: View {
     @ObservedObject private var dailyRequest = LAABrainDailyRequest.shared
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
+    @State private var showUsage = false
     @State private var chatsPath: [V2Route] = []
     #if DEBUG
     @State private var seededDailyFixture = false
@@ -80,7 +81,8 @@ struct LAAAppShell: View {
             }
             .onChange(of: appState.laaWidgetUsagePending, initial: true) { _, pending in
                 guard pending else { return }
-                selectedTab = .usage
+                selectedTab = .work
+                showUsage = true
                 appState.laaWidgetUsagePending = false
                 appState.requestSettingsDismissal()
             }
@@ -191,10 +193,16 @@ struct LAAAppShell: View {
                         LAABrainView(onRequestSettings: onRequestSettings)
                     } else {
                         NavigationStack {
-                            if tab == .usage {
+                            if tab == .today {
+                                LAATodayView(openTasks: { selectedTab = .work }, openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings)
+                            } else if tab == .studio {
+                                ScrollView { LAAStudioHomeView().padding(LAASpacing.horizontal) }
+                                    .navigationTitle(Text(verbatim: "Studio"))
+                                    .toolbar { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) } }
+                            } else if tab == .usage {
                                 LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                             } else if tab == .work {
-                                LAAWorkView(onRequestSettings: onRequestSettings)
+                                LAAWorkHub(usageState: usageState, showUsage: $showUsage, onRequestSettings: onRequestSettings)
                             } else {
                                 LAAAssetsView(onRequestSettings: onRequestSettings)
                             }

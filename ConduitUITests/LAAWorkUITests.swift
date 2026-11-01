@@ -10,6 +10,9 @@ final class LAAWorkUITests: XCTestCase {
             app.launchArguments += ["-conduit.themePreference", appearance]
         }
         app.launch()
+        let work = app.buttons["Sessions, projects and tasks"]
+        XCTAssertTrue(work.waitForExistence(timeout: 30))
+        work.tap()
         return app
     }
 
@@ -101,6 +104,9 @@ final class LAAWorkUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
+        let work = app.buttons["Sessions, projects and tasks"]
+        XCTAssertTrue(work.waitForExistence(timeout: 30))
+        work.tap()
         XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["Sessions"].exists)
         XCTAssertTrue(app.buttons["Projects"].exists)
@@ -134,6 +140,9 @@ final class LAAWorkUITests: XCTestCase {
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                 "-conduit.themePreference", appearance]
         app.launch()
+        let work = app.buttons["Sessions, projects and tasks"]
+        XCTAssertTrue(work.waitForExistence(timeout: 30))
+        work.tap()
         XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 15))
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = "v2-work-unpaired-\(appearance)"
@@ -666,6 +675,8 @@ final class LAAWorkUITests: XCTestCase {
         app.buttons["Close"].tap()
         app.terminate()
         app.launch()
+        let work = app.buttons["Sessions, projects and tasks"]
+        XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
         guard waitUntilReady(add) else { XCTFail("Session data did not finish reloading."); return }
         add.tap()
         let restored = app.textViews["work.composer.field"]

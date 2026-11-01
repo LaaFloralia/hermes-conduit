@@ -3839,3 +3839,17 @@ and rollback instructions · the upstream App Store build
 - Creation controls and complete conversation history need follow-up; light and dark snapshots require the simulator slot.
 
 **Checked:** 2026-11-01, based on 638a2af6; presentation change pending simulator verification.
+## LAA Today and calendar widget
+
+**Siblings:** Today calendar · small next-event widget · existing calendar tools · Work and Brain entry points.
+
+**Code**
+- Today and EventKit: `Conduit/LAA/Today/LAATodayView.swift`, `Conduit/LAA/Today/LAATodayCalendar.swift`.
+- Widget: `ConduitWidgets/LAA/LAANextEventWidget.swift`.
+- Navigation: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Today/LAAWorkHub.swift`.
+
+**Rulings:** Today reads the iPhone's calendars with EventKit full access; it does not modify events. The widget reads EventKit on timeline refresh; Today also requests a refresh after calendar changes.
+
+**Open gaps:** The owner-task view and direct daily-note destination require integration with their parallel branches. WidgetKit controls refresh timing; device permission and background refresh need real-device confirmation.
+
+**Checked:** 2026-11-01 (branch laa/today-calendar; integration pending).
