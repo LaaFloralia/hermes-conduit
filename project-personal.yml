@@ -52,6 +52,8 @@ targets:
         # from project.yml never compiles them and upstream stays unchanged.
         # The TestFlight signing overlay must adopt the same setting.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_PERSONAL_BUILD"
+        # The generated Info replaces the source Info rather than copying both.
+        EXCLUDED_SOURCE_FILE_NAMES: Info.plist
         INFOPLIST_FILE: ".build/laa-personal-info/$(PLATFORM_NAME)-$(CONFIGURATION)/Info.plist"
     preBuildScripts:
       - name: Prepare personal app Info

@@ -157,6 +157,7 @@ class LAABrandBundleTests(unittest.TestCase):
     def test_personal_build_selects_the_laa_home_icon(self):
         spec = (ROOT / "project-personal.yml").read_text()
         self.assertRegex(spec, r"(?m)^\s*ASSETCATALOG_COMPILER_APPICON_NAME:\s*AppIcon-LAA\s*$")
+        self.assertRegex(spec, r"(?m)^\s*EXCLUDED_SOURCE_FILE_NAMES:\s*Info.plist\s*$")
 
     def test_laa_app_sets_its_bundle_name_and_keeps_other_localized_keys(self):
         with tempfile.TemporaryDirectory() as tmp:
