@@ -4,13 +4,16 @@ import SwiftUI
 struct LAAWorkProjectDetail: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
+    let workspaces: [LAAWorkWorkspace]
     @State private var current: LAAWorkProject
     @State private var showEditor = false
     @State private var clearLegacyRefOnOpen = false
     @State private var error: String?
+    @State private var sessions: [LAAWorkSession] = []
+    @State private var showNewSession = false
 
-    init(project: LAAWorkProject, drafts: ComposerDraftStore) {
-        _current = State(initialValue: project); self.drafts = drafts
+    init(project: LAAWorkProject, drafts: ComposerDraftStore, workspaces: [LAAWorkWorkspace] = []) {
+        _current = State(initialValue: project); self.drafts = drafts; self.workspaces = workspaces
     }
     var body: some View {
         ZStack {
@@ -42,6 +45,23 @@ struct LAAWorkProjectDetail: View {
                         }
                     }.workCard()
                     Button(LAACopy.WorkTab.edit) { clearLegacyRefOnOpen = false; showEditor = true }.buttonStyle(.bordered)
+                    HStack {
+                        Text(verbatim: "セッション").laaTextStyle(.body).fontWeight(.semibold)
+                        Spacer()
+                        Button(LAACopy.WorkTab.newSession) { showNewSession = true }
+                    }
+                    if sessions.isEmpty { Text(verbatim: "セッションはありません。").foregroundStyle(LAAColor.secondaryText) }
+                    ForEach(sessions) { session in
+                        NavigationLink {
+                            LAAWorkSessionDetail(id: session.id, projects: [current], workspaces: workspaces, drafts: drafts)
+                        } label: {
+                            VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                                Text(verbatim: session.name).fontWeight(.semibold)
+                                Text(verbatim: LAAWorkPresentation.phase(session.phase) + " · " + LAAWorkPresentation.date(session.updatedAt))
+                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            }.workCard()
+                        }.buttonStyle(.plain)
+                    }
                 }.padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).frame(maxWidth: 720, alignment: .leading)
             }
         }
@@ -53,10 +73,29 @@ struct LAAWorkProjectDetail: View {
                                  drafts: drafts, clearLegacyRefInitially: clearLegacyRefOnOpen)
                 .environmentObject(bridge)
         }
+        .sheet(isPresented: $showNewSession, onDismiss: { Task { await load() } }) {
+            LAAWorkNewSessionView(projects: [current], workspaces: workspaces, drafts: drafts, initialProjectID: current.id)
+                .environmentObject(bridge)
+        }
         .task { await load() }
     }
     private func load() async {
-        do { let fetched: LAAWorkProject = try await bridge.read("/v1/projects/\(current.id)"); current = fetched; error = nil }
+        do {
+            let fetched: LAAWorkProject = try await bridge.read("/v1/projects/\(current.id)")
+            var all: [LAAWorkSession] = []
+            var cursor: String?
+            var seen = Set<String>()
+            repeat {
+                var query = [URLQueryItem(name: "projectId", value: current.id), URLQueryItem(name: "limit", value: "200")]
+                if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
+                let page: LAAWorkPage<LAAWorkSession> = try await bridge.read(LAAWorkPresentation.path("/v1/sessions", query: query))
+                all.append(contentsOf: page.items)
+                cursor = page.nextCursor
+                if let cursor, !seen.insert(cursor).inserted { throw LAABridgeError.invalidResponse }
+            } while cursor != nil && seen.count < 50
+            guard cursor == nil else { throw LAABridgeError.invalidResponse }
+            current = fetched; sessions = all; error = nil
+        }
         catch is CancellationError { }
         catch let failure as LAABridgeError { error = failure.japaneseText }
         catch { self.error = "プロジェクトを読み取れませんでした。" }

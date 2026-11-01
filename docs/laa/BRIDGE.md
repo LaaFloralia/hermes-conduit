@@ -55,6 +55,7 @@ JSONはUTF-8、時刻はUTC ISO 8601。成功は `{"data":...,"requestId":"..."}
 | `GET /v1/devices`; `POST /v1/devices/{id}/revoke` | → device状態／失効結果、管理経路 | 他端末維持・接続中stream切断・再登録は新ID |
 | `GET/POST /v1/projects`; `GET/PATCH /v1/projects/{id}`; `GET /v1/projects/{id}/instructions/versions` | `{name,instructions,instructionVersion,instructionHash}` → `{id,version,etag,...}`、Bridge管理（§9） | 本文のみ。`instructionRef`は400。古いversionは現在版を返す。Projectとworkspace分離 |
 | `GET/POST /v1/workspaces`; `GET /v1/workspaces/{id}` | `{projectId,repoId,worktreeName}` → `{id,path,status}`、既存Paseo/worktree | 正規化・symlink・許可外repo拒否、既存worktree非破壊 |
+| `GET /v1/routines` | Console `jobs` の名前、予定、直近実行と結果を読み取り専用で返す | 未観測はnull、読取失敗は503。既存 `sessions:read` を使用 |
 | `GET/POST /v1/sessions`; `GET /v1/sessions/{id}` | `{projectId,workspaceId,parentId,requestId,profile,prompt}` → `{id,requestId,status,requested,observed}`、personal-agent/Paseo | 同じrequest ID、親子・名称、実provider/model/effortと認証経路、作成不明の回収 |
 | `POST /v1/sessions/{id}/messages`; `POST /v1/sessions/{id}/stop`; `POST /v1/sessions/{id}/resume` | `{message}`／`{}`／`{message}` → `{operationId,status}`、同上 | 送信不明、停止未確認、停止中再開拒否。resumeは既存のsend相当と確認できる場合のみ |
 | `POST /v1/sessions/{id}/reply` | `{requestId,requestHash,answer,expiresAt}` → `{status}`、同上 | 改変・期限切れ・別session・workerの回答拒否。実際の承認消化を照合 |

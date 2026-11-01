@@ -10,6 +10,7 @@ struct LAAWorkView: View {
     @State private var projects: [LAAWorkProject] = []
     @State private var workspaces: [LAAWorkWorkspace] = []
     @State private var sessions: [LAAWorkSession] = []
+    @State private var routines: [LAAWorkRoutine] = []
     @State private var tasks: [LAAWorkTask] = []
     @State private var taskSources: [LAAWorkSource] = []
     @State private var projectInstructionsAvailable = false
@@ -34,9 +35,7 @@ struct LAAWorkView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x6) {
                     header
                     segmentPicker
-                    if section == 3 {
-                        routinePlaceholder
-                    } else if bridge.status != .paired {
+                    if bridge.status != .paired {
                         connection
                     } else {
                         content
@@ -119,12 +118,20 @@ struct LAAWorkView: View {
         .accessibilityIdentifier("work.segment")
     }
 
-    private var routinePlaceholder: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: "準備中").laaTextStyle(.body).fontWeight(.semibold)
-            Text(verbatim: "習慣の原本との連携はまだ利用できません。")
-                .foregroundStyle(LAAColor.secondaryText)
-        }.workCard()
+    private var routineList: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            if routines.isEmpty && !isLoading && failure == nil {
+                Text(verbatim: "ルーティンはありません。").foregroundStyle(LAAColor.secondaryText)
+            }
+            ForEach(routines) { routine in
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Text(verbatim: routine.name).fontWeight(.semibold)
+                    Text(verbatim: "次回: " + (routine.nextRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
+                    Text(verbatim: "前回: " + (routine.lastRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
+                    Text(verbatim: "結果: " + (routine.result ?? "未確認"))
+                }.laaTextStyle(.secondary).workCard()
+            }
+        }
     }
 
     private var connection: some View {
@@ -164,7 +171,7 @@ struct LAAWorkView: View {
         case 0: sessionList
         case 1: projectList
         case 2: taskList
-        default: routinePlaceholder
+        default: routineList
         }
     }
 
@@ -208,7 +215,7 @@ struct LAAWorkView: View {
                         }
                     }
                     .padding(.leading, CGFloat(row.depth) * LAASpacing.x3)
-                    .workListRow()
+                    .workCard()
                 }.buttonStyle(.plain)
             }
             let decisions = LAAWorkPresentation.decisionRows(rows, projectID: projectFilter, phase: phaseFilter)
@@ -242,7 +249,7 @@ struct LAAWorkView: View {
             }
             ForEach(projects) { project in
                 NavigationLink {
-                    LAAWorkProjectDetail(project: project, drafts: drafts)
+                    LAAWorkProjectDetail(project: project, drafts: drafts, workspaces: workspaces)
                 } label: {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
@@ -322,7 +329,7 @@ struct LAAWorkView: View {
         let id = UUID()
         loadID = id
         let selected = section
-        guard bridge.status == .paired, selected != 3 else { isLoading = false; failure = nil; return }
+        guard bridge.status == .paired else { isLoading = false; failure = nil; return }
         isLoading = true
         failure = nil
         defer { if loadID == id { isLoading = false } }
@@ -344,6 +351,9 @@ struct LAAWorkView: View {
                     let page: [LAAWorkSession] = try await loadItems("/v1/sessions")
                     if !Task.isCancelled && loadID == id { sessions = page }
                 }
+            } else if selected == 3 {
+                let page: LAAWorkPage<LAAWorkRoutine> = try await bridge.read("/v1/routines")
+                if !Task.isCancelled && loadID == id { routines = page.items }
             } else {
                 var cursor: String?
                 var seen = Set<String>()

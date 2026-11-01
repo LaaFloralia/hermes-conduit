@@ -8,6 +8,15 @@ struct LAAWorkPage<Item: Decodable>: Decodable {
     let total: Int?
 }
 
+struct LAAWorkRoutine: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let schedule: String?
+    let nextRunAt: String?
+    let lastRunAt: String?
+    let result: String?
+}
+
 struct LAAWorkSource: Decodable {
     let source: String
     let state: String

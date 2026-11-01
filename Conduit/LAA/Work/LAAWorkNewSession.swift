@@ -28,8 +28,9 @@ struct LAAWorkNewSessionView: View {
     @State private var error: String?
     @State private var created: LAAWorkSession?
 
-    init(projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore) {
+    init(projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore, initialProjectID: String = "") {
         self.projects = projects; self.drafts = drafts
+        _projectID = State(initialValue: initialProjectID)
         _workspaceItems = State(initialValue: workspaces)
     }
     private var key: ComposerDraftKey? {
