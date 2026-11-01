@@ -66,7 +66,7 @@ final class BridgeMockProtocol: URLProtocol {
         require(normal.items.first { $0.label == "Gemini API" }?.isExpired() == true, "expired balance")
         require(degraded.items.first { $0.label == "Claude" }?.stale == true, "stale quota")
         require(degraded.items.first { $0.label == "Codex" }?.availableValue == nil, "unavailable quota")
-        require(mac.items.first { $0.kind == "host.memory" }?.detail?.totalBytes != nil, "memory total")
+        require(mac.items.first { $0.kind == "host.memory" }?.availableValue != nil, "available memory reading")
         require(unavailable.items.first { $0.kind == "host.cpu" }?.availableValue == nil, "missing CPU")
         require(unavailable.items.first { $0.kind == "host.disk" }?.stale == true, "stale disk")
         require(LAAUsageItem.date("2026-10-29T04:49:23.123Z") != nil, "fractional timestamp")
@@ -115,6 +115,20 @@ final class BridgeMockProtocol: URLProtocol {
             credentials: creds, idempotencyKey: key, ifMatch: "\"3\"", timeout: 35)
         require(response.data.items.isEmpty && response.requestId == "req-test", "decoded response envelope")
         require(response.status == 201 && response.etag == "\"4\"", "response status and ETag")
+
+        BridgeMockProtocol.headers = ["ETag": "\"opaque-catalog\""]
+        BridgeMockProtocol.handler = { request in
+            require(request.value(forHTTPHeaderField: "If-None-Match") == "\"opaque-catalog\"", "conditional catalog header")
+            require(request.timeoutInterval == 45, "catalog timeout reaches URLSession")
+            return (304, Data())
+        }
+        do {
+            let _: LAABridgeResponse<LAAUsagePage> = try await client.request(
+                method: "GET", path: "/v1/studio/catalog", credentials: creds, ifNoneMatch: "\"opaque-catalog\"", timeout: 45)
+            require(false, "304 must retain its status and ETag")
+        } catch let error as LAABridgeHTTPError {
+            require(error.status == 304 && error.currentETag == "\"opaque-catalog\"", "304 metadata")
+        }
 
         for (status, code) in [(409, "request_id_conflict"), (409, "idempotency_outcome_unknown"),
                                (409, "stop_unconfirmed"), (410, "cursor_expired"),

@@ -15,7 +15,8 @@ export function createStudioBackend({
   directory = join(homedir(), 'Library', 'Application Support', 'LAA Creative Studio', 'Remote'),
   launch = () => execFileAsync(join(homedir(), 'dev', 'studio', 'bin', 'studio'), ['{"operation":"intake.snapshot"}'],
     { timeout: 8000, maxBuffer: 1024 * 1024 }),
-  now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, statPath = lstat,
+  now = () => Date.now(), startupIntervalMs = 30000, requestTimeoutMs = 12000, catalogTimeoutMs = 20000,
+  controlTimeoutMs = 8000, catalogMediaTimeoutMs = 120000, statPath = lstat,
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 } = {}) {
   const socketPath = join(directory, 'intake.sock');
@@ -39,12 +40,13 @@ export function createStudioBackend({
     } catch { throw unavailable(); }
   }
 
-  function rawRequest(info, { path, method = 'GET', body, range, signal }) {
+  function rawRequest(info, { path, method = 'GET', body, range, ifNoneMatch, signal, timeoutMs = requestTimeoutMs }) {
     return new Promise((resolve, reject) => {
       const headers = { authorization: `Bearer ${info.token}`, accept: 'application/json' };
       if (body !== undefined) headers['content-type'] = 'application/json';
       if (range) headers.range = range;
-      const request = http.request({ socketPath, path, method, headers, signal, timeout: requestTimeoutMs }, resolve);
+      if (ifNoneMatch) headers['if-none-match'] = ifNoneMatch;
+      const request = http.request({ socketPath, path, method, headers, signal, timeout: timeoutMs }, resolve);
       request.on('timeout', () => request.destroy(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })));
       request.on('error', reject);
       if (body !== undefined) request.end(JSON.stringify(body)); else request.end();
@@ -80,8 +82,12 @@ export function createStudioBackend({
     throw unavailable();
   }
 
-  async function json(args, context) {
+  async function json(args, context, { catalog = false, withStatus = false } = {}) {
     const response = await request(args, context);
+    if (catalog && response.statusCode === 304) {
+      response.resume();
+      return { status: 304, etag: response.headers.etag };
+    }
     const chunks = []; let size = 0;
     for await (const chunk of response) {
       size += chunk.length;
@@ -91,12 +97,19 @@ export function createStudioBackend({
     let value;
     try { value = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
     catch { throw new BridgeError(502, 'studio_response_invalid', 'Studio returned an invalid response'); }
-    if (response.statusCode >= 200 && response.statusCode < 300) return value;
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (catalog) return { status: response.statusCode, data: value, etag: response.headers.etag };
+      return withStatus ? { status: response.statusCode, data: value } : value;
+    }
     const code = typeof value?.error === 'string' ? value.error : value?.error?.code;
     const reasons = {
       invalid_request: 'Studio rejected the request as invalid',
       studio_request_missing: 'Studio could not find this request',
       studio_media_not_found: 'Studio could not find this media',
+      studio_project_missing: 'Studio could not find this work',
+      studio_review_target_missing: 'Studio could not find the review target',
+      studio_review_id_conflict: 'The review ID belongs to different content',
+      studio_revision_unknown: 'The review refers to an unknown revision',
       studio_request_id_conflict: 'The request ID belongs to different content',
       studio_revision_changed: 'The work changed; refresh to use its latest revision',
       studio_principle_changed: 'The principle changed; refresh to use its latest revision',
@@ -116,7 +129,10 @@ export function createStudioBackend({
     throw new BridgeError(502, 'studio_response_invalid', 'Studio could not process the request');
   }
   return {
-    snapshot: () => json({ path: '/api/studio/snapshot' }),
+    snapshot: () => json({ path: '/api/studio/snapshot', timeoutMs: controlTimeoutMs }),
+    catalog: (ifNoneMatch) => json({ path: '/api/studio/catalog', ifNoneMatch, timeoutMs: catalogTimeoutMs }, undefined, { catalog: true }),
+    project: (id) => json({ path: `/api/studio/projects/${id}`, timeoutMs: controlTimeoutMs }),
+    review: (body) => json({ path: '/api/studio/reviews', method: 'POST', body, timeoutMs: controlTimeoutMs }, undefined, { withStatus: true }),
     getRequest: (id) => json({ path: `/api/studio/requests/${id}` }),
     async createRequest(body) {
       const args = { path: '/api/studio/requests', method: 'POST', body };
@@ -129,6 +145,8 @@ export function createStudioBackend({
       }
     },
     action: (body) => json({ path: '/api/studio/action', method: 'POST', body }),
-    media: (path, options = {}) => request({ path, ...options }),
+    // Drive may need to materialize an online-only document before it can send headers.
+    media: (path, options = {}) => request({ path, timeoutMs: /^\/api\/studio\/media\/catalog\/[a-f0-9]{64}\.pdf$/.test(path)
+      ? catalogMediaTimeoutMs : requestTimeoutMs, ...options }),
   };
 }
