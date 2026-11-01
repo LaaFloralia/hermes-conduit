@@ -3,13 +3,14 @@ import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { BridgeError } from '../errors.mjs';
 import { createStudioBackend } from '../studio/backend.mjs';
-import { parseBody, validateAction, validateRequest } from '../studio/validation.mjs';
+import { parseBody, validateAction, validateRequest, validateReview } from '../studio/validation.mjs';
 
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
-const mediaPattern = /^\/v1\/studio\/media\/([a-zA-Z0-9-]{1,100})\/([a-f0-9]{64}\.(?:jpg|png|webp|mp4|mp3|glb))$/;
+const mediaPattern = /^\/v1\/studio\/media\/([a-zA-Z0-9-]{1,100})\/([a-f0-9]{64}\.(?:jpg|png|webp|mp4|mp3|glb|pdf|usdz))$/;
 const requestPattern = new RegExp(`^/v1/studio/requests/(${UUID})$`);
-const MAX_MEDIA = 16 * 1024 * 1024;
-const MEDIA_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', mp3: 'audio/mpeg', glb: 'model/gltf-binary' };
+const projectPattern = /^\/v1\/studio\/projects\/([a-zA-Z0-9-]{1,100})$/;
+const MEDIA_TYPES = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', mp4: 'video/mp4', mp3: 'audio/mpeg', glb: 'model/gltf-binary', pdf: 'application/pdf', usdz: 'model/vnd.usdz+zip' };
+const MIB = 1024 * 1024;
 
 function validateAnswer(action, record) {
   const approval = record?.report?.approvals?.find((item) => item.id === action.approvalId);
@@ -39,6 +40,32 @@ function validateAnswer(action, record) {
 
 export function studioRoutes({ backend = createStudioBackend() } = {}) {
   async function snapshot() { return { status: 200, data: await backend.snapshot() }; }
+  async function catalog({ req, res, requestId }) {
+    const ifNoneMatch = req.headers['if-none-match'];
+    if (ifNoneMatch !== undefined && (typeof ifNoneMatch !== 'string' || ifNoneMatch.length > 1024)) {
+      throw new BridgeError(400, 'studio_payload_invalid', 'Invalid If-None-Match header');
+    }
+    const result = await backend.catalog(ifNoneMatch);
+    if (typeof result.etag !== 'string' || !result.etag || result.etag.length > 1024 ||
+        (result.status === 304 ? !ifNoneMatch : result.status !== 200)) {
+      throw new BridgeError(502, 'studio_response_invalid', 'Studio returned an invalid catalog response');
+    }
+    const headers = { etag: result.etag };
+    if (result.status === 304) {
+      res.writeHead(304, { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-request-id': requestId, ...headers });
+      res.end();
+      return;
+    }
+    return { status: 200, data: result.data, headers };
+  }
+  async function project({ params }) { return { status: 200, data: await backend.project(params[0]) }; }
+  async function review({ rawBody }) {
+    const result = await backend.review(validateReview(parseBody(rawBody)));
+    if (result.status !== 200 && result.status !== 201) {
+      throw new BridgeError(502, 'studio_response_invalid', 'Studio returned an invalid review response');
+    }
+    return result;
+  }
   async function getRequest({ params }) { return { status: 200, data: await backend.getRequest(params[0]) }; }
   async function createRequest({ rawBody }) {
     const body = validateRequest(parseBody(rawBody));
@@ -94,21 +121,25 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
         upstream.resume();
         throw new BridgeError(status === 404 ? 404 : 503, status === 404 ? 'studio_media_not_found' : 'studio_not_connected', 'Studio media is unavailable');
       }
-      const length = Number(upstream.headers['content-length']);
+      const lengthHeader = upstream.headers['content-length'];
+      const length = typeof lengthHeader === 'string' && /^\d+$/.test(lengthHeader) ? Number(lengthHeader) : NaN;
       const contentRange = upstream.headers['content-range'];
       const totalMatch = typeof contentRange === 'string' ? /^bytes (\d+)-(\d+)\/(\d+)$/.exec(contentRange) : null;
-      const total = totalMatch ? Number(totalMatch[3]) : length;
+      const total = status === 206 && totalMatch ? Number(totalMatch[3]) : length;
       const start = totalMatch ? Number(totalMatch[1]) : 0;
       const end = totalMatch ? Number(totalMatch[2]) : 0;
       const extension = params[1].split('.').pop();
+      // Converted audio/video previews may be larger than the original limit.
+      const maxMedia = (extension === 'mp4' || extension === 'mp3' ? 256 : 128) * MIB;
       const contentType = String(upstream.headers['content-type'] ?? '').split(';', 1)[0].trim().toLowerCase();
-      if (!Number.isSafeInteger(length) || length < 0 || !Number.isSafeInteger(total) || total > MAX_MEDIA ||
+      if (!Number.isSafeInteger(length) || length < 0 || !Number.isSafeInteger(total) || total > maxMedia ||
           contentType !== MEDIA_TYPES[extension] ||
+          (status === 200 && contentRange !== undefined) ||
           (status === 206 && (!totalMatch || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
             end < start || end >= total || end - start + 1 !== length))) {
         upstream.destroy(); throw new BridgeError(502, 'studio_media_invalid', 'Studio media exceeds the limit or has invalid headers');
       }
-      const headers = { 'cache-control': 'private, max-age=0, must-revalidate', 'x-content-type-options': 'nosniff', 'x-request-id': requestId };
+      const headers = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'x-request-id': requestId };
       for (const name of ['content-type', 'content-length', 'content-range', 'accept-ranges', 'etag', 'last-modified']) {
         if (upstream.headers[name] !== undefined) headers[name] = upstream.headers[name];
       }
@@ -117,7 +148,7 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
       let bytes = 0;
       const bounded = new Transform({ transform(chunk, _encoding, done) {
         bytes += chunk.length;
-        done(bytes > length || bytes > MAX_MEDIA ? new Error('media limit exceeded') : null, chunk);
+        done(bytes > length ? new Error('media length exceeded') : null, chunk);
       } });
       await pipeline(upstream, bounded, res, { signal: abort.signal });
     } catch (error) {
@@ -128,6 +159,10 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
   }
   return [
     { method: 'GET', path: '/v1/studio/snapshot', auth: true, scope: 'studio:read', handler: snapshot },
+    { method: 'GET', path: '/v1/studio/catalog', auth: true, scope: 'studio:read', handler: catalog },
+    { method: 'GET', pattern: projectPattern, auth: true, scope: 'studio:read', handler: project },
+    { method: 'POST', path: '/v1/studio/reviews', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024,
+      handler: review, replayStatus: 200, releaseOnError: (error) => error.status === 400 && error.code === 'studio_payload_invalid' },
     { method: 'GET', path: '/v1/studio/request-id', auth: true, scope: 'studio:request', handler: () => ({ status: 200, data: { id: randomUUID() } }) },
     { method: 'GET', pattern: requestPattern, auth: true, scope: 'studio:read', handler: getRequest },
     { method: 'POST', path: '/v1/studio/requests', auth: true, scope: 'studio:request', idempotent: true, bodyLimit: 1024 * 1024, handler: createRequest, replay: replayRequest,

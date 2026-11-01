@@ -3,8 +3,8 @@
 // faithfully (ROADMAP 09, docs/laa/USAGE.md §7).
 //
 // Reads the CodexBar feed and the laa-storage-guard status file directly, then
-// rebuilds the expected item values with independent arithmetic and compares
-// them with the Bridge's projection. Read-only: no credential, no token, no
+// uses the Bridge's freshness decision and checks values with independent
+// arithmetic. Read-only: no credential, no token, no
 // service start, and nothing is printed but counts and field names.
 //
 //   node bridge/scripts/verify-usage.mjs [--timeout-ms 30000]
@@ -12,7 +12,7 @@
 // Not part of `npm test`: CI has no Mac sources and must not need them.
 
 import { readDiskStatus } from '../src/usage/host.mjs';
-import { readUsageFeed, usageItemsFromFeed } from '../src/usage/proxy.mjs';
+import { readUsageFeed, usageItemsFromFeed, UsageFeedError } from '../src/usage/proxy.mjs';
 
 const failures = [];
 const checks = [];
@@ -32,9 +32,20 @@ const timeoutIndex = args.indexOf('--timeout-ms');
 // matches the service (5 s), and an operator can wait longer for a diagnosis.
 const timeoutMs = timeoutIndex >= 0 ? Number(args[timeoutIndex + 1]) : 5000;
 
-const feed = await readUsageFeed({ timeoutMs });
-const items = usageItemsFromFeed(feed, { now: Date.now() });
+let feed;
+let items;
+let receivedAt;
+try {
+  feed = await readUsageFeed({ timeoutMs });
+  receivedAt = Date.now();
+  items = usageItemsFromFeed(feed, { now: receivedAt, receivedAt });
+} catch (error) {
+  const reason = error instanceof UsageFeedError ? error.code : 'fetch_failed';
+  process.stdout.write(`FAIL  feed (${reason})\n`);
+  process.exit(1);
+}
 const byId = new Map(items.map((item) => [item.id, item]));
+const available = (id) => byId.get(id)?.availability === 'available';
 
 check('feed version', feed.version === 1, String(feed.version));
 check('providers in feed', Array.isArray(feed.providers) && feed.providers.length > 0, `${feed.providers?.length ?? 0}`);
@@ -45,20 +56,32 @@ const expected = new Map();
 for (const row of feed.providers) {
   if (!row || typeof row !== 'object') continue;
   // `clef` reports a text status, which no v1 item kind carries (README).
-  if (row.id === 'clef') continue;
-  if (row.kind === 'quota' && Array.isArray(row.windows)) {
-    const remaining = row.windows.map((window) => numberAt(window?.remaining)).filter((value) => value !== null);
-    if (remaining.length > 0) expected.set(`provider.${row.id}.quota`, Math.min(...remaining));
+  if (['clef', 'gemini', 'deepseek', 'refuseless', 'fal', 'venice'].includes(row.id)) continue;
+  const current = receivedAt;
+  const suffix = row.kind === 'quota' ? 'quota' : row.kind === 'unitCredits' ? 'credits'
+    : row.kind === 'usage' ? 'usage' : 'balance';
+  const fresh = row.available === true && available(`provider.${row.id}.${suffix}`);
+  if (row.kind === 'cost') {
+    for (const period of ['today', 'month']) {
+      const id = `provider.${row.id}.cost-${period}`;
+      expected.set(id, row.available === true && available(id) ? numberAt(row[`${period}Amount`]) : null);
+    }
+  } else if (row.kind === 'quota' && Array.isArray(row.windows)) {
+    const all = [...row.windows, ...(Array.isArray(row.extraWindows) ? row.extraWindows : [])];
+    const remaining = all.map((window) => numberAt(window?.remaining)).filter((value) => value !== null);
+    const passed = all.some((window) => window?.resetsAt && Date.parse(window.resetsAt) <= current);
+    if (!fresh || passed) expected.set(`provider.${row.id}.quota`, null);
+    else if (remaining.length > 0) expected.set(`provider.${row.id}.quota`, Math.min(...remaining));
   } else if (row.kind === 'balance' && numberAt(row.amount) !== null) {
-    expected.set(`provider.${row.id}.balance`, row.amount);
+    expected.set(`provider.${row.id}.balance`, fresh ? row.amount : null);
   } else if (row.kind === 'unitCredits' && numberAt(row.remaining) !== null) {
-    expected.set(`provider.${row.id}.credits`, row.remaining);
+    expected.set(`provider.${row.id}.credits`, fresh ? row.remaining : null);
   } else if (row.kind === 'usage' && row.recordedUsage) {
     const input = numberAt(row.recordedUsage.inputTokens);
     const output = numberAt(row.recordedUsage.outputTokens);
-    if (input !== null && output !== null) expected.set(`provider.${row.id}.usage`, input + output);
+    if (input !== null && output !== null) expected.set(`provider.${row.id}.usage`, fresh ? input + output : null);
   }
-  if (row.available === false) expected.set(
+  if (row.available === false && row.kind !== 'cost') expected.set(
     `provider.${row.id}.${row.kind === 'quota' ? 'quota' : row.kind === 'unitCredits' ? 'credits' : row.kind === 'usage' ? 'usage' : 'balance'}`,
     null,
   );
@@ -71,9 +94,9 @@ for (const [id, value] of expected) {
     continue;
   }
   if (value === null) {
-    check(id, item.value === null, `value ${item.value}`);
+    check(id, item.value === null, 'expected unavailable');
   } else {
-    check(id, item.value === value, `item ${item.value} source ${value}`);
+    check(id, item.value === value, 'value mismatch');
   }
 }
 

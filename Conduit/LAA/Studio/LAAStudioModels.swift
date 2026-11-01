@@ -8,6 +8,8 @@ struct LAAStudioSnapshot: Codable {
     let projects: [LAAStudioProject]
     let principles: [LAAStudioPrinciple]
     let requests: [LAAStudioRecord]
+    var contract: Int? = nil
+    var supportsV2: Bool { (contract ?? 1) >= 2 }
 }
 
 struct LAAStudioProject: Codable, Identifiable, Hashable {
@@ -37,6 +39,8 @@ struct LAAStudioAsset: Codable, Identifiable, Hashable {
     let poster: String?
     let unavailable: String?
     let previewOnly: Bool?
+    var preparing: Bool? = nil
+    var usdz: String? = nil
 }
 struct LAAStudioPrinciple: Codable, Identifiable, Hashable {
     let id: String
@@ -169,10 +173,15 @@ enum LAAStudioAnswers {
 }
 
 enum LAAStudioMedia {
-    private static let suffix = #"[A-Za-z0-9-]{1,100}/[a-f0-9]{64}\.(jpg|png|webp|mp4|mp3|glb)"#
+    private static let suffix = #"[A-Za-z0-9-]{1,100}/[a-f0-9]{64}\.(jpg|png|webp|mp4|mp3|glb|pdf|usdz)"#
     static func bridgePath(_ original: String?) -> String? {
         guard let original, matches(original, prefix: "/api/studio/media/") else { return nil }
         return "/v1" + original.dropFirst(4)
+    }
+    static func bridgePath(_ original: String?, allowed: Set<String>) -> String? {
+        guard let path = bridgePath(original), let suffix = path.split(separator: ".").last,
+              allowed.contains(String(suffix)) else { return nil }
+        return path
     }
     static func bridgePathIsValid(_ path: String) -> Bool { matches(path, prefix: "/v1/studio/media/") }
     private static func matches(_ path: String, prefix: String) -> Bool {

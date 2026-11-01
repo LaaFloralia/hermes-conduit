@@ -70,9 +70,11 @@ laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済
 | `GET /v1/drive/files/{id}` | Bearer + `media:read` | `{id,name,mimeType,kind,size,modifiedAt,parents,downloadable,exportFormats?}` |
 | `GET|HEAD /v1/drive/files/{id}/content` | Bearer + `media:read` | bytes（200）、`Range` 部分（206）、範囲外（416）、Workspace文書（409） |
 | `GET /v1/studio/snapshot`、`GET /v1/studio/requests/{id}` | Bearer + `studio:read` | Studio作品・原則・依頼一覧／依頼1件 |
-| `GET /v1/studio/request-id` | Bearer + `studio:request` | Bridgeが作った依頼UUID（送信前に下書きへ保存） |
+| `GET /v1/studio/catalog`、`GET /v1/studio/projects/{id}` | Bearer + `studio:read` | v2の審美眼・資料／作品の版と講評。catalogは `If-None-Match` により304を返す |
+| `GET /v1/studio/request-id` | Bearer + `studio:request` | Bridgeが作った依頼・講評用のUUID（送信前に下書きへ保存） |
 | `POST /v1/studio/requests`、`POST /v1/studio/action` | Bearer + `studio:request` + `Idempotency-Key` | 受付202／操作200。Studio契約の衝突・受付停止の理由を返す |
-| `GET|HEAD /v1/studio/media/{projectId}/{sha256}.{ext}` | Bearer + `studio:read` | 閲覧用資材。Range 206・範囲外416、最大16 MiB |
+| `POST /v1/studio/reviews` | Bearer + `studio:request` + `Idempotency-Key` | v2講評。初回201、同じ記録の再送200 |
+| `GET|HEAD /v1/studio/media/{projectId}/{mediaKey}.{ext}` | Bearer + `studio:read` | 64桁のキーは不透明な識別子として転送する。Range 206・範囲外416。mp4・mp3は最大256 MiB、他の許可形式は最大128 MiB |
 | `GET /v1/tasks` | Bearer + `tasks:read` | Linear（+ 読めるなら Kanban）のタスク一覧。`owner` / `status` / `project` / `source` / `limit` / `cursor` で絞る |
 | `GET /v1/tasks/{id}` | Bearer + `tasks:read` | 1件の詳細。`linear:BUS-123`、`BUS-123`、`kanban:<id>` |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
@@ -102,17 +104,19 @@ laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済
 
 エラーは `{"error":{"code","message","retryable"},"requestId"}`（412 のみ `error.details.current` に現在の Project を返す）。`400` 不正、`401` 未認証・失効、`403` scope・Origin、`404` 範囲外、`405` メソッド、`409` idempotency 競合・名前の固定・worktree 既存、`412` 版不一致、`413` 読取上限超過、`415` テキストでない、`423` 排他中（git同期中・master以外）、`428` `If-Match` 欠落、`429` 試行過多、`500` 内部、`503` 依存（Paseo・Syncthing・vault）停止。`enroll` は応答にトークンを含むため idempotency 台帳の対象外（コード自体が1回限り）。
 
-失敗した要求は原則 idempotency 台帳に `in_progress` のまま残る。同じ key での再送は 60 秒は `409 idempotency_key_in_flight`、その後は `409 idempotency_outcome_unknown` になる。例外はStudio依頼作成の `409 studio_work_busy` で、受付契約が保存なしを保証するため予約を解除し、同じkey・本文で再送できる。
+失敗した要求は原則 idempotency 台帳に `in_progress` のまま残る。同じ key での再送は 60 秒は `409 idempotency_key_in_flight`、その後は `409 idempotency_outcome_unknown` になる。保存されていないと確実なStudio依頼作成の `409 studio_work_busy` と、Bridgeが送信前に検出した講評の `400 studio_payload_invalid` は予約を解除する。
 
 ## Studio受付（タスク34）
 
 試験端末のペアリングだけで依頼や承認ができないよう、Studio権限は明示した端末にのみ付与する。`grant-studio` は理由が必須で、対象名と付与前後のscopeを表示する。`devices --json` には管理操作の時刻・実行UID・理由と既存権限の有無を記録する（同一UIDで変更可能であり、改ざん不能な監査記録ではない）。記録済み端末への再実行は記録を更新しない。旧版ですでに付与されたscopeは自動では変更せず、記録のない端末に管理操作を行った場合は既存権限として記録する。
 
-`src/studio/backend.mjs` が Studio の受付契約 v1（`~/dev/studio/docs/intake/README.md`）との境界。`~/Library/Application Support/LAA Creative Studio/Remote/intake.sock` と同所の `intake.json` を同一UID・権限確認後に読み、専用BearerでHTTP/1.1を送る。TCP・Cloudflare・`control.json` は使わない。ENOENT・ECONNREFUSED・401は資格情報を読み直して1回再試行し、停止中の起動は30秒以上間隔を空けて試す。その要求で起動した直後の依頼作成が `studio_work_busy` の場合だけ、1.5秒後に同じ内容を1回再送する。応答不能は503 `studio_not_connected`。トークンはログへ出さない。`test/studio-mock.mjs` は契約試験用のメモリ内模擬実装で、時間とStudio側の受取りを試験から指定する。
+`src/studio/backend.mjs` が Studio の受付契約 v1（`~/dev/studio/docs/intake/README.md`）・v2（`~/dev/studio/docs/intake/v2.md`）との境界。`~/Library/Application Support/LAA Creative Studio/Remote/intake.sock` と同所の `intake.json` を同一UID・権限確認後に読み、専用BearerでHTTP/1.1を送る。TCP・Cloudflare・`control.json` は使わない。ENOENT・ECONNREFUSED・401は資格情報を読み直して1回再試行し、停止中の起動は30秒以上間隔を空けて試す。その要求で起動した直後の依頼作成が `studio_work_busy` の場合だけ、1.5秒後に同じ内容を1回再送する。応答不能は503 `studio_not_connected`。トークンはログへ出さない。`test/studio-mock.mjs` と `test/studio-v2.test.mjs` は模擬実装・模擬ソケットであり、実Studioの検証ではない。
 
 作成はStudio側でも依頼UUIDと本文を照合する。同じBridge key・本文の作成再送はStudioに再作成せず、現在の依頼を取得して返す。作成済みでもStudio未接続なら503を返し、受理済みだが現在の状態は未確認とメッセージで伝える。状態の確認は `GET /v1/studio/requests/{id}` を使う。busyの場合は下書き・UUID・本文・Bridge keyを保持し、利用者が同じ内容で再送する。結果不明時は1件取得で照合し、404なら同じUUID・本文と新しいBridge keyで明示的に再送できる。操作の結果不明時は自動再送せず、回答は同じキー・本文、停止は新しいキーで利用者が明示的に再試行できる。Bridge台帳の実行中は409で待ち、60秒を超えて結果不明のままなら、実行済みの可能性を表示して状態確認後の入力し直しを案内する。入力し直しは新しい操作・キーになり、重複拒否はStudio側の状態確認にも依存する。`unreceived` はStudioが45秒以上受け取らなかった queued、再開APIはなく、完了後の再依頼は最新の作品版と新しいUUIDを使う。unsupportedな質問はMacで扱う。Studio本物の受付実装との接続確認は別途必要。
 
 Bridge固有の `studio_payload_invalid` は受付契約の `invalid_request` に相当し、`studio_approval_changed` と `studio_approval_on_mac` は `studio_approval_expired` と同様に回答を受け付けない。Studioのエージェント向けCLI・MCPの `intake.action` はstopのみ、受付ソケットの `POST /api/studio/action` はanswer・stopに対応し、resumeは409。
+
+v2はsnapshotの `contract >= 2` でのみアプリに表示する。catalogのETagは不透明な値として転送し、304は本文を返さない。Studioの初回索引待ち（最大10秒）に備え、catalogのStudioソケット待ちは20秒、アプリのBridge待ちは起動時間も含め45秒とする。作品詳細も同じ待ち時間とする。Studio契約では起動後の初回詳細は最大50件の書き出しのハッシュ計算後に返るが、計算時間の上限は定めていないため、20秒以内に完了する保証はない。講評の結果不明時はStudioのUUID重複排除を利用し、同じUUID・本文と新しいBridge keyで利用者が明示的に再送できる。Studioの同一UUID・異本文は409。Bridgeの同一keyは従来どおり生の本文バイト列を照合するため、アプリは確定した本文を保持する。メディアは `pdf` と `usdz` を含む契約形式のみをMIME・サイズ・Range検証して中継し、保存しない。
 
 ## Project と workspace（タスク13）
 
@@ -288,17 +292,14 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: b1' \
 
 ROADMAP 09。契約は `docs/laa/USAGE.md` §4、応答例は `docs/laa/fixtures/usage/`。実装は `src/routes/usage.mjs` と `src/usage/`（items / proxy / feed / host）。読取専用で `usage:read` だけを要求し、資格情報・請求データ・provider の URL・cookie・エラー原文は返さない。
 
-| 項目 | 決定 | 理由 |
-|---|---|---|
-| 利用枠・残高 | `http://127.0.0.1:8081/widget`（version 1）を読む。`provider.<id>.quota` / `.balance` / `.credits` / `.usage` の16件を固定順で返す | USAGE.md §1。Console collector と同じ表示射影（code-owned の id・ラベル・単位）で、provider 側の任意テキストは通さない |
-| 欠測 | フィードに無い provider も `unavailable`＋`value:null`＋`nullReason:"fetch_failed"` で並べる。proxy 停止・タイムアウト（既定5秒、`LAA_BRIDGE_USAGE_FEED_TIMEOUT_MS`）・不正 JSON・`fetchedAt` が60秒超未来、は全件 unavailable の **200** | §4。0 で埋めない。Bridge の障害と「値が無い」を混ぜない |
-| 遅いproxy | 5秒（既定）で応答が無ければ、最後に成功した `/widget` payload を**元の時刻のまま**返す。`observedAt`・`stale`・`expired` は既存規則で判定し、古い値を新しい値として見せない。その読みは背景で最大30秒（`LAA_BRIDGE_USAGE_REFRESH_TIMEOUT_MS`）続き、同時1本まで。成功 payload が無ければ従来どおり全件 unavailable | 2026-10-29の実測で `/widget` は19–25秒。snapshot は `state/usage-feed.json`（0600、資格情報なし）。再起動時に読み戻し、破損・別schemaは無視する |
-| 鮮度 | `live`/`local`/`codexbar-cli` は provider `updatedAt` と `fetchedAt` の古い方から20分（`LAA_BRIDGE_USAGE_AUTO_STALE_MS`）で `stale`。`source:"verified"` は画面確認値なので stale にしない | §4。verified は `observedAt` と期限で鮮度を示す |
-| 期限切れ | quota は `value` を決めた窓の `resetsAt` 経過、balance は `expiresOnUtc` 経過（日付は当日UTC末まで有効）または残高のある component が全期限切れ、で `expired:true`。値は保持する | §4。`claude-api` のような「一部だけ期限到来」は期限切れと呼ばない |
-| 費用・トークン | v1 には含めない（`profile.*` の item を作らない）。アプリは現行どおり dashboard を直接読む | USAGE.md §6 親の決定1。新しい読取チケットを増やさない。dashboard は実測401で、Bridge専用の認可が未決のため |
-| CPU・メモリ | Bridge プロセス内のサンプラ。CPU は `os.cpus()` のtick差分、メモリは `vm_stat` のページ数と `sysctl vm.swapusage`（`host_statistics64` と同じカーネル値）。10秒キャッシュで、常駐は増やさない | §6 親の決定2。`os.freemem()` だけだと reclaim 可能なキャッシュを「使用中」に見せる。非Darwin・取得失敗は `unsupported`／`fetch_failed` で null |
-| 空き容量 | `~/.local/state/laa-storage-guard/status.json` を読むだけ（`LAA_BRIDGE_STORAGE_STATUS`）。`checked_at` が26時間超で `stale`、ファイル無しは `not_configured`、JSON不正は `fetch_failed` | §4。`laa-storage-guard status` は約50秒かかるので起動しない |
-| 対象外 | proxy の `clef`（kind `status`＝テキスト）と `codex` の `credits` は v1 の4種類の item に載せない。`antigravity` の `extraWindows` は `windows` に合算して最小値を採る | 値の意味を変えて見せない。追加はアプリ側の表示要件が決まってから |
+| 項目 | 現在の契約 |
+|---|---|
+| 利用枠・残高 | ローカルproxy `/widget` の自動取得値を返す。手動確認のみの値は `not_auto` で数値なし |
+| 背景取得 | Bridgeが定期的に取得し要求は待たない。取得結果はメモリのみで、失敗・再起動時は消える |
+| 鮮度 | provider取得時刻とfeed取得時刻の古い方から最大10分。期限、reset、失敗、未来時刻では数値とdetailを返さない |
+| API使用額 | Anthropic従来Cost APIとOpenAI Costs APIの今日・今月。日付はUTC、取得時刻と各社の反映遅れの説明を分ける。管理者鍵が無ければ `not_configured` |
+| CPU・メモリ | Bridgeプロセス内サンプラ、10秒キャッシュ。非Darwin・失敗は数値なし |
+| 空き容量 | storage-guardの状態ファイルを読むだけ。26時間超はstale、欠測は数値なし |
 
 ```sh
 curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/usage
@@ -307,7 +308,7 @@ curl -sS -H "Authorization: Bearer $TOKEN" http://127.0.0.1:9137/v1/mac/status
 
 `items[]` は `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。`availability:"unavailable"` の時だけ `value:null`・`nullReason` が付き、`observedAt` は null になる。`availability:"available"` は `value` が数値（0 も実値）。`detail` は quota=`{windows[{label,remainingPercent,resetsAt,windowMinutes?}]}`、balance=`{currency,components[]?,expiresOnUtc?}`、credits=`{renewsAt?,grantedAmount?,monthlyGrantedAmount?,dailyRemaining?,dailyGrantedAmount?}`、usage=`{periodDays,models[{model,inputTokens,outputTokens}]}`、CPU=`{windowSeconds,userPercent,systemPercent}`、メモリ=`{totalBytes,availableBytes,swapUsedBytes?}`、disk=`{volume,totalGb,level?,findings[]}`。
 
-検証: `npm test` の `test/usage.test.mjs` は HTTP 経由で fixture と同じ読みを1件ずつ照合し、`test/usage-sources.test.mjs` は射影・鮮度・期限・サニタイズ・10秒キャッシュ・状態ファイルの異常を、`test/usage-feed.test.mjs` は遅いproxyの直前値（成功値あり／なし）・単一in-flight・再起動時のsnapshot読み戻し・破損snapshotの無視を固定する。実機は `node bridge/scripts/verify-usage.mjs`（proxy と状態ファイルを直接読み、独立計算と突き合わせる。資格情報なし）。
+検証: `npm test` はHTTP認証、取得失敗、期限、背景取得と射影をfixtureで確認する。実接続は別途 `node bridge/scripts/verify-usage.mjs` で確認する。
 
 ## 停止・再起動・クラッシュ復帰
 

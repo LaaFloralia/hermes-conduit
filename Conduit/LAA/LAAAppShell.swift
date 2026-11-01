@@ -54,7 +54,17 @@ struct LAAAppShell: View {
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
             .task(id: "\(bridge.revision)|\(scenePhase == .active)") {
-                await usageState.synchronize(bridge: bridge, active: scenePhase == .active)
+                let active = scenePhase == .active
+                await usageState.synchronize(bridge: bridge, active: active)
+                guard active else { return }
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(120)) } catch { return }
+                    guard !Task.isCancelled else { return }
+                    await usageState.refreshAndPublish(bridge: bridge)
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { LAAUsageBackground.schedule() }
             }
             .onChange(of: appState.laaWidgetUsagePending, initial: true) { _, pending in
                 guard pending else { return }

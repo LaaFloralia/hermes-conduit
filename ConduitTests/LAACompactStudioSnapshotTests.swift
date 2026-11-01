@@ -35,6 +35,23 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
         }
     }
 
+    func testV2ScreensAtOwnerSizeLightAndDark() throws {
+        defer { LAAStudioData.snapshotFixture = nil }
+        LAAStudioData.snapshotFixture = "v2"
+        let bridge = LAABridgeSession(statusForTesting: .unpaired)
+        let snapshot = try LAAStudioData.sample("v2")
+        let project = try XCTUnwrap(snapshot.projects.first)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            try capture("v2-works", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true)) }
+            try capture("v2-library", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {}, initialStudioSelected: true, initialStudioSection: 2)) }
+            try capture("v2-work", style, bridge) { AnyView(LAAStudioWorkView(project: project, snapshot: snapshot)) }
+            try capture("v2-review", style, bridge) {
+                AnyView(LAAStudioReviewView(snapshot: snapshot, project: project, target: .project,
+                                            targetName: project.title, revision: project.revision, reviews: []))
+            }
+        }
+    }
+
     private func capture(_ name: String, _ style: UIUserInterfaceStyle, _ bridge: LAABridgeSession,
                          content: () -> AnyView) throws {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }

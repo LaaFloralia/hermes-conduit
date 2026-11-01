@@ -23,12 +23,6 @@ struct LAAUsageItem: Decodable, Identifiable {
         let remaining: Double?
         let updatedAt: String?
     }
-    struct ResetPasses: Decodable {
-        let available: Bool
-        let remaining: Double?
-        let updatedAt: String?
-        let expiresAt: String?
-    }
     struct RecordedUsage: Decodable {
         let inputTokens: Double?
         let outputTokens: Double?
@@ -38,7 +32,6 @@ struct LAAUsageItem: Decodable, Identifiable {
         let sourceKind: String?
         let freshUntil: String?
         let credits: Credits?
-        let resetPasses: ResetPasses?
         let components: [Component]?
         let currency: String?
         let creditUnit: String?
@@ -48,7 +41,6 @@ struct LAAUsageItem: Decodable, Identifiable {
         let dailyGrantedAmount: Double?
         let fallbackAiCredits: Double?
         let usd: Double?
-        let diem: Double?
         let monthlyRemainingPercent: Double?
         let recordedCostUsd: Double?
         let recordedRequestCount: Double?
@@ -56,6 +48,8 @@ struct LAAUsageItem: Decodable, Identifiable {
         let models: [RecordedUsage]?
         let expiresOnUtc: String?
         let renewsAt: String?
+        let sourceLag: String?
+        let periodTimezone: String?
     }
     let id: String
     let kind: String
@@ -70,6 +64,12 @@ struct LAAUsageItem: Decodable, Identifiable {
     let expired: Bool
     let nullReason: String?
     let detail: Detail?
+    // Set locally on receipt; it is never decoded from the remote response.
+    var freshnessAnchor: Date? = nil
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, label, value, unit, source, observedAt, availability, stale, estimated, expired, nullReason, detail
+    }
 
     var availableValue: Double? { availability == "available" ? value : nil }
 
@@ -91,16 +91,18 @@ struct LAAUsageItem: Decodable, Identifiable {
 }
 
 enum LAAUsageFreshness {
-    static func isStale(_ item: LAAUsageItem, at now: Date = Date(), retained: Bool = false, failed: Bool = false) -> Bool {
-        if item.stale || retained || failed { return true }
-        guard let observed = LAAUsageItem.date(item.observedAt), observed <= now.addingTimeInterval(60) else { return true }
-        if item.detail?.sourceKind == "verified" { return false }
+    static func isStale(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
+        if item.stale { return true }
+        guard let observed = LAAUsageItem.date(item.observedAt),
+              observed <= min(item.freshnessAnchor ?? now, now).addingTimeInterval(120) else { return true }
+        let limit = min(observed, item.freshnessAnchor ?? now, now).addingTimeInterval(10 * 60)
+        if item.detail?.sourceKind == "verified" { return true }
         if let raw = item.detail?.freshUntil {
             guard let deadline = LAAUsageItem.date(raw) else { return true }
-            return deadline <= now
+            return min(deadline, limit) <= now
         }
         // Older Bridges do not supply freshUntil, but do send observedAt and stale.
-        return observed.addingTimeInterval(20 * 60) <= now
+        return limit <= now
     }
 
     static func windowExpired(_ window: LAAUsageItem.Window, at now: Date = Date()) -> Bool {
@@ -109,15 +111,11 @@ enum LAAUsageFreshness {
 
     static func outdated(_ text: String?, at now: Date = Date()) -> Bool {
         guard let date = LAAUsageItem.date(text) else { return true }
-        return date > now.addingTimeInterval(60) || now.timeIntervalSince(date) >= 20 * 60
+        return date > now.addingTimeInterval(120) || now.timeIntervalSince(date) >= 10 * 60
     }
 
     static func extraNeedsAttention(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
         if let credits = item.detail?.credits, outdated(credits.updatedAt, at: now) { return true }
-        if let passes = item.detail?.resetPasses {
-            return !passes.available || outdated(passes.updatedAt, at: now) ||
-                (LAAUsageItem.date(passes.expiresAt).map { $0 <= now } ?? true)
-        }
         return false
     }
 }
