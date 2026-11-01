@@ -91,6 +91,8 @@ targets:
         # The five-tab shell (branch laa/tabs-07) compiles in only for this
         # build; the App Store app keeps the upstream navigation.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        # App Intents reads this before post-build resource branding.
+        INFOPLIST_FILE: ".build/laa-info/$(PLATFORM_NAME)-$(CONFIGURATION)/Info.plist"
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/Conduit.entitlements
         # Automatic signing: a named profile would be the App Store app's.
         PROVISIONING_PROFILE_SPECIFIER: ""
@@ -101,9 +103,21 @@ targets:
         # leaves the archive unsigned — with no entitlements for export to
         # keep.
         CODE_SIGN_IDENTITY: "Apple Development"
+    preBuildScripts:
+      - name: Prepare LAA app Info
+        basedOnDependencyAnalysis: false
+        inputFiles: ["$(SRCROOT)/Conduit/Info.plist", "$(SRCROOT)/Conduit/InfoPlist.xcstrings"]
+        outputFiles: ["$(SRCROOT)/$(INFOPLIST_FILE)"]
+        script: |
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --input-info "$SRCROOT/Conduit/Info.plist" \
+            --output-info "$SRCROOT/$INFOPLIST_FILE" --kind app --source "$SRCROOT" \
+            --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
     postBuildScripts:
+      # ProcessInfoPlistFile may otherwise overwrite branding after this phase
+      # in incremental builds; the input makes the build system order it first.
       - name: Brand LAA app resources
         basedOnDependencyAnalysis: false
+        inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
             --name "${CONDUIT_DISPLAY_NAME:-LAA}" --bundle-name LAA
@@ -151,6 +165,7 @@ targets:
     postBuildScripts:
       - name: Brand LAA watch resources
         basedOnDependencyAnalysis: false
+        inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch --source "$SRCROOT"
   ConduitWatchWidgets:
@@ -167,6 +182,7 @@ targets:
     postBuildScripts:
       - name: Brand LAA watch widget resources
         basedOnDependencyAnalysis: false
+        inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind watch-widget --source "$SRCROOT"
   ConduitNotificationService:
@@ -182,6 +198,7 @@ targets:
     postBuildScripts:
       - name: Brand LAA notification resources
         basedOnDependencyAnalysis: false
+        inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind notification --source "$SRCROOT"
   ConduitWidgets:
@@ -207,6 +224,7 @@ targets:
     postBuildScripts:
       - name: Brand LAA widget resources
         basedOnDependencyAnalysis: false
+        inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind widgets --source "$SRCROOT"
   ConduitShareExtension:
@@ -227,5 +245,6 @@ targets:
     postBuildScripts:
       - name: Brand LAA share resources
         basedOnDependencyAnalysis: false
+        inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind share --source "$SRCROOT"

@@ -2,6 +2,8 @@ import importlib.util
 import json
 import plistlib
 import re
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +19,21 @@ LANGUAGES = {"en", "de", "es", "fr", "id", "it", "ja", "ko", "pl", "pt-BR", "ru"
 
 
 class LAABrandBundleTests(unittest.TestCase):
+    def test_prepared_info_is_branded_before_intent_metadata_is_generated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "prepared/Info.plist"
+            command = [sys.executable, str(ROOT / "scripts/laa/brand-bundle.py"),
+                       "--input-info", str(ROOT / "Conduit/Info.plist"), "--output-info", str(output),
+                       "--kind", "app", "--source", str(ROOT), "--name", "LAA", "--bundle-name", "LAA"]
+            subprocess.run(command, check=True, capture_output=True)
+            with output.open("rb") as stream:
+                info = plistlib.load(stream)
+            self.assertEqual(info["CFBundleDisplayName"], "LAA")
+            self.assertEqual(info["CFBundleName"], "LAA")
+            self.assertNotIn("Conduit", info["NSMicrophoneUsageDescription"])
+            self.assertNotIn("Hermes", info["NSMicrophoneUsageDescription"])
+            self.assertEqual(info["CFBundleIdentifier"], "$(PRODUCT_BUNDLE_IDENTIFIER)")
+
     def test_localized_privacy_copy_does_not_transfer_developer_claim(self):
         strings = json.loads((ROOT / "Conduit/Localizable.xcstrings").read_text())["strings"]
         keys = [key for key in strings if "Conduit's developer can't see it." in key]

@@ -135,15 +135,13 @@ def permission_strings(catalog, locale):
     return result
 
 
-def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
+def brand_info(info, kind, source, name=None, bundle_name=None):
     if name is not None:
         validate_name(name)
     if bundle_name is not None:
         validate_bundle_name(bundle_name)
     elif kind != "app":
         bundle_name = bundle_names[kind]
-    info_path = bundle / "Info.plist"
-    info = read_plist(info_path)
     info["CFBundleDisplayName"] = name if name is not None else names[kind]
     if bundle_name is not None:
         info["CFBundleName"] = bundle_name
@@ -151,6 +149,15 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
         catalog_path = source / ("Conduit/InfoPlist.xcstrings" if kind == "app" else "ConduitWatch/InfoPlist.xcstrings")
         catalog = json.loads(catalog_path.read_text())
         info.update(permission_strings(catalog, "en"))
+    return info, bundle_name
+
+
+def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
+    info_path = bundle / "Info.plist"
+    info, bundle_name = brand_info(read_plist(info_path), kind, source, name, bundle_name)
+    if kind in ("app", "watch"):
+        catalog_path = source / ("Conduit/InfoPlist.xcstrings" if kind == "app" else "ConduitWatch/InfoPlist.xcstrings")
+        catalog = json.loads(catalog_path.read_text())
         # Update the localizations the build already produced, and never
         # create one: a draft language strip-draft-localizations.py removed
         # would come back. English needs no lproj; the base Info.plist has it.
@@ -192,7 +199,9 @@ def brand_bundle(bundle, kind, source, name=None, bundle_name=None):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bundle", required=True, type=Path)
+    parser.add_argument("--bundle", type=Path)
+    parser.add_argument("--input-info", type=Path)
+    parser.add_argument("--output-info", type=Path)
     parser.add_argument("--kind", required=True, choices=tuple(names))
     parser.add_argument("--source", required=True, type=Path)
     # The home-screen name: the personal build keeps its own identity beside
@@ -200,7 +209,15 @@ def main():
     parser.add_argument("--name")
     parser.add_argument("--bundle-name")
     args = parser.parse_args()
-    brand_bundle(args.bundle, args.kind, args.source, name=args.name, bundle_name=args.bundle_name)
+    if args.bundle and not args.input_info and not args.output_info:
+        brand_bundle(args.bundle, args.kind, args.source, name=args.name, bundle_name=args.bundle_name)
+    elif not args.bundle and args.input_info and args.output_info:
+        info, _ = brand_info(read_plist(args.input_info), args.kind, args.source, args.name, args.bundle_name)
+        args.output_info.parent.mkdir(parents=True, exist_ok=True)
+        with args.output_info.open("wb") as stream:
+            plistlib.dump(info, stream, sort_keys=False)
+    else:
+        parser.error("supply --bundle or both --input-info and --output-info")
 
 
 if __name__ == "__main__":

@@ -160,6 +160,16 @@ class LAABrandCheckTests(unittest.TestCase):
         self.assertLess(script.index('check-brand-bundle.py'), script.index('xcodebuild -exportArchive'))
         self.assertIn('|| fail "LAA branding inspection failed', script)
 
+    def test_brand_phases_wait_for_the_processed_info_plist(self):
+        for spec, names in (("project-laa.yml", ("app", "watch", "watch widget", "notification", "widget", "share")),
+                            ("project-personal.yml", ("personal",))):
+            text = (ROOT / spec).read_text()
+            for name in names:
+                label = f"Brand LAA {name} resources" if name != "personal" else "Brand resources for the personal build"
+                with self.subTest(spec=spec, phase=label):
+                    phase = text.split(f"- name: {label}\n", 1)[1].split("script: |", 1)[0]
+                    self.assertIn('inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]', phase)
+
 
 if __name__ == "__main__":
     unittest.main()

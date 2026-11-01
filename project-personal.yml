@@ -52,11 +52,22 @@ targets:
         # from project.yml never compiles them and upstream stays unchanged.
         # The TestFlight signing overlay must adopt the same setting.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_PERSONAL_BUILD"
+        INFOPLIST_FILE: ".build/laa-personal-info/$(PLATFORM_NAME)-$(CONFIGURATION)/Info.plist"
+    preBuildScripts:
+      - name: Prepare personal app Info
+        basedOnDependencyAnalysis: false
+        inputFiles: ["$(SRCROOT)/Conduit/Info.plist", "$(SRCROOT)/Conduit/InfoPlist.xcstrings"]
+        outputFiles: ["$(SRCROOT)/$(INFOPLIST_FILE)"]
+        script: |
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --input-info "$SRCROOT/Conduit/Info.plist" \
+            --output-info "$SRCROOT/$INFOPLIST_FILE" --kind app --source "$SRCROOT" \
+            --name "${CONDUIT_PERSONAL_NAME:-LAA Personal}" --bundle-name "LAA Personal"
     postBuildScripts:
       # Brand permission and localized LAA screen copy. The personal name
       # and upstream AppIcon remain distinct from the TestFlight build.
       - name: Brand resources for the personal build
         basedOnDependencyAnalysis: false
+        inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]
         script: |
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
             --name "${CONDUIT_PERSONAL_NAME:-LAA Personal}" --bundle-name "LAA Personal"
