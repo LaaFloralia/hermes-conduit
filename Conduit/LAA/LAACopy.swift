@@ -84,7 +84,7 @@ enum LAACopy {
 
     // MARK: Bridge
 
-    static let bridgeNotPairedBody = "この端末はMacのLAA Bridgeとペアリングされていません。"
+    static let bridgeNotPairedBody = "この端末はMacとペアリングされていません。"
 
     // MARK: Segments
 
