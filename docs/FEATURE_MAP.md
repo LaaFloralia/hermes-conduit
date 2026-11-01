@@ -452,7 +452,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
-- Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
+- Assets and Drive: `Conduit/LAA/Assets/`, `Conduit/LAA/Drive/`, `bridge/src/routes/drive.mjs`, `bridge/src/drive/`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`, `bridge/bench/README.md`, `docs/laa/DRIVE-PLAYER-API.md`
 - Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-v2.test.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAAStudioV2Tests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
 - Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
@@ -500,15 +500,18 @@ App Store build · the Bridge API, Brain and Usage data contracts
   use the opt-in `brain:create` scope and the server's conflict-safe name.
   An uncertain create retains its exact request and key in ThisDeviceOnly
   Keychain until the same device reconciles it or the user checks Inbox.
-- Assets reads Drive listing and name search through the existing `media:read`
-  Bridge endpoint, including folder navigation and cursor paging. Filters apply
-  only to loaded items. Metadata opens from a file, and images, PDFs and audio
-  or video can be previewed when downloadable. The player requests bounded
-  authenticated byte ranges and stops if the server ignores Range; image and
-  PDF previews are limited to 64 MB. Workspace export is unavailable on the
-  current Bridge, so those documents show an Open on Mac reason. Inspiration
-  remains disabled; missing Drive authorization and Bridge failures
-  are distinct. The current Bridge supplies neither owners nor thumbnails.
+- Assets Drive uses the paired `media:read` Bridge for My Drive, shared drives,
+  folder navigation, search, paging and bounded thumbnails. Recent and starred
+  are unavailable from the desktop mount. Search scope and incomplete results
+  are shown. Images, PDFs and audio/video have previews; Google-native documents
+  open through validated web links. Images page through the already-loaded list. The native
+  player keeps authenticated bounded Range requests and offers PiP/AirPlay
+  controls; resume positions are scoped to pairing and content version. An
+  explicit offline save checks permission and version, stores a protected
+  app-private copy, and rechecks access when online. Folder saves report their
+  estimate and partial results. Sharing uses a selected temporary copy or a
+  validated Google link. Inspiration remains disabled, and mount or macOS
+  access failures remain distinct.
 - Assets Studio lists works and requests, preserves unsent or uncertain drafts,
   and supports typed approvals and stopping through the scoped Bridge. Studio
   remains the executor; media and Drive delivery are linked from the work.
@@ -519,7 +522,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   uncertain reviews retain their UUID and body for an explicit retry. Library
   shows principles, reference materials and reusable request text. PDF and
   USDZ previews use iOS components. Video and audio call the shared Drive player
-  through one Studio adapter; its improved public API is pending integration.
+  through one Studio adapter; its shared transport retains both the Drive
+  version check and Studio's optional timeout.
   The v2 app screens, real intake and iPhone playback remain to be verified.
 - Brain shows Recent and Folders with Tags disabled until supported; the note
   body uses an opaque surface and all existing links and create-only flow remain.
@@ -541,8 +545,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   not have sufficient contrast in dark mode; their screen tasks should use the
   semantic filled-button color pair. The existing Hermes login retains its
   Conduit backdrop.
-- Work routines and Assets Inspiration remain unavailable. Drive
-  Workspace export, owner and thumbnail data need Bridge support. Brain cannot edit existing
+- Work routines and Assets Inspiration remain unavailable. Drive's iOS build,
+  simulator UI, PiP, AirPlay with the authenticated resource loader, fullscreen
+  rotation, audio interruptions, macOS permission and real Drive device behavior
+  still need their respective tests. File attributes do not guarantee an atomic
+  revision within a single chunk.
+  Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
   The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs

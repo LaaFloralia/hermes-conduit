@@ -27,7 +27,7 @@ import {
   randomToken,
 } from './auth.mjs';
 import { IDEMPOTENCY_KEY_PATTERN, complete, release, requestFingerprint, reserve } from './idempotency.mjs';
-import { driveAdapterFromEnv } from './drive/google-api.mjs';
+import { createDriveMountAdapter } from './drive/mount.mjs';
 import { driveRoutes } from './routes/drive.mjs';
 import { BridgeError, badRequest } from './errors.mjs';
 import { businessRoutes } from './routes/index.mjs';
@@ -60,7 +60,7 @@ export function createBridge({
   version = VERSION,
   testEndpoints = testEndpointsEnabled(),
   allowedOrigins = [],
-  drive = null,
+  drive = undefined,
   now = () => Date.now(),
   log = defaultLog(),
   routeOptions = {},
@@ -219,7 +219,7 @@ export function createBridge({
     { method: 'POST', path: '/v1/devices/enroll', auth: false, idempotent: false, handler: enroll },
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
-    ...driveRoutes({ adapter: drive ?? driveAdapterFromEnv(), now, log: log === null ? null : undefined }),
+    ...driveRoutes({ adapter: drive === undefined ? createDriveMountAdapter() : drive, now, log }),
     ...businessRoutes({ store, now, options: { ...routeOptions,
       usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) } } }),
   ];
@@ -344,7 +344,7 @@ export function createBridge({
           level: 'info',
           requestId,
           method: req.method,
-          path: pathname,
+          path: pathname.replace(/^(\/v1\/drive\/files\/)[^/]+/, '$1<item>'),
           status: res.statusCode,
           ms: now() - started,
           deviceId,

@@ -7,7 +7,8 @@ import { Readable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
 import { startBridge } from './helpers.mjs';
 import { parseRange } from '../src/routes/drive.mjs';
-import { DriveNotConfiguredError } from '../src/drive/google-api.mjs';
+class DriveNotConfiguredError extends Error { code = 'drive_not_configured'; }
+class DriveExportTooLargeError extends Error { code = 'drive_export_too_large'; }
 
 const VIDEO = Buffer.from(Array.from({ length: 4096 }, (_, i) => i % 251));
 
@@ -337,6 +338,287 @@ describe('drive content and ranges', () => {
   });
 });
 
+describe('drive views and incomplete searches', () => {
+  it('preserves an unknown completeness signal instead of reporting a complete search', async () => {
+    const drive = fakeDrive();
+    const list = drive.list;
+    drive.list = async (options) => ({ ...(await list(options)),
+      incompleteSearch: { my: false, shared: true, recent: undefined, starred: 'false' }[options.view] });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      for (const [view, expected] of [['my', false], ['shared', true], ['recent', null], ['starred', null]]) {
+        const response = await bridge.request(`/v1/drive/files?view=${view}`, { token });
+        assert.equal(response.status, 200);
+        assert.equal(response.body.data.incompleteSearch, expected);
+      }
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('binds cursors to their view and preserves unqualified legacy cursors', async () => {
+    const drive = fakeDrive();
+    const list = drive.list;
+    const calls = [];
+    drive.list = async (options) => {
+      calls.push(options);
+      return { ...(await list(options)), incompleteSearch: options.view === 'shared' };
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const first = await bridge.request('/v1/drive/files?view=shared&pageSize=1', { token });
+      assert.equal(first.status, 200);
+      assert.equal(first.body.data.incompleteSearch, true);
+      assert.equal(calls.at(-1).view, 'shared');
+      const cursor = encodeURIComponent(first.body.data.nextCursor);
+      assert.equal((await bridge.request(`/v1/drive/files?view=shared&pageSize=1&cursor=${cursor}`, { token })).status, 200);
+      assert.equal((await bridge.request(`/v1/drive/files?view=my&pageSize=1&cursor=${cursor}`, { token })).status, 400);
+      assert.equal((await bridge.request(`/v1/drive/files?pageSize=1&cursor=${cursor}`, { token })).status, 400);
+      const legacy = await bridge.request('/v1/drive/files?pageSize=1', { token });
+      assert.equal(legacy.body.data.incompleteSearch, false);
+      assert.equal(calls.at(-1).view, null);
+      assert.equal((await bridge.request(`/v1/drive/files?pageSize=1&cursor=${encodeURIComponent(legacy.body.data.nextCursor)}`,
+        { token })).status, 200);
+      assert.equal((await bridge.request('/v1/drive/files?view=unexpected', { token })).status, 400);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('does not treat a shortcut as streamable bytes', async () => {
+    const drive = fakeDrive();
+    const get = drive.get;
+    drive.get = async (id) => {
+      const found = await get(id);
+      return found ? { ...found, item: { ...found.item, kind: 'shortcut' } } : null;
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const response = await bridge.request('/v1/drive/files/file_video_1/content', { token });
+      assert.equal(response.status, 409);
+      assert.equal(response.body.error.code, 'shortcut_target_required');
+      assert.equal(drive.state.opened, 0);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('does not open media when Drive reports downloading is forbidden', async () => {
+    const drive = fakeDrive();
+    const get = drive.get;
+    drive.get = async (id) => {
+      const found = await get(id);
+      return found ? { ...found, item: { ...found.item, downloadable: false } } : null;
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const response = await bridge.request('/v1/drive/files/file_video_1/content', { token });
+      assert.equal(response.status, 403);
+      assert.equal(response.body.error.code, 'download_forbidden');
+      assert.equal(drive.state.opened, 0);
+    } finally {
+      await bridge.close();
+    }
+  });
+});
+
+describe('drive thumbnails', () => {
+  it('requires media:read and returns bounded image bytes without upstream links', async () => {
+    const drive = fakeDrive();
+    const image = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    drive.thumbnail = async () => ({ mimeType: 'image/png', body: image });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const limitedToken = await pairDevice(bridge, ['sessions:read']);
+      const url = `${bridge.base}/v1/drive/files/file_video_1/thumbnail`;
+      assert.equal((await fetch(url)).status, 401);
+      assert.equal((await fetch(url, { headers: { authorization: `Bearer ${limitedToken}` } })).status, 403);
+      const response = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'image/png');
+      assert.equal(response.headers.get('cache-control'), 'private, no-store');
+      assert.ok(Buffer.from(await response.arrayBuffer()).equals(image));
+      drive.thumbnail = async () => null;
+      assert.equal((await fetch(url, { headers: { authorization: `Bearer ${token}` } })).status, 404);
+      drive.thumbnail = async () => ({ mimeType: 'text/html', body: image });
+      assert.equal((await fetch(url, { headers: { authorization: `Bearer ${token}` } })).status, 503);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('stops thumbnail work when the client disconnects', async () => {
+    const drive = fakeDrive();
+    let aborted = false;
+    drive.thumbnail = async (_id, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+      }, { once: true });
+    });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const controller = new AbortController();
+      const pending = fetch(`${bridge.base}/v1/drive/files/file_video_1/thumbnail`, {
+        headers: { authorization: `Bearer ${token}` }, signal: controller.signal,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.abort();
+      await assert.rejects(pending, { name: 'AbortError' });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(aborted, true);
+    } finally {
+      await bridge.close();
+    }
+  });
+});
+
+describe('Drive Workspace PDF export', () => {
+  const pdf = Buffer.from('%PDF-1.7\nsynthetic\n%%EOF\n');
+  function exportDrive() {
+    const state = { gets: 0, exports: 0, beforeVersion: '12', afterVersion: '12',
+      beforePermission: true, afterPermission: true, body: pdf, error: null, mimeType: DOC.mimeType };
+    return {
+      state,
+      async get(id) {
+        if (id !== 'doc_workspace_1') return null;
+        state.gets += 1;
+        const first = state.gets % 2 === 1;
+        return { item: { ...DOC, mimeType: state.mimeType, version: first ? state.beforeVersion : state.afterVersion,
+          downloadable: first ? state.beforePermission : state.afterPermission } };
+      },
+      async exportPdf() {
+        state.exports += 1;
+        if (state.error) throw state.error;
+        return { mimeType: 'application/pdf', body: state.body };
+      },
+    };
+  }
+
+  it('exports only authorized, stable Docs/Sheets/Slides PDFs and rejects Range', async () => {
+    const drive = exportDrive();
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const url = `${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf`;
+      const headers = { authorization: `Bearer ${token}` };
+      assert.equal((await fetch(url)).status, 401);
+      assert.equal((await fetch(url, { headers: { ...headers, range: 'bytes=0-1' } })).status, 400);
+      assert.equal((await fetch(`${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=text%2Fplain`, { headers })).status, 400);
+      assert.equal(drive.state.exports, 0);
+      const response = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': '12' } });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'application/pdf');
+      assert.equal(response.headers.get('x-laa-drive-version'), '12');
+      assert.equal(response.headers.get('cache-control'), 'private, no-store');
+      assert.ok(Buffer.from(await response.arrayBuffer()).equals(pdf));
+      assert.equal(drive.state.gets, 2);
+      assert.equal(drive.state.exports, 1);
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('accepts Sheets and Slides while rejecting other Workspace types', async () => {
+    for (const [mimeType, status] of [
+      ['application/vnd.google-apps.spreadsheet', 200],
+      ['application/vnd.google-apps.presentation', 200],
+      ['application/vnd.google-apps.form', 409],
+    ]) {
+      const drive = exportDrive();
+      drive.state.mimeType = mimeType;
+      const bridge = await startBridge({ drive });
+      try {
+        const token = await pairDevice(bridge);
+        const response = await fetch(`${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf`,
+          { headers: { authorization: `Bearer ${token}` } });
+        assert.equal(response.status, status);
+        await response.arrayBuffer();
+        assert.equal(drive.state.exports, status === 200 ? 1 : 0);
+      } finally {
+        await bridge.close();
+      }
+    }
+  });
+
+  it('does not return partial output after a version or permission change', async () => {
+    for (const [field, value, status, code] of [
+      ['afterVersion', '13', 409, 'version_changed'],
+      ['afterVersion', null, 409, 'version_unavailable'],
+      ['afterPermission', false, 403, 'download_forbidden'],
+    ]) {
+      const drive = exportDrive();
+      drive.state[field] = value;
+      const bridge = await startBridge({ drive });
+      try {
+        const token = await pairDevice(bridge);
+        const response = await bridge.request('/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf', { token });
+        assert.equal(response.status, status);
+        assert.equal(response.body.error.code, code);
+        assert.equal(drive.state.exports, 1);
+      } finally {
+        await bridge.close();
+      }
+    }
+  });
+
+  it('fails closed for unknown permissions, stale versions, invalid PDFs and oversized exports', async () => {
+    for (const [setup, headers, status, code, expectedExports] of [
+      [{ beforePermission: null }, {}, 409, 'download_permission_unknown', 0],
+      [{ beforePermission: false }, {}, 403, 'download_forbidden', 0],
+      [{ beforeVersion: null }, {}, 409, 'version_unavailable', 0],
+      [{}, { 'x-laa-drive-version': '11' }, 409, 'version_changed', 0],
+      [{ body: Buffer.from('<html>') }, {}, 503, 'export_unavailable', 1],
+      [{ error: new DriveExportTooLargeError() }, {}, 409, 'export_too_large', 1],
+    ]) {
+      const drive = exportDrive();
+      Object.assign(drive.state, setup);
+      const bridge = await startBridge({ drive });
+      try {
+        const token = await pairDevice(bridge);
+        const response = await bridge.request('/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf', { token, headers });
+        assert.equal(response.status, status);
+        assert.equal(response.body.error.code, code);
+        assert.equal(drive.state.exports, expectedExports);
+      } finally {
+        await bridge.close();
+      }
+    }
+  });
+
+  it('aborts an export if its client disconnects', async () => {
+    const drive = exportDrive();
+    let aborted = false;
+    drive.exportPdf = async (_id, { signal }) => new Promise((_resolve, reject) => {
+      signal.addEventListener('abort', () => {
+        aborted = true;
+        reject(Object.assign(new Error('cancelled'), { name: 'AbortError' }));
+      }, { once: true });
+    });
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const controller = new AbortController();
+      const pending = fetch(`${bridge.base}/v1/drive/files/doc_workspace_1/export?mimeType=application%2Fpdf`, {
+        headers: { authorization: `Bearer ${token}` }, signal: controller.signal,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      controller.abort();
+      await assert.rejects(pending, { name: 'AbortError' });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal(aborted, true);
+    } finally {
+      await bridge.close();
+    }
+  });
+});
+
 describe('drive configuration and failures', () => {
   it('reports an unconfigured Drive as 503 drive_not_configured', async () => {
     const bridge = await startBridge({ drive: null });
@@ -354,6 +636,62 @@ describe('drive configuration and failures', () => {
     assert.equal(response.status, 503);
     assert.equal(response.body.error.code, 'drive_not_configured');
     await bridge.close();
+  });
+});
+
+describe('drive range version pinning', () => {
+  it('exposes a decimal version and rejects changed, unavailable or malformed pins before media access', async () => {
+    const drive = fakeDrive();
+    let version = '9007199254740993'; // Larger than JS's exactly representable integer range.
+    const get = drive.get;
+    drive.get = async (id) => {
+      const found = await get(id);
+      return found ? { ...found, item: { ...found.item, version } } : null;
+    };
+    const bridge = await startBridge({ drive });
+    try {
+      const token = await pairDevice(bridge);
+      const url = `${bridge.base}/v1/drive/files/file_video_1/content`;
+      const headers = { authorization: `Bearer ${token}`, range: 'bytes=0-9' };
+      const first = await fetch(url, { headers });
+      assert.equal(first.status, 206);
+      assert.equal(first.headers.get('x-laa-drive-version'), version);
+      assert.equal((await first.arrayBuffer()).byteLength, 10);
+
+      const pinned = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': version } });
+      assert.equal(pinned.status, 206);
+      assert.equal(pinned.headers.get('x-laa-drive-version'), version);
+      await pinned.arrayBuffer();
+      const head = await fetch(url, { method: 'HEAD', headers: { ...headers, 'x-laa-drive-version': version } });
+      assert.equal(head.status, 206);
+      assert.equal(head.headers.get('x-laa-drive-version'), version);
+
+      const opened = drive.state.opened;
+      version = '9007199254740994';
+      const changed = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': '9007199254740993' } });
+      assert.equal(changed.status, 409);
+      assert.equal((await changed.json()).error.code, 'version_changed');
+      assert.equal(drive.state.opened, opened);
+
+      version = null;
+      const unavailable = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': '9007199254740993' } });
+      assert.equal(unavailable.status, 409);
+      assert.equal((await unavailable.json()).error.code, 'version_unavailable');
+      assert.equal(drive.state.opened, opened);
+
+      const invalid = await fetch(url, { headers: { ...headers, 'x-laa-drive-version': 'not-a-version' } });
+      assert.equal(invalid.status, 400);
+      assert.equal((await invalid.json()).error.code, 'version_invalid');
+      assert.equal(drive.state.opened, opened);
+
+      // Older clients that do not pin a version retain the existing behavior.
+      const legacy = await fetch(url, { headers });
+      assert.equal(legacy.status, 206);
+      assert.equal(legacy.headers.get('x-laa-drive-version'), null);
+      await legacy.arrayBuffer();
+    } finally {
+      await bridge.close();
+    }
   });
 });
 

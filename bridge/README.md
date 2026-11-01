@@ -169,15 +169,14 @@ LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
 
 ## Drive（一覧・metadata・Range配信）
 
-`/v1/drive/files` は Google Drive API v3 を直接呼び、`files.list`・`files.get`・`files.get?alt=media` へクライアントの `Range` をそのまま中継する（`src/drive/google-api.mjs`、外部依存なし）。Driveデスクトップの同期フォルダ（`~/Library/CloudStorage`）は**読まない**。macOSのTCCがnodeプロセスへDrive管理ファイル全体の読取りを求め、許可するとnodeで動く全スクリプトに権限が広がること、オンライン専用ファイルは丸ごと取得しないと読めずRange再生に合わないことが理由（launchd配下では実際に `readdir` が許可待ちで停止した）。
+`/v1/drive/files` は `~/Library/CloudStorage/GoogleDrive-floralia@laa-inc.com/` の「マイドライブ」と「共有ドライブ」を読み取る（`src/drive/mount.mjs`）。Driveへの書込み・Google Cloud OAuthは使わない。API認証と `media:read` は引き続き必要。
 
-認可はまだ無い。`LAA_DRIVE_CLIENT_ID`・`LAA_DRIVE_CLIENT_SECRET`・`LAA_DRIVE_REFRESH_TOKEN` の3つが揃った時だけ有効になり、無ければ全端点が `503 drive_not_configured` を返す（上流へ何も試さない）。必要な認可は OAuthクライアント（Desktop）と `https://www.googleapis.com/auth/drive.readonly` のrefresh token。
+- 指定フォルダの一覧・再帰的な名前検索・ページングを提供する。1回の走査は最大1万エントリで、超えた場合や権限不足で子フォルダを読めない場合は `incompleteSearch` を返す。ページは直前の項目を基準に再走査するため、前方の追加・削除で既存項目は飛ばないが、固定スナップショットではない。共有ドライブは「共有アイテム」とは異なる。最近・スターの情報はマウントから得られないため表示しない。
+- IDはルート内の相対パスを符号化し、Bridge再起動後も同じ場所を指す。移動・改名後は別IDになる。IDから名前を復元できるため、Bridgeのログには記録しない。シンボリックリンクと許可ルート外を検査し、open後にinode・版を再照合するが、検査中の親ディレクトリ差替えに対する原子的な保証はない。
+- 画像・PDF・動画などのローカルファイルは必要範囲だけ開き、206/416・`Content-Range` を返す。版はファイル属性から作成し、各範囲の前に変更を検出する。File Providerがオンライン専用ファイルを実際にどう取得するかは未実測。
+- `.gdoc`・`.gsheet`・`.gslides` 等は安全なGoogleのWebリンクとして開く。PDF変換は行わない。最大2 MiBの対応画像は一覧用にも返す。
 
-- 一覧は `corpora=allDrives`・`supportsAllDrives=true`・`trashed = false`。`?query=` は `name contains`、`?folderId=` は `'<id>' in parents`、どちらも無ければルート一覧。cursorは上流の `nextPageToken` を不透明化して24時間有効（期限切れは410）。
-- `content` は `files.get?alt=media` へRangeを中継し、Driveの 206・`Content-Range`・`Content-Length`・MIME・ETag をそのまま返す。416は `Content-Range: bytes */size` 付きで返し、クライアント切断時は上流のfetchをabortする。HEADはmetadataから計算し、media endpointを開かない。
-- Workspace文書（Docs/Sheets/Slides）は `409 export_required` と書き出し候補形式を返す。Bridgeは書き出しを行わない。
-
-検証状況（2026-10-29）: 認可が無いため実ファイルでの再生・seek・中断は**未実施**。ローカルのfake Drive API（Range→206/416、pageToken、401/404/500）とHTTP契約テスト（206/416/HEAD/中断/409/404/503）で検証した。実機確認は認可後に `scripts/verify-drive.mjs` で行う。
+2026-11-01の実測では、稼働中の `com.laa.bridge` と同じプロセスから両ルートへの `opendir` が `EPERM` となり、macOSの `FileProviderDomain` アクセスが拒否された。親がBridge専用の実行ファイルにフルディスクアクセスを付け、launchdのplistの実行パスを差し替える。許可画面は操作しておらず、設定・Bridge再起動後の実アクセスは未確認。コードはNodeの固定パスに依存しない。
 
 ## タスク読取（`/v1/tasks`）
 
@@ -353,7 +352,7 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 - ログは requestId・method・path・status・deviceId・エラーコードのみ。トークン・コード・body は残さない。
 - 実装していない: レート制限の永続化（メモリ内・enroll のみ）、監査ファイル、全体 `/v1/events` stream、GUI 排他、Brain の既存内容の書換え（`brain:write`）。Brainは新規作成のみで、削除・rename・移動・フォルダ作成を持たない。git の未解決競合は `index.lock`/rebase/merge/cherry-pick のマーカーで判定し、マーカーの無い未解決indexまでは見ない。
 - `/v1/tasks` は Linear の全非アーカイブ課題を 1 リクエスト最大 500 件まで読み、フィルタとページングは Bridge 側で行う。500 件を超えると `sources[].truncated = true`。
-- Drive: 認可が無いため実Driveへは未接続（503 `drive_not_configured`）。`~/Library/CloudStorage` は読まない。書き出し・共有設定・削除は扱わない（読取専用）。認可情報は環境変数のみで受け取り、ログ・URL・応答へ出さない。
+- Drive: マウントを読取専用で扱い、ルート外とシンボリックリンクを拒否する。macOS権限と実データでの再生は未確認。書き出し・共有設定・削除は扱わない。
 - workspace の一覧は root 配下を毎回 walk する（深さ3、4000 entry、status 5秒キャッシュ）。巨大な root を許可すると遅くなるので、`LAA_BRIDGE_WORKSPACE_ROOTS` は用途の狭いディレクトリにする。
 
 ## 未対応（後続タスク）

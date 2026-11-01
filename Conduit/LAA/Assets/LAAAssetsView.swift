@@ -1,40 +1,30 @@
 #if LAA_BUILD
 import SwiftUI
 
-private struct AssetsLoadKey: Equatable {
-    let revision: Int
-    let query: String
-    let folderID: String?
+private struct LAADriveSelection: Hashable, Identifiable {
+    let entry: LAADriveListingItem
+    let images: [LAADriveItem]
+    var id: String { entry.id }
 }
 
 struct LAAAssetsView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     let onRequestSettings: () -> Void
     @State private var studioSelected = false
     private let initialStudioSection: Int
-    @State private var query = ""
-    @State private var folders: [LAADriveItem] = []
-    @State private var items: [LAADriveItem] = []
-    @State private var cursor: String?
-    @State private var seenCursors: Set<String> = []
-    @State private var generation = 0
-    @State private var filter: LAADriveFilter = .all
-    @State private var error: String?
-    @State private var loading = false
     @State private var showPairing = false
-    @FocusState private var searchFocused: Bool
+    @State private var selected: LAADriveSelection?
+    @State private var thumbnailCache = LAADriveThumbnailCache()
+    @State private var folderTask: Task<Void, Never>?
+    @State private var folderPlan: LAADriveOfflineFolderPlan?
+    @State private var confirmFolder = false
+    @State private var folderMessage: String?
 
     init(onRequestSettings: @escaping () -> Void, initialStudioSelected: Bool = false, initialStudioSection: Int = 0) {
         self.onRequestSettings = onRequestSettings
         self.initialStudioSection = initialStudioSection
         _studioSelected = State(initialValue: initialStudioSelected)
-    }
-
-    private var key: AssetsLoadKey { .init(revision: bridge.revision, query: query, folderID: folders.last?.id) }
-    private var columns: [GridItem] {
-        dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
-            [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
     }
 
     var body: some View {
@@ -47,16 +37,30 @@ struct LAAAssetsView: View {
                     if studioSelected {
                         LAAStudioHomeView(initialSection: initialStudioSection)
                     } else if LAADriveData.available(bridge) {
-                        Text(verbatim: LAACopy.Assets.unavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        searchField
-                        if !folders.isEmpty {
-                            Button { folders.removeLast(); query = "" } label: {
-                                Label { Text(verbatim: LAACopy.Brain.back) } icon: { Image(systemName: "chevron.left") }
-                            }.accessibilityIdentifier("laa.assets.back")
+                        NavigationLink("Saved offline") { LAADriveOfflineScreen() }
+                            .accessibilityIdentifier("laa.drive.offline.list")
+                        if folderTask != nil {
+                            HStack {
+                                ProgressView(folderMessage ?? AppLocalization.string("Preparing…"))
+                                Button("Cancel") { folderTask?.cancel() }
+                            }
+                        } else if let folderMessage {
+                            Text(verbatim: folderMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        contents
+                        LAADriveBrowserView(revision: bridge.revision, load: { query in
+                            try await LAADriveData.listingPage(query, bridge: bridge)
+                        }, loadThumbnail: { entry in
+                            try await thumbnail(entry)
+                        }, resolveShortcut: { entry, visited in
+                            try await LAADriveShortcutResolver.resolve(entry, visitedFolderIDs: visited) { id in
+                                try await LAADriveData.listingMetadata(id, bridge: bridge)
+                            }
+                        }, errorMessage: LAADrivePresentation.message, open: { entry, images in
+                            selected = .init(entry: entry, images: images)
+                        }, saveFolder: { entry in
+                            planFolder(entry)
+                        })
                     } else {
-                        Text(verbatim: LAACopy.Assets.unavailable).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         connection
                     }
                 }
@@ -65,19 +69,98 @@ struct LAAAssetsView: View {
                 .frame(maxWidth: 720, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .refreshable { if !studioSelected { await reload(key) } }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                LAASettingsButton(action: onRequestSettings)
-            }
+            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .task(id: key) { if !studioSelected { await reload(key) } }
+        .navigationDestination(item: $selected) { selected in
+            LAADriveDetailView(item: selected.entry.item, webViewURL: selected.entry.safeWebViewURL, images: selected.images)
+        }
+        .onChange(of: bridge.revision) { _, _ in
+            selected = nil
+            folderTask?.cancel()
+            folderPlan = nil
+            confirmFolder = false
+            Task { await thumbnailCache.removeAll() }
+        }
+        .onDisappear { folderTask?.cancel() }
+        .confirmationDialog("Save this folder offline?", isPresented: $confirmFolder, titleVisibility: .visible) {
+            Button("Save files") { if let folderPlan { saveFolder(folderPlan) } }
+            Button("Cancel", role: .cancel) { folderPlan = nil }
+        } message: {
+            if let folderPlan {
+                let minimumSpace = ByteCountFormatter.string(fromByteCount: folderPlan.knownBytes, countStyle: .file)
+                Text("Files: \(folderPlan.files.count)") +
+                Text(verbatim: "\n") + Text("Minimum space: \(minimumSpace)") +
+                Text(verbatim: "\n") + Text("Items or pages not included: \(folderPlan.issues.count)") +
+                Text(verbatim: "\n") + Text("Existing saved copies are kept if saving fails.")
+            }
+        }
+    }
+
+    private func planFolder(_ entry: LAADriveListingItem) {
+        guard folderTask == nil else { return }
+        folderMessage = AppLocalization.string("Preparing…")
+        let revision = bridge.revision
+        folderTask = Task {
+            do {
+                let plan = try await LAADriveOfflineFolder.plan(rootID: entry.id) { id, cursor in
+                    try await LAADriveData.listingPage(.init(section: .my, folderID: id, cursor: cursor), bridge: bridge)
+                }
+                try Task.checkCancellation()
+                guard bridge.revision == revision else { throw CancellationError() }
+                folderPlan = plan
+                folderMessage = nil
+                confirmFolder = true
+            } catch is CancellationError { folderMessage = AppLocalization.string("Cancelled") }
+            catch { folderMessage = LAADriveOfflineOperations.message(error) }
+            folderTask = nil
+        }
+    }
+
+    private func saveFolder(_ plan: LAADriveOfflineFolderPlan) {
+        guard folderTask == nil else { return }
+        folderPlan = nil
+        folderMessage = "\(AppLocalization.string("Saving offline")) 0 / \(plan.files.count)"
+        folderTask = Task {
+            let result = await LAADriveOfflineFolder.save(plan) { entry in
+                try await LAADriveOfflineOperations.shared.save(entry.item, bridge: bridge)
+            } progress: { completed, total in
+                folderMessage = "\(AppLocalization.string("Saving offline")) \(completed) / \(total)"
+            }
+            let outcome = result.cancelled ? AppLocalization.string("Cancelled") : AppLocalization.string("Finished")
+            let saved = AppLocalization.string("Saved")
+            let failed = AppLocalization.string("Failed")
+            let omitted = AppLocalization.string("Items or pages not included: \(plan.issues.count)")
+            folderMessage = "\(outcome) · \(saved) \(result.savedIDs.count) · \(failed) \(result.failedIDs.count) · \(omitted)"
+            folderTask = nil
+        }
+    }
+
+    private func thumbnail(_ entry: LAADriveListingItem) async throws -> Data? {
+        let pairingID = bridge.deviceID
+        let revision = bridge.revision
+        let key = pairingID.flatMap { LAADriveThumbnailKey(pairingID: $0, fileID: entry.id, version: entry.thumbnailVersion) }
+        if let cached = await thumbnailCache.value(for: key) {
+            guard bridge.revision == revision, bridge.deviceID == pairingID else { throw CancellationError() }
+            return cached
+        }
+        do {
+            let data = try await bridge.driveThumbnail(id: entry.id)
+            guard bridge.revision == revision, bridge.deviceID == pairingID else { throw CancellationError() }
+            await thumbnailCache.insert(data, for: key)
+            return data
+        } catch {
+            if let error = error as? LAABridgeHTTPError, [403, 404].contains(error.status), let pairingID {
+                await thumbnailCache.invalidate(pairingID: pairingID, fileID: entry.id)
+            }
+            throw error
+        }
     }
 
     private var heading: some View {
@@ -113,22 +196,6 @@ struct LAAAssetsView: View {
             .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    private var searchField: some View {
-        HStack(spacing: LAASpacing.x3) {
-            Image(systemName: "magnifyingglass").foregroundStyle(LAAColor.secondaryText)
-            TextField(text: $query) { Text(verbatim: LAACopy.Assets.search) }
-                .focused($searchFocused).submitLabel(.search).onSubmit { searchFocused = false }
-                .accessibilityIdentifier("laa.assets.search")
-            if !query.isEmpty {
-                Button { query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                    .accessibilityLabel(Text(verbatim: LAACopy.Brain.clearSearch))
-            }
-        }
-        .laaTextStyle(.body).padding(.horizontal, LAASpacing.x4)
-        .frame(minHeight: LAASpacing.minimumTouchTarget)
-        .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-    }
-
     private var connection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             Text(verbatim: bridge.status == .keychainError ? LAABridgeError.keychain.japaneseText :
@@ -138,127 +205,6 @@ struct LAAAssetsView: View {
                     .buttonStyle(.borderedProminent).accessibilityIdentifier("laa.assets.pair")
             }
         }.laaTextStyle(.body).foregroundStyle(LAAColor.text)
-    }
-
-    private var contents: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            HStack {
-                Text(verbatim: (folders.last?.name ?? LAACopy.Assets.files).uppercased())
-                    .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
-                Menu {
-                    ForEach(LAADriveFilter.allCases, id: \.self) { option in
-                        Button(option.title) { filter = option }
-                            .accessibilityAddTraits(option == filter ? .isSelected : [])
-                    }
-                } label: {
-                    Text(verbatim: "\(LAACopy.Assets.filter): \(filter.title)").laaTextStyle(.secondary)
-                }
-                    .accessibilityIdentifier("laa.assets.filter")
-            }
-            if let error {
-                Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-                Button(LAACopy.Brain.retry) { Task { await reload(key) } }
-            }
-            if loading && items.isEmpty {
-                ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading))
-            } else if items.filter(filter.contains).isEmpty && error == nil {
-                Text(verbatim: LAACopy.Assets.empty).laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
-            } else if !items.filter(filter.contains).isEmpty {
-                LazyVGrid(columns: columns, spacing: LAASpacing.x2) {
-                    ForEach(items.filter(filter.contains)) { item in card(item) }
-                }
-            }
-            if filter != .all { Text(verbatim: LAACopy.Assets.loadedOnly).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-            if cursor != nil {
-                Button(LAACopy.Assets.loadMore) { Task { await more(key) } }
-                    .disabled(loading).accessibilityIdentifier("laa.assets.more")
-            }
-        }.padding(.top, LAASpacing.x3)
-    }
-
-    private func card(_ item: LAADriveItem) -> some View {
-        Group {
-            if item.isFolder {
-                Button { folders.append(item); query = "" } label: { cardContent(item) }
-            } else {
-                NavigationLink { LAADriveDetailView(item: item) } label: { cardContent(item) }
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("laa.assets.item.\(item.id)")
-    }
-
-    private func cardContent(_ item: LAADriveItem) -> some View {
-            VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: LAARadius.card).fill(LAAColor.subtleSurface)
-                    if let url = LAADriveThumbnail.safeURL(item.thumbnailLink) {
-                        AsyncImage(url: url) { image in image.resizable().scaledToFit() } placeholder: {
-                            Image(systemName: item.symbol).foregroundStyle(LAAColor.link)
-                        }.clipShape(RoundedRectangle(cornerRadius: LAARadius.card))
-                    } else {
-                        Image(systemName: item.symbol).laaTextStyle(.body).foregroundStyle(LAAColor.link)
-                    }
-                }.aspectRatio(1, contentMode: .fit)
-                Text(verbatim: item.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                Text(verbatim: item.kindTitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            }
-            .padding(LAASpacing.x3).frame(maxWidth: .infinity, alignment: .leading)
-            .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-    }
-
-    @MainActor private func reload(_ requested: AssetsLoadKey) async {
-        generation += 1
-        let requestGeneration = generation
-        items = []; cursor = nil; seenCursors = []; error = nil
-        guard LAADriveData.available(bridge) else { loading = false; return }
-        guard let path = LAADriveData.path(query: requested.query, folderID: requested.folderID, cursor: nil) else {
-            error = LAACopy.Assets.searchTooLong; loading = false; return
-        }
-        loading = true
-        do {
-            if !requested.query.isEmpty { try await Task.sleep(for: .milliseconds(350)) }
-            let page = try await LAADriveData.page(path: path, bridge: bridge)
-            try Task.checkCancellation()
-            guard key == requested, generation == requestGeneration else { return }
-            items = page.items; cursor = page.nextCursor; loading = false
-        } catch is CancellationError {
-            if key == requested, generation == requestGeneration { loading = false }
-        }
-        catch { guard key == requested, generation == requestGeneration else { return }; self.error = message(error); loading = false }
-    }
-
-    @MainActor private func more(_ requested: AssetsLoadKey) async {
-        guard !loading, let previous = cursor,
-              let path = LAADriveData.path(query: requested.query, folderID: requested.folderID, cursor: previous) else { return }
-        let requestGeneration = generation
-        loading = true; error = nil
-        do {
-            let page = try await LAADriveData.page(path: path, bridge: bridge)
-            try Task.checkCancellation()
-            guard key == requested, generation == requestGeneration, cursor == previous else { return }
-            var existing = Set(items.map(\.id))
-            items.append(contentsOf: page.items.filter { existing.insert($0.id).inserted })
-            seenCursors.insert(previous)
-            if let next = page.nextCursor, seenCursors.contains(next) {
-                cursor = nil; error = LAABridgeError.invalidResponse.japaneseText
-            } else { cursor = page.nextCursor }
-            loading = false
-        } catch is CancellationError {
-            if key == requested, generation == requestGeneration { loading = false }
-        }
-        catch { guard key == requested, generation == requestGeneration else { return }; self.error = message(error); loading = false }
-    }
-
-    private func message(_ error: Error) -> String {
-        if let error = error as? LAABridgeHTTPError {
-            if error.code == "drive_not_configured" { return LAACopy.Assets.configureDrive }
-            if error.code == "insufficient_scope" { return LAACopy.Assets.scope }
-            return error.legacyError.japaneseText
-        }
-        return (error as? LAABridgeError)?.japaneseText ?? LAABridgeError.invalidResponse.japaneseText
     }
 }
 #endif

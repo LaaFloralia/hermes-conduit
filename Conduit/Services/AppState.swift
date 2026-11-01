@@ -2450,7 +2450,16 @@ final class AppState: ObservableObject {
     /// The active profile's own choice for the big button beside a chat's
     /// composer (`ChatVoiceButtonAction` raw value); nil follows the app's.
     @Published private(set) var chatVoiceButtonOverride: String?
-    @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+    private static func currentSpeechAvailability() -> AppleSpeechRecognitionAvailability {
+        #if DEBUG
+        // Drive UI fixtures do not use speech; simulator speech services can block.
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_DRIVE_NO_SPEECH") {
+            return .unsupported(localeIdentifier: "en-US")
+        }
+        #endif
+        return AppleOnDeviceSpeechTranscriber.currentAvailability()
+    }
+    @Published private(set) var appleSpeechAvailability = AppState.currentSpeechAvailability()
 
     private var voiceAssistantObserverID: UUID?
 
@@ -13994,7 +14003,7 @@ final class AppState: ObservableObject {
         voiceCallSavesBlocked = false
         voiceCallSaveNowResult = nil
         voiceCallSaveNowResultState = nil
-        appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        appleSpeechAvailability = AppState.currentSpeechAvailability()
         retireOutstandingPreferredReturnSurfaceRequests()
         showLogin = true
         sessions = []
@@ -35204,7 +35213,7 @@ final class AppState: ObservableObject {
         // installed (below). A switch the user turned off stays off.
         let isFirstVoiceSetup = defaults.object(forKey: enabledKey) == nil
         isVoiceEnabled = persistedVoiceEnabled(profile: profile)
-        appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        appleSpeechAvailability = AppState.currentSpeechAvailability()
         let service = HermesVoiceConfigurationService(
             requester: voiceCapabilityRequesterForTesting ?? bridge,
             profile: profile,
@@ -35285,7 +35294,7 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func setVoiceTranscriptionMode(_ mode: VoiceTranscriptionMode) async -> Bool {
-        appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        appleSpeechAvailability = AppState.currentSpeechAvailability()
         if mode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition {
             switch appleSpeechAvailability {
             case .permissionDenied:
@@ -35300,7 +35309,7 @@ final class AppState: ObservableObject {
         }
         if mode == .appleOnDevice {
             let permissionResult = await voiceConversationController.requestOnDeviceTranscriptionPermissions()
-            appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+            appleSpeechAvailability = AppState.currentSpeechAvailability()
             guard permissionResult.passed else {
                 errorMessage = permissionResult.message
                 return false
@@ -36741,7 +36750,7 @@ final class AppState: ObservableObject {
         }
         voiceConversationController.setGateway(gateway)
         let result = await voiceConversationController.runTranscriptionTest()
-        appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        appleSpeechAvailability = AppState.currentSpeechAvailability()
         refreshVoiceControllerGateway()
         return result
     }

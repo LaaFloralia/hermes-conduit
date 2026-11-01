@@ -40,10 +40,12 @@ final class LAABridgeSession: ObservableObject {
     var address: String { credentials?.baseURL.absoluteString ?? LAABridgeEndpoint.defaultAddress }
     var deviceID: String? { credentials?.deviceID }
 
-    func driveRange(path: String, offset: Int64, length: Int, timeout: TimeInterval? = nil) async throws -> LAADriveRangeResponse {
+    func driveRange(path: String, offset: Int64, length: Int, expectedVersion: String? = nil,
+                    timeout: TimeInterval? = nil) async throws -> LAADriveRangeResponse {
         guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
         do {
-            let result = try await client.driveRange(path: path, credentials: current, offset: offset, length: length, timeout: timeout)
+            let result = try await client.driveRange(path: path, credentials: current, offset: offset, length: length,
+                                                     expectedVersion: expectedVersion, timeout: timeout)
             guard current == credentials, status == .paired else { throw CancellationError() }
             return result
         } catch let error as LAABridgeHTTPError {
@@ -53,6 +55,36 @@ final class LAABridgeSession: ObservableObject {
             }
             throw error
         }
+    }
+
+    func driveThumbnail(id: String) async throws -> Data {
+        guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
+        do {
+            let result = try await client.driveThumbnail(id: id, credentials: current)
+            guard current == credentials, status == .paired else { throw CancellationError() }
+            return result
+        } catch let error as LAABridgeHTTPError {
+            recordBinaryError(error, current: current)
+            throw error
+        }
+    }
+
+    func driveExportPDF(id: String, expectedVersion: String? = nil) async throws -> LAADrivePDFExport {
+        guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
+        do {
+            let result = try await client.driveExportPDF(id: id, credentials: current, expectedVersion: expectedVersion)
+            guard current == credentials, status == .paired else { throw CancellationError() }
+            return result
+        } catch let error as LAABridgeHTTPError {
+            recordBinaryError(error, current: current)
+            throw error
+        }
+    }
+
+    private func recordBinaryError(_ error: LAABridgeHTTPError, current: LAABridgeCredentials) {
+        guard current == credentials, error.status == 401 else { return }
+        status = error.code == "token_revoked" ? .revoked : .unauthorized
+        revision += 1
     }
 
     func pair(address: String, code: String, name: String) async throws {

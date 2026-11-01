@@ -15,13 +15,15 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
     private let item: LAADriveItem
     private let bridge: LAABridgeSession
     private let studioPath: String?
+    private let localURL: URL?
+    private var resolvedVersion: String?
     private var requests: [ObjectIdentifier: Task<Void, Never>] = [:]
     private var observer: Any?
-    private var endObservation: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
 
-    init(item: LAADriveItem, bridge: LAABridgeSession, studioPath: String? = nil) {
-        self.item = item; self.bridge = bridge; self.studioPath = studioPath
+    init(item: LAADriveItem, bridge: LAABridgeSession, studioPath: String? = nil, localURL: URL? = nil) {
+        self.item = item; self.bridge = bridge; self.studioPath = studioPath; self.localURL = localURL
+        self.resolvedVersion = item.version.flatMap { LAADrivePaths.validVersion($0) ? $0 : nil }
         super.init()
         open()
     }
@@ -29,22 +31,22 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
     func open() {
         guard player.currentItem == nil else { return }
         error = nil
-        guard (studioPath.map(LAAStudioMedia.bridgePathIsValid) ?? ((try? LAADrivePaths.content(item.id)) != nil)),
-              let url = URL(string: "laa-drive://asset/\(item.id)") else {
-            error = LAABridgeError.invalidResponse.japaneseText
-            return
+        let url: URL
+        if let localURL, localURL.isFileURL {
+            url = localURL
+        } else {
+            guard localURL == nil,
+                  (studioPath.map(LAAStudioMedia.bridgePathIsValid) ?? ((try? LAADrivePaths.content(item.id)) != nil)),
+                  let remoteURL = URL(string: "laa-drive://asset/\(item.id)") else {
+                error = LAABridgeError.invalidResponse.japaneseText
+                return
+            }
+            url = remoteURL
         }
         let asset = AVURLAsset(url: url)
-        asset.resourceLoader.setDelegate(self, queue: .main)
+        if localURL == nil { asset.resourceLoader.setDelegate(self, queue: .main) }
         let playerItem = AVPlayerItem(asset: asset)
         playerItem.preferredForwardBufferDuration = 15
-        endObservation = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime,
-                                                                 object: playerItem, queue: .main) { [weak self] _ in
-            Task { @MainActor in
-                self?.playing = false
-                self?.player.seek(to: .zero)
-            }
-        }
         statusObservation = playerItem.observe(\.status, options: [.new]) { [weak self] value, _ in
             guard value.status == .failed else { return }
             Task { @MainActor in
@@ -79,7 +81,6 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
         player.pause(); playing = false
         requests.values.forEach { $0.cancel() }; requests.removeAll()
         if let observer { player.removeTimeObserver(observer); self.observer = nil }
-        if let endObservation { NotificationCenter.default.removeObserver(endObservation); self.endObservation = nil }
         player.replaceCurrentItem(with: nil)
         statusObservation = nil
         duration = 0; position = 0
@@ -129,7 +130,12 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
             if let studioPath {
                 result = try await bridge.driveRange(path: studioPath, offset: offset, length: remaining)
             } else {
-                result = try await LAADriveContent.range(item, offset: offset, length: remaining, bridge: bridge)
+                result = try await LAADriveContent.range(item, offset: offset, length: remaining, bridge: bridge,
+                                                         expectedVersion: resolvedVersion)
+                if let version = result.version {
+                    guard resolvedVersion == nil || resolvedVersion == version else { throw LAADriveRangeError.versionChanged }
+                    resolvedVersion = version
+                } else if resolvedVersion != nil { throw LAADriveRangeError.versionChanged }
             }
             guard expectedTotal == nil || expectedTotal == result.total else { throw LAADriveRangeError.invalidRange }
             expectedTotal = result.total
@@ -146,57 +152,55 @@ final class LAADrivePlayer: NSObject, ObservableObject, @preconcurrency AVAssetR
 }
 
 struct LAADrivePlayerView: View {
-    @StateObject private var model: LAADrivePlayer
-    @State private var dragging = false
-    @State private var dragPosition = 0.0
+    @StateObject private var owner: LAADrivePlayerOwner
     let item: LAADriveItem
+    let onStateChange: (LAADrivePlaybackState) -> Void
 
-    init(item: LAADriveItem, bridge: LAABridgeSession, studioPath: String? = nil) {
+    /// Studio paths are validated content-addressed Bridge paths. Drive does
+    /// not autoplay by default; callers can opt in and observe player state.
+    init(item: LAADriveItem, bridge: LAABridgeSession, studioPath: String? = nil,
+         autoPlay: Bool = false, onStateChange: @escaping (LAADrivePlaybackState) -> Void = { _ in }) {
         self.item = item
-        _model = StateObject(wrappedValue: LAADrivePlayer(item: item, bridge: bridge, studioPath: studioPath))
+        self.onStateChange = onStateChange
+        _owner = StateObject(wrappedValue: LAADrivePlayerOwner(item: item, bridge: bridge,
+                                                                studioPath: studioPath, autoPlay: autoPlay))
     }
     var body: some View {
-        VStack(spacing: LAASpacing.x6) {
-            if item.mimeType.hasPrefix("video/") {
-                LAADrivePlayerSurface(player: model.player).aspectRatio(16 / 9, contentMode: .fit)
-                    .background(LAAColor.subtleSurface)
-            } else {
-                Image(systemName: "waveform").font(LAAType.screenTitle).foregroundStyle(LAAColor.link)
-                    .frame(maxWidth: .infinity, minHeight: LAASpacing.section * 4)
-            }
-            if let error = model.error {
-                Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
-            }
-            HStack(spacing: LAASpacing.x4) {
-                Button { model.toggle() } label: {
-                    Label(model.playing ? LAACopy.Drive.pause : LAACopy.Drive.play,
-                          systemImage: model.playing ? "pause.fill" : "play.fill")
-                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
-                }.accessibilityIdentifier("laa.drive.play")
-                Slider(value: Binding(get: { dragging ? dragPosition : min(model.position, max(model.duration, 1)) },
-                                      set: { dragPosition = $0 }), in: 0...max(model.duration, 1),
-                       onEditingChanged: { active in
-                           dragging = active
-                           if !active { model.seek(dragPosition) }
-                       })
-                    .disabled(model.duration <= 0 || model.error != nil)
-                    .accessibilityLabel(Text(verbatim: LAACopy.Drive.seek))
-                    .accessibilityIdentifier("laa.drive.seek")
-            }
-        }
-        .padding(LAASpacing.horizontal)
-        .onAppear { model.open() }
-        .onDisappear { model.close() }
+        LAADrivePlayerContent(owner: owner, onStateChange: onStateChange)
     }
 }
 
-private struct LAADrivePlayerSurface: UIViewRepresentable {
-    let player: AVPlayer
-    func makeUIView(context: Context) -> PlayerView { let view = PlayerView(); view.layerPlayer.player = player; return view }
-    func updateUIView(_ view: PlayerView, context: Context) { view.layerPlayer.player = player }
-    final class PlayerView: UIView {
-        override class var layerClass: AnyClass { AVPlayerLayer.self }
-        var layerPlayer: AVPlayerLayer { layer as! AVPlayerLayer }
+/// Used by the offline screen with the same native controls and ownership.
+struct LAADrivePlayerContent: View {
+    @ObservedObject var owner: LAADrivePlayerOwner
+    var onStateChange: (LAADrivePlaybackState) -> Void = { _ in }
+
+    var body: some View {
+        VStack(spacing: LAASpacing.x4) {
+            LAADriveNativePlayerSurface(player: owner.source.player, delegate: owner)
+                .aspectRatio(16 / 9, contentMode: .fit)
+                .background(LAAColor.subtleSurface)
+                .accessibilityIdentifier("laa.drive.player")
+            switch owner.state {
+            case .loading:
+                ProgressView("Loading")
+            case .failed(let message):
+                Text(verbatim: message).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
+                if owner.canRetry {
+                    Button("Retry") { owner.playback.retry() }
+                        .accessibilityIdentifier("laa.drive.player.retry")
+                }
+            case .ended:
+                Button("Play again") { owner.playback.replay() }
+                    .accessibilityIdentifier("laa.drive.player.replay")
+            case .paused, .playing:
+                EmptyView()
+            }
+        }
+        .padding(LAASpacing.horizontal)
+        .onAppear { owner.appear() }
+        .onDisappear { owner.disappear() }
+        .onChange(of: owner.state, initial: true) { _, state in onStateChange(state) }
     }
 }
 #endif

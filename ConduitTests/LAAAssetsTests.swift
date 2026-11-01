@@ -39,7 +39,11 @@ final class LAAAssetsTests: XCTestCase {
         XCTAssertNil(document.owners)
         XCTAssertNil(document.thumbnailLink)
         XCTAssertEqual(document.exportFormats, ["application/pdf"])
-        XCTAssertEqual(LAADrivePresentation.reason(document), LAACopy.Drive.workspace)
+        XCTAssertEqual(LAADrivePresentation.reason(document), LAACopy.Drive.notDownloadable)
+        let allowed = """
+        {"id":"document01","name":"Doc","mimeType":"application/vnd.google-apps.document", "kind":"workspace_document", "downloadable":true, "exportFormats":["application/pdf"]}
+        """
+        XCTAssertNil(LAADrivePresentation.reason(try JSONDecoder().decode(LAADriveItem.self, from: Data(allowed.utf8))))
         let unknown = try item("unknown", mime: "application/octet-stream", kind: "file")
         XCTAssertEqual(LAADrivePresentation.reason(unknown), LAACopy.Drive.downloadUnknown)
     }

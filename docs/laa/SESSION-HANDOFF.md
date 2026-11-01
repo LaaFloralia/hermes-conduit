@@ -71,15 +71,14 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 
 - 完了: ROADMAP 01–14・24・25・28、デザインv2、W3の仕上げ（プラグイン更新表示の撤去、社員呼出しボタンの表示条件）。
 - 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（branch `laa/mac-catalyst` で実装中）、34 Studio依頼（アプリ・Bridge実装済み。BridgeはLAA Studioの契約v1ローカル受付へ中継し、依頼・進行・回答・停止・成果物プレビューまで。実機確認と契約v2の成果物確認・審美眼はこれから）。
-- Driveの閲覧・再生は実装済み。認可がないため、Bridgeは `503 drive_not_configured` を返す（BUS-318）。
-- 再生画面の再生ボタンとシークバーは素の部品のままで、デザインの手直しが要る。
+- Driveのマウント方式とネイティブ再生は `laa/drive-viewer` の候補。稼働中の `com.laa.bridge` は両Driveルートの読取が `EPERM` で、macOS権限と実機での検証が残る。
 - Bridgeで有効な端末は社長のiPhone 1台だけ。試験用の端末はすべて失効済み。
 
 ## 判断待ちと未解決（Linear「LAAアプリ」）
 
 | 課題 | 内容 |
 |---|---|
-| BUS-318 | Google Driveの読取認可（GCPのOAuthクライアント作成と同意） |
+| BUS-318 | 旧OAuth案は取り下げ。Google DriveマウントのmacOS権限を親が判断し、課題状態を更新 |
 | BUS-319 | HermesのChatGPT再ログイン（GPT-Liveの通話） |
 | BUS-320 | TestFlight用のXcode（27.1を併設するか27.2正式版を待つか）と自動更新 |
 | BUS-321 | Brainの既存ノートを編集する方式 |
