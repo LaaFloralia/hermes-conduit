@@ -37,7 +37,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         ["label": label, "remainingPercent": percent, "windowMinutes": minutes, "resetsAt": "2030-01-01T00:00:00Z"]
     }
 
-    func testSixRowsKeepTheOwnerPriorityOrderAndLabels() throws {
+    func testSevenRowsKeepTheOwnerPriorityOrderAndLabels() throws {
         let items = try [
             item("liquid", kind: "usage", label: "Liquid AI", value: 123, unit: "tokens",
                  detail: ["recordedCostUsd": 1.31]),
@@ -45,6 +45,7 @@ final class LAAUsageWidgetTests: XCTestCase {
                  detail: ["sourceLag": "typical-5m", "periodTimezone": "UTC"]),
             item("openai-api", kind: "cost-month", label: "GPT API", value: 4.5, unit: "usd",
                  detail: ["sourceLag": "undisclosed", "periodTimezone": "UTC"]),
+            item("venice", kind: "balance", label: "Venice", value: 9, unit: "usd"),
             item("claude", windows: [weekly(62)]),
             item("codex", windows: [weekly(35)]),
             item("opencode-go", windows: [weekly(72), weekly(40, minutes: 300, label: "5時間")]),
@@ -52,9 +53,9 @@ final class LAAUsageWidgetTests: XCTestCase {
         let weekly = AppLocalization.string("Weekly")
         let result = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
         XCTAssertEqual(result.meters.map(\.label),
-                       ["Codex", "OpenCode", "Claude"].map { "\($0) \(weekly)" } + ["GPT API", "Claude API", "Liquid AI"])
-        XCTAssertEqual(result.meters.map(\.unit), [.percent, .percent, .percent, .usd, .usd, .usd])
-        XCTAssertEqual(result.meters.map(\.amount), [35, 72, 62, 4.5, 17.25, 1.31])
+                       ["Codex", "OpenCode", "Claude"].map { "\($0) \(weekly)" } + ["Venice", "GPT API", "Claude API", "Liquid AI"])
+        XCTAssertEqual(result.meters.map(\.unit), [.percent, .percent, .percent, .usd, .usd, .usd, .usd])
+        XCTAssertEqual(result.meters.map(\.amount), [35, 72, 62, 9, 4.5, 17.25, 1.31])
         XCTAssertTrue(result.meters.allSatisfy(\.available))
         XCTAssertEqual(result.checkedAt, now)
     }
