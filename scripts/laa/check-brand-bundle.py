@@ -29,7 +29,7 @@ INTERNAL_METADATA_KEYS = {"identifier", "bundleidentifier", "typeidentifier", "t
 # Registered app links and App Group IDs are identifiers, not display copy.
 # Do not exempt web links: an upstream web address in a compiled display
 # value is still an upstream link, even when it is the entire value.
-INTERNAL_VALUE = re.compile(r"^(?:(?:conduit|conduitwatch)://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%+-]+|group\.[A-Za-z0-9.-]+|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})$", re.I)
+INTERNAL_VALUE = re.compile(r"^(?:(?:conduit|conduitwatch)://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%+-]+|group\.[A-Za-z0-9.-]+)$", re.I)
 # The retained deep-link scheme can occur inside a model-facing prompt.
 # Ignore only the link, never neighboring visible product names.
 INTERNAL_LINK = re.compile(r"(?<![A-Za-z0-9_])conduit://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%+-]+", re.I)

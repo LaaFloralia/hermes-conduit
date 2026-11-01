@@ -52,6 +52,8 @@ class LAABrandCheckTests(unittest.TestCase):
         self.assertTrue(checker.check_bundle(self.app))
         write_plist(resource, {"link": "https://conduit.example"})
         self.assertTrue(checker.check_bundle(self.app))
+        write_plist(resource, {"address": "support@conduit.example"})
+        self.assertTrue(checker.check_bundle(self.app))
         write_plist(resource, {"label": "https://は不要です。Conduitに接続します。"})
         self.assertTrue(checker.check_bundle(self.app))
 
