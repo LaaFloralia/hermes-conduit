@@ -3468,6 +3468,7 @@ private struct AppearanceSettingsDetail: View {
                     .pickerStyle(.menu)
                 }
 
+                #if !LAA_BUILD
                 // A project's chats otherwise show only on its page.
                 ConduitSettingsSection(title: AppLocalization.string("Project chats"), symbol: "folder", tint: .conduitAccent) {
                     Text("Choose whether chats inside a project also appear in Chats, with the project’s name under the title. Recent shows the ones active today or yesterday. To leave some projects out, untick them in Filter > Projects.")
@@ -3483,6 +3484,7 @@ private struct AppearanceSettingsDetail: View {
                     }
                     .pickerStyle(.segmented)
                 }
+                #endif
             }
 
             // V2's wide windows: the list beside the open chat, or the
@@ -4429,7 +4431,6 @@ private struct AboutSettingsDetail: View {
             #if LAA_BUILD
             ConduitSettingsSection(title: LAACopy.brand, symbol: "info.circle", tint: .conduitAccent) {
                 ConduitAppIconArtwork(assetName: appState.appIconChoice.previewAssetName, size: 48)
-                SettingsMetricRow(label: AppLocalization.string("Active profile"), value: appState.profileDisplayName(profile))
                 SettingsMetricRow(label: AppLocalization.string("Version"), value: ConduitAppVersion.display)
             }
             #else

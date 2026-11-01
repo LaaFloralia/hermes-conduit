@@ -29,7 +29,6 @@ struct LAAOpenSourceLicenses: View {
         .padding(LAASpacing.x4)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
-        .accessibilityIdentifier("laa.licenses")
     }
 }
 #endif

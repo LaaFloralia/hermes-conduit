@@ -13230,6 +13230,12 @@ final class AppState: ObservableObject {
         if let stub = Self.uiTestConnectedStub() {
             lifecycleLog.notice("UI-test connected stub active: no transport will be created and reconnects are inert")
             connection = stub
+            #if LAA_BUILD
+            if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+               ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_VOICE_SETTINGS") {
+                dashboardTicketBridge = DashboardTicketBridge(baseURL: stub.baseUrl)
+            }
+            #endif
             isConnected = true
             isConnecting = false
             showLogin = false

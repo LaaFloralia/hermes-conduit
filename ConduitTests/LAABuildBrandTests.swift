@@ -5,6 +5,19 @@ import XCTest
 /// The LAA build's own contract: what it calls itself, and the one-time
 /// migration away from the upstream alternate icon (BUS-330).
 final class LAABuildBrandTests: XCTestCase {
+    @MainActor
+    func testDefaultProfileNameUsesCielAndPreservesANameTheUserSaved() {
+        let suite = "laa.brand.profile.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = ProfileAppearanceStore(defaults: defaults)
+        XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Ciel")
+        store.saveDefaultName("Hermes", dashboardID: nil)
+        XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Hermes")
+        store.saveDefaultName(" ", dashboardID: nil)
+        XCTAssertEqual(store.loadDefaultName(dashboardID: nil), "Ciel")
+    }
+
     func testPairingCodeIsTrimmedBeforeItReachesTheBridge() {
         XCTAssertEqual(LAAPairingView.normalizedCode(" 123456\n"), "123456")
         XCTAssertEqual(LAAPairingView.normalizedCode("\tABC123 "), "ABC123")

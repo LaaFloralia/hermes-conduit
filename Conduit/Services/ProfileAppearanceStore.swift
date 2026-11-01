@@ -23,7 +23,11 @@ import UIKit
 /// on a single caller context (AppState).
 @MainActor
 final class ProfileAppearanceStore {
+    #if LAA_BUILD
+    static let defaultName = LAACopy.agent
+    #else
     static let defaultName = "Hermes"
+    #endif
     /// Pre-scoping keys. Their values belonged to the only dashboard that
     /// existed then, so they are adopted by the registry's first dashboard.
     static let legacyDefaultNameKey = "conduit.defaultProfileName.v1"

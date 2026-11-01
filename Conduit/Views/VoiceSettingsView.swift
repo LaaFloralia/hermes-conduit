@@ -1235,11 +1235,9 @@ struct VoiceSettingsView: View {
                 }
             }
             .onChange(of: model.choice) { _, newValue in chatVoiceButtonOverride = newValue }
-            #if !LAA_BUILD
             Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            #endif
         }
     }
 

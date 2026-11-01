@@ -7,6 +7,7 @@ final class LAAChromeUITests: XCTestCase {
     private func launch(_ appearance: String, extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
+        app.launchEnvironment["LAA_BRIDGE_DEFAULT_ADDRESS"] = "http://127.0.0.1:1"
         app.launchArguments = ["-AppleLanguages", "(en)", "-conduit.appLanguage", "en",
                                "-conduit.themePreference", appearance,
                                "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://chats-ui-test.invalid",
@@ -123,6 +124,8 @@ final class LAAChromeUITests: XCTestCase {
             about.tap()
             XCTAssertTrue(app.navigationBars["About & privacy"].waitForExistence(timeout: 10))
             XCTAssertTrue(app.staticTexts["LAAは設定したMacに接続します。会話と添付ファイルはその接続先で処理されます。"].exists)
+            XCTAssertFalse(app.staticTexts["Active profile"].exists)
+            XCTAssertFalse(app.staticTexts["Hermes"].exists)
             XCTAssertFalse(app.links["Privacy policy"].exists)
             XCTAssertFalse(app.links["Support"].exists)
             XCTAssertFalse(app.links["GitHub"].exists)
@@ -208,6 +211,7 @@ final class LAAChromeUITests: XCTestCase {
                 XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 10))
                 if title == "Appearance" {
                     XCTAssertFalse(app.staticTexts["Main button"].exists)
+                    XCTAssertFalse(app.staticTexts["Project chats"].exists)
                 } else {
                     XCTAssertFalse(app.textFields["Push relay URL"].exists)
                     XCTAssertFalse(app.staticTexts["Verify pairing"].exists)
@@ -220,7 +224,7 @@ final class LAAChromeUITests: XCTestCase {
     }
 
     func testVoiceSettingsOmitLegacyCallOrbControl() {
-        let app = launch("light")
+        let app = launch("light", extra: ["-LAA_UI_TEST_VOICE_SETTINGS"])
         let settings = app.buttons["laa.settings.open"]
         XCTAssertTrue(settings.waitForExistence(timeout: 30))
         settings.tap()
@@ -232,8 +236,8 @@ final class LAAChromeUITests: XCTestCase {
         for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }
         XCTAssertTrue(advanced.isHittable)
         if advanced.value as? String != "Expanded" { advanced.tap() }
+        XCTAssertFalse(app.staticTexts["Hermes"].exists)
         XCTAssertFalse(app.switches["voice.animateCallOrb"].exists)
-        XCTAssertFalse(app.staticTexts["What the round button beside this profile's chats does. App setting follows Settings > Appearance."].exists)
     }
 
     func testCallControlsAndCapture() throws {
