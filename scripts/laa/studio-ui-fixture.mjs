@@ -125,7 +125,7 @@ export function createStudioUIFixture() {
       if (req.url === `/v1/studio/media/catalog/${documentKey}.pdf` && req.method === 'GET') {
         const match = /^bytes=(\d+)-(\d+)$/.exec(req.headers.range ?? '');
         if (!match || Number(match[1]) >= pdf.length) { res.writeHead(416, { 'content-range': `bytes */${pdf.length}` }); res.end(); return; }
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 8000));
         if (res.destroyed) return;
         const start = Number(match[1]), end = Math.min(Number(match[2]), pdf.length - 1);
         res.writeHead(206, { 'content-type': 'application/pdf', 'content-length': end - start + 1,

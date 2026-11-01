@@ -40,10 +40,10 @@ final class LAABridgeSession: ObservableObject {
     var address: String { credentials?.baseURL.absoluteString ?? LAABridgeEndpoint.defaultAddress }
     var deviceID: String? { credentials?.deviceID }
 
-    func driveRange(path: String, offset: Int64, length: Int) async throws -> LAADriveRangeResponse {
+    func driveRange(path: String, offset: Int64, length: Int, timeout: TimeInterval? = nil) async throws -> LAADriveRangeResponse {
         guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
         do {
-            let result = try await client.driveRange(path: path, credentials: current, offset: offset, length: length)
+            let result = try await client.driveRange(path: path, credentials: current, offset: offset, length: length, timeout: timeout)
             guard current == credentials, status == .paired else { throw CancellationError() }
             return result
         } catch let error as LAABridgeHTTPError {

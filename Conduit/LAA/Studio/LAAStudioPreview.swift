@@ -36,7 +36,8 @@ private final class LAAStudioPreviewLoader: ObservableObject {
             var total: Int64?
             repeat {
                 try Task.checkCancellation()
-                let part = try await bridge.driveRange(path: path, offset: offset, length: LAADriveContent.chunkSize)
+                let timeout: TimeInterval? = path.hasPrefix("/v1/studio/media/catalog/") ? 150 : nil
+                let part = try await bridge.driveRange(path: path, offset: offset, length: LAADriveContent.chunkSize, timeout: timeout)
                 try Task.checkCancellation()
                 guard generation == self.generation, part.total > 0, part.total <= limit,
                       total == nil || total == part.total, part.mimeType?.lowercased() == mime,

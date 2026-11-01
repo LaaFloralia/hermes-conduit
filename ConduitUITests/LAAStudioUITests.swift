@@ -178,7 +178,12 @@ final class LAAStudioUITests: XCTestCase {
         let preparing = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Preparing.mp4")).firstMatch
         if !preparing.isHittable { app.swipeUp() }
         XCTAssertTrue(preparing.waitForExistence(timeout: 10))
-        XCTAssertTrue(preparing.label.contains("閲覧用コピーを準備中")); preparing.tap()
+        XCTAssertTrue(preparing.label.contains("閲覧用コピーを準備中"))
+        let workScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        workScreenshot.name = "Studio versions - preparing and no poster"
+        workScreenshot.lifetime = .keepAlways
+        add(workScreenshot)
+        preparing.tap()
         XCTAssertTrue(app.staticTexts["閲覧用コピーを準備中です。時間をおいて作品を更新してください。"].waitForExistence(timeout: 10))
         app.navigationBars.buttons.element(boundBy: 0).tap()
         let image = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Example.png")).firstMatch
@@ -231,8 +236,12 @@ final class LAAStudioUITests: XCTestCase {
         let loading = app.descendants(matching: .any).matching(identifier: "laa.studio.document.loading").firstMatch
         XCTAssertTrue(loading.waitForExistence(timeout: 3))
         XCTAssertTrue(loading.label.contains("資料を読み込んでいます"))
+        let loadingScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        loadingScreenshot.name = "Studio document - loading"
+        loadingScreenshot.lifetime = .keepAlways
+        add(loadingScreenshot)
         let gone = expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: loading)
-        wait(for: [gone], timeout: 10)
+        wait(for: [gone], timeout: 15)
         XCTAssertFalse(app.staticTexts["プレビューを開けません。Driveの納品を確認してください。"].exists)
     }
 }
