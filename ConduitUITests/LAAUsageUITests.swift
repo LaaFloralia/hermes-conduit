@@ -39,7 +39,7 @@ final class LAAUsageUITests: XCTestCase {
         for _ in 0..<4 {
             let value = address.value as? String ?? ""
             if value.isEmpty || value == "Address" { break }
-            address.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+            address.tap()
             address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count + 10))
         }
         address.typeText("http://127.0.0.1:\(port)")
@@ -135,7 +135,7 @@ final class LAAUsageUITests: XCTestCase {
 
         _ = try helper("mode/stale")
         refresh.tap()
-        XCTAssertTrue(text(containing: "古い値", app: app).waitForExistence(timeout: 30))
+        XCTAssertTrue(text(containing: "更新待ち・取得できません", app: app).waitForExistence(timeout: 30))
         screenshot("usage-ui-stale")
         XCTAssertTrue(enabled(refresh))
 
@@ -144,21 +144,21 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(enabled(refresh))
         _ = try helper("mode/degraded")
         refresh.tap()
-        XCTAssertTrue(text(containing: "更新失敗・前回の値", app: app).waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
+        XCTAssertTrue(text(containing: "未取得・取得失敗", app: app).waitForExistence(timeout: 30))
+        XCTAssertFalse(app.staticTexts["62%"].firstMatch.exists)
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/error")
         refresh.tap()
         XCTAssertTrue(text(containing: "Mac側のサービスを利用できません。", app: app).waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["62%"].firstMatch.exists)
         screenshot("usage-ui-error")
         XCTAssertTrue(enabled(refresh))
 
         _ = try helper("mode/offline")
         refresh.tap()
         XCTAssertTrue(text(containing: "Macに届きません。", app: app).waitForExistence(timeout: 30))
-        XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["62%"].firstMatch.exists)
         screenshot("usage-ui-offline")
         XCTAssertTrue(enabled(refresh))
 

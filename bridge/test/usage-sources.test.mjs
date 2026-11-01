@@ -45,9 +45,9 @@ test('the quota value is the window with the least remaining, extras included', 
     source: 'codexbar-cli',
     windows: [
       { label: '5時間', remaining: 84, resetsAt: '2026-10-29T09:04:59Z', windowMinutes: 300 },
-      { label: '週間', remaining: 77, resetsAt: '2026-11-01T23:59:59Z', windowMinutes: 10080 },
+      { label: 'Weekly', remaining: 77, resetsAt: '2026-11-01T23:59:59Z', windowMinutes: 10080 },
     ],
-    extraWindows: [{ label: '月間', remaining: 41, resetsAt: '2026-11-25T08:42:44Z' }],
+    extraWindows: [{ label: 'Monthly', remaining: 41, resetsAt: '2026-11-25T08:42:44Z' }],
   }]);
   const item = byId(items, 'provider.opencode-go.quota');
   assert.equal(item.value, 41);
@@ -91,38 +91,43 @@ test('an invalid or excessive quota window cannot hide a potentially binding lim
 
 test('a live zero balance is real; retired providers are ignored', () => {
   const items = projection([
-    { id: 'jev', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 0 },
+    { id: 'deepseek', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 0 },
     { id: 'fal', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', amount: 42 },
-    { id: 'venice', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', usd: 43 },
+    { id: 'venice', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 43, components: [{kind: 'DIEM', amount: 2}] },
+    { id: 'jev', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 45 },
+    { id: 'google-cloud', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', amount: 46 },
+    { id: 'google-flow', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', remaining: 47 },
     { id: 'gemini', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', amount: 44 },
   ]);
-  assert.equal(byId(items, 'provider.jev.balance').value, 0);
-  assert.equal(byId(items, 'provider.jev.balance').availability, 'available');
-  for (const id of ['gemini', 'fal', 'venice']) {
+  assert.equal(byId(items, 'provider.deepseek.balance').value, 0);
+  assert.equal(byId(items, 'provider.deepseek.balance').availability, 'available');
+  assert.equal(byId(items, 'provider.venice.balance').value, 43);
+  assert.equal(byId(items, 'provider.venice.balance').detail.components[0].amount, 2);
+  for (const id of ['gemini', 'fal', 'jev', 'google-cloud', 'google-flow']) {
     assert.equal(items.some(item => item.id.startsWith(`provider.${id}.`)), false);
   }
 });
 
 test('expired and manually verified balances do not return numeric details', () => {
   const items = projection([
-    { id: 'google-cloud', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 5,
+    { id: 'deepseek', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 5,
       components: [{ kind: 'monthly', amount: 5, expiresOnUtc: '2026-10-26' }] },
-    { id: 'jev', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 8 },
+    { id: 'refuseless', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 8 },
   ]);
-  for (const id of ['provider.google-cloud.balance', 'provider.jev.balance']) {
+  for (const id of ['provider.deepseek.balance', 'provider.refuseless.balance']) {
     const item = byId(items, id);
     assert.equal(item.value, null);
     assert.equal(item.detail, undefined);
   }
-  assert.equal(byId(items, 'provider.jev.balance').nullReason, 'not_auto');
+  assert.equal(byId(items, 'provider.refuseless.balance').nullReason, 'not_auto');
 });
 
 test('verified and ten-minute-old live readings are unavailable', () => {
   const items = projection([
-    { id: 'jev', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 1 },
+    { id: 'refuseless', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 1 },
     { id: 'codex', available: true, updatedAt: '2026-10-29T04:50:00Z', windows: [{ label: 'Weekly', remaining: 48 }] },
   ]);
-  for (const id of ['provider.jev.balance', 'provider.codex.quota']) {
+  for (const id of ['provider.refuseless.balance', 'provider.codex.quota']) {
     const item = byId(items, id);
     assert.equal(item.availability, 'unavailable');
     assert.equal(item.value, null);
@@ -132,7 +137,7 @@ test('verified and ten-minute-old live readings are unavailable', () => {
 
 test('unit credits and recorded usage keep their own units and details', () => {
   const items = projection([
-    { id: 'google-flow', kind: 'unitCredits', source: 'verified', available: true, updatedAt: '2026-10-18T13:55:00Z', remaining: 0, renewsAt: null, monthlyGrantedAmount: 1000 },
+    { id: 'magnific', kind: 'unitCredits', source: 'verified', available: true, updatedAt: '2026-10-18T13:55:00Z', remaining: 0, renewsAt: null, monthlyGrantedAmount: 1000 },
     {
       id: 'liquid',
       kind: 'usage',
@@ -151,11 +156,11 @@ test('unit credits and recorded usage keep their own units and details', () => {
       },
     },
   ]);
-  const flow = byId(items, 'provider.google-flow.credits');
-  assert.equal(flow.value, null);
-  assert.equal(flow.unit, 'credits');
-  assert.equal(flow.nullReason, 'not_auto');
-  assert.equal(flow.detail, undefined);
+  const credits = byId(items, 'provider.magnific.credits');
+  assert.equal(credits.value, null);
+  assert.equal(credits.unit, 'credits');
+  assert.equal(credits.nullReason, 'not_auto');
+  assert.equal(credits.detail, undefined);
   const liquid = byId(items, 'provider.liquid.usage');
   assert.equal(liquid.value, 32007029);
   assert.equal(liquid.unit, 'tokens');
@@ -166,13 +171,13 @@ test('unit credits and recorded usage keep their own units and details', () => {
 });
 
 test('projection respects provider deadlines and separately ages quota extras', () => {
-  const [item] = projection([{ id: 'claude', source: 'live', available: true,
+  const item = byId(projection([{ id: 'claude', source: 'live', available: true,
     updatedAt: '2026-10-29T04:51:00Z', freshUntil: '2026-10-29T05:00:30Z',
     windows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
     extraWindows: [{ label: 'Session', remaining: 0, resetsAt: '2026-10-29T06:00:00Z' }],
     credits: { remaining: 0, updatedAt: '2026-10-29T04:52:00Z' },
     resetPasses: { available: true, remaining: 7, updatedAt: '2026-10-29T04:59:00Z' },
-  }]);
+  }]), 'provider.claude.quota');
   assert.equal(item.detail.windows.length, 1);
   assert.equal(item.value, 0);
   assert.equal(item.detail.freshUntil, '2026-10-29T05:00:30.000Z');
@@ -212,12 +217,12 @@ test('text from the feed is sanitised and never carries a credential or a path',
 test('an unknown provider id is ignored and a duplicate is rejected', () => {
   const items = projection([
     { id: 'clef', kind: 'status', available: true, updatedAt: '2026-10-29T04:58:00Z', value: '予備' },
-    { id: 'jev', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-29T04:00:00Z', currency: 'USD', amount: 0 },
+    { id: 'deepseek', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-29T04:00:00Z', currency: 'USD', amount: 0 },
   ]);
   assert.equal(items.some((item) => item.id.includes('clef')), false);
   assert.throws(() => projection([
-    { id: 'jev', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
-    { id: 'jev', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
+    { id: 'deepseek', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
+    { id: 'deepseek', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
   ]), UsageFeedError);
 });
 

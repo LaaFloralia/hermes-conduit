@@ -44,20 +44,6 @@
         "nullReason": "fetch_failed"
       },
       {
-        "id": "provider.jev.balance",
-        "kind": "balance",
-        "label": "Jev",
-        "value": null,
-        "unit": "usd",
-        "source": "codexbar-usage-proxy",
-        "observedAt": null,
-        "availability": "unavailable",
-        "stale": false,
-        "estimated": false,
-        "expired": false,
-        "nullReason": "not_auto"
-      },
-      {
         "id": "provider.claude-api.cost-today",
         "kind": "cost",
         "label": "Claude API",

@@ -6,9 +6,9 @@ import XCTest
 
 @MainActor
 final class LAAUsageViewSnapshotTests: XCTestCase {
-    func testUnavailableReasonsAndBillingLink() async throws {
+    func testUnavailableReasonsHaveNoExternalLink() async throws {
         let rows: [[String: Any]] = [
-            ["id": "provider.jev.balance", "kind": "balance", "label": "Jev", "nullReason": "not_auto"],
+            ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "nullReason": "not_auto"],
             ["id": "provider.openai-api.cost-today", "kind": "cost", "label": "GPT API", "nullReason": "not_configured"],
             ["id": "provider.claude-api.cost-today", "kind": "cost", "label": "Claude API", "nullReason": "freshness_unknown"]
         ].map { row in
@@ -17,8 +17,6 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
         let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
         XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません"])
-        XCTAssertEqual(LAAUsageView.billingURL(items[0])?.absoluteString, "https://app.typesafe.ai/")
-        XCTAssertNil(LAAUsageView.billingURL(items[1]))
         let state = LAAUsageState()
         await state.refreshUsage { items }
         try capture(state: state, paired: true, style: .light, name: "usage-unavailable-reasons-light")
@@ -57,7 +55,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         json[0]["detail"] = ["freshUntil": freshUntil,
             "windows": [["label": "Session", "remainingPercent": 62, "resetsAt": reset]],
             "credits": ["remaining": 7, "updatedAt": observed]]
-        let balance: [String: Any] = ["id": "provider.jev.balance", "kind": "balance", "label": "Jev", "value": 3.5,
+        let balance: [String: Any] = ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "value": 3.5,
             "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
             "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "currency": "USD"]]
         let costs: [[String: Any]] = [("claude-api", "Claude API", "typical-5m"), ("openai-api", "GPT API", "undisclosed")].flatMap { id, label, lag in
@@ -81,8 +79,8 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
     }
 
     private func unavailableFixture() throws -> [LAAUsageItem] {
-        let ids = ["claude", "codex", "antigravity", "jev", "google-cloud", "claude-api",
-                   "gemini", "google-flow", "liquid", "deepseek", "grok-bot", "refuseless", "opencode-go", "magnific"]
+        let ids = ["claude", "codex", "antigravity", "claude-api", "openai-api", "magnific",
+                   "liquid", "deepseek", "grok-bot", "refuseless", "opencode-go"]
         let rows: [[String: Any]] = ids.map { id in
             ["id": "provider.\(id).unavailable", "kind": "quota", "label": id, "value": NSNull(),
              "unit": "percent", "source": "codexbar-usage-proxy", "observedAt": NSNull(),

@@ -44,7 +44,7 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
         let now = Date()
         let first = now.addingTimeInterval(600)
         let second = now.addingTimeInterval(900)
-        let meter = WidgetUsageMeter(id: "one", label: "Claude", remainingPercent: 12,
+        let meter = WidgetUsageMeter(id: "provider.claude.quota.weekly", label: "Claude Weekly", unit: .percent, amount: 12,
             observedAt: now, freshUntil: now.addingTimeInterval(1200), resetsAt: second, stale: false, retained: false)
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
             .withUsage(WidgetUsageSnapshot(meters: [meter], checkedAt: now))

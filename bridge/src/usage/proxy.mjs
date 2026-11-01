@@ -31,22 +31,23 @@ const DEFAULT_MAX_BYTES = 512 * 1024;
 
 // Fixed order, so the list is stable between polls and between providers that
 // appear and disappear. Labels match the Console collector's code-owned names.
+// The owner's priority (2026-11-01): the weekly quotas, then the API costs, then
+// the recorded Liquid usage. Jev, Google Cloud and Google Flow are retired: the
+// proxy no longer reads them, and a cached row never brings them back.
 export const USAGE_PROVIDERS = Object.freeze([
-  { id: 'claude', label: 'Claude', kind: 'quota' },
   { id: 'codex', label: 'Codex', kind: 'quota' },
-  { id: 'antigravity', label: 'Antigravity', kind: 'quota' },
-  { id: 'jev', label: 'Jev', kind: 'balance' },
-  { id: 'google-cloud', label: 'Google Cloud', kind: 'balance' },
+  { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
+  { id: 'claude', label: 'Claude', kind: 'quota' },
+  { id: 'venice', label: 'Venice', kind: 'balance' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'month' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'today' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'month' },
-  { id: 'google-flow', label: 'Google Flow', kind: 'unitCredits' },
   { id: 'liquid', label: 'Liquid AI', kind: 'usage' },
+  { id: 'antigravity', label: 'Antigravity', kind: 'quota' },
   { id: 'deepseek', label: 'DeepSeek API', kind: 'balance' },
   { id: 'grok-bot', label: 'Grok Bot', kind: 'quota' },
   { id: 'refuseless', label: 'Refuseless', kind: 'balance' },
-  { id: 'opencode-go', label: 'OpenCode Go', kind: 'quota' },
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
 ]);
 

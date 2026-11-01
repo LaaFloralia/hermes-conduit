@@ -12,9 +12,9 @@ final class LAAUsageStateTests: XCTestCase {
     private func quota(_ percentage: Int = 62) throws -> LAAUsageItem {
         try item("""
         {"id":"provider.claude.quota","kind":"quota","label":"Claude","value":\(percentage),"unit":"percent",
-         "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
+         "source":"codexbar-usage-proxy","observedAt":"\(ISO8601DateFormatter().string(from: Date()))","availability":"available",
          "stale":false,"estimated":false,"expired":false,
-         "detail":{"windows":[{"label":"Session","remainingPercent":\(percentage),"resetsAt":"2026-11-02T00:00:00Z"}]}}
+         "detail":{"windows":[{"label":"Weekly","windowMinutes":10080,"remainingPercent":\(percentage),"resetsAt":"2099-11-02T00:00:00Z"}]}}
         """)
     }
 
@@ -182,9 +182,10 @@ final class LAAUsageStateTests: XCTestCase {
 
     func testLegacyFreshnessAndVerifiedSources() throws {
         let reading = try quota()
-        let at = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:09:59Z"))
-        let deadline = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
-        let later = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:20:00Z"))
+        let base = try XCTUnwrap(LAAUsageItem.date(reading.observedAt))
+        let at = base.addingTimeInterval(599)
+        let deadline = base.addingTimeInterval(600)
+        let later = base.addingTimeInterval(1200)
         XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: at))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: deadline))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: later))
@@ -192,7 +193,7 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-120)))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-121)))
         let verified = try item("""
-        {"id":"provider.jev.balance","kind":"balance","label":"Jev","value":1,"unit":"usd",
+        {"id":"provider.magnific.credits","kind":"balance","label":"Magnific","value":1,"unit":"usd",
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified"}}
         """)

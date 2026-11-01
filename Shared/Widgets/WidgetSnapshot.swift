@@ -148,10 +148,17 @@ struct WidgetWorkspaceSnapshot: Codable, Hashable {
 }
 
 #if LAA_BUILD
+/// One widget row. A quota row carries a percentage; the API cost and Liquid
+/// usage rows carry US dollars. A row whose reading is missing keeps its place
+/// with no number, so the owner still sees that the item was not fetched.
 struct WidgetUsageMeter: Codable, Equatable, Identifiable {
+    enum Unit: String, Codable { case percent, usd }
+
     let id: String
     let label: String
-    let remainingPercent: Double
+    let unit: Unit
+    let amount: Double
+    let available: Bool
     let observedAt: Date?
     let freshUntil: Date?
     let resetsAt: Date?
@@ -162,16 +169,24 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
     let verified: Bool?
     let legacyFreshness: Bool?
 
-    init(id: String, label: String, remainingPercent: Double, observedAt: Date?, freshUntil: Date?,
-         resetsAt: Date?, stale: Bool, retained: Bool, verified: Bool = false, legacyFreshness: Bool = false) {
-        self.id = id; self.label = label; self.remainingPercent = remainingPercent
+    init(id: String, label: String, unit: Unit, amount: Double, available: Bool = true,
+         observedAt: Date?, freshUntil: Date?, resetsAt: Date?, stale: Bool, retained: Bool,
+         verified: Bool = false, legacyFreshness: Bool = false) {
+        self.id = id; self.label = label; self.unit = unit; self.amount = amount; self.available = available
         self.observedAt = observedAt; self.freshUntil = freshUntil; self.resetsAt = resetsAt
         self.stale = stale || retained; self.retained = retained; self.verified = verified
         self.legacyFreshness = legacyFreshness
     }
 
+    /// A snapshot row with no reading: the label stays, the number does not.
+    static func missing(id: String, label: String) -> WidgetUsageMeter {
+        WidgetUsageMeter(id: id, label: label, unit: .percent, amount: 0, available: false,
+                         observedAt: nil, freshUntil: nil, resetsAt: nil, stale: false, retained: false)
+    }
+
     private enum CodingKeys: String, CodingKey {
-        case id, label, remainingPercent, observedAt, freshUntil, resetsAt, stale, retained, verified, legacyFreshness
+        case id, label, unit, amount, available, observedAt, freshUntil, resetsAt, stale, retained, verified, legacyFreshness
+        case remainingPercent
     }
 
     init(from decoder: Decoder) throws {
@@ -179,7 +194,11 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         let retained = try values.decodeIfPresent(Bool.self, forKey: .retained) ?? false
         self.id = try values.decode(String.self, forKey: .id)
         self.label = try values.decode(String.self, forKey: .label)
-        self.remainingPercent = try values.decode(Double.self, forKey: .remainingPercent)
+        self.unit = try values.decodeIfPresent(Unit.self, forKey: .unit) ?? .percent
+        // Snapshots before the cost rows stored a percentage only.
+        self.amount = try values.decodeIfPresent(Double.self, forKey: .amount)
+            ?? values.decode(Double.self, forKey: .remainingPercent)
+        self.available = try values.decodeIfPresent(Bool.self, forKey: .available) ?? true
         self.observedAt = try values.decodeIfPresent(Date.self, forKey: .observedAt)
         self.freshUntil = try values.decodeIfPresent(Date.self, forKey: .freshUntil)
         self.resetsAt = try values.decodeIfPresent(Date.self, forKey: .resetsAt)
@@ -189,8 +208,28 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         self.legacyFreshness = try values.decodeIfPresent(Bool.self, forKey: .legacyFreshness)
     }
 
+    var remainingPercent: Double? { available && unit == .percent ? amount : nil }
+
+    /// Written by hand: `remainingPercent` is read-only, only decoded from
+    /// snapshots the previous build saved.
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(id, forKey: .id)
+        try values.encode(label, forKey: .label)
+        try values.encode(unit, forKey: .unit)
+        try values.encode(amount, forKey: .amount)
+        try values.encode(available, forKey: .available)
+        try values.encodeIfPresent(observedAt, forKey: .observedAt)
+        try values.encodeIfPresent(freshUntil, forKey: .freshUntil)
+        try values.encodeIfPresent(resetsAt, forKey: .resetsAt)
+        try values.encode(stale, forKey: .stale)
+        try values.encode(retained, forKey: .retained)
+        try values.encodeIfPresent(verified, forKey: .verified)
+        try values.encodeIfPresent(legacyFreshness, forKey: .legacyFreshness)
+    }
+
     func isPast(at date: Date, anchor: Date? = nil) -> Bool {
-        guard !stale, let observedAt,
+        guard available, !stale, let observedAt,
               observedAt <= min(anchor ?? date, date).addingTimeInterval(120) else { return true }
         if resetsAt.map({ $0 <= date }) == true { return true }
         if verified == true { return true }
@@ -200,6 +239,10 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 }
 
 struct WidgetUsageSnapshot: Codable, Equatable {
+    /// The owner's display order and labels are fixed in the app; the widget
+    /// only ever shows these seven providers.
+    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "venice", "openai-api", "claude-api", "liquid"]
+
     let meters: [WidgetUsageMeter]
     let checkedAt: Date?
     // A balance or recorded usage exists even when no quota can be shown.
@@ -207,6 +250,16 @@ struct WidgetUsageSnapshot: Codable, Equatable {
 
     init(meters: [WidgetUsageMeter], checkedAt: Date?, hasOtherUsage: Bool = false) {
         self.meters = meters; self.checkedAt = checkedAt; self.hasOtherUsage = hasOtherUsage
+    }
+
+    /// Rows saved by an older build keep their bytes but never render: a retired
+    /// provider (Jev, Google Cloud, Google Flow, fal) is dropped here.
+    var displayableMeters: [WidgetUsageMeter] {
+        meters.filter { meter in
+            let parts = meter.id.split(separator: ".")
+            return parts.count >= 2 && Self.shownProviders.contains(String(parts[1]))
+                && (parts[1] != "venice" || meter.id == "provider.venice.balance")
+        }
     }
 }
 #endif

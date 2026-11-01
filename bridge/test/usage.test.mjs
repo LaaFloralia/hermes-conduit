@@ -72,8 +72,8 @@ function feed(overrides = {}) {
         windows: [{ label: 'Weekly', remaining: 48, resetsAt: '2026-11-01T00:00:00Z' }],
       },
       {
-        id: 'jev',
-        name: 'Jev',
+        id: 'refuseless',
+        name: 'Refuseless',
         kind: 'balance',
         source: 'verified',
         available: true,
@@ -97,8 +97,8 @@ function feed(overrides = {}) {
         expiresOnUtc: '2026-10-25',
       },
       {
-        id: 'google-flow',
-        name: 'Google Flow',
+        id: 'magnific',
+        name: 'Magnific',
         kind: 'unitCredits',
         source: 'verified',
         available: true,
@@ -199,12 +199,15 @@ test('the HTTP response contains fresh readings only, with reasons for other sou
   assert.equal(byId.get('provider.claude.quota').value, 62);
   assert.equal(byId.get('provider.codex.quota').value, 48);
   assert.equal(byId.get('provider.liquid.usage').value, 184000);
-  for (const id of ['provider.jev.balance', 'provider.google-flow.credits']) {
+  for (const id of ['provider.refuseless.balance', 'provider.magnific.credits']) {
     assert.equal(byId.get(id).value, null);
     assert.equal(byId.get(id).nullReason, 'not_auto');
     assert.equal(byId.get(id).detail, undefined);
   }
   assert.equal(items.some(item => item.id.includes('gemini')), false);
+  for (const id of ['jev', 'google-cloud', 'google-flow']) {
+    assert.equal(items.some(item => item.id.startsWith(`provider.${id}.`)), false);
+  }
   assert.equal(byId.get('provider.claude-api.cost-today').value, null);
   for (const item of items) assertItemShape(item, 'usage');
 });
@@ -216,7 +219,7 @@ test('after ten minutes neither live nor manually verified readings retain numbe
   const token = await api.token(usageRead.scopes);
   const res = await api.request('/v1/usage', { token });
   const byId = new Map(res.body.data.items.map(item => [item.id, item]));
-  for (const id of ['provider.claude.quota', 'provider.jev.balance', 'provider.google-flow.credits']) {
+  for (const id of ['provider.claude.quota', 'provider.refuseless.balance', 'provider.magnific.credits']) {
     const item = byId.get(id);
     assert.equal(item.availability, 'unavailable');
     assert.equal(item.value, null);
@@ -233,7 +236,7 @@ test('an unreachable proxy is a 200 with unavailable items, never zeros', async 
   const token = await api.token(usageRead.scopes);
   const res = await api.request('/v1/usage', { token });
   assert.equal(res.status, 200);
-  assert.ok(res.body.data.items.length >= 16);
+  assert.ok(res.body.data.items.length >= 13);
   for (const item of res.body.data.items) {
     assert.equal(item.availability, 'unavailable');
     assert.equal(item.value, null);

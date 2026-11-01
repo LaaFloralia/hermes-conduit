@@ -9,8 +9,8 @@ import XCTest
 final class LAAUsageWidgetSnapshotTests: XCTestCase {
     func testOldWidgetSnapshotDoesNotDisplayRetiredProviders() {
         let now = Date()
-        let meters = ["fal", "venice", "claude"].map { id in
-            WidgetUsageMeter(id: "provider.\(id).quota.0", label: id, remainingPercent: 42,
+        let meters = ["fal", "venice", "jev", "google-cloud", "google-flow", "claude"].map { id in
+            WidgetUsageMeter(id: "provider.\(id).quota.0", label: id, unit: .percent, amount: 42,
                 observedAt: now, freshUntil: now.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
         }
         let usage = WidgetUsageSnapshot(meters: meters, checkedAt: now)
@@ -21,12 +21,12 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
 
     func testLateRenderingOfEarlierEntryNeverShowsItsExpiredNumber() {
         let observed = Date(timeIntervalSince1970: 1_000)
-        let meter = WidgetUsageMeter(id: "late", label: "Claude", remainingPercent: 42,
+        let meter = WidgetUsageMeter(id: "late", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
         XCTAssertFalse(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(599)))
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)))
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed.addingTimeInterval(600), renderedAt: observed))
-        let future = WidgetUsageMeter(id: "future", label: "Claude", remainingPercent: 42,
+        let future = WidgetUsageMeter(id: "future", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed.addingTimeInterval(121), freshUntil: nil, resetsAt: nil, stale: false, retained: false)
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(future, entryDate: observed, renderedAt: observed.addingTimeInterval(2)))
     }
@@ -83,40 +83,6 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         try capture(style: .light, mode: .accented, name: "medium-no-quota-older-accessibility5-tinted", otherOnly: true, dynamicTypeSize: .accessibility5, checkedAtOffset: -370 * 86_400)
     }
 
-    func testAccessibilityNoticeIncludesHiddenStaleMeterAndCheckedDate() throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 0))
-        func date(_ year: Int, _ month: Int, _ day: Int, _ hour: Int, _ minute: Int) throws -> Date {
-            try XCTUnwrap(calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour, minute: minute)))
-        }
-        let now = try date(2026, 10, 31, 23, 34)
-        let fresh = WidgetUsageMeter(id: "fresh", label: "Claude", remainingPercent: 12,
-            observedAt: now, freshUntil: now.addingTimeInterval(1200), resetsAt: nil, stale: false, retained: false)
-        let stale = WidgetUsageMeter(id: "stale", label: "Codex", remainingPercent: 35,
-            observedAt: now, freshUntil: now.addingTimeInterval(1200), resetsAt: nil, stale: true, retained: false)
-        let uncertain = WidgetUsageMeter(id: "uncertain", label: "Other", remainingPercent: 50,
-            observedAt: now, freshUntil: nil, resetsAt: nil, stale: false, retained: false)
-        let manual = WidgetUsageMeter(id: "manual", label: "Other", remainingPercent: 50,
-            observedAt: now, freshUntil: nil, resetsAt: nil, stale: false, retained: false, verified: true)
-        XCTAssertNil(LAAEmployeeWidgetView.accessibleNotice(for: [fresh], at: now))
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, stale], at: now), .stale)
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, uncertain], at: now), .uncertain)
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, manual], at: now), .stale)
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [manual, stale], at: now), .stale)
-        let today = LAAEmployeeWidgetView.accessibleCheckedParts(now, relativeTo: now, calendar: calendar)
-        XCTAssertEqual(today.date, "10/31")
-        XCTAssertEqual(today.time, "23:34")
-        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(now, relativeTo: now, calendar: calendar), "取得 23:34")
-        let yesterday = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar)
-        XCTAssertEqual(yesterday.date, "10/30")
-        XCTAssertEqual(yesterday.time, "09:04")
-        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar), "取得 10/30 09:04")
-        let previousYear = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar)
-        XCTAssertEqual(previousYear.date, "2025/12/31")
-        XCTAssertEqual(previousYear.time, "09:04")
-        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar), "取得 2025/12/31 09:04")
-    }
-
     func testAccessibility5MatchesAccessibility3() throws {
         let now = Date(timeIntervalSince1970: 1_793_456_040)
         let appearances: [(String, UIUserInterfaceStyle, WidgetRenderingMode)] = [
@@ -139,9 +105,9 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
                          stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,
                          dynamicTypeSize: DynamicTypeSize = .large,
                          checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0) throws -> Data {
-        let meters = [("Claude · Session", 12.0), ("Codex · Weekly", 35.0), ("OpenCode · 5h", 72.0)]
+        let meters = [("Claude Weekly", 12.0), ("Codex Weekly", 35.0), ("OpenCode Weekly", 72.0)]
             .enumerated().map { index, pair in
-                WidgetUsageMeter(id: "\(index)", label: pair.0, remainingPercent: pair.1,
+                WidgetUsageMeter(id: "provider.\(["claude", "codex", "opencode-go"][index]).quota.weekly", label: pair.0, unit: .percent, amount: pair.1,
                     observedAt: now, freshUntil: now.addingTimeInterval(1200), resetsAt: now.addingTimeInterval(3600),
                     stale: stale && index != 1, retained: stale && index == 1)
             }

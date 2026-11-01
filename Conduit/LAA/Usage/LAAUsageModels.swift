@@ -118,5 +118,32 @@ enum LAAUsageFreshness {
         if let credits = item.detail?.credits, outdated(credits.updatedAt, at: now) { return true }
         return false
     }
+
+    static func reachedUTCDate(_ text: String?, at now: Date = Date()) -> Bool {
+        guard let text, text.count == 10, let start = LAAUsageItem.date(text + "T00:00:00Z") else { return false }
+        return start <= now
+    }
+
+    static func needsRenewal(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
+        if extraNeedsAttention(item, at: now) { return true }
+        if LAAUsageItem.date(item.detail?.renewsAt).map({ $0 <= now }) == true { return true }
+        if reachedUTCDate(item.detail?.expiresOnUtc, at: now) { return true }
+        return (item.detail?.components ?? []).contains { $0.amount > 0 && reachedUTCDate($0.expiresOnUtc, at: now) }
+    }
+
+    /// One answer for the app list and the widget: a reading that is stale, or
+    /// whose shape the app cannot vouch for, carries no number.
+    static func isPast(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
+        if isStale(item, at: now) { return true }
+        if item.kind == "cost" {
+            let lag: String
+            if item.id.hasPrefix("provider.claude-api.") { lag = "typical-5m" }
+            else if item.id.hasPrefix("provider.openai-api.") { lag = "undisclosed" }
+            else { return true }
+            if item.detail?.sourceLag != lag || item.detail?.periodTimezone != "UTC" { return true }
+        }
+        // A quota item's expired bit describes only its lowest remaining window.
+        return item.kind != "quota" && (item.isExpired(now: now) || needsRenewal(item, at: now))
+    }
 }
 #endif
