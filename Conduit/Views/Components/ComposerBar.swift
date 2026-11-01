@@ -115,6 +115,9 @@ struct ComposerBar: View, Equatable {
     @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
+#if LAA_BUILD
+    @State private var isShowingMarkdownPreview = false
+#endif
     /// V2's conversation: rest as a slim bar until the composer is used.
     @Environment(\.v2ComposerRests) private var restsWhenIdle
     /// Kept expanded a moment after use ends, so a tap on a control (which
@@ -883,6 +886,11 @@ struct ComposerBar: View, Equatable {
                     // the draft from where it began and drop the keystrokes.
                     // The words so far stay.
                     dictation.yieldToTyping()
+                },
+                onMarkdownPreview: {
+#if LAA_BUILD
+                    isShowingMarkdownPreview = true
+#endif
                 }
             )
             .id(editorIdentity)
@@ -916,6 +924,9 @@ struct ComposerBar: View, Equatable {
             }
         }
         .animation(reduceMotion ? nil : ConduitMotion.response, value: showsFullEditorButton)
+#if LAA_BUILD
+        .sheet(isPresented: $isShowingMarkdownPreview) { LAAComposerMarkdownPreview(text: text) }
+#endif
         .sheet(isPresented: $isShowingFullEditor, onDismiss: {
             // The inline editor only takes programmatic changes, so hand it
             // what was written in the sheet, cursor at the end. An unchanged
@@ -1742,20 +1753,20 @@ struct ComposerBar: View, Equatable {
             return true
         }
         guard ComposerReturnKey.canSubmit(action: action) else { return false }
-        submit()
-        return true
+        return submit()
     }
 
     /// `choice` is a long-press pick for this message only; nil keeps the
     /// action the button shows.
-    private func submit(_ choice: ComposerSendChoice? = nil) {
+    @discardableResult
+    private func submit(_ choice: ComposerSendChoice? = nil) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty || !attachments.isEmpty || pendingScreenshot != nil else { return }
-        guard unknownSubmission == nil, !draftStore.persistenceFailed else { return }
+        guard !trimmed.isEmpty || !attachments.isEmpty || pendingScreenshot != nil else { return false }
+        guard unknownSubmission == nil, !draftStore.persistenceFailed else { return false }
         if appState.composerWaitsForChat {
-            queueUntilChatIsReady(trimmed)
-            return
+            return queueUntilChatIsReady(trimmed)
         }
+        guard let submittedDashboardID = appState.activeDashboardID else { return false }
 
         // Send waits out a dictation (#1309), but a predicted reply or a
         // resend can still go mid-dictation: the words so far go out, and
@@ -1767,7 +1778,6 @@ struct ComposerBar: View, Equatable {
             dictation.onFinish = nil
             dictation.cancel()
         }
-        isShowingFullEditor = false
         let submittedText = text
         let submittedAttachments = attachments
         // A slash command leaves the reply attached for the next message.
@@ -1784,14 +1794,14 @@ struct ComposerBar: View, Equatable {
         let outboundText = choice?.slashCommand.map { "/\($0) \(repliedText)" } ?? repliedText
         let submittedAction = choice.map { $0.busyInputMode?.composerAction ?? .send } ?? action
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
-        guard let submittedDashboardID = appState.activeDashboardID else { return }
         let snapshotAttachments = submittedAttachments + [pendingScreenshot].compactMap { $0 }
         let submission = ComposerDraftStore.Submission(
             id: UUID(), key: submittedDraftKey, dashboardID: submittedDashboardID,
             draft: ComposerDraft(text: submittedText, attachments: snapshotAttachments, replyReference: submittedReply),
             pendingSendID: nil, screenshotID: pendingScreenshot?.id
         )
-        guard draftStore.beginSubmission(submission, clearingDraft: true) else { Haptics.error(); return }
+        guard draftStore.beginSubmission(submission, clearingDraft: true) else { Haptics.error(); return false }
+        isShowingFullEditor = false
         let submissionContext = appState.composerSubmissionContext()
         rotateAttachmentGeneration()
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
@@ -1830,6 +1840,7 @@ struct ComposerBar: View, Equatable {
             applyPendingPrefill()
             isShowingSlashSuggestions = Self.shouldShowSlashSuggestions(for: text, isProgrammaticDraftRestore: false)
         }
+        return true
     }
 
     private func resolveUnknownSubmission(_ submission: ComposerDraftStore.Submission, restoring: Bool) {
@@ -1851,8 +1862,8 @@ struct ComposerBar: View, Equatable {
     /// The chat on screen is still on its way: the message waits in it as
     /// "Sends when connected" and goes once the chat is ready
     /// (AppState+PendingSend.swift). Text only.
-    private func queueUntilChatIsReady(_ trimmed: String) {
-        guard action == .send, attachments.isEmpty, pendingScreenshot == nil else { return }
+    private func queueUntilChatIsReady(_ trimmed: String) -> Bool {
+        guard action == .send, attachments.isEmpty, pendingScreenshot == nil else { return false }
         let submittedReply = ComposerReplyReference.appliesToDraft(trimmed, hasAttachments: false)
             ? replyReference : nil
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
@@ -1862,9 +1873,13 @@ struct ComposerBar: View, Equatable {
             // If persistence failed after a reservation was made, its journal
             // owns the words and needs review; don't leave a second copy in
             // the visible field.
-            if unknownSubmission != nil { collapseSubmittedDraft(clearingReply: submittedReply != nil) }
+            if unknownSubmission != nil {
+                collapseSubmittedDraft(clearingReply: submittedReply != nil)
+                Haptics.error()
+                return true
+            }
             Haptics.error()
-            return
+            return false
         }
         if !dictation.isTranscribing {
             dictation.onFinish = nil
@@ -1874,6 +1889,7 @@ struct ComposerBar: View, Equatable {
         collapseSubmittedDraft(clearingReply: submittedReply != nil)
         draftStore.removeDraft(for: submittedDraftKey)
         Haptics.medium()
+        return true
     }
 
     /// Words AppState puts back: a waiting message that wasn't sent, or

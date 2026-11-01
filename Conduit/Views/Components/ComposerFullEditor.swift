@@ -37,6 +37,9 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
     @ViewBuilder let actionButton: () -> ActionButton
 
     @State private var isFocused = false
+#if LAA_BUILD
+    @State private var showingPreview = false
+#endif
     @AppStorage(ChatTypography.inputPreferenceKey) private var inputTextSizeRaw = ChatTypography.defaultInputSize.rawValue
 
     var body: some View {
@@ -79,7 +82,12 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
                     inputTextSize: ChatTypography.inputSize(rawValue: inputTextSizeRaw),
                     programmaticRevision: programmaticRevision,
                     canSubmitFromReturn: canSubmitFromReturn,
-                    onSubmitFromReturn: onSubmitFromReturn
+                    onSubmitFromReturn: onSubmitFromReturn,
+                    onMarkdownPreview: {
+#if LAA_BUILD
+                        showingPreview = true
+#endif
+                    }
                 )
                 .onChange(of: text) { _, newText in
                     if isFocused { onUserEdit(newText) }
@@ -97,6 +105,9 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
+#if LAA_BUILD
+        .sheet(isPresented: $showingPreview) { LAAComposerMarkdownPreview(text: text) }
+#endif
         .attachmentDropTarget(isEnabled: onDropFiles != nil) { providers in
             onDropFiles?(providers)
         }

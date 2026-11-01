@@ -605,6 +605,7 @@ store · the session and project API · the owner-task API · Console job observ
 - Owner tasks: `Conduit/LAA/Work/LAAOwnerTasksView.swift`,
   `Conduit/LAA/Work/LAAOwnerTaskAPI.swift`, `Conduit/LAA/Work/LAAOwnerTaskOutbox.swift`,
   `Conduit/LAA/Work/LAAOwnerTaskLocalDrafts.swift`
+- LAA composer formatting and instruction-file editor: `Conduit/LAA/Instructions/`; keyboard menu inserts Markdown at the selection and preview renders it. Instruction editing is disabled in both app and Bridge pending independent review. It uses dedicated scopes, conditional saves and backups; external non-cooperating writers retain a check-to-rename race.
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`

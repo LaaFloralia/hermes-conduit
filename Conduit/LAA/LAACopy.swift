@@ -20,6 +20,8 @@ enum LAACopy {
 
     // MARK: Shared controls
 
+    static let instructionFiles = "指示ファイル"
+    static let instructionFileNames = "AGENTS.md / CLAUDE.md"
     static let brand = "LAA"
     static let agent = "Ciel"
     static let settings = "Settings"

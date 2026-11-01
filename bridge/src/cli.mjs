@@ -19,7 +19,7 @@ import {
   expandScopes,
 } from './config.mjs';
 import { createStore } from './store.mjs';
-import { grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
+import { grantInstructions, grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
 import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +36,7 @@ Usage:
   laa-bridge devices [--json]              list paired devices
   laa-bridge revoke <device-id|prefix>     revoke one device (--reason <text>)
   laa-bridge grant-studio <device-id|prefix> --reason <text>  grant Studio scopes
+  laa-bridge grant-instructions <device-id|prefix> --reason <text>  grant instruction scopes
   laa-bridge status [--json]               local health check of the running service
   laa-bridge tasks <add|list|get|update|status|import-linear|backup|restore>
                                            owner tasks (same store as the app; see below)
@@ -213,6 +214,14 @@ switch (command) {
   case 'revoke':
     commandRevoke(positional, flags);
     break;
+  case 'grant-instructions': {
+    const target = positional[0];
+    if (!target || positional.length !== 1 || !flags.reason) fail('grant-instructions needs a device id and --reason', 2);
+    const result = grantInstructions(openStore(), { target, reason: flags.reason });
+    if (result.error) fail(result.error);
+    process.stdout.write(`${JSON.stringify({ deviceId: result.device.id, scopes: result.device.scopes, alreadyGranted: result.alreadyGranted })}\n`);
+    break;
+  }
   case 'grant-studio': {
     const target = positional[0];
     if (!target || positional.length !== 1) fail('grant-studio needs one device id or unambiguous prefix', 2);

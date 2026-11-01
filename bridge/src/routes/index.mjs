@@ -25,6 +25,7 @@ import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
 import { studioRoutes } from './studio.mjs';
 import { routineRoutes } from './routines.mjs';
+import { instructionRoutes } from './instructions.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -73,5 +74,9 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
     ...routineRoutes(options.routines ?? {}),
+    // Disabled in production pending independent review; explicit injection is for tests.
+    ...(options.instructions?.enabled === true
+      ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
+      : []),
   ];
 }
