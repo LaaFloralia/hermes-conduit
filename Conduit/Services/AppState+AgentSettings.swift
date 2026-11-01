@@ -88,7 +88,12 @@ extension AppState {
             choices: [(value: "automatic", title: "Automatic"), (value: "hermes", title: "Hermes web search"), (value: "google", title: "Google Search"), (value: "off", title: "Off")],
             display: { value in
                 switch value {
-                case "hermes": return AppLocalization.string("Hermes")
+                case "hermes":
+                    #if LAA_BUILD
+                    return LAACopy.agent
+                    #else
+                    return AppLocalization.string("Hermes")
+                    #endif
                 case "google": return AppLocalization.string("Google")
                 case "off": return AppLocalization.string("Off")
                 default: return AppLocalization.string("Automatic")
@@ -104,7 +109,12 @@ extension AppState {
             choices: [(value: "automatic", title: "Automatic"), (value: "hermes", title: "Hermes web search"), (value: "off", title: "Off")],
             display: { value in
                 switch value {
-                case "hermes": return AppLocalization.string("Hermes")
+                case "hermes":
+                    #if LAA_BUILD
+                    return LAACopy.agent
+                    #else
+                    return AppLocalization.string("Hermes")
+                    #endif
                 case "off": return AppLocalization.string("Off")
                 default: return AppLocalization.string("Automatic")
                 }

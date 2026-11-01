@@ -27,7 +27,12 @@ enum DictationEngine: String, CaseIterable, Identifiable {
         // Names, the same in every language.
         case .apple: return "Apple"
         case .appleSpeechAnalyzer: return AppLocalization.string("Apple (new model)")
-        case .hermes: return "Hermes"
+        case .hermes:
+            #if LAA_BUILD
+            return LAACopy.mac
+            #else
+            return "Hermes"
+            #endif
         }
     }
 

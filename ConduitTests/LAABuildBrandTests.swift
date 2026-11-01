@@ -43,6 +43,7 @@ final class LAABuildBrandTests: XCTestCase {
 
     func testTheBuildNamesItselfInTextForTheModel() {
         XCTAssertEqual(LAAProductBrand.appName, "LAA")
+        XCTAssertEqual(DictationEngine.hermes.title, LAACopy.mac)
         XCTAssertEqual(LAAProductBrand.display("Open Conduit"), "Open LAA")
         XCTAssertEqual(LAAProductBrand.display("Open LAA"), "Open LAA")
         XCTAssertEqual(LAAProductBrand.display("the Conduit plugin"), "the connection service")

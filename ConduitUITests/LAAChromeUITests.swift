@@ -236,7 +236,7 @@ final class LAAChromeUITests: XCTestCase {
         for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }
         XCTAssertTrue(advanced.isHittable)
         if advanced.value as? String != "Expanded" { advanced.tap() }
-        XCTAssertFalse(app.staticTexts["Hermes"].exists)
+        XCTAssertFalse(app.staticTexts["Hermes"].exists, app.staticTexts["Hermes"].debugDescription)
         XCTAssertFalse(app.switches["voice.animateCallOrb"].exists)
     }
 

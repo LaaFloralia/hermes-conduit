@@ -506,14 +506,19 @@ struct VoiceSettingsView: View {
 
     private var hermesStep: some View {
         let capability = service.snapshot.capability
+        #if LAA_BUILD
+        let connectionName = LAACopy.mac
+        #else
+        let connectionName = AppLocalization.string("Hermes")
+        #endif
         if service.isLoading {
-            return setupStep(AppLocalization.string("Hermes"), detail: AppLocalization.string("Checking…"), state: .pending)
+            return setupStep(connectionName, detail: AppLocalization.string("Checking…"), state: .pending)
         }
         if capability.isGatewayConnected {
-            return setupStep(AppLocalization.string("Hermes"), detail: AppLocalization.string("Connected to \(profileDisplayName)"), state: .done)
+            return setupStep(connectionName, detail: AppLocalization.string("Connected to \(profileDisplayName)"), state: .done)
         }
         return setupStep(
-            AppLocalization.string("Hermes"),
+            connectionName,
             detail: capability.unavailableReason ?? AppLocalization.string("Connect to Hermes before starting voice."),
             state: .attention
         )
