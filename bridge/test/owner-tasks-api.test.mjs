@@ -172,6 +172,78 @@ test('a PATCH that changes nothing keeps the revision', async (t) => {
   assert.equal(same.headers.get('etag'), '"1"');
 });
 
+test('the checkbox completes a task and unchecking puts it back, using the list revision', async (t) => {
+  const { api, token, now } = await boot(t);
+  await createTask(api, token, { title: 'A', dueDate: '2026-11-05', memo: 'm' }, 'k1');
+  const row = (await api.request('/v1/owner-tasks', { token })).body.data.items[0];
+  assert.equal(row.status, 'todo');
+  assert.equal(row.revision, 1);
+
+  now.advance(1000);
+  const done = await updateTask(api, token, row.id, { status: 'done' }, { key: 'k-check', ifMatch: row.revision });
+  assert.equal(done.status, 200);
+  assert.equal(done.body.data.status, 'done');
+  assert.equal(done.body.data.revision, 2);
+  assert.equal(done.body.data.dueDate, '2026-11-05', 'checking must not touch the due date');
+  assert.equal(done.body.data.memo, 'm');
+  assert.equal(done.headers.get('etag'), '"2"');
+  assert.equal((await api.request('/v1/owner-tasks?status=open', { token })).body.data.total, 0);
+
+  now.advance(1000);
+  const back = await updateTask(api, token, row.id, { status: 'todo' }, { key: 'k-uncheck', ifMatch: done.body.data.revision });
+  assert.equal(back.status, 200);
+  assert.equal(back.body.data.status, 'todo');
+  assert.equal(back.body.data.revision, 3);
+  const reopened = await api.request('/v1/owner-tasks?status=open', { token });
+  assert.equal(reopened.body.data.total, 1);
+  assert.equal(reopened.body.data.items[0].revision, 3);
+
+  // Checking a cancelled task moves it to done as well.
+  const canceled = await updateTask(api, token, row.id, { status: 'canceled' }, { key: 'k-cancel', ifMatch: 3 });
+  const rechecked = await updateTask(api, token, row.id, { status: 'done' }, { key: 'k-recheck', ifMatch: canceled.body.data.revision });
+  assert.equal(rechecked.body.data.status, 'done');
+});
+
+test('title, memo and due date are edited in place one field at a time', async (t) => {
+  const { api, token, now } = await boot(t);
+  const created = await createTask(api, token, { title: 'A', memo: 'old memo', dueDate: '2026-11-05' }, 'k1');
+  const id = created.body.data.id;
+  let revision = created.body.data.revision;
+
+  now.advance(1000);
+  const titled = await updateTask(api, token, id, { title: 'B' }, { key: 'k-title', ifMatch: revision });
+  assert.equal(titled.status, 200);
+  assert.equal(titled.body.data.title, 'B');
+  assert.equal(titled.body.data.memo, 'old memo');
+  assert.equal(titled.body.data.dueDate, '2026-11-05');
+  assert.equal(titled.body.data.revision, revision + 1);
+  revision = titled.body.data.revision;
+
+  now.advance(1000);
+  const memoed = await updateTask(api, token, id, { memo: 'new memo' }, { key: 'k-memo', ifMatch: revision });
+  assert.equal(memoed.body.data.title, 'B');
+  assert.equal(memoed.body.data.memo, 'new memo');
+  assert.equal(memoed.body.data.dueDate, '2026-11-05');
+  revision = memoed.body.data.revision;
+
+  now.advance(1000);
+  const rescheduled = await updateTask(api, token, id, { dueDate: '2026-12-01' }, { key: 'k-due', ifMatch: revision });
+  assert.equal(rescheduled.body.data.dueDate, '2026-12-01');
+  assert.equal(rescheduled.body.data.memo, 'new memo');
+  revision = rescheduled.body.data.revision;
+
+  const cleared = await updateTask(api, token, id, { dueDate: null }, { key: 'k-clear', ifMatch: revision });
+  assert.equal(cleared.body.data.dueDate, null);
+  assert.equal(cleared.body.data.title, 'B');
+
+  // An inline edit on a stale revision is refused with the current row, so the
+  // editor can show both sides instead of overwriting.
+  const stale = await updateTask(api, token, id, { title: 'C' }, { key: 'k-stale', ifMatch: 1 });
+  assert.equal(stale.status, 412);
+  assert.equal(stale.body.error.details.current.title, 'B');
+  assert.equal(stale.body.error.details.current.revision, cleared.body.data.revision);
+});
+
 test('invalid bodies are refused with the field named', async (t) => {
   const { api, token } = await boot(t);
   const created = await createTask(api, token, { title: 'A' }, 'k1');
