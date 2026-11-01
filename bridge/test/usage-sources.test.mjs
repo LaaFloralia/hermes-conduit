@@ -89,37 +89,27 @@ test('an invalid or excessive quota window cannot hide a potentially binding lim
   assert.equal(extras.value, 0);
 });
 
-test('a live zero balance is a real reading; the old Gemini row is ignored', () => {
+test('a live zero balance is real; retired providers are ignored', () => {
   const items = projection([
-    { id: 'fal', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 0 },
-    { id: 'gemini', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', amount: 42 },
-    { id: 'venice', available: false, updatedAt: null },
+    { id: 'jev', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 0 },
+    { id: 'fal', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', amount: 42 },
+    { id: 'venice', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', usd: 43 },
+    { id: 'gemini', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', amount: 44 },
   ]);
-  assert.equal(byId(items, 'provider.fal.balance').value, 0);
-  assert.equal(byId(items, 'provider.fal.balance').availability, 'available');
-  assert.equal(items.some(item => item.id.includes('gemini')), false);
-  assert.equal(byId(items, 'provider.venice.balance').nullReason, 'fetch_failed');
-});
-
-test('Venice USD and DIEM remain distinct when the proxy has no amount field', () => {
-  const item = byId(projection([{ id: 'venice', kind: 'balance', available: true,
-    updatedAt: '2026-10-29T04:58:00Z', usd: 2.5, diem: 44 }]), 'provider.venice.balance');
-  assert.equal(item.availability, 'available');
-  assert.equal(item.value, 2.5);
-  assert.equal(item.unit, 'usd');
-  assert.equal(item.detail.diem, 44);
-  const diemOnly = byId(projection([{ id: 'venice', kind: 'balance', available: true,
-    updatedAt: '2026-10-29T04:58:00Z', diem: 44 }]), 'provider.venice.balance');
-  assert.equal(diemOnly.availability, 'unavailable'); // Do not call DIEM USD.
+  assert.equal(byId(items, 'provider.jev.balance').value, 0);
+  assert.equal(byId(items, 'provider.jev.balance').availability, 'available');
+  for (const id of ['gemini', 'fal', 'venice']) {
+    assert.equal(items.some(item => item.id.startsWith(`provider.${id}.`)), false);
+  }
 });
 
 test('expired and manually verified balances do not return numeric details', () => {
   const items = projection([
-    { id: 'fal', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 5,
+    { id: 'google-cloud', source: 'live', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 5,
       components: [{ kind: 'monthly', amount: 5, expiresOnUtc: '2026-10-26' }] },
     { id: 'jev', source: 'verified', available: true, updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 8 },
   ]);
-  for (const id of ['provider.fal.balance', 'provider.jev.balance']) {
+  for (const id of ['provider.google-cloud.balance', 'provider.jev.balance']) {
     const item = byId(items, id);
     assert.equal(item.value, null);
     assert.equal(item.detail, undefined);
@@ -222,12 +212,12 @@ test('text from the feed is sanitised and never carries a credential or a path',
 test('an unknown provider id is ignored and a duplicate is rejected', () => {
   const items = projection([
     { id: 'clef', kind: 'status', available: true, updatedAt: '2026-10-29T04:58:00Z', value: '予備' },
-    { id: 'fal', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-29T04:00:00Z', currency: 'USD', amount: 0 },
+    { id: 'jev', kind: 'balance', source: 'verified', available: true, updatedAt: '2026-10-29T04:00:00Z', currency: 'USD', amount: 0 },
   ]);
   assert.equal(items.some((item) => item.id.includes('clef')), false);
   assert.throws(() => projection([
-    { id: 'fal', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
-    { id: 'fal', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
+    { id: 'jev', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
+    { id: 'jev', kind: 'balance', available: true, updatedAt: '2026-10-29T04:00:00Z', amount: 0 },
   ]), UsageFeedError);
 });
 

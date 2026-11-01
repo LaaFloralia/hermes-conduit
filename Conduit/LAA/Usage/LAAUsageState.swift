@@ -216,7 +216,7 @@ struct LAAUsageGroup: Identifiable {
 
     /// Match the Console's visible provider order; do not add Hermes profiles.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
-        let ids = ["liquid", "claude", "codex", "opencode-go", "magnific", "fal", "venice", "openai-api", "claude-api", "jev", "google-cloud", "google-flow"]
+        let ids = ["liquid", "claude", "codex", "opencode-go", "magnific", "openai-api", "claude-api", "jev", "google-cloud", "google-flow"]
         return ids.compactMap { id in
             let prefix = "provider.\(id)."
             let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }

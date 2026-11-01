@@ -199,7 +199,6 @@ struct LAAUsageView: View {
             if let granted = item.detail?.dailyGrantedAmount { metric("今日の付与", value(granted, unit: item.detail?.creditUnit ?? "credits"), warning: warning) }
             if let monthly = item.detail?.monthlyGrantedAmount { metric("月間付与", value(monthly, unit: item.detail?.creditUnit ?? "credits"), warning: warning) }
             if let fallback = item.detail?.fallbackAiCredits { metric("AI credits", value(fallback, unit: "credits"), warning: warning) }
-            if let diem = item.detail?.diem { metric("DIEM", value(diem, unit: "DIEM"), warning: warning) }
             if let usd = item.detail?.usd, item.unit != "usd" { metric("USD", value(usd, unit: "usd"), warning: warning) }
             if let monthly = item.detail?.monthlyRemainingPercent {
                 metric("月間の残り", value(monthly, unit: "percent"), warning: warning)

@@ -56,7 +56,7 @@ const expected = new Map();
 for (const row of feed.providers) {
   if (!row || typeof row !== 'object') continue;
   // `clef` reports a text status, which no v1 item kind carries (README).
-  if (['clef', 'gemini', 'deepseek', 'refuseless'].includes(row.id)) continue;
+  if (['clef', 'gemini', 'deepseek', 'refuseless', 'fal', 'venice'].includes(row.id)) continue;
   const current = receivedAt;
   const suffix = row.kind === 'quota' ? 'quota' : row.kind === 'unitCredits' ? 'credits'
     : row.kind === 'usage' ? 'usage' : 'balance';
@@ -74,8 +74,6 @@ for (const row of feed.providers) {
     else if (remaining.length > 0) expected.set(`provider.${row.id}.quota`, Math.min(...remaining));
   } else if (row.kind === 'balance' && numberAt(row.amount) !== null) {
     expected.set(`provider.${row.id}.balance`, fresh ? row.amount : null);
-  } else if (row.id === 'venice' && numberAt(row.usd) !== null) {
-    expected.set('provider.venice.balance', fresh ? row.usd : null);
   } else if (row.kind === 'unitCredits' && numberAt(row.remaining) !== null) {
     expected.set(`provider.${row.id}.credits`, fresh ? row.remaining : null);
   } else if (row.kind === 'usage' && row.recordedUsage) {

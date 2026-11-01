@@ -41,7 +41,6 @@ struct LAAUsageItem: Decodable, Identifiable {
         let dailyGrantedAmount: Double?
         let fallbackAiCredits: Double?
         let usd: Double?
-        let diem: Double?
         let monthlyRemainingPercent: Double?
         let recordedCostUsd: Double?
         let recordedRequestCount: Double?

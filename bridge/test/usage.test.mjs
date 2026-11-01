@@ -125,7 +125,6 @@ function feed(overrides = {}) {
           costUsd: 1.2,
         },
       },
-      { id: 'venice', name: 'Venice', available: false, updatedAt: null },
       {
         id: 'claude-api',
         name: 'Claude API',

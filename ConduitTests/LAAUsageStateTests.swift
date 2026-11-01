@@ -192,7 +192,7 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-120)))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-121)))
         let verified = try item("""
-        {"id":"provider.fal.balance","kind":"balance","label":"fal","value":1,"unit":"usd",
+        {"id":"provider.jev.balance","kind":"balance","label":"Jev","value":1,"unit":"usd",
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified"}}
         """)

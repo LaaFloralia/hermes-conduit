@@ -57,7 +57,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         json[0]["detail"] = ["freshUntil": freshUntil,
             "windows": [["label": "Session", "remainingPercent": 62, "resetsAt": reset]],
             "credits": ["remaining": 7, "updatedAt": observed]]
-        let fal: [String: Any] = ["id": "provider.fal.balance", "kind": "balance", "label": "fal", "value": 3.5,
+        let balance: [String: Any] = ["id": "provider.jev.balance", "kind": "balance", "label": "Jev", "value": 3.5,
             "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
             "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "currency": "USD"]]
         let costs: [[String: Any]] = [("claude-api", "Claude API", "typical-5m"), ("openai-api", "GPT API", "undisclosed")].flatMap { id, label, lag in
@@ -74,14 +74,14 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
             "detail": ["freshUntil": freshUntil, "recordedCostUsd": 1.31, "recordedRequestCount": 50, "lastRecordedAt": observed,
                        "models": [["inputTokens": 123, "outputTokens": 0]]]]
         if costOnly { json = costs }
-        else if balanceOnly { json = [fal] }
+        else if balanceOnly { json = [balance] }
         else if extrasOnly { json = [json[0]] }
-        else { json = [d1] + json + [fal] + costs }
+        else { json = [d1] + json + [balance] + costs }
         return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: json))
     }
 
     private func unavailableFixture() throws -> [LAAUsageItem] {
-        let ids = ["claude", "codex", "antigravity", "jev", "google-cloud", "venice", "claude-api", "fal",
+        let ids = ["claude", "codex", "antigravity", "jev", "google-cloud", "claude-api",
                    "gemini", "google-flow", "liquid", "deepseek", "grok-bot", "refuseless", "opencode-go", "magnific"]
         let rows: [[String: Any]] = ids.map { id in
             ["id": "provider.\(id).unavailable", "kind": "quota", "label": id, "value": NSNull(),

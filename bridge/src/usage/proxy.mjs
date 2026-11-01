@@ -37,12 +37,10 @@ export const USAGE_PROVIDERS = Object.freeze([
   { id: 'antigravity', label: 'Antigravity', kind: 'quota' },
   { id: 'jev', label: 'Jev', kind: 'balance' },
   { id: 'google-cloud', label: 'Google Cloud', kind: 'balance' },
-  { id: 'venice', label: 'Venice', kind: 'balance' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'month' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'today' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'month' },
-  { id: 'fal', label: 'fal', kind: 'balance' },
   { id: 'google-flow', label: 'Google Flow', kind: 'unitCredits' },
   { id: 'liquid', label: 'Liquid AI', kind: 'usage' },
   { id: 'deepseek', label: 'DeepSeek API', kind: 'balance' },
@@ -233,11 +231,8 @@ function quotaItem(row, provider, context) {
 }
 
 function balanceItem(row, provider, context) {
-  const veniceUsd = provider.id === 'venice' ? finiteNumber(row.usd) : null;
-  const explicitAmount = finiteNumber(row.amount);
-  const currency = explicitAmount === null && veniceUsd !== null ? 'USD'
-    : row.currency === 'JPY' ? 'JPY' : row.currency === 'USD' || veniceUsd !== null ? 'USD' : null;
-  const amount = explicitAmount ?? veniceUsd;
+  const currency = row.currency === 'JPY' ? 'JPY' : row.currency === 'USD' ? 'USD' : null;
+  const amount = finiteNumber(row.amount);
   const expired = balanceExpired(row, context.now);
   const base = { ...baseOf(provider), unit: currency === 'JPY' ? 'jpy' : 'usd' };
   if (amount === null) {
@@ -246,7 +241,7 @@ function balanceItem(row, provider, context) {
   const detail = {};
   if (row.source === 'verified') detail.sourceKind = 'verified';
   if (currency !== null) detail.currency = currency;
-  for (const key of ['usd', 'diem', 'monthlyRemainingPercent']) {
+  for (const key of ['usd', 'monthlyRemainingPercent']) {
     const value = finiteNumber(row[key], { max: key === 'monthlyRemainingPercent' ? 100 : Number.MAX_SAFE_INTEGER });
     if (value !== null) detail[key] = value;
   }

@@ -7,6 +7,18 @@ import XCTest
 
 @MainActor
 final class LAAUsageWidgetSnapshotTests: XCTestCase {
+    func testOldWidgetSnapshotDoesNotDisplayRetiredProviders() {
+        let now = Date()
+        let meters = ["fal", "venice", "claude"].map { id in
+            WidgetUsageMeter(id: "provider.\(id).quota.0", label: id, remainingPercent: 42,
+                observedAt: now, freshUntil: now.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
+        }
+        let usage = WidgetUsageSnapshot(meters: meters, checkedAt: now)
+        let snapshot = WidgetSnapshot(appLanguage: "en", currentWorkspaceID: nil, workspaces: []).withUsage(usage)
+        let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot, date: now)
+        XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.0"])
+    }
+
     func testLateRenderingOfEarlierEntryNeverShowsItsExpiredNumber() {
         let observed = Date(timeIntervalSince1970: 1_000)
         let meter = WidgetUsageMeter(id: "late", label: "Claude", remainingPercent: 42,

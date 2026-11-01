@@ -34,13 +34,18 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
     let usage: WidgetUsageSnapshot?
 
     static func make(employee: LAAWidgetEmployee, snapshot: WidgetSnapshot?, date: Date = Date(), freshnessAnchor: Date? = nil) -> Self {
-        Self(date: date, freshnessAnchor: freshnessAnchor ?? date, employee: employee,
+        let usage = snapshot?.usage.map { usage in
+            WidgetUsageSnapshot(meters: usage.meters.filter {
+                !$0.id.hasPrefix("provider.fal.") && !$0.id.hasPrefix("provider.venice.")
+            }, checkedAt: usage.checkedAt, hasOtherUsage: usage.hasOtherUsage ?? false)
+        }
+        return Self(date: date, freshnessAnchor: freshnessAnchor ?? date, employee: employee,
              chat: LAAEmployeeWidgetLinks.link(employee: employee, action: .employeeChat, snapshot: snapshot),
              call: LAAEmployeeWidgetLinks.link(employee: employee, action: .talk, snapshot: snapshot),
              mediumChat: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .employeeChat, snapshot: snapshot),
              mediumCall: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .talk, snapshot: snapshot),
              usageLink: WidgetLaunchLink(action: .usage, workspace: nil, reference: nil)!,
-             usage: snapshot?.usage)
+             usage: usage)
     }
 
     func defaultLink(for family: WidgetFamily) -> WidgetLaunchLink {
@@ -60,7 +65,7 @@ struct LAAEmployeeTimelineProvider: AppIntentTimelineProvider {
 
     static func makeTimeline(configuration: LAAEmployeeWidgetIntent, snapshot: WidgetSnapshot?) -> Timeline<LAAEmployeeWidgetEntry> {
         let entry = LAAEmployeeWidgetEntry.make(employee: configuration.employee, snapshot: snapshot)
-        let futureDates = Set((snapshot?.usage?.meters ?? []).flatMap { meter in
+        let futureDates = Set((entry.usage?.meters ?? []).flatMap { meter in
             [meter.freshUntil, meter.resetsAt,
              meter.observedAt.map { min($0, entry.freshnessAnchor).addingTimeInterval(10 * 60) }].compactMap { $0 }
         }

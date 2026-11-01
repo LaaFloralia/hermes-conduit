@@ -50,12 +50,13 @@ final class LAAUsageWidgetTests: XCTestCase {
     }
 
     func testConsoleOrderAndHermesRowsAreExcluded() throws {
-        let items = try [item("fal", [30]), item("magnific", [30]), item("codex", [30]), item("claude", [20]),
+        let items = try [item("fal", [1]), item("venice", [1]), item("magnific", [30]), item("codex", [30]), item("claude", [20]),
                          item("liquid", [30]), item("opencode-go", [40]), item("grok-bot", [2])]
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).map(\.id), ["provider.liquid", "provider.claude", "provider.codex",
-            "provider.opencode-go", "provider.magnific", "provider.fal"])
+            "provider.opencode-go", "provider.magnific"])
         let summary = LAAWidgetUsageBuilder.make(items: items)
         XCTAssertTrue(summary.meters.allSatisfy { !$0.retained })
+        XCTAssertFalse(summary.meters.contains { $0.id.hasPrefix("provider.fal.") || $0.id.hasPrefix("provider.venice.") })
     }
 
     func testLegacyAndVerifiedMetersKeepTheirCorrectFreshness() throws {
@@ -82,7 +83,7 @@ final class LAAUsageWidgetTests: XCTestCase {
 
     func testOtherUsageIsDistinguishedAndSnapshotContainsOnlySummaryFields() throws {
         let balance = try JSONDecoder().decode(LAAUsageItem.self, from: Data("""
-        {"id":"provider.fal.balance","kind":"balance","label":"fal","value":3,"unit":"usd",
+        {"id":"provider.jev.balance","kind":"balance","label":"Jev","value":3,"unit":"usd",
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified"}}
         """.utf8))
