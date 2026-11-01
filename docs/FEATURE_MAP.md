@@ -495,8 +495,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   The Mac Bridge remains a secondary source, with its opt-in `brain:create`
   scope and conflict-safe server naming. An uncertain Bridge create retains its
   exact request and key in ThisDeviceOnly Keychain for reconciliation.
-- Existing-note editing remains disabled in the product. Its test-only recovery
-  journal reserves 30 ordinary versions and at most 128 MiB per note; unique
+- Existing local notes can be edited with a pre-write recovery journal and
+  digest comparison; a detected concurrent change keeps both versions for
+  review. The journal reserves 30 ordinary versions and at most 128 MiB per note; unique
   displaced and interrupted versions are never automatically evicted. If those
   versions fill the limit, the pending stage remains available for export.
   The local vault appends `.laa-tmp` to its device-local `.stignore` on connect
@@ -504,6 +505,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   checked replacement requires that rule to pass a conservative local check;
   SyncTrain applying it still needs device verification. Otherwise the
   draft is exported. The temp folder is created only if fallback is needed.
+- The App Shortcut “今日のデイリーノートを開く” opens `daily journal/YYYY-MM-DD.md`
+  for editing, creating an empty note exclusively if absent. A pending request
+  waits for local folder access and for any open editor to close.
 - Assets reads Drive listing and name search through the existing `media:read`
   Bridge endpoint, including folder navigation and cursor paging. Filters apply
   only to loaded items. Metadata opens from a file, and images, PDFs and audio
@@ -546,13 +550,17 @@ App Store build · the Bridge API, Brain and Usage data contracts
   semantic filled-button color pair. The existing Hermes login retains its
   Conduit backdrop.
 - Work routines and Assets Inspiration remain unavailable. Drive
-  Workspace export, owner and thumbnail data need Bridge support. Brain cannot edit existing
-  notes; relative images are shown as references until Bridge supports them.
-  Existing-note editing still needs simulator and device verification; the
-  Mac's Syncthing and Git ignore rules must be installed before enabling it.
+  Workspace export, owner and thumbnail data need Bridge support. Brain's
+  Bridge source cannot edit existing notes; relative images there are shown as
+  references until Bridge supports them. The Mac's Syncthing and Git ignore
+  rules must be installed before using local editing with SyncTrain.
   On the actual iPhone, verify SyncTrain full-sync/send-receive mode, the folder
   picker, bookmark persistence, creation and synchronization in both directions,
   and whether the provider supports exclusive rename and atomic exchange.
+  Checked replacement has a narrow comparison-to-rename race; even exchange
+  cannot retain writes made through an old file descriptor after its displaced
+  contents were captured. Mac-local overwrites are outside this app's protection;
+  vault-git-sync records the Mac vault periodically.
   Local recovery history is keyed by vault path, so moving or renaming the vault
   hides its earlier records until the original location is selected again.
   The LAA shell uses

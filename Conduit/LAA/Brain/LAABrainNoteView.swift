@@ -13,6 +13,8 @@ struct LAABrainNoteView: View {
     let isPinned: Bool
     let togglePin: () -> Void
     @Binding var path: [LAABrainRoute]
+    @Binding var autoEditPath: String?
+    @Binding var editorIsOpen: Bool
     @State private var note: LAABrainNote?
     @State private var error: LAABridgeError?
     @State private var localError: String?
@@ -20,6 +22,7 @@ struct LAABrainNoteView: View {
     @State private var raw = false
     @State private var showQuickSwitch = false
     @State private var editorRoot: URL?
+    @State private var editorAutoFocus = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -42,10 +45,6 @@ struct LAABrainNoteView: View {
                                 Text(verbatim: "元のノートを一覧から開き、残す内容を見比べてください。")
                                     .laaTextStyle(.secondary)
                             }
-                        }
-                        if isLocal && !LAABrainEditingGate.enabled && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
-                            Text("編集機能は確認中です。")
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
                         if loading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                         else if let localError {
@@ -93,9 +92,9 @@ struct LAABrainNoteView: View {
                         .accessibilityLabel(Text(verbatim: "Switch note"))
                         .accessibilityIdentifier("laa.brain.quickSwitch")
                 }
-                if isLocal && LAABrainEditingGate.enabled && note != nil && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
+                if isLocal && note != nil && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("編集") { editorRoot = try? local.snapshot() }
+                        Button("編集") { openEditor() }
                             .accessibilityLabel(Text(verbatim: "ノートを編集"))
                             .accessibilityIdentifier("laa.brain.edit")
                     }
@@ -145,13 +144,29 @@ struct LAABrainNoteView: View {
                     path.append(.note(LAABrainReference(file: file, includeInbox: reference.inbox)))
                 }
             }
-            .sheet(isPresented: Binding(get: { editorRoot != nil }, set: { if !$0 { editorRoot = nil } })) {
+            .sheet(isPresented: Binding(get: { editorRoot != nil }, set: { if !$0 { editorRoot = nil; editorIsOpen = false } })) {
                 if let editorRoot {
-                    LAABrainSaveEditor(root: editorRoot, path: reference.path) { Task { await load() } }
+                    LAABrainSaveEditor(root: editorRoot, path: reference.path, autoFocus: editorAutoFocus) { Task { await load() } }
                 }
             }
             .task(id: BrainNoteLoadKey(reference: reference, revision: isLocal ? local.revision : 0, isLocal: isLocal)) { await load() }
+            .onChange(of: note?.path, initial: true) { _, _ in openRequestedEditorIfReady() }
+            .onChange(of: autoEditPath) { _, _ in openRequestedEditorIfReady() }
         }
+    }
+
+    private func openEditor(autoFocus: Bool = false) {
+        guard let root = try? local.snapshot() else { return }
+        editorAutoFocus = autoFocus
+        editorIsOpen = true
+        editorRoot = root
+    }
+
+    private func openRequestedEditorIfReady() {
+        guard isLocal, note != nil, autoEditPath == reference.path, editorRoot == nil,
+              !LAABrainSaveCoordinator.isConflictCopy(reference.path) else { return }
+        openEditor(autoFocus: true)
+        if editorRoot != nil { autoEditPath = nil }
     }
 
     @ViewBuilder private func relatedLinks(_ title: String, files: [LAABrainFile]) -> some View {

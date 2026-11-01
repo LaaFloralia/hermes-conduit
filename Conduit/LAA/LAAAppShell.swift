@@ -11,9 +11,13 @@ struct LAAAppShell: View {
 
     @StateObject private var bridge = LAABridgeSession()
     @StateObject private var usageState = LAAUsageState()
+    @ObservedObject private var dailyRequest = LAABrainDailyRequest.shared
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
     @State private var chatsPath: [V2Route] = []
+    #if DEBUG
+    @State private var seededDailyFixture = false
+    #endif
 
     private var requiresLogin: Bool {
         #if DEBUG
@@ -72,6 +76,11 @@ struct LAAAppShell: View {
                 appState.laaWidgetUsagePending = false
                 appState.requestSettingsDismissal()
             }
+            .onChange(of: dailyRequest.id, initial: true) { _, request in
+                guard request != nil else { return }
+                selectedTab = .brain
+                appState.requestSettingsDismissal()
+            }
             .environment(\.v2Shell, V2ShellContext(
                 pickProfile: { profile in
                     guard profile != appState.activeProfile, !appState.isProfileSwitching else { return }
@@ -122,6 +131,10 @@ struct LAAAppShell: View {
             .onAppear {
                 #if DEBUG
                 LAAPluginUITestFixture.seedStatusIfEnabled(appState)
+                if !seededDailyFixture && ProcessInfo.processInfo.arguments.contains("-laa-brain-daily-fixture") {
+                    seededDailyFixture = true
+                    dailyRequest.enqueue()
+                }
                 #endif
             }
             .onDisappear { appState.showSidebar = false }

@@ -26,7 +26,7 @@ struct LAABrainLocalCreateView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(isNote ? "ノート名" : "フォルダ名", text: $name)
+                    TextField(isNote ? AppLocalization.string("ノート名") : AppLocalization.string("フォルダ名"), text: $name)
                         .focused($focused, equals: .name)
                         .accessibilityIdentifier("laa.brain.localCreate.name")
                         .submitLabel(isNote ? .next : .done)
@@ -45,7 +45,7 @@ struct LAABrainLocalCreateView: View {
                 }
                 if let error { Text(verbatim: error).foregroundStyle(LAAColor.attention) }
             }
-            .navigationTitle(isNote ? "新規ノート" : "新規フォルダ")
+            .navigationTitle(isNote ? AppLocalization.string("新規ノート") : AppLocalization.string("新規フォルダ"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

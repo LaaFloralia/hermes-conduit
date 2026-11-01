@@ -17,6 +17,7 @@ import Foundation
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         bookmarkURL = support.appendingPathComponent("Brain", isDirectory: true).appendingPathComponent("vault.bookmark")
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-laa-brain-no-vault-fixture") { return }
         if ProcessInfo.processInfo.arguments.contains("-laa-brain-local-fixture") {
             do {
                 let root = FileManager.default.temporaryDirectory.appendingPathComponent("brain-fixture-" + UUID().uuidString, isDirectory: true)
@@ -26,6 +27,10 @@ import Foundation
                 try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other#Details|次のメモ]]\n\n![[Assets/fixture.png]]\n\n![[Other]]\n".utf8)
                     .write(to: root.appendingPathComponent("Company/Start.md"))
                 try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
+                if ProcessInfo.processInfo.arguments.contains("-laa-brain-daily-existing-fixture") {
+                    try FileManager.default.createDirectory(at: root.appendingPathComponent(LAABrainDailyNote.folder), withIntermediateDirectories: true)
+                    try Data("EXISTING-DAILY-FIXTURE".utf8).write(to: root.appendingPathComponent(LAABrainDailyNote.path()))
+                }
                 if ProcessInfo.processInfo.arguments.contains("-laa-brain-conflict-copy-fixture") {
                     try Data("CONFLICT-COPY-FIXTURE".utf8).write(to: root.appendingPathComponent("Company/Start.sync-conflict-20261101-ABC.md"))
                 }
@@ -152,13 +157,13 @@ enum LAABrainVaultError: Error {
 
     var message: String {
         switch self {
-        case .access: return "フォルダにアクセスできません。もう一度選んでください。"
-        case .notDirectory: return "フォルダを選んでください。"
-        case .invalidPath: return "選んだフォルダの外、またはシンボリックリンクは開けません。"
-        case .unreadable: return "フォルダまたはノートを読めません。保存先を確認してください。"
-        case .invalidText: return "このノートはUTF-8のテキストではありません。"
-        case .tooLarge: return "ファイルが大きすぎるため表示できません。"
-        case .ambiguous: return "同名の添付が複数あります。フルパスを指定してください。"
+        case .access: return AppLocalization.string("フォルダにアクセスできません。もう一度選んでください。")
+        case .notDirectory: return AppLocalization.string("フォルダを選んでください。")
+        case .invalidPath: return AppLocalization.string("選んだフォルダの外、またはシンボリックリンクは開けません。")
+        case .unreadable: return AppLocalization.string("フォルダまたはノートを読めません。保存先を確認してください。")
+        case .invalidText: return AppLocalization.string("このノートはUTF-8のテキストではありません。")
+        case .tooLarge: return AppLocalization.string("ファイルが大きすぎるため表示できません。")
+        case .ambiguous: return AppLocalization.string("同名の添付が複数あります。フルパスを指定してください。")
         }
     }
 }

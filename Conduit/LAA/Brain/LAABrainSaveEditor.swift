@@ -2,19 +2,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Original-note editing remains available only to the disposable simulator
-/// fixture until the recovery UI and cross-device gate have been verified.
-enum LAABrainEditingGate {
-    static var enabled: Bool {
-        #if DEBUG
-        let arguments = ProcessInfo.processInfo.arguments
-        return arguments.contains("-laa-brain-local-fixture") && arguments.contains("-laa-brain-save-fixture")
-        #else
-        return false
-        #endif
-    }
-}
-
 private struct BrainSaveConflict {
     let other: String?
     let draft: String
@@ -25,6 +12,7 @@ struct LAABrainSaveEditor: View {
     @Environment(\.dismiss) private var dismiss
     let root: URL
     let path: String
+    let autoFocus: Bool
     let didSave: () -> Void
     private let coordinator = LAABrainSaveCoordinator()
     @State private var snapshot: LAABrainSaveCoordinator.Snapshot?
@@ -49,10 +37,18 @@ struct LAABrainSaveEditor: View {
     @State private var exportDigest = ""
     @State private var showExport = false
     @State private var canExportDraft = false
+    @FocusState private var draftFocused: Bool
     #if DEBUG
     @State private var injectFixtureRace = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-race-fixture")
     @State private var injectFixtureMissingStage = ProcessInfo.processInfo.arguments.contains("-laa-brain-save-missing-stage-fixture")
     #endif
+
+    init(root: URL, path: String, autoFocus: Bool = false, didSave: @escaping () -> Void) {
+        self.root = root
+        self.path = path
+        self.autoFocus = autoFocus
+        self.didSave = didSave
+    }
 
     var body: some View {
         NavigationStack {
@@ -75,11 +71,13 @@ struct LAABrainSaveEditor: View {
                                 .foregroundStyle(LAAColor.attention)
                         }
                         TextEditor(text: $draft)
+                            .focused($draftFocused)
                             .font(.body.monospaced()).disabled(busy)
                             .accessibilityIdentifier("laa.brain.edit.text")
                             .padding(.horizontal, LAASpacing.x2)
                         if canExportDraft {
                             Button("下書きを書き出す") { prepareExport(Data(draft.utf8), sourcePath: path) }
+                                .accessibilityIdentifier("laa.brain.edit.exportDraft")
                         }
                     }
                 } else {
@@ -112,7 +110,10 @@ struct LAABrainSaveEditor: View {
             }
         }
         .interactiveDismissDisabled()
-        .task { await open() }
+        .task {
+            await open()
+            if autoFocus && snapshot != nil && pending.isEmpty { draftFocused = true }
+        }
         .fileExporter(isPresented: $showExport, document: exportDocument, contentType: .data,
                       defaultFilename: exportName) { result in
             switch result {
@@ -150,7 +151,7 @@ struct LAABrainSaveEditor: View {
         .alert("見つからないファイルの記録を消しますか？", isPresented: $showMissingStageAlert) {
             Button("記録を消す", role: .destructive) {
                 if let item = pendingToClear { Task { await clearMissing(item) } }
-            }
+            }.accessibilityIdentifier("laa.brain.recovery.confirmClearMissing")
             Button("キャンセル", role: .cancel) { pendingToClear = nil }
         } message: {
             Text("中断したファイルが見つかりません。記録を消す前に履歴を確認してください。")
@@ -171,11 +172,13 @@ struct LAABrainSaveEditor: View {
                     if missingStageID == item.id {
                         Text("中断したファイルが見つかりません。内容を復元できない可能性があります。")
                             .foregroundStyle(LAAColor.attention)
+                            .accessibilityIdentifier("laa.brain.recovery.missingStage")
                         Button("見つからないファイルの記録を消す") { pendingToClear = item; showMissingStageAlert = true }.disabled(busy)
+                            .accessibilityIdentifier("laa.brain.recovery.clearMissing")
                     }
                 }
             }
-            Section { Button("保存した履歴を確認") { showHistory = true } }
+            Section { Button("保存した履歴を確認") { showHistory = true }.accessibilityIdentifier("laa.brain.recovery.viewHistory") }
         }
     }
 
@@ -183,8 +186,8 @@ struct LAABrainSaveEditor: View {
         ScrollView {
             VStack(alignment: .leading, spacing: LAASpacing.x4) {
                 Text(conflict.afterExchange
-                     ? "入れ替え中に別の変更がありました。両方の内容を履歴に保存しました。"
-                     : "保存前にノートが変更されました。原本は上書きせず、両方の内容を履歴に保存しました。")
+                     ? AppLocalization.string("入れ替え中に別の変更がありました。両方の内容を履歴に保存しました。")
+                     : AppLocalization.string("保存前にノートが変更されました。原本は上書きせず、両方の内容を履歴に保存しました。"))
                 if let other = conflict.other {
                     versionPanel(conflict.afterExchange ? "入れ替え時の内容" : "現在のノート", text: other)
                 } else {
@@ -711,11 +714,11 @@ private struct BrainRecoveryPathView: View {
 private extension LAABrainSaveJournal.Kind {
     var label: String {
         switch self {
-        case .original: return "編集開始時の内容"
-        case .draft: return "下書き"
-        case .displaced: return "入れ替え時の内容"
-        case .conflict: return "競合した内容"
-        case .interrupted: return "中断した内容"
+        case .original: return AppLocalization.string("編集開始時の内容")
+        case .draft: return AppLocalization.string("下書き")
+        case .displaced: return AppLocalization.string("入れ替え時の内容")
+        case .conflict: return AppLocalization.string("競合した内容")
+        case .interrupted: return AppLocalization.string("中断した内容")
         }
     }
 }

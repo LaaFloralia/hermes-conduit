@@ -15,8 +15,12 @@ struct LAABrainPending: Codable {
 struct LAABrainView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @StateObject private var local = LAABrainLocalVault()
+    @ObservedObject private var dailyRequest = LAABrainDailyRequest.shared
     let onRequestSettings: () -> Void
     @State private var path: [LAABrainRoute] = []
+    @State private var dailyOpening = false
+    @State private var autoEditPath: String?
+    @State private var editorIsOpen = false
     @State private var files: [LAABrainFile] = []
     @State private var folderPaths: [String] = []
     @State private var localMode = 1
@@ -117,7 +121,8 @@ struct LAABrainView: View {
                 case .note(let reference):
                     LAABrainNoteView(reference: reference, files: files, local: local, isLocal: local.isReady,
                                      index: index, isPinned: pins.contains(reference.path),
-                                     togglePin: { togglePin(reference.path) }, path: $path)
+                                     togglePin: { togglePin(reference.path) }, path: $path,
+                                     autoEditPath: $autoEditPath, editorIsOpen: $editorIsOpen)
                         .toolbar(.hidden, for: .tabBar)
                 }
             }
@@ -157,6 +162,42 @@ struct LAABrainView: View {
         }
         .task(id: BrainLoadKey(revision: bridge.revision, localRevision: local.revision, inbox: includeInbox, mac: showMacSource || useBridgeFixture)) { await load() }
         .task(id: BrainSearchKey(revision: bridge.revision, localRevision: local.revision, indexRevision: indexRevision, inbox: includeInbox, query: query, count: files.count)) { await search() }
+        .onChange(of: dailyRequest.id, initial: true) { _, _ in openDailyIfPossible() }
+        .onChange(of: local.state) { _, _ in openDailyIfPossible() }
+        .onChange(of: dailyBlocked) { _, _ in openDailyIfPossible() }
+    }
+
+    private var dailyBlocked: Bool {
+        editorIsOpen || localCreate != nil || showCreate || showRecovery || showPairing || chooseFolder
+    }
+
+    @MainActor private func openDailyIfPossible() {
+        guard let request = dailyRequest.id, local.isReady, !dailyOpening, !dailyBlocked,
+              let root = try? local.snapshot() else { return }
+        dailyOpening = true
+        Task {
+            do {
+                let dailyPath = try await Task.detached(priority: .userInitiated) {
+                    try LAABrainDailyNote.open(root: root)
+                }.value
+                dailyOpening = false
+                guard dailyRequest.id == request else { openDailyIfPossible(); return }
+                guard !dailyBlocked else { return }
+                guard (try? local.snapshot()) == root else { openDailyIfPossible(); return }
+                autoEditPath = dailyPath
+                path = [.note(LAABrainReference(path: dailyPath, includeInbox: true))]
+                localError = nil
+                dailyRequest.consume(request)
+            } catch {
+                dailyOpening = false
+                guard dailyRequest.id == request else { openDailyIfPossible(); return }
+                guard !dailyBlocked else { return }
+                guard (try? local.snapshot()) == root else { openDailyIfPossible(); return }
+                localError = AppLocalization.string("今日のノートを開けません。フォルダとノートを確認してください。")
+                path = []
+                dailyRequest.consume(request)
+            }
+        }
     }
 
     private var useBridgeFixture: Bool {
@@ -173,6 +214,7 @@ struct LAABrainView: View {
             Button("フォルダを選ぶ") { chooseFolder = true }
                 .buttonStyle(.borderedProminent).accessibilityIdentifier("laa.brain.chooseFolder")
             Button("Mac接続で開く") { showMacSource = true }.laaTextStyle(.secondary)
+                .accessibilityIdentifier("laa.brain.openMac")
             if let localError { Text(verbatim: localError).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
         }.foregroundStyle(LAAColor.text)
     }
@@ -182,6 +224,7 @@ struct LAABrainView: View {
             HStack {
                 Label("このiPhoneのフォルダ", systemImage: "folder")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityIdentifier("laa.brain.localSource")
                 Spacer()
                 Menu {
                     Button("別のフォルダを選ぶ") { chooseFolder = true }
@@ -229,13 +272,13 @@ struct LAABrainView: View {
                 ProgressView()
             } else {
                 HStack {
-                    Text(localMode == 0 ? "最近のノート" : localMode == 2 ? "タグ" : localMode == 3 ? "競合" : "フォルダとノート")
+                    Text(localMode == 0 ? AppLocalization.string("最近のノート") : localMode == 2 ? AppLocalization.string("タグ") : localMode == 3 ? AppLocalization.string("競合") : AppLocalization.string("フォルダとノート"))
                         .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
                     Spacer()
                     Menu {
                         Button("フォルダとノート") { localMode = 1 }
-                        Button("最近のノート") { localMode = 0 }
-                        Button("タグ") { localMode = 2; selectedTag = nil }
+                        Button("最近のノート") { localMode = 0 }.accessibilityIdentifier("laa.brain.filter.recent")
+                        Button("タグ") { localMode = 2; selectedTag = nil }.accessibilityIdentifier("laa.brain.filter.tags")
                         if files.contains(where: { $0.conflictOriginalPath != nil }) { Button("競合") { localMode = 3 } }
                     } label: { Image(systemName: "line.3.horizontal.decrease.circle").accessibilityLabel("表示を切り替える") }
                         .accessibilityIdentifier("laa.brain.localDisplay")
@@ -264,7 +307,7 @@ struct LAABrainView: View {
                     catch { localError = LAABrainVaultError.unreadable.message }
                 }.laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.useMac")
             }
-            if local.isReady && LAABrainEditingGate.enabled {
+            if local.isReady {
                 Button("Recovery history") { showRecovery = true }
                     .laaTextStyle(.secondary).accessibilityIdentifier("laa.brain.recovery.open")
             }
@@ -441,7 +484,7 @@ struct LAABrainView: View {
         } else if let index, !index.tags.isEmpty {
             sectionHeading(LAACopy.Brain.tags)
             ForEach(index.tags, id: \.self) { tag in
-                Button("#" + tag) { selectedTag = tag }
+                Button { selectedTag = tag } label: { Text(verbatim: "#" + tag) }
                     .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
             }
         } else {
@@ -481,6 +524,7 @@ struct LAABrainView: View {
         if local.isReady && children.isEmpty && notes.isEmpty && !isLoading {
             Text("このフォルダは空です。右上の＋から作成できます。")
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                .accessibilityIdentifier("laa.brain.emptyFolder")
         }
         ForEach(children, id: \.self) { name in folderLink(name, parent: folder) }
         ForEach(notes) { file in noteLink(file) }
