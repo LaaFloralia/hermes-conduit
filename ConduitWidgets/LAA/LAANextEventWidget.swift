@@ -18,7 +18,15 @@ struct LAANextEventProvider: TimelineProvider {
         completion(Timeline(entries: entries, policy: .after(now.addingTimeInterval(3600))))
     }
     private func authorizedEvents() -> [LAACalendarEvent] {
-        EKEventStore.authorizationStatus(for: .event) == .fullAccess ? LAACalendarSnapshot.read() : []
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess else { return [] }
+        let store = EKEventStore()
+        let now = Date()
+        guard let end = Calendar.current.date(byAdding: .year, value: 1, to: now) else { return [] }
+        return store.events(matching: store.predicateForEvents(withStart: now, end: end, calendars: nil)).map {
+            LAACalendarEvent(id: ($0.eventIdentifier ?? UUID().uuidString) + "-" + String($0.startDate.timeIntervalSince1970),
+                             title: $0.title ?? "Untitled", start: $0.startDate, end: $0.endDate,
+                             allDay: $0.isAllDay, location: nil)
+        }
     }
     private func entry(at date: Date) -> LAANextEventEntry {
         .init(date: date, event: authorizedEvents().filter { $0.end > date }.min { $0.start < $1.start })

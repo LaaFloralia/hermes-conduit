@@ -181,6 +181,7 @@ targets:
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "Show upcoming events in the LAA calendar widget."
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
