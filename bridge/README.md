@@ -176,7 +176,7 @@ LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
 - 画像・PDF・動画などのローカルファイルは必要範囲だけ開き、206/416・`Content-Range` を返す。版はファイル属性から作成し、各範囲の前に変更を検出する。File Providerがオンライン専用ファイルを実際にどう取得するかは未実測。
 - `.gdoc`・`.gsheet`・`.gslides` 等は安全なGoogleのWebリンクとして開く。PDF変換は行わない。最大2 MiBの対応画像は一覧用にも返す。
 
-2026-11-01の実測では、稼働中の `com.laa.bridge` と同じプロセスから両ルートへの `opendir` が `EPERM` となり、macOSの `FileProviderDomain` アクセスが必要だった。許可画面は操作していない。許可とBridge再起動後に親が再測定する。候補はシステム設定の「プライバシーとセキュリティ」→「フルディスクアクセス」に実行中のNode実体を追加する方法だが、同じNodeを使う他のスクリプトにも広い権限を与え、効果も未検証。現在の実体は `/opt/homebrew/Cellar/node@24/24.21.0_1/bin/node`（更新で変わり得る）。
+2026-11-01の実測では、稼働中の `com.laa.bridge` と同じプロセスから両ルートへの `opendir` が `EPERM` となり、macOSの `FileProviderDomain` アクセスが拒否された。親がBridge専用の実行ファイルにフルディスクアクセスを付け、launchdのplistの実行パスを差し替える。許可画面は操作しておらず、設定・Bridge再起動後の実アクセスは未確認。コードはNodeの固定パスに依存しない。
 
 ## タスク読取（`/v1/tasks`）
 
