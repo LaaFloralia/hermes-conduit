@@ -1351,8 +1351,8 @@ private struct SettingsHome: View {
             }
         }
         homeSection(AppLocalization.string("App"), tint: .conduitAccent) {
-            settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
-            settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+            settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"), identifier: "settings.appearance")
+            settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"), identifier: "settings.notifications")
             settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
         }
     }
@@ -3323,6 +3323,13 @@ private struct AppearanceSettingsDetail: View {
     @State private var isChangingIcon = false
     init(theme: ThemePreference, saveTheme: @escaping (ThemePreference) -> Void) { self.theme = theme; self.saveTheme = saveTheme; _selected = State(initialValue: theme) }
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var usesCurrentShell: Bool {
+        #if LAA_BUILD
+        true
+        #else
+        usesV2
+        #endif
+    }
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Theme"), symbol: "circle.lefthalf.filled", tint: .conduitAccent) {
@@ -3423,7 +3430,8 @@ private struct AppearanceSettingsDetail: View {
 
             // The gold button beside V2's tabs: voice, or New chat for
             // people who'd rather not talk. A chat keeps its voice button.
-            if usesV2 {
+            if usesCurrentShell {
+                #if !LAA_BUILD
                 ConduitSettingsSection(title: AppLocalization.string("Main button"), symbol: "circle.circle.fill", tint: .conduitAccent) {
                     Text("Choose what the round button beside the tabs does. The other one moves to the top bar, and a chat keeps its voice button.")
                         .font(.footnote)
@@ -3437,6 +3445,7 @@ private struct AppearanceSettingsDetail: View {
                     }
                     .pickerStyle(.segmented)
                 }
+                #endif
 
                 // The big button beside a chat's composer. A profile can
                 // choose its own in Settings > Voice.
@@ -3478,6 +3487,7 @@ private struct AppearanceSettingsDetail: View {
 
             // V2's wide windows: the list beside the open chat, or the
             // chat on its own (#1164). The chat's top bar switches it too.
+            #if !LAA_BUILD
             if isPad, usesV2 {
                 ConduitSettingsSection(title: AppLocalization.string("Layout"), symbol: "sidebar.left", tint: .conduitAura) {
                     Text("Choose whether Chats and Bots keep their list beside the open chat when the window is wide enough. The sidebar button at the top of a chat switches it too.")
@@ -3501,6 +3511,7 @@ private struct AppearanceSettingsDetail: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            #endif
         }.navigationTitle("Appearance")
     }
 }
@@ -3780,11 +3791,13 @@ private struct NotificationsSettingsDetail: View {
             if notifications.isEnabled {
                 ConduitSettingsSection(title: AppLocalization.string("Notify me when"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                     // The relay keeps one set of preferences per iPhone.
+                    #if !LAA_BUILD
                     if appState.savedDashboardRegistry.dashboards.count > 1 {
                         Text(AppLocalization.string("These apply to every dashboard paired with this iPhone."))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                    #endif
                     notificationToggle(AppLocalization.string("Approval needed"), detail: AppLocalization.string("A tool is waiting for approval"), keyPath: \.approvalNeeded)
                     notificationToggle(AppLocalization.string("Input needed"), detail: AppLocalization.string("Hermes needs your answer"), keyPath: \.inputNeeded)
                     notificationToggle(AppLocalization.string("Response ready"), detail: AppLocalization.string("An active turn finishes"), keyPath: \.responseReady)
@@ -3805,6 +3818,7 @@ private struct NotificationsSettingsDetail: View {
                 // Everything here is the ACTIVE dashboard's: its host's
                 // notifier and its pairings. Other dashboards' pairings
                 // share this iPhone's relay list but never stand in for it.
+                #if !LAA_BUILD
                 ConduitSettingsSection(title: AppLocalization.string("Compatibility"), symbol: "checkmark.seal", tint: .conduitAura) {
                     if appState.savedDashboardRegistry.dashboards.count > 1, let label = appState.savedDashboardRegistry.activeDashboardLabel {
                         Text("Showing \(label). Switch dashboards to check another one.")
@@ -3920,6 +3934,7 @@ private struct NotificationsSettingsDetail: View {
                 .task(id: appState.activeDashboardID) {
                     await appState.refreshNotifierPluginStatus()
                 }
+                #endif
 
                 ConduitSettingsSection(title: AppLocalization.string("Connect a Hermes profile"), symbol: "link.badge.plus", tint: .conduitAura) {
                     if appState.notifierPlugin.reports("pairing") {
@@ -3930,7 +3945,6 @@ private struct NotificationsSettingsDetail: View {
                         Text(verbatim: LAACopy.pluginNotificationsUnavailable)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        pluginPageLink(AppLocalization.string("Open Conduit plugin"))
                         #else
                         if appState.notifierPlugin.isNotServed {
                             Text("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
@@ -3943,7 +3957,6 @@ private struct NotificationsSettingsDetail: View {
                                 .foregroundStyle(.secondary)
                             pluginPageLink(AppLocalization.string("Install or update the Conduit plugin"))
                         }
-                        #endif
                         Button {
                             Task {
                                 // Pairings are bound to the active dashboard
@@ -3977,8 +3990,10 @@ private struct NotificationsSettingsDetail: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        #endif
                     }
                 }
+                #if !LAA_BUILD
                 ConduitSettingsSection(title: AppLocalization.string("Verify pairing"), symbol: "checkmark.seal", tint: .conduitAccent) {
                     Text("After pairing, run these on the same Hermes profile. First confirm the local relay credential, then send a test. You should receive the test notification on this iPhone within a few seconds.")
                         .font(.footnote)
@@ -3991,11 +4006,13 @@ private struct NotificationsSettingsDetail: View {
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
+                #endif
             }
 
             // Always visible (#255): an unreachable custom relay makes
             // enabling fail, so the field must stay editable while
             // notifications are off — otherwise there is no way back.
+            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("Push relay"), symbol: "server.rack", tint: .conduitAura) {
                 // Edits stay a draft until saved, so a half-typed URL never
                 // becomes the relay; saving moves an active registration.
@@ -4059,6 +4076,7 @@ private struct NotificationsSettingsDetail: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            #endif
         }
         .navigationTitle("Notifications")
         .task {

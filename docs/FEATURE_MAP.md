@@ -476,7 +476,10 @@ App Store build · the Bridge API, Brain and Usage data contracts
   scope and service failures are distinguished. Bridge tabs share the
   connection state and expose only their supported actions. Settings shows Mac
   connection status and opens the same pairing sheet even after a Keychain error.
-  LAA Settings omits the old dashboard, server, setup and plugin controls.
+  LAA Settings omits the old dashboard, server, setup and plugin controls. Its
+  notification settings retain notification preferences and supported profile
+  pairing, while hiding relay administration and the old shell commands; the
+  appearance page omits controls for the upstream-only tab button and layout.
 - The shared Bridge request supports JSON writes, idempotency keys, If-Match
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads

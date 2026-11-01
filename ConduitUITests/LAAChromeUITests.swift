@@ -178,6 +178,31 @@ final class LAAChromeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["laa.call.end"].exists)
     }
 
+    func testAppearanceAndNotificationsOmitLegacyControls() {
+        for appearance in ["light", "dark"] {
+            for (setting, title) in [("settings.appearance", "Appearance"), ("settings.notifications", "Notifications")] {
+                let app = launch(appearance)
+                let settings = app.buttons["laa.settings.open"]
+                XCTAssertTrue(settings.waitForExistence(timeout: 30))
+                settings.tap()
+                let entry = app.buttons[setting]
+                XCTAssertTrue(entry.waitForExistence(timeout: 10))
+                if !entry.isHittable { app.scrollViews.firstMatch.swipeUp() }
+                entry.tap()
+                XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 10))
+                if title == "Appearance" {
+                    XCTAssertFalse(app.staticTexts["Main button"].exists)
+                } else {
+                    XCTAssertFalse(app.textFields["Push relay URL"].exists)
+                    XCTAssertFalse(app.staticTexts["Verify pairing"].exists)
+                    XCTAssertFalse(app.buttons["notifications.plugin-link"].exists)
+                }
+                capture("remnants-\(title.lowercased())-\(appearance)")
+                app.terminate()
+            }
+        }
+    }
+
     func testCallControlsAndCapture() throws {
         for appearance in ["light", "dark"] {
             let app = XCUIApplication()
