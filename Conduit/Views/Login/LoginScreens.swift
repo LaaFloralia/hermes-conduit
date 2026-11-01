@@ -772,11 +772,13 @@ struct LoginHeader: View {
                     #endif
                     #if LAA_BUILD
                     Text(verbatim: LAACopy.loginMacSubtitle)
+                        .laaTextStyle(.secondary)
+                        .foregroundStyle(LAAColor.secondaryText)
                     #else
                     Text("A focused home for your Hermes work")
-                    #endif
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    #endif
                 case .welcomeBack:
                     Text("Welcome back")
                         .font(.title2.weight(.semibold))
