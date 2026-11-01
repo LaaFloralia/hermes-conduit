@@ -11,7 +11,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
 
     private var profile: String { appState.conversationIdentityProfile }
     private var name: String {
-        LAAStaff(profile: profile)?.name ?? (profile == "default" ? "LAA" : appState.conversationAgentIdentity.name)
+        LAAStaff(profile: profile)?.name ?? (profile == "default" ? LAACopy.agent : appState.conversationAgentIdentity.name)
     }
     private var sameCall: Bool {
         calls.snapshot?.context.profile == profile && calls.snapshot?.context.conversationID == appState.activeSessionId

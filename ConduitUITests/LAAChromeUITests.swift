@@ -141,6 +141,43 @@ final class LAAChromeUITests: XCTestCase {
         }
     }
 
+    func testMacSettingsRemainReachableWhenUnpairedOrKeychainFails() {
+        for (arguments, status) in [([String](), "Not paired"),
+                                    (["-LAA_UI_TEST_KEYCHAIN_ERROR"], "Keychain error"),
+                                    (["-LAA_UI_TEST_BRIDGE_OFFLINE"], "Offline")] {
+            let app = launch("light", extra: arguments)
+            let settings = app.buttons["laa.settings.open"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 30))
+            settings.tap()
+            let value = app.staticTexts["laa.settings.mac.status"]
+            XCTAssertTrue(value.waitForExistence(timeout: 10))
+            let predicate = NSPredicate(format: "label == %@", status)
+            expectation(for: predicate, evaluatedWith: value)
+            waitForExpectations(timeout: 10)
+            XCTAssertFalse(app.buttons["settings.saved-dashboards"].exists)
+            XCTAssertFalse(app.buttons["settings.connection-setup"].exists)
+            XCTAssertFalse(app.buttons["settings.conduit-plugin"].exists)
+            let repair = app.buttons["laa.settings.mac.repair"]
+            XCTAssertTrue(repair.isHittable)
+            repair.tap()
+            XCTAssertTrue(app.navigationBars["Connect to Mac"].waitForExistence(timeout: 10))
+            app.terminate()
+        }
+    }
+
+    func testExistingVoiceEntryShowsLAACallAndCanReturnFromTabs() {
+        let app = launch("light", extra: ["-LAA_UI_TEST_EXISTING_VOICE"])
+        XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 30))
+        XCTAssertEqual(app.staticTexts["laa.call.name"].label, "Ciel")
+        app.buttons["laa.call.back"].tap()
+        let returnToCall = app.buttons["laa.call.return"]
+        XCTAssertTrue(returnToCall.waitForExistence(timeout: 10))
+        returnToCall.tap()
+        XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 10))
+        app.buttons["laa.call.end"].tap()
+        XCTAssertFalse(app.buttons["laa.call.end"].exists)
+    }
+
     func testCallControlsAndCapture() throws {
         for appearance in ["light", "dark"] {
             let app = XCUIApplication()

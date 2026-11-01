@@ -264,9 +264,13 @@ private struct CallGlassCircle: ViewModifier {
 
 struct LAACallPresentation: ViewModifier {
     @ObservedObject var calls: LAAEmployeeCallCoordinator
+    var topBanner: AnyView? = nil
+    var bottomOverlay: AnyView? = nil
     func body(content: Content) -> some View {
         content.fullScreenCover(isPresented: $calls.isShowingCall) {
             LAAEmployeeCallView(calls: calls)
+                .safeAreaInset(edge: .top, spacing: 0) { topBanner }
+                .overlay(alignment: .bottom) { bottomOverlay }
         }
         .sheet(item: $calls.consentRequest, onDismiss: calls.consentDidDismiss) { request in
             LiveVoiceConsentSheet(mode: request.mode, onAnswer: calls.answerConsent)

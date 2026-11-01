@@ -17,15 +17,10 @@ final class LAAPluginPolicyUITests: XCTestCase {
         settings.tap()
         XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.otherElements["settings.notifier-update"].exists)
-        let plugin = app.buttons["settings.conduit-plugin"]
-        for _ in 0..<5 where !plugin.isHittable { app.swipeUp() }
-        XCTAssertTrue(plugin.waitForExistence(timeout: 10))
-        plugin.tap()
-        XCTAssertTrue(app.staticTexts["0.1.0"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.descendants(matching: .any)["settings.plugin.connection"].exists)
-        XCTAssertFalse(app.buttons["settings.plugin.update"].exists)
-        XCTAssertFalse(app.buttons["settings.plugin.notices"].exists)
-        XCTAssertFalse(app.buttons["Finish Update"].exists)
+        XCTAssertFalse(app.buttons["settings.conduit-plugin"].exists)
+        XCTAssertFalse(app.buttons["settings.saved-dashboards"].exists)
+        XCTAssertFalse(app.buttons["settings.gateway"].exists)
+        XCTAssertFalse(app.buttons["settings.connection-setup"].exists)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "update available")).firstMatch.exists)
     }
 

@@ -5,11 +5,11 @@ import SwiftUI
 /// remaining tabs share the LAA Bridge connection independently of Hermes.
 struct LAAAppShell: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.scenePhase) private var scenePhase
     let onRequestSettings: () -> Void
 
-    @StateObject private var bridge = LAABridgeSession()
     @StateObject private var usageState = LAAUsageState()
     @ObservedObject var employeeCalls: LAAEmployeeCallCoordinator
     @State private var selectedTab: LAATab = LAATab.launched ?? .chats
@@ -49,7 +49,15 @@ struct LAAAppShell: View {
             }
             .environmentObject(bridge)
             .environmentObject(employeeCalls)
-            .modifier(LAACallPresentation(calls: employeeCalls))
+            // A shortcut or widget may start a call outside a chat. Keep a
+            // return control visible there too when the call is minimised.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let context = employeeCalls.snapshot?.context,
+                   !conversationVisible || context.profile != appState.conversationIdentityProfile
+                    || context.conversationID != appState.activeSessionId {
+                    LAAInCallBar(calls: employeeCalls, profile: context.profile, conversationID: context.conversationID)
+                }
+            }
             .tint(LAAColor.link)
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
@@ -175,7 +183,7 @@ struct LAAAppShell: View {
                             } else if tab == .work {
                                 LAAWorkView(onRequestSettings: onRequestSettings)
                             } else {
-                                LAAPlaceholderScreen(tab: tab, onRequestSettings: onRequestSettings)
+                                LAAAssetsView(onRequestSettings: onRequestSettings)
                             }
                         }
                     }

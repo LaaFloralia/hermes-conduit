@@ -132,8 +132,7 @@ struct LAAWorkView: View {
             if bridge.status == .keychainError {
                 Label(LAAWorkPresentation.japanese("接続情報を読み取れません"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColor.attention)
-                Text(verbatim: "端末の接続情報を確認してください。")
-                Button(LAACopy.WorkTab.settings, action: onRequestSettings).buttonStyle(.bordered)
+                Text(verbatim: "右上の設定 > Mac から再ペアリングしてください。")
             } else {
                 Label { Text(verbatim: "未接続") } icon: { Image(systemName: "circle") }
                     .foregroundStyle(LAAColor.secondaryText)

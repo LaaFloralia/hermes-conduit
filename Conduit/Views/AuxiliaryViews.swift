@@ -1170,6 +1170,9 @@ private struct SettingsHome: View {
                         }
                     }
                     #endif
+                    #if LAA_BUILD
+                    laaSections
+                    #else
                     if v2Layout {
                         v2Sections
                     } else {
@@ -1228,6 +1231,7 @@ private struct SettingsHome: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, v2Layout ? 16 : 10)
                         .padding(.top, v2Layout ? -12 : 2)
+                    #endif
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, v2Layout ? 8 : 16)
@@ -1332,6 +1336,27 @@ private struct SettingsHome: View {
             ? AppLocalization.string("On: shared with your other devices")
             : AppLocalization.string("Share preferences with your other devices")
     }
+
+    #if LAA_BUILD
+    /// Only settings useful in LAA; dashboard and plugin administration stay
+    /// in the upstream build, while pairing uses the shared Bridge session.
+    @ViewBuilder private var laaSections: some View {
+        LAAMacSettingsCard()
+        homeSection(LAACopy.agent, tint: .conduitAura) {
+            settingsLink(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"))
+            settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
+            settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"))
+            if appState.supportsHermesCalls {
+                settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: LAACopy.callsFromCiel, detail: LAACopy.callsFromCielDetail, identifier: "settings.hermes-calls")
+            }
+        }
+        homeSection(AppLocalization.string("App"), tint: .conduitAccent) {
+            settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
+            settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
+            settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
+        }
+    }
+    #endif
 
     /// V2's grouping: the selected profile (its connection, approvals and
     /// profile page), then Voice, Hermes, and App, each one card of rows

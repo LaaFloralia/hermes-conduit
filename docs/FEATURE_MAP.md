@@ -391,6 +391,7 @@ build (keeps its own chat and call controls)
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
 - The call screen follows the selected light or dark appearance using the v2 background, text, surface and control tokens; either the top back control or Chat returns to the originating conversation.
 - Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
+- LAA presents existing voice calls from chat, Siri and Shortcuts in the same LAA call screen. The current engine and CallKit ownership are retained, and a minimized call can be reopened from any tab. The upstream call sheets are excluded from the LAA build.
 - Employee calls from the chat and widget use GPT-Live on the ChatGPT subscription, the employee's profile and its SOUL persona, regardless of the workspace's voice or billing setting. A missing persona or subscription failure stops the call; there is no API fallback or mode switch during the employee call. The employee detail's voice picker stores a ChatGPT voice in that profile's existing preferences; the call reports if the host does not confirm it. The default profile keeps its existing voice behavior.
 - The header and both composer call buttons use the employee call path, including the expanded composer's saved-call entry. Health, location and phone permissions, live style and recorded or resumed calls follow the employee's profile; an expired call cannot start a later request under a different profile. Persona failures distinguish a missing plugin route from a missing persona or connection failure.
 - A CarPlay start, chat pick or End cannot adopt or discard an employee plan while the phone is waiting for CallKit. CarPlay's existing GPT-Live attachment remains available for a running call.
@@ -440,12 +441,12 @@ mode menu)
 The LAA iPhone build's top-level navigation, Bridge pairing, Brain and Usage tabs.
 
 **Siblings:** the existing Chats list, sessions and group rooms · Hermes login
-and offline chats · Conduit Settings and its direct Hermes usage report ·
+and offline chats · LAA Settings ·
 notifications and in-app links · the four Bridge-backed tabs · the upstream
 App Store build · the Bridge API, Brain and Usage data contracts
 
 **Code**
-- Shell and placeholders: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAAPlaceholderScreen.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`
+- Shell and settings: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/LAATab.swift`, `Conduit/LAA/LAABridgeStatus.swift`, `Conduit/LAA/Settings/LAAMacSettingsCard.swift`, `Conduit/LAA/LAAColors.swift`, `Conduit/LAA/LAACopy.swift`, `Conduit/LAA/LAASettingsAction.swift`, `Conduit/Views/AuxiliaryViews.swift`
 - Design tokens and checks: `Conduit/LAA/Design/LAATokens.swift`, `ConduitTests/LAADesignTokensTests.swift`, `ConduitUITests/LAAShellNavigationUITests.swift`, `docs/laa/DESIGN.md`
 - Read-only plugin status and checks: `Conduit/LAA/Design/LAAPluginStatusView.swift`, `Conduit/LAA/Design/LAAPluginUITestFixture.swift`, `Conduit/Views/ConduitPluginViews.swift`, `Conduit/Views/Capabilities/CapabilityPluginsTab.swift`, `Conduit/Views/AuxiliaryViews.swift`, `Conduit/Services/AppState+FinishSetup.swift`, `ConduitTests/LAAPluginPolicyTests.swift`, `ConduitUITests/LAAPluginPolicyUITests.swift`
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
@@ -473,7 +474,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - The Mac Bridge is paired by a one-time code. The device token and its address
   are stored together in ThisDeviceOnly Keychain; TLS, network, revocation,
   scope and service failures are distinguished. Bridge tabs share the
-  connection state and expose only their supported actions.
+  connection state and expose only their supported actions. Settings shows Mac
+  connection status and opens the same pairing sheet even after a Keychain error.
+  LAA Settings omits the old dashboard, server, setup and plugin controls.
 - The shared Bridge request supports JSON writes, idempotency keys, If-Match
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
@@ -485,8 +488,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   part of this screen. Opening the tab refreshes after a 60-second quiet interval;
   manual refresh and app foreground refresh remain available. It retains previous
   readings and their times on failure, disables duplicate refreshes and
-  distinguishes missing, zero, stale, expired and unavailable data. Hermes'
-  existing Settings report remains available.
+  distinguishes missing, zero, stale, expired and unavailable data.
 - Brain lists the default permitted areas, optionally adds Inbox on request,
   searches locally through the Bridge, and opens Markdown or its exact source.
   Frontmatter remains available, unresolved syntax and image references remain
@@ -541,8 +543,6 @@ App Store build · the Bridge API, Brain and Usage data contracts
   The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
   are not in this five-tab shell.
-- The existing Hermes Settings report has its own missing-number handling;
-  Bridge's Usage data does not replace or claim to fix that report.
 - Hermes reports a zero billed cost both for a true zero and a missing billed
   cost, so the Usage tab labels that actual cost unknown rather than guessing.
 - Project version errors provide the current ETag in the 412 error details;

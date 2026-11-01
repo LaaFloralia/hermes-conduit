@@ -220,6 +220,77 @@ final class LAAStaffCallTests: XCTestCase {
         XCTAssertEqual(fake.endCount, 0)
     }
 
+    func testVoiceAdapterAdoptsAnExistingCallWithoutOpeningAnother() {
+        let fake = FakeVoiceHost()
+        fake.canAdopt = true
+        fake.voiceStatus = LAAEmployeeVoiceStatus(phase: .connected)
+        let control = LAAEmployeeVoiceControl(host: fake.makeHost())
+        let context = LAAEmployeeCallContext(profile: "default", name: "Ciel", conversationID: nil)
+        var updates: [LAAEmployeeCallSnapshot] = []
+        control.onUpdate = { updates.append($0) }
+
+        XCTAssertTrue(control.adopt(context))
+        XCTAssertFalse(control.adopt(context), "a second entry cannot take over an existing call")
+        XCTAssertEqual(fake.openCount, 0)
+        XCTAssertEqual(fake.beginCount, 1)
+        XCTAssertEqual(updates.last?.phase, .connected)
+        control.end()
+        XCTAssertEqual(fake.endCount, 1)
+        XCTAssertEqual(updates.last?.phase, .ended)
+    }
+
+    func testCoordinatorPresentsAnExistingVoiceCallAsCiel() {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        app.setActiveProfileForTesting("default")
+        let calls = LAAEmployeeCallCoordinator(control: LAAEmployeeVoiceControl())
+        calls.adoptVoiceIfNeeded(app)
+        XCTAssertNil(calls.snapshot)
+        app.showVoiceSheet = true
+        calls.adoptVoiceIfNeeded(app)
+        XCTAssertEqual(calls.snapshot?.context.name, "Ciel")
+        XCTAssertTrue(calls.isShowingCall)
+        let id = calls.snapshot?.context.id
+        calls.adoptVoiceIfNeeded(app)
+        XCTAssertEqual(calls.snapshot?.context.id, id)
+        calls.end()
+        XCTAssertNil(calls.snapshot)
+    }
+
+    func testAdoptedIdleLiveCallShowsFailureAndCanClose() {
+        let harness = CarPlayVoiceCoordinatorTests.makeSharedHarness()
+        addTeardownBlock { [defaults = harness.defaults, suite = harness.defaultsSuiteName] in
+            defaults.removePersistentDomain(forName: suite)
+        }
+        let app = harness.appState
+        app.showGeminiLiveSheet = true
+        let calls = LAAEmployeeCallCoordinator(control: LAAEmployeeVoiceControl())
+        calls.adoptVoiceIfNeeded(app)
+        if case .failed = calls.snapshot?.phase {} else { XCTFail("An idle presented call must remain dismissible") }
+        calls.end()
+        XCTAssertFalse(app.showGeminiLiveSheet)
+        XCTAssertNil(calls.snapshot)
+    }
+
+    func testShortcutCallDoesNotInheritAnUnrelatedOpenChat() {
+        let fresh = LAAEmployeeCallCoordinator.existingIdentity(
+            activeProfile: "default", conversationProfile: "laa-cfo", conversationID: "old-chat",
+            employeeProfile: nil, isClassic: false, thread: nil)
+        XCTAssertEqual(fresh.profile, "default")
+        XCTAssertNil(fresh.conversationID)
+
+        let thread = VoiceThreadTarget(runtimeSessionID: "live-chat", storedSessionID: "saved-chat",
+                                       title: "Chat", profile: "laa-cfo")
+        let attached = LAAEmployeeCallCoordinator.existingIdentity(
+            activeProfile: "default", conversationProfile: "laa-cfo", conversationID: "live-chat",
+            employeeProfile: nil, isClassic: false, thread: thread)
+        XCTAssertEqual(attached.profile, "laa-cfo")
+        XCTAssertEqual(attached.conversationID, "live-chat")
+    }
+
     func testEndingPendingVoiceOpenCannotRestartIt() async {
         let fake = FakeVoiceHost()
         fake.holdOpen = true
@@ -475,6 +546,8 @@ private final class FakeVoiceHost {
     var pendingOpen: CheckedContinuation<LAAEmployeeVoiceOpenResult, Never>?
     var didBegin: (() -> Void)?
     var beginCount = 0
+    var openCount = 0
+    var canAdopt = false
     var endCount = 0
     var mute: Bool?
     var speaker: Bool?
@@ -483,6 +556,7 @@ private final class FakeVoiceHost {
         LAAEmployeeVoiceHost(
             unavailable: { nil }, consent: { _ in nil }, grant: { _ in },
             open: { context in
+                self.openCount += 1
                 if self.failOpen { return .failed }
                 if self.holdOpen {
                     return await withCheckedContinuation { continuation in
@@ -493,6 +567,7 @@ private final class FakeVoiceHost {
                 return .opened(LAAEmployeeCallContext(id: context.id, profile: context.profile, name: context.name,
                                                       conversationID: self.resolvedConversation ?? context.conversationID))
             },
+            adopt: { self.canAdopt },
             status: { self.voiceStatus },
             observe: { changed in [self.changed.sink { _ in changed() }] },
             beginClassicListening: { self.beginCount += 1 },

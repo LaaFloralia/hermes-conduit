@@ -38,6 +38,8 @@ enum LAACopy {
     static let macRePairRequired = "Re-pair required"
     static let macKeychainError = "Keychain error"
     static let macConnectionError = "Connection error"
+    static let callsFromCiel = "Calls from Ciel"
+    static let callsFromCielDetail = "When Ciel may call you"
     static let screenQuestionAddShortcut = "Add shortcut"
     static let openSourceLicenses = "Open-source licenses"
     static let close = "Close"

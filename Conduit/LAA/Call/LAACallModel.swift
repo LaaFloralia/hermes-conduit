@@ -87,6 +87,42 @@ final class LAAEmployeeCallCoordinator: ObservableObject {
         voiceControl.bind(appState)
     }
 
+    /// Existing voice entry points retain their engine and CallKit ownership;
+    /// only their phone presentation is adopted by the LAA call screen.
+    func adoptVoiceIfNeeded(_ appState: AppState) {
+        guard snapshot == nil, consentRequest == nil,
+              let voiceControl = control as? LAAEmployeeVoiceControl else { return }
+        voiceControl.bind(appState)
+        let thread = appState.voiceBackgroundJobSupervisor.liveThread
+        let identity = Self.existingIdentity(activeProfile: appState.activeProfile,
+                                             conversationProfile: appState.conversationIdentityProfile,
+                                             conversationID: appState.activeSessionId,
+                                             employeeProfile: appState.laaEmployeeGPTLivePlan?.profile,
+                                             isClassic: appState.showVoiceSheet, thread: thread)
+        let profile = identity.profile
+        let name = LAAStaff(profile: profile)?.name
+            ?? (profile == "default" ? LAACopy.agent : appState.profileDisplayName(profile))
+        let context = LAAEmployeeCallContext(profile: profile, name: name, conversationID: identity.conversationID)
+        snapshot = LAAEmployeeCallSnapshot(context: context, phase: .connecting)
+        isShowingCall = true
+        if !voiceControl.adopt(context) {
+            snapshot = nil
+            isShowingCall = false
+        }
+    }
+
+    static func existingIdentity(activeProfile: String, conversationProfile: String, conversationID: String?,
+                                 employeeProfile: String?, isClassic: Bool,
+                                 thread: VoiceThreadTarget?) -> (profile: String, conversationID: String?) {
+        let profile = employeeProfile ?? thread?.profile ?? (isClassic ? conversationProfile : activeProfile)
+        if let thread {
+            let id = conversationID.flatMap { thread.owns(sessionID: $0) ? $0 : nil }
+                ?? thread.storedSessionID ?? thread.runtimeSessionID
+            return (profile, id)
+        }
+        return (profile, isClassic ? conversationID : nil)
+    }
+
     /// Every employee chat call button uses the same identity and call surface.
     @discardableResult
     func startEmployeeConversation(_ appState: AppState) -> Bool {

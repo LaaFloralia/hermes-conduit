@@ -374,7 +374,9 @@ struct VoiceSettingsView: View {
                             AgentSettingsModeSection(onChange: agentSettingsChanged)
                         }
                         wakeSection
+                        #if !LAA_BUILD
                         CarPlaySettingsSection()
+                        #endif
                         WatchSettingsSection()
                         readAloudSection
                         DictationSettingsSection()

@@ -25,6 +25,8 @@ struct LAAEmployeeVoiceHost {
     var consent: (LAAEmployeeCallContext) -> LiveVoiceModeName?
     var grant: (LiveVoiceModeName) -> Void
     var open: (LAAEmployeeCallContext) async -> LAAEmployeeVoiceOpenResult
+    /// Attach to a call opened by Siri, a widget, or the existing composer.
+    var adopt: () -> Bool = { false }
     var status: () -> LAAEmployeeVoiceStatus
     var observe: (@escaping () -> Void) -> [AnyCancellable]
     var beginClassicListening: () -> Void
@@ -85,6 +87,20 @@ final class LAAEmployeeVoiceControl: LAAEmployeeCallControlling {
             host.beginClassicListening()
             self.refresh()
         }
+    }
+
+    @discardableResult
+    func adopt(_ context: LAAEmployeeCallContext) -> Bool {
+        guard let host, self.context == nil, host.adopt() else { return false }
+        self.context = context
+        connectedAt = nil
+        lastSnapshot = nil
+        observations = host.observe { [weak self] in
+            Task { @MainActor [weak self] in self?.refresh() }
+        }
+        host.beginClassicListening()
+        refresh()
+        return true
     }
 
     func setMuted(_ muted: Bool) { host?.mute(muted) }
@@ -187,6 +203,12 @@ private extension LAAEmployeeVoiceHost {
                 return .opened(LAAEmployeeCallContext(id: context.id, profile: context.profile, name: context.name,
                                                        conversationID: app.activeSessionId ?? context.conversationID))
             },
+            adopt: { [weak app] in
+                guard let app, app.isVoiceCallScreenPresented else { return false }
+                ownsVoiceStart = true
+                ownedPlan = app.laaEmployeeGPTLivePlan
+                return true
+            },
             status: { [weak app] in
                 guard let app else { return LAAEmployeeVoiceStatus(phase: .ended) }
                 return status(app, audio: audio)
@@ -213,9 +235,13 @@ private extension LAAEmployeeVoiceHost {
                 // that another entry point owns.
                 guard app.laaEmployeeGPTLivePlan == nil || app.laaEmployeeGPTLivePlan == ownedPlan else { return }
                 app.endVoiceForPlacedCall()
-                // A failed GPT-Live call is neither active nor scheduled, but
-                // its sheet and personal context still need the full teardown.
+                // A failed live call may no longer be active or scheduled,
+                // but its presentation and context still need full teardown.
                 if app.showGPTLiveSheet { app.closeGPTLiveConversation() }
+                if app.showGeminiLiveSheet { app.closeGeminiLiveConversation() }
+                if app.showQwenLiveSheet { app.closeQwenLiveConversation() }
+                if app.showGrokLiveSheet { app.closeGrokLiveConversation() }
+                if app.showLocalLiveSheet { app.closeLocalLiveConversation() }
                 app.voicePlacedCalls.voiceChanged(running: false)
                 app.laaEmployeeGPTLivePlan = nil
             }
@@ -264,7 +290,7 @@ private extension LAAEmployeeVoiceHost {
 
     static func livePhase(_ phase: GeminiLiveConversationController.Phase, scheduled: Bool) -> LAAEmployeeCallPhase {
         switch phase {
-        case .idle: return scheduled ? .connecting : .ended
+        case .idle: return scheduled ? .connecting : .failed("音声に接続できませんでした")
         case .connecting, .reconnecting: return .connecting
         case .listening, .speaking, .paused: return .connected
         case .ending: return .ending
@@ -274,7 +300,7 @@ private extension LAAEmployeeVoiceHost {
 
     static func gptPhase(_ phase: GPTLiveConversationController.Phase, scheduled: Bool) -> LAAEmployeeCallPhase {
         switch phase {
-        case .idle: return scheduled ? .connecting : .ended
+        case .idle: return scheduled ? .connecting : .failed("音声に接続できませんでした")
         case .connecting: return .connecting
         case .listening, .speaking, .paused: return .connected
         case .ending: return .ending

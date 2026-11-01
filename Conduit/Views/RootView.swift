@@ -117,6 +117,21 @@ struct MainView: View {
     @EnvironmentObject var appState: AppState
 #if LAA_BUILD
     @StateObject private var employeeCalls = LAAEmployeeCallCoordinator(control: LAAEmployeeVoiceControl())
+    #if DEBUG
+    @State private var laaTestVoiceInjected = false
+    #endif
+    @StateObject private var laaBridge: LAABridgeSession = {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_KEYCHAIN_ERROR") {
+            return LAABridgeSession(statusForTesting: .keychainError)
+        }
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_BRIDGE_OFFLINE") {
+            return LAABridgeSession(credentialsForTesting: LAABridgeCredentials(
+                baseURL: URL(string: "http://127.0.0.1:1")!, deviceID: "fixture", token: "fixture"))
+        }
+        #endif
+        return LAABridgeSession()
+    }()
 #endif
     @AppStorage("conduit.ipadPersistentSidebar") private var prefersPersistentSidebar = false
     /// Conduit V2's tab shell (V2Shell.swift). Off brings back the drawer
@@ -238,12 +253,16 @@ struct MainView: View {
         // running turn does (InteractionIdleState).
         .onChange(of: isVoiceConversationShown, initial: true) { _, shown in
             InteractionIdleState.shared.setVoiceConversationShown(shown)
+            #if LAA_BUILD
+            if shown { employeeCalls.adoptVoiceIfNeeded(appState) }
+            #endif
         }
         // Sign-out swaps this view out with a sheet possibly still up.
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
             InteractionIdleState.shared.setVoiceConversationShown(false)
         }
+        #if !LAA_BUILD
         // Swiping a running call away minimises it; End hangs up.
         .sheet(isPresented: voicePresentation($appState.showGeminiLiveSheet), onDismiss: { appState.liveVoiceSheetDismissed(.geminiLive) }) {
             GeminiLiveVoiceSheet(
@@ -318,6 +337,7 @@ struct MainView: View {
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
         }
+        #endif
         // A CarPlay or Watch call stopped until the user allows its
         // provider to hear them: the phone asks (#827).
         .sheet(item: $appState.liveVoiceConsentRequest) { mode in
@@ -328,6 +348,7 @@ struct MainView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
+        #if !LAA_BUILD
         .sheet(isPresented: voicePresentation($appState.showVoiceSheet), onDismiss: appState.closeVoiceConversation) {
             VoiceConversationSheet(
                 controller: appState.voiceConversationController,
@@ -351,6 +372,7 @@ struct MainView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+        #endif
         .sheet(item: $settingsPresentation, onDismiss: {
             appState.isSettingsSheetPresented = false
             Task { await appState.refreshVoiceCapabilities() }
@@ -377,6 +399,9 @@ struct MainView: View {
             )
                 .presentationDetents([.large])
                 .environmentObject(appState)
+                #if LAA_BUILD
+                .environmentObject(laaBridge)
+                #endif
         }
         // Settings can go with this screen (switching or adding a dashboard
         // swaps in sign-in), and SwiftUI doesn't promise the sheet's
@@ -461,7 +486,8 @@ struct MainView: View {
         // Settings opens at its start.
         switch page {
         case .calls: settingsOpensAt = appState.supportsHermesCalls ? page : nil
-        case .voice, .plugin: settingsOpensAt = page
+        case .voice: settingsOpensAt = page
+        case .plugin: settingsOpensAt = isLAABuild ? nil : page
         case .health: settingsOpensAt = appState.showsHealthSettings ? page : nil
         case .location: settingsOpensAt = appState.showsLocationSettings ? page : nil
         case .phone: settingsOpensAt = appState.showsPhoneSettings ? page : nil
@@ -492,7 +518,20 @@ struct MainView: View {
     private var laaShell: AnyView? {
         #if LAA_BUILD
         AnyView(LAAAppShell(onRequestSettings: presentSettings, employeeCalls: employeeCalls)
-            .onAppear { employeeCalls.bindVoiceControl(appState) })
+            .environmentObject(laaBridge)
+            .modifier(LAACallPresentation(calls: employeeCalls, topBanner: AnyView(callTopBanners),
+                                          bottomOverlay: AnyView(presentedConfirmOverlay(inCall: true))))
+            .onAppear {
+                employeeCalls.bindVoiceControl(appState)
+                #if DEBUG
+                if !laaTestVoiceInjected && ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_EXISTING_VOICE") {
+                    // The same state that an external voice launch presents;
+                    // no audio, CallKit or network is started by this fixture.
+                    laaTestVoiceInjected = true
+                    appState.showVoiceSheet = true
+                }
+                #endif
+            })
         #else
         nil
         #endif

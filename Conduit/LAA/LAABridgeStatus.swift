@@ -113,27 +113,4 @@ final class LAABridgeSession: ObservableObject {
     }
 }
 
-enum LAAScreenState {
-    case bridgeNotPaired, revoked, connected, loading, empty, failed
-
-    static func current(_ status: LAABridgeSession.Status) -> LAAScreenState {
-        #if DEBUG
-        let arguments = ProcessInfo.processInfo.arguments
-        if let index = arguments.firstIndex(of: "-laa-state"), index + 1 < arguments.count {
-            switch arguments[index + 1] {
-            case "loading": return .loading
-            case "empty": return .empty
-            case "failed": return .failed
-            default: break
-            }
-        }
-        #endif
-        switch status {
-        case .paired: return .connected
-        case .revoked, .unauthorized: return .revoked
-        case .unpaired: return .bridgeNotPaired
-        case .keychainError: return .failed
-        }
-    }
-}
 #endif
