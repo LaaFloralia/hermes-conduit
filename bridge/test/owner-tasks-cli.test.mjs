@@ -187,3 +187,42 @@ test('status reports the store and the last backup', async (t) => {
   assert.ok(body.lastBackup);
   assert.equal(readFileSync(join(dir, 'owner-tasks.json'), 'utf8').includes('"schema":1'), true);
 });
+
+
+test('update input supports stdin and file and rejects invalid flags', async (t) => {
+  const dir=stateDir(t), env={LAA_BRIDGE_STATE_DIR:dir};
+  const created=await run(['tasks','add','--request-id','a','--title','A','--json'],{env}); const id=JSON.parse(created.stdout).task.id;
+  const ok=await run(['tasks','update','--id',id,'--if-match','1','--request-id','b','--input','-','--json'],{env,input:JSON.stringify({memo:'stdin'})});
+  assert.equal(ok.code,0,ok.stderr); assert.equal(JSON.parse(ok.stdout).task.memo,'stdin');
+  const file=join(dir,'input.json'); writeFileSync(file,JSON.stringify({memo:'file'}));
+  assert.equal((await run(['tasks','update','--id',id,'--if-match','1','--request-id','c','--input',file],{env})).code,4);
+  assert.equal((await run(['tasks','update','--id',id,'--if-match','2','--request-id','d','--input',file],{env})).code,0);
+  assert.equal((await run(['tasks','add','--request-id','e','--title','B','--due-date','2026-11-05'],{env})).code,2);
+  assert.equal((await run(['tasks','update','--id',id,'--request-id','f','--if-match','3','--statu','done'],{env})).code,2);
+  assert.equal(JSON.parse((await run(['tasks','list','--json'],{env})).stdout).total,1);
+});
+
+test('multiple processes reclaim a dead lock without losing tasks or operation records', async (t) => {
+  const dir=stateDir(t), env={LAA_BRIDGE_STATE_DIR:dir};
+  writeFileSync(join(dir,'owner-tasks.json.lock'),JSON.stringify({pid:99999999}));
+  const [a,b]=await Promise.all(['a','b'].map(k=>run(['tasks','add','--request-id',k,'--title',k,'--json'],{env})));
+  assert.equal(a.code,0,a.stderr); assert.equal(b.code,0,b.stderr);
+  let doc=JSON.parse(readFileSync(join(dir,'owner-tasks.json'),'utf8'));
+  assert.equal(Object.keys(doc.tasks).length,2); assert.equal(Object.keys(doc.operations).length,2);
+  writeFileSync(join(dir,'owner-tasks.json.lock'),JSON.stringify({pid:99999999}));
+  const [c,d]=await Promise.all([0,1].map(()=>run(['tasks','add','--request-id','same','--title','same','--json'],{env})));
+  assert.equal(c.code,0,c.stderr); assert.equal(d.code,0,d.stderr);
+  doc=JSON.parse(readFileSync(join(dir,'owner-tasks.json'),'utf8'));
+  assert.equal(Object.keys(doc.tasks).length,3); assert.equal(Object.keys(doc.operations).length,3);
+});
+
+
+test('concurrent backups choose distinct restorable snapshots', async (t) => {
+  const dir=stateDir(t),env={LAA_BRIDGE_STATE_DIR:dir};
+  assert.equal((await run(['tasks','add','--request-id','seed','--title','A'],{env})).code,0);
+  const [a,b]=await Promise.all([0,1].map(()=>run(['tasks','backup','--json'],{env})));
+  assert.equal(a.code,0,a.stderr); assert.equal(b.code,0,b.stderr);
+  const pa=JSON.parse(a.stdout).backup.path, pb=JSON.parse(b.stdout).backup.path;
+  assert.notEqual(pa,pb); assert.equal(JSON.parse(readFileSync(pa)).format,'laa-owner-tasks-snapshot');
+  assert.equal(JSON.parse(readFileSync(pb)).format,'laa-owner-tasks-snapshot');
+});

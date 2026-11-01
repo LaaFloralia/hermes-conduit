@@ -165,7 +165,7 @@ export function parseIfMatch(raw) {
   const quoted = /^"(\d{1,9})"$/.exec(value);
   const bare = /^(\d{1,9})$/.exec(value);
   const revision = quoted ? Number(quoted[1]) : bare ? Number(bare[1]) : null;
-  if (!Number.isInteger(revision) || revision < 1) {
+  if (!Number.isSafeInteger(revision) || revision < 1) {
     throw new BridgeError(400, 'precondition_invalid', 'If-Match must be a revision such as "3"');
   }
   return revision;
@@ -407,11 +407,11 @@ export function createOwnerTaskService({ store, now = () => Date.now() } = {}) {
         links: input.links,
         createdAt: at,
         updatedAt: at,
-        revision: 1,
+        revision: doc.revisionFloor ?? 1,
       };
       doc.tasks[id] = task;
       record(doc, {
-        hash, principal, fingerprint, method, path, targetId: id, revision: 1, httpStatus: 201,
+        hash, principal, fingerprint, method, path, targetId: id, revision: task.revision, httpStatus: 201,
       });
       return { status: 201, task, replayed: false };
     }, { create: true });
@@ -427,6 +427,10 @@ export function createOwnerTaskService({ store, now = () => Date.now() } = {}) {
 
     return store.transact((doc) => {
       compact(doc);
+      if (doc.revisionFloor && expected < doc.revisionFloor) {
+        const current = doc.tasks[id];
+        throw new BridgeError(412, 'owner_task_revision_mismatch', 'the task was restored; read it again before updating', { details: current ? { current } : {} });
+      }
       replayOf(doc, hash);
       const prior = doc.operations[hash];
       if (prior) {
@@ -457,6 +461,9 @@ export function createOwnerTaskService({ store, now = () => Date.now() } = {}) {
         }
       }
       if (changed) {
+        if (!Number.isSafeInteger(task.revision + 1)) {
+          throw new BridgeError(503, 'owner_tasks_store_unavailable', 'revision limit reached', { details: { reason: 'corrupt' } });
+        }
         task.revision += 1;
         task.updatedAt = iso();
       }
@@ -527,7 +534,7 @@ export function createOwnerTaskService({ store, now = () => Date.now() } = {}) {
           links: validateLinks(candidate.url ? [candidate.url] : []),
           createdAt: at,
           updatedAt: candidate.linearUpdatedAt ?? at,
-          revision: 1,
+          revision: doc.revisionFloor ?? 1,
         };
         doc.tasks[task.id] = task;
         doc.linearMap[candidate.linearId] = {
