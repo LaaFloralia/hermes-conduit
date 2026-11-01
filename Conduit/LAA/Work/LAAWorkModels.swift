@@ -8,6 +8,13 @@ struct LAAWorkPage<Item: Decodable>: Decodable {
     let total: Int?
 }
 
+struct LAAWorkConversationMessage: Decodable, Identifiable {
+    let id: String
+    let role: String
+    let text: String
+    let timestamp: String?
+}
+
 struct LAAWorkRoutine: Decodable, Identifiable {
     let id: String
     let name: String

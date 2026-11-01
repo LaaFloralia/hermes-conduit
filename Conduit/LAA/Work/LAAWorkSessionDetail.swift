@@ -10,6 +10,8 @@ struct LAAWorkSessionDetail: View {
     @State private var session: LAAWorkSession?
     @State private var events: [LAAWorkEvent] = []
     @State private var artifacts: [LAAWorkArtifact] = []
+    @State private var messages: [LAAWorkConversationMessage] = []
+    @State private var conversationUnavailable = false
     @State private var cursor: String?
     @State private var notice: String?
     @State private var failure: String?
@@ -46,8 +48,7 @@ struct LAAWorkSessionDetail: View {
                             }.workCard()
                         }
                         if session.needsDecision { decisionBanner }
-                        resultBody
-                        timeline
+                        conversation
                         actions(session)
                         LAAWorkMessageForm(sessionID: id, mode: .followUp, drafts: drafts,
                                            canStart: session.phase == "awaiting_review") { _ in
@@ -81,6 +82,25 @@ struct LAAWorkSessionDetail: View {
             }.environmentObject(bridge)
         }
         .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)") { await observe() }
+    }
+
+    private var conversation: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+            if conversationUnavailable {
+                Text(verbatim: "会話履歴を取得できません。更新して再確認してください。")
+                    .foregroundStyle(LAAColor.attention)
+            } else if messages.isEmpty {
+                Text(verbatim: "会話はまだありません。") .foregroundStyle(LAAColor.secondaryText)
+            }
+            ForEach(messages) { message in
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Text(verbatim: message.role == "user" ? "あなた" : "回答")
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    MarkdownText(source: message.text, foregroundStyle: LAAColor.text)
+                        .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
+                }.workCard()
+            }
+        }
     }
 
     private func sessionHeader(_ session: LAAWorkSession) -> some View {
@@ -191,6 +211,13 @@ struct LAAWorkSessionDetail: View {
             let fetched: LAAWorkArtifacts = try await bridge.read("/v1/sessions/\(id)/artifacts")
             session = detail
             artifacts = fetched.items
+            do {
+                let history: LAAWorkPage<LAAWorkConversationMessage> = try await bridge.read("/v1/sessions/\(id)/conversation")
+                messages = history.items
+                conversationUnavailable = false
+            } catch {
+                conversationUnavailable = true
+            }
             failure = nil
             if detail.phase == "stopped", !stopping, let pendingStop,
                !drafts.finishSubmission(pendingStop.id, restoring: false) {
