@@ -6,10 +6,13 @@ final class LAAAssetsUITests: XCTestCase {
 
     private func launch(_ mode: String? = nil, appearance: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         if let mode { app.launchArguments += ["-laa-assets-fixture", mode] }
         if let appearance { app.launchArguments += ["-conduit.themePreference", appearance] }
         app.launch()
+        let drive = app.buttons["Drive"]
+        XCTAssertTrue(drive.waitForExistence(timeout: 30))
+        drive.tap()
         return app
     }
 

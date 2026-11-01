@@ -7,28 +7,24 @@ final class LAAShellNavigationUITests: XCTestCase {
 
     func testTabLabelsNavigationAndSettings() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "source"]
+        app.launchArguments += ["-laa-tab", "work"]
         app.launch()
-        XCTAssertTrue(app.buttons["Chats"].waitForExistence(timeout: 30))
-        for name in ["Chats", "Work", "Brain", "Assets", "Usage"] {
-            XCTAssertTrue(app.buttons[name].exists, "Missing tab \(name)")
+        for name in ["Chats", "Today", "Brain", "Studio", "Work"] {
+            XCTAssertTrue(app.buttons[name].waitForExistence(timeout: 30), "Missing tab \(name)")
         }
-        app.buttons["Work"].tap()
+        app.buttons["Sessions, projects and tasks"].tap()
         XCTAssertTrue(app.staticTexts["laa.work.title"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.navigationBars.staticTexts["Work"].exists)
         app.buttons["Brain"].tap()
         XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.navigationBars.staticTexts["Brain"].exists)
-        app.buttons["Usage"].tap()
-        // Usage uses a custom header instead of a navigation bar.
+        app.buttons["Work"].tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["AI usage"].tap()
         XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 10))
-        app.buttons["Assets"].tap()
+        app.navigationBars.buttons.firstMatch.tap()
+        app.buttons["Drive"].tap()
         XCTAssertTrue(app.staticTexts["laa.assets.title"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.navigationBars.staticTexts["Assets"].exists)
         let settings = app.buttons["Settings"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 10))
-        settings.tap()
-        // The existing Settings sheet uses a custom header, not a navigation bar.
+        XCTAssertTrue(settings.waitForExistence(timeout: 10)); settings.tap()
         XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10))
     }
 
@@ -38,13 +34,13 @@ final class LAAShellNavigationUITests: XCTestCase {
         app.launch()
         let note = app.staticTexts["Start"]
         XCTAssertTrue(note.waitForExistence(timeout: 30))
-        XCTAssertTrue(app.buttons["Usage"].exists)
+        XCTAssertTrue(app.buttons["Work"].exists)
         note.tap()
         let back = app.buttons["laa.brain.back"]
         XCTAssertTrue(back.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["Usage"].exists)
+        XCTAssertFalse(app.buttons["Work"].exists)
         back.tap()
-        XCTAssertTrue(app.buttons["Usage"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Work"].waitForExistence(timeout: 10))
     }
 
     func testExistingChatRouteHidesTabBar() {
@@ -56,15 +52,15 @@ final class LAAShellNavigationUITests: XCTestCase {
                                 "-CONDUIT_UI_TEST_WIDGET_URL", link]
         app.launch()
         XCTAssertTrue(app.textViews["composer.field"].waitForExistence(timeout: 30))
-        XCTAssertFalse(app.buttons["Usage"].exists)
+        XCTAssertFalse(app.buttons["Work"].exists)
     }
 
     func testCallPresentationHidesTabBar() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_CALL_COVERS_TABS"]
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_CALL_COVERS_TABS"]
         app.launch()
-        XCTAssertTrue(app.staticTexts["laa.assets.title"].waitForExistence(timeout: 30))
-        XCTAssertFalse(app.buttons["Usage"].exists)
+        XCTAssertTrue(app.staticTexts["laa.brain.title"].waitForExistence(timeout: 30))
+        XCTAssertFalse(app.buttons["Work"].exists)
     }
     /// Opt-in only: the operator places a one-time code on this dedicated
     /// simulator's pasteboard. The code is pasted into SecureField, never
@@ -75,8 +71,9 @@ final class LAAShellNavigationUITests: XCTestCase {
         }
         defer { UIPasteboard.general.items = [] }
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "source"]
+        app.launchArguments += ["-laa-tab", "work"]
         app.launch()
+        XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
         let connect = app.buttons["Macに接続する"]
         XCTAssertTrue(connect.waitForExistence(timeout: 30))
         connect.tap()
@@ -98,8 +95,9 @@ final class LAAShellNavigationUITests: XCTestCase {
             throw XCTSkip("Live Bridge revocation requires the dedicated simulator.")
         }
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "source"]
+        app.launchArguments += ["-laa-tab", "work"]
         app.launch()
+        XCTAssertTrue(app.buttons["Drive"].waitForExistence(timeout: 30)); app.buttons["Drive"].tap()
         XCTAssertTrue(app.staticTexts["この端末の接続が無効になりました。新しいコードで接続してください。"].waitForExistence(timeout: 30))
     }
 }

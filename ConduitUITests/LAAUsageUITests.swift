@@ -77,9 +77,10 @@ final class LAAUsageUITests: XCTestCase {
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments = ["-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_USAGE_FAST_REFRESH",
                                "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid",
-                               "-laa-tab", "usage"]
+                               "-laa-tab", "work"]
         app.launch()
         defer { app.terminate() }
+        XCTAssertTrue(app.buttons["AI usage"].waitForExistence(timeout: 30)); app.buttons["AI usage"].tap()
         let connect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         connect.tap()
@@ -94,7 +95,7 @@ final class LAAUsageUITests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(3))
         let before = try XCTUnwrap(Int(helper("counts")))
         XCTAssertGreaterThan(before, 0)
-        app.buttons["Usage"].tap()
+        app.buttons["Work"].tap()
         let deadline = Date().addingTimeInterval(15)
         var after = before
         while Date() < deadline && after == before {
@@ -113,9 +114,10 @@ final class LAAUsageUITests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(ja)", "-AppleLocale", "ja_JP",
                                "-LAA_UI_TEST_ISOLATED_BRIDGE",
                                "-conduit.themePreference", "light", "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD",
-                               "https://conduit-ui-test.invalid", "-laa-tab", "usage"]
+                               "https://conduit-ui-test.invalid", "-laa-tab", "work"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
+        XCTAssertTrue(app.buttons["AI usage"].waitForExistence(timeout: 30)); app.buttons["AI usage"].tap()
         let connect = app.buttons["laa.bridge.openPairing"]
         if connect.waitForExistence(timeout: 15) {
             screenshot("usage-ui-unpaired")

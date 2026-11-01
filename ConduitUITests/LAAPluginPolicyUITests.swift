@@ -7,7 +7,7 @@ final class LAAPluginPolicyUITests: XCTestCase {
     func testReportedUpdateHasNoBannerOrSettingsAction() {
         let app = XCUIApplication()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
-        app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_NOTIFIER_UPDATE_AVAILABLE",
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_NOTIFIER_UPDATE_AVAILABLE",
                                 "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", "https://conduit-ui-test.invalid"]
         app.launch()
         let settings = app.buttons["Settings"]
