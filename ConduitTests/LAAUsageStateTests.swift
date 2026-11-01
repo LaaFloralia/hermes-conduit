@@ -182,9 +182,10 @@ final class LAAUsageStateTests: XCTestCase {
 
     func testLegacyFreshnessAndVerifiedSources() throws {
         let reading = try quota()
-        let at = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:09:59Z"))
-        let deadline = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
-        let later = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:20:00Z"))
+        let base = try XCTUnwrap(LAAUsageItem.date(reading.observedAt))
+        let at = base.addingTimeInterval(599)
+        let deadline = base.addingTimeInterval(600)
+        let later = base.addingTimeInterval(1200)
         XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: at))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: deadline))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: later))
