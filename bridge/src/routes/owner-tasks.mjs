@@ -89,6 +89,6 @@ export function ownerTaskRoutes({ service } = {}) {
     { method: 'GET', path: '/v1/owner-tasks', auth: true, scope: 'tasks:read', handler: list },
     { method: 'POST', path: '/v1/owner-tasks', auth: true, scope: 'tasks:write', handler: create },
     { method: 'GET', path: '/v1/owner-tasks/{id}', auth: true, scope: 'tasks:read', pattern: DETAIL_PATH, handler: detail },
-    { method: 'PATCH', path: '/v1/owner-tasks/{id}', auth: true, scope: 'tasks:write', pattern: DETAIL_PATH, handler: update },
+    { method: 'PATCH', path: '/v1/owner-tasks/{id}', auth: true, scope: 'tasks:write', additionalScopes: ['tasks:read'], pattern: DETAIL_PATH, handler: update },
   ];
 }

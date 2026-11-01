@@ -26,10 +26,10 @@
 ## 2. 保存と権限
 
 - 保存先: `<stateDir>/owner-tasks.json`（既定 `~/.local/state/laa-bridge/owner-tasks.json`、`LAA_BRIDGE_STATE_DIR` で変更）。
-- 同じディレクトリに初期化マーカー `owner-tasks.initialized`、ロック `owner-tasks.json.lock`、バックアップ `owner-tasks-backups/`。
+- 同じディレクトリに初期化マーカー `owner-tasks.initialized`、ロック `owner-tasks.json.lock`、版の高水位 `owner-tasks.revision-watermark`、バックアップ `owner-tasks-backups/`。
 - ディレクトリ 0700、ファイル 0600。**同一 macOS ユーザーのファイル操作は防げない**（改ざん不能な監査記録ではない）。
 - データ（タスク・取込み対応表）と操作台帳は**同じ1ファイル**に置き、1回の `write`（tmp → fsync → rename → ディレクトリ fsync）で原子的に確定する。書込みは排他ロックの中で読み・比較・書く。
-- ロックは「経過時間」だけで奪わない。ロックの持ち主 pid が生きていれば待ち、期限を超えたら 503。pid が死んでいる時だけ回収する。ロックの内容が読めない時は**書込みを止める**（運用者が確認してロックを消す）。
+- ロックは「経過時間」だけで奪わない。ロックの持ち主 pid が生きていれば待ち、期限を超えたら 503。pid が死んでいる時だけ回収する。ロックの内容が読めない時は**書込みを止める**。回収中の異常終了で `.lock.reaper` が残った場合も止まり、運用者が稼働中の書込み・回収がないと確認してから取り除く。
 - データファイルが無い・壊れている・初期化マーカーと食い違う時は**空の正本として作り直さない**。503 を返し、運用者が復元する（§11）。
 - 例外は「まだ一度も保存していない」状態（データもマーカーも無い）。この時 `GET` は空の一覧を返し（404 は詳細だけ）、読み取りでファイルを作らない。最初の `POST` がデータとマーカーを作る。
 - 本文（題名・メモ）はログ・要求履歴・冪等記録へ複製しない。台帳が持つのは鍵と主体のハッシュ、要求指紋、対象 UUID、版、時刻、状態だけ。
@@ -88,12 +88,14 @@
 | `links` | string[] | 0–20 件。各 2,048 文字以内の絶対 `http`/`https` URL。資格情報（userinfo）を含まない |
 | `createdAt` | ISO 8601 UTC | 作成時刻（ミリ秒）。表示は任意 |
 | `updatedAt` | ISO 8601 UTC | 更新時刻（ミリ秒）。取込み直後は Linear の更新日時 |
-| `revision` | integer | 1 から。内容が変わるたびに +1。`If-Match` と `ETag` の値 |
+| `revision` | integer | 新規時は1以上、内容変更で +1。復元時は全て現在の最大値より大きくなる。`If-Match` と `ETag` の値 |
 
 - 社長に見せる7項目は `title` `memo` `status` `dueDate` `source` `links` `updatedAt`。`id`・`createdAt`・`revision` は照合のための内部情報。
 - **一覧の `items` は要約**（`id` `title` `status` `dueDate` `source` `createdAt` `updatedAt` `revision`）で、`memo` と `links` を含まない。本文とリンクは詳細（`GET /v1/owner-tasks/{id}`）で読む。1ページが数MBにならないようにするため。
 - `source` の既定は呼出し元で決まる: HTTP `POST` は `owner`、CLI `tasks add` は `agent`。取込みは `linear_import`。
 - 本文の意味は解釈しない。題名・メモの内容で並びや分類を変えない。
+
+PATCH は `tasks:write` と `tasks:read` の両方を要する。
 
 ## 5. 端点
 
@@ -241,7 +243,7 @@ laa-bridge tasks import-linear --dry-run [--assignee <linear-user-id>] [--includ
                        [--out <file>] [--json]
 laa-bridge tasks import-linear --manifest <file> --approve <content-hash> [--json]
 laa-bridge tasks backup [--keep N] [--out <dir>] [--json]
-laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force] [--json]
+laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force] [--expect-state <sha256>] [--json]
 ```
 
 - CLI は HTTP を通らず、Bridge と同じ保存サービス（検証・競合制御・台帳・ロック）を直接使う。主体は固定の `cli`。**`--request-id` は書込みで必須**で、再試行でも同じ値を使う。
@@ -326,7 +328,7 @@ laa-bridge tasks import-linear --manifest <file> --approve <contentHash>
 
 - `laa-bridge tasks backup` が `<stateDir>/owner-tasks-backups/owner-tasks-<UTC>.json` を書く。スナップショットは `{format,version,createdAt,counts,stateSha256,state}` で、`stateSha256` は `state` の正規化 JSON の SHA-256。
 - 取得はロック内の一貫した読み。書込みは tmp → fsync → rename で、書いた後に読み戻してハッシュを検証する。失敗は成功扱いにしない。
-- 世代は既定14（日次1回 × 14日）。`--keep` で変更。削除するのは自分の命名規則と `format` に一致するファイルだけ。
+- 世代は既定14（日次1回 × 14日）。検証できた世代のみを保持数と最終成功に数え、破損件数を status に出す。`--keep` で変更。削除するのは自分の命名規則と `format` に一致するファイルだけ。
 - 取込みの実行前にもう1世代取る（親の手順）。まだ何も保存していない Bridge では「保存なし」を返し、成功したふりをしない（終了コード 0、`skipped`）。初期化済みなのにデータが無い時は失敗する（終了コード 6）。
 - 実測（2026-11-01、`owner-tasks-store.test.mjs`）: tombstone 2万件で 5,280,180 バイト（5.04 MiB）。1件あたり約 264 バイトで、上限 20,000 件でも単一 JSON として扱える大きさ。
 - ローカルの権限は 0700 / 0600。**同一ユーザーからは守れない**。Mac 外へ出す時は必ず暗号化する（`age` など。鍵は 1Password Agents に置き、repo・引数・ログへ出さない）。平文のタスク本文をクラウドへ置かない。
@@ -338,8 +340,8 @@ laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force]
 ```
 
 1. `format`・`version`・`schema` と `stateSha256` を検証する。1バイトでも違えば拒否する。
-2. 復元先は明示した `--to` だけ。稼働中の state ディレクトリへ戻すには `--allow-live` が要る。既にデータがある場所へは `--force` が要る。
-3. 書込みは tmp → fsync → rename。`owner-tasks.initialized` も同時に置く。書いた後に読み戻し、件数・最大 `revision`・最新 `updatedAt` を表示する。
+2. 復元先は明示した `--to` だけ。既存データがある復元先は `--force --expect-state <sha256>` が要る。稼働先にはさらに `--allow-live` が要る。値は復元先の直前の `tasks status` の state hash を指定し、ロック内で現在値と違えば拒否する。書込みを停止してから実施する。
+3. 復元前の最大revisionを保持する別ファイルを先に進め、全タスクをそれより大きな整数へ変更する。旧版の更新は412で拒否する。別ファイルと現在のデータの両方が失われ、最大値を確認できない場合は復元を拒否する。書込みは tmp → fsync → rename、読戻しを行う。
 4. 復元後は Bridge を再起動せずに読める（毎回ファイルを読むため）。**切替後の全体巻戻しは自動でしない**（後に作られたタスクを失う）。問題時は新規書込みを止め、現状とバックアップを保全して親が差分を判断する。
 
 ### 11.3 Mac 外の候補

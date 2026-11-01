@@ -493,3 +493,12 @@ test('existing /v1/tasks keeps working next to the new endpoints', async (t) => 
   // The owner task never leaks into the agent task view.
   assert.deepEqual((await api.request('/v1/tasks', { token })).body.data.items, []);
 });
+
+
+test('write-only devices cannot read content from PATCH success or conflict', async (t) => {
+  const {api,token}=await boot(t); const writeOnly=await api.token(['tasks:write']);
+  const created=await createTask(api,token,{title:'private',memo:'secret note'},'seed'); const id=created.body.data.id;
+  assert.equal((await updateTask(api,writeOnly,id,{status:'done'},{key:'ok',ifMatch:1})).status,403);
+  const stale=await updateTask(api,writeOnly,id,{status:'done'},{key:'stale',ifMatch:999});
+  assert.equal(stale.status,403); assert.equal(JSON.stringify(stale.body).includes('secret note'),false);
+});

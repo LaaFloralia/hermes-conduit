@@ -23,6 +23,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  fstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -54,6 +55,7 @@ export function resolveOwnerTaskPaths({ stateDir }) {
     dir: stateDir,
     file: join(stateDir, OWNER_TASKS_FILE),
     marker: join(stateDir, OWNER_TASKS_MARKER),
+    watermark: join(stateDir, 'owner-tasks.revision-watermark'),
     lock: join(stateDir, `${OWNER_TASKS_FILE}.lock`),
     backupDir: join(stateDir, OWNER_TASKS_BACKUP_DIR),
   };
@@ -124,17 +126,29 @@ function fsyncDir(dir) {
   }
 }
 
-function writeFileAtomic(file, text) {
+export function writeFileAtomic(file, text, writer = writeSync) {
   const tmp = `${file}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
-  const fd = openSync(tmp, 'wx', 0o600);
+  let fd;
   try {
-    writeSync(fd, text, 0, 'utf8');
+    fd = openSync(tmp, 'wx', 0o600);
+    const bytes = Buffer.from(text, 'utf8');
+    let offset = 0;
+    while (offset < bytes.length) {
+      const written = writer(fd, bytes, offset, bytes.length - offset);
+      if (!Number.isInteger(written) || written <= 0 || written > bytes.length - offset) {
+        throw new Error('short write made no progress');
+      }
+      offset += written;
+    }
     fsyncSync(fd);
-  } finally {
     closeSync(fd);
+    fd = undefined;
+    renameSync(tmp, file);
+    fsyncDir(dirname(file));
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+    rmSync(tmp, { force: true });
   }
-  renameSync(tmp, file);
-  fsyncDir(dirname(file));
 }
 
 export function readSnapshot(file) {
@@ -164,7 +178,7 @@ export function readSnapshot(file) {
   return snapshot;
 }
 
-export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutMs = 5000 } = {}) {
+export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutMs = 5000, documentWriter = writeSync } = {}) {
   if (typeof dir !== 'string' || dir === '') throw new Error('owner-task store requires a state directory');
   const paths = resolveOwnerTaskPaths({ stateDir: resolve(dir) });
 
@@ -197,7 +211,27 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
   function writeDocument(doc) {
     // One line: this document grows with the tombstone ledger, and indentation
     // would multiply that on every write for no operator benefit.
-    writeFileAtomic(paths.file, `${JSON.stringify(doc)}\n`);
+    writeFileAtomic(paths.file, `${JSON.stringify(doc)}\n`, documentWriter);
+  }
+
+  function readWatermark(path) {
+    try {
+      const value = JSON.parse(readFileSync(path, 'utf8')).maxRevision;
+      if (!Number.isSafeInteger(value) || value < 1) throw new Error('invalid');
+      return value;
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw unavailable('corrupt', 'revision watermark is unreadable');
+    }
+  }
+
+  function documentMaximum(doc) {
+    return Object.values(doc.tasks).reduce((max, task) => Math.max(max, task.revision ?? 0), doc.revisionFloor ?? 0);
+  }
+
+  function writeWatermark(path, value) {
+    const prior = readWatermark(path) ?? 0;
+    if (value > prior) writeFileAtomic(path, `${JSON.stringify({ maxRevision: value })}\n`);
   }
 
   function writeMarker() {
@@ -242,12 +276,23 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
         }
         const state = inspectLock();
         if (state.kind === 'dead') {
-          // Re-check under the same reading: only remove the file whose owner is
-          // still dead, never a lock a live writer took in between.
-          const again = inspectLock();
-          if (again.kind === 'dead' && again.pid === state.pid) {
-            rmSync(paths.lock, { force: true });
+          // Only one process may inspect and reclaim a stale lock. An abandoned
+          // reaper fails closed; an operator can inspect it before removal.
+          const reaper = `${paths.lock}.reaper`;
+          let guard;
+          try { guard = openSync(reaper, 'wx', 0o600); }
+          catch (err) {
+            if (err.code !== 'EEXIST') throw err;
+            if (Date.now() >= deadline) throw unavailable('locked', 'owner-task lock recovery is busy');
+            sleepMs(5);
             continue;
+          }
+          try {
+            const again = inspectLock();
+            if (again.kind === 'dead' && again.pid === state.pid) rmSync(paths.lock, { force: true });
+          } finally {
+            closeSync(guard);
+            rmSync(reaper, { force: true });
           }
           continue;
         }
@@ -265,8 +310,12 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
         fsyncSync(fd);
         return fn();
       } finally {
-        closeSync(fd);
-        rmSync(paths.lock, { force: true });
+        const owned = fstatSync(fd);
+        try {
+          const current = statSync(paths.lock);
+          if (owned.dev === current.dev && owned.ino === current.ino) rmSync(paths.lock, { force: true });
+        } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        finally { closeSync(fd); }
       }
     }
   }
@@ -298,7 +347,7 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
         if (!create) {
           throw unavailable('missing', 'owner-task document is missing; restore it from a backup');
         }
-        if (existsSync(paths.marker)) {
+        if (existsSync(paths.marker) || existsSync(paths.watermark)) {
           // The store existed before; an empty file would silently discard every
           // task and every ledger row.
           throw unavailable('missing', 'owner-task document is missing but the store was initialised');
@@ -310,6 +359,7 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
       const draft = structuredClone(doc);
       const result = fn(draft);
       draft.updatedAt = new Date(now()).toISOString();
+      writeWatermark(paths.watermark, documentMaximum(draft));
       writeDocument(draft);
       if (firstRun) writeMarker();
       return result;
@@ -355,6 +405,8 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
       return { skipped: true, reason: 'not_initialized', path: null, counts: null, kept: listSnapshots(outDir).length };
     }
     ensureDir(outDir);
+    const backupStore = createOwnerTaskStore({ dir: outDir, now, lockTimeoutMs });
+    return backupStore.withLock(() => {
     const createdAt = new Date(now()).toISOString();
     const snapshot = {
       format: SNAPSHOT_FORMAT,
@@ -378,7 +430,9 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
     }
 
     const pruned = [];
-    const snapshots = listSnapshots(outDir);
+    const snapshots = listSnapshots(outDir).filter((candidate) => {
+      try { readSnapshot(candidate.file); return true; } catch { return false; }
+    });
     for (const candidate of snapshots.slice(0, Math.max(0, snapshots.length - keep))) {
       try {
         readSnapshot(candidate.file); // only delete files this CLI wrote
@@ -395,11 +449,12 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
       counts: snapshot.counts,
       bytes: statSync(file).size,
       pruned,
-      kept: listSnapshots(outDir).length,
+      kept: snapshots.length - pruned.length,
     };
+    });
   }
 
-  function restore({ from, to, allowLive = false, force = false } = {}) {
+  function restore({ from, to, allowLive = false, force = false, expectedStateSha256 } = {}) {
     if (typeof to !== 'string' || to === '') {
       throw new BridgeError(400, 'field_invalid', 'restore needs an explicit target directory', { details: { field: 'to' } });
     }
@@ -409,37 +464,55 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
       throw new BridgeError(400, 'owner_tasks_restore_live_directory',
         'refusing to overwrite the running store without --allow-live');
     }
-    if (existsSync(target.file) && !force) {
-      throw new BridgeError(409, 'owner_tasks_restore_target_exists',
-        'the target directory already holds an owner-task document; pass --force to replace it');
-    }
-    ensureDir(target.dir);
-    writeFileAtomic(target.file, `${JSON.stringify(snapshot.state)}\n`);
-    writeFileAtomic(target.marker, `${JSON.stringify({
-      initializedAt: new Date(now()).toISOString(),
-      document: OWNER_TASKS_FILE,
-      restoredFrom: from,
-      restoredAt: new Date(now()).toISOString(),
-    })}\n`);
-
-    const restored = readDocumentAt(target.file);
-    const actual = `sha256:${sha256Hex(canonicalJson(restored))}`;
-    if (actual !== snapshot.stateSha256) {
-      throw unavailable('io_error', 'the restored document does not match the snapshot checksum');
-    }
-    const tasks = Object.values(restored.tasks);
-    return {
-      to: target.dir,
-      file: target.file,
-      from,
-      stateSha256: actual,
-      counts: countsOf(restored),
-      operations: Object.keys(restored.operations).length,
-      tombstones: Object.keys(restored.tombstones).length,
-      imports: Object.keys(restored.imports).length,
-      newestUpdatedAt: tasks.reduce((max, task) => (task.updatedAt > max ? task.updatedAt : max), ''),
-      maxRevision: tasks.reduce((max, task) => Math.max(max, task.revision ?? 0), 0),
+    const targetStore = target.dir === paths.dir ? null : createOwnerTaskStore({ dir: target.dir, now, lockTimeoutMs });
+    const restoreLocked = () => {
+      if (existsSync(target.file) && !force) {
+        throw new BridgeError(409, 'owner_tasks_restore_target_exists',
+          'the target directory already holds an owner-task document; pass --force to replace it');
+      }
+      const sourceWatermark = readWatermark(paths.watermark);
+      const targetWatermark = target.dir === paths.dir ? sourceWatermark : readWatermark(target.watermark);
+      let live = null;
+      try { live = readOptional(); } catch (error) {
+        if (!sourceWatermark || !['missing', 'corrupt'].includes(error.details?.reason)) throw error;
+      }
+      let existing = target.dir === paths.dir ? live : null;
+      if (target.dir !== paths.dir && existsSync(target.file)) existing = readDocumentAt(target.file);
+      if (existing) {
+        const currentHash = `sha256:${sha256Hex(canonicalJson(existing))}`;
+        if (expectedStateSha256 !== currentHash) {
+          throw new BridgeError(409, 'owner_tasks_restore_state_changed', 'restore requires the target state checksum', { details: { currentStateSha256: currentHash } });
+        }
+      }
+      if (!live && !existing && !sourceWatermark && !targetWatermark) {
+        throw unavailable('missing', 'cannot establish the revision high-water mark');
+      }
+      const documents = [snapshot.state, live, existing].filter(Boolean);
+      const max = Math.max(sourceWatermark ?? 0, targetWatermark ?? 0, ...documents.map(documentMaximum));
+      const floor = max + 1_000_000;
+      if (!Number.isSafeInteger(floor)) throw unavailable('corrupt', 'revision high-water mark exhausted');
+      const restored = structuredClone(snapshot.state);
+      restored.revisionFloor = floor;
+      for (const task of Object.values(restored.tasks)) task.revision = floor;
+      // Old PATCH replays must reach the version check rather than replay success.
+      for (const [key, operation] of Object.entries(restored.operations)) {
+        if (operation.method === 'PATCH') delete restored.operations[key];
+      }
+      writeWatermark(target.watermark, floor);
+      writeFileAtomic(target.file, `${JSON.stringify(restored)}\n`);
+      writeFileAtomic(target.marker, `${JSON.stringify({ initializedAt: new Date(now()).toISOString(),
+        document: OWNER_TASKS_FILE, restoredFrom: from, restoredAt: new Date(now()).toISOString() })}\n`);
+      const actualDoc = readDocumentAt(target.file);
+      if (canonicalJson(actualDoc) !== canonicalJson(restored)) throw unavailable('io_error', 'restore readback mismatch');
+      const tasks = Object.values(actualDoc.tasks);
+      return { to: target.dir, file: target.file, from,
+        stateSha256: `sha256:${sha256Hex(canonicalJson(actualDoc))}`, counts: countsOf(actualDoc),
+        operations: Object.keys(actualDoc.operations).length, tombstones: Object.keys(actualDoc.tombstones).length,
+        imports: Object.keys(actualDoc.imports).length,
+        newestUpdatedAt: tasks.reduce((maxDate, task) => task.updatedAt > maxDate ? task.updatedAt : maxDate, ''),
+        maxRevision: tasks.reduce((maxRevision, task) => Math.max(maxRevision, task.revision ?? 0), 0) };
     };
+    return withLock(() => targetStore ? targetStore.withLock(restoreLocked) : restoreLocked());
   }
 
   function readDocumentAt(file) {
@@ -455,6 +528,7 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
       exists: existsSync(paths.file),
       bytes: null,
       counts: null,
+      stateSha256: null,
       operations: null,
       tombstones: null,
       imports: null,
@@ -469,6 +543,7 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
       try {
         const doc = readDocument();
         out.counts = countsOf(doc);
+        out.stateSha256 = `sha256:${sha256Hex(canonicalJson(doc))}`;
         out.operations = Object.keys(doc.operations).length;
         out.tombstones = Object.keys(doc.tombstones).length;
         out.imports = Object.keys(doc.imports).length;
@@ -481,7 +556,11 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
         out.errorReason = error.details?.reason ?? null;
       }
     }
-    const snapshots = listSnapshots(paths.backupDir);
+    const allSnapshots = listSnapshots(paths.backupDir);
+    const snapshots = allSnapshots.filter((candidate) => {
+      try { readSnapshot(candidate.file); return true; } catch { return false; }
+    });
+    out.corruptBackups = allSnapshots.length - snapshots.length;
     out.backups = snapshots.length;
     if (snapshots.length > 0) {
       const newest = snapshots[snapshots.length - 1];
@@ -501,5 +580,6 @@ export function createOwnerTaskStore({ dir, now = () => Date.now(), lockTimeoutM
     restore,
     status,
     lockTimeoutMs,
+    withLock,
   };
 }

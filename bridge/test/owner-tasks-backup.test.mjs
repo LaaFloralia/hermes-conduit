@@ -91,7 +91,7 @@ test('retention keeps the newest generations and leaves unrelated files alone', 
   assert.equal(readdirSync(outDir).includes('notes.txt'), true);
 });
 
-test('restore into another directory reproduces every task exactly', (t) => {
+test('restore preserves content and advances revisions', (t) => {
   const sourceDir = tempDir(t);
   const targetDir = tempDir(t);
   const now = clockAt();
@@ -101,14 +101,16 @@ test('restore into another directory reproduces every task exactly', (t) => {
   const backup = source.service.backup();
   const restored = source.service.restore({ from: backup.path, to: targetDir });
   assert.equal(restored.counts.tasks, 5);
-  assert.equal(restored.stateSha256, backup.stateSha256);
-  assert.equal(restored.maxRevision, 2);
+  assert.notEqual(restored.stateSha256, backup.stateSha256);
+  assert.equal(restored.maxRevision, 1000002);
 
   const copy = boot(targetDir, now);
   const original = source.store.read();
   const replica = copy.store.read();
-  assert.deepEqual(replica.tasks, original.tasks);
-  assert.deepEqual(replica.operations, original.operations);
+  for (const id of Object.keys(original.tasks)) {
+    assert.deepEqual({ ...replica.tasks[id], revision: original.tasks[id].revision }, original.tasks[id]);
+    assert.equal(replica.tasks[id].revision, 1000002);
+  }
 
   // The restored store is writable and the copied ledger replays the same keys.
   const replay = copy.service.create({ principal: 'dev_a', key: 'k0', body: { title: 'task 0', memo: 'memo 0', dueDate: '2026-11-01' } });
@@ -151,9 +153,9 @@ test('restore refuses the live directory without --allow-live and an occupied ta
   assert.throws(() => service.restore({ from: backup.path, to: target }), (error) => (
     error.code === 'owner_tasks_restore_target_exists'
   ));
-  assert.equal(service.restore({ from: backup.path, to: target, force: true }).counts.tasks, 2);
+  assert.equal(service.restore({ from: backup.path, to: target, force: true, expectedStateSha256: boot(target, now).service.status().stateSha256 }).counts.tasks, 2);
   // Restoring onto the live directory is possible only when asked for.
-  assert.equal(service.restore({ from: backup.path, to: dir, allowLive: true, force: true }).counts.tasks, 2);
+  assert.equal(service.restore({ from: backup.path, to: dir, allowLive: true, force: true, expectedStateSha256: service.status().stateSha256 }).counts.tasks, 2);
 });
 
 test('backup of a store that was never initialised is skipped, and a lost document still fails', (t) => {
@@ -169,4 +171,47 @@ test('backup of a store that was never initialised is skipped, and a lost docume
   service.backup();
   rmSync(join(dir, 'owner-tasks.json'));
   assert.throws(() => service.backup(), (error) => error.details.reason === 'missing');
+});
+
+
+test('restore rejects old revisions and earlier successful PATCH replay', (t) => {
+  const dir = tempDir(t); const now = clockAt(); const { service } = boot(dir, now);
+  const id = service.create({principal:'a', key:'create', body:{title:'A'}}).task.id;
+  service.update({principal:'a',key:'old',id,path:'p',ifMatch:1,body:{memo:'first'}});
+  const backup = service.backup();
+  service.update({principal:'a',key:'later',id,path:'p',ifMatch:2,body:{memo:'later'}});
+  service.restore({from:backup.path,to:dir,allowLive:true,force:true,expectedStateSha256:service.status().stateSha256});
+  assert.ok(service.get(id).revision > 3);
+  assert.throws(() => service.update({principal:'a',key:'missing',id:'11111111-1111-4111-8111-111111111111',path:'p',ifMatch:1,body:{memo:'old'}}), e => e.status === 412);
+  assert.throws(() => service.update({principal:'a',key:'old',id,path:'p',ifMatch:1,body:{memo:'first'}}), e => e.status === 412);
+  assert.throws(() => service.update({principal:'a',key:'offline',id,path:'p',ifMatch:3,body:{memo:'offline'}}), e => e.status === 412);
+  const previous = service.get(id).revision;
+  service.restore({from:backup.path,to:dir,allowLive:true,force:true,expectedStateSha256:service.status().stateSha256});
+  assert.ok(service.get(id).revision > previous);
+});
+
+test('corrupt backups do not count in retention or as latest success', (t) => {
+  const dir=tempDir(t); const now=clockAt(); const {service}=boot(dir,now); seed(service,1);
+  const one=service.backup({keep:2}); now.advance(1000); const two=service.backup({keep:2}); now.advance(1000);
+  writeFileSync(join(dir,'owner-tasks-backups','owner-tasks-20990101T000000Z.json'),'bad');
+  const three=service.backup({keep:2}); const status=service.status();
+  assert.equal(status.backups,2); assert.equal(status.corruptBackups,1); assert.equal(status.lastBackup.file,three.path);
+  const names=readdirSync(join(dir,'owner-tasks-backups'));
+  assert.ok(names.includes(two.path.split('/').pop())); assert.ok(!names.includes(one.path.split('/').pop()));
+});
+
+
+test('live restore checks the locked current state and rejects intervening updates', (t) => {
+  const dir=tempDir(t); const now=clockAt(); const {service}=boot(dir,now); const id=seed(service,1)[0];
+  const backup=service.backup(); const expected=service.status().stateSha256;
+  service.update({principal:'dev_a',key:'after',id,path:'p',ifMatch:2,body:{memo:'new'}});
+  assert.throws(()=>service.restore({from:backup.path,to:dir,allowLive:true,force:true,expectedStateSha256:expected}), e=>e.code==='owner_tasks_restore_state_changed');
+  assert.equal(service.get(id).memo,'new');
+});
+
+test('missing document can be restored with intact watermark', (t) => {
+  const dir=tempDir(t); const now=clockAt(); const {service}=boot(dir,now); const id=seed(service,1)[0];
+  const backup=service.backup(); rmSync(join(dir,'owner-tasks.json'));
+  service.restore({from:backup.path,to:dir,allowLive:true,force:true});
+  assert.ok(service.get(id).revision > 2);
 });

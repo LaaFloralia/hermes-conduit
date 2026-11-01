@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync,
+  mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync, writeSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,7 @@ import {
   OWNER_TASKS_FILE,
   OWNER_TASKS_MARKER,
   createOwnerTaskStore,
+  writeFileAtomic,
 } from '../src/tasks/owner-store.mjs';
 import { createOwnerTaskService } from '../src/tasks/owner-service.mjs';
 
@@ -61,7 +62,7 @@ test('the first write initialises the document and the marker with owner-only pe
   const result = service.create({ principal: 'dev_a', key: 'k1', body: BODY });
   assert.equal(result.status, 201);
   assert.equal(result.task.revision, 1);
-  assert.deepEqual(readdirSync(dir).sort(), [OWNER_TASKS_MARKER, OWNER_TASKS_FILE].sort());
+  assert.deepEqual(readdirSync(dir).sort(), [OWNER_TASKS_MARKER, OWNER_TASKS_FILE, 'owner-tasks.revision-watermark'].sort());
   assert.equal(statSync(join(dir, OWNER_TASKS_FILE)).mode & 0o777, 0o600);
   assert.equal(statSync(join(dir, OWNER_TASKS_MARKER)).mode & 0o777, 0o600);
   assert.equal(statSync(dir).mode & 0o777, 0o700);
@@ -296,7 +297,7 @@ test('a completed document leaves no temporary files behind', (t) => {
     body: { status: 'done' },
   });
   const names = readdirSync(dir).sort();
-  assert.deepEqual(names, [OWNER_TASKS_MARKER, OWNER_TASKS_FILE].sort());
+  assert.deepEqual(names, [OWNER_TASKS_MARKER, OWNER_TASKS_FILE, 'owner-tasks.revision-watermark'].sort());
 });
 
 test('a write that cannot open the lock reports an io error instead of proceeding', (t) => {
@@ -306,4 +307,40 @@ test('a write that cannot open the lock reports an io error instead of proceedin
   assert.throws(() => service.create({ principal: 'dev_a', key: 'k1', body: BODY }), (error) => (
     error.code === 'owner_tasks_store_unavailable' && ['io_error', 'locked'].includes(error.details.reason)
   ));
+});
+
+
+test('short writes complete; zero progress and I/O errors preserve the old file', (t) => {
+  const dir=tempDir(t); const file=join(dir,'data'); writeFileSync(file,'old');
+  writeFileAtomic(file,'日本語 payload',(fd,bytes,off,len)=>writeSync(fd,bytes,off,Math.min(2,len)));
+  assert.equal(readFileSync(file,'utf8'),'日本語 payload');
+  assert.throws(()=>writeFileAtomic(file,'new',()=>0)); let calls=0;
+  assert.throws(()=>writeFileAtomic(file,'new',(fd,bytes,off,len)=>{if(calls++) throw new Error('I/O'); return writeSync(fd,bytes,off,1);}));
+  assert.equal(readFileSync(file,'utf8'),'日本語 payload'); assert.deepEqual(readdirSync(dir),['data']);
+});
+
+
+test('short write then I/O failure keeps prior task and operation ledger intact', (t) => {
+  const dir=tempDir(t); let fail=false; let writes=0;
+  const store=createOwnerTaskStore({dir,documentWriter:(fd,buf,off,len)=> {
+    if (fail && writes++) throw new Error('injected disk error');
+    return writeSync(fd,buf,off,fail ? Math.min(2,len) : len);
+  }});
+  const service=createOwnerTaskService({store});
+  service.create({principal:'a',key:'first',body:{title:'old'}});
+  const before=readFileSync(store.file,'utf8'); fail=true;
+  assert.throws(()=>service.create({principal:'a',key:'second',body:{title:'new'}}));
+  assert.equal(readFileSync(store.file,'utf8'),before);
+  assert.equal(Object.keys(store.read().operations).length,1);
+  assert.equal(Object.keys(store.read().tasks).length,1);
+});
+
+test('lock release does not remove a replacement lock', (t) => {
+  const { dir, store } = boot(t);
+  const lock = join(dir, 'owner-tasks.json.lock');
+  store.withLock(() => {
+    rmSync(lock);
+    writeFileSync(lock, JSON.stringify({ pid: process.pid }));
+  });
+  assert.equal(JSON.parse(readFileSync(lock, 'utf8')).pid, process.pid);
 });

@@ -264,8 +264,8 @@ export function createBridge({
         if (auth.reason === 'token_revoked') throw new BridgeError(401, 'token_revoked', 'device has been revoked');
         device = auth.device;
         deviceId = device.id;
-        if (route.scope && !hasScope(device, route.scope)) {
-          throw new BridgeError(403, 'insufficient_scope', `device is missing scope ${route.scope}`);
+        for (const scope of [route.scope, ...(route.additionalScopes ?? [])].filter(Boolean)) {
+          if (!hasScope(device, scope)) throw new BridgeError(403, 'insufficient_scope', `device is missing scope ${scope}`);
         }
       }
 

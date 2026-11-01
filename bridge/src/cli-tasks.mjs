@@ -40,7 +40,7 @@ export const TASKS_USAGE = `laa-bridge tasks — 社長タスク（保存先は 
               [--out <file>] [--json]
   tasks import-linear --manifest <file> --approve <content-hash> [--json]
   tasks backup [--keep N] [--out <dir>] [--json]
-  tasks restore --from <snapshot> --to <dir> [--allow-live] [--force] [--json]
+  tasks restore --from <snapshot> --to <dir> [--allow-live] [--force] [--expect-state <sha256>] [--json]
 
 Long text goes through --input (stdin with - or a file), not through arguments.
 Exit codes: 0 applied/replayed, 1 unexpected, 2 usage, 3 not found, 4 conflict,
@@ -119,7 +119,7 @@ function bodyFromFlags(flags, { create }) {
   if (flags.input !== undefined) {
     if (flags.input === true) usage('--input needs a file path or -');
     for (const name of FIELD_FLAGS) {
-      if (flags[name] !== undefined) usage(`--input cannot be combined with --${name}`);
+      if (flags[name] !== undefined && (create || name !== 'id')) usage(`--input cannot be combined with --${name}`);
     }
     const body = readJsonInput(flags.input);
     if (create && body.source === undefined) body.source = 'agent';
@@ -243,6 +243,8 @@ function commandStatus(flags, io) {
   io.write(`tasks        ${status.counts ? `${status.counts.tasks} (todo ${status.counts.todo}, doing ${status.counts.doing}, done ${status.counts.done}, canceled ${status.counts.canceled})` : 'unavailable'}\n`);
   io.write(`operations   ${status.operations ?? '-'}   tombstones ${status.tombstones ?? '-'}   imports ${status.imports ?? '-'}\n`);
   io.write(`newest       ${status.newestUpdatedAt ?? '-'}\n`);
+  io.write(`state hash   ${status.stateSha256 ?? '-'}\n`);
+  io.write(`bad backups  ${status.corruptBackups}\n`);
   io.write(`lock         ${status.lock.kind}${status.lock.pid ? ` (pid ${status.lock.pid})` : ''}\n`);
   io.write(`last backup  ${status.lastBackup ? status.lastBackup.file : '(none)'}\n`);
   if (status.error) io.write(`error        ${status.error}\n`);
@@ -415,6 +417,7 @@ function commandRestore(flags, io) {
     to: resolve(to),
     allowLive: Boolean(flags['allow-live']),
     force: Boolean(flags.force),
+    expectedStateSha256: flags['expect-state'],
   });
   if (io.json) {
     io.write(`${JSON.stringify({ ok: true, restore: result })}\n`);
@@ -433,6 +436,17 @@ export async function tasksCommand(argv, flags, io = {}) {
   const context = { write, writeErr, json };
   const sub = argv[0];
   try {
+    const allowed = {
+      add: 'request-id title input memo status due link source id json',
+      list: 'status limit cursor json', get: 'id json',
+      update: 'id if-match request-id title input memo status due clear-due link json',
+      status: 'json', 'import-linear': 'dry-run assignee include-closed out manifest approve json',
+      backup: 'keep out json', restore: 'from to allow-live force expect-state json', help: 'json help',
+    };
+    if (argv.length > 1) usage('unexpected positional argument');
+    if (allowed[sub]) for (const flag of Object.keys(flags)) {
+      if (!allowed[sub].split(' ').includes(flag)) usage(`unknown flag --${flag} for ${sub}`);
+    }
     switch (sub) {
       case 'add': return commandAdd(flags, context);
       case 'list': return commandList(flags, context);
