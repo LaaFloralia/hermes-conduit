@@ -41,9 +41,9 @@ targets:
     settings:
       base:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: LAAAccent
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon-LAA
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.conduit
-        # The upstream icon keeps this build distinct from TestFlight LAA;
-        # the display and bundle names below use the personal LAA name.
+        # The display and bundle names keep this install distinct from TestFlight.
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_ENTITLEMENTS: ""
         PROVISIONING_PROFILE_SPECIFIER: ""
@@ -64,7 +64,7 @@ targets:
             --name "${CONDUIT_PERSONAL_NAME:-LAA Personal}" --bundle-name "LAA Personal"
     postBuildScripts:
       # Brand permission and localized LAA screen copy. The personal name
-      # and upstream AppIcon remain distinct from the TestFlight build.
+      # remains distinct from the TestFlight build.
       - name: Brand resources for the personal build
         basedOnDependencyAnalysis: false
         inputFiles: ["$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)"]

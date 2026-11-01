@@ -18,9 +18,7 @@ enum AppIconChoice: String, CaseIterable, Identifiable {
     }
 
     var previewAssetName: String {
-        #if LAA_PERSONAL_BUILD
-        return self == .light ? "AppIconLightPreview" : "AppIconPreview"
-        #elseif LAA_BUILD
+        #if LAA_BUILD
         return "LAAIconPreview"
         #else
         self == .light ? "AppIconLightPreview" : "AppIconPreview"

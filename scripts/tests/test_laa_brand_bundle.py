@@ -142,7 +142,7 @@ class LAABrandBundleTests(unittest.TestCase):
             brand.brand_bundle(bundle, "app", ROOT)
             self.assertEqual(self.read_bundle(bundle), first)
 
-    def test_personal_build_keeps_its_own_name_and_upstream_icon(self):
+    def test_personal_build_keeps_its_own_name_and_icon_registration(self):
         with tempfile.TemporaryDirectory() as tmp:
             bundle = self.make_app_bundle(Path(tmp))
             brand.brand_bundle(bundle, "app", ROOT, name="LAA Personal", bundle_name="LAA Personal")
@@ -153,6 +153,10 @@ class LAABrandBundleTests(unittest.TestCase):
             # The alternate (Light) icon stays registered, as upstream had it.
             self.assertIn("Light", info["CFBundleIcons"]["CFBundleAlternateIcons"])
             self.assertEqual(info["ConduitLauncherAppGroup"], "group.keep")
+
+    def test_personal_build_selects_the_laa_home_icon(self):
+        spec = (ROOT / "project-personal.yml").read_text()
+        self.assertRegex(spec, r"(?m)^\s*ASSETCATALOG_COMPILER_APPICON_NAME:\s*AppIcon-LAA\s*$")
 
     def test_laa_app_sets_its_bundle_name_and_keeps_other_localized_keys(self):
         with tempfile.TemporaryDirectory() as tmp:
