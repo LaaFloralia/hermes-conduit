@@ -7,11 +7,48 @@ import XCTest
 
 @MainActor
 final class LAAUsageWidgetSnapshotTests: XCTestCase {
+    func testOldWidgetSnapshotDoesNotDisplayRetiredProviders() {
+        let now = Date()
+        let meters = ["fal", "venice", "claude"].map { id in
+            WidgetUsageMeter(id: "provider.\(id).quota.0", label: id, remainingPercent: 42,
+                observedAt: now, freshUntil: now.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
+        }
+        let usage = WidgetUsageSnapshot(meters: meters, checkedAt: now)
+        let snapshot = WidgetSnapshot(appLanguage: "en", currentWorkspaceID: nil, workspaces: []).withUsage(usage)
+        let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot, date: now)
+        XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.0"])
+    }
+
+    func testLateRenderingOfEarlierEntryNeverShowsItsExpiredNumber() {
+        let observed = Date(timeIntervalSince1970: 1_000)
+        let meter = WidgetUsageMeter(id: "late", label: "Claude", remainingPercent: 42,
+            observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
+        XCTAssertFalse(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(599)))
+        XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)))
+        XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed.addingTimeInterval(600), renderedAt: observed))
+        let future = WidgetUsageMeter(id: "future", label: "Claude", remainingPercent: 42,
+            observedAt: observed.addingTimeInterval(121), freshUntil: nil, resetsAt: nil, stale: false, retained: false)
+        XCTAssertTrue(LAAEmployeeWidgetView.isPast(future, entryDate: observed, renderedAt: observed.addingTimeInterval(2)))
+    }
+
+    func testLateEntryRendersLikeExpiredTimelineEntry() throws {
+        let now = Date(timeIntervalSince1970: 1_793_456_040)
+        let fresh = try capture(style: .light, mode: .fullColor, name: "medium-before-expiry", now: now)
+        let late = try capture(style: .light, mode: .fullColor, name: "medium-late-draw", now: now, renderedAtOffset: 600)
+        let expired = try capture(style: .light, mode: .fullColor, name: "medium-expiry-entry", expired: true, now: now, renderedAtOffset: 600)
+        XCTAssertNotEqual(late, fresh)
+        XCTAssertEqual(late, expired)
+    }
     func testMediumLightDarkAndTinted() throws {
         try capture(style: .light, mode: .fullColor, name: "medium-light")
         try capture(style: .dark, mode: .fullColor, name: "medium-dark")
         try capture(style: .light, mode: .accented, name: "medium-tinted")
+        try capture(style: .light, mode: .fullColor, name: "medium-expired-light", expired: true)
+        try capture(style: .dark, mode: .fullColor, name: "medium-expired-dark", expired: true)
+        try capture(style: .light, mode: .fullColor, name: "medium-unset-light", unset: true)
+        try capture(style: .dark, mode: .fullColor, name: "medium-unset-dark", unset: true)
         try capture(style: .light, mode: .fullColor, name: "medium-stale-light", stale: true)
+        try capture(style: .light, mode: .fullColor, name: "medium-stale-older-light", stale: true, checkedAtOffset: -86_400)
         try capture(style: .dark, mode: .fullColor, name: "medium-stale-dark", stale: true)
         try capture(style: .light, mode: .accented, name: "medium-stale-tinted", stale: true)
         try capture(style: .light, mode: .fullColor, name: "medium-no-quota-light", otherOnly: true)
@@ -64,17 +101,20 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertNil(LAAEmployeeWidgetView.accessibleNotice(for: [fresh], at: now))
         XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, stale], at: now), .stale)
         XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, uncertain], at: now), .uncertain)
-        XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, manual], at: now), .manual)
+        XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [fresh, manual], at: now), .stale)
         XCTAssertEqual(LAAEmployeeWidgetView.accessibleNotice(for: [manual, stale], at: now), .stale)
         let today = LAAEmployeeWidgetView.accessibleCheckedParts(now, relativeTo: now, calendar: calendar)
         XCTAssertEqual(today.date, "10/31")
         XCTAssertEqual(today.time, "23:34")
+        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(now, relativeTo: now, calendar: calendar), "取得 23:34")
         let yesterday = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar)
         XCTAssertEqual(yesterday.date, "10/30")
         XCTAssertEqual(yesterday.time, "09:04")
+        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(try date(2026, 10, 30, 9, 4), relativeTo: now, calendar: calendar), "取得 10/30 09:04")
         let previousYear = LAAEmployeeWidgetView.accessibleCheckedParts(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar)
         XCTAssertEqual(previousYear.date, "2025/12/31")
         XCTAssertEqual(previousYear.time, "09:04")
+        XCTAssertEqual(LAAEmployeeWidgetView.checkedLabel(try date(2025, 12, 31, 9, 4), relativeTo: now, calendar: calendar), "取得 2025/12/31 09:04")
     }
 
     func testAccessibility5MatchesAccessibility3() throws {
@@ -96,8 +136,9 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
 
     @discardableResult
     private func capture(style: UIUserInterfaceStyle, mode: WidgetRenderingMode, name: String,
-                         stale: Bool = false, otherOnly: Bool = false, dynamicTypeSize: DynamicTypeSize = .large,
-                         checkedAtOffset: TimeInterval = 0, now: Date = Date()) throws -> Data {
+                         stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,
+                         dynamicTypeSize: DynamicTypeSize = .large,
+                         checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0) throws -> Data {
         let meters = [("Claude · Session", 12.0), ("Codex · Weekly", 35.0), ("OpenCode · 5h", 72.0)]
             .enumerated().map { index, pair in
                 WidgetUsageMeter(id: "\(index)", label: pair.0, remainingPercent: pair.1,
@@ -106,9 +147,10 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
             }
         let usage = WidgetUsageSnapshot(meters: otherOnly ? [] : meters,
             checkedAt: now.addingTimeInterval(checkedAtOffset), hasOtherUsage: otherOnly)
-        let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(usage)
-        let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot, date: now)
-        let screen = LAAEmployeeWidgetView(entry: entry, familyOverride: .systemMedium, renderingModeOverride: mode)
+        let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(unset ? nil : usage)
+        let entry = LAAEmployeeWidgetEntry.make(employee: .ciel, snapshot: snapshot,
+                                                date: expired ? now.addingTimeInterval(600) : now)
+        let screen = LAAEmployeeWidgetView(entry: entry, familyOverride: .systemMedium, renderingModeOverride: mode, renderedAtOverride: now.addingTimeInterval(renderedAtOffset))
             .frame(width: 360, height: 169)
             .clipShape(RoundedRectangle(cornerRadius: LAARadius.photo))
             .preferredColorScheme(style == .dark ? .dark : .light)

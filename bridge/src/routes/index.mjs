@@ -60,7 +60,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
       ...workspaceOptions,
     }),
     ...createSessionRoutes({ sessions: sessionService }),
-    ...usageRoutes({ ...(options.usage ?? {}), stateDir: store.dir, now }),
+    ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
   ];
 }
