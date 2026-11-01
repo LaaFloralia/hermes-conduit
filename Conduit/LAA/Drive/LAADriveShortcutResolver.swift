@@ -6,11 +6,11 @@ enum LAADriveShortcutError: Error, Equatable {
 
     var message: String {
         switch self {
-        case .invalidTarget: return "The shortcut target is unavailable."
-        case .resourceKeyRequired: return "This shortcut needs a resource key. Open it in Drive."
-        case .permissionUnknown: return "The shortcut's access requirements are unavailable."
-        case .cycle: return "This shortcut leads back to a folder or shortcut already open."
-        case .tooManyLinks: return "There are too many shortcuts to follow."
+        case .invalidTarget: return AppLocalization.string("The shortcut target is unavailable.")
+        case .resourceKeyRequired: return AppLocalization.string("This shortcut needs a resource key. Open it in Drive.")
+        case .permissionUnknown: return AppLocalization.string("The shortcut's access requirements are unavailable.")
+        case .cycle: return AppLocalization.string("This shortcut leads back to a folder or shortcut already open.")
+        case .tooManyLinks: return AppLocalization.string("There are too many shortcuts to follow.")
         }
     }
 }

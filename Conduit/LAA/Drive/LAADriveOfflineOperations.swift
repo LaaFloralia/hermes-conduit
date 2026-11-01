@@ -171,16 +171,16 @@ final class LAADriveOfflineOperations {
     static func message(_ error: Error) -> String {
         guard let error = error as? LAADriveOfflineError else { return LAADrivePresentation.message(error) }
         switch error {
-        case .forbidden: return "Drive no longer permits access to this file."
-        case .notFound: return "This file is no longer available in Drive."
-        case .permissionUnknown: return "The file's current permission could not be verified."
-        case .versionUnavailable: return "Drive did not provide a file version. This copy cannot be saved safely."
-        case .versionChanged: return "The file changed while saving. Try again."
-        case .insufficientSpace: return "There is not enough free space. Existing saved files were kept."
-        case .alreadySaving: return "This file is already being saved."
-        case .accessChanged: return "The Bridge connection changed. Reopen the file."
-        case .corruptIndex, .unavailable, .cleanupFailed: return "The saved file could not be read."
-        default: return "This file could not be saved."
+        case .forbidden: return AppLocalization.string("Drive no longer permits access to this file.")
+        case .notFound: return AppLocalization.string("This file is no longer available in Drive.")
+        case .permissionUnknown: return AppLocalization.string("The file's current permission could not be verified.")
+        case .versionUnavailable: return AppLocalization.string("Drive did not provide a file version. This copy cannot be saved safely.")
+        case .versionChanged: return AppLocalization.string("The file changed while saving. Try again.")
+        case .insufficientSpace: return AppLocalization.string("There is not enough free space. Existing saved files were kept.")
+        case .alreadySaving: return AppLocalization.string("This file is already being saved.")
+        case .accessChanged: return AppLocalization.string("The Bridge connection changed. Reopen the file.")
+        case .corruptIndex, .unavailable, .cleanupFailed: return AppLocalization.string("The saved file could not be read.")
+        default: return AppLocalization.string("This file could not be saved.")
         }
     }
 }

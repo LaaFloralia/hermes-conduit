@@ -11,6 +11,8 @@ const temporary = mkdtempSync(join(tmpdir(), 'laa-drive-integration-'));
 try {
   const stub = join(temporary, 'Stubs.swift');
   writeFileSync(stub, `import Foundation\nimport SwiftUI\n` +
+    `enum AppLocalization { static func string(_ key: String) -> String { key } }\n` +
+    `@MainActor final class AppLanguageStore: ObservableObject { static let shared = AppLanguageStore() }\n` +
     `enum LAAStudioMedia { static func bridgePathIsValid(_ path: String) -> Bool { true } }\n` +
     `struct LAAStudioAsset { let kind: String; let name: String }\n` +
     `enum VoicePhoneCalls { static let isOn = false }\n` +

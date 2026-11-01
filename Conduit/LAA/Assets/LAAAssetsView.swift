@@ -9,6 +9,7 @@ private struct LAADriveSelection: Hashable, Identifiable {
 
 struct LAAAssetsView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     let onRequestSettings: () -> Void
     @State private var studioSelected = false
     private let initialStudioSection: Int
@@ -40,7 +41,7 @@ struct LAAAssetsView: View {
                             .accessibilityIdentifier("laa.drive.offline.list")
                         if folderTask != nil {
                             HStack {
-                                ProgressView(folderMessage ?? "Preparing folder")
+                                ProgressView(folderMessage ?? AppLocalization.string("Preparing…"))
                                 Button("Cancel") { folderTask?.cancel() }
                             }
                         } else if let folderMessage {
@@ -93,14 +94,18 @@ struct LAAAssetsView: View {
             Button("Cancel", role: .cancel) { folderPlan = nil }
         } message: {
             if let folderPlan {
-                Text("\(folderPlan.files.count) files · at least \(ByteCountFormatter.string(fromByteCount: folderPlan.knownBytes, countStyle: .file)). \(folderPlan.unknownSizeCount) PDF exports have unknown size; \(folderPlan.issues.count) items or pages could not be included. Existing saved copies are kept if saving fails.")
+                let minimumSpace = ByteCountFormatter.string(fromByteCount: folderPlan.knownBytes, countStyle: .file)
+                Text("Files: \(folderPlan.files.count)") +
+                Text(verbatim: "\n") + Text("Minimum space: \(minimumSpace)") +
+                Text(verbatim: "\n") + Text("Items or pages not included: \(folderPlan.issues.count)") +
+                Text(verbatim: "\n") + Text("Existing saved copies are kept if saving fails.")
             }
         }
     }
 
     private func planFolder(_ entry: LAADriveListingItem) {
         guard folderTask == nil else { return }
-        folderMessage = "Preparing folder"
+        folderMessage = AppLocalization.string("Preparing…")
         let revision = bridge.revision
         folderTask = Task {
             do {
@@ -112,7 +117,7 @@ struct LAAAssetsView: View {
                 folderPlan = plan
                 folderMessage = nil
                 confirmFolder = true
-            } catch is CancellationError { folderMessage = "Folder preparation cancelled." }
+            } catch is CancellationError { folderMessage = AppLocalization.string("Cancelled") }
             catch { folderMessage = LAADriveOfflineOperations.message(error) }
             folderTask = nil
         }
@@ -121,15 +126,18 @@ struct LAAAssetsView: View {
     private func saveFolder(_ plan: LAADriveOfflineFolderPlan) {
         guard folderTask == nil else { return }
         folderPlan = nil
-        folderMessage = "Saving 0 of \(plan.files.count)"
+        folderMessage = "\(AppLocalization.string("Saving offline")) 0 / \(plan.files.count)"
         folderTask = Task {
             let result = await LAADriveOfflineFolder.save(plan) { entry in
                 try await LAADriveOfflineOperations.shared.save(entry.item, bridge: bridge)
             } progress: { completed, total in
-                folderMessage = "Saving \(completed) of \(total)"
+                folderMessage = "\(AppLocalization.string("Saving offline")) \(completed) / \(total)"
             }
-            let outcome = result.cancelled ? "Cancelled" : "Finished"
-            folderMessage = "\(outcome): \(result.savedIDs.count) saved, \(result.failedIDs.count) failed, \(plan.issues.count) not included."
+            let outcome = result.cancelled ? AppLocalization.string("Cancelled") : AppLocalization.string("Finished")
+            let saved = AppLocalization.string("Saved")
+            let failed = AppLocalization.string("Failed")
+            let omitted = AppLocalization.string("Items or pages not included: \(plan.issues.count)")
+            folderMessage = "\(outcome) · \(saved) \(result.savedIDs.count) · \(failed) \(result.failedIDs.count) · \(omitted)"
             folderTask = nil
         }
     }

@@ -18,9 +18,11 @@ try {
     return source.slice(start, end);
   };
   const models = join(temporary, 'ActualModels.swift');
-  writeFileSync(models, `import Foundation\n` +
+  writeFileSync(models, `import Foundation\nimport Combine\n` +
     `enum LAABridgeError: Error { case invalidResponse }\n` +
     `struct LAABridgeHTTPError: Error { let status: Int; let code: String? }\n` +
+    `enum AppLocalization { static func string(_ key: String) -> String { key } }\n` +
+    `@MainActor final class AppLanguageStore: ObservableObject { static let shared = AppLanguageStore() }\n` +
     `enum LAACopy { enum Assets { static let folder = "Folder", image = "Image", document = "Document", file = "File" } }\n` +
     between(transport, 'enum LAADrivePaths {', '\nenum LAADriveRangeError') + '\n' +
     between(assets, 'struct LAADriveItem:', '\nstruct LAADrivePage:') + '\n');

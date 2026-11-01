@@ -105,17 +105,26 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.drive.browser.item.video1"].waitForExistence(timeout: 10))
     }
 
-    func testWorkspaceOpensExportedPDF() {
+    func testWorkspaceOpensInGoogleDrive() {
         let app = launch("normal")
         app.swipeUp()
         let document = app.buttons["laa.drive.browser.item.workspace1"]
         XCTAssertTrue(document.waitForExistence(timeout: 30))
         document.tap()
-        let open = app.buttons["laa.drive.open"]
-        XCTAssertTrue(open.waitForExistence(timeout: 10))
-        XCTAssertTrue(open.isEnabled)
-        open.tap()
-        XCTAssertTrue(app.navigationBars["Workspace document"].waitForExistence(timeout: 10))
+        let openInDrive = app.descendants(matching: .any)["laa.drive.open-in-drive"]
+        XCTAssertTrue(openInDrive.waitForExistence(timeout: 10))
+        XCTAssertTrue(openInDrive.isEnabled)
+        XCTAssertFalse(app.buttons["laa.drive.offline.save"].exists)
+    }
+
+    func testWorkspaceWithoutLinkExplainsUnavailable() {
+        let app = launch("workspaceNoLink")
+        app.swipeUp()
+        let document = app.buttons["laa.drive.browser.item.workspace1"]
+        XCTAssertTrue(document.waitForExistence(timeout: 30))
+        document.tap()
+        XCTAssertTrue(app.staticTexts["Google Drive link unavailable."].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["laa.drive.open-in-drive"].exists)
     }
 
     func testDrivePagination() {
@@ -128,21 +137,34 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertFalse(more.exists)
     }
 
+    func testFolderSaveShowsEstimateBeforeConfirmation() {
+        let app = launch("normal")
+        let folder = app.buttons["laa.drive.browser.item.folder1"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 30))
+        folder.press(forDuration: 1)
+        let save = app.buttons["Save folder offline"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10)); save.tap()
+        XCTAssertTrue(app.buttons["Save files"].waitForExistence(timeout: 20))
+        let message = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Existing saved copies are kept if saving fails.")).firstMatch
+        XCTAssertTrue(message.exists)
+        app.buttons["Cancel"].tap()
+    }
+
     func testEmptyUnconfiguredOfflineAndUnpaired() {
         let empty = launch("empty")
         XCTAssertTrue(empty.staticTexts["No items found."].waitForExistence(timeout: 30))
         empty.terminate()
         let unconfigured = launch("unconfigured")
-        XCTAssertTrue(unconfigured.staticTexts["Drive authorization is not configured on the Mac."].waitForExistence(timeout: 30))
+        XCTAssertTrue(unconfigured.staticTexts["Google Drive for desktop is unavailable on the Mac."].waitForExistence(timeout: 30))
         unconfigured.terminate()
         let scopeDenied = launch("scopeDenied")
         XCTAssertTrue(scopeDenied.staticTexts["This device needs the media:read permission."].waitForExistence(timeout: 30))
         scopeDenied.terminate()
         let offline = launch("offline")
-        XCTAssertTrue(offline.staticTexts["Macに届きません。TailscaleとMacの接続を確認してください。"].waitForExistence(timeout: 30))
+        XCTAssertTrue(offline.staticTexts["Cannot reach the Mac. Check Tailscale and the Mac."].waitForExistence(timeout: 30))
         offline.terminate()
         let error = launch("error")
-        XCTAssertTrue(error.staticTexts["Macからデータを取得できませんでした。"].waitForExistence(timeout: 30))
+        XCTAssertTrue(error.staticTexts["Could not get data from the Mac."].waitForExistence(timeout: 30))
         error.terminate()
         let unpaired = launch()
         XCTAssertTrue(unpaired.buttons["laa.assets.pair"].waitForExistence(timeout: 30))

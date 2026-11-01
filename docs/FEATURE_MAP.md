@@ -516,7 +516,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   uncertain reviews retain their UUID and body for an explicit retry. Library
   shows principles, reference materials and reusable request text. PDF and
   USDZ previews use iOS components. Video and audio call the shared Drive player
-  through one Studio adapter; its improved public API is pending integration.
+  through one Studio adapter; its shared transport retains both the Drive
+  version check and Studio's optional timeout.
   The v2 app screens, real intake and iPhone playback remain to be verified.
 - Brain shows Recent and Folders with Tags disabled until supported; the note
   body uses an opaque surface and all existing links and create-only flow remain.

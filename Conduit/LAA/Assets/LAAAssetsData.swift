@@ -6,29 +6,29 @@ import UIKit
 
 extension LAACopy {
     enum Assets {
-        static let title = "Assets"
-        static let subtitle = "Everything you have made and saved."
-        static let drive = "Drive"
-        static let inspiration = "Inspiration"
-        static let studio = "Studio"
-        static let search = "Search assets"
-        static let unavailable = "Inspiration is not available yet."
-        static let configureDrive = "Google Drive for desktop is unavailable on the Mac."
-        static let scope = "This device needs the media:read permission."
-        static let empty = "No items found."
-        static let files = "Files"
-        static let file = "File"
-        static let image = "Image"
-        static let document = "Document"
-        static let folder = "Folder"
-        static let filter = "Filter"
-        static let all = "All"
-        static let images = "Images"
-        static let documents = "Documents"
-        static let folders = "Folders"
-        static let loadedOnly = "Filters apply to loaded items."
-        static let loadMore = "Load more"
-        static let searchTooLong = "Search text is too long."
+        static var title: String { AppLocalization.string("Assets") }
+        static var subtitle: String { AppLocalization.string("Everything you have made and saved.") }
+        static var drive: String { AppLocalization.string("Drive") }
+        static var inspiration: String { AppLocalization.string("Inspiration") }
+        static var studio: String { AppLocalization.string("Studio") }
+        static var search: String { AppLocalization.string("Search assets") }
+        static var unavailable: String { AppLocalization.string("Inspiration is not available yet.") }
+        static var configureDrive: String { AppLocalization.string("Google Drive for desktop is unavailable on the Mac.") }
+        static var scope: String { AppLocalization.string("This device needs the media:read permission.") }
+        static var empty: String { AppLocalization.string("No items found.") }
+        static var files: String { AppLocalization.string("Files") }
+        static var file: String { AppLocalization.string("File") }
+        static var image: String { AppLocalization.string("Image") }
+        static var document: String { AppLocalization.string("Document") }
+        static var folder: String { AppLocalization.string("Folder") }
+        static var filter: String { AppLocalization.string("Filter") }
+        static var all: String { AppLocalization.string("All") }
+        static var images: String { AppLocalization.string("Images") }
+        static var documents: String { AppLocalization.string("Documents") }
+        static var folders: String { AppLocalization.string("Folders") }
+        static var loadedOnly: String { AppLocalization.string("Filters apply to loaded items.") }
+        static var loadMore: String { AppLocalization.string("Load more") }
+        static var searchTooLong: String { AppLocalization.string("Search text is too long.") }
     }
 }
 
@@ -157,11 +157,15 @@ enum LAADriveData {
             let next: Any = fixture == "paged" && cursor == nil ? "page2" : NSNull()
             let enriched: [[String: Any]] = objects.map { object in
                 var result: [String: Any] = object
+                let isWorkspace = object["kind"] == "workspace_document"
                 result["version"] = "1"
-                result["downloadable"] = true
-                result["size"] = 1024
+                result["downloadable"] = !isWorkspace
+                if isWorkspace { result["size"] = NSNull() } else { result["size"] = 1024 }
                 result["hasThumbnail"] = false
-                result["exportFormats"] = object["kind"] == "workspace_document" ? ["application/pdf"] : []
+                result["exportFormats"] = []
+                if isWorkspace && fixture != "workspaceNoLink" {
+                    result["webViewLink"] = "https://docs.google.com/document/d/fixture/edit"
+                }
                 return result
             }
             return try JSONSerialization.data(withJSONObject: ["items": enriched, "nextCursor": next, "incompleteSearch": false])
@@ -208,8 +212,9 @@ enum LAADriveData {
             else { fixtureSize = (try? await LAADriveContent.range(item, offset: 0, length: 1, bridge: bridge).total) ?? 1024 }
             let data = try JSONSerialization.data(withJSONObject: [
                 "id": item.id, "name": item.name, "mimeType": item.mimeType, "kind": item.kind,
-                "size": fixtureSize, "version": "1", "modifiedAt": "2026-10-25T13:00:00.000Z", "downloadable": true,
-                "exportFormats": item.isWorkspace ? ["application/pdf"] : []
+                "size": item.isWorkspace ? NSNull() as Any : fixtureSize as Any,
+                "version": "1", "modifiedAt": "2026-10-25T13:00:00.000Z", "downloadable": !item.isWorkspace,
+                "exportFormats": []
             ])
             return try JSONDecoder().decode(LAADriveItem.self, from: data)
         }

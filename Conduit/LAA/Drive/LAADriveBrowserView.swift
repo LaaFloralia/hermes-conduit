@@ -7,6 +7,7 @@ import UIKit
 /// browser owns only its section, folder path, search and presentation state.
 @MainActor
 struct LAADriveBrowserView: View {
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     typealias Loader = LAADriveBrowseController.Loader
     typealias ThumbnailLoader = @MainActor (LAADriveListingItem) async throws -> Data?
     typealias ShortcutLoader = @MainActor (LAADriveListingItem, Set<String>) async throws -> LAADriveListingItem
@@ -148,9 +149,9 @@ struct LAADriveBrowserView: View {
     }
 
     private var searchScope: String {
-        if !folders.isEmpty { return "Searching this folder only." }
-        if section == .my { return "Searching the top level of My Drive only." }
-        return "Searching \(section.title)."
+        if !folders.isEmpty { return AppLocalization.string("Searching this folder only.") }
+        if section == .my { return AppLocalization.string("Searching the top level of My Drive only.") }
+        return AppLocalization.string("Searching \(section.title).")
     }
 
     private var header: some View {
@@ -171,7 +172,7 @@ struct LAADriveBrowserView: View {
                 Image(systemName: layout == .grid ? "list.bullet" : "square.grid.2x2")
                     .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
             }
-            .accessibilityLabel(layout == .grid ? "Show list" : "Show grid")
+            .accessibilityLabel(layout == .grid ? AppLocalization.string("Show list") : AppLocalization.string("Show grid"))
             .accessibilityIdentifier("laa.drive.browser.layout")
         }
     }
@@ -186,7 +187,7 @@ struct LAADriveBrowserView: View {
             if resolvingID != nil { ProgressView("Opening shortcut") }
             if let error = controller.error {
                 Text(verbatim: (error as? LAADriveBrowseError) == .cursorExpired
-                     ? "Results expired. Retry to reload from the beginning." : errorMessage(error))
+                     ? AppLocalization.string("Results expired. Retry to reload from the beginning.") : errorMessage(error))
                     .laaTextStyle(.body).foregroundStyle(LAAColor.attention)
                 Button("Retry") {
                     Task {
@@ -249,7 +250,7 @@ struct LAADriveBrowserView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: entry.item.name))
         .accessibilityValue(Text(verbatim: kind(entry)))
-        .accessibilityHint(entry.item.isFolder ? "Open folder" : entry.item.kind == "shortcut" ? "Open shortcut" : "Open file")
+        .accessibilityHint(entry.item.isFolder ? AppLocalization.string("Open folder") : entry.item.kind == "shortcut" ? AppLocalization.string("Open shortcut") : AppLocalization.string("Open file"))
         .accessibilityIdentifier("laa.drive.browser.item.\(entry.id)")
         .contextMenu {
             if entry.item.isFolder {
@@ -267,7 +268,7 @@ struct LAADriveBrowserView: View {
     }
 
     private func kind(_ entry: LAADriveListingItem) -> String {
-        entry.item.kind == "shortcut" ? "Shortcut" : entry.item.kindTitle
+        entry.item.kind == "shortcut" ? AppLocalization.string("Shortcut") : entry.item.kindTitle
     }
 
     private func select(_ entry: LAADriveListingItem) {
@@ -299,7 +300,7 @@ struct LAADriveBrowserView: View {
     private func navigateOrOpen(_ entry: LAADriveListingItem) {
         if entry.item.isFolder {
             guard !folders.contains(where: { $0.id == entry.id }) else {
-                navigationError = "This folder is already in the current path."
+                navigationError = AppLocalization.string("This folder is already in the current path.")
                 return
             }
             folders.append(entry)
@@ -346,10 +347,10 @@ struct LAADriveBrowserView: View {
 private extension LAADriveBrowseSection {
     var title: String {
         switch self {
-        case .my: return "My Drive"
-        case .shared: return "Shared drives"
-        case .recent: return "Recent"
-        case .starred: return "Starred"
+        case .my: return AppLocalization.string("My Drive")
+        case .shared: return AppLocalization.string("Shared drives")
+        case .recent: return AppLocalization.string("Recent")
+        case .starred: return AppLocalization.string("Starred")
         }
     }
 }

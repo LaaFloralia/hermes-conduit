@@ -5,28 +5,28 @@ import UIKit
 
 extension LAACopy {
     enum Drive {
-        static let details = "File details"
-        static let size = "Size"
-        static let mime = "Type"
-        static let modified = "Modified"
-        static let owner = "Owner"
-        static let downloadable = "Downloadable"
-        static let unknown = "Unavailable"
-        static let yes = "Yes"
-        static let no = "No"
-        static let open = "Open"
-        static let play = "Play"
-        static let pause = "Pause"
-        static let seek = "Playback position"
-        static let retry = "Retry"
-        static let workspace = "This Google document cannot be exported as a PDF. Open in Google Drive."
-        static let unsupported = "This file type cannot be previewed here. Open on Mac."
-        static let notDownloadable = "This file cannot be downloaded. Open on Mac."
-        static let downloadUnknown = "Download permission is unavailable. Open on Mac."
-        static let rangeUnsupported = "The server did not support seeking. Playback was stopped."
-        static let rangeInvalid = "The requested file range could not be read. Try again."
-        static let tooLarge = "This preview is larger than 64 MB. Open on Mac."
-        static let invalidPreview = "This file could not be displayed. Open on Mac."
+        static var details: String { AppLocalization.string("File details") }
+        static var size: String { AppLocalization.string("Size") }
+        static var mime: String { AppLocalization.string("Type") }
+        static var modified: String { AppLocalization.string("Modified") }
+        static var owner: String { AppLocalization.string("Owner") }
+        static var downloadable: String { AppLocalization.string("Downloadable") }
+        static var unknown: String { AppLocalization.string("Unavailable") }
+        static var yes: String { AppLocalization.string("Yes") }
+        static var no: String { AppLocalization.string("No") }
+        static var open: String { AppLocalization.string("Open") }
+        static var play: String { AppLocalization.string("Play") }
+        static var pause: String { AppLocalization.string("Pause") }
+        static var seek: String { AppLocalization.string("Playback position") }
+        static var retry: String { AppLocalization.string("Retry") }
+        static var workspace: String { AppLocalization.string("Open in Google Drive") }
+        static var unsupported: String { AppLocalization.string("This file type cannot be previewed here. Open on Mac.") }
+        static var notDownloadable: String { AppLocalization.string("This file cannot be downloaded. Open on Mac.") }
+        static var downloadUnknown: String { AppLocalization.string("Download permission is unavailable. Open on Mac.") }
+        static var rangeUnsupported: String { AppLocalization.string("The server did not support seeking. Playback was stopped.") }
+        static var rangeInvalid: String { AppLocalization.string("The requested file range could not be read. Try again.") }
+        static var tooLarge: String { AppLocalization.string("This preview is larger than 64 MB. Open on Mac.") }
+        static var invalidPreview: String { AppLocalization.string("This file could not be displayed. Open on Mac.") }
     }
 }
 
@@ -44,8 +44,8 @@ enum LAADrivePresentation {
     static func message(_ error: Error) -> String {
         if let error = error as? LAADrivePDFExportError {
             switch error {
-            case .tooLarge: return "The exported PDF exceeds 10 MB. Open in Google Drive."
-            case .versionChanged: return "This file changed in Drive. Reopen it to continue."
+            case .tooLarge: return AppLocalization.string("The exported PDF exceeds 10 MB. Open in Google Drive.")
+            case .versionChanged: return AppLocalization.string("This file changed in Drive. Reopen it to continue.")
             }
         }
         if let error = error as? LAADriveRangeError {
@@ -53,18 +53,36 @@ enum LAADrivePresentation {
             case .rangeUnsupported: return LAACopy.Drive.rangeUnsupported
             case .unsatisfiable, .invalidRange: return LAACopy.Drive.rangeInvalid
             case .tooLarge: return LAACopy.Drive.tooLarge
-            case .versionChanged: return "This file changed in Drive. Reopen it to continue."
+            case .versionChanged: return AppLocalization.string("This file changed in Drive. Reopen it to continue.")
             }
         }
         if let error = error as? LAABridgeHTTPError {
             if error.code == "drive_not_configured" { return LAACopy.Assets.configureDrive }
-            if error.code == "drive_permission_required" { return "The Mac has not allowed the Bridge to read Google Drive." }
-            if error.code == "drive_access_timeout" { return "Google Drive on the Mac did not respond. Try again." }
+            if error.code == "drive_permission_required" { return AppLocalization.string("The Mac has not allowed the Bridge to read Google Drive.") }
+            if error.code == "drive_access_timeout" { return AppLocalization.string("Google Drive on the Mac did not respond. Try again.") }
             if error.code == "insufficient_scope" { return LAACopy.Assets.scope }
-            if error.code == "version_changed" { return "This file changed in Drive. Reopen it to continue." }
-            return error.legacyError.japaneseText
+            if error.code == "version_changed" { return AppLocalization.string("This file changed in Drive. Reopen it to continue.") }
+            return bridgeMessage(error.legacyError)
         }
-        return (error as? LAABridgeError)?.japaneseText ?? LAABridgeError.invalidResponse.japaneseText
+        return bridgeMessage((error as? LAABridgeError) ?? .invalidResponse)
+    }
+
+    private static func bridgeMessage(_ error: LAABridgeError) -> String {
+        switch error {
+        case .invalidAddress: return AppLocalization.string("Check the Mac’s Tailscale HTTPS address.")
+        case .networkUnreachable: return AppLocalization.string("Cannot reach the Mac. Check Tailscale and the Mac.")
+        case .tlsFailed: return AppLocalization.string("The secure connection could not be verified. Check the address and certificate.")
+        case .invalidResponse: return AppLocalization.string("The Mac returned an invalid response.")
+        case .keychain: return AppLocalization.string("The connection information could not be saved or read.")
+        case .revoked: return AppLocalization.string("This device’s connection was revoked. Pair it again.")
+        case .unauthorized: return AppLocalization.string("Authentication failed. Pair the device again.")
+        case .forbidden: return AppLocalization.string("This device does not have the required permission.")
+        case .conflict: return AppLocalization.string("The operation conflicted. Refresh and try again.")
+        case .expired: return AppLocalization.string("The results expired. Reload and try again.")
+        case .rateLimited: return AppLocalization.string("Too many requests. Try again later.")
+        case .unavailable: return AppLocalization.string("The service on the Mac is unavailable.")
+        case .other: return AppLocalization.string("Could not get data from the Mac.")
+        }
     }
 
     static func reason(_ item: LAADriveItem) -> String? {
@@ -78,6 +96,7 @@ enum LAADrivePresentation {
 
 struct LAADriveDetailView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     let item: LAADriveItem
     let webViewURL: URL?
     let images: [LAADriveItem]
@@ -116,10 +135,12 @@ struct LAADriveDetailView: View {
                     .padding(LAASpacing.x4)
                     .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
                     if let reason = LAADrivePresentation.reason(value) {
+                        let explanation = value.isWorkspace && webViewURL == nil
+                            ? AppLocalization.string("Google Drive link unavailable.") : reason
                         Button(LAACopy.Drive.open) {}.buttonStyle(.borderedProminent).disabled(true)
                             .tint(LAAColor.filledButton).foregroundStyle(LAAColor.filledButtonText)
-                            .accessibilityHint(Text(verbatim: reason))
-                        Text(verbatim: reason).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            .accessibilityHint(Text(verbatim: explanation))
+                        Text(verbatim: explanation).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     } else {
                         NavigationLink(LAACopy.Drive.open) { LAADrivePreviewView(item: value, images: images) }
                             .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
@@ -128,6 +149,7 @@ struct LAADriveDetailView: View {
                     if let webViewURL {
                         Link("Open in Google Drive", destination: webViewURL)
                             .accessibilityHint("Opens Google Drive or a browser.")
+                            .accessibilityIdentifier("laa.drive.open-in-drive")
                         ShareLink("Share Drive link", item: webViewURL)
                     }
                     if LAADrivePresentation.reason(value) == nil {
@@ -160,7 +182,8 @@ struct LAADriveDetailView: View {
             if let metadata, metadata.isWorkspace {
                 Text("The document will be saved as a PDF. Its size is known after export (up to 10 MB).")
             } else if let size = metadata?.size {
-                Text("Required file space: \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)), plus a small temporary allowance.")
+                let requiredSpace = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+                Text("Required file space: \(requiredSpace), plus a small temporary allowance.")
             } else { Text("The file size will be checked before saving.") }
         }
         .accessibilityIdentifier("laa.drive.detail")
@@ -194,8 +217,8 @@ struct LAADriveDetailView: View {
         saveTask = Task {
             do {
                 try await LAADriveOfflineOperations.shared.save(value, bridge: bridge)
-                saveMessage = "Saved offline."
-            } catch is CancellationError { saveMessage = "Saving cancelled." }
+                saveMessage = AppLocalization.string("Saved offline")
+            } catch is CancellationError { saveMessage = AppLocalization.string("Cancelled") }
             catch { saveMessage = LAADriveOfflineOperations.message(error) }
             saveTask = nil
         }
@@ -206,6 +229,7 @@ private extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 
 struct LAADrivePreviewView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
     let item: LAADriveItem
     var images: [LAADriveItem] = []
     @State private var data: Data?
