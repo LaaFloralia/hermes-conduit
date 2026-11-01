@@ -208,7 +208,7 @@ struct LAAUsageView: View {
                 ProgressView(value: monthly, total: 100).tint(warning ? LAAColor.attention : LAAColor.link)
             }
             ForEach(Array((item.detail?.components ?? []).enumerated()), id: \.offset) { _, component in
-                metric(componentLabel(component.kind), value(component.amount, unit: item.unit), warning: warning || reachedUTCDate(component.expiresOnUtc))
+                metric(componentLabel(component.kind), value(component.amount, unit: item.id == "provider.venice.balance" ? "credits" : item.unit), warning: warning || reachedUTCDate(component.expiresOnUtc))
                 if let granted = component.grantedAmount { caption("付与 " + value(granted, unit: item.unit)) }
                 if let expiry = component.expiresOnUtc {
                     caption((reachedUTCDate(expiry) ? "期限到来・最終取得 " : "期限 ") + expiry + " UTC")
@@ -314,7 +314,7 @@ struct LAAUsageView: View {
     }
 
     private func componentLabel(_ kind: String) -> String {
-        switch kind { case "monthly": return "月次付与"; case "purchased": return "購入分"; case "promotional": return "プロモーション"; default: return "内訳" }
+        switch kind { case "DIEM": return "DIEM"; case "BUNDLED_CREDITS": return "Bundled credits"; case "monthly": return "月次付与"; case "purchased": return "購入分"; case "promotional": return "プロモーション"; default: return "内訳" }
     }
 
     static func unavailable(_ item: LAAUsageItem) -> String {
