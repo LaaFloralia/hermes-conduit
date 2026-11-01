@@ -43,6 +43,8 @@ enum LAACopy {
     static let callsFromCiel = "Calls from Ciel"
     static let callsFromCielDetail = "When Ciel may call you"
     static let screenQuestionAddShortcut = "Add shortcut"
+    static let dataAndLicenses = "Data & licenses"
+    static let dataAndLicensesDetail = "Device data and open-source licenses"
     static let openSourceLicenses = "Open-source licenses"
     static let close = "Close"
     static let done = "Done"

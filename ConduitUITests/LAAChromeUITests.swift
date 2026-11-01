@@ -106,7 +106,7 @@ final class LAAChromeUITests: XCTestCase {
         }
     }
 
-    func testSettingsAndAboutUseLAAContentAndCapture() {
+    func testSettingsAndDataUseLAAContentAndCapture() {
         for appearance in ["light", "dark"] {
             let app = launch(appearance)
             let settings = app.buttons["laa.settings.open"]
@@ -118,18 +118,19 @@ final class LAAChromeUITests: XCTestCase {
             capture("remnants-settings-\(appearance)")
 
             let scroll = app.scrollViews.firstMatch
-            let about = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "About & privacy")).firstMatch
-            for _ in 0..<6 where !about.isHittable { scroll.swipeUp() }
-            XCTAssertTrue(about.isHittable)
-            about.tap()
-            XCTAssertTrue(app.navigationBars["About & privacy"].waitForExistence(timeout: 10))
+            XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "About & privacy")).firstMatch.exists)
+            let data = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Data & licenses")).firstMatch
+            for _ in 0..<6 where !data.isHittable { scroll.swipeUp() }
+            XCTAssertTrue(data.isHittable)
+            data.tap()
+            XCTAssertTrue(app.navigationBars["Data & licenses"].waitForExistence(timeout: 10))
             XCTAssertTrue(app.staticTexts["LAAは設定したMacに接続します。会話と添付ファイルはその接続先で処理されます。"].exists)
             XCTAssertFalse(app.staticTexts["Active profile"].exists)
             XCTAssertFalse(app.staticTexts["Hermes"].exists)
             XCTAssertFalse(app.links["Privacy policy"].exists)
             XCTAssertFalse(app.links["Support"].exists)
             XCTAssertFalse(app.links["GitHub"].exists)
-            capture("remnants-about-\(appearance)")
+            capture("remnants-data-licenses-\(appearance)")
 
             let licenses = app.buttons["Open-source licenses"]
             for _ in 0..<6 where !licenses.isHittable { app.scrollViews.firstMatch.swipeUp() }

@@ -1,7 +1,7 @@
 #if LAA_BUILD
 import SwiftUI
 
-/// Ship the original notices with the app and make them readable in About.
+/// Ship the original notices with the app and make them readable in Settings.
 struct LAAOpenSourceLicenses: View {
     private var notices: String {
         guard let url = Bundle.main.url(forResource: "LAAOpenSourceNotices", withExtension: "txt"),

@@ -3640,11 +3640,11 @@ point at the map and its check
 **Rulings**
 - Only the LAA build replaces product-owned Conduit names, icons and colors with the LAA identity; identifiers, routes, saved content and upstream builds retain their existing values. Generated bundle descriptions keep the source localization and remove the upstream developer's privacy claim instead of assigning it to LAA.
 - Personal builds use the LAA icon on the Home Screen and in the app, with a distinct LAA Personal display name. LAA's system accent and Watch/Live Activity colors share the design tokens. User-provided persona, memories, job titles, answers, credentials and addresses are not brand-rewritten.
-- LAA About omits the upstream active-profile metric, and Appearance omits the project-chat filter that LAA's Chats list does not use.
+- LAA Settings omits About and the project-chat filter that LAA's Chats list does not use. Device-data information, cached-chat deletion and open-source notices remain under Data & licenses.
 - An unnamed default profile is called Ciel in LAA; a name the user saved is kept unchanged.
 - Voice setup and hosted dictation identify the connection as Mac, while voice search identifies the agent as Ciel.
 - The archive inspector checks visible bundle names, localization values and App Intents metadata for upstream product names in the app and embedded targets before TestFlight export. It does not inspect arbitrary runtime content or prove that Swift source literals never reach the screen.
-- About includes the original app and Liquid Orb MIT notices from `assets/laa/LAAOpenSourceNotices.txt`; the archive inspector requires the shipped copy to match. This is not an audit of every dependency's license.
+- Data & licenses includes the original app and Liquid Orb MIT notices from `assets/laa/LAAOpenSourceNotices.txt`; the archive inspector requires the shipped copy to match. This is not an audit of every dependency's license.
 - A shared trailing toolbar button opens the same Settings sheet on each tab root, including disconnected Chats. Pairing, call and Usage controls use the English LAA copy while Japanese explanations remain. The pairing sheet uses the LAA surface, input and button tokens in both appearances.
 
 **Open gaps**

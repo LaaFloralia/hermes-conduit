@@ -1353,7 +1353,7 @@ private struct SettingsHome: View {
         homeSection(AppLocalization.string("App"), tint: .conduitAccent) {
             settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"), identifier: "settings.appearance")
             settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"), identifier: "settings.notifications")
-            settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
+            settingsLink(.about, icon: "shield", title: LAACopy.dataAndLicenses, detail: LAACopy.dataAndLicensesDetail)
         }
     }
     #endif
@@ -4428,12 +4428,7 @@ private struct AboutSettingsDetail: View {
 
     var body: some View {
         SettingsDetailContainer {
-            #if LAA_BUILD
-            ConduitSettingsSection(title: LAACopy.brand, symbol: "info.circle", tint: .conduitAccent) {
-                ConduitAppIconArtwork(assetName: appState.appIconChoice.previewAssetName, size: 48)
-                SettingsMetricRow(label: AppLocalization.string("Version"), value: ConduitAppVersion.display)
-            }
-            #else
+            #if !LAA_BUILD
             ConduitSettingsSection(title: "Hermes Conduit", symbol: "info.circle", tint: .conduitAccent) {
                 HStack(spacing: 12) {
                     ConduitAppIconArtwork(
@@ -4496,7 +4491,12 @@ private struct AboutSettingsDetail: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             #endif
-        }.navigationTitle("About & privacy")
+        }
+        #if LAA_BUILD
+        .navigationTitle(LAACopy.dataAndLicenses)
+        #else
+        .navigationTitle("About & privacy")
+        #endif
     }
 
     private var deleteSavedChatsButton: some View {
