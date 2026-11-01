@@ -151,6 +151,11 @@ extension AppState {
             }
             return await openWidgetConversation(reference, workspace: workspace, lease: lease)
         case .talk:
+            #if LAA_BUILD
+            if LAAStaff(profile: workspace.profile) == .cielUncensored {
+                return .failed("この会話はテキスト専用です")
+            }
+            #endif
             return await openWidgetVoice(workspace: workspace, lease: lease)
         #if LAA_BUILD
         case .usage:

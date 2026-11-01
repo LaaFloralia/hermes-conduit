@@ -7,12 +7,13 @@ import XCTest
 final class LAAEmployeeGPTLiveTests: XCTestCase {
     func testEightDefaultsAreDistinctChatGPTVoices() throws {
         let voices = Set(GPTLiveVoice.all.map(\.name))
-        let plans = try LAAStaff.allCases.map {
+        let plans = try LAAStaff.allCases.filter { $0 != .cielUncensored }.map {
             try XCTUnwrap(LAAEmployeeGPTLivePlan.make(profile: "laa-\($0.rawValue)", savedVoice: nil))
         }
         XCTAssertEqual(Set(plans.map(\.voice)).count, 8)
         XCTAssertTrue(plans.allSatisfy { voices.contains($0.voice) && $0.engine == .gptLive && $0.billing == .subscription })
         XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: "default", savedVoice: nil))
+        XCTAssertNil(LAAEmployeeGPTLivePlan.make(profile: "laa-ciel-uncensored", savedVoice: nil))
         XCTAssertEqual(LAAEmployeeGPTLivePlan.make(profile: "laa-ciel", savedVoice: "marin")?.voice, LAAStaff.ciel.defaultGPTLiveVoice)
         XCTAssertEqual(LAAEmployeeGPTLivePlan.make(profile: "laa-ciel", savedVoice: "cove")?.voice, "cove")
     }

@@ -3,7 +3,7 @@ import Foundation
 
 /// Profile IDs are stable; display names can be changed on the host.
 enum LAAStaff: String, CaseIterable {
-    case ciel, argus, cfo, cio, cmo, cos, cso, cto
+    case ciel, cielUncensored = "ciel-uncensored", argus, cfo, cio, cmo, cos, cso, cto
 
     init?(profile: String) {
         let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -14,6 +14,7 @@ enum LAAStaff: String, CaseIterable {
     var name: String {
         switch self {
         case .ciel: return "Ciel"
+        case .cielUncensored: return "Ciel（無検閲）"
         case .argus: return "Argus"
         case .cfo: return "Morgan"
         case .cio: return "Sherlock"
@@ -27,6 +28,7 @@ enum LAAStaff: String, CaseIterable {
     var role: String {
         switch self {
         case .ciel: return "社長秘書・総合アドバイザー"
+        case .cielUncensored: return "社長秘書・総合アドバイザー"
         case .argus: return "Head Trader"
         case .cfo: return "CFO"
         case .cio: return "CIO"
@@ -62,12 +64,13 @@ struct StaffAssetResolver {
         let staffDirectory = root.appendingPathComponent("staff", isDirectory: true)
         // The former Ciel is only a fallback if the entire adopted set is absent.
         let directory: URL
-        if !exists(staffDirectory), staff == .ciel {
+        let assetName = staff.rawValue
+        if !exists(staffDirectory), assetName == "ciel" {
             directory = root.appendingPathComponent("ciel", isDirectory: true)
         } else {
-            directory = staffDirectory.appendingPathComponent(staff.rawValue, isDirectory: true)
+            directory = staffDirectory.appendingPathComponent(assetName, isDirectory: true)
         }
-        let name = staff.rawValue
+        let name = assetName
         return StaffAssets(
             avatar: present(directory.appendingPathComponent("\(name)-avatar-512.png")),
             hero: present(directory.appendingPathComponent("\(name)-hero-1024.png")),
