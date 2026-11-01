@@ -181,6 +181,26 @@ final class ComposerDraftStore: ObservableObject {
         persist()
     }
 
+    /// Move an explicitly selected local draft without replacing another one.
+    /// Both the old and new keys are committed in a single snapshot.
+    @discardableResult
+    func moveDraftIfVacant(from source: ComposerDraftKey, to destination: ComposerDraftKey) -> Bool {
+        guard source != destination, let draft = drafts[source], drafts[destination] == nil,
+              !submissions.contains(where: { $0.key == destination }) else { return false }
+        let oldDrafts = drafts, oldOrder = order, oldGenerations = generations
+        drafts.removeValue(forKey: source)
+        generations.removeValue(forKey: source)
+        order.removeAll { $0 == source }
+        drafts[destination] = draft
+        refreshGeneration(for: destination)
+        touch(destination)
+        guard persist() else {
+            drafts = oldDrafts; order = oldOrder; generations = oldGenerations
+            return false
+        }
+        return true
+    }
+
     func submissionBucket(for key: ComposerDraftKey) -> ComposerDraftSubmissionBucket {
         ComposerDraftSubmissionBucket(key: key, generation: generations[key])
     }
@@ -278,13 +298,16 @@ final class ComposerDraftStore: ObservableObject {
     /// message is sent into it. The journal then remains discoverable even
     /// when a process dies before the network response.
     @discardableResult
-    func rebindSubmission(_ id: UUID, to key: ComposerDraftKey) -> Bool {
+    func rebindSubmission(_ id: UUID, to key: ComposerDraftKey, groupOutboundText: String? = nil) -> Bool {
         guard let index = submissions.firstIndex(where: { $0.id == id }),
               submissions[index].dashboardID == key.dashboardID else { return false }
         let oldKey = submissions[index].key
+        let oldOutboundText = submissions[index].groupOutboundText
         submissions[index].key = key
+        if let groupOutboundText { submissions[index].groupOutboundText = groupOutboundText }
         guard persist() else {
             submissions[index].key = oldKey
+            submissions[index].groupOutboundText = oldOutboundText
             return false
         }
         return true

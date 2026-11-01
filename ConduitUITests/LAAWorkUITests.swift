@@ -113,6 +113,22 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertFalse(app.buttons["New Session"].isEnabled)
     }
 
+    func testOwnerTasksAndPendingAreAvailableWithoutPairing() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launch()
+        XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 15))
+        app.buttons["Tasks"].tap()
+        let input = app.textFields["work.ownerTasks.newTitle"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertFalse(input.isEnabled)
+        XCTAssertFalse(app.staticTexts["Linearが現在のタスクの正本です。ここでは閲覧のみできます。"].exists)
+        let pending = app.buttons["work.ownerTasks.pending"]
+        XCTAssertTrue(pending.exists)
+        pending.tap()
+        XCTAssertTrue(app.navigationBars["送信待ち・下書き"].waitForExistence(timeout: 5))
+    }
+
     private func captureUnpairedDesign(_ appearance: String) {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE",

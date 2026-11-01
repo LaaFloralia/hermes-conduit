@@ -5,106 +5,88 @@ import SwiftUI
 // persistence, and navigation. An empty array must mean a completed read.
 struct LAAOwnerTaskListContent: View {
     let tasks: [LAAOwnerTask]
+    @Binding var newTitle: String
+    let adding: Bool
+    let inputEnabled: Bool
+    let showEmpty: Bool
+    let disabledIDs: Set<UUID>
+    let checkboxDisabledIDs: Set<UUID>
     let openTask: (LAAOwnerTask) -> Void
     let createTask: () -> Void
+    let toggleTask: (LAAOwnerTask) -> Void
     @State private var doneExpanded = false
     @State private var canceledExpanded = false
 
     var body: some View {
         let groups = LAAOwnerTaskGroups(tasks: tasks)
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            HStack {
-                Text(verbatim: "MY TASKS")
-                    .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                Spacer()
-                Button("New Task", action: createTask)
-                    .buttonStyle(.borderedProminent)
+            HStack(spacing: LAASpacing.x2) {
+                Image(systemName: "plus").foregroundStyle(LAAColor.link)
+                TextField("タスクを追加", text: $newTitle)
+                    .submitLabel(.done)
+                    .onSubmit(createTask)
+                    .disabled(!inputEnabled)
+                    .accessibilityIdentifier("work.ownerTasks.newTitle")
+                Button("追加", action: createTask)
+                    .disabled(!inputEnabled || adding || newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .accessibilityIdentifier("work.ownerTasks.create")
             }
-            if groups.open.isEmpty {
+            .workCard()
+            if showEmpty && groups.open.isEmpty {
                 Text(verbatim: "未完了のタスクはありません。")
                     .foregroundStyle(LAAColor.secondaryText).workCard()
             }
             ForEach(groups.open) { task in row(task) }
-            DisclosureGroup(isExpanded: $doneExpanded) {
-                ForEach(groups.done) { task in row(task) }
-            } label: {
-                Text(verbatim: "Done (\(groups.done.count))")
+            if showEmpty || !tasks.isEmpty {
+                DisclosureGroup(isExpanded: $doneExpanded) {
+                    ForEach(groups.done) { task in row(task) }
+                } label: {
+                    Text(verbatim: "完了済み（\(groups.done.count)）")
+                }
+                .accessibilityIdentifier("work.ownerTasks.done")
+                DisclosureGroup(isExpanded: $canceledExpanded) {
+                    ForEach(groups.canceled) { task in row(task) }
+                } label: {
+                    Text(verbatim: "取消済み（\(groups.canceled.count)）")
+                }
+                .accessibilityIdentifier("work.ownerTasks.canceled")
             }
-            .accessibilityIdentifier("work.ownerTasks.done")
-            DisclosureGroup(isExpanded: $canceledExpanded) {
-                ForEach(groups.canceled) { task in row(task) }
-            } label: {
-                Text(verbatim: "Canceled (\(groups.canceled.count))")
-            }
-            .accessibilityIdentifier("work.ownerTasks.canceled")
         }
         .accessibilityIdentifier("work.ownerTasks")
     }
 
     private func row(_ task: LAAOwnerTask) -> some View {
-        Button { openTask(task) } label: {
-            HStack(alignment: .top, spacing: LAASpacing.x3) {
+        HStack(alignment: .center, spacing: LAASpacing.x2) {
+            Button { toggleTask(task) } label: {
+                Image(systemName: task.status == .done ? "checkmark.square.fill" : "square")
+                    .font(.title3).foregroundStyle(LAAColor.link)
+                    .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+            }
+            .buttonStyle(.plain)
+            .disabled(disabledIDs.contains(task.id) || checkboxDisabledIDs.contains(task.id))
+            .accessibilityLabel(Text(verbatim: task.status == .done ? "未完了に戻す" : "完了にする"))
+            .accessibilityValue(Text(verbatim: task.title))
+            .accessibilityIdentifier("work.ownerTasks.check.\(task.id.uuidString)")
+            Button { openTask(task) } label: {
                 VStack(alignment: .leading, spacing: LAASpacing.x1) {
                     Text(verbatim: task.title).foregroundStyle(LAAColor.text)
-                    Text(verbatim: task.status.label)
-                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                }
-                Spacer(minLength: LAASpacing.x2)
-                if let dueDate = task.dueDate {
-                    Text(verbatim: dueDate.value)
-                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .workListRow()
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("work.ownerTasks.row.\(task.id.uuidString)")
-    }
-}
-
-struct LAAOwnerTaskDetailContent: View {
-    let task: LAAOwnerTask
-    let edit: () -> Void
-
-    var body: some View {
-        ZStack {
-            LAAColor.background.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    Text(verbatim: task.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
-                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        Text(verbatim: "状態: \(task.status.label)")
-                        Text(verbatim: "期限: \(task.dueDate?.value ?? "なし")")
-                        Text(verbatim: "作成元: \(task.source.label)")
-                        Text(verbatim: "更新: \(task.updatedAt.formatted(date: .abbreviated, time: .shortened))")
-                    }.workCard()
-                    if !task.memo.isEmpty {
-                        MarkdownText(source: task.memo, foregroundStyle: LAAColor.text).workCard()
+                    if let dueDate = task.dueDate {
+                        Text(verbatim: "期限 \(dueDate.value)")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
-                    if !task.links.isEmpty {
-                        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                            Text(verbatim: "関連リンク").fontWeight(.semibold)
-                            ForEach(Array(task.links.enumerated()), id: \.offset) { _, link in
-                                if let url = LAAOwnerTaskLink.openableURL(link) {
-                                    Link(destination: url) { Text(verbatim: link) }
-                                } else {
-                                    Text(verbatim: link).textSelection(.enabled)
-                                }
-                            }
-                        }.frame(maxWidth: .infinity, alignment: .leading).workCard()
+                    if task.status == .doing {
+                        Text(verbatim: "進行中").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                 }
-                .padding(.horizontal, LAASpacing.horizontal)
-                .padding(.vertical, LAASpacing.x4)
-                .frame(maxWidth: 720, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .disabled(disabledIDs.contains(task.id))
+            .accessibilityHint(Text(verbatim: "タップして編集"))
+            .accessibilityIdentifier("work.ownerTasks.row.\(task.id.uuidString)")
         }
-        .navigationTitle("Task")
-        .toolbar { ToolbarItem(placement: .primaryAction) { Button("Edit", action: edit) } }
-        .tint(LAAColor.link)
-        .accessibilityIdentifier("work.ownerTasks.detail")
+        .workListRow()
     }
 }
 
@@ -132,44 +114,59 @@ struct LAAOwnerTaskEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Task") {
-                    TextField("Title", text: $draft.title, axis: .vertical)
+                Section("タスク") {
+                    TextField("題名", text: $draft.title)
                         .accessibilityIdentifier("work.ownerTasks.editor.title")
-                    Picker("Status", selection: $draft.status) {
-                        ForEach(LAAOwnerTaskStatus.allCases) { status in
-                            Text(verbatim: status.label).tag(status)
-                        }
+                    Toggle("期限を設定", isOn: dueDateEnabled)
+                    if !draft.dueDateText.isEmpty {
+                        DatePicker("期限", selection: dueDate, displayedComponents: .date)
+                            .accessibilityIdentifier("work.ownerTasks.editor.dueDate")
                     }
-                    .accessibilityIdentifier("work.ownerTasks.editor.status")
-                    TextField("Due Date (YYYY-MM-DD)", text: $draft.dueDateText)
-                        .accessibilityIdentifier("work.ownerTasks.editor.dueDate")
                 }
-                Section("Memo") {
+                Section("メモ") {
                     TextEditor(text: $draft.memo).frame(minHeight: 150)
                         .accessibilityIdentifier("work.ownerTasks.editor.memo")
                 }
                 Section {
                     ForEach($linkFields) { $field in
                         HStack {
-                            TextField("Link", text: $field.value)
+                            TextField("リンク", text: $field.value)
+                            if let url = LAAOwnerTaskLink.openableURL(field.value) {
+                                Link(destination: url) { Image(systemName: "arrow.up.right.square") }
+                                    .accessibilityLabel(Text(verbatim: "リンクを開く"))
+                            }
                             Button {
                                 let id = field.id
                                 linkFields.removeAll { $0.id == id }
                             } label: { Image(systemName: "minus.circle") }
-                            .accessibilityLabel(Text(verbatim: "Remove Link"))
+                            .accessibilityLabel(Text(verbatim: "リンクを外す"))
                         }
                     }
-                    Button("Add Link") { linkFields.append(LinkField(value: "")) }
-                } header: { Text(verbatim: "Links") }
+                    Button("リンクを追加") { linkFields.append(LinkField(value: "")) }
+                } header: { Text(verbatim: "関連リンク") }
+                if let task = draft.base {
+                    Section("情報") {
+                        Text(verbatim: "作成元: \(task.source.label)")
+                        Text(verbatim: "更新: \(task.updatedAt.formatted(date: .abbreviated, time: .shortened))")
+                    }
+                }
+                if draft.base != nil {
+                    Section {
+                        Button(draft.status == .canceled ? "取消から未完了に戻す" : "タスクを取り消す") {
+                            draft.status = draft.status == .canceled ? .todo : .canceled
+                            saveIfValid()
+                        }
+                    }
+                }
                 if let validationMessage {
                     Section { Text(verbatim: validationMessage).foregroundStyle(LAAColor.attention) }
                 }
             }
-            .navigationTitle(draft.base == nil ? "New Task" : "Edit Task")
+            .navigationTitle(draft.base == nil ? "タスクを追加" : "タスクを編集")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("閉じる") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { saveIfValid() }
+                    Button("保存") { saveIfValid() }
                         .accessibilityIdentifier("work.ownerTasks.editor.save")
                 }
             }
@@ -177,6 +174,29 @@ struct LAAOwnerTaskEditor: View {
             .onChange(of: linkFields.map(\.value)) { _, _ in publishDraft() }
         }
         .accessibilityIdentifier("work.ownerTasks.editor")
+    }
+
+    private var dueDateEnabled: Binding<Bool> {
+        Binding(get: { !draft.dueDateText.isEmpty }, set: { enabled in
+            draft.dueDateText = enabled ? Self.dayString(Date()) : ""
+        })
+    }
+
+    private var dueDate: Binding<Date> {
+        Binding(get: {
+            let parts = draft.dueDateText.split(separator: "-").compactMap { Int($0) }
+            guard parts.count == 3 else { return Date() }
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = .current
+            return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) ?? Date()
+        }, set: { draft.dueDateText = Self.dayString($0) })
+    }
+
+    private static func dayString(_ date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
     }
 
     private func currentDraft() -> LAAOwnerTaskDraft {
@@ -195,10 +215,16 @@ struct LAAOwnerTaskEditor: View {
             save(result)
         } catch LAAOwnerTaskDraft.ValidationError.missingTitle {
             validationMessage = "題名を入力してください。"
+        } catch LAAOwnerTaskDraft.ValidationError.invalidTitle {
+            validationMessage = "題名は改行を含めず500文字以内で入力してください。"
+        } catch LAAOwnerTaskDraft.ValidationError.invalidMemo {
+            validationMessage = "メモは20,000文字以内で入力してください。"
         } catch LAAOwnerTaskDraft.ValidationError.invalidDueDate {
             validationMessage = "期限を YYYY-MM-DD で入力するか、空欄にしてください。"
         } catch LAAOwnerTaskDraft.ValidationError.emptyLink {
-            validationMessage = "空のリンクを入力するか削除してください。"
+            validationMessage = "空のリンクにURLを入力するか、リンクを外してください。"
+        } catch LAAOwnerTaskDraft.ValidationError.invalidLink {
+            validationMessage = "関連リンクは http または https のURLで入力してください。"
         } catch {
             validationMessage = "入力内容を確認してください。"
         }
@@ -234,22 +260,22 @@ struct LAAOwnerTaskConflictContent: View {
                 }
                 Text(verbatim: "自分の変更を保存する場合、変更していない項目には現在の内容を使います。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Button("Save My Changes to This Version") { saveMine(conflict.rebasedDraft()) }
+                Button("自分の変更をこの内容に保存") { saveMine(conflict.rebasedDraft()) }
                     .buttonStyle(.borderedProminent).disabled(!canSaveMine)
                     .accessibilityIdentifier("work.ownerTasks.conflict.saveMine")
-                Button("Use Current Version") { confirmUseCurrent = true }
+                Button("現在の内容を使う") { confirmUseCurrent = true }
                     .accessibilityIdentifier("work.ownerTasks.conflict.useCurrent")
-                Button("Keep Draft", action: keepDraft)
+                Button("下書きを残す", action: keepDraft)
                     .accessibilityIdentifier("work.ownerTasks.conflict.keep")
             }
             .padding(.horizontal, LAASpacing.horizontal)
             .padding(.vertical, LAASpacing.x4)
             .frame(maxWidth: 720, alignment: .leading)
         }
-        .navigationTitle("Compare Changes")
+        .navigationTitle("変更を比較")
         .confirmationDialog("現在の内容を使いますか？", isPresented: $confirmUseCurrent, titleVisibility: .visible) {
             Button("自分の入力を破棄して現在の内容を使う", role: .destructive, action: useCurrent)
-            Button("Keep Draft", role: .cancel) { }
+            Button("下書きを残す", role: .cancel) { }
         } message: {
             Text(verbatim: "自分の入力は端末から破棄されます。")
         }

@@ -10,14 +10,9 @@ struct LAAWorkView: View {
     @State private var projects: [LAAWorkProject] = []
     @State private var workspaces: [LAAWorkWorkspace] = []
     @State private var sessions: [LAAWorkSession] = []
-    @State private var tasks: [LAAWorkTask] = []
-    @State private var taskSources: [LAAWorkSource] = []
     @State private var projectInstructionsAvailable = false
     @State private var projectFilter = ""
     @State private var phaseFilter = ""
-    @State private var taskOwnerFilter = ""
-    @State private var taskStatusFilter = ""
-    @State private var taskProjectFilter = ""
     @State private var failure: String?
     @State private var isLoading = false
     @State private var sessionContextReady = false
@@ -36,6 +31,8 @@ struct LAAWorkView: View {
                     segmentPicker
                     if section == 3 {
                         routinePlaceholder
+                    } else if section == 2 {
+                        LAAOwnerTasksView(drafts: drafts, refreshID: refreshID).environmentObject(bridge)
                     } else if bridge.status != .paired {
                         connection
                     } else {
@@ -49,7 +46,9 @@ struct LAAWorkView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .laaTextStyle(.body).foregroundStyle(LAAColor.text)
             }
-            .refreshable { await load() }
+            .refreshable {
+                if section == 2 { refreshID += 1 } else { await load() }
+            }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -163,7 +162,6 @@ struct LAAWorkView: View {
         switch section {
         case 0: sessionList
         case 1: projectList
-        case 2: taskList
         default: routinePlaceholder
         }
     }
@@ -265,45 +263,6 @@ struct LAAWorkView: View {
         }.accessibilityIdentifier("work.projects")
     }
 
-    private var taskList: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Text(verbatim: "Linearが現在のタスクの正本です。ここでは閲覧のみできます。")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: LAASpacing.x2) {
-                    filter(LAACopy.WorkTab.ownerFilter, selection: $taskOwnerFilter, values: unique(tasks.compactMap { $0.owner?.name }).map { ($0, $0) })
-                    filter(LAACopy.WorkTab.statusFilter, selection: $taskStatusFilter, values: unique(tasks.compactMap { $0.status?.name }).map { ($0, $0) })
-                    filter(LAACopy.WorkTab.projectFilter, selection: $taskProjectFilter, values: unique(tasks.compactMap { $0.project?.name }).map { ($0, $0) })
-                }
-            }
-            if taskSources.contains(where: { $0.source == "linear" && $0.truncated == true }) {
-                Label(LAAWorkPresentation.japanese("Linearの取得上限を超えています。一部のみ表示しています。"), systemImage: "exclamationmark.triangle")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-            }
-            let visible = tasks.filter {
-                (taskOwnerFilter.isEmpty || $0.owner?.name == taskOwnerFilter) &&
-                (taskStatusFilter.isEmpty || $0.status?.name == taskStatusFilter) &&
-                (taskProjectFilter.isEmpty || $0.project?.name == taskProjectFilter)
-            }
-            if visible.isEmpty && !isLoading && failure == nil {
-                Text(verbatim: "該当するタスクはありません。")
-                    .foregroundStyle(LAAColor.secondaryText).workCard()
-            }
-            ForEach(visible) { item in
-                NavigationLink { LAAWorkTaskDetailView(id: item.id) } label: {
-                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                        Text(verbatim: item.title).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                        Text(verbatim: "\(item.sourceId) · \(item.status?.name ?? "状態未確認") · 担当 \(item.owner?.name ?? "未設定")")
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        if let executor = item.executor?.name {
-                            Text(verbatim: "実行 \(executor)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        }
-                    }.workListRow()
-                }.buttonStyle(.plain)
-            }
-        }.accessibilityIdentifier("work.tasks")
-    }
-
     private func filter(_ title: String, selection: Binding<String>, values: [(String, String)]) -> some View {
         Picker(selection: selection, label: Text(verbatim: title)) {
             Text(verbatim: "\(title): \(LAACopy.WorkTab.all)").tag("")
@@ -333,7 +292,7 @@ struct LAAWorkView: View {
         let id = UUID()
         loadID = id
         let selected = section
-        guard bridge.status == .paired, selected != 3 else { isLoading = false; failure = nil; return }
+        guard bridge.status == .paired, selected == 0 || selected == 1 else { isLoading = false; failure = nil; return }
         isLoading = true
         failure = nil
         defer { if loadID == id { isLoading = false } }
@@ -355,25 +314,6 @@ struct LAAWorkView: View {
                     let page: [LAAWorkSession] = try await loadItems("/v1/sessions")
                     if !Task.isCancelled && loadID == id { sessions = page }
                 }
-            } else {
-                var cursor: String?
-                var seen = Set<String>()
-                var all: [LAAWorkTask] = []
-                var sources: [LAAWorkSource] = []
-                repeat {
-                    var query = [URLQueryItem(name: "source", value: "linear")]
-                    if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
-                    let page: LAAWorkPage<LAAWorkTask> = try await bridge.read(LAAWorkPresentation.path("/v1/tasks", query: query))
-                    guard page.sources?.contains(where: { $0.source == "linear" && $0.state == "available" }) == true else {
-                        throw LAABridgeError.unavailable
-                    }
-                    all.append(contentsOf: page.items.filter { $0.source == "linear" })
-                    sources = page.sources ?? sources
-                    cursor = page.nextCursor
-                    if let cursor, !seen.insert(cursor).inserted { throw LAABridgeError.invalidResponse }
-                } while cursor != nil && seen.count < 50
-                guard cursor == nil else { throw LAABridgeError.invalidResponse }
-                if !Task.isCancelled && loadID == id { tasks = all; taskSources = sources }
             }
         } catch is CancellationError {
             return

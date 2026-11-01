@@ -13,10 +13,10 @@ enum LAAOwnerTaskStatus: String, CaseIterable, Identifiable, Codable {
 
     var label: String {
         switch self {
-        case .todo: return "Todo"
-        case .doing: return "In Progress"
-        case .done: return "Done"
-        case .canceled: return "Canceled"
+        case .todo: return "未着手"
+        case .doing: return "進行中"
+        case .done: return "完了"
+        case .canceled: return "取消"
         }
     }
 
@@ -126,8 +126,11 @@ struct LAAOwnerTaskGroups {
 struct LAAOwnerTaskDraft: Equatable, Codable {
     enum ValidationError: Error, Equatable {
         case missingTitle
+        case invalidTitle
+        case invalidMemo
         case invalidDueDate
         case emptyLink
+        case invalidLink
     }
 
     // The identifier remains stable if the draft is queued and retried.
@@ -150,14 +153,36 @@ struct LAAOwnerTaskDraft: Equatable, Codable {
     }
 
     func validate() throws {
-        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedTitle.isEmpty else {
             throw ValidationError.missingTitle
+        }
+        if base == nil || title != base?.title {
+            guard trimmedTitle.utf16.count <= 500,
+                  !trimmedTitle.unicodeScalars.contains(where: { $0.value <= 31 || $0.value == 127 }) else {
+                throw ValidationError.invalidTitle
+            }
+        }
+        if base == nil || memo != base?.memo {
+            guard memo.utf16.count <= 20_000, !memo.unicodeScalars.contains(where: { $0.value == 0 }) else {
+                throw ValidationError.invalidMemo
+            }
         }
         guard dueDateText.isEmpty || LAAOwnerTaskDay(dueDateText) != nil else {
             throw ValidationError.invalidDueDate
         }
-        guard links.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
-            throw ValidationError.emptyLink
+        if base == nil || links != base?.links {
+            guard links.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+                throw ValidationError.emptyLink
+            }
+            guard links.count <= 20, links.allSatisfy({ link in
+                guard link.utf16.count <= 2048,
+                      !link.unicodeScalars.contains(where: { $0.value <= 32 || $0.value == 127 }),
+                      let parts = URLComponents(string: link),
+                      let scheme = parts.scheme?.lowercased(), ["http", "https"].contains(scheme),
+                      let host = parts.host, !host.isEmpty, parts.user == nil, parts.password == nil else { return false }
+                return true
+            }) else { throw ValidationError.invalidLink }
         }
     }
 }

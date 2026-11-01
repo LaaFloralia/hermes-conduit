@@ -19,6 +19,10 @@ enum LAAOwnerTaskLocalDrafts {
         case unreadable
     }
 
+    static func owns(_ key: ComposerDraftKey) -> Bool {
+        key.profile == profile && key.dashboardID == LAAWorkDrafts.dashboardID
+    }
+
     static func key(deviceID: String, taskID: UUID) -> ComposerDraftKey? {
         guard !deviceID.isEmpty else { return nil }
         let encodedDevice = Data(deviceID.utf8).base64EncodedString()
@@ -29,7 +33,7 @@ enum LAAOwnerTaskLocalDrafts {
     /// Even malformed keys remain enumerable, so the caller can quarantine
     /// them rather than treating their content as belonging to this device.
     static func entries(in store: ComposerDraftStore) -> [Entry] {
-        store.keys.filter { $0.profile == profile && $0.dashboardID == LAAWorkDrafts.dashboardID }.map { key in
+        store.keys.filter { owns($0) }.map { key in
             let parts = key.sessionID.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2, let bytes = Data(base64Encoded: String(parts[0])),
                   let deviceID = String(data: bytes, encoding: .utf8), !deviceID.isEmpty,
@@ -47,6 +51,20 @@ enum LAAOwnerTaskLocalDrafts {
         guard saved.attachments.isEmpty, saved.replyReference == nil, (saved.roomRecipients?.isEmpty ?? true),
               let draft = try? LAAOwnerTaskDraftArchive.decode(saved.text), draft.id == taskID else { return .unreadable }
         return .saved(draft)
+    }
+
+    /// Updating the one-line input must keep a restored draft's memo, date and
+    /// other fields; an unreadable or existing-task draft is never replaced.
+    static func updatingInlineTitle(_ title: String, store: ComposerDraftStore,
+                                    deviceID: String, taskID: UUID) -> LAAOwnerTaskDraft? {
+        var draft: LAAOwnerTaskDraft
+        switch read(store, deviceID: deviceID, taskID: taskID) {
+        case .absent: draft = LAAOwnerTaskDraft(id: taskID)
+        case let .saved(existing) where existing.base == nil: draft = existing
+        default: return nil
+        }
+        draft.title = title
+        return draft
     }
 
     @discardableResult
@@ -72,6 +90,15 @@ enum LAAOwnerTaskLocalDrafts {
             return false
         }
         return true
+    }
+
+    /// Local, unattempted input can move only on an explicit choice and only
+    /// when the receiving identity has no draft or pending request for it.
+    static func move(_ entry: Entry, to deviceID: String, in store: ComposerDraftStore) -> Bool {
+        guard let original = entry.deviceID, original != deviceID, let taskID = entry.taskID,
+              case .saved = read(store, deviceID: original, taskID: taskID),
+              let destination = key(deviceID: deviceID, taskID: taskID) else { return false }
+        return store.moveDraftIfVacant(from: entry.key, to: destination)
     }
 }
 #endif
