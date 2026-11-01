@@ -183,7 +183,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         let liquid = try item("liquid", kind: "usage", label: "Liquid AI", value: 1, unit: "tokens")
         XCTAssertEqual(LAAUsageGroup.consoleGroups([liquid]).map(\.label), ["Liquid AI"])
         XCTAssertEqual(LAAUsageGroup.consoleGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])
-        XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.count, 0)
+        XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.count, 2)
     }
 
     func testWindowNamesAreOneWording() throws {

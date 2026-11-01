@@ -12,9 +12,9 @@ final class LAAUsageStateTests: XCTestCase {
     private func quota(_ percentage: Int = 62) throws -> LAAUsageItem {
         try item("""
         {"id":"provider.claude.quota","kind":"quota","label":"Claude","value":\(percentage),"unit":"percent",
-         "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
+         "source":"codexbar-usage-proxy","observedAt":"\(ISO8601DateFormatter().string(from: Date()))","availability":"available",
          "stale":false,"estimated":false,"expired":false,
-         "detail":{"windows":[{"label":"Weekly","windowMinutes":10080,"remainingPercent":\(percentage),"resetsAt":"2026-11-02T00:00:00Z"}]}}
+         "detail":{"windows":[{"label":"Weekly","windowMinutes":10080,"remainingPercent":\(percentage),"resetsAt":"2099-11-02T00:00:00Z"}]}}
         """)
     }
 

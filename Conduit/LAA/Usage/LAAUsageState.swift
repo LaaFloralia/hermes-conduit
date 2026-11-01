@@ -220,7 +220,7 @@ struct LAAUsageGroup: Identifiable {
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         let ids = ["codex", "opencode-go", "claude", "venice", "openai-api", "claude-api", "liquid",
                    "antigravity", "magnific", "grok-bot"]
-        let names = ["opencode-go": "OpenCode", "liquid": "Liquid AI"]
+        let names = ["codex": "Codex", "claude": "Claude", "opencode-go": "OpenCode", "liquid": "Liquid AI"]
         return ids.compactMap { id in
             let prefix = "provider.\(id)."
             let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
@@ -288,7 +288,7 @@ enum LAAWidgetUsageBuilder {
                          item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
         case .monthCost:
             guard let item = feed.first(where: { $0.id == "\(prefix)cost-month" }) else { return nil }
-            guard available(item), let amount = item.value, amount.isFinite else {
+            guard available(item), item.detail?.periodTimezone == "UTC", let amount = item.value, amount.isFinite else {
                 return .missing(id: item.id, label: slot.label)
             }
             return meter(id: item.id, label: slot.label, unit: .usd, amount: amount,
@@ -336,7 +336,7 @@ enum LAAWidgetUsageBuilder {
 /// One naming rule for the quota windows, shared by the app list and the widget.
 enum LAAUsageLabel {
     static func isWeekly(_ label: String) -> Bool {
-        ["weekly", "週間", "週次", "週刊", "ウィークリー"].contains(label.lowercased())
+        ["weekly", "週間", "週次", "週刊", "ウィークリー"].contains(label.lowercased()) || label.hasPrefix("週次")
     }
 
     /// Display name for one window. A duration the feed reports wins, so a 7-day

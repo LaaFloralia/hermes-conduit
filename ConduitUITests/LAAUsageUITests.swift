@@ -39,7 +39,7 @@ final class LAAUsageUITests: XCTestCase {
         for _ in 0..<4 {
             let value = address.value as? String ?? ""
             if value.isEmpty || value == "Address" { break }
-            address.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
+            address.tap()
             address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count + 10))
         }
         address.typeText("http://127.0.0.1:\(port)")

@@ -208,7 +208,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
         self.legacyFreshness = try values.decodeIfPresent(Bool.self, forKey: .legacyFreshness)
     }
 
-    var remainingPercent: Double? { unit == .percent ? amount : nil }
+    var remainingPercent: Double? { available && unit == .percent ? amount : nil }
 
     /// Written by hand: `remainingPercent` is read-only, only decoded from
     /// snapshots the previous build saved.
