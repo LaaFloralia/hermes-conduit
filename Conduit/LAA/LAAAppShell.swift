@@ -176,6 +176,8 @@ struct LAAAppShell: View {
                                 LAATodayView(openTasks: { selectedTab = .work }, openBrain: { selectedTab = .brain }, onRequestSettings: onRequestSettings)
                             } else if tab == .studio {
                                 ScrollView { LAAStudioHomeView().padding(LAASpacing.horizontal) }
+                                    .navigationTitle("Studio")
+                                    .toolbar { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) } }
                             } else if tab == .usage {
                                 LAAUsageView(state: usageState, onRequestSettings: onRequestSettings)
                             } else if tab == .work {
