@@ -27,6 +27,15 @@ final class LAABrainUITests: XCTestCase {
         company.tap()
     }
 
+    private func focusLocalEditor(_ editor: XCUIElement) {
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: editor)
+        XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 10), .completed)
+        // The editor fills the sheet. Tap the text near its top, rather than
+        // the blank center of its scrolling viewport.
+        editor.coordinate(withNormalizedOffset: CGVector(dx: 0.70, dy: 0.10)).tap()
+    }
+
     private func openLocalRecovery(_ app: XCUIApplication) {
         let options = app.buttons["laa.brain.localOptions"]
         XCTAssertTrue(options.waitForExistence(timeout: 30))
@@ -136,7 +145,11 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(metadata.waitForExistence(timeout: 10))
         metadata.tap()
         XCTAssertTrue(app.staticTexts["---\nstatus: draft\n---"].waitForExistence(timeout: 5))
-        let link = app.links["次のメモ"]
+        // On recent iOS, UITextView exposes this attributed link as a text
+        // view with an external-link suffix instead of as a Link element.
+        let nativeLink = app.links["次のメモ"]
+        let textLink = app.textViews.matching(NSPredicate(format: "label BEGINSWITH %@", "次のメモ")).firstMatch
+        let link = nativeLink.exists ? nativeLink : textLink
         XCTAssertTrue(link.waitForExistence(timeout: 10))
         link.tap()
         XCTAssertTrue(app.navigationBars["Other.md"].waitForExistence(timeout: 10))
@@ -284,8 +297,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.brain.edit"].waitForExistence(timeout: 10))
         app.buttons["laa.brain.edit"].tap()
         let editor = app.textViews["laa.brain.edit.text"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        editor.tap()
+        focusLocalEditor(editor)
         editor.typeText("\nEXPORT-DRAFT")
         app.buttons["laa.brain.edit.save"].tap()
         XCTAssertTrue(app.buttons["下書きを書き出す"].waitForExistence(timeout: 15))
@@ -304,11 +316,10 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(edit.waitForExistence(timeout: 10))
         edit.tap()
         let editor = app.textViews["laa.brain.edit.text"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        editor.tap()
+        focusLocalEditor(editor)
         editor.typeText("\nMY-FIXTURE-DRAFT")
         app.buttons["laa.brain.edit.save"].tap()
-        XCTAssertTrue(app.otherElements["laa.brain.conflict"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["laa.brain.conflict.useDraft"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["INTERVENING-FIXTURE"].exists)
         app.buttons["laa.brain.history"].tap()
         let displaced = app.buttons["laa.brain.history.version.displaced"].firstMatch
@@ -336,8 +347,7 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.buttons["laa.brain.edit"].waitForExistence(timeout: 10))
         app.buttons["laa.brain.edit"].tap()
         let editor = app.textViews["laa.brain.edit.text"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        editor.tap()
+        focusLocalEditor(editor)
         editor.typeText("\nSAVED-DRAFT")
         app.buttons["laa.brain.edit.save"].tap()
         let preserve = app.buttons["laa.brain.recovery.preserve"]
@@ -350,6 +360,9 @@ final class LAABrainUITests: XCTestCase {
         draft.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'SAVED-DRAFT'")).firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["laa.brain.history.use"].isEnabled)
+        let backToHistory = app.navigationBars["下書き"].buttons["履歴"]
+        XCTAssertTrue(backToHistory.waitForExistence(timeout: 10))
+        backToHistory.tap()
         app.buttons["laa.brain.history.close"].tap()
         app.buttons["見つからないファイルの記録を消す"].tap()
         app.alerts.buttons["記録を消す"].tap()
@@ -449,8 +462,11 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Draft.md"].waitForExistence(timeout: 15))
         app.buttons["laa.brain.edit"].tap()
         let editor = app.textViews["laa.brain.edit.text"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 10))
-        editor.tap(); editor.typeText("\nNew markdown note")
+        focusLocalEditor(editor)
+        editor.typeText("\nNew markdown note")
+        let edited = editor.value as? String ?? ""
+        XCTAssertTrue(edited.contains("First line"), edited)
+        XCTAssertTrue(edited.contains("New markdown note"), edited)
         app.buttons["laa.brain.edit.save"].tap()
         XCTAssertTrue(app.buttons["laa.brain.rawToggle"].waitForExistence(timeout: 15))
         app.buttons["laa.brain.rawToggle"].tap()

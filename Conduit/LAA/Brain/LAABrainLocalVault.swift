@@ -199,7 +199,9 @@ enum LAABrainVaultIO {
         var folders: [String] = []
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: keys)
-            if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
+            // FileManager does not traverse symbolic links. Calling
+            // skipDescendants on one can skip the next real directory instead.
+            if values.isSymbolicLink == true { continue }
             if values.isDirectory == true {
                 if url.lastPathComponent.hasPrefix(".") { enumerator.skipDescendants(); continue }
                 if url.standardizedFileURL.path.hasPrefix(prefix) {
@@ -307,7 +309,7 @@ enum LAABrainVaultIO {
                 var matches: [String] = []
                 for case let item as URL in enumerator {
                     let values = try item.resourceValues(forKeys: keys)
-                    if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
+                    if values.isSymbolicLink == true { continue }
                     if values.isDirectory == true {
                         if excludedDirectories.contains(item.lastPathComponent) { enumerator.skipDescendants() }
                     } else if values.isRegularFile == true, item.lastPathComponent.precomposedStringWithCanonicalMapping == filename.precomposedStringWithCanonicalMapping,

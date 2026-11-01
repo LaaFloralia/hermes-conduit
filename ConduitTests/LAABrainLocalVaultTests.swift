@@ -58,9 +58,15 @@ final class LAABrainLocalVaultTests: XCTestCase {
     }
     func testFolderListingIncludesEmptyAndNestedFoldersButNotHiddenOrSymlinks() throws {
         try FileManager.default.createDirectory(at: root.appendingPathComponent("Folder/Empty"), withIntermediateDirectories: true)
+        // Create the symlink first: it must neither expose its target nor make
+        // the enumerator skip the real directory that follows it.
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("Nested"), withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("Nested/alias"), withDestinationURL: outside)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("Nested/Actual"), withIntermediateDirectories: true)
+        try Data("visible".utf8).write(to: root.appendingPathComponent("Nested/Actual/visible.md"))
         let listing = try LAABrainVaultIO.listing(root: root)
-        XCTAssertEqual(Set(listing.folders), Set(["Folder", "Folder/Empty"]))
-        XCTAssertEqual(listing.files.map(\.path), ["Folder/日本語.md"])
+        XCTAssertEqual(Set(listing.folders), Set(["Folder", "Folder/Empty", "Nested", "Nested/Actual"]))
+        XCTAssertEqual(Set(listing.files.map(\.path)), Set(["Folder/日本語.md", "Nested/Actual/visible.md"]))
     }
 
     func testCreateFolderAndNoteNeverReplaceExistingItems() throws {
