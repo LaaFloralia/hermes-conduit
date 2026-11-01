@@ -4,12 +4,14 @@ import Foundation
 
 enum LAATab: String, CaseIterable, Identifiable {
     case chats
+    case today
+    case studio
     case work
     case brain
     case source
     case usage
 
-    static let destinations: [LAATab] = [.chats, .work, .brain, .source, .usage]
+    static let destinations: [LAATab] = [.chats, .today, .brain, .studio, .work]
 
     var id: String { rawValue }
 
@@ -19,6 +21,8 @@ enum LAATab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .chats: return "bubble.left.and.bubble.right"
+        case .today: return "calendar"
+        case .studio: return "sparkles.rectangle.stack"
         case .work: return "checklist"
         case .brain: return "doc.text"
         case .source: return "photo.on.rectangle"

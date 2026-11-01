@@ -170,6 +170,7 @@ targets:
           python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind notification --source "$SRCROOT"
   ConduitWidgets:
     sources:
+      - path: Conduit/LAA/Today/LAATodayCalendar.swift
       - path: Shared/LAAProductBrand.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
         buildPhase: resources

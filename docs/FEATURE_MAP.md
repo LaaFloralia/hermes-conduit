@@ -3754,3 +3754,18 @@ and rollback instructions · the upstream App Store build
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
 **Checked:** 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+
+## LAA Today and calendar widget
+
+**Siblings:** Today calendar · small next-event widget · existing calendar tools · Work and Brain entry points.
+
+**Code**
+- Today and EventKit: `Conduit/LAA/Today/LAATodayView.swift`, `Conduit/LAA/Today/LAATodayCalendar.swift`.
+- Widget: `ConduitWidgets/LAA/LAANextEventWidget.swift`.
+- Navigation: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Today/LAAWorkHub.swift`.
+
+**Rulings:** Today reads the iPhone's calendars with EventKit full access; it does not modify events. The widget uses a locally shared snapshot, updated when Today is active.
+
+**Open gaps:** The owner-task view and direct daily-note destination require integration with their parallel branches. Calendar changes while the app is not active may not appear in the widget until Today is opened.
+
+**Checked:** 2026-11-01 (branch laa/today-calendar; integration pending).

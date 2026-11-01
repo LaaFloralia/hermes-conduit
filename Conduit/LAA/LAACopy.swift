@@ -9,6 +9,8 @@ enum LAACopy {
     static func tabTitle(_ tab: LAATab) -> String {
         switch tab {
         case .chats: return "Chats"
+        case .today: return "Today"
+        case .studio: return "Studio"
         case .work: return "Work"
         case .brain: return "Brain"
         case .source: return "Assets"
@@ -67,7 +69,7 @@ enum LAACopy {
         case .work: return ["Sessions", "Projects", "Tasks", "Routines"]
         case .brain: return ["Recent", "Folders", "Tags"]
         case .source: return ["Drive", "Inspiration", "Studio"]
-        case .chats, .usage: return []
+        case .chats, .today, .studio, .usage: return []
         }
     }
 
@@ -78,6 +80,8 @@ enum LAACopy {
     static func emptyReason(_ tab: LAATab) -> String {
         switch tab {
         case .chats: return "まだ会話がありません。"
+        case .today: return "今日の予定を表示します。"
+        case .studio: return "Studioの作品を表示します。"
         case .work: return "Projectやタスクを作ると、ここに並びます。"
         case .brain: return "Brainに項目がありません。保存するとここに並びます。"
         case .source: return "まだ素材がありません。Drive・Inspiration・Studioの項目がここに並びます。"
