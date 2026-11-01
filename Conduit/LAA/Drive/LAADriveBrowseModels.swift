@@ -3,6 +3,7 @@ import Foundation
 
 enum LAADriveBrowseSection: String, CaseIterable {
     case my, shared, recent, starred
+    static let allCases: [Self] = [.my, .shared]
 }
 
 /// A cursor belongs to this exact section, folder, query and page size.

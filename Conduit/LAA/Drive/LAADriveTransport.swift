@@ -7,7 +7,7 @@ import UIKit
 enum LAADrivePaths {
     static func metadata(_ id: String) throws -> String {
         let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-")
-        guard (5...200).contains(id.utf8.count), id.unicodeScalars.allSatisfy(allowed.contains) else {
+        guard (5...2048).contains(id.utf8.count), id.unicodeScalars.allSatisfy(allowed.contains) else {
             throw LAABridgeError.invalidResponse
         }
         return "/v1/drive/files/\(id)"

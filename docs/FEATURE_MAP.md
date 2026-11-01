@@ -493,18 +493,18 @@ App Store build · the Bridge API, Brain and Usage data contracts
   use the opt-in `brain:create` scope and the server's conflict-safe name.
   An uncertain create retains its exact request and key in ThisDeviceOnly
   Keychain until the same device reconciles it or the user checks Inbox.
-- Assets Drive uses the paired `media:read` Bridge for My Drive, Shared,
-  Recent, Starred, folder navigation, search, paging and bounded thumbnails.
-  Search scope and incomplete results are shown. Permitted images, PDFs and
-  audio/video have previews; Google Docs, Sheets and Slides can be exported to
-  PDF (10 MB limit). Images page through the already-loaded list. The native
+- Assets Drive uses the paired `media:read` Bridge for My Drive, shared drives,
+  folder navigation, search, paging and bounded thumbnails. Recent and starred
+  are unavailable from the desktop mount. Search scope and incomplete results
+  are shown. Images, PDFs and audio/video have previews; Google-native documents
+  open through validated web links. Images page through the already-loaded list. The native
   player keeps authenticated bounded Range requests and offers PiP/AirPlay
   controls; resume positions are scoped to pairing and content version. An
   explicit offline save checks permission and version, stores a protected
   app-private copy, and rechecks access when online. Folder saves report their
   estimate and partial results. Sharing uses a selected temporary copy or a
-  validated Google link. Inspiration remains disabled, and missing Drive
-  authorization and Bridge failures remain distinct.
+  validated Google link. Inspiration remains disabled, and mount or macOS
+  access failures remain distinct.
 - Assets Studio lists works and requests, preserves unsent or uncertain drafts,
   and supports typed approvals and stopping through the scoped Bridge. Studio
   remains the executor; media and Drive delivery are linked from the work.
@@ -533,9 +533,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   Conduit backdrop.
 - Work routines and Assets Inspiration remain unavailable. Drive's iOS build,
   simulator UI, PiP, AirPlay with the authenticated resource loader, fullscreen
-  rotation, audio interruptions, real Drive authorization and device behavior
-  still need their respective tests. The Bridge's metadata check before a media
-  request do not guarantee an atomic Google revision within a single chunk.
+  rotation, audio interruptions, macOS permission and real Drive device behavior
+  still need their respective tests. File attributes do not guarantee an atomic
+  revision within a single chunk.
   Brain cannot edit existing
   notes; relative images are shown as references until Bridge supports them.
   The LAA shell uses

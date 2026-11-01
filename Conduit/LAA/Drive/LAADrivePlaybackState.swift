@@ -19,7 +19,7 @@ struct LAADrivePlaybackIdentity: Hashable {
     init?(pairingID: String?, contentID: String, version: String?) {
         guard let pairingID, let version,
               (1...200).contains(pairingID.utf8.count),
-              (1...1024).contains(contentID.utf8.count),
+              (1...2048).contains(contentID.utf8.count),
               (1...200).contains(version.utf8.count),
               let encoded = try? JSONEncoder().encode([pairingID, contentID, version]) else { return nil }
         digest = SHA256.hash(data: encoded).map { String(format: "%02x", $0) }.joined()

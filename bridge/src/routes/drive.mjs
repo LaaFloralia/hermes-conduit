@@ -1,13 +1,5 @@
-// /v1/drive/files — listing, metadata and byte-range streaming through the
-// Google Drive API (see src/drive/google-api.mjs).
-//
-// The content endpoint forwards the client's Range header to
-// files.get?alt=media and relays Drive's status, Content-Range, length and MIME
-// to AVPlayer, so playback and seeking happen on Drive's own byte ranges. The
-// upstream request is aborted when the client disconnects.
-// Workspace documents (Docs/Sheets/Slides) have no streamable bytes; they
-// answer 409 export_required with the formats the Drive API would export,
-// instead of pretending to be a binary download.
+// /v1/drive/files — authenticated listing and byte ranges from the read-only
+// Drive for desktop mount. Google-native documents are links, not file bytes.
 
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -19,7 +11,7 @@ const DEFAULT_PAGE_SIZE = 50;
 const MAX_QUERY_LENGTH = 200;
 const VIEWS = new Set(['my', 'shared', 'recent', 'starred']);
 const CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
-const ID_PATTERN = /^[A-Za-z0-9_-]{5,200}$/;
+const ID_PATTERN = /^[A-Za-z0-9_-]{5,2048}$/;
 const RELAYED_HEADERS = [
   'content-type',
   'content-length',
@@ -87,13 +79,9 @@ function driveError(error) {
   if (error instanceof BridgeError) return error;
   switch (error?.code) {
     case 'drive_not_configured':
-      return new BridgeError(503, 'drive_not_configured', 'no Google Drive authorization is configured for the Bridge');
-    case 'drive_auth_failed':
-      return new BridgeError(503, 'drive_auth_failed', 'the Google Drive authorization was refused; reauthorize the Mac-side credential');
-    case 'drive_upstream_failed':
-      return new BridgeError(503, 'drive_unavailable', 'the Google Drive API request failed', { retryable: true });
+      return new BridgeError(503, 'drive_not_configured', 'the Drive desktop mount is unavailable');
     case 'drive_export_too_large':
-      return new BridgeError(409, 'export_too_large', 'the exported PDF exceeds the Drive size limit');
+      return new BridgeError(409, 'export_too_large', 'the exported PDF exceeds the size limit');
     default:
       return error;
   }
@@ -138,7 +126,7 @@ function checkVersion(item, requestedVersion) {
 export function driveRoutes({ adapter = null, now = () => Date.now(), log = defaultDriveLog() } = {}) {
   function requireAdapter() {
     if (!adapter) {
-      throw new BridgeError(503, 'drive_not_configured', 'no Google Drive authorization is configured for the Bridge');
+      throw new BridgeError(503, 'drive_not_configured', 'the Drive desktop mount is unavailable');
     }
     return adapter;
   }
@@ -328,7 +316,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
       throw new BridgeError(
         409,
         'export_required',
-        `Workspace documents have no streamable bytes; export through the Drive API as one of: ${formats}`,
+        `Workspace documents have no streamable bytes; open their web link. Available export formats: ${formats}`,
       );
     }
     if (item.downloadable === false) {
@@ -379,7 +367,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
 
     let opened;
     try {
-      opened = await drive.open(id, { range: rangeHeader ?? null, signal: abort.signal });
+      opened = await drive.open(id, { range: rangeHeader ?? null, signal: abort.signal, expectedVersion: itemVersion(item) });
     } catch (error) {
       res.off('close', onClose);
       if (error?.name === 'AbortError') return undefined;
@@ -422,7 +410,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
       await pipeline(opened.stream, counter, res, { signal: abort.signal });
     } catch (error) {
       if (!aborted) {
-        if (log) log({ area: 'drive', level: 'error', requestId, id, error: error?.message ?? String(error) });
+        if (log) log({ area: 'drive', level: 'error', requestId, error: 'file stream failed' });
         res.destroy();
       }
     } finally {
@@ -432,7 +420,6 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
           area: 'drive',
           level: 'info',
           requestId,
-          id,
           status: aborted ? 'aborted' : status,
           bytes: sent,
           ms: now() - started,
@@ -442,10 +429,10 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     return undefined;
   }
 
-  const contentPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/content$/;
-  const thumbnailPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/thumbnail$/;
-  const exportPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})\/export$/;
-  const itemPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,200})$/;
+  const contentPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,2048})\/content$/;
+  const thumbnailPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,2048})\/thumbnail$/;
+  const exportPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,2048})\/export$/;
+  const itemPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,2048})$/;
 
   return [
     { method: 'GET', path: '/v1/drive/files', auth: true, scope: 'media:read', handler: listFiles },

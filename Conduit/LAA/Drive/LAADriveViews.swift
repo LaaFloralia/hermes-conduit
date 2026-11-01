@@ -58,6 +58,8 @@ enum LAADrivePresentation {
         }
         if let error = error as? LAABridgeHTTPError {
             if error.code == "drive_not_configured" { return LAACopy.Assets.configureDrive }
+            if error.code == "drive_permission_required" { return "The Mac has not allowed the Bridge to read Google Drive." }
+            if error.code == "drive_access_timeout" { return "Google Drive on the Mac did not respond. Try again." }
             if error.code == "insufficient_scope" { return LAACopy.Assets.scope }
             if error.code == "version_changed" { return "This file changed in Drive. Reopen it to continue." }
             return error.legacyError.japaneseText
@@ -66,9 +68,9 @@ enum LAADrivePresentation {
     }
 
     static func reason(_ item: LAADriveItem) -> String? {
+        if item.isWorkspace && item.exportFormats?.contains("application/pdf") != true { return LAACopy.Drive.workspace }
         guard let downloadable = item.downloadable else { return LAACopy.Drive.downloadUnknown }
         if !downloadable { return LAACopy.Drive.notDownloadable }
-        if item.isWorkspace && item.exportFormats?.contains("application/pdf") != true { return LAACopy.Drive.workspace }
         if !(item.isMedia || item.isImage || item.isPDF || item.isWorkspace) { return LAACopy.Drive.unsupported }
         return nil
     }

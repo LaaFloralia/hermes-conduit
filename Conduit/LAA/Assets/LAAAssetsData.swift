@@ -13,7 +13,7 @@ extension LAACopy {
         static let studio = "Studio"
         static let search = "Search assets"
         static let unavailable = "Inspiration is not available yet."
-        static let configureDrive = "Drive authorization is not configured on the Mac."
+        static let configureDrive = "Google Drive for desktop is unavailable on the Mac."
         static let scope = "This device needs the media:read permission."
         static let empty = "No items found."
         static let files = "Files"

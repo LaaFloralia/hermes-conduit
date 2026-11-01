@@ -7,7 +7,8 @@ import { Readable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
 import { startBridge } from './helpers.mjs';
 import { parseRange } from '../src/routes/drive.mjs';
-import { DriveExportTooLargeError, DriveNotConfiguredError } from '../src/drive/google-api.mjs';
+class DriveNotConfiguredError extends Error { code = 'drive_not_configured'; }
+class DriveExportTooLargeError extends Error { code = 'drive_export_too_large'; }
 
 const VIDEO = Buffer.from(Array.from({ length: 4096 }, (_, i) => i % 251));
 

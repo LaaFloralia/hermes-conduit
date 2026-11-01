@@ -347,7 +347,7 @@ private extension LAADriveBrowseSection {
     var title: String {
         switch self {
         case .my: return "My Drive"
-        case .shared: return "Shared"
+        case .shared: return "Shared drives"
         case .recent: return "Recent"
         case .starred: return "Starred"
         }
