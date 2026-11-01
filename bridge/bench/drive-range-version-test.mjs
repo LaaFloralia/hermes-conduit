@@ -27,7 +27,7 @@ try {
   const stubs = join(temporary, 'Stubs.swift');
   writeFileSync(stubs, `import Foundation\n` + assets.slice(start, end) + `\n` +
     `enum LAACopy { enum Assets { static let folder = "Folder", image = "Image", document = "Document", file = "File" } }\n` +
-    `enum LAAStudioMedia { static func bridgePathIsValid(_ path: String) -> Bool { false } }\n`);
+    `enum LAAStudioMedia { static func bridgePathIsValid(_ path: String) -> Bool { path == "/v1/studio/media/catalog/" + String(repeating: "a", count: 64) + ".pdf" } }\n`);
   const sources = [stubs, source('LAABridgeClient.swift'), source('LAABridgeStatus.swift'),
     source('Drive/LAADriveTransport.swift'), source('Drive/LAADriveThumbnails.swift'),
     source('Drive/LAADriveDocumentExport.swift')];

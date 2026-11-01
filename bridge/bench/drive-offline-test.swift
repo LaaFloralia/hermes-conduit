@@ -109,6 +109,21 @@ private actor Gate {
         expect(try Data(contentsOf: firstURL) == bytes, "saved bytes")
         expect(try await store.records(pairingID: "pairing-b").isEmpty, "pairings isolated")
         let otherBytes = Data(repeating: 42, count: 4096)
+        let longPath = ["my", String(repeating: "資料", count: 20), String(repeating: "資料", count: 20), "fixture.mp4"]
+        let longID = "d_" + (try JSONSerialization.data(withJSONObject: longPath)).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        expect(longID.utf8.count > 200 && longID.utf8.count <= 2048, "fixture uses a long mount ID")
+        _ = try await save(Source(data: otherBytes, version: "1"), to: store, id: longID)
+        let reopenedStore = LAADriveOfflineStore(root: root, capacity: { _ in 10_000_000 })
+        expect(try await reopenedStore.records(pairingID: "pairing-a").contains(where: { $0.id == longID }),
+               "long mount ID survives index reload")
+        let longURL = try await reopenedStore.localFile(pairingID: "pairing-a", id: longID)!
+        expect(try Data(contentsOf: longURL) == otherBytes, "long mount ID opens saved bytes")
+        expect(try await reopenedStore.remove(pairingID: "pairing-a", id: longID), "long mount ID can be removed")
+        await expectError(.invalidItem) {
+            _ = try await save(Source(data: otherBytes, version: "1"), to: store, id: String(repeating: "a", count: 2049))
+        }
         _ = try await save(Source(data: otherBytes, version: "1"), to: store, pairing: "pairing-b")
         let otherURL = try await store.localFile(pairingID: "pairing-b", id: "file-a")!
         let otherStored = try Data(contentsOf: otherURL)

@@ -68,6 +68,7 @@ actor LAADriveOfflineStore {
     private let capacity: CapacityReader
     private let fileManager = FileManager.default
     private let chunkSize = 256 * 1024
+    private let maximumIDBytes = 2048
     private var saving: Set<String> = []
     private var accessGeneration: [String: UInt64] = [:]
     private var files: URL { root.appendingPathComponent("files", isDirectory: true) }
@@ -96,7 +97,7 @@ actor LAADriveOfflineStore {
     /// pointing at bytes that were already deleted.
     @discardableResult
     func remove(pairingID: String, id: String) throws -> Bool {
-        guard validText(pairingID, maximum: 200), validText(id, maximum: 200) else {
+        guard validText(pairingID, maximum: 200), validText(id, maximum: maximumIDBytes) else {
             throw LAADriveOfflineError.invalidItem
         }
         guard !saving.contains(itemKey(pairingID: pairingID, id: id)) else {
@@ -197,7 +198,7 @@ actor LAADriveOfflineStore {
     @discardableResult
     func save(pairingID: String, id: String, name: String, mimeType: String,
               metadata: @escaping MetadataReader, range: @escaping RangeReader) async throws -> LAADriveOfflineRecord {
-        guard validText(pairingID, maximum: 200), validText(id, maximum: 200),
+        guard validText(pairingID, maximum: 200), validText(id, maximum: maximumIDBytes),
               validText(name, maximum: 2000), validText(mimeType, maximum: 200) else { throw LAADriveOfflineError.invalidItem }
         let key = itemKey(pairingID: pairingID, id: id)
         guard saving.insert(key).inserted else { throw LAADriveOfflineError.alreadySaving }
@@ -254,7 +255,7 @@ actor LAADriveOfflineStore {
     @discardableResult
     func saveWorkspacePDF(pairingID: String, id: String, name: String,
                           metadata: @escaping MetadataReader, export: @escaping PDFReader) async throws -> LAADriveOfflineRecord {
-        guard validText(pairingID, maximum: 200), validText(id, maximum: 200),
+        guard validText(pairingID, maximum: 200), validText(id, maximum: maximumIDBytes),
               validText(name, maximum: 2000) else { throw LAADriveOfflineError.invalidItem }
         let key = itemKey(pairingID: pairingID, id: id)
         guard saving.insert(key).inserted else { throw LAADriveOfflineError.alreadySaving }
@@ -409,7 +410,7 @@ actor LAADriveOfflineStore {
             let entries = try JSONDecoder().decode([LAADriveOfflineRecord].self, from: Data(contentsOf: index))
             guard entries.allSatisfy({ UUID(uuidString: $0.bodyName)?.uuidString == $0.bodyName && $0.size >= 0 &&
                                       ($0.sourceFormat != .workspacePDF || ($0.mimeType == "application/pdf" && $0.size <= 10_000_000)) &&
-                                      validText($0.pairingID, maximum: 200) && validText($0.id, maximum: 200) &&
+                                      validText($0.pairingID, maximum: 200) && validText($0.id, maximum: maximumIDBytes) &&
                                       validVersion($0.version) != nil && $0.sha256.utf8.count == 64 &&
                                       $0.sha256.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) }),
                   Set(entries.map { itemKey(pairingID: $0.pairingID, id: $0.id) }).count == entries.count,

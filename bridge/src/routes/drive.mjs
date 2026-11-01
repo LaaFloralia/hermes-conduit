@@ -131,7 +131,7 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     return adapter;
   }
 
-  async function listFiles({ req }) {
+  async function listFiles({ req, res }) {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const query = url.searchParams.get('query') ?? '';
     if (query.length > MAX_QUERY_LENGTH) {
@@ -154,10 +154,18 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
     const pageToken = rawCursor === null ? null : decodeCursor(rawCursor, filter, now());
 
     let page;
+    const abort = new AbortController();
+    const onClose = () => { if (!res.writableEnded) abort.abort(); };
+    const clientClosed = () => { res.statusCode = 499; return undefined; };
+    res.on('close', onClose);
     try {
-      page = await requireAdapter().list({ query, folderId, pageSize, pageToken, view });
+      page = await requireAdapter().list({ query, folderId, pageSize, pageToken, view, signal: abort.signal });
+      if (abort.signal.aborted) return clientClosed();
     } catch (error) {
+      if (abort.signal.aborted) return clientClosed();
       throw driveError(error);
+    } finally {
+      res.off('close', onClose);
     }
     const nextCursor = page.nextPageToken
       ? encodeCursor({ pageToken: page.nextPageToken, filter, issuedAt: now() })

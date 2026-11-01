@@ -42,6 +42,7 @@ function errorFor(error) {
   return new BridgeError(503, 'drive_unavailable', 'the Drive mount is unavailable', { retryable: true });
 }
 function isMissing(error) { return error?.code === 'ENOENT' || error?.code === 'ENOTDIR' || error?.code === 'ELOOP'; }
+function searchKey(value) { return value.toLocaleLowerCase().normalize('NFC'); }
 function itemId(key, segments = []) {
   return 'd_' + Buffer.from(JSON.stringify([key, ...segments])).toString('base64url');
 }
@@ -56,6 +57,24 @@ function decodeId(id) {
         value.some((segment) => typeof segment !== 'string') ||
         value.slice(1).some((segment) => !segment || segment === '.' || segment === '..' || segment.includes('/') || segment.includes('\0'))) return null;
     return { key: value[0], segments: value.slice(1) };
+  } catch { return null; }
+}
+function itemSortKey(found) {
+  return [found.stat.isDirectory() ? 0 : 1, found.segments.at(-1), itemId(found.key, found.segments)];
+}
+function compareSortKeys(a, b) {
+  return a[0] - b[0] || a[1].localeCompare(b[1]) || a[2].localeCompare(b[2]);
+}
+function decodePageToken(token) {
+  if (typeof token !== 'string' || token.length > 4096 || !/^[A-Za-z0-9_-]+$/.test(token)) return null;
+  try {
+    const bytes = Buffer.from(token, 'base64url');
+    if (bytes.toString('base64url') !== token) return null;
+    const key = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!Array.isArray(key) || key.length !== 2 || ![0, 1].includes(key[0])) return null;
+    const decoded = decodeId(key[1]);
+    if (!decoded || decoded.segments.length === 0) return null;
+    return [key[0], decoded.segments.at(-1), key[1]];
   } catch { return null; }
 }
 function versionOf(stat) {
@@ -78,11 +97,12 @@ function validImage(mime, bytes) {
   return false;
 }
 
-export function createDriveMountAdapter({ root = DEFAULT_ROOT, directoryTimeoutMs = 5000, readDirectory = readdir } = {}) {
+export function createDriveMountAdapter({ root = DEFAULT_ROOT, directoryTimeoutMs = 5000, readDirectory = readdir, openFile = open } = {}) {
   const base = resolve(root);
   const pendingDirectories = new Map();
 
-  async function guardedDirectory(path) {
+  async function guardedDirectory(path, signal) {
+    signal?.throwIfAborted();
     // A macOS permission dialog can leave readdir pending indefinitely. Reuse
     // that call so retries do not exhaust libuv's worker pool.
     let pending = pendingDirectories.get(path);
@@ -91,14 +111,23 @@ export function createDriveMountAdapter({ root = DEFAULT_ROOT, directoryTimeoutM
       pendingDirectories.set(path, pending);
       pending.then(() => pendingDirectories.delete(path), () => pendingDirectories.delete(path));
     }
-    let timer;
+    let timer, onAbort;
     try {
-      return await Promise.race([pending, new Promise((_, reject) => {
+      const waits = [pending, new Promise((_, reject) => {
         timer = setTimeout(() => reject(new BridgeError(503, 'drive_access_timeout',
           'the Drive mount did not respond; check macOS file access and Drive for desktop', { retryable: true })), directoryTimeoutMs);
         timer.unref?.();
-      })]);
-    } finally { clearTimeout(timer); }
+      })];
+      if (signal) waits.push(new Promise((_, reject) => {
+        onAbort = () => reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+        signal.addEventListener('abort', onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      }));
+      return await Promise.race(waits);
+    } finally {
+      clearTimeout(timer);
+      if (onAbort) signal.removeEventListener('abort', onAbort);
+    }
   }
 
   async function locate(id) {
@@ -130,7 +159,7 @@ export function createDriveMountAdapter({ root = DEFAULT_ROOT, directoryTimeoutM
   async function openChecked(found, expectedVersion) {
     let handle;
     try {
-      handle = await open(found.path, FS.O_RDONLY | (FS.O_NOFOLLOW ?? 0));
+      handle = await openFile(found.path, FS.O_RDONLY | (FS.O_NOFOLLOW ?? 0));
       const stat = await handle.stat({ bigint: true });
       const again = await locate(itemId(found.key, found.segments));
       if (!again || !stat.isFile() || stat.dev !== again.stat.dev || stat.ino !== again.stat.ino ||
@@ -151,7 +180,8 @@ export function createDriveMountAdapter({ root = DEFAULT_ROOT, directoryTimeoutM
     if (!opened) return null;
     try {
       const buffer = Buffer.alloc(Number(opened.stat.size));
-      const { bytesRead } = await opened.handle.read(buffer, 0, buffer.length, 0);
+      const { bytesRead } = await opened.handle.read(buffer, 0, buffer.length, 0)
+        .catch((error) => { throw errorFor(error); });
       try { return safeWebLink(JSON.parse(buffer.subarray(0, bytesRead).toString('utf8')).url); } catch { return null; }
     } finally { await opened.handle.close(); }
   }
@@ -166,13 +196,22 @@ export function createDriveMountAdapter({ root = DEFAULT_ROOT, directoryTimeoutM
     const size = !isFolder && !nativeMime && found.stat.size <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(found.stat.size) : null;
     const hasThumbnail = size !== null && size > 0 && size <= MAX_THUMBNAIL_BYTES &&
       ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(mimeType);
+    let webViewLink = null;
+    if (nativeMime) {
+      try { webViewLink = await nativeLink(found); }
+      catch (error) {
+        // One unreadable or concurrently updated sidecar must not hide the
+        // other items in its folder. The individual document has no link.
+        if (!['drive_permission_required', 'drive_unavailable', 'version_changed'].includes(error?.code)) throw error;
+      }
+    }
     return {
       id: itemId(found.key, found.segments), name, mimeType,
       kind: isFolder ? 'folder' : nativeMime ? 'workspace_document' : 'file',
       size, modifiedAt: found.stat.mtime.toISOString(), version,
       parents: found.segments.length ? [itemId(found.key, found.segments.slice(0, -1))] : [],
       downloadable: !isFolder && !nativeMime,
-      webViewLink: nativeMime ? await nativeLink(found) : null,
+      webViewLink,
       starred: null, viewedAt: null, owners: null, hasThumbnail,
       thumbnailVersion: hasThumbnail ? version : null,
       ...(nativeMime ? { exportFormats: [] } : {}),
@@ -181,53 +220,79 @@ export function createDriveMountAdapter({ root = DEFAULT_ROOT, directoryTimeoutM
 
   return {
     kind: 'drive-desktop-mount',
-    async list({ query = '', folderId = null, pageSize = 50, pageToken = null, view = null } = {}) {
+    async list({ query = '', folderId = null, pageSize = 50, pageToken = null, view = null, signal } = {}) {
+      signal?.throwIfAborted();
       if (!folderId && ['recent', 'starred'].includes(view)) {
         throw new BridgeError(503, 'drive_view_unavailable', 'this view is not available from the Drive desktop mount');
       }
       const rootId = folderId ?? itemId(view === 'shared' ? 'shared' : 'my');
       const start = await locate(rootId);
+      signal?.throwIfAborted();
       if (!start) {
         if (folderId) throw new BridgeError(404, 'not_found', 'the folder is no longer available');
         throw new BridgeError(503, 'drive_not_configured', 'the Drive desktop mount is unavailable');
       }
       if (!start.stat.isDirectory()) throw new BridgeError(400, 'not_a_folder', 'the selected item is not a folder');
-      if (pageToken !== null && !/^(0|[1-9]\d{0,7})$/.test(pageToken)) throw new BridgeError(400, 'cursor_invalid', 'the page cursor is invalid');
-      const offset = Number(pageToken ?? 0);
+      const anchor = pageToken === null ? null : decodePageToken(pageToken);
+      if (pageToken !== null && !anchor) throw new BridgeError(400, 'cursor_invalid', 'the page cursor is invalid');
       const stack = [start];
       const matched = [];
       let visited = 0;
       let incomplete = false;
-      const needle = query.toLocaleLowerCase();
+      let reachedLimit = false;
+      const needle = searchKey(query);
       while (stack.length) {
+        signal?.throwIfAborted();
         const dir = stack.pop();
         let entries;
-        try { entries = await guardedDirectory(dir.path); }
-        catch (error) { throw errorFor(error); }
+        try { entries = await guardedDirectory(dir.path, signal); }
+        catch (error) {
+          signal?.throwIfAborted();
+          const failure = errorFor(error);
+          if (dir !== start && failure.code === 'drive_access_timeout') { incomplete = true; break; }
+          if (dir !== start && ['drive_permission_required', 'drive_unavailable'].includes(failure.code)) { incomplete = true; continue; }
+          throw failure;
+        }
         const candidates = [];
         for (const entry of entries) {
-          if (++visited > MAX_SEARCH_ENTRIES) { incomplete = true; break; }
+          if (++visited > MAX_SEARCH_ENTRIES) { incomplete = true; reachedLimit = true; break; }
           if (entry.name.startsWith('.') || entry.isSymbolicLink()) continue;
           const id = itemId(dir.key, [...dir.segments, entry.name]);
           if (id.length > MAX_ID) { incomplete = true; continue; }
           candidates.push({ id, name: entry.name });
         }
         for (let i = 0; i < candidates.length; i += 24) {
+          signal?.throwIfAborted();
           const batch = candidates.slice(i, i + 24);
-          const children = await Promise.all(batch.map(({ id }) => locate(id)));
+          const children = await Promise.all(batch.map(async ({ id }) => {
+            try { return await locate(id); }
+            catch (error) {
+              if (['drive_permission_required', 'drive_unavailable'].includes(error?.code)) return undefined;
+              throw error;
+            }
+          }));
+          signal?.throwIfAborted();
           for (let j = 0; j < batch.length; j++) {
             const child = children[j];
+            if (child === undefined) { incomplete = true; continue; }
             if (!child) continue;
-            if (!query || batch[j].name.toLocaleLowerCase().includes(needle)) matched.push(child);
+            if (!query || searchKey(batch[j].name).includes(needle)) matched.push(child);
             if (query && child.stat.isDirectory()) stack.push(child);
           }
         }
-        if (incomplete) break;
+        if (reachedLimit) break;
       }
-      matched.sort((a, b) => Number(b.stat.isDirectory()) - Number(a.stat.isDirectory()) ||
-        a.segments.at(-1).localeCompare(b.segments.at(-1)) || itemId(a.key, a.segments).localeCompare(itemId(b.key, b.segments)));
-      const items = await Promise.all(matched.slice(offset, offset + pageSize).map(metadata));
-      return { items, nextPageToken: offset + pageSize < matched.length ? String(offset + pageSize) : null,
+      const sorted = matched.map((found) => ({ found, key: itemSortKey(found) }));
+      sorted.sort((a, b) => compareSortKeys(a.key, b.key));
+      const nextIndex = anchor ? sorted.findIndex(({ key }) => compareSortKeys(key, anchor) > 0) : 0;
+      const offset = nextIndex < 0 ? sorted.length : nextIndex;
+      const selected = sorted.slice(offset, offset + pageSize);
+      const items = await Promise.all(selected.map(({ found }) => metadata(found)));
+      signal?.throwIfAborted();
+      const lastKey = selected.at(-1)?.key;
+      const nextPageToken = offset + pageSize < sorted.length && lastKey
+        ? Buffer.from(JSON.stringify([lastKey[0], lastKey[2]])).toString('base64url') : null;
+      return { items, nextPageToken,
         incompleteSearch: incomplete };
     },
     async get(id) {

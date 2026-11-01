@@ -219,7 +219,7 @@ export function createBridge({
     { method: 'POST', path: '/v1/devices/enroll', auth: false, idempotent: false, handler: enroll },
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
-    ...driveRoutes({ adapter: drive === undefined ? createDriveMountAdapter() : drive, now, log: log === null ? null : undefined }),
+    ...driveRoutes({ adapter: drive === undefined ? createDriveMountAdapter() : drive, now, log }),
     ...businessRoutes({ store, now, options: { ...routeOptions,
       usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) } } }),
   ];

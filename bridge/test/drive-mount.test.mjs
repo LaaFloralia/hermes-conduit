@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, symlink, rm, readFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, open, readdir, writeFile, symlink, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -56,6 +56,44 @@ it('paginates folders and recursively searches without crossing roots', async ()
   assert.equal((await adapter.list({ view: 'shared', query: 'sample' })).items.length, 0);
 });
 
+it('keeps the next page stable when earlier entries are added or removed', async () => {
+  for (const change of ['insert', 'remove']) {
+    const folder = join(my, `pages-${change}`);
+    await mkdir(folder);
+    try {
+      for (const name of ['a.txt', 'b.txt', 'c.txt', 'd.txt']) await writeFile(join(folder, name), name);
+      const folderId = idFor('my', `pages-${change}`);
+      const first = await adapter.list({ folderId, pageSize: 2 });
+      assert.deepEqual(first.items.map((item) => item.name), ['a.txt', 'b.txt']);
+      if (change === 'insert') await writeFile(join(folder, '0.txt'), 'new');
+      else await rm(join(folder, 'a.txt'));
+      const second = await adapter.list({ folderId, pageSize: 2, pageToken: first.nextPageToken });
+      assert.deepEqual(second.items.map((item) => item.name), ['c.txt', 'd.txt']);
+    } finally { await rm(folder, { recursive: true, force: true }); }
+  }
+});
+
+it('passes mount page cursors through the authenticated Bridge', async () => {
+  const first = await bridge.request('/v1/drive/files?view=my&pageSize=2', { token });
+  assert.equal(first.status, 200);
+  const cursor = first.body.data.nextCursor;
+  assert.ok(cursor);
+  const second = await bridge.request(`/v1/drive/files?view=my&pageSize=2&cursor=${encodeURIComponent(cursor)}`, { token });
+  assert.equal(second.status, 200);
+  assert.ok(second.body.data.items.every((item) => !first.body.data.items.some((previous) => previous.id === item.id)));
+  await assert.rejects(adapter.list({ view: 'my', pageToken: 'bad-cursor' }), { code: 'cursor_invalid' });
+});
+
+it('finds decomposed Japanese filenames using composed search text', async () => {
+  const name = 'がっこう.pdf';
+  const path = join(my, name.normalize('NFD'));
+  await writeFile(path, 'synthetic');
+  try {
+    const page = await adapter.list({ view: 'my', query: name.normalize('NFC') });
+    assert.ok(page.items.some((item) => item.name.normalize('NFC') === name));
+  } finally { await rm(path, { force: true }); }
+});
+
 it('marks recent and starred unsupported instead of inventing results', async () => {
   for (const view of ['recent', 'starred']) {
     await assert.rejects(adapter.list({ view }), { code: 'drive_view_unavailable' });
@@ -72,6 +110,66 @@ it('provides validated Google document links, never native document bytes or PDF
   assert.equal(await adapter.open(doc.id), null);
   const response = await bridge.request(`/v1/drive/files/${doc.id}/content`, { token });
   assert.equal(response.status, 409);
+});
+
+it('keeps the folder usable when one Google document link is unreadable', { skip: process.getuid?.() === 0 }, async () => {
+  const path = join(my, 'unreadable.gdoc');
+  await writeFile(path, JSON.stringify({ url: 'https://docs.google.com/document/d/example/edit' }));
+  await chmod(path, 0);
+  try {
+    const page = await adapter.list({ view: 'my' });
+    assert.ok(page.items.some((item) => item.name === 'guide.pdf'));
+    assert.equal(page.items.find((item) => item.name === 'unreadable.gdoc').webViewLink, null);
+  } finally { await chmod(path, 0o600); await rm(path, { force: true }); }
+});
+
+it('returns partial search results when a child folder cannot be read', { skip: process.getuid?.() === 0 }, async () => {
+  const path = join(my, 'unreadable-folder');
+  await mkdir(path);
+  await chmod(path, 0);
+  try {
+    const page = await adapter.list({ view: 'my', query: 'sample' });
+    assert.equal(page.incompleteSearch, true);
+    assert.ok(page.items.some((item) => item.name === 'sample.mp4'));
+  } finally { await chmod(path, 0o700); await rm(path, { recursive: true, force: true }); }
+});
+
+it('keeps results when a child folder fails or times out', async () => {
+  const path = join(my, 'unavailable-folder');
+  await mkdir(path);
+  try {
+    for (const mode of ['error', 'timeout']) {
+      const failing = createDriveMountAdapter({ root: mount, directoryTimeoutMs: 20, readDirectory: async (directory, options) => {
+        if (directory === path) {
+          if (mode === 'error') throw Object.assign(new Error('provider failed'), { code: 'EIO' });
+          return new Promise(() => {});
+        }
+        return readdir(directory, options);
+      } });
+      const page = await failing.list({ view: 'my', query: 'guide' });
+      assert.equal(page.incompleteSearch, true);
+      assert.ok(page.items.some((item) => item.name === 'guide.pdf'));
+    }
+  } finally { await rm(path, { recursive: true, force: true }); }
+});
+
+it('keeps the folder usable when one document link has an I/O error', async () => {
+  for (const phase of ['open', 'read']) {
+    const failing = createDriveMountAdapter({ root: mount, openFile: async (path, flags) => {
+      const target = path === join(my, 'document.gdoc');
+      if (target && phase === 'open') throw Object.assign(new Error('provider failed'), { code: 'EIO' });
+      const handle = await open(path, flags);
+      if (!target || phase !== 'read') return handle;
+      return {
+        stat: (...args) => handle.stat(...args),
+        read: async () => { throw Object.assign(new Error('provider failed'), { code: 'EIO' }); },
+        close: () => handle.close(),
+      };
+    } });
+    const page = await failing.list({ view: 'my' });
+    assert.ok(page.items.some((item) => item.name === 'guide.pdf'));
+    assert.equal(page.items.find((item) => item.name === 'document.gdoc').webViewLink, null);
+  }
 });
 
 it('identifies PDFs, images, media and bounded image thumbnails', async () => {
@@ -167,9 +265,63 @@ it('bounds repeated stalled directory reads without accumulating worker operatio
   assert.equal(calls, 1);
 });
 
+it('stops waiting on a stalled directory when a list is cancelled', async () => {
+  let reportStarted;
+  const started = new Promise((resolve) => { reportStarted = resolve; });
+  const stalled = createDriveMountAdapter({ root: mount, directoryTimeoutMs: 40, readDirectory: () => {
+    reportStarted(); return new Promise(() => {});
+  } });
+  const abort = new AbortController();
+  const listing = stalled.list({ view: 'my', query: 'sample', signal: abort.signal });
+  await started;
+  abort.abort();
+  await assert.rejects(listing, { name: 'AbortError' });
+});
+
+it('cancels an in-progress listing when the HTTP client disconnects', async () => {
+  let reportStarted, reportAborted, reportLog;
+  const started = new Promise((resolve) => { reportStarted = resolve; });
+  const aborted = new Promise((resolve) => { reportAborted = resolve; });
+  const logged = new Promise((resolve) => { reportLog = resolve; });
+  const slow = { async list({ signal }) {
+    reportStarted(signal);
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 300);
+      signal?.addEventListener('abort', () => { clearTimeout(timer); reportAborted(); resolve(); }, { once: true });
+    });
+    signal?.throwIfAborted();
+    return { items: [], nextPageToken: null, incompleteSearch: false };
+  } };
+  const slowBridge = await startBridge({ drive: slow, log: (record) => {
+    if (record.path === '/v1/drive/files') reportLog(record);
+  } });
+  const abort = new AbortController();
+  try {
+    const ownToken = await slowBridge.token();
+    const request = fetch(`${slowBridge.base}/v1/drive/files?query=sample`, {
+      headers: { authorization: `Bearer ${ownToken}` }, signal: abort.signal,
+    }).catch((error) => error);
+    const signal = await started;
+    assert.ok(signal);
+    abort.abort();
+    assert.equal((await request).name, 'AbortError');
+    let timer;
+    try {
+      assert.ok(await Promise.race([aborted.then(() => true), new Promise((resolve) => { timer = setTimeout(() => resolve(false), 1000); })]));
+    } finally { clearTimeout(timer); }
+    const record = await logged;
+    assert.equal(record.status, 499);
+  } finally { abort.abort(); await slowBridge.close(); }
+});
+
 it('redacts reversible path IDs from HTTP and media logs', async () => {
   const logs = [];
-  const loggingBridge = await startBridge({ drive: adapter, log: (record) => logs.push(record) });
+  let reportDriveLog;
+  const driveLogged = new Promise((resolve) => { reportDriveLog = resolve; });
+  const loggingBridge = await startBridge({ drive: adapter, log: (record) => {
+    logs.push(record);
+    if (record.area === 'drive') reportDriveLog();
+  } });
   try {
     const ownToken = await loggingBridge.token();
     const id = byName('guide.pdf').id;
@@ -178,6 +330,10 @@ it('redacts reversible path IDs from HTTP and media logs', async () => {
     });
     assert.equal(response.status, 206);
     await response.arrayBuffer();
+    let timeout;
+    try {
+      assert.ok(await Promise.race([driveLogged.then(() => true), new Promise((resolve) => { timeout = setTimeout(() => resolve(false), 1000); })]));
+    } finally { clearTimeout(timeout); }
     assert.equal(JSON.stringify(logs).includes(id), false);
     assert.equal(JSON.stringify(logs).includes('guide.pdf'), false);
   } finally { await loggingBridge.close(); }

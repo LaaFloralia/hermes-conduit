@@ -43,7 +43,8 @@ extension LAABridgeClient {
     /// Bound every request and inspect its headers before consuming bytes. In
     /// particular, a server ignoring Range must never trigger a whole download.
     func driveRange(path: String, credentials: LAABridgeCredentials, offset: Int64,
-                    length: Int, expectedVersion: String? = nil) async throws -> LAADriveRangeResponse {
+                    length: Int, expectedVersion: String? = nil,
+                    timeout: TimeInterval? = nil) async throws -> LAADriveRangeResponse {
         guard offset >= 0, length > 0, length <= LAADriveContent.chunkSize,
               expectedVersion.map(LAADrivePaths.validVersion) ?? true,
               expectedVersion == nil || path.hasPrefix("/v1/drive/files/"),
@@ -52,7 +53,7 @@ extension LAABridgeClient {
               url.scheme == credentials.baseURL.scheme, url.host == credentials.baseURL.host,
               url.port == credentials.baseURL.port else { throw LAABridgeError.invalidAddress }
         var request = URLRequest(url: url)
-        request.timeoutInterval = 30
+        request.timeoutInterval = timeout ?? 30
         request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
         request.setValue("bytes=\(offset)-\(offset + Int64(length) - 1)", forHTTPHeaderField: "Range")
         if let expectedVersion { request.setValue(expectedVersion, forHTTPHeaderField: "x-laa-drive-version") }
