@@ -12,7 +12,7 @@ struct LAAOwnerTaskWire: Decodable {
     let source: LAAOwnerTaskSource
     let links: [String]?
     let updatedAt: String
-    let revision: Int
+    let revision: LAAOwnerTaskRevision
 
     func task(requiringDetail: Bool) throws -> LAAOwnerTask {
         if requiringDetail && (memo == nil || links == nil) { throw LAABridgeError.invalidResponse }
@@ -20,7 +20,7 @@ struct LAAOwnerTaskWire: Decodable {
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         let plain = ISO8601DateFormatter()
         plain.formatOptions = [.withInternetDateTime]
-        guard revision > 0, let updated = fractional.date(from: updatedAt) ?? plain.date(from: updatedAt) else {
+        guard revision.isValid, let updated = fractional.date(from: updatedAt) ?? plain.date(from: updatedAt) else {
             throw LAABridgeError.invalidResponse
         }
         return LAAOwnerTask(id: id, title: title, memo: memo ?? "", status: status,
@@ -77,6 +77,7 @@ struct LAAOwnerTaskRequest: Codable, Equatable {
     let key: String
     let ifMatch: String?
     let draft: LAAOwnerTaskDraft
+    var conflict: Bool? = nil
 
     enum Error: Swift.Error { case invalid, unchanged, bodyTooLarge }
 
@@ -95,7 +96,7 @@ struct LAAOwnerTaskRequest: Codable, Equatable {
     }
 
     static func update(_ draft: LAAOwnerTaskDraft, deviceID: String, key: String) throws -> Self {
-        guard let base = draft.base, base.id == draft.id, base.revision > 0, !deviceID.isEmpty,
+        guard let base = draft.base, base.id == draft.id, base.revision.isValid, !deviceID.isEmpty,
               LAABridgeIdempotencyKey(restoring: key) != nil else { throw Error.invalid }
         try draft.validate()
         var changes: [String: Any] = [:]
@@ -112,7 +113,7 @@ struct LAAOwnerTaskRequest: Codable, Equatable {
         return Self(deviceID: deviceID, originalDeviceID: nil, taskID: draft.id, method: "PATCH",
                     path: "/v1/owner-tasks/\(draft.id.uuidString.lowercased())",
                     body: body,
-                    key: key, ifMatch: "\"\(base.revision)\"", draft: draft)
+                    key: key, ifMatch: "\"\(base.revision.value)\"", draft: draft)
     }
 
     static func check(_ task: LAAOwnerTask, deviceID: String, key: String) throws -> Self {

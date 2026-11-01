@@ -7,6 +7,8 @@ import Foundation
 enum LAAOwnerTaskOutbox {
     private static let marker = "laa-owner-task-request-v1:"
 
+    static func canRetry(_ request: LAAOwnerTaskRequest) -> Bool { request.conflict != true }
+
     static func entries(in store: ComposerDraftStore) -> [ComposerDraftStore.Submission] {
         store.submissions.filter { LAAOwnerTaskLocalDrafts.owns($0.key) }
     }
@@ -51,6 +53,15 @@ enum LAAOwnerTaskOutbox {
     static func finish(_ item: ComposerDraftStore.Submission, in store: ComposerDraftStore) -> Bool {
         guard request(item) != nil else { return false }
         return store.finishSubmission(item.id, restoring: false)
+    }
+
+    /// A 409 rejects this delivery but does not prove whether an earlier
+    /// delivery took effect. Keep its exact request and block blind retries.
+    static func markConflict(_ item: ComposerDraftStore.Submission, in store: ComposerDraftStore) -> Bool {
+        guard var saved = request(item) else { return false }
+        saved.conflict = true
+        guard let bytes = try? JSONEncoder().encode(saved), let text = String(data: bytes, encoding: .utf8) else { return false }
+        return store.rebindSubmission(item.id, to: item.key, groupOutboundText: marker + text)
     }
 
     /// A moved request remains outcome-unknown: its UUID, key, bytes and

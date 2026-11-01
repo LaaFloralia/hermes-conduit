@@ -588,13 +588,15 @@ store · the session and project API · the owner-task API
   Conditional updates preserve untouched fields. Drafts and uncertain writes
   survive offline use; a replay keeps the UUID, body and key, and moving a
   request to another device requires an explicit choice and does not send it.
+  Revisions are opaque; a 409 keeps the input and requires an explicit choice
+  before it becomes an editable draft again.
   Routines remain a placeholder.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
-- Owner-task UI, accessibility and live integration await the assigned simulator
-  slot, Bridge integration and the parent's real-account checks.
+- Owner-task UI, accessibility and live integration await the parent's single
+  integrated simulator gate, Bridge integration and real-account checks.
 
 **Checked:** 2026-10-29, 67166210. Signed Simulator tests covered pairing,
 sections, workspace entry, durable composer draft, empty, 503 and offline

@@ -131,7 +131,7 @@ EXEMPT_KEYS = frozenset({
     "×%@",           # multiplier badge
     "×%lld",         # multiplier badge (int interpolation)
     "A",             # typography size sample glyph
-    "Conduit", "GitHub", "Hermes", "HTTP", "HTTPS",  # brand/protocol names
+    "Conduit", "GitHub", "Hermes", "Studio", "HTTP", "HTTPS",  # brand/protocol names
     "https://hermes.example", "https://push.milim.dev",  # literal URLs
     "skill-name",    # example placeholder token
 })

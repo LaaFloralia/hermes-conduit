@@ -13,10 +13,10 @@ enum LAAOwnerTaskStatus: String, CaseIterable, Identifiable, Codable {
 
     var label: String {
         switch self {
-        case .todo: return "未着手"
-        case .doing: return "進行中"
-        case .done: return "完了"
-        case .canceled: return "取消"
+        case .todo: return AppLocalization.string("To Do")
+        case .doing: return AppLocalization.string("In progress")
+        case .done: return AppLocalization.string("Done")
+        case .canceled: return AppLocalization.string("Cancelled")
         }
     }
 
@@ -71,9 +71,9 @@ enum LAAOwnerTaskSource: String, Codable {
 
     var label: String {
         switch self {
-        case .owner: return "本人"
-        case .agent: return "エージェント"
-        case .linearImport: return "Linear から取込み"
+        case .owner: return AppLocalization.string("You")
+        case .agent: return AppLocalization.string("Agent")
+        case .linearImport: return AppLocalization.string("Imported from Linear")
         }
     }
 }
@@ -88,6 +88,37 @@ enum LAAOwnerTaskLink {
     }
 }
 
+/// Revisions are opaque ETags, not sequence numbers. Decode the former
+/// integer representation as well so existing protected drafts still open.
+struct LAAOwnerTaskRevision: Codable, Equatable, ExpressibleByStringLiteral {
+    let value: String
+
+    init(stringLiteral value: String) { self.value = value }
+
+    var isValid: Bool {
+        !value.isEmpty && value.utf8.allSatisfy { $0 == 0x21 || (0x23...0x7e).contains($0) }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let string = try? container.decode(String.self) {
+            value = string
+        } else if let legacy = try? container.decode(Int.self), legacy > 0 {
+            value = String(legacy)
+        } else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid task revision")
+        }
+        guard isValid else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid task revision")
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
+}
+
 struct LAAOwnerTask: Identifiable, Equatable, Codable {
     let id: UUID
     let title: String
@@ -97,7 +128,7 @@ struct LAAOwnerTask: Identifiable, Equatable, Codable {
     let source: LAAOwnerTaskSource
     let links: [String]
     let updatedAt: Date
-    let revision: Int
+    let revision: LAAOwnerTaskRevision
 }
 
 struct LAAOwnerTaskGroups {
@@ -193,11 +224,11 @@ struct LAAOwnerTaskConflict {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .title: return "題名"
-            case .memo: return "メモ"
-            case .status: return "状態"
-            case .dueDate: return "期限"
-            case .links: return "関連リンク"
+            case .title: return AppLocalization.string("Title")
+            case .memo: return AppLocalization.string("Note")
+            case .status: return AppLocalization.string("Status")
+            case .dueDate: return AppLocalization.string("Due date")
+            case .links: return AppLocalization.string("Links")
             }
         }
     }

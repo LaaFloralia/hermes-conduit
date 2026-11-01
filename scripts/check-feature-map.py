@@ -24,6 +24,7 @@ lookup, the check warns and skips it, so an outage doesn't block every PR.
 """
 
 import argparse
+import glob
 import http.client
 import os
 import re
@@ -242,7 +243,11 @@ def main(argv=None):
             notifier.setdefault(path[len(NOTIFIER_PREFIX):], number)
             continue
         local = os.path.join(args.repo_root, path)
-        if not (os.path.isdir(local) if path.endswith("/") else os.path.isfile(local)):
+        if glob.has_magic(path):
+            exists = any(os.path.isfile(match) for match in glob.glob(local))
+        else:
+            exists = os.path.isdir(local) if path.endswith("/") else os.path.isfile(local)
+        if not exists:
             problems.append((number, f"{path} isn't in this repo. Point the entry at where "
                                      "that code lives now."))
 

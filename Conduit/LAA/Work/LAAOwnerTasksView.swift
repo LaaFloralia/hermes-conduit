@@ -37,7 +37,7 @@ struct LAAOwnerTasksView: View {
         let deviceID: String
     }
     private struct PendingAction: Identifiable {
-        enum Kind { case retry, discard, move, discardDraft, moveDraft }
+        enum Kind { case retry, restoreConflict, discard, move, discardDraft, moveDraft }
         let id = UUID()
         let kind: Kind
         var item: ComposerDraftStore.Submission? = nil
@@ -130,13 +130,15 @@ struct LAAOwnerTasksView: View {
                 if let message {
                     Section { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
                 }
-                Section("この端末") {
+                Section("On this device") {
                     if ownPending.isEmpty && ownDrafts.isEmpty { Text(verbatim: "送信待ちと下書きはありません。") }
                     ForEach(ownPending) { item in
                         if let request = LAAOwnerTaskOutbox.request(item) {
                             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                                 Text(verbatim: request.draft.title)
-                                Text(verbatim: sending.contains(request.taskID) ? "送信中" : "保存されたか確認できていません。")
+                                Text(verbatim: sending.contains(request.taskID) ? "送信中" : request.conflict == true
+                                     ? "送信できなかった下書きです。以前に保存された可能性を確認してください。"
+                                     : "保存されたか確認できていません。")
                                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                                 if request.originalDeviceID != nil {
                                     Text(verbatim: "別の接続から移した保留です。元の結果は不明です。")
@@ -156,11 +158,16 @@ struct LAAOwnerTasksView: View {
                                     }
                                 }
                                 HStack {
-                                    Button("再送") { pendingAction = PendingAction(kind: .retry, item: item) }
-                                        .disabled(bridge.status != .paired || sending.contains(request.taskID))
-                                    Button("現在を確認") { Task { await inspect(item) } }
+                                    if request.conflict == true {
+                                        Button("Restore to draft") { pendingAction = PendingAction(kind: .restoreConflict, item: item) }
+                                            .disabled(sending.contains(request.taskID))
+                                    } else {
+                                        Button("Retry") { pendingAction = PendingAction(kind: .retry, item: item) }
+                                            .disabled(bridge.status != .paired || sending.contains(request.taskID) || !LAAOwnerTaskOutbox.canRetry(request))
+                                    }
+                                    Button(LAAOwnerTaskCopy.inspectCurrent) { Task { await inspect(item) } }
                                         .disabled(bridge.status != .paired)
-                                    Button("破棄") { pendingAction = PendingAction(kind: .discard, item: item) }
+                                    Button(LAAOwnerTaskCopy.discard) { pendingAction = PendingAction(kind: .discard, item: item) }
                                         .disabled(sending.contains(request.taskID))
                                 }
                             }
@@ -183,15 +190,15 @@ struct LAAOwnerTasksView: View {
                     }
                 }
                 if otherCount > 0 {
-                    Section("別の端末・別の本人") {
+                    Section(LAAOwnerTaskCopy.otherDevices) {
                         Text(verbatim: "\(otherCount)件あります。内容は表示せず、選んだ記録だけを移すか破棄します。")
                         ForEach(Array(otherPending.enumerated()), id: \.element.id) { index, item in
                             HStack {
                                 Text(verbatim: "送信待ち \(index + 1)")
                                 Spacer()
-                                Button("移す") { pendingAction = PendingAction(kind: .move, item: item) }
+                                Button(LAAOwnerTaskCopy.move) { pendingAction = PendingAction(kind: .move, item: item) }
                                     .disabled(bridge.deviceID == nil || LAAOwnerTaskOutbox.request(item).map { sending.contains($0.taskID) } != false)
-                                Button("破棄") { pendingAction = PendingAction(kind: .discard, item: item) }
+                                Button(LAAOwnerTaskCopy.discard) { pendingAction = PendingAction(kind: .discard, item: item) }
                                     .disabled(LAAOwnerTaskOutbox.request(item).map { sending.contains($0.taskID) } != false)
                             }
                         }
@@ -199,42 +206,52 @@ struct LAAOwnerTasksView: View {
                             HStack {
                                 Text(verbatim: "下書き \(index + 1)")
                                 Spacer()
-                                Button("移す") { pendingAction = PendingAction(kind: .moveDraft, entry: entry) }
+                                Button(LAAOwnerTaskCopy.move) { pendingAction = PendingAction(kind: .moveDraft, entry: entry) }
                                     .disabled(bridge.deviceID == nil || entry.deviceID == nil || entry.taskID == nil)
-                                Button("破棄") { pendingAction = PendingAction(kind: .discardDraft, entry: entry) }
+                                Button(LAAOwnerTaskCopy.discard) { pendingAction = PendingAction(kind: .discardDraft, entry: entry) }
                                     .disabled(entry.deviceID == nil || entry.taskID == nil)
                             }
                         }
                     }
                 }
             }
-            .navigationTitle("送信待ち・下書き")
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("閉じる") { showingPending = false } } }
+            .navigationTitle(LAAOwnerTaskCopy.pending)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Close") { showingPending = false } } }
         }
         .accessibilityIdentifier("work.ownerTasks.pending.sheet")
-        .confirmationDialog("選択した操作を確認",
+        .confirmationDialog(LAAOwnerTaskCopy.confirmAction,
                             isPresented: Binding(get: { pendingAction != nil }, set: { if !$0 { pendingAction = nil } }),
                             titleVisibility: .visible, presenting: pendingAction) { action in
             if action.kind == .retry, let item = action.item {
-                Button("再送する") { Task { await send(item) } }
+                Button(LAAOwnerTaskCopy.retryRequest) { Task { await send(item) } }
+            } else if action.kind == .restoreConflict, let item = action.item {
+                Button("Restore to draft") {
+                    guard let latest = LAAOwnerTaskOutbox.entries(in: drafts).first(where: { $0.id == item.id }),
+                          let request = LAAOwnerTaskOutbox.request(latest), request.conflict == true,
+                          request.deviceID == bridge.deviceID, !sending.contains(request.taskID),
+                          LAAOwnerTaskOutbox.restoreRejected(latest, in: drafts) else {
+                        message = "下書きに戻せません。送信待ちを保持しています。"; return
+                    }
+                    message = "下書きに戻しました。現在のタスクを確認してから保存してください。"
+                }
             } else if action.kind == .discard, let item = action.item {
-                Button("端末の記録を破棄", role: .destructive) {
+                Button(LAAOwnerTaskCopy.discardRecord, role: .destructive) {
                     if !LAAOwnerTaskOutbox.finish(item, in: drafts) { message = "端末の記録を破棄できませんでした。" }
                 }
             } else if action.kind == .move, let item = action.item {
-                Button("この端末へ移す") {
+                Button(LAAOwnerTaskCopy.moveToDevice) {
                     guard let deviceID = bridge.deviceID, LAAOwnerTaskOutbox.move(item, to: deviceID, in: drafts) else {
                         message = "移せません。同じタスクの下書きや送信待ちがないか確認してください。"; return
                     }
                 }
             } else if action.kind == .moveDraft, let entry = action.entry {
-                Button("この端末の下書きへ移す") {
+                Button(LAAOwnerTaskCopy.moveDraft) {
                     guard let deviceID = bridge.deviceID, LAAOwnerTaskLocalDrafts.move(entry, to: deviceID, in: drafts) else {
                         message = "移せません。同じタスクの下書きや送信待ちがないか確認してください。"; return
                     }
                 }
             } else if action.kind == .discardDraft, let entry = action.entry {
-                Button("端末の下書きを破棄", role: .destructive) {
+                Button(LAAOwnerTaskCopy.discardLocalDraft, role: .destructive) {
                     guard let deviceID = entry.deviceID, let taskID = entry.taskID,
                           case let .saved(draft) = LAAOwnerTaskLocalDrafts.read(drafts, deviceID: deviceID, taskID: taskID),
                           LAAOwnerTaskLocalDrafts.remove(draft, from: drafts, deviceID: deviceID) else {
@@ -242,10 +259,12 @@ struct LAAOwnerTasksView: View {
                     }
                 }
             }
-            Button("キャンセル", role: .cancel) { }
+            Button("Cancel", role: .cancel) { }
         } message: { action in
             Text(verbatim: action.kind == .retry
                  ? "未反映なら、この再送で初めて保存されます。同じ識別子と内容を使います。"
+                 : action.kind == .restoreConflict
+                 ? "編集できる下書きに戻します。復元前に保存されていた可能性があるため、保存前に現在のタスクを確認してください。"
                  : action.kind == .move
                  ? "同じ識別子と鍵を引き継ぎ、結果不明のまま移します。自動送信はしません。"
                  : action.kind == .moveDraft
@@ -309,9 +328,14 @@ struct LAAOwnerTasksView: View {
             return
         }
         Task {
+            let observedLoadID = loadID
             do {
                 let detail = try await readDetail(task.id)
                 guard bridge.deviceID == deviceID else { return }
+                guard loadID == observedLoadID else {
+                    message = "タスクが更新されました。もう一度開いてください。"
+                    return
+                }
                 rememberDetail(detail, deviceID: deviceID)
                 editor = Editor(draft: LAAOwnerTaskDraft(task: detail), deviceID: deviceID)
             } catch {
@@ -386,7 +410,8 @@ struct LAAOwnerTasksView: View {
     }
 
     private func send(_ item: ComposerDraftStore.Submission) async {
-        guard let request = LAAOwnerTaskOutbox.request(item), request.deviceID == bridge.deviceID,
+        guard let latest = LAAOwnerTaskOutbox.entries(in: drafts).first(where: { $0.id == item.id }),
+              let request = LAAOwnerTaskOutbox.request(latest), request.deviceID == bridge.deviceID, LAAOwnerTaskOutbox.canRetry(request),
               !sending.contains(request.taskID), let key = LAABridgeIdempotencyKey(restoring: request.key) else { return }
         sending.insert(request.taskID)
         defer { sending.remove(request.taskID) }
@@ -395,7 +420,7 @@ struct LAAOwnerTasksView: View {
                 method: request.method, path: request.path, jsonBody: request.body, idempotencyKey: key, ifMatch: request.ifMatch)
             let task = try response.data.task(requiringDetail: true)
             guard task.id == request.taskID, bridge.deviceID == request.deviceID else { throw LAABridgeError.invalidResponse }
-            guard LAAOwnerTaskOutbox.finish(item, in: drafts) else { throw LAABridgeError.keychain }
+            guard LAAOwnerTaskOutbox.finish(latest, in: drafts) else { throw LAABridgeError.keychain }
             record(task, deviceID: request.deviceID)
             if drafts.persistenceFailed { message = "タスクは保存されましたが、端末の控えを保存できません。" }
             else if !loaded || listIsStale { message = "一覧全体はまだ最新ではありません。接続後に読み直してください。" }
@@ -404,10 +429,10 @@ struct LAAOwnerTasksView: View {
             guard bridge.deviceID == request.deviceID else { return }
             if request.originalDeviceID != nil {
                 message = "元の接続で反映された可能性があります。送信待ちで現在の内容を確認してください。"
-                await inspect(item)
+                await inspect(latest)
                 return
             }
-            guard LAAOwnerTaskOutbox.restoreRejected(item, in: drafts) else {
+            guard LAAOwnerTaskOutbox.restoreRejected(latest, in: drafts) else {
                 message = "競合した入力を端末に保持しています。送信待ちを確認してください。"; return
             }
             do {
@@ -425,13 +450,13 @@ struct LAAOwnerTasksView: View {
             if request.originalDeviceID != nil {
                 message = "今回の再送は拒否されました。元の結果は不明のため保留を残しています。"; return
             }
-            if LAAOwnerTaskOutbox.restoreRejected(item, in: drafts) {
+            if LAAOwnerTaskOutbox.restoreRejected(latest, in: drafts) {
                 message = "入力が受け付けられませんでした。下書きを開いて修正してください。"
             } else { message = "入力を端末に保持しています。送信待ちを確認してください。" }
         } catch let error as LAABridgeHTTPError where error.status == 410 && error.code == "owner_task_operation_compacted" {
             if request.originalDeviceID != nil {
                 message = "元の接続の結果は不明です。送信待ちで現在の内容を確認してください。"
-                await inspect(item)
+                await inspect(latest)
                 return
             }
             guard case let .object(details)? = error.details, case let .string(target)? = details["targetId"],
@@ -440,15 +465,18 @@ struct LAAOwnerTasksView: View {
             }
             do {
                 let current = try await readDetail(request.taskID)
-                guard bridge.deviceID == request.deviceID, LAAOwnerTaskOutbox.finish(item, in: drafts) else { throw LAABridgeError.keychain }
+                guard bridge.deviceID == request.deviceID, LAAOwnerTaskOutbox.finish(latest, in: drafts) else { throw LAABridgeError.keychain }
                 record(current, deviceID: request.deviceID)
                 if drafts.persistenceFailed { message = "タスクは確認できましたが、端末の控えを保存できません。" }
                 else if !loaded || listIsStale { message = "一覧全体はまだ最新ではありません。接続後に読み直してください。" }
                 else { message = nil }
             } catch { message = "保存先を確認できません。送信待ちを保持しています。" }
         } catch let error as LAABridgeHTTPError where error.status == 409 {
-            message = "同じ識別子または鍵が使われています。送信待ちで現在の内容を確認してください。"
-            await inspect(item)
+            if LAAOwnerTaskOutbox.markConflict(latest, in: drafts) {
+                message = "送信できなかった下書きを残しました。送信待ちで現在の内容を確認してください。"
+            } else {
+                message = "送信待ちを保持しています。端末に状態を保存できませんでした。"
+            }
         } catch {
             message = "保存されたか確認できません。送信待ちから確認・再送できます。"
         }
@@ -458,7 +486,7 @@ struct LAAOwnerTasksView: View {
         loadID = UUID()
         loading = false
         if let index = items.firstIndex(where: { $0.id == task.id }) {
-            if items[index].revision <= task.revision { items[index] = task }
+            items[index] = task
         } else { items.append(task) }
         cache.items = items
         rememberDetail(task, deviceID: deviceID)
@@ -466,7 +494,7 @@ struct LAAOwnerTasksView: View {
 
     private func rememberDetail(_ task: LAAOwnerTask, deviceID: String) {
         if let index = cache.details.firstIndex(where: { $0.id == task.id }) {
-            if cache.details[index].revision <= task.revision { cache.details[index] = task }
+            cache.details[index] = task
         } else { cache.details.append(task) }
         if !LAAOwnerTaskCacheStore.save(cache, in: drafts, deviceID: deviceID) {
             message = "端末に前回の内容を保存できません。"

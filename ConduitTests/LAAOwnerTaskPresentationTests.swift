@@ -9,7 +9,7 @@ final class LAAOwnerTaskPresentationTests: XCTestCase {
             id: UUID(uuidString: String(format: "00000000-0000-0000-0000-%012d", id))!,
             title: "Task \(id)", memo: "", status: status,
             dueDate: due.flatMap(LAAOwnerTaskDay.init), source: .owner, links: [],
-            updatedAt: Date(timeIntervalSince1970: updated), revision: 1
+            updatedAt: Date(timeIntervalSince1970: updated), revision: "1"
         )
     }
 
@@ -62,7 +62,7 @@ final class LAAOwnerTaskPresentationTests: XCTestCase {
             id: UUID(), title: "  題名  ", memo: "# 見出し\n本文\n", status: .canceled,
             dueDate: LAAOwnerTaskDay("2026-11-01"), source: .linearImport,
             links: ["https://example.com/", "custom://kept-as-text"],
-            updatedAt: Date(timeIntervalSince1970: 20), revision: 9
+            updatedAt: Date(timeIntervalSince1970: 20), revision: "9"
         )
         var draft = LAAOwnerTaskDraft(task: original)
         XCTAssertEqual(draft.id, original.id)
@@ -76,7 +76,7 @@ final class LAAOwnerTaskPresentationTests: XCTestCase {
         draft.dueDateText = ""
         XCTAssertNoThrow(try draft.validate())
         XCTAssertEqual(draft.status, .todo)
-        XCTAssertEqual(draft.base?.revision, 9)
+        XCTAssertEqual(draft.base?.revision, "9")
     }
 
     func testDraftValidationRejectsEmptyTitleInvalidDateAndBlankLink() {
@@ -124,10 +124,10 @@ final class LAAOwnerTaskPresentationTests: XCTestCase {
         let id = UUID()
         let base = LAAOwnerTask(id: id, title: "元の題名", memo: "元のメモ", status: .canceled,
                                 dueDate: LAAOwnerTaskDay("2026-11-01"), source: .owner,
-                                links: ["https://old.example"], updatedAt: Date(timeIntervalSince1970: 1), revision: 3)
+                                links: ["https://old.example"], updatedAt: Date(timeIntervalSince1970: 1), revision: "3")
         let current = LAAOwnerTask(id: id, title: "他の人の題名", memo: "他の人のメモ", status: .canceled,
                                    dueDate: LAAOwnerTaskDay("2026-12-01"), source: .owner,
-                                   links: ["https://new.example"], updatedAt: Date(timeIntervalSince1970: 2), revision: 4)
+                                   links: ["https://new.example"], updatedAt: Date(timeIntervalSince1970: 2), revision: "4")
         var draft = LAAOwnerTaskDraft(task: base)
         draft.memo = "自分のメモ\n"
         draft.status = .todo
@@ -139,7 +139,7 @@ final class LAAOwnerTaskPresentationTests: XCTestCase {
         let rebased = conflict.rebasedDraft()
         XCTAssertEqual(rebased.id, id)
         XCTAssertEqual(rebased.base, current)
-        XCTAssertEqual(rebased.base?.revision, 4)
+        XCTAssertEqual(rebased.base?.revision, "4")
         XCTAssertEqual(rebased.title, "他の人の題名")
         XCTAssertEqual(rebased.memo, "自分のメモ\n")
         XCTAssertEqual(rebased.status, .todo)

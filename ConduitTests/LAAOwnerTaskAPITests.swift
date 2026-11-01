@@ -10,7 +10,7 @@ final class LAAOwnerTaskAPITests: XCTestCase {
     private func task(_ status: LAAOwnerTaskStatus = .todo) -> LAAOwnerTask {
         LAAOwnerTask(id: id, title: "作業", memo: "残すメモ", status: status,
                      dueDate: LAAOwnerTaskDay("2026-11-10"), source: .agent,
-                     links: ["https://example.com"], updatedAt: Date(timeIntervalSince1970: 1), revision: 7)
+                     links: ["https://example.com"], updatedAt: Date(timeIntervalSince1970: 1), revision: "7")
     }
 
     private func json(_ request: LAAOwnerTaskRequest) throws -> [String: Any] {
@@ -45,6 +45,67 @@ final class LAAOwnerTaskAPITests: XCTestCase {
         XCTAssertEqual(try item.task(requiringDetail: true).memo, "本文")
         let bad = Data(String(decoding: bytes, as: UTF8.self).replacingOccurrences(of: "\"revision\":3", with: "\"revision\":0").utf8)
         XCTAssertThrowsError(try JSONDecoder().decode(LAAOwnerTaskWire.self, from: bad).task(requiringDetail: true))
+    }
+
+    func testOpaqueRevisionIsRoundTrippedInIfMatch() throws {
+        let bytes = Data("""
+        {"id":"aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee","title":"作業","memo":"本文","links":[],
+         "status":"doing","dueDate":null,"source":"agent","updatedAt":"2026-11-01T00:00:00Z","revision":"e3-17"}
+        """.utf8)
+        let wire = try JSONDecoder().decode(LAAOwnerTaskWire.self, from: bytes)
+        let current = try wire.task(requiringDetail: true)
+        XCTAssertEqual(current.revision.value, "e3-17")
+        var draft = LAAOwnerTaskDraft(task: current)
+        draft.title = "変更"
+        let request = try LAAOwnerTaskRequest.update(draft, deviceID: "device-a", key: "key-opaque")
+        XCTAssertEqual(request.ifMatch, "\"e3-17\"")
+        let unsafe = Data(String(decoding: bytes, as: UTF8.self)
+            .replacingOccurrences(of: "\"e3-17\"", with: "\"bad\\\"etag\"").utf8)
+        XCTAssertThrowsError(try JSONDecoder().decode(LAAOwnerTaskWire.self, from: unsafe))
+    }
+
+    func testLegacyIntegerRevisionRemainsReadableInStoredDraft() throws {
+        let original = LAAOwnerTaskDraft(task: task())
+        let encoded = try JSONEncoder().encode(original)
+        let legacy = Data(String(decoding: encoded, as: UTF8.self)
+            .replacingOccurrences(of: "\"revision\":\"7\"", with: "\"revision\":7").utf8)
+        XCTAssertTrue(String(decoding: legacy, as: UTF8.self).contains("\"revision\":7"))
+        let restored = try JSONDecoder().decode(LAAOwnerTaskDraft.self, from: legacy)
+        XCTAssertEqual(restored, original)
+        var changed = restored
+        changed.title = "変更"
+        let request = try LAAOwnerTaskRequest.update(changed, deviceID: "device-a", key: "legacy")
+        XCTAssertEqual(request.ifMatch, "\"7\"")
+        let encodedRequest = try JSONEncoder().encode(request)
+        let legacyRequest = Data(String(decoding: encodedRequest, as: UTF8.self)
+            .replacingOccurrences(of: "\"revision\":\"7\"", with: "\"revision\":7").utf8)
+        XCTAssertTrue(String(decoding: legacyRequest, as: UTF8.self).contains("\"revision\":7"))
+        XCTAssertEqual(try JSONDecoder().decode(LAAOwnerTaskRequest.self, from: legacyRequest), request)
+    }
+
+    func testConflictKeepsOriginalCreationAndPreventsRetryAfterRestart() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("drafts.json")
+        let store = ComposerDraftStore(capacity: .max, fileURL: file)
+        var draft = LAAOwnerTaskDraft(id: id); draft.title = "復元前の入力"
+        XCTAssertTrue(LAAOwnerTaskLocalDrafts.save(draft, in: store, deviceID: "device-a"))
+        let original = try LAAOwnerTaskRequest.create(draft, deviceID: "device-a", key: "old-generation-key")
+        XCTAssertTrue(LAAOwnerTaskOutbox.canRetry(original))
+        let item = try XCTUnwrap(LAAOwnerTaskOutbox.reserve(original, in: store))
+        XCTAssertTrue(LAAOwnerTaskOutbox.markConflict(item, in: store))
+        let restoredStore = ComposerDraftStore(capacity: .max, fileURL: file)
+        let restoredItem = try XCTUnwrap(LAAOwnerTaskOutbox.entries(in: restoredStore).first)
+        let restored = try XCTUnwrap(LAAOwnerTaskOutbox.request(restoredItem))
+        XCTAssertEqual(restored.draft, draft)
+        XCTAssertEqual(restored.taskID, original.taskID)
+        XCTAssertEqual(restored.key, original.key)
+        XCTAssertEqual(restored.body, original.body)
+        XCTAssertFalse(LAAOwnerTaskOutbox.canRetry(restored))
+        XCTAssertTrue(LAAOwnerTaskOutbox.restoreRejected(restoredItem, in: restoredStore))
+        XCTAssertEqual(LAAOwnerTaskLocalDrafts.read(restoredStore, deviceID: "device-a", taskID: id), .saved(draft))
+        XCTAssertTrue(LAAOwnerTaskOutbox.entries(in: restoredStore).isEmpty)
     }
 
     func testPagesCompleteOnlyWhenEverySummaryIsPresent() throws {
