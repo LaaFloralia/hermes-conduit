@@ -88,19 +88,13 @@ struct LAAWorkSessionDetail: View {
             Text(verbatim: session.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
             Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase) + " " + LAAWorkPresentation.phase(session.phase))
                 .foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(session.phase) ? LAAColor.attention : LAAColor.link)
-            Text(verbatim: "プロジェクト: " + (projects.first { $0.id == session.projectId }?.name ?? (session.projectId == nil ? "なし" : "未確認")))
-            Text(verbatim: "作業場所: " + workspace(session.workspaceId))
-            Text(verbatim: "要求: " + (session.requested?.display ?? "未確認"))
-            Text(verbatim: "観測: " + (session.observed?.display ?? "未確認"))
+            Text(verbatim: session.observed?.model ?? session.requested?.model ?? "モデル未確認")
+                .foregroundStyle(LAAColor.secondaryText)
             if session.modelMismatch {
                 Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
             } else if session.runtimeVerified != true {
                 Text(verbatim: "○ 実行時のモデルは未確認です。系統や設定の一致だけでは確定しません。")
                     .foregroundStyle(LAAColor.secondaryText)
-            }
-            if let version = session.instructionVersion {
-                Text(verbatim: "プロジェクト指示版: \(version) · \(session.instructionHash ?? "ハッシュ未確認")")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Text(verbatim: "最終活動: " + LAAWorkPresentation.date(session.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         }.laaTextStyle(.secondary).workCard()

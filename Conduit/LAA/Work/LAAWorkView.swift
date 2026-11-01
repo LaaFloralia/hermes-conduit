@@ -195,28 +195,17 @@ struct LAAWorkView: View {
                             Text(verbatim: LAAWorkPresentation.phaseSymbol(row.session.phase) + " " + LAAWorkPresentation.phase(row.session.phase))
                                 .laaTextStyle(.secondary).foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(row.session.phase) ? LAAColor.attention : LAAColor.link)
                         }
-                        if row.session.resumedFrom != nil {
-                            Text(verbatim: "後継セッション").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        }
                         if (!projectFilter.isEmpty && row.session.projectId != projectFilter) ||
                             (!phaseFilter.isEmpty && row.session.phase != phaseFilter) {
-                            Text(verbatim: "親セッション（階層を表示するため含む）")
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            Text(verbatim: "親セッション").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        Text(verbatim: projectName(row.session.projectId) + " · " + workspaceName(row.session.workspaceId))
+                        Text(verbatim: (row.session.observed?.model ?? row.session.requested?.model ?? "モデル未確認") +
+                             (row.session.runtimeVerified == true ? "" : "（実行時未確認）") + " · " + LAAWorkPresentation.date(row.session.updatedAt))
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        Text(verbatim: "要求: " + (row.session.requested?.display ?? "未確認"))
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        Text(verbatim: "観測: " + (row.session.observed?.display ?? "未確認"))
-                            .laaTextStyle(.secondary).foregroundStyle(row.session.modelMismatch ? LAAColor.attention : LAAColor.secondaryText)
                         if row.session.modelMismatch {
                             Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                        } else if row.session.runtimeVerified != true {
-                            Text(verbatim: "○ 実行時のモデルは未確認").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        Text(verbatim: "最終活動 " + LAAWorkPresentation.date(row.session.updatedAt))
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                     .padding(.leading, CGFloat(row.depth) * LAASpacing.x3)
                     .workListRow()

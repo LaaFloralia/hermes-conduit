@@ -3748,3 +3748,20 @@ and rollback instructions · the upstream App Store build
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
 **Checked:** 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+
+
+## LAA Work session presentation
+
+**Siblings:** Work session list and filters · session detail and model verification · Bridge session observations · upstream chats
+
+**Code**
+- List and detail: `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
+- Tests: `ConduitTests/LAAWorkTests.swift`
+
+**Rulings**
+- Session rows show the session name, phase, model and last update; an unverified runtime model is labelled and a mismatch remains visible. Filtered ancestors remain labelled.
+
+**Open gaps**
+- Creation controls, complete conversation history and routine listing need the requested follow-up; light and dark snapshots require the simulator slot.
+
+**Checked:** 2026-11-01, based on 638a2af6; presentation change pending simulator verification.
