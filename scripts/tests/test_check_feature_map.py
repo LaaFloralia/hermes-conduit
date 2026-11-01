@@ -1,6 +1,7 @@
 """Regression coverage for scripts/check-feature-map.py."""
 
 import contextlib
+import glob
 import io
 import os
 import tempfile
@@ -38,7 +39,10 @@ class CheckFeatureMapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as notifier:
             for root, names in ((repo, files), (notifier, notifier_files)):
                 for name in names:
-                    path = os.path.join(root, name)
+                    path = os.path.join(root, name.replace("*", "fixture"))
+                    if name.endswith("/"):
+                        os.makedirs(path, exist_ok=True)
+                        continue
                     os.makedirs(os.path.dirname(path), exist_ok=True)
                     open(path, "w").close()
             for directory in directories:
@@ -63,7 +67,11 @@ class CheckFeatureMapTests(unittest.TestCase):
         self.assertEqual(check.shape_problems(text), [])
         self.assertEqual(self.run_check(text, files=local, notifier_files=notifier, directories=directories)[0], 0)
         for path in local:
-            self.assertTrue(os.path.isfile(os.path.join(ROOT, path)), path)
+            local_path = os.path.join(ROOT, path)
+            if glob.has_magic(path):
+                self.assertTrue(any(os.path.isfile(match) for match in glob.glob(local_path)), path)
+            else:
+                self.assertTrue(os.path.isfile(local_path), path)
         for path in directories:
             self.assertTrue(os.path.isdir(os.path.join(ROOT, path)), path)
 
@@ -81,6 +89,18 @@ class CheckFeatureMapTests(unittest.TestCase):
         code, out = self.run_check(ENTRY, notifier_files=())
         self.assertEqual(code, 1)
         self.assertIn("notifier/clarify_loop.py isn't on hermes-conduit-notifier main", out)
+
+    def test_an_existing_local_directory_passes(self):
+        text = ENTRY.replace("`Conduit/Views/ChatView.swift`", "`Conduit/Views/`")
+        code, out = self.run_check(text, files=("Conduit/Views/",))
+        self.assertEqual(code, 0, out)
+
+    def test_a_local_file_pattern_requires_a_match(self):
+        text = ENTRY.replace("`Conduit/Views/ChatView.swift`", "`Conduit/Views/Chat*.swift`")
+        code, out = self.run_check(text, files=("Conduit/Views/ChatOne.swift",))
+        self.assertEqual(code, 0, out)
+        code, out = self.run_check(text, files=("Conduit/Views/Other.swift",))
+        self.assertEqual(code, 1, out)
 
     def test_a_notifier_directory_fails(self):
         code, out = self.run_check(ENTRY.replace("`notifier/clarify_loop.py`", "`notifier/skills/`"))

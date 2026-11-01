@@ -589,19 +589,23 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 ## LAA Work tab
 
-The LAA build's Bridge-backed session, project and read-only Linear task views.
+The LAA build's Bridge-backed session, project and owner-task views.
 
 **Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
-store · the session and project API · the Linear task read API
+store · the session and project API · the owner-task API
 
 **Code**
 - Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
   `Conduit/LAA/Work/LAAWorkCopy.swift`
+- Owner tasks: `Conduit/LAA/Work/LAAOwnerTasksView.swift`,
+  `Conduit/LAA/Work/LAAOwnerTaskAPI.swift`, `Conduit/LAA/Work/LAAOwnerTaskOutbox.swift`,
+  `Conduit/LAA/Work/LAAOwnerTaskLocalDrafts.swift`
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
-- Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitUITests/LAAWorkUITests.swift`
+- Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
+  `ConduitUITests/LAAWorkUITests.swift`
 
 **Rulings**
 - Session and successor writes keep the exact body, request ID and idempotency
@@ -615,18 +619,29 @@ store · the session and project API · the Linear task read API
   both the user's edit and the current version for an explicit choice. A name
   change alone does not replace shared instructions. Legacy references are
   shown as unapplied metadata and can only be explicitly cleared.
-- Linear is the source of truth and tasks are read-only. Pending decisions are
-  read-only until Task 15; routines remain a placeholder.
+- The Tasks section shows owner tasks from the Mac, not Linear issues. A row
+  opens title, memo and due-date editing; inline creation and absolute-state
+  checkboxes use the owner-task contract. Completed and canceled rows collapse.
+  Conditional updates preserve untouched fields. Drafts and uncertain writes
+  survive offline use; a replay keeps the UUID, body and key, and moving a
+  request to another device requires an explicit choice and does not send it.
+  Revisions are opaque; a 409 keeps the input and requires an explicit choice
+  before it becomes an editable draft again.
+  Routines remain a placeholder.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
+- Owner-task UI, accessibility and live integration await the parent's single
+  integrated simulator gate, Bridge integration and real-account checks.
 
 **Checked:** 2026-10-29, 67166210. Signed Simulator tests covered pairing,
 sections, workspace entry, durable composer draft, empty, 503 and offline
 states. Against the real Bridge, a scratch session was created, messaged,
 stopped and resumed; artifacts and a stale If-Match 412 were read back.
 Injected event-history gaps and resynchronization also reread the snapshot.
+Owner tasks: Swift fixtures and Swift-to-Bridge fixtures passed; device UI and
+the integrated Bridge have not yet been verified.
 
 ## Voice beside the tabs
 
