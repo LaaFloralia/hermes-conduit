@@ -118,12 +118,14 @@ struct LAAOwnerTaskEditor: View {
     @State private var draft: LAAOwnerTaskDraft
     @State private var linkFields: [LinkField]
     @State private var validationMessage: String?
+    let onChange: (LAAOwnerTaskDraft) -> Void
     let save: (LAAOwnerTaskDraft) -> Void
 
-    init(task: LAAOwnerTask?, save: @escaping (LAAOwnerTaskDraft) -> Void) {
-        let draft = LAAOwnerTaskDraft(task: task)
+    init(draft: LAAOwnerTaskDraft, onChange: @escaping (LAAOwnerTaskDraft) -> Void,
+         save: @escaping (LAAOwnerTaskDraft) -> Void) {
         _draft = State(initialValue: draft)
         _linkFields = State(initialValue: draft.links.map { LinkField(value: $0) })
+        self.onChange = onChange
         self.save = save
     }
 
@@ -165,19 +167,28 @@ struct LAAOwnerTaskEditor: View {
             }
             .navigationTitle(draft.base == nil ? "New Task" : "Edit Task")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { saveIfValid() }
                         .accessibilityIdentifier("work.ownerTasks.editor.save")
                 }
             }
+            .onChange(of: draft) { _, _ in publishDraft() }
+            .onChange(of: linkFields.map(\.value)) { _, _ in publishDraft() }
         }
         .accessibilityIdentifier("work.ownerTasks.editor")
     }
 
-    private func saveIfValid() {
+    private func currentDraft() -> LAAOwnerTaskDraft {
         var result = draft
         result.links = linkFields.map(\.value)
+        return result
+    }
+
+    private func publishDraft() { onChange(currentDraft()) }
+
+    private func saveIfValid() {
+        let result = currentDraft()
         do {
             try result.validate()
             validationMessage = nil
@@ -191,6 +202,67 @@ struct LAAOwnerTaskEditor: View {
         } catch {
             validationMessage = "入力内容を確認してください。"
         }
+    }
+}
+
+struct LAAOwnerTaskConflictContent: View {
+    let conflict: LAAOwnerTaskConflict
+    let useCurrent: () -> Void
+    let saveMine: (LAAOwnerTaskDraft) -> Void
+    let keepDraft: () -> Void
+    @State private var confirmUseCurrent = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                Text(verbatim: "保存中にタスクが更新されました。変更した項目を比較して選んでください。")
+                if conflict.changedFields.isEmpty {
+                    Text(verbatim: "自分で変更した項目はありません。")
+                        .foregroundStyle(LAAColor.secondaryText)
+                }
+                ForEach(conflict.changedFields) { field in
+                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                        Text(verbatim: field.label).fontWeight(.semibold)
+                        Text(verbatim: "現在の内容").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        value(conflict.currentValue(for: field))
+                        Text(verbatim: "自分の入力").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        value(conflict.draftValue(for: field))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .workCard()
+                    .accessibilityIdentifier("work.ownerTasks.conflict.\(field.rawValue)")
+                }
+                Text(verbatim: "自分の変更を保存する場合、変更していない項目には現在の内容を使います。")
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                Button("Save My Changes to This Version") { saveMine(conflict.rebasedDraft()) }
+                    .buttonStyle(.borderedProminent).disabled(!canSaveMine)
+                    .accessibilityIdentifier("work.ownerTasks.conflict.saveMine")
+                Button("Use Current Version") { confirmUseCurrent = true }
+                    .accessibilityIdentifier("work.ownerTasks.conflict.useCurrent")
+                Button("Keep Draft", action: keepDraft)
+                    .accessibilityIdentifier("work.ownerTasks.conflict.keep")
+            }
+            .padding(.horizontal, LAASpacing.horizontal)
+            .padding(.vertical, LAASpacing.x4)
+            .frame(maxWidth: 720, alignment: .leading)
+        }
+        .navigationTitle("Compare Changes")
+        .confirmationDialog("現在の内容を使いますか？", isPresented: $confirmUseCurrent, titleVisibility: .visible) {
+            Button("自分の入力を破棄して現在の内容を使う", role: .destructive, action: useCurrent)
+            Button("Keep Draft", role: .cancel) { }
+        } message: {
+            Text(verbatim: "自分の入力は端末から破棄されます。")
+        }
+        .accessibilityIdentifier("work.ownerTasks.conflict")
+    }
+
+    private var canSaveMine: Bool {
+        guard !conflict.changedFields.isEmpty else { return false }
+        do { try conflict.rebasedDraft().validate(); return true } catch { return false }
+    }
+
+    private func value(_ text: String) -> some View {
+        Text(verbatim: text.isEmpty ? "（なし）" : text).textSelection(.enabled)
     }
 }
 #endif

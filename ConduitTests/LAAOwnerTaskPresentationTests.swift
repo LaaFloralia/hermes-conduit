@@ -91,5 +91,68 @@ final class LAAOwnerTaskPresentationTests: XCTestCase {
         draft.links.removeLast()
         XCTAssertNoThrow(try draft.validate())
     }
+
+    func testDraftArchivePreservesIncompleteEditsIdentityAndBase() throws {
+        let original = task(1, .canceled, due: "2026-11-01", updated: 20)
+        var draft = LAAOwnerTaskDraft(task: original)
+        draft.title = ""
+        draft.memo = "一時保存の本文\n"
+        draft.dueDateText = "2026-02-"
+        draft.links = ["custom://kept", ""]
+        let encoded = try LAAOwnerTaskDraftArchive.encode(draft)
+        XCTAssertEqual(try LAAOwnerTaskDraftArchive.decode(encoded), draft)
+        XCTAssertThrowsError(try LAAOwnerTaskDraftArchive.decode(String(encoded.dropLast())))
+    }
+
+    func testDraftArchiveRejectsUnknownVersionAndMismatchedIdentity() throws {
+        let encoded = try LAAOwnerTaskDraftArchive.encode(LAAOwnerTaskDraft(task: task(1, .todo, updated: 1)))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(encoded.utf8)) as? [String: Any])
+        var newer = object
+        newer["version"] = 2
+        let newerData = try JSONSerialization.data(withJSONObject: newer)
+        XCTAssertThrowsError(try LAAOwnerTaskDraftArchive.decode(String(decoding: newerData, as: UTF8.self)))
+
+        var mismatched = object
+        var savedDraft = try XCTUnwrap(mismatched["draft"] as? [String: Any])
+        savedDraft["id"] = UUID().uuidString
+        mismatched["draft"] = savedDraft
+        let mismatchedData = try JSONSerialization.data(withJSONObject: mismatched)
+        XCTAssertThrowsError(try LAAOwnerTaskDraftArchive.decode(String(decoding: mismatchedData, as: UTF8.self)))
+    }
+
+    func testConflictRebasePreservesRemoteChangesToUntouchedFields() throws {
+        let id = UUID()
+        let base = LAAOwnerTask(id: id, title: "元の題名", memo: "元のメモ", status: .canceled,
+                                dueDate: LAAOwnerTaskDay("2026-11-01"), source: .owner,
+                                links: ["https://old.example"], updatedAt: Date(timeIntervalSince1970: 1), revision: 3)
+        let current = LAAOwnerTask(id: id, title: "他の人の題名", memo: "他の人のメモ", status: .canceled,
+                                   dueDate: LAAOwnerTaskDay("2026-12-01"), source: .owner,
+                                   links: ["https://new.example"], updatedAt: Date(timeIntervalSince1970: 2), revision: 4)
+        var draft = LAAOwnerTaskDraft(task: base)
+        draft.memo = "自分のメモ\n"
+        draft.status = .todo
+        draft.dueDateText = ""
+        let conflict = try XCTUnwrap(LAAOwnerTaskConflict(draft: draft, current: current))
+        XCTAssertEqual(conflict.changedFields, [.memo, .status, .dueDate])
+        XCTAssertEqual(conflict.currentValue(for: .memo), "他の人のメモ")
+        XCTAssertEqual(conflict.draftValue(for: .memo), "自分のメモ\n")
+        let rebased = conflict.rebasedDraft()
+        XCTAssertEqual(rebased.id, id)
+        XCTAssertEqual(rebased.base, current)
+        XCTAssertEqual(rebased.base?.revision, 4)
+        XCTAssertEqual(rebased.title, "他の人の題名")
+        XCTAssertEqual(rebased.memo, "自分のメモ\n")
+        XCTAssertEqual(rebased.status, .todo)
+        XCTAssertEqual(rebased.dueDateText, "")
+        XCTAssertEqual(rebased.links, ["https://new.example"])
+        XCTAssertNoThrow(try rebased.validate())
+    }
+
+    func testConflictRejectsDifferentTaskAndCreationDraft() {
+        let original = task(1, .todo, updated: 1)
+        let different = task(2, .todo, updated: 2)
+        XCTAssertNil(LAAOwnerTaskConflict(draft: LAAOwnerTaskDraft(task: original), current: different))
+        XCTAssertNil(LAAOwnerTaskConflict(draft: LAAOwnerTaskDraft(), current: original))
+    }
 }
 #endif

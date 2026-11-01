@@ -3,7 +3,7 @@ import Foundation
 
 // These are presentation models. Wire decoding and request encoding belong to the
 // Bridge adapter, whose contract is maintained separately.
-enum LAAOwnerTaskStatus: String, CaseIterable, Identifiable {
+enum LAAOwnerTaskStatus: String, CaseIterable, Identifiable, Codable {
     case todo
     case doing
     case done
@@ -25,7 +25,7 @@ enum LAAOwnerTaskStatus: String, CaseIterable, Identifiable {
 
 /// A calendar day, with no time or timezone. Invalid or noncanonical days are
 /// rejected instead of being silently normalized by a date formatter.
-struct LAAOwnerTaskDay: Equatable, Comparable {
+struct LAAOwnerTaskDay: Equatable, Comparable, Codable {
     let value: String
 
     init?(_ value: String) {
@@ -48,9 +48,23 @@ struct LAAOwnerTaskDay: Equatable, Comparable {
     }
 
     static func < (lhs: Self, rhs: Self) -> Bool { lhs.value < rhs.value }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        guard let day = Self(value) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid task day")
+        }
+        self = day
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
 }
 
-enum LAAOwnerTaskSource: String {
+enum LAAOwnerTaskSource: String, Codable {
     case owner
     case agent
     case linearImport = "linear_import"
@@ -74,7 +88,7 @@ enum LAAOwnerTaskLink {
     }
 }
 
-struct LAAOwnerTask: Identifiable, Equatable {
+struct LAAOwnerTask: Identifiable, Equatable, Codable {
     let id: UUID
     let title: String
     let memo: String
@@ -109,7 +123,7 @@ struct LAAOwnerTaskGroups {
     }
 }
 
-struct LAAOwnerTaskDraft: Equatable {
+struct LAAOwnerTaskDraft: Equatable, Codable {
     enum ValidationError: Error, Equatable {
         case missingTitle
         case invalidDueDate
@@ -145,6 +159,109 @@ struct LAAOwnerTaskDraft: Equatable {
         guard links.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
             throw ValidationError.emptyLink
         }
+    }
+}
+
+struct LAAOwnerTaskConflict {
+    enum Field: String, CaseIterable, Identifiable {
+        case title, memo, status, dueDate, links
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .title: return "題名"
+            case .memo: return "メモ"
+            case .status: return "状態"
+            case .dueDate: return "期限"
+            case .links: return "関連リンク"
+            }
+        }
+    }
+
+    let draft: LAAOwnerTaskDraft
+    let current: LAAOwnerTask
+    private let base: LAAOwnerTask
+
+    init?(draft: LAAOwnerTaskDraft, current: LAAOwnerTask) {
+        guard let base = draft.base, base.id == draft.id, current.id == draft.id else { return nil }
+        self.draft = draft
+        self.current = current
+        self.base = base
+    }
+
+    var changedFields: [Field] {
+        Field.allCases.filter { field in
+            switch field {
+            case .title: return draft.title != base.title
+            case .memo: return draft.memo != base.memo
+            case .status: return draft.status != base.status
+            case .dueDate: return draft.dueDateText != (base.dueDate?.value ?? "")
+            case .links: return draft.links != base.links
+            }
+        }
+    }
+
+    func currentValue(for field: Field) -> String {
+        switch field {
+        case .title: return current.title
+        case .memo: return current.memo
+        case .status: return current.status.label
+        case .dueDate: return current.dueDate?.value ?? ""
+        case .links: return current.links.joined(separator: "\n")
+        }
+    }
+
+    func draftValue(for field: Field) -> String {
+        switch field {
+        case .title: return draft.title
+        case .memo: return draft.memo
+        case .status: return draft.status.label
+        case .dueDate: return draft.dueDateText
+        case .links: return draft.links.joined(separator: "\n")
+        }
+    }
+
+    /// Preserve remote changes to untouched fields. The caller still needs a
+    /// new conditional request and an explicit decision before saving.
+    func rebasedDraft() -> LAAOwnerTaskDraft {
+        var result = LAAOwnerTaskDraft(task: current)
+        for field in changedFields {
+            switch field {
+            case .title: result.title = draft.title
+            case .memo: result.memo = draft.memo
+            case .status: result.status = draft.status
+            case .dueDate: result.dueDateText = draft.dueDateText
+            case .links: result.links = draft.links
+            }
+        }
+        return result
+    }
+}
+
+/// Versioned local editor state; this is not a Bridge request format.
+enum LAAOwnerTaskDraftArchive {
+    private struct Record: Codable {
+        let version: Int
+        let draft: LAAOwnerTaskDraft
+    }
+
+    enum ArchiveError: Error {
+        case unsupportedVersion
+        case inconsistentIdentity
+        case invalidText
+    }
+
+    static func encode(_ draft: LAAOwnerTaskDraft) throws -> String {
+        let data = try JSONEncoder().encode(Record(version: 1, draft: draft))
+        guard let text = String(data: data, encoding: .utf8) else { throw ArchiveError.invalidText }
+        return text
+    }
+
+    static func decode(_ text: String) throws -> LAAOwnerTaskDraft {
+        guard let data = text.data(using: .utf8) else { throw ArchiveError.invalidText }
+        let record = try JSONDecoder().decode(Record.self, from: data)
+        guard record.version == 1 else { throw ArchiveError.unsupportedVersion }
+        if let base = record.draft.base, base.id != record.draft.id { throw ArchiveError.inconsistentIdentity }
+        return record.draft
     }
 }
 #endif
