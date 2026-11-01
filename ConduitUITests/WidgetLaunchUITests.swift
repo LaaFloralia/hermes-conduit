@@ -95,6 +95,16 @@ final class WidgetLaunchUITests: XCTestCase {
         }
     }
 
+    func testCielUncensoredWidgetOpensItsConversation() throws {
+        let profile = "laa-ciel-uncensored"
+        let app = launchApp(coldURL: employeeURL(action: "employeeChat", profile: profile))
+        let conversation = app.otherElements[Identity.conversationOutcome]
+        XCTAssertTrue(conversation.waitForExistence(timeout: 15), tree(app))
+        XCTAssertEqual(app.otherElements[Identity.workspaceOutcome].value as? String, profile)
+        XCTAssertEqual(conversation.value as? String, Identity.sessionID)
+        XCTAssertFalse(app.otherElements["widgetUITestVoicePath"].exists)
+    }
+
     private func employeeURL(action: String, profile: String) -> URL {
         var components = URLComponents()
         components.scheme = "conduit"
