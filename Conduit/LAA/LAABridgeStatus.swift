@@ -124,12 +124,12 @@ final class LAABridgeSession: ObservableObject {
     /// Use wait + 10 seconds as the timeout for a long-poll request.
     func request<T: Decodable>(method: String, path: String, jsonBody: Data? = nil,
                                idempotencyKey: LAABridgeIdempotencyKey? = nil, ifMatch: String? = nil,
-                               timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
+                               ifNoneMatch: String? = nil, timeout: TimeInterval? = nil) async throws -> LAABridgeResponse<T> {
         guard let current = credentials, status == .paired else { throw LAABridgeError.unauthorized }
         do {
             let result: LAABridgeResponse<T> = try await client.request(
                 method: method, path: path, jsonBody: jsonBody, credentials: current,
-                idempotencyKey: idempotencyKey, ifMatch: ifMatch, timeout: timeout)
+                idempotencyKey: idempotencyKey, ifMatch: ifMatch, ifNoneMatch: ifNoneMatch, timeout: timeout)
             guard current == credentials, status == .paired else { throw CancellationError() }
             return result
         } catch let error as LAABridgeHTTPError {
