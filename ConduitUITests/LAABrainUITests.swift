@@ -410,7 +410,7 @@ final class LAABrainUITests: XCTestCase {
         backToHistory.tap()
         app.buttons["laa.brain.history.close"].tap()
         app.buttons["laa.brain.recovery.clearMissing"].tap()
-        app.alerts.buttons["laa.brain.recovery.confirmClearMissing"].tap()
+        app.alerts.firstMatch.buttons["laa.brain.recovery.confirmClearMissing"].firstMatch.tap()
         XCTAssertTrue(editor.waitForExistence(timeout: 15))
         app.buttons["laa.brain.history"].tap()
         XCTAssertTrue(draft.waitForExistence(timeout: 10))

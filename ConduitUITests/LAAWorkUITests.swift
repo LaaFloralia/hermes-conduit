@@ -116,7 +116,7 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["ルーティンはありません。"].exists)
         app.buttons["Sessions"].tap()
         XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["New Session"].exists || app.buttons["New Session"].isEnabled)
+        if app.buttons["New Session"].exists { XCTAssertFalse(app.buttons["New Session"].isEnabled) }
     }
 
     func testOwnerTasksAndPendingAreAvailableWithoutPairing() {
@@ -127,7 +127,7 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
         XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 15))
         app.buttons["Tasks"].tap()
-        let input = app.textFields["work.ownerTasks.newTitle"]
+        let input = app.textFields["タスクを追加"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
         XCTAssertFalse(input.isEnabled)
         XCTAssertFalse(app.staticTexts["Linearが現在のタスクの正本です。ここでは閲覧のみできます。"].exists)

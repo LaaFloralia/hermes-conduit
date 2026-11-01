@@ -69,6 +69,8 @@ final class LAAChromeUITests: XCTestCase {
                 XCTAssertTrue(app.buttons["settings.chat"].waitForExistence(timeout: 10), tab)
                 app.buttons["Close Settings"].tap()
             }
+            let usage = app.buttons["AI usage"]
+            XCTAssertTrue(usage.waitForExistence(timeout: 10)); usage.tap()
             let pairing = app.buttons["laa.bridge.openPairing"]
             XCTAssertTrue(pairing.waitForExistence(timeout: 10))
             pairing.tap()
