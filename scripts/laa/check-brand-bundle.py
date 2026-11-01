@@ -25,7 +25,11 @@ NOTICE_SOURCE = Path(__file__).resolve().parents[2] / "assets/laa" / NOTICE_NAME
 # Internal metadata names identify Swift types / intents and are not display
 # strings. They are kept to preserve registered shortcuts and compatibility.
 INTERNAL_METADATA_KEYS = {"identifier", "bundleidentifier", "typeidentifier", "typename",
-                          "mangledtypename", "classname", "symbolname", "qualifiedtypename"}
+                          "mangledtypename", "classname", "symbolname", "qualifiedtypename",
+                          "fullyqualifiedtypename", "mangledtypenamev2", "autoshortcutprovidermangledname",
+                          "actionidentifier", "defaultqueryidentifier", "entitytype",
+                          "fullyqualifiedidentifier", "querytype"}
+METADATA_IDENTIFIER = re.compile(r"[A-Za-z0-9_.$]+")
 # Registered app links and App Group IDs are identifiers, not display copy.
 # Do not exempt web links: an upstream web address in a compiled display
 # value is still an upstream link, even when it is the entire value.
@@ -33,6 +37,10 @@ INTERNAL_VALUE = re.compile(r"^(?:(?:conduit|conduitwatch)://[A-Za-z0-9._~:/?#\[
 # The retained deep-link scheme can occur inside a model-facing prompt.
 # Ignore only the link, never neighboring visible product names.
 INTERNAL_LINK = re.compile(r"(?<![A-Za-z0-9_])conduit://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%+-]+", re.I)
+# Xcode's shortcut YAML uses these type names to connect utterances to the
+# already-registered intent. They are not words spoken or displayed to users.
+YAML_INTERNAL_NAME = re.compile(r"\s*-?\s*name:\s*(?:SendToHermesIntent_\d+|ConduitProfileEntity)\s*")
+YAML_PROFILE_PARAMETER = "${ConduitProfileEntity}"
 
 
 class CheckError(Exception):
@@ -63,7 +71,8 @@ def scan_values(value, path, issues, key="", metadata=False):
     if isinstance(value, dict):
         for child_key, child in value.items():
             child_key = str(child_key)
-            if metadata and child_key.lower() in INTERNAL_METADATA_KEYS:
+            if (metadata and child_key.lower() in INTERNAL_METADATA_KEYS and isinstance(child, str)
+                    and METADATA_IDENTIFIER.fullmatch(child)):
                 continue
             scan_values(child, path, issues, child_key, metadata)
     elif isinstance(value, list):
@@ -73,6 +82,34 @@ def scan_values(value, path, issues, key="", metadata=False):
         # Print only the resource and key, never the value (which may contain
         # addresses or other data in a future generated resource).
         issues.append(f"old brand in {path} (key: {key})")
+
+
+def scan_shortcuts_yaml(path, issues):
+    """Inspect Xcode's generated SSU YAML without a third-party parser.
+
+    Reject escaped or unfamiliar input instead of missing a name hidden in an
+    escape. Allow the registered parameter only inside shortcut utterances.
+    """
+    try:
+        content = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise CheckError(f"unreadable resource: {path}") from error
+    if not content.startswith("apiVersion: ssu/v1\n") or "\\" in content or "\t" in content:
+        raise CheckError(f"unsupported shortcut YAML: {path}")
+    utterance_indent = None
+    for number, line in enumerate(content.splitlines(), 1):
+        stripped = line.lstrip(" ")
+        indent = len(line) - len(stripped)
+        if stripped == "utterances:":
+            utterance_indent = indent
+        elif stripped and utterance_indent is not None and indent <= utterance_indent and not (indent == utterance_indent and stripped.startswith("- ")):
+            utterance_indent = None
+        if YAML_INTERNAL_NAME.fullmatch(line):
+            continue
+        if utterance_indent is not None and stripped.startswith("- "):
+            line = line.replace(YAML_PROFILE_PARAMETER, "")
+        if BRAND.search(INTERNAL_LINK.sub("", line)):
+            issues.append(f"old brand in {path} (line: {number})")
 
 
 def bundle_info(bundle):
@@ -138,7 +175,10 @@ def check_bundle(bundle):
             if not files:
                 raise CheckError(f"empty App Intents metadata: {part}")
             for resource in files:
-                scan_values(load_resource(resource), resource, issues, metadata=True)
+                if resource.name == "root.ssu.yaml":
+                    scan_shortcuts_yaml(resource, issues)
+                else:
+                    scan_values(load_resource(resource), resource, issues, metadata=True)
     return issues
 
 

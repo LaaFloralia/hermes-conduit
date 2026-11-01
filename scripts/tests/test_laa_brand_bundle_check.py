@@ -81,6 +81,35 @@ class LAABrandCheckTests(unittest.TestCase):
         write_plist(actions, {"typeName": "ConduitProfileEntity", "title": "Talk to Hermes"})
         self.assertTrue(checker.check_bundle(self.app))
 
+    def test_generated_shortcut_yaml_checks_titles_and_utterances(self):
+        yaml = self.app / "Metadata.appintents/root.ssu.yaml"
+        safe = ("apiVersion: ssu/v1\nnlu:\n  shortcuts:\n    intents:\n"
+                "    - metadata:\n        name: SendToHermesIntent_1\n        title: Talk to Ciel\n"
+                "      corpuses:\n        training:\n        - locale: en\n          utterances:\n"
+                "          - Talk to ${ConduitProfileEntity} in ${+applicationName}\n"
+                "- name: ConduitProfileEntity\n")
+        yaml.write_text(safe)
+        self.assertEqual(checker.check_bundle(self.app), [])
+        yaml.write_text(safe.replace("title: Talk to Ciel", "title: Talk to Hermes"))
+        self.assertTrue(checker.check_bundle(self.app))
+        yaml.write_text(safe.replace("Talk to ${ConduitProfileEntity}", "Talk to Conduit"))
+        self.assertTrue(checker.check_bundle(self.app))
+        yaml.write_text(safe.replace("title: Talk to Ciel", "title: ${ConduitProfileEntity}"))
+        self.assertTrue(checker.check_bundle(self.app))
+        yaml.write_text(safe + 'title: "C\\u006fnduit"\n')
+        with self.assertRaises(checker.CheckError):
+            checker.check_bundle(self.app)
+
+    def test_metadata_identifier_exceptions_do_not_hide_display_copy(self):
+        actions = self.app / "Metadata.appintents/extract.actionsdata"
+        write_plist(actions, {"fullyQualifiedTypeName": "Conduit.SomeIntent",
+                              "actionIdentifier": "SendToHermesIntent"})
+        self.assertEqual(checker.check_bundle(self.app), [])
+        write_plist(actions, {"actionIdentifier": "Open Hermes", "title": "Open Ciel"})
+        self.assertTrue(checker.check_bundle(self.app))
+        write_plist(actions, {"fullyQualifiedTypeName": "Conduit.SomeIntent", "title": "Open Hermes"})
+        self.assertTrue(checker.check_bundle(self.app))
+
     def test_missing_and_unreadable_resources_fail_closed(self):
         local = self.parts[checker.APP_ID + ".widgets"] / "en.lproj/Localizable.strings"
         local.unlink()

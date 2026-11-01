@@ -10,6 +10,17 @@ import AppIntents
 
 struct ConduitWatchShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        #if LAA_BUILD
+        AppShortcut(
+            intent: TalkToHermesIntent(),
+            phrases: [
+                "Talk to Ciel in \(.applicationName)",
+                "Start a \(.applicationName) call",
+            ],
+            shortTitle: "Talk to Ciel",
+            systemImageName: "waveform"
+        )
+        #else
         AppShortcut(
             intent: TalkToHermesIntent(),
             phrases: [
@@ -19,5 +30,6 @@ struct ConduitWatchShortcuts: AppShortcutsProvider {
             shortTitle: "Talk to Hermes",
             systemImageName: "waveform"
         )
+        #endif
     }
 }
