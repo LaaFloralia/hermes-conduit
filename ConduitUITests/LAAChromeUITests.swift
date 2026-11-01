@@ -203,6 +203,23 @@ final class LAAChromeUITests: XCTestCase {
         }
     }
 
+    func testVoiceSettingsOmitLegacyCallOrbControl() {
+        let app = launch("light")
+        let settings = app.buttons["laa.settings.open"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 30))
+        settings.tap()
+        let voice = app.buttons["settings.voice"]
+        XCTAssertTrue(voice.waitForExistence(timeout: 10))
+        if !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        voice.tap()
+        let advanced = app.buttons["voice.advancedToggle"]
+        for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }
+        XCTAssertTrue(advanced.isHittable)
+        if advanced.value as? String != "Expanded" { advanced.tap() }
+        XCTAssertFalse(app.switches["voice.animateCallOrb"].exists)
+        XCTAssertFalse(app.staticTexts["What the round button beside this profile's chats does. App setting follows Settings > Appearance."].exists)
+    }
+
     func testCallControlsAndCapture() throws {
         for appearance in ["light", "dark"] {
             let app = XCUIApplication()

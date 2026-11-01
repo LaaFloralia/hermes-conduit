@@ -1235,9 +1235,11 @@ struct VoiceSettingsView: View {
                 }
             }
             .onChange(of: model.choice) { _, newValue in chatVoiceButtonOverride = newValue }
+            #if !LAA_BUILD
             Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            #endif
         }
     }
 
@@ -1307,9 +1309,23 @@ struct VoiceSettingsView: View {
         }
     }
 
-    /// The experimental talk-over switch and the call orb, under Advanced.
+    /// LAA uses its own call screen, so it has no legacy orb preference.
+    @ViewBuilder
     private var speakerAndCallScreenSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Speaker and call screen"), symbol: "speaker.wave.2.circle", tint: .conduitAccent) {
+        #if LAA_BUILD
+        if speakerTalkOver != nil { speakerAndCallScreenControls }
+        #else
+        speakerAndCallScreenControls
+        #endif
+    }
+
+    private var speakerAndCallScreenControls: some View {
+        #if LAA_BUILD
+        let title = AppLocalization.string("Speaker")
+        #else
+        let title = AppLocalization.string("Speaker and call screen")
+        #endif
+        return ConduitSettingsSection(title: title, symbol: "speaker.wave.2.circle", tint: .conduitAccent) {
             if let speakerTalkOver {
                 Toggle("Talk over Hermes on the speaker", isOn: Binding(
                     get: { speakerTalkOverEnabled },
@@ -1323,6 +1339,7 @@ struct VoiceSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            #if !LAA_BUILD
             Toggle("Animate the call orb", isOn: $animateCallOrb)
                 .accessibilityIdentifier("voice.animateCallOrb")
                 .accessibilityHint("The orb on the live call screen moves with the call. Turn this off for a still orb that uses less battery. It also holds still while the phone is hot or Reduce Motion is on. Applies to this device.")
@@ -1331,6 +1348,7 @@ struct VoiceSettingsView: View {
                 .foregroundStyle(.secondary)
                 // The switch's hint already reads this.
                 .accessibilityHidden(true)
+            #endif
         }
     }
 
