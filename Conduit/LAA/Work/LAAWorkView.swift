@@ -8,7 +8,7 @@ struct LAAWorkView: View {
     @StateObject private var drafts = ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
     @State private var section = 0
     @State private var projects: [LAAWorkProject] = []
-    @State private var workspaces: [LAAWorkWorkspace] = []
+    private let workspaces: [LAAWorkWorkspace] = []
     @State private var sessions: [LAAWorkSession] = []
     @State private var routines: [LAAWorkRoutine] = []
     @State private var tasks: [LAAWorkTask] = []
@@ -21,9 +21,7 @@ struct LAAWorkView: View {
     @State private var taskProjectFilter = ""
     @State private var failure: String?
     @State private var isLoading = false
-    @State private var sessionContextReady = false
     @State private var showPairing = false
-    @State private var showNewSession = false
     @State private var showNewProject = false
     @State private var refreshID = 0
     @State private var loadID = UUID()
@@ -60,9 +58,6 @@ struct LAAWorkView: View {
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .sheet(isPresented: $showNewSession, onDismiss: { refreshID += 1 }) {
-            LAAWorkNewSessionView(projects: projects, workspaces: workspaces, drafts: drafts).environmentObject(bridge)
-        }
         .sheet(isPresented: $showNewProject, onDismiss: { refreshID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: projectInstructionsAvailable, drafts: drafts).environmentObject(bridge)
         }
@@ -78,9 +73,9 @@ struct LAAWorkView: View {
                 Text(verbatim: LAACopy.WorkTab.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
-            if section == 0 || section == 1 {
+            if section == 1 {
                 Button {
-                    if section == 0 { showNewSession = true } else { showNewProject = true }
+                    showNewProject = true
                 } label: {
                     Image(systemName: "plus")
                         .foregroundStyle(LAAColor.link)
@@ -89,9 +84,9 @@ struct LAAWorkView: View {
                         .overlay(Circle().stroke(LAAColor.separator))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: section == 0 ? LAACopy.WorkTab.newSession : LAACopy.WorkTab.newProject))
+                .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.newProject))
                 .accessibilityHint(Text(verbatim: bridge.status != .paired ? "Macへの接続が必要です。" : ""))
-                .disabled(bridge.status != .paired || (section == 0 && (!sessionContextReady || isLoading)))
+                .disabled(bridge.status != .paired)
             }
         }
     }
@@ -177,6 +172,8 @@ struct LAAWorkView: View {
 
     private var sessionList: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            Text(verbatim: "新しいセッションの作成は現在利用できません。")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: LAASpacing.x2) {
                     filter(LAACopy.WorkTab.projectFilter, selection: $projectFilter, values: projects.map { ($0.id, $0.name) })
@@ -320,11 +317,6 @@ struct LAAWorkView: View {
         guard let id else { return "プロジェクトなし" }
         return projects.first(where: { $0.id == id })?.name ?? "プロジェクト未確認"
     }
-    private func workspaceName(_ id: String) -> String {
-        guard let item = workspaces.first(where: { $0.id == id }) else { return "作業場所未確認" }
-        return (item.displayPath ?? item.path) + (item.branch.map { " · " + $0 } ?? "")
-    }
-
     @MainActor private func load() async {
         let id = UUID()
         loadID = id
@@ -335,13 +327,9 @@ struct LAAWorkView: View {
         defer { if loadID == id { isLoading = false } }
         do {
             if selected == 0 || selected == 1 {
-                sessionContextReady = false
                 let projectPage: [LAAWorkProject] = try await loadItems("/v1/projects")
-                let workspacePage: [LAAWorkWorkspace] = try await loadItems("/v1/workspaces")
                 guard !Task.isCancelled, loadID == id else { return }
                 projects = projectPage
-                workspaces = workspacePage
-                sessionContextReady = true
                 if let first = projectPage.first {
                     let detail: LAAWorkProject? = try? await bridge.read("/v1/projects/\(first.id)")
                     guard !Task.isCancelled, loadID == id else { return }

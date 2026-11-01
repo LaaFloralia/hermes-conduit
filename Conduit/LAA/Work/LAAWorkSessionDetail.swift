@@ -15,9 +15,7 @@ struct LAAWorkSessionDetail: View {
     @State private var cursor: String?
     @State private var notice: String?
     @State private var failure: String?
-    @State private var showResume = false
     @State private var stopping = false
-    @State private var successor: LAAWorkSession?
     @State private var historyGapSeen = false
     @State private var observationEpoch = 0
     @AppStorage(ChatTypography.preferenceKey) private var responseSize = ChatTypography.defaultSize.rawValue
@@ -68,19 +66,6 @@ struct LAAWorkSessionDetail: View {
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .sheet(isPresented: $showResume) {
-            NavigationStack {
-                LAAWorkMessageForm(sessionID: id, mode: .resume, drafts: drafts, canStart: true) { created in
-                    successor = created
-                    showResume = false
-                    Task { await refreshSnapshot() }
-                }
-                .padding(LAASpacing.x4)
-                .navigationTitle(Text(verbatim: LAACopy.WorkTab.successor))
-                .background(LAAColor.background)
-                .tint(LAAColor.link)
-            }.environmentObject(bridge)
-        }
         .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)") { await observe() }
     }
 
@@ -180,19 +165,12 @@ struct LAAWorkSessionDetail: View {
                     .foregroundStyle(LAAColor.attention)
                 Button(LAACopy.WorkTab.checkStop) { Task { await refreshSnapshot() } }
             } else if session.phase == "stopped" {
-                Text(verbatim: "再開は同じ作業場所・プロファイルの後継セッションです。履歴は自動では引き継がれません。")
+                Text(verbatim: "停止したセッションの再開は現在利用できません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Button(LAACopy.WorkTab.resume) { showResume = true }
-                    .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
-                    .foregroundStyle(LAAColor.filledButtonText)
             } else {
                 Button(LAACopy.WorkTab.stop) { beginStop() }.buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
             }
-            if let next = successor {
-                NavigationLink("\(LAACopy.WorkTab.successor): \(next.name)") {
-                    LAAWorkSessionDetail(id: next.id, projects: projects, workspaces: workspaces, drafts: drafts)
-                }
-            } else if let nextID = session.resumedTo {
+            if let nextID = session.resumedTo {
                 NavigationLink(LAACopy.WorkTab.openSuccessor) {
                     LAAWorkSessionDetail(id: nextID, projects: projects, workspaces: workspaces, drafts: drafts)
                 }

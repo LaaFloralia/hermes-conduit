@@ -10,7 +10,6 @@ struct LAAWorkProjectDetail: View {
     @State private var clearLegacyRefOnOpen = false
     @State private var error: String?
     @State private var sessions: [LAAWorkSession] = []
-    @State private var showNewSession = false
 
     init(project: LAAWorkProject, drafts: ComposerDraftStore, workspaces: [LAAWorkWorkspace] = []) {
         _current = State(initialValue: project); self.drafts = drafts; self.workspaces = workspaces
@@ -45,11 +44,9 @@ struct LAAWorkProjectDetail: View {
                         }
                     }.workCard()
                     Button(LAACopy.WorkTab.edit) { clearLegacyRefOnOpen = false; showEditor = true }.buttonStyle(.bordered)
-                    HStack {
-                        Text(verbatim: "セッション").laaTextStyle(.body).fontWeight(.semibold)
-                        Spacer()
-                        Button(LAACopy.WorkTab.newSession) { showNewSession = true }
-                    }
+                    Text(verbatim: "セッション").laaTextStyle(.body).fontWeight(.semibold)
+                    Text(verbatim: "新しいセッションの作成は現在利用できません。")
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     if sessions.isEmpty { Text(verbatim: "セッションはありません。").foregroundStyle(LAAColor.secondaryText) }
                     ForEach(sessions) { session in
                         NavigationLink {
@@ -71,10 +68,6 @@ struct LAAWorkProjectDetail: View {
         .sheet(isPresented: $showEditor, onDismiss: { Task { await load() } }) {
             LAAWorkProjectEditor(project: current, canEditInstructions: current.hasInstructionBody && current.instructionError == nil,
                                  drafts: drafts, clearLegacyRefInitially: clearLegacyRefOnOpen)
-                .environmentObject(bridge)
-        }
-        .sheet(isPresented: $showNewSession, onDismiss: { Task { await load() } }) {
-            LAAWorkNewSessionView(projects: [current], workspaces: workspaces, drafts: drafts, initialProjectID: current.id)
                 .environmentObject(bridge)
         }
         .task { await load() }
