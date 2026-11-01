@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import SwiftUI
 import UIKit
+import ImageIO
 
 struct LAAStudioHomeView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
@@ -10,6 +11,7 @@ struct LAAStudioHomeView: View {
     @State private var loading = false
     @State private var error: String?
     @State private var pairing = false
+    @State private var search = ""
     init(initialSection: Int = 0) { _section = State(initialValue: initialSection) }
     private var columns: [GridItem] {
         dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
@@ -18,9 +20,12 @@ struct LAAStudioHomeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             HStack(spacing: LAASpacing.x3) {
-                Picker("Studio", selection: $section) {
+                Picker(selection: $section) {
                     Text(verbatim: LAACopy.Studio.works).tag(0)
                     Text(verbatim: LAACopy.Studio.requests).tag(1)
+                    if snapshot?.supportsV2 == true { Text(verbatim: "Library").tag(2) }
+                } label: {
+                    Text(verbatim: "Studio")
                 }.pickerStyle(.segmented).frame(minHeight: LAASpacing.minimumTouchTarget)
                     .accessibilityIdentifier("laa.studio.section")
                 if let snapshot {
@@ -54,7 +59,13 @@ struct LAAStudioHomeView: View {
                 if let snapshot {
                     if !snapshot.online { Text(verbatim: LAACopy.Studio.disconnected).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
                     else if !snapshot.accepting { Text(verbatim: LAACopy.Studio.notAccepting).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
-                    if section == 0 { works(snapshot) } else { requests(snapshot) }
+                    if !snapshot.supportsV2 {
+                        Text(verbatim: "版・講評・原則の詳細は、このStudioでは利用できません。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                    if section == 0 { works(snapshot) }
+                    else if section == 1 { requests(snapshot) }
+                    else if snapshot.supportsV2 { LAAStudioCatalogView(snapshot: snapshot) }
                 }
             }
         }
@@ -63,13 +74,15 @@ struct LAAStudioHomeView: View {
         .task(id: bridge.revision) { await load() }
     }
     private func works(_ snapshot: LAAStudioSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Text(verbatim: LAACopy.Studio.works.uppercased()).laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-            if snapshot.projects.isEmpty { Text(verbatim: LAACopy.Studio.emptyWorks).foregroundStyle(LAAColor.secondaryText) }
+        let projects = snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+        return VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            Text(verbatim: "\(LAACopy.Studio.works.uppercased()) · \(projects.count)").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
+            TextField(text: $search) { Text(verbatim: "作品を検索") }.studioInputField().accessibilityIdentifier("laa.studio.work.search")
+            if projects.isEmpty { Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。").foregroundStyle(LAAColor.secondaryText) }
             else {
                 LazyVGrid(columns: columns, spacing: LAASpacing.x2) {
-                    ForEach(snapshot.projects) { project in
-                        NavigationLink { LAAStudioWorkView(project: project) } label: {
+                    ForEach(projects) { project in
+                        NavigationLink { LAAStudioWorkView(project: project, snapshot: snapshot) } label: {
                             VStack(alignment: .leading, spacing: LAASpacing.x2) {
                                 LAAStudioThumbnail(path: project.pages.first?.preview, symbol: "doc.richtext")
                                     .aspectRatio(1, contentMode: .fit)
@@ -121,7 +134,10 @@ struct LAAStudioHomeView: View {
     @MainActor private func load() async {
         guard LAAStudioData.available(bridge) else { snapshot = nil; return }
         loading = true; error = nil
-        do { snapshot = try await LAAStudioData.snapshot(bridge) }
+        do {
+            snapshot = try await LAAStudioData.snapshot(bridge)
+            if snapshot?.supportsV2 != true && section == 2 { section = 0 }
+        }
         catch is CancellationError { }
         catch { self.error = LAAStudioData.message(error) }
         loading = false
@@ -142,15 +158,28 @@ struct LAAStudioThumbnail: View {
     }
     @MainActor private func load() async {
         image = nil
-        guard let path = LAAStudioMedia.bridgePath(path) else { return }
+        guard let path = LAAStudioMedia.bridgePath(path, allowed: ["jpg", "png", "webp"]),
+              let suffix = path.split(separator: ".").last,
+              let mime = ["jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"][String(suffix)] else { return }
         do {
             var data = Data(); var total: Int64?
             repeat {
                 let part = try await bridge.driveRange(path: path, offset: Int64(data.count), length: LAADriveContent.chunkSize)
-                guard part.total <= 16 * 1024 * 1024, total == nil || total == part.total, !part.data.isEmpty else { return }
+                try Task.checkCancellation()
+                guard part.total > 0, part.total <= 16 * 1024 * 1024, total == nil || total == part.total,
+                      part.mimeType?.lowercased() == mime,
+                      !part.data.isEmpty, Int64(part.data.count) <= part.total - Int64(data.count) else { return }
                 total = part.total; data.append(part.data)
             } while Int64(data.count) < (total ?? 0)
-            image = UIImage(data: data)
+            guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+                  let thumb = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 512,
+                    kCGImageSourceShouldCacheImmediately: true
+                  ] as CFDictionary) else { return }
+            try Task.checkCancellation()
+            image = UIImage(cgImage: thumb)
         } catch { image = nil }
     }
 }

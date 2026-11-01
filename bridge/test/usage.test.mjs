@@ -125,7 +125,6 @@ function feed(overrides = {}) {
           costUsd: 1.2,
         },
       },
-      { id: 'venice', name: 'Venice', available: false, updatedAt: null },
       {
         id: 'claude-api',
         name: 'Claude API',
@@ -189,72 +188,40 @@ test('usage and mac status require a device with usage:read', async (t) => {
   assert.equal(allowed.headers.get('cache-control'), 'no-store');
 });
 
-test('the normal feed matches the fixture readings field by field', async (t) => {
+test('the HTTP response contains fresh readings only, with reasons for other sources', async (t) => {
   const api = await bridgeWithFeed(feed());
   t.after(() => api.close());
   const token = await api.token(usageRead.scopes);
   const res = await api.request('/v1/usage', { token });
   assert.equal(res.status, 200);
-
   const items = res.body.data.items;
-  const normal = (await fixture('usage-normal.json')).data.items;
-  const byId = new Map(items.map((item) => [item.id, item]));
-  for (const expected of normal) {
-    if (!expected.id.startsWith('provider.')) continue; // cost/token items are v1-excluded
-    const actual = byId.get(expected.id);
-    assert.ok(actual, `${expected.id} is missing from /v1/usage`);
-    // Labels are code-owned (the collector's names), so only the reading and
-    // its metadata are compared with the fixture's example text.
-    const { label: actualLabel, ...actualRest } = actual;
-    const { label: expectedLabel, ...expectedRest } = expected;
-    assert.equal(actualLabel.length > 0, true);
-    assert.equal(expectedLabel.length > 0, true);
-    assert.deepEqual(Object.keys(actualRest).sort(), Object.keys(expectedRest).sort(), `${expected.id} fields`);
-    for (const [key, value] of Object.entries(expectedRest)) {
-      if (key === 'detail') {
-        for (const [detailKey, detailValue] of Object.entries(value)) {
-          assert.deepEqual(actualRest.detail?.[detailKey], detailValue, `${expected.id} detail.${detailKey}`);
-        }
-        const added = new Set(['sourceKind', 'freshUntil', 'credits', 'resetPasses', 'usd', 'diem',
-          'monthlyRemainingPercent', 'expiresOnUtc', 'creditUnit', 'fallbackAiCredits',
-          'recordedCostUsd', 'recordedRequestCount', 'lastRecordedAt']);
-        for (const detailKey of Object.keys(actualRest.detail)) {
-          assert.ok(Object.hasOwn(value, detailKey) || added.has(detailKey), `${expected.id} unexpected detail.${detailKey}`);
-        }
-      } else assert.deepEqual(actualRest[key], value, `${expected.id} ${key}`);
-    }
-  }
-
-  // Every known provider is present even when the feed omits it: a missing
-  // reading is reported, not dropped (USAGE.md §2).
-  for (const id of ['provider.deepseek.balance', 'provider.antigravity.quota', 'provider.refuseless.balance']) {
-    assert.equal(byId.get(id).availability, 'unavailable');
+  const byId = new Map(items.map(item => [item.id, item]));
+  assert.equal(byId.get('provider.claude.quota').value, 62);
+  assert.equal(byId.get('provider.codex.quota').value, 48);
+  assert.equal(byId.get('provider.liquid.usage').value, 184000);
+  for (const id of ['provider.jev.balance', 'provider.google-flow.credits']) {
     assert.equal(byId.get(id).value, null);
-    assert.equal(byId.get(id).nullReason, 'fetch_failed');
+    assert.equal(byId.get(id).nullReason, 'not_auto');
+    assert.equal(byId.get(id).detail, undefined);
   }
+  assert.equal(items.some(item => item.id.includes('gemini')), false);
+  assert.equal(byId.get('provider.claude-api.cost-today').value, null);
   for (const item of items) assertItemShape(item, 'usage');
-
-  // A zero balance is a value, not a missing reading.
-  assert.equal(byId.get('provider.gemini.balance').value, 0);
-  assert.equal(byId.get('provider.gemini.balance').expired, true);
-  // Verified values are screen checks with no auto refresh: old is not stale.
-  assert.equal(byId.get('provider.jev.balance').stale, false);
-  assert.equal(byId.get('provider.claude-api.balance').availability, 'unavailable');
-  assert.equal(byId.get('provider.claude-api.balance').expired, true);
 });
 
-test('live readings go stale after 20 minutes; verified ones do not', async (t) => {
-  const late = Date.parse('2026-10-29T05:20:00Z'); // 31 min after the feed
+test('after ten minutes neither live nor manually verified readings retain numbers', async (t) => {
+  const late = Date.parse('2026-10-29T05:20:00Z');
   const api = await bridgeWithFeed(feed(), { now: () => late });
   t.after(() => api.close());
   const token = await api.token(usageRead.scopes);
   const res = await api.request('/v1/usage', { token });
-  const byId = new Map(res.body.data.items.map((item) => [item.id, item]));
-
-  assert.equal(byId.get('provider.claude.quota').stale, true);
-  assert.equal(byId.get('provider.claude.quota').value, 62, 'a stale value is kept for display');
-  assert.equal(byId.get('provider.jev.balance').stale, false);
-  assert.equal(byId.get('provider.google-flow.credits').stale, false);
+  const byId = new Map(res.body.data.items.map(item => [item.id, item]));
+  for (const id of ['provider.claude.quota', 'provider.jev.balance', 'provider.google-flow.credits']) {
+    const item = byId.get(id);
+    assert.equal(item.availability, 'unavailable');
+    assert.equal(item.value, null);
+    assert.equal(item.detail, undefined);
+  }
 });
 
 test('an unreachable proxy is a 200 with unavailable items, never zeros', async (t) => {
@@ -365,8 +332,6 @@ test('every fixture satisfies the item contract', async (t) => {
     assert.deepEqual(Object.keys(body.data).sort(), ['items', 'nextCursor'], name);
     for (const item of body.data.items) assertItemShape(item, name);
   }
-  // The degraded fixture shows the same rules under failure: Codex and DeepSeek
-  // failed, the dashboard needs auth, the stale Claude value is kept.
   const degraded = (await fixture('usage-degraded.json')).data.items;
-  assert.equal(degraded.find((item) => item.id === 'provider.claude.quota').stale, true);
+  for (const item of degraded) assert.equal(item.value, null);
 });

@@ -22,22 +22,22 @@ final class LAAUsageWidgetTests: XCTestCase {
 
     func testLowestThreeWindowsKeepZeroAndDoNotIncludeHiddenProviders() throws {
         let items = try [item("claude", [25, 0]), item("codex", [10]), item("opencode-go", [50]), item("grok-bot", [1])]
-        let result = LAAWidgetUsageBuilder.make(items: items, retained: ["provider.codex.quota"], failed: false, checkedAt: Date(timeIntervalSince1970: 1))
+        let result = LAAWidgetUsageBuilder.make(items: items)
         XCTAssertEqual(result.meters.map(\.remainingPercent), [0, 10, 25])
         XCTAssertEqual(result.checkedAt, LAAUsageItem.date("2026-10-31T00:00:00Z"))
-        XCTAssertTrue(result.meters[1].retained)
-        let fresh = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
-        let expired = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:21:00Z"))
+        XCTAssertFalse(result.meters[1].retained)
+        let fresh = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:09:59Z"))
+        let expired = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:10:00Z"))
         XCTAssertFalse(result.meters[0].isPast(at: fresh))
         XCTAssertTrue(result.meters[0].isPast(at: expired))
-        XCTAssertTrue(result.meters[1].isPast(at: fresh))
+        XCTAssertFalse(result.meters[1].isPast(at: fresh))
     }
 
     func testSnapshotCacheSurvivesOtherPublicationsAndCanBeCleared() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = WidgetSnapshotStore(directory: directory)
-        let summary = LAAWidgetUsageBuilder.make(items: [try item("claude", [42])], retained: [], failed: false, checkedAt: Date())
+        let summary = LAAWidgetUsageBuilder.make(items: [try item("claude", [42])])
         XCTAssertTrue(try store.writeUsage(summary))
         let old = WidgetSnapshot(appLanguage: "en", currentWorkspaceID: nil, workspaces: [])
         XCTAssertTrue(try store.write(old))
@@ -50,41 +50,48 @@ final class LAAUsageWidgetTests: XCTestCase {
     }
 
     func testConsoleOrderAndHermesRowsAreExcluded() throws {
-        let items = try [item("fal", [30]), item("magnific", [30]), item("codex", [30]), item("claude", [20]),
+        let items = try [item("fal", [1]), item("venice", [1]), item("magnific", [30]), item("codex", [30]), item("claude", [20]),
                          item("liquid", [30]), item("opencode-go", [40]), item("grok-bot", [2])]
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).map(\.id), ["provider.liquid", "provider.claude", "provider.codex",
-            "provider.opencode-go", "provider.magnific", "provider.fal"])
-        let summary = LAAWidgetUsageBuilder.make(items: items, retained: [], failed: true, checkedAt: nil)
-        XCTAssertTrue(summary.meters.allSatisfy(\.retained))
+            "provider.opencode-go", "provider.magnific"])
+        let summary = LAAWidgetUsageBuilder.make(items: items)
+        XCTAssertTrue(summary.meters.allSatisfy { !$0.retained })
+        XCTAssertFalse(summary.meters.contains { $0.id.hasPrefix("provider.fal.") || $0.id.hasPrefix("provider.venice.") })
     }
 
     func testLegacyAndVerifiedMetersKeepTheirCorrectFreshness() throws {
         let observed = try XCTUnwrap(LAAUsageItem.date("2026-10-31T00:00:00Z"))
         let legacy = WidgetUsageMeter(id: "legacy", label: "Claude", remainingPercent: 0, observedAt: observed,
             freshUntil: nil, resetsAt: nil, stale: false, retained: false)
-        XCTAssertFalse(legacy.isPast(at: observed.addingTimeInterval(600)))
-        XCTAssertTrue(legacy.isPast(at: observed.addingTimeInterval(1200)))
+        XCTAssertFalse(legacy.isPast(at: observed.addingTimeInterval(599)))
+        XCTAssertTrue(legacy.isPast(at: observed.addingTimeInterval(600)))
         let verified = WidgetUsageMeter(id: "manual", label: "Claude", remainingPercent: 20, observedAt: observed,
             freshUntil: nil, resetsAt: nil, stale: false, retained: false, verified: true)
-        XCTAssertFalse(verified.isPast(at: observed.addingTimeInterval(86_400)))
+        XCTAssertTrue(verified.isPast(at: observed.addingTimeInterval(1)))
         XCTAssertTrue(verified.isPast(at: observed.addingTimeInterval(-120)))
         let old = Data("""
         {"id":"old","label":"Claude","remainingPercent":20,"observedAt":0,"freshUntil":null,"resetsAt":null,"stale":false,"retained":false}
         """.utf8)
         XCTAssertNil(try JSONDecoder().decode(WidgetUsageMeter.self, from: old).verified)
+        let retained = Data("""
+        {"id":"old","label":"Claude","remainingPercent":20,"observedAt":0,"freshUntil":null,"resetsAt":null,"stale":false,"retained":true}
+        """.utf8)
+        let decoded = try JSONDecoder().decode(WidgetUsageMeter.self, from: retained)
+        XCTAssertTrue(decoded.stale)
+        XCTAssertTrue(decoded.isPast(at: Date(timeIntervalSinceReferenceDate: 1)))
     }
 
     func testOtherUsageIsDistinguishedAndSnapshotContainsOnlySummaryFields() throws {
         let balance = try JSONDecoder().decode(LAAUsageItem.self, from: Data("""
-        {"id":"provider.fal.balance","kind":"balance","label":"fal","value":3,"unit":"usd",
+        {"id":"provider.jev.balance","kind":"balance","label":"Jev","value":3,"unit":"usd",
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified"}}
         """.utf8))
-        let summary = LAAWidgetUsageBuilder.make(items: [balance], retained: [], failed: false, checkedAt: Date())
+        let summary = LAAWidgetUsageBuilder.make(items: [balance])
         XCTAssertTrue(summary.meters.isEmpty)
         XCTAssertEqual(summary.hasOtherUsage, true)
         XCTAssertEqual(summary.checkedAt, LAAUsageItem.date(balance.observedAt))
-        let snapshot = LAAWidgetUsageBuilder.make(items: [try item("claude", [42])], retained: [], failed: false, checkedAt: nil)
+        let snapshot = LAAWidgetUsageBuilder.make(items: [try item("claude", [42])])
         let encoded = try JSONEncoder().encode(snapshot)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
         let meter = try XCTUnwrap((json["meters"] as? [[String: Any]])?.first)

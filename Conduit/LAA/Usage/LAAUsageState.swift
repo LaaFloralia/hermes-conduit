@@ -1,4 +1,5 @@
 #if LAA_BUILD
+import BackgroundTasks
 import Combine
 import Foundation
 import WidgetKit
@@ -15,6 +16,8 @@ struct LAAUsageSnapshot<Value> {
             fetchedAt = date
             error = nil
         case .failure(let error):
+            self.value = nil
+            self.fetchedAt = nil
             self.error = LAAUsageProblem(error)
         }
     }
@@ -38,11 +41,10 @@ enum LAAUsageProblem: Error, Equatable {
     }
 }
 
-/// Owns one refresh at a time and keeps each source's last successful snapshot.
+/// Owns one refresh at a time; a failed refresh clears its previous values.
 @MainActor
 final class LAAUsageState: ObservableObject {
     @Published private(set) var usage = LAAUsageSnapshot<[LAAUsageItem]>()
-    @Published private(set) var retainedUsageIDs: Set<String> = []
     @Published private(set) var updatedAt: Date?
     @Published private(set) var isRefreshing = false
     private var generation = 0
@@ -94,22 +96,17 @@ final class LAAUsageState: ObservableObject {
     }
 
     func refreshAndPublish(bridge: LAABridgeSession, attemptedAt: Date? = nil) async {
-        guard bridge.status == .paired, !isRefreshing else { return }
+        guard bridge.status == .paired else { publish(nil); return }
+        guard !isRefreshing else { return }
         lastRefreshAttempt = attemptedAt ?? Date()
         let revision = bridge.revision
         await refreshUsage { try await self.loadUsage(bridge) }
-        guard !Task.isCancelled, bridge.status == .paired, bridge.revision == revision else { return }
+        guard bridge.status == .paired else { publish(nil); return }
+        guard !Task.isCancelled, bridge.revision == revision else { return }
         if let items = usage.value {
-            publish(LAAWidgetUsageBuilder.make(items: items, retained: retainedUsageIDs,
-                                              failed: usage.error != nil, checkedAt: usage.fetchedAt))
-        } else if usage.error != nil, let old = widgetStore?.read()?.usage {
-            let meters = old.meters.map { meter in
-                WidgetUsageMeter(id: meter.id, label: meter.label, remainingPercent: meter.remainingPercent,
-                                 observedAt: meter.observedAt, freshUntil: meter.freshUntil, resetsAt: meter.resetsAt,
-                                 stale: meter.stale, retained: true, verified: meter.verified == true,
-                                 legacyFreshness: meter.legacyFreshness == true)
-            }
-            publish(WidgetUsageSnapshot(meters: meters, checkedAt: old.checkedAt, hasOtherUsage: old.hasOtherUsage == true))
+            publish(LAAWidgetUsageBuilder.make(items: items, receivedAt: usage.fetchedAt ?? Date()))
+        } else {
+            publish(nil)
         }
     }
 
@@ -144,7 +141,6 @@ final class LAAUsageState: ObservableObject {
         completedGeneration = nil
         lastRefreshAttempt = nil
         usage = .init()
-        retainedUsageIDs = []
         updatedAt = nil
         return true
     }
@@ -172,8 +168,20 @@ final class LAAUsageState: ObservableObject {
         let result = await Self.capture(load)
         guard mine == generation, !Task.isCancelled else { return }
         let finished = now()
-        Self.apply(result, to: &usage, retainedIDs: &retainedUsageIDs, at: finished)
-        if case .success = result, retainedUsageIDs.isEmpty { updatedAt = finished }
+        switch result {
+        case .success(var items):
+            var previous: [String: LAAUsageItem] = [:]
+            for item in usage.value ?? [] { previous[item.id] = item }
+            for index in items.indices {
+                let prior = previous[items[index].id]
+                items[index].freshnessAnchor = LAAUsageItem.date(prior?.observedAt) == LAAUsageItem.date(items[index].observedAt)
+                    ? (prior?.freshnessAnchor ?? finished) : finished
+            }
+            usage.apply(.success(items), at: finished)
+        case .failure(let error):
+            usage.apply(.failure(error), at: finished)
+        }
+        if case .success = result { updatedAt = finished } else { updatedAt = nil }
         completedGeneration = mine
     }
 
@@ -182,24 +190,6 @@ final class LAAUsageState: ObservableObject {
         catch { return .failure(error) }
     }
 
-    private static func apply(_ result: Result<[LAAUsageItem], Error>,
-                       to snapshot: inout LAAUsageSnapshot<[LAAUsageItem]>,
-                       retainedIDs: inout Set<String>, at date: Date) {
-        guard case .success(let items) = result else { snapshot.apply(result, at: date); return }
-        let old = Dictionary((snapshot.value ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var retained = Set<String>()
-        let displayed = items.map { item in
-            guard item.availability == "unavailable", let reason = item.nullReason,
-                  ["fetch_failed", "auth_required"].contains(reason),
-                  let previous = old[item.id], previous.availability == "available" else { return item }
-            retained.insert(item.id)
-            return previous
-        }
-        let previousTime = snapshot.fetchedAt
-        snapshot.apply(.success(displayed), at: date)
-        if !retained.isEmpty { snapshot.fetchedAt = previousTime }
-        retainedIDs = retained
-    }
 }
 
 struct LAAUsageGroup: Identifiable {
@@ -226,7 +216,7 @@ struct LAAUsageGroup: Identifiable {
 
     /// Match the Console's visible provider order; do not add Hermes profiles.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
-        let ids = ["liquid", "claude", "codex", "opencode-go", "magnific", "fal"]
+        let ids = ["liquid", "claude", "codex", "opencode-go", "magnific", "openai-api", "claude-api", "jev", "google-cloud", "google-flow"]
         return ids.compactMap { id in
             let prefix = "provider.\(id)."
             let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
@@ -237,8 +227,7 @@ struct LAAUsageGroup: Identifiable {
 }
 
 enum LAAWidgetUsageBuilder {
-    static func make(items: [LAAUsageItem], retained: Set<String>, failed: Bool,
-                     checkedAt _: Date?) -> WidgetUsageSnapshot {
+    static func make(items: [LAAUsageItem], receivedAt: Date = Date()) -> WidgetUsageSnapshot {
         let visible = LAAUsageGroup.consoleGroups(items).flatMap(\.items)
         let meters = visible.flatMap { item -> [WidgetUsageMeter] in
             guard item.kind == "quota", item.availability == "available" else { return [] }
@@ -247,13 +236,16 @@ enum LAAWidgetUsageBuilder {
                 let observed = LAAUsageItem.date(item.observedAt)
                 let verified = item.detail?.sourceKind == "verified"
                 let rawDeadline = item.detail?.freshUntil
-                let deadline = rawDeadline == nil && !verified
-                    ? observed?.addingTimeInterval(20 * 60) : LAAUsageItem.date(rawDeadline)
+                let upstreamDeadline = LAAUsageItem.date(rawDeadline)
+                let limit = observed.map { min($0, item.freshnessAnchor ?? receivedAt, receivedAt).addingTimeInterval(10 * 60) }
+                let deadline = rawDeadline == nil && !verified ? limit : upstreamDeadline.flatMap { upstream in
+                    limit.map { min($0, upstream) }
+                }
                 return WidgetUsageMeter(id: "\(item.id).\(index)", label: "\(item.label) · \(window.label)",
                     remainingPercent: value, observedAt: observed, freshUntil: deadline,
                     resetsAt: LAAUsageItem.date(window.resetsAt),
                     stale: item.stale || (rawDeadline != nil && deadline == nil),
-                    retained: failed || retained.contains(item.id), verified: verified,
+                    retained: false, verified: verified,
                     legacyFreshness: rawDeadline == nil && !verified)
             }
         }.sorted {
@@ -270,6 +262,33 @@ enum LAAWidgetUsageBuilder {
         let oldestOther = otherObservations.count == otherUsage.count ? otherObservations.min() : nil
         return WidgetUsageSnapshot(meters: selected, checkedAt: selected.isEmpty ? oldestOther : oldestObservation,
                                    hasOtherUsage: !otherUsage.isEmpty)
+    }
+}
+
+
+/// The OS decides when a background refresh runs; the widget timeline still
+/// removes numbers at their own expiry if a refresh is delayed.
+@MainActor
+enum LAAUsageBackground {
+    private static let identifier = "com.laa-inc.laa.usage-refresh"
+
+    static func register() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
+            let work = Task { @MainActor in
+                schedule()
+                let bridge = LAABridgeSession()
+                let state = LAAUsageState()
+                await state.refreshAndPublish(bridge: bridge)
+                task.setTaskCompleted(success: !Task.isCancelled && bridge.status == .paired && state.usage.error == nil)
+            }
+            task.expirationHandler = { work.cancel() }
+        }
+    }
+
+    static func schedule() {
+        let request = BGAppRefreshTaskRequest(identifier: identifier)
+        request.earliestBeginDate = Date().addingTimeInterval(15 * 60)
+        try? BGTaskScheduler.shared.submit(request)
     }
 }
 

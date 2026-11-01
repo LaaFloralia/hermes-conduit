@@ -37,6 +37,25 @@ export function validateAction(value) {
   return { ...value, persist: value.persist ?? false };
 }
 
+export function validateReview(value) {
+  if (!exact(value, ['id', 'projectId', 'revision', 'target'], ['verdict', 'comment']) ||
+      typeof value.id !== 'string' || !uuid.test(value.id) ||
+      typeof value.projectId !== 'string' || !entity.test(value.projectId) || !nonnegative(value.revision)) invalid();
+  const target = value.target;
+  if (!object(target) || !(
+    (target.kind === 'project' && exact(target, ['kind'])) ||
+    (target.kind === 'page' && exact(target, ['kind', 'id']) && typeof target.id === 'string' && entity.test(target.id)) ||
+    (target.kind === 'version' && exact(target, ['kind', 'id']) && typeof target.id === 'string' && /^[a-f0-9]{64}$/.test(target.id))
+  )) invalid();
+  const verdict = value.verdict ?? undefined;
+  const comment = value.comment ?? undefined;
+  if ((verdict !== undefined && !['adopt', 'revise', 'reject'].includes(verdict)) ||
+      (comment !== undefined && !string(comment, 4000)) ||
+      (verdict === undefined && (comment === undefined || !comment.trim()))) invalid();
+  return { id: value.id, projectId: value.projectId, revision: value.revision, target,
+    ...(verdict === undefined ? {} : { verdict }), ...(comment === undefined ? {} : { comment }) };
+}
+
 export function parseBody(raw) {
   try { return JSON.parse(raw.toString('utf8')); } catch { return invalid(); }
 }

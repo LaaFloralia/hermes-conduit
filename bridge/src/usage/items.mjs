@@ -19,7 +19,7 @@ export const DISK_SOURCE = 'laa-storage-guard';
 export const ITEM_KINDS = Object.freeze(['quota', 'balance', 'usage', 'cost']);
 export const HOST_ITEM_KINDS = Object.freeze(['host.cpu', 'host.memory', 'host.disk']);
 export const ITEM_UNITS = Object.freeze(['percent', 'usd', 'jpy', 'tokens', 'count', 'credits', 'bytes', 'gb']);
-export const NULL_REASONS = Object.freeze(['not_configured', 'fetch_failed', 'unsupported', 'auth_required']);
+export const NULL_REASONS = Object.freeze(['not_configured', 'fetch_failed', 'unsupported', 'auth_required', 'not_auto', 'freshness_unknown']);
 
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
 // Anything that looks like a credential, a home path or an address is dropped
@@ -53,7 +53,7 @@ export function isoFromMs(ms) {
 }
 
 export function isoTime(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T/.test(value)) return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return null;
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return null;
   return isoFromMs(parsed);

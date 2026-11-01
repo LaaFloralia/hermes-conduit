@@ -91,7 +91,7 @@ enum LAAStudioData {
         #if DEBUG
         if let fixture { return try sample(fixture) }
         #endif
-        let result: LAABridgeResponse<LAAStudioSnapshot> = try await bridge.request(method: "GET", path: "/v1/studio/snapshot")
+        let result: LAABridgeResponse<LAAStudioSnapshot> = try await bridge.request(method: "GET", path: "/v1/studio/snapshot", timeout: 15)
         return result.data
     }
     @MainActor static func requestID(_ bridge: LAABridgeSession) async throws -> String {
@@ -151,6 +151,10 @@ enum LAAStudioData {
             case "studio_revision_changed": return "作品の版が変わりました。作品一覧を更新してください。"
             case "studio_principle_changed": return "原則の版が変わりました。原則一覧を更新してください。"
             case "studio_request_id_conflict": return "依頼IDが別の内容に使われています。Macで確認してください。"
+            case "studio_project_missing": return "作品が見つかりません。作品一覧を更新してください。"
+            case "studio_review_target_missing": return "講評の対象が見つかりません。作品を更新してください。"
+            case "studio_review_id_conflict": return "講評IDが別の内容に使われています。Macで確認してください。"
+            case "studio_revision_unknown": return "作品の版を確認できません。作品を更新してください。"
             case "studio_approval_on_mac", "studio_approval_expired": return LAACopy.Studio.approvalOnMac
             case "idempotency_key_in_flight": return LAACopy.Studio.actionInFlight
             case "studio_stopping": return LAACopy.Studio.stopping
@@ -158,6 +162,11 @@ enum LAAStudioData {
             }
         }
         return (error as? LAABridgeError)?.japaneseText ?? LAABridgeError.invalidResponse.japaneseText
+    }
+    static func isAuthorizationFailure(_ error: Error) -> Bool {
+        if let failure = error as? LAABridgeHTTPError { return [401, 403].contains(failure.status) }
+        guard let failure = error as? LAABridgeError else { return false }
+        return [.unauthorized, .revoked, .forbidden, .keychain].contains(failure)
     }
     #if DEBUG
     static func sample(_ mode: String) throws -> LAAStudioSnapshot {
@@ -178,7 +187,9 @@ enum LAAStudioData {
         let project = LAAStudioProject(id: projectID, title: "サービス紹介資料", revision: 3,
                                        pages: [.init(id: "page1", name: "Cover", preview: nil)], assets: [], syncedAt: "2026-10-31T09:00:00Z", driveUrl: "https://drive.google.com/file/d/1234567890/view", deliveredRevision: 3)
         let principle = LAAStudioPrinciple(id: "principle1", name: "LAA", version: "6", revision: 3, status: "adopted")
-        return LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil, projects: mode == "empty" ? [] : [project], principles: [principle], requests: mode == "empty" ? [] : [record])
+        var snapshot = LAAStudioSnapshot(online: true, accepting: true, lastSeen: nil, projects: mode == "empty" ? [] : [project], principles: [principle], requests: mode == "empty" ? [] : [record])
+        if mode == "v2" { snapshot.contract = 2 }
+        return snapshot
     }
     #endif
 }
@@ -224,6 +235,9 @@ struct LAAStudioDraft: Codable, Equatable {
 }
 
 enum LAAStudioDraftStore {
+    enum LoadResult {
+        case missing, loaded(LAAStudioDraft), unreadable
+    }
     static func directory() -> URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Studio", isDirectory: true)
     }
@@ -235,8 +249,14 @@ enum LAAStudioDraftStore {
         return directory.appendingPathComponent("draft-\(deviceID)\(suffix).json")
     }
     static func load(deviceID: String, draftID: String? = nil, directory: URL = directory()) -> LAAStudioDraft? {
-        guard let url = file(deviceID: deviceID, draftID: draftID, directory: directory), let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(LAAStudioDraft.self, from: data)
+        if case .loaded(let draft) = loadResult(deviceID: deviceID, draftID: draftID, directory: directory) { return draft }
+        return nil
+    }
+    static func loadResult(deviceID: String, draftID: String? = nil, directory: URL = directory()) -> LoadResult {
+        guard let url = file(deviceID: deviceID, draftID: draftID, directory: directory) else { return .unreadable }
+        guard FileManager.default.fileExists(atPath: url.path) else { return .missing }
+        guard let data = try? Data(contentsOf: url), let draft = try? JSONDecoder().decode(LAAStudioDraft.self, from: data) else { return .unreadable }
+        return .loaded(draft)
     }
     static func save(_ draft: LAAStudioDraft, deviceID: String, draftID: String? = nil, directory: URL = directory()) -> Bool {
         guard let url = file(deviceID: deviceID, draftID: draftID, directory: directory) else { return false }
