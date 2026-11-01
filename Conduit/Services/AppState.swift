@@ -2450,7 +2450,15 @@ final class AppState: ObservableObject {
     /// The active profile's own choice for the big button beside a chat's
     /// composer (`ChatVoiceButtonAction` raw value); nil follows the app's.
     @Published private(set) var chatVoiceButtonOverride: String?
-    @Published private(set) var appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+    @Published private(set) var appleSpeechAvailability: AppleSpeechRecognitionAvailability = {
+        #if DEBUG
+        // Drive UI fixtures do not use speech; simulator speech services can block startup.
+        if ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_DRIVE_NO_SPEECH") {
+            return .unsupported(localeIdentifier: "en-US")
+        }
+        #endif
+        return AppleOnDeviceSpeechTranscriber.currentAvailability()
+    }()
 
     private var voiceAssistantObserverID: UUID?
 

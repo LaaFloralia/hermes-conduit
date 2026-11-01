@@ -6,11 +6,17 @@ final class LAAAssetsUITests: XCTestCase {
 
     private func launch(_ mode: String? = nil, appearance: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
+        app.launchArguments += ["-laa-tab", "source", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-LAA_UI_TEST_DRIVE_NO_SPEECH"]
         if let mode { app.launchArguments += ["-laa-assets-fixture", mode] }
         if let appearance { app.launchArguments += ["-conduit.themePreference", appearance] }
         app.launch()
         return app
+    }
+
+    private func item(_ id: String, in app: XCUIApplication) -> XCUIElement {
+        // SwiftUI's context menu places the identifier on a container, with
+        // the actionable button underneath it.
+        app.descendants(matching: .any)["laa.drive.browser.item.\(id)"].buttons.firstMatch
     }
 
     private func capture(_ screen: String, _ appearance: String) {
@@ -23,11 +29,11 @@ final class LAAAssetsUITests: XCTestCase {
     func testOwnerDeviceScreenshots() {
         for appearance in ["light", "dark"] {
             let app = launch("normal", appearance: appearance)
-            XCTAssertTrue(app.buttons["laa.drive.browser.item.folder1"].waitForExistence(timeout: 30))
+            XCTAssertTrue(item("folder1", in: app).waitForExistence(timeout: 30))
             capture("assets", appearance)
 
             app.swipeUp()
-            let video = app.buttons["laa.drive.browser.item.video1"]
+            let video = item("video1", in: app)
             XCTAssertTrue(video.waitForExistence(timeout: 10))
             video.tap()
             let open = app.buttons["laa.drive.open"]
@@ -40,7 +46,7 @@ final class LAAAssetsUITests: XCTestCase {
 
             for (item, screen, title) in [("image1", "image", "Portrait"), ("doc1", "pdf", "Notes")] {
                 let previewApp = launch("normal", appearance: appearance)
-                let file = previewApp.buttons["laa.drive.browser.item.\(item)"]
+                let file = self.item(item, in: previewApp)
                 XCTAssertTrue(file.waitForExistence(timeout: 30))
                 file.tap()
                 let preview = previewApp.buttons["laa.drive.open"]
@@ -57,17 +63,17 @@ final class LAAAssetsUITests: XCTestCase {
 
     func testDriveGridFolderSearchAndUnsupportedActions() {
         let app = launch("normal")
-        let folder = app.buttons["laa.drive.browser.item.folder1"]
+        let folder = item("folder1", in: app)
         XCTAssertTrue(folder.waitForExistence(timeout: 30))
         XCTAssertTrue(folder.isEnabled)
         XCTAssertFalse(app.buttons["Inspiration"].isEnabled)
         XCTAssertTrue(app.buttons["Studio"].isEnabled)
-        XCTAssertTrue(app.buttons["laa.drive.browser.item.image1"].isEnabled)
+        XCTAssertTrue(item("image1", in: app).isEnabled)
         folder.tap()
-        XCTAssertTrue(app.buttons["laa.drive.browser.item.doc2"].waitForExistence(timeout: 10))
+        XCTAssertTrue(item("doc2", in: app).waitForExistence(timeout: 10))
         app.buttons["laa.drive.browser.back"].tap()
         app.buttons["laa.drive.browser.layout"].tap()
-        XCTAssertTrue(app.buttons["laa.drive.browser.item.image1"].waitForExistence(timeout: 10))
+        XCTAssertTrue(item("image1", in: app).waitForExistence(timeout: 10))
         app.buttons["laa.drive.browser.section.shared"].tap()
         XCTAssertTrue(app.buttons["laa.drive.browser.section.my"].exists)
         app.buttons["laa.drive.browser.section.my"].tap()
@@ -75,14 +81,15 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         search.tap()
         search.typeText("Notes\n")
-        XCTAssertTrue(app.buttons["laa.drive.browser.item.doc1"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["laa.drive.browser.item.folder1"].exists)
+        XCTAssertTrue(item("doc1", in: app).waitForExistence(timeout: 10))
+        XCTAssertFalse(item("folder1", in: app).exists)
     }
 
     func testBrowsePlaySeekAndBack() {
         let app = launch("normal")
+        XCTAssertTrue(item("folder1", in: app).waitForExistence(timeout: 30))
         app.swipeUp()
-        let video = app.buttons["laa.drive.browser.item.video1"]
+        let video = item("video1", in: app)
         XCTAssertTrue(video.waitForExistence(timeout: 30))
         video.tap()
         let open = app.buttons["laa.drive.open"]
@@ -102,13 +109,14 @@ final class LAAAssetsUITests: XCTestCase {
         app.buttons["BackButton"].tap()
         XCTAssertTrue(open.waitForExistence(timeout: 10))
         app.buttons["BackButton"].tap()
-        XCTAssertTrue(app.buttons["laa.drive.browser.item.video1"].waitForExistence(timeout: 10))
+        XCTAssertTrue(item("video1", in: app).waitForExistence(timeout: 10))
     }
 
     func testWorkspaceOpensInGoogleDrive() {
         let app = launch("normal")
+        XCTAssertTrue(item("folder1", in: app).waitForExistence(timeout: 30))
         app.swipeUp()
-        let document = app.buttons["laa.drive.browser.item.workspace1"]
+        let document = item("workspace1", in: app)
         XCTAssertTrue(document.waitForExistence(timeout: 30))
         document.tap()
         let openInDrive = app.descendants(matching: .any)["laa.drive.open-in-drive"]
@@ -119,8 +127,9 @@ final class LAAAssetsUITests: XCTestCase {
 
     func testWorkspaceWithoutLinkExplainsUnavailable() {
         let app = launch("workspaceNoLink")
+        XCTAssertTrue(item("folder1", in: app).waitForExistence(timeout: 30))
         app.swipeUp()
-        let document = app.buttons["laa.drive.browser.item.workspace1"]
+        let document = item("workspace1", in: app)
         XCTAssertTrue(document.waitForExistence(timeout: 30))
         document.tap()
         XCTAssertTrue(app.staticTexts["Google Drive link unavailable."].waitForExistence(timeout: 10))
@@ -133,13 +142,13 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(more.waitForExistence(timeout: 30))
         app.swipeUp()
         more.tap()
-        XCTAssertTrue(app.buttons["laa.drive.browser.item.image1"].waitForExistence(timeout: 10))
+        XCTAssertTrue(item("image1", in: app).waitForExistence(timeout: 10))
         XCTAssertFalse(more.exists)
     }
 
     func testFolderSaveShowsEstimateBeforeConfirmation() {
         let app = launch("normal")
-        let folder = app.buttons["laa.drive.browser.item.folder1"]
+        let folder = item("folder1", in: app)
         XCTAssertTrue(folder.waitForExistence(timeout: 30))
         folder.press(forDuration: 1)
         let save = app.buttons["Save folder offline"]
