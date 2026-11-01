@@ -165,6 +165,22 @@ final class LAAChromeUITests: XCTestCase {
         }
     }
 
+    func testMacSettingsAndPairingCapture() {
+        for appearance in ["light", "dark"] {
+            let app = launch(appearance)
+            let settings = app.buttons["laa.settings.open"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 30))
+            settings.tap()
+            let repair = app.buttons["laa.settings.mac.repair"]
+            XCTAssertTrue(repair.waitForExistence(timeout: 10))
+            capture("remnants-mac-\(appearance)")
+            repair.tap()
+            XCTAssertTrue(app.navigationBars["Connect to Mac"].waitForExistence(timeout: 10))
+            capture("remnants-mac-pairing-\(appearance)")
+            app.terminate()
+        }
+    }
+
     func testExistingVoiceEntryShowsLAACallAndCanReturnFromTabs() {
         let app = launch("light", extra: ["-LAA_UI_TEST_EXISTING_VOICE"])
         XCTAssertTrue(app.buttons["laa.call.end"].waitForExistence(timeout: 30))
