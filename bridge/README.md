@@ -237,7 +237,7 @@ laa-bridge tasks restore --from <snapshot> --to <dir>
 
 日次バックアップの launchd 追加、Mac 外の保存先の採否、実アカウントでの dry-run と取込み承認、`docs/laa/BRIDGE.md`・`FEATURE_MAP.md` への追記、Bridge の再起動は親の作業（契約 §13）。バックアップは `tasks backup` が14世代を既定で残し、`tasks restore` で別ディレクトリへ戻して件数・最大 revision・最新 updatedAt を読み戻す。
 
-検証: `test/owner-tasks-{store,api,cli,backup,import}.test.mjs`（66 tests）。実 Linear・実データ・資格情報・シミュレーターは使わず、loopback の模擬 GraphQL と fixture だけで、送る文書が `query` のみであることも検査する。復元試験は別ディレクトリへ戻して全タスクと台帳の一致を確かめる。
+検証: `test/owner-tasks-{store,api,cli,backup,import}.test.mjs`（67 tests）。実 Linear・実データ・資格情報・シミュレーターは使わず、loopback の模擬 GraphQL と fixture だけで、送る文書が `query` のみであることも検査する。復元試験は別ディレクトリへ戻して全タスクと台帳の一致を確かめる。
 
 ## Session（`/v1/sessions`）
 
@@ -382,7 +382,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（284 tests、約5秒。Drive・sessions・brain・usage・社長タスクはfakeアダプタで検証）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（286 tests、約5秒。Drive・sessions・brain・usage・社長タスクはfakeアダプタで検証）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。

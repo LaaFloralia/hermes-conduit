@@ -262,6 +262,8 @@ laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force] [
 laa-bridge tasks import-linear --dry-run --assignee <linear user id> [--include-closed] [--out <file>]
 ```
 
+`--assignee` は環境変数 `LAA_OWNER_TASKS_LINEAR_ASSIGNEE` でも渡せる（引数履歴に残したくない時）。
+
 1. 指定した assignee ID の課題を、状態を問わず**全ページ**取得する（既定は未完了のみ。`--include-closed` で完了・取消も候補に含める）。担当名の文字列一致やチーム決め打ちはしない。ページ欠落・ループ・権限不足・応答不正は全体を失敗にする（部分的な候補で続けない）。
 2. 候補ごとに次を出す: `linearId`（UUID）、`identifier`、`title`、`memo`（description 原文）、提案 `status`、`dueDate`、`url`、`linearUpdatedAt`、`linearState`、除外理由、`taskId`（決定的に導出した予約 UUID）、移行しない情報の印（コメント・添付・プロジェクト・ラベルがある場合）。
 3. 状態の提案: `backlog` / `unstarted` → `todo`、`started` → `doing`、`completed` → `done`、`canceled` → `canceled`。判別できない種別は `state_undecided` として**除外**し、親が決める（自動分類しない）。
@@ -358,7 +360,7 @@ laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force]
 ## 13. 残件（親の作業）
 
 - 日次バックアップの launchd 追加と実行確認、Mac 外の保存先の採否（§11）。
-- 実アカウントでの `import-linear --dry-run`、候補の分類（社長タスク／委譲課題）、実取込みの別承認。
+- 実アカウントでの `import-linear --dry-run`、候補の分類（社長タスク／委譲課題）、実取込みの別承認。最初の dry-run では、未完了の絞り込み（`state.type` の `nin`）と取得件数が Linear の画面と一致するかを確認する。
 - `docs/laa/BRIDGE.md`・`docs/FEATURE_MAP.md` への追記（共有ファイルのため親の統合順で行う）。
 - Bridge の再起動（`launchctl kickstart -k gui/$(id -u)/com.laa.bridge`）と実機確認。
 - 切替時の正本の更新（`hq/AGENTS.md`・`hq/tools/LINEAR.md` などの「社長タスクを Linear に作る」記述）。

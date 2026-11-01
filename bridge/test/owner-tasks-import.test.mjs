@@ -38,7 +38,7 @@ function makeIssue(index, overrides = {}) {
 
 // A loopback GraphQL responder. It records every request so a test can prove no
 // mutation was ever sent, and it never talks to Linear.
-async function fakeLinear(t, { issues, pageSize = 50, failPage = null, loopPage = null } = {}) {
+async function fakeLinear(t, { issues, pageSize = 50, failPage = null, loopPage = null, malformedPage = null } = {}) {
   // Pages are computed per request so a test can change the source between the
   // dry-run and the import.
   const pagesOf = () => {
@@ -66,6 +66,11 @@ async function fakeLinear(t, { issues, pageSize = 50, failPage = null, loopPage 
     }
     const pages = pagesOf();
     const page = pages[index] ?? [];
+    if (malformedPage !== null && index === malformedPage) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: { issues: { nodes: page } } }));
+      return;
+    }
     const hasNextPage = index < pages.length - 1;
     const endCursor = hasNextPage ? `p${loopPage === index ? index : index + 1}` : null;
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -280,6 +285,15 @@ test('a failed page stops the dry-run and writes no manifest', async (t) => {
   const result = await run(['tasks', 'import-linear', '--dry-run', '--assignee', ASSIGNEE, '--out', out, '--json'], { env });
   assert.equal(result.code, 7);
   assert.equal(JSON.parse(result.stdout).error.code, 'linear_unavailable');
+  assert.deepEqual(readdirSync(env.LAA_BRIDGE_STATE_DIR), []);
+});
+
+test('an incomplete page stops the dry-run instead of importing part of it', async (t) => {
+  const linear = await fakeLinear(t, { issues: [makeIssue(1), makeIssue(2)], pageSize: 1, malformedPage: 0 });
+  const env = envFor(t, linear);
+  const result = await run(['tasks', 'import-linear', '--dry-run', '--assignee', ASSIGNEE, '--out', join(tempDir(t), 'm.json'), '--json'], { env });
+  assert.equal(result.code, 7);
+  assert.equal(JSON.parse(result.stdout).error.code, 'linear_response_invalid');
   assert.deepEqual(readdirSync(env.LAA_BRIDGE_STATE_DIR), []);
 });
 
