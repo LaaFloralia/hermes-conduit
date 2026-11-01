@@ -479,7 +479,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
   retain their original error mapping, and writes are never retried by the client.
 - Usage reads the Bridge usage-proxy projection in one fixed order: Codex
-  Weekly, OpenCode Weekly, Claude Weekly, GPT API, Claude API, Liquid AI, then the
+  Weekly, OpenCode Weekly, Claude Weekly, Venice, GPT API, Claude API, Liquid AI, then the
   remaining providers. A 7-day window is called Weekly (ウィークリー), never D1.
   Jev, Google Cloud and Google Flow are retired: the proxy and the Bridge no longer
   read them, and a cached row is dropped before drawing. Quota windows, reset

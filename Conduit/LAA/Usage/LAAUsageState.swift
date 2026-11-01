@@ -215,7 +215,7 @@ struct LAAUsageGroup: Identifiable {
     }
 
     /// The owner's display order (2026-11-01): Codex Weekly, OpenCode Weekly,
-    /// Claude Weekly, GPT API, Claude API, Liquid AI, then the rest. Retired
+    /// Claude Weekly, Venice, GPT API, Claude API, Liquid AI, then the rest. Retired
     /// providers (Jev, Google Cloud, Google Flow) are never listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
         let ids = ["codex", "opencode-go", "claude", "venice", "openai-api", "claude-api", "liquid",
@@ -231,7 +231,7 @@ struct LAAUsageGroup: Identifiable {
 }
 
 enum LAAWidgetUsageBuilder {
-    /// The six rows the home-screen widget shows, in the owner's priority order.
+    /// The seven rows the home-screen widget shows, in the owner's priority order.
     struct Slot {
         enum Reading { case weeklyQuota, balance, monthCost, recordedUsage }
         let provider: String

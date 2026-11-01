@@ -240,7 +240,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 
 struct WidgetUsageSnapshot: Codable, Equatable {
     /// The owner's display order and labels are fixed in the app; the widget
-    /// only ever shows these six providers.
+    /// only ever shows these seven providers.
     static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "venice", "openai-api", "claude-api", "liquid"]
 
     let meters: [WidgetUsageMeter]
