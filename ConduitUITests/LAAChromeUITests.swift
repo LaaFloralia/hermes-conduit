@@ -224,20 +224,26 @@ final class LAAChromeUITests: XCTestCase {
     }
 
     func testVoiceSettingsOmitLegacyCallOrbControl() {
-        let app = launch("light", extra: ["-LAA_UI_TEST_VOICE_SETTINGS"])
-        let settings = app.buttons["laa.settings.open"]
-        XCTAssertTrue(settings.waitForExistence(timeout: 30))
-        settings.tap()
-        let voice = app.buttons["settings.voice"]
-        XCTAssertTrue(voice.waitForExistence(timeout: 10))
-        if !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }
-        voice.tap()
-        let advanced = app.buttons["voice.advancedToggle"]
-        for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }
-        XCTAssertTrue(advanced.isHittable)
-        if advanced.value as? String != "Expanded" { advanced.tap() }
-        XCTAssertFalse(app.staticTexts["Hermes"].exists, app.staticTexts["Hermes"].debugDescription)
-        XCTAssertFalse(app.switches["voice.animateCallOrb"].exists)
+        for appearance in ["light", "dark"] {
+            let app = launch(appearance, extra: ["-LAA_UI_TEST_VOICE_SETTINGS"])
+            let settings = app.buttons["laa.settings.open"]
+            XCTAssertTrue(settings.waitForExistence(timeout: 30))
+            settings.tap()
+            let voice = app.buttons["settings.voice"]
+            XCTAssertTrue(voice.waitForExistence(timeout: 10))
+            if !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            voice.tap()
+            XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: 10))
+            capture("remnants-voice-\(appearance)")
+            let advanced = app.buttons["voice.advancedToggle"]
+            for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }
+            XCTAssertTrue(advanced.isHittable)
+            if advanced.value as? String != "Expanded" { advanced.tap() }
+            capture("remnants-voice-advanced-\(appearance)")
+            XCTAssertFalse(app.staticTexts["Hermes"].exists, app.staticTexts["Hermes"].debugDescription)
+            XCTAssertFalse(app.switches["voice.animateCallOrb"].exists)
+            app.terminate()
+        }
     }
 
     func testCallControlsAndCapture() throws {
