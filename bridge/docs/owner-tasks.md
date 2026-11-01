@@ -31,6 +31,7 @@
 - データ（タスク・取込み対応表）と操作台帳は**同じ1ファイル**に置き、1回の `write`（tmp → fsync → rename → ディレクトリ fsync）で原子的に確定する。書込みは排他ロックの中で読み・比較・書く。
 - ロックは「経過時間」だけで奪わない。ロックの持ち主 pid が生きていれば待ち、期限を超えたら 503。pid が死んでいる時だけ回収する。ロックの内容が読めない時は**書込みを止める**（運用者が確認してロックを消す）。
 - データファイルが無い・壊れている・初期化マーカーと食い違う時は**空の正本として作り直さない**。503 を返し、運用者が復元する（§11）。
+- 例外は「まだ一度も保存していない」状態（データもマーカーも無い）。この時 `GET` は空の一覧を返し（404 は詳細だけ）、読み取りでファイルを作らない。最初の `POST` がデータとマーカーを作る。
 - 本文（題名・メモ）はログ・要求履歴・冪等記録へ複製しない。台帳が持つのは鍵と主体のハッシュ、要求指紋、対象 UUID、版、時刻、状態だけ。
 
 ## 3. 認証・scope・ヘッダー
@@ -90,6 +91,7 @@
 | `revision` | integer | 1 から。内容が変わるたびに +1。`If-Match` と `ETag` の値 |
 
 - 社長に見せる7項目は `title` `memo` `status` `dueDate` `source` `links` `updatedAt`。`id`・`createdAt`・`revision` は照合のための内部情報。
+- **一覧の `items` は要約**（`id` `title` `status` `dueDate` `source` `createdAt` `updatedAt` `revision`）で、`memo` と `links` を含まない。本文とリンクは詳細（`GET /v1/owner-tasks/{id}`）で読む。1ページが数MBにならないようにするため。
 - `source` の既定は呼出し元で決まる: HTTP `POST` は `owner`、CLI `tasks add` は `agent`。取込みは `linear_import`。
 - 本文の意味は解釈しない。題名・メモの内容で並びや分類を変えない。
 
@@ -120,7 +122,8 @@
 }
 ```
 
-- `total` は絞り込んだ後の件数。`counts` は絞り込み前の全件の内訳（折りたたみ表示用）。`items` は本文を含む（一覧で詳細を開かずに読めるようにする）。
+- `total` は絞り込んだ後の件数。`counts` は絞り込み前の全件の内訳（折りたたみ表示用）。`items` は §4 の要約で、`memo`・`links` は含まない（詳細で読む）。
+- `filter.status` は正規化した値を返す（`all` / `open` / `closed` / 重複を除いて並べた状態名のカンマ区切り）。まだ何も保存していない Bridge は `items: []`・`total: 0` の 200 を返す（500 にしない）。
 - カーソルは不透明値で、フィルタ集合に束縛し、24時間で失効する。別のフィルタで使うと `400 cursor_filter_mismatch`、壊れていれば `400 cursor_invalid`、期限切れは `410 cursor_expired`（既存 `/v1/tasks` と同じ扱い）。ページの途中で追加・更新があっても、同じカーソルは同じ並びの続きを返す保証はしない（読み直す）。
 
 ### 5.2 詳細 `GET /v1/owner-tasks/{id}`
@@ -206,7 +209,7 @@
 | 428 | `precondition_required` | `If-Match` 欠落 | 実装の誤り |
 | 503 | `owner_tasks_store_unavailable` | 保存先が無い・壊れている・ロック中・容量不足（`details.reason`） | 保留にして再試行 |
 
-`details.reason` は `missing` / `uninitialized` / `corrupt` / `locked` / `io_error`。
+`details.reason` は `missing`（初期化済みなのにデータが無い）/ `corrupt` / `locked` / `io_error` / `ledger_full`。
 未知の code は「確定していない」として保留にし、成功表示にしない。
 
 ## 9. CLI
@@ -216,9 +219,11 @@ laa-bridge tasks add   --request-id <id> (--title <text> | --input <file|->) [--
                        [--status todo|doing|done|canceled] [--due YYYY-MM-DD] [--link <url>]…
                        [--source owner|agent] [--id <uuid>] [--json]
 laa-bridge tasks list  [--status all|open|closed|<list>] [--limit N] [--cursor C] [--json]
+laa-bridge tasks get   --id <uuid> [--json]
 laa-bridge tasks update --id <uuid> --if-match <revision> --request-id <id>
                        [--title <text>] [--memo <text>] [--status <state>]
                        [--due YYYY-MM-DD | --clear-due] [--link <url>]… | --input <file|->
+                       [--json]
 laa-bridge tasks status [--json]
 laa-bridge tasks import-linear --dry-run [--assignee <linear-user-id>] [--include-closed]
                        [--out <file>] [--json]
@@ -230,7 +235,9 @@ laa-bridge tasks restore --from <snapshot> --to <dir> [--allow-live] [--force] [
 - CLI は HTTP を通らず、Bridge と同じ保存サービス（検証・競合制御・台帳・ロック）を直接使う。主体は固定の `cli`。**`--request-id` は書込みで必須**で、再試行でも同じ値を使う。
 - 長い本文は `--input -`（標準入力の JSON）か `--input <file>` で渡す。コマンド履歴・プロセス引数へ本文を残さない。`--json` のとき stdout は1行の JSON だけ。
 - `--json` の成功形は `{"ok":true,…}`。失敗形は `{"ok":false,"error":{"code","message","details"?}}` を stdout に出し、`laa-bridge: <code>: <message>` を stderr にも出す（`--json` なしでは stderr だけ）。
-- `list` の既定出力は1行1件の読みやすい形（`<revision>  <status>  <due|—>  <id>  <title>`）。`--json` は HTTP の一覧と同じ形。
+- `get` は1件を本文・リンクつきで返す（一覧は要約だけなので、書いた本文を読み戻す経路）。
+- `list` の既定出力は1行1件の読みやすい形（`<revision>  <status>  <due|->  <id>  <title>`）。`--json` は HTTP の一覧と同じ形。
+- `--input` を使った `add` でも `source` の既定は `agent`（JSON に `source` があればそれに従う）。
 
 終了コード:
 
@@ -257,9 +264,9 @@ laa-bridge tasks import-linear --dry-run --assignee <linear user id> [--include-
 
 1. 指定した assignee ID の課題を、状態を問わず**全ページ**取得する（既定は未完了のみ。`--include-closed` で完了・取消も候補に含める）。担当名の文字列一致やチーム決め打ちはしない。ページ欠落・ループ・権限不足・応答不正は全体を失敗にする（部分的な候補で続けない）。
 2. 候補ごとに次を出す: `linearId`（UUID）、`identifier`、`title`、`memo`（description 原文）、提案 `status`、`dueDate`、`url`、`linearUpdatedAt`、`linearState`、除外理由、`taskId`（決定的に導出した予約 UUID）、移行しない情報の印（コメント・添付・プロジェクト・ラベルがある場合）。
-3. 状態の提案: `backlog` / `unstarted` → `todo`、`started` → `doing`、`completed` → `done`、`canceled` → `canceled`。判別できない種別は `undecided` として**除外**し、親が決める（自動分類しない）。
-4. 除外理由: `missing_title`、`memo_too_large`、`state_undecided`、`assignee_mismatch`、`task_id_conflict`、`already_imported`。
-5. manifest（下記）を 0600 で保存し、`contentHash`（manifest から `contentHash` を除いた正規化 JSON の SHA-256）と件数を表示する。**作成・更新はしない**。
+3. 状態の提案: `backlog` / `unstarted` → `todo`、`started` → `doing`、`completed` → `done`、`canceled` → `canceled`。判別できない種別は `state_undecided` として**除外**し、親が決める（自動分類しない）。
+4. 除外理由: `assignee_mismatch`、`missing_title`、`state_undecided`、`memo_too_large`、`title_too_large`、`due_date_invalid`、`url_invalid`（Linear の URL が https でない）、`already_imported`、`task_id_conflict`。
+5. manifest（下記）を 0600 で保存し、`contentHash`（manifest のうち `generatedAt` と `contentHash` を除いた正規化 JSON の SHA-256）と件数を表示する。**作成・更新はしない**。`generatedAt` を除くので、同じ Linear データなら dry-run をやり直しても同じハッシュになり、承認をやり直さずに済む。
 
 manifest:
 
@@ -292,7 +299,7 @@ laa-bridge tasks import-linear --manifest <file> --approve <contentHash>
 ```
 
 1. manifest の形式・版・`contentHash` を検証する。`--approve` が `contentHash` と違えば実行しない（終了コード 4）。**コマンドの実行指定だけを承認と見なさない**。
-2. 実行直前に候補全体を再取得し、対象 ID の集合・`title`・`linearUpdatedAt`・状態種別・期限・除外理由・変換結果を manifest と照合する。1つでも違えば**何も書かずに**失敗する（終了コード 4、新しい dry-run が必要）。
+2. 実行直前に候補全体を再取得し、対象 ID の集合と、各候補の `title`・`memo` のハッシュ・状態・期限・`url`・`linearUpdatedAt`・移行しない情報の印を manifest と照合する（保存先に依存する `already_imported` / `task_id_conflict` は比べない）。1つでも違えば**何も書かずに**失敗する（終了コード 4、新しい dry-run が必要）。
 3. 選択済み（`excluded: null`）の候補を**1トランザクション**で作る。元 Linear の URL を `links` に入れ、`source` は `linear_import`、`memo` は原文、`dueDate` は元の期限、`updatedAt` は Linear の更新日時。Linear issue ID → タスク UUID の対応を同じ保存単位に残す。
 4. 同じ manifest の再実行は記録済みの結果を返し、二重作成しない。別の manifest で既に取り込んだ課題は飛ばし、`alreadyImported` として数える。
 5. 旧 Linear の課題は更新・削除しない。コメント・添付・プロジェクト・ラベルは移さない（候補に印を出す）。
@@ -306,7 +313,8 @@ laa-bridge tasks import-linear --manifest <file> --approve <contentHash>
 - `laa-bridge tasks backup` が `<stateDir>/owner-tasks-backups/owner-tasks-<UTC>.json` を書く。スナップショットは `{format,version,createdAt,counts,stateSha256,state}` で、`stateSha256` は `state` の正規化 JSON の SHA-256。
 - 取得はロック内の一貫した読み。書込みは tmp → fsync → rename で、書いた後に読み戻してハッシュを検証する。失敗は成功扱いにしない。
 - 世代は既定14（日次1回 × 14日）。`--keep` で変更。削除するのは自分の命名規則と `format` に一致するファイルだけ。
-- 取込みの実行前にもう1世代取る（親の手順）。
+- 取込みの実行前にもう1世代取る（親の手順）。まだ何も保存していない Bridge では「保存なし」を返し、成功したふりをしない（終了コード 0、`skipped`）。初期化済みなのにデータが無い時は失敗する（終了コード 6）。
+- 実測（2026-11-01、`owner-tasks-store.test.mjs`）: tombstone 2万件で 5,280,180 バイト（5.04 MiB）。1件あたり約 264 バイトで、上限 20,000 件でも単一 JSON として扱える大きさ。
 - ローカルの権限は 0700 / 0600。**同一ユーザーからは守れない**。Mac 外へ出す時は必ず暗号化する（`age` など。鍵は 1Password Agents に置き、repo・引数・ログへ出さない）。平文のタスク本文をクラウドへ置かない。
 
 ### 11.2 復元手順
