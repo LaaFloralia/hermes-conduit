@@ -14,7 +14,6 @@ import { canonicalJson, sha256Hex, UUID_PATTERN } from './stable.mjs';
 
 export const STATUSES = Object.freeze(['todo', 'doing', 'done', 'canceled']);
 export const OPEN_STATUSES = Object.freeze(['todo', 'doing']);
-export const SOURCES = Object.freeze(['owner', 'agent', 'linear_import']);
 export const MAX_TITLE = 500;
 export const MAX_MEMO = 20_000;
 export const MAX_LINKS = 20;
@@ -472,10 +471,6 @@ export function createOwnerTaskService({ store, now = () => Date.now() } = {}) {
     return store.readOptional()?.imports[manifestHash] ?? null;
   }
 
-  function importedLinearIds() {
-    return Object.keys(store.readOptional()?.linearMap ?? {});
-  }
-
   function linearTask(linearId) {
     return store.readOptional()?.linearMap[linearId] ?? null;
   }
@@ -573,7 +568,6 @@ export function createOwnerTaskService({ store, now = () => Date.now() } = {}) {
     create,
     update,
     findImport,
-    importedLinearIds,
     linearTask,
     taskIdExists,
     applyImport,
