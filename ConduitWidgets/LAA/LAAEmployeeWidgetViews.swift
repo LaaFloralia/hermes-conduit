@@ -10,7 +10,7 @@ private final class LAAWidgetTestResources {}
 extension LAAWidgetEmployee: AppEnum {
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Employee")
     static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
-        .ciel: "Ciel", .argus: "Argus", .cfo: "Morgan", .cio: "Sherlock",
+        .ciel: "Ciel", .cielUncensored: "Ciel（無検閲）", .argus: "Argus", .cfo: "Morgan", .cio: "Sherlock",
         .cmo: "Monet", .cos: "Merlin", .cto: "Ada", .cso: "Talos"
     ]
 }
@@ -41,7 +41,7 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
         }
         return Self(date: date, freshnessAnchor: freshnessAnchor ?? date, employee: employee,
              chat: LAAEmployeeWidgetLinks.link(employee: employee, action: .employeeChat, snapshot: snapshot),
-             call: LAAEmployeeWidgetLinks.link(employee: employee, action: .talk, snapshot: snapshot),
+             call: LAAEmployeeWidgetLinks.link(employee: employee, action: employee == .cielUncensored ? .employeeChat : .talk, snapshot: snapshot),
              mediumChat: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .employeeChat, snapshot: snapshot),
              mediumCall: LAAEmployeeWidgetLinks.link(employee: .ciel, action: .talk, snapshot: snapshot),
              usageLink: WidgetLaunchLink(action: .usage, workspace: nil, reference: nil)!,
@@ -378,7 +378,7 @@ struct LAAEmployeeWidgetView: View {
                 }
             }
             HStack(spacing: LAASpacing.x2) {
-                action(entry.call.url, title: LAACopy.widgetCall, primary: true)
+                if entry.employee != .cielUncensored { action(entry.call.url, title: LAACopy.widgetCall, primary: true) }
                 action(entry.chat.url, title: LAACopy.widgetChat, primary: false)
             }
         }
@@ -388,7 +388,7 @@ struct LAAEmployeeWidgetView: View {
 
     private var rectangular: some View {
         HStack(spacing: LAASpacing.x2) {
-            Image(systemName: "phone.fill")
+            Image(systemName: entry.employee == .cielUncensored ? "bubble.left.fill" : "phone.fill")
                 .laaTextStyle(.body)
                 .fontWeight(.semibold)
                 .foregroundStyle(LAAColor.link)
@@ -400,7 +400,7 @@ struct LAAEmployeeWidgetView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(LAAColor.text)
                     .lineLimit(1)
-                Text(verbatim: LAACopy.widgetCall)
+                Text(verbatim: entry.employee == .cielUncensored ? LAACopy.widgetChat : LAACopy.widgetCall)
                     .laaTextStyle(.secondary)
                     .foregroundStyle(LAAColor.secondaryText)
                     .lineLimit(1)
@@ -410,7 +410,7 @@ struct LAAEmployeeWidgetView: View {
         .padding(LAASpacing.x2)
         .widgetURL(entry.defaultLink(for: .accessoryRectangular).url)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(entry.employee.name), \(LAACopy.widgetCall)")
+        .accessibilityLabel("\(entry.employee.name), \(entry.employee == .cielUncensored ? LAACopy.widgetChat : LAACopy.widgetCall)")
     }
 
     private var circular: some View {
@@ -421,7 +421,7 @@ struct LAAEmployeeWidgetView: View {
             .foregroundStyle(LAAColor.link)
             .padding(LAASpacing.x2)
             .widgetURL(entry.defaultLink(for: .accessoryCircular).url)
-            .accessibilityLabel("\(entry.employee.name), \(LAACopy.widgetCall)")
+            .accessibilityLabel("\(entry.employee.name), \(entry.employee == .cielUncensored ? LAACopy.widgetChat : LAACopy.widgetCall)")
     }
 
     @ViewBuilder

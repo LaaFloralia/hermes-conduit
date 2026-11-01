@@ -61,7 +61,7 @@ final class LAAStaffCallTests: XCTestCase {
     func testStaffProfilesAndUnknownProfile() {
         let expected: [String: String] = ["ciel": "Ciel", "argus": "Argus", "cfo": "Morgan",
                                           "cio": "Sherlock", "cmo": "Monet", "cos": "Merlin",
-                                          "cso": "Talos", "cto": "Ada"]
+                                          "cso": "Talos", "cto": "Ada", "ciel-uncensored": "Ciel（無検閲）"]
         for (id, name) in expected {
             XCTAssertEqual(LAAStaff(profile: "laa-\(id)")?.name, name)
         }
@@ -320,6 +320,7 @@ final class LAAStaffCallTests: XCTestCase {
         let ciel = resolver.resolve(profile: "laa-ciel")
         XCTAssertEqual(ciel.avatar?.path, "/test-bundle/staff/ciel/ciel-avatar-512.png")
         XCTAssertNotNil(ciel.loop)
+        XCTAssertNil(resolver.resolve(profile: "laa-ciel-uncensored").avatar)
         XCTAssertNil(ciel.hero)
         XCTAssertNil(resolver.resolve(profile: "laa-cfo").avatar)
         XCTAssertNotNil(resolver.resolve(profile: "default").defaultMark)
@@ -335,7 +336,8 @@ final class LAAStaffCallTests: XCTestCase {
             let assets = StaffAssetResolver.bundled.resolve(profile: "laa-\(staff.rawValue)")
             XCTAssertNotNil(assets.avatar, "Missing avatar for \(staff.rawValue)")
             XCTAssertNotNil(assets.hero, "Missing hero for \(staff.rawValue)")
-            XCTAssertNotNil(assets.loop, "Missing loop for \(staff.rawValue)")
+            if staff == .cielUncensored { XCTAssertNil(assets.loop) }
+            else { XCTAssertNotNil(assets.loop, "Missing loop for \(staff.rawValue)") }
         }
         XCTAssertNotNil(StaffAssetResolver.bundled.resolve(profile: "default").defaultMark)
     }

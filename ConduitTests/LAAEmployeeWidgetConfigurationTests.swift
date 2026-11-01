@@ -31,7 +31,7 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
             XCTAssertNil(WidgetLaunchLink(action: .usage, workspace: workspace, reference: nil))
             XCTAssertEqual(entry.defaultLink(for: .accessoryRectangular).url, entry.call.url)
             XCTAssertEqual(entry.defaultLink(for: .accessoryCircular).url, entry.call.url)
-            for (link, action) in [(entry.call, WidgetLaunchAction.talk), (entry.chat, .employeeChat)] {
+            for (link, action) in [(entry.call, employee == .cielUncensored ? WidgetLaunchAction.employeeChat : .talk), (entry.chat, .employeeChat)] {
                 let decoded = try XCTUnwrap(WidgetLaunchLink(url: link.url))
                 XCTAssertEqual(decoded.action, action)
                 XCTAssertEqual(decoded.workspace?.dashboardID, dashboard)

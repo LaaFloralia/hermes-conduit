@@ -8,7 +8,7 @@ final class LAAEmployeeWidgetTests: XCTestCase {
 
     func testEveryEmployeeHasTheSpecifiedProfileAndArtwork() {
         let expected = [
-            "ciel": "Ciel", "argus": "Argus", "cfo": "Morgan", "cio": "Sherlock",
+            "ciel": "Ciel", "ciel-uncensored": "Ciel（無検閲）", "argus": "Argus", "cfo": "Morgan", "cio": "Sherlock",
             "cmo": "Monet", "cos": "Merlin", "cto": "Ada", "cso": "Talos"
         ]
         XCTAssertEqual(LAAWidgetEmployee.allCases.count, expected.count)
