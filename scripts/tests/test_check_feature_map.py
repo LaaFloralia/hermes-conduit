@@ -33,7 +33,7 @@ An approval Hermes can't go on without.
 
 
 class CheckFeatureMapTests(unittest.TestCase):
-    def run_check(self, text, files=("Conduit/Views/ChatView.swift",), notifier_files=("clarify_loop.py",), extra=()):
+    def run_check(self, text, files=("Conduit/Views/ChatView.swift",), notifier_files=("clarify_loop.py",), extra=(), directories=()):
         """main()'s exit code and output for a map in a repo holding `files`."""
         with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as notifier:
             for root, names in ((repo, files), (notifier, notifier_files)):
@@ -41,6 +41,8 @@ class CheckFeatureMapTests(unittest.TestCase):
                     path = os.path.join(root, name)
                     os.makedirs(os.path.dirname(path), exist_ok=True)
                     open(path, "w").close()
+            for directory in directories:
+                os.makedirs(os.path.join(repo, directory), exist_ok=True)
             os.makedirs(os.path.join(repo, "docs"), exist_ok=True)
             with open(os.path.join(repo, check.MAP), "w", encoding="utf-8") as fh:
                 fh.write(text)
@@ -56,10 +58,14 @@ class CheckFeatureMapTests(unittest.TestCase):
                     if path.startswith(check.NOTIFIER_PREFIX)]
         local = [path for _, path in check.paths(text)
                  if not path.startswith(check.NOTIFIER_PREFIX) and not path.endswith("/")]
+        directories = [path for _, path in check.paths(text)
+                       if not path.startswith(check.NOTIFIER_PREFIX) and path.endswith("/")]
         self.assertEqual(check.shape_problems(text), [])
-        self.assertEqual(self.run_check(text, files=local, notifier_files=notifier)[0], 0)
+        self.assertEqual(self.run_check(text, files=local, notifier_files=notifier, directories=directories)[0], 0)
         for path in local:
             self.assertTrue(os.path.isfile(os.path.join(ROOT, path)), path)
+        for path in directories:
+            self.assertTrue(os.path.isdir(os.path.join(ROOT, path)), path)
 
     def test_a_complete_entry_passes(self):
         code, out = self.run_check(ENTRY)
