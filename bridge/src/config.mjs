@@ -40,12 +40,15 @@ export const DEFAULT_SCOPES = Object.freeze([
   'archives:create',
 ]);
 
+export const STUDIO_SCOPES = Object.freeze(['studio:read', 'studio:request']);
+
 // `brain:create` (new files only) is deliberately NOT in DEFAULT_SCOPES: BRIDGE
 // §9 fixes the initial grant set, and docs/laa/BRAIN-WRITE.md §7 only establishes
 // that creating a new path is safe, not that every device should be granted it.
 // It stays opt-in per device: `laa-bridge pair --scopes brain:read,brain:create`.
 export const ALL_SCOPES = Object.freeze([
   ...DEFAULT_SCOPES,
+  ...STUDIO_SCOPES,
   'brain:create',
   'brain:write',
   'gui:operate',
@@ -179,12 +182,12 @@ export function resolveUsageFeedUrl(env = process.env) {
   return env.LAA_BRIDGE_USAGE_FEED_URL || 'http://127.0.0.1:8081/widget';
 }
 
-// USAGE.md §4: live/local readings go stale after 20 minutes.
+// USAGE.md §4: live/local readings go stale after at most 10 minutes.
 export function resolveUsageAutoStaleMs(env = process.env) {
   const raw = env.LAA_BRIDGE_USAGE_AUTO_STALE_MS;
-  if (raw === undefined || raw === '') return 20 * 60 * 1000;
+  if (raw === undefined || raw === '') return 10 * 60 * 1000;
   const value = Number(raw);
-  return Number.isFinite(value) && value > 0 ? value : 20 * 60 * 1000;
+  return Number.isFinite(value) && value > 0 ? Math.min(value, 10 * 60 * 1000) : 10 * 60 * 1000;
 }
 
 // The proxy answers from its own 30 s upstream budget; the Bridge caps the wait
@@ -204,12 +207,6 @@ export function resolveUsageRefreshTimeoutMs(env = process.env) {
   if (raw === undefined || raw === '') return 30000;
   const value = Number(raw);
   return Number.isFinite(value) && value >= 1000 && value <= 60000 ? value : 30000;
-}
-
-// The last successful proxy payload, under the Bridge's state dir next to the
-// device and idempotency records. No credential is ever written here.
-export function resolveUsageFeedStateFile({ stateDir = resolveStateDir(), env = process.env } = {}) {
-  return resolve(env.LAA_BRIDGE_USAGE_FEED_STATE || join(stateDir, 'usage-feed.json'));
 }
 
 export function resolveStorageStatusFile(env = process.env) {

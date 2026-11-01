@@ -39,6 +39,22 @@ final class LAADriveRangeTests: XCTestCase {
         try await server.waitForClose()
     }
 
+    func testRangeTimeoutOverrideKeepsTheDefault() async throws {
+        DriveRangeTimeoutProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DriveRangeTimeoutProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let client = LAABridgeClient(session: session)
+        let credentials = LAABridgeCredentials(baseURL: URL(string: "https://fixture.ts.net")!, deviceID: "test", token: "test")
+        let normal = try await client.driveRange(path: "/v1/drive/files/seek01/content", credentials: credentials, offset: 0, length: 1)
+        let document = try await client.driveRange(path: "/v1/studio/media/catalog/\(String(repeating: "a", count: 64)).pdf",
+                                                   credentials: credentials, offset: 0, length: 1, timeout: 150)
+        XCTAssertEqual(normal.data, Data([1]))
+        XCTAssertEqual(document.data, normal.data)
+        XCTAssertEqual(DriveRangeTimeoutProtocol.timeouts, [30, 150])
+    }
+
     @MainActor func testLongPlayerSeeksWithBoundedRanges() async throws {
         let fixtures = try VirtualDriveMedia.loadFixtures()
         let media = try XCTUnwrap(fixtures[240])
@@ -124,6 +140,24 @@ final class LAADriveRangeTests: XCTestCase {
         XCTAssertNil(LAADriveThumbnail.safeURL(URL(string: "https://example.com/image")))
         XCTAssertNotNil(LAADriveThumbnail.safeURL(URL(string: "https://lh3.googleusercontent.com/image")))
     }
+}
+
+private final class DriveRangeTimeoutProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var recorded: [TimeInterval] = []
+    static var timeouts: [TimeInterval] { lock.withLock { recorded } }
+    static func reset() { lock.withLock { recorded = [] } }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.lock.withLock { Self.recorded.append(request.timeoutInterval) }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 206, httpVersion: nil,
+                                       headerFields: ["Content-Range": "bytes 0-0/1", "Content-Length": "1"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data([1]))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
 
 /// The fast-start MP4 headers describe 15 and 120 stream-copied repetitions
