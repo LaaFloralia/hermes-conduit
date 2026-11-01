@@ -50,6 +50,8 @@ export const ALL_SCOPES = Object.freeze([
   ...DEFAULT_SCOPES,
   ...STUDIO_SCOPES,
   'brain:create',
+  'instructions:read',
+  'instructions:write',
   'brain:write',
   'gui:operate',
   'archives:restore',

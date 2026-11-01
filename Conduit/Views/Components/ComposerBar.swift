@@ -115,6 +115,9 @@ struct ComposerBar: View, Equatable {
     @State private var dictatedDraft: String?
     /// The full-screen editor for long drafts (#335).
     @State private var isShowingFullEditor = false
+#if LAA_BUILD
+    @State private var isShowingMarkdownPreview = false
+#endif
     /// V2's conversation: rest as a slim bar until the composer is used.
     @Environment(\.v2ComposerRests) private var restsWhenIdle
     /// Kept expanded a moment after use ends, so a tap on a control (which
@@ -883,6 +886,11 @@ struct ComposerBar: View, Equatable {
                     // the draft from where it began and drop the keystrokes.
                     // The words so far stay.
                     dictation.yieldToTyping()
+                },
+                onMarkdownPreview: {
+#if LAA_BUILD
+                    isShowingMarkdownPreview = true
+#endif
                 }
             )
             .id(editorIdentity)
@@ -916,6 +924,9 @@ struct ComposerBar: View, Equatable {
             }
         }
         .animation(reduceMotion ? nil : ConduitMotion.response, value: showsFullEditorButton)
+#if LAA_BUILD
+        .sheet(isPresented: $isShowingMarkdownPreview) { LAAComposerMarkdownPreview(text: text) }
+#endif
         .sheet(isPresented: $isShowingFullEditor, onDismiss: {
             // The inline editor only takes programmatic changes, so hand it
             // what was written in the sheet, cursor at the end. An unchanged

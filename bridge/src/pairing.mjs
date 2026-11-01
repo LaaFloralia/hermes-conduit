@@ -63,3 +63,26 @@ export function grantStudio(store, { target, reason, now = Date.now(), operatorU
     return { device, alreadyGranted, previousScopes };
   });
 }
+
+// This grant is opt-in for one already enrolled device. Session scopes do not
+// imply access to the owner's instruction sources.
+export function grantInstructions(store, { target, reason, now = Date.now(), operatorUid = process.getuid?.() ?? null }) {
+  if (typeof reason !== 'string' || !reason.trim() || reason.length > 200 || /[\u0000-\u001f\u007f]/u.test(reason)) {
+    return { error: 'reason must be 1-200 printable characters on one line' };
+  }
+  return store.mutate((state) => {
+    const matches = target.length >= 4 ? Object.keys(state.devices).filter((id) => id.startsWith(target)) : [];
+    if (!matches.length) return { error: 'no device matches that id' };
+    if (matches.length > 1) return { error: `ambiguous id, matches ${matches.join(', ')}` };
+    const device = state.devices[matches[0]];
+    if (device.revokedAt) return { error: 'cannot grant scopes to a revoked device' };
+    const scopes = ['instructions:read', 'instructions:write'];
+    const previousScopes = [...device.scopes];
+    const alreadyGranted = scopes.every((scope) => device.scopes.includes(scope));
+    if (!alreadyGranted || !device.instructionsGrant) {
+      device.scopes = [...new Set([...device.scopes, ...scopes])].sort();
+      device.instructionsGrant = { grantedAt: new Date(now).toISOString(), operatorUid, reason: reason.trim(), wasAlreadyGranted: alreadyGranted };
+    }
+    return { device, alreadyGranted, previousScopes };
+  });
+}

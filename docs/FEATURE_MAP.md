@@ -561,6 +561,7 @@ store · the session and project API · the Linear task read API
 - Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
   `Conduit/LAA/Work/LAAWorkCopy.swift`
+- LAA composer formatting and instruction-file editor: `Conduit/LAA/Instructions/`; keyboard menu inserts Markdown at the selection and preview renders it. Instruction editing uses dedicated Bridge scopes, conditional saves and backups; external non-cooperating writers retain a check-to-rename race.
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`

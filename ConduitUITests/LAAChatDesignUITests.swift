@@ -45,6 +45,25 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertTrue((field.value as? String ?? "").contains("second line"))
     }
 
+    func testComposerFormattingAndPreviewPreserveDraft() {
+        let app = launch()
+        let field = app.textViews["composer.field"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        field.tap()
+        let format = app.buttons["composer.markdown.format"]
+        XCTAssertTrue(format.waitForExistence(timeout: 10))
+        format.tap()
+        app.buttons["見出し"].tap()
+        field.typeText("Title\nSecond line")
+        XCTAssertTrue((field.value as? String ?? "").contains("# Title\nSecond line"))
+        let preview = app.buttons["composer.markdown.preview"]
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        preview.tap()
+        XCTAssertTrue(app.staticTexts["Title"].waitForExistence(timeout: 5))
+        app.buttons["閉じる"].tap()
+        XCTAssertTrue((field.value as? String ?? "").contains("Second line"))
+    }
+
     func testCompactHeadersKeepTheirControlsTogether() {
         let app = launch(["-LAA_FORCE_COMPACT_CHAT"])
         let header = app.buttons["laa.employee.header"]

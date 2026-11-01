@@ -241,12 +241,18 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var canSubmitFromReturn: Bool
     /// Sends, and reports whether anything was done.
     var onSubmitFromReturn: () -> Bool
+    var onMarkdownPreview: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     func makeUIView(context: Context) -> ReturnKeyTextView {
         let view = ReturnKeyTextView()
         view.delegate = context.coordinator
+#if LAA_BUILD
+        if onMarkdownPreview != nil {
+            LAAComposerMarkdown.install(on: view) { context.coordinator.parent.onMarkdownPreview?() }
+        }
+#endif
         view.font = ChatTypography.inputFont(for: view.traitCollection, size: inputTextSize)
         view.adjustsFontForContentSizeCategory = false
         view.backgroundColor = .clear
