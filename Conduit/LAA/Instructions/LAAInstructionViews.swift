@@ -1,4 +1,4 @@
-#if LAA_BUILD
+#if LAA_BUILD && LAA_INSTRUCTION_EDITOR
 import SwiftUI
 
 private struct LAAInstructionDocument: Decodable {

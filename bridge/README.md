@@ -364,4 +364,4 @@ iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答
 
 Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）。共通指示は本文の保存・版管理・適用まで実装済みで、外部ファイル参照は持たない。
 
-指示ファイルの専用scopeは自動付与しない。対象端末を確認して `laa-bridge grant-instructions <device-id> --reason <reason>` で明示付与する。保存は最終再照合後のatomic renameだが、ロック非参加の外部編集がその間に書いた場合の競合は完全に防げない。バックアップはBridge stateの `instruction-backups/`（0600）に残る。
+指示ファイルAPIは独立レビューまで既定で無効（ルート未登録）。アプリの編集画面も `LAA_INSTRUCTION_EDITOR` が未定義のため無効。専用scopeは自動付与しない。対象端末を確認して `laa-bridge grant-instructions <device-id> --reason <reason>` で明示付与する。保存は最終再照合後のatomic renameだが、ロック非参加の外部編集がその間に書いた場合の競合は完全に防げない。バックアップはBridge stateの `instruction-backups/`（0600）に残る。

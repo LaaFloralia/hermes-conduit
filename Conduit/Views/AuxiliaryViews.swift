@@ -504,7 +504,7 @@ private struct LegacySettingsView: View {
 private enum SettingsDestination: Hashable {
     case profile, model, usage, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, shortcutInbox, screenQuestion, about
 
-#if LAA_BUILD
+#if LAA_BUILD && LAA_INSTRUCTION_EDITOR
     case instructions
 #endif
 
@@ -664,7 +664,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func destinationView(_ destination: SettingsDestination) -> some View {
         switch destination {
-        #if LAA_BUILD
+        #if LAA_BUILD && LAA_INSTRUCTION_EDITOR
         case .instructions:
             LAAInstructionsView()
         #endif
@@ -1189,7 +1189,7 @@ private struct SettingsHome: View {
                             settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
                         }
                         settingsLink(.workspace, icon: "folder", title: AppLocalization.string("Workspace & safety"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
-                        #if LAA_BUILD
+                        #if LAA_BUILD && LAA_INSTRUCTION_EDITOR
                         settingsLink(.instructions, icon: "doc.text", title: LAACopy.instructionFiles, detail: LAACopy.instructionFileNames, identifier: "settings.instructions")
                         #endif
                         settingsLink(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
@@ -1369,7 +1369,7 @@ private struct SettingsHome: View {
             v2Link(.model, icon: "cpu", title: AppLocalization.string("Model"), detail: AppLocalization.string("Default model and reasoning"), first: true)
             v2Link(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
             v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"), identifier: "settings.chat")
-            #if LAA_BUILD
+            #if LAA_BUILD && LAA_INSTRUCTION_EDITOR
             v2Link(.instructions, icon: "doc.text", title: LAACopy.instructionFiles, detail: LAACopy.instructionFileNames, identifier: "settings.instructions")
             #endif
             v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))

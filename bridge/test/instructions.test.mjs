@@ -9,7 +9,7 @@ test('instruction endpoints restrict access, preserve backups and reject stale r
   const dir = mkdtempSync(join(tmpdir(), 'instruction-test-'));
   const agents = join(dir, 'AGENTS.md'), claude = join(dir, 'CLAUDE.md');
   writeFileSync(agents, '# Original\n'); writeFileSync(claude, '# Claude\n');
-  const api = await startBridge({ instructions: { files: { agents, claude } } });
+  const api = await startBridge({ instructions: { enabled: true, files: { agents, claude } } });
   t.after(async () => { await api.close(); rmSync(dir, { recursive: true, force: true }); });
   const token = await api.token(['instructions:read', 'instructions:write']);
   const readOnly = await api.token(['instructions:read']);
@@ -42,7 +42,7 @@ test('instruction endpoint refuses symlinks', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'instruction-test-'));
   const target = join(dir, 'target'), link = join(dir, 'AGENTS.md');
   writeFileSync(target, 'untouched'); symlinkSync(target, link);
-  const api = await startBridge({ instructions: { files: { agents: link, claude: target } } });
+  const api = await startBridge({ instructions: { enabled: true, files: { agents: link, claude: target } } });
   t.after(async () => { await api.close(); rmSync(dir, { recursive: true, force: true }); });
   const token = await api.token(['instructions:read', 'instructions:write']);
   assert.equal((await api.request('/v1/instructions/agents', { token })).status, 503);
@@ -51,7 +51,7 @@ test('instruction endpoint refuses symlinks', async (t) => {
 
 test('instruction permission requires an explicit grant to a live device', async (t) => {
   const { grantInstructions } = await import('../src/pairing.mjs');
-  const api = await startBridge();
+  const api = await startBridge({ instructions: { enabled: true } });
   t.after(() => api.close());
   const token = await api.token();
   const device = (await api.request('/v1/me', { token })).body.data;
@@ -64,4 +64,17 @@ test('instruction permission requires an explicit grant to a live device', async
   assert.ok(updated.scopes.includes('instructions:write'));
   api.store.mutate(state => { state.devices[device.deviceId].revokedAt = new Date().toISOString(); });
   assert.match(grantInstructions(api.store, { target: device.deviceId, reason: 'Owner requested' }).error, /revoked/);
+});
+
+
+test('instruction endpoints are disabled by default even for authorized devices', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'instruction-disabled-'));
+  const agents = join(dir, 'AGENTS.md');
+  writeFileSync(agents, 'unchanged');
+  const api = await startBridge({ instructions: { files: { agents, claude: agents } } });
+  t.after(async () => { await api.close(); rmSync(dir, { recursive: true, force: true }); });
+  const token = await api.token(['instructions:read', 'instructions:write']);
+  assert.equal((await api.request('/v1/instructions/agents', { token })).status, 404);
+  assert.equal((await api.request('/v1/instructions/agents', { method: 'PUT', token, body: { text: 'changed' }, headers: { 'if-match': 'anything' } })).status, 404);
+  assert.equal(readFileSync(agents, 'utf8'), 'unchanged');
 });

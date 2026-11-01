@@ -63,6 +63,9 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...createSessionRoutes({ sessions: sessionService }),
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
-    ...instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...(options.instructions ?? {}) }),
+    // Disabled in production pending independent review; explicit injection is for tests.
+    ...(options.instructions?.enabled === true
+      ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
+      : []),
   ];
 }
