@@ -454,7 +454,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets and Drive: `Conduit/LAA/Assets/`, `Conduit/LAA/Drive/`, `bridge/src/routes/drive.mjs`, `bridge/src/drive/`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`, `bridge/bench/README.md`, `docs/laa/DRIVE-PLAYER-API.md`
 - Studio intake: `Conduit/LAA/Studio/`, `bridge/src/studio/`, `bridge/src/routes/studio.mjs`, `bridge/test/studio.test.mjs`, `bridge/test/studio-v2.test.mjs`, `ConduitTests/LAAStudioTests.swift`, `ConduitTests/LAAStudioV2Tests.swift`, `ConduitTests/LAACompactStudioSnapshotTests.swift`, `ConduitUITests/LAAStudioUITests.swift`, `scripts/laa/studio-ui-fixture.mjs`
-- Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
+- Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`, `Conduit/LAA/Brain/LAABrainFolderStore.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
@@ -492,14 +492,29 @@ App Store build · the Bridge API, Brain and Usage data contracts
   part of this screen. Opening the tab refreshes after a 60-second quiet interval;
   manual refresh and app foreground refresh remain available. It retains previous
   readings and their times on failure, disables duplicate refreshes and
-  distinguishes missing, zero, stale, expired and unavailable data.
-- Brain lists the default permitted areas, optionally adds Inbox on request,
-  searches locally through the Bridge, and opens Markdown or its exact source.
-  Frontmatter remains available, unresolved syntax and image references remain
-  visible, and wiki links resolve only against the permitted listing. New notes
-  use the opt-in `brain:create` scope and the server's conflict-safe name.
-  An uncertain create retains its exact request and key in ThisDeviceOnly
-  Keychain until the same device reconciles it or the user checks Inbox.
+  distinguishes missing, zero, stale, expired and unavailable data. Hermes'
+  existing Settings report remains available.
+- Brain first opens a user-selected, security-scoped local folder: the initial
+  list shows folders (including empty ones) and Markdown notes. The user can
+  browse, search, read and create folders or new notes with Markdown content.
+  New notes journal their draft and use exclusive atomic creation, with an
+  ignored staging fallback only when needed; an existing name is never replaced.
+  The Mac Bridge remains a secondary source, with its opt-in `brain:create`
+  scope and conflict-safe server naming. An uncertain Bridge create retains its
+  exact request and key in ThisDeviceOnly Keychain for reconciliation.
+- Existing local notes can be edited with a pre-write recovery journal and
+  digest comparison; a detected concurrent change keeps both versions for
+  review. The journal reserves 30 ordinary versions and at most 128 MiB per note; unique
+  displaced and interrupted versions are never automatically evicted. If those
+  versions fill the limit, the pending stage remains available for export.
+  The local vault appends `.laa-tmp` to its device-local `.stignore` on connect
+  unless its final `*` indicates SyncTrain selective sync, which it leaves intact;
+  checked replacement requires that rule to pass a conservative local check;
+  SyncTrain applying it still needs device verification. Otherwise the
+  draft is exported. The temp folder is created only if fallback is needed.
+- The App Shortcut “今日のデイリーノートを開く” opens `daily journal/YYYY-MM-DD.md`
+  for editing, creating an empty note exclusively if absent. A pending request
+  waits for local folder access and for any open editor to close.
 - Assets Drive uses the paired `media:read` Bridge for My Drive, shared drives,
   folder navigation, search, paging and bounded thumbnails. Recent and starred
   are unavailable from the desktop mount. Search scope and incomplete results
@@ -525,8 +540,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   through one Studio adapter; its shared transport retains both the Drive
   version check and Studio's optional timeout.
   The v2 app screens, real intake and iPhone playback remain to be verified.
-- Brain shows Recent and Folders with Tags disabled until supported; the note
-  body uses an opaque surface and all existing links and create-only flow remain.
+- Brain keeps Recent, Tags and conflict copies as secondary local views; its
+  Bridge source retains the earlier Recent and Folders controls.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
 - Every tab's bar carries the same gear in the same place, with the same
@@ -550,8 +565,18 @@ App Store build · the Bridge API, Brain and Usage data contracts
   rotation, audio interruptions, macOS permission and real Drive device behavior
   still need their respective tests. File attributes do not guarantee an atomic
   revision within a single chunk.
-  Brain cannot edit existing
-  notes; relative images are shown as references until Bridge supports them.
+  Brain's Bridge source cannot edit existing notes; relative images there are
+  shown as references until Bridge supports them.
+  The Mac Syncthing and Git ignore rules must be installed before using local editing with SyncTrain.
+  On the actual iPhone, verify SyncTrain full-sync/send-receive mode, the folder
+  picker, bookmark persistence, creation and synchronization in both directions,
+  and whether the provider supports exclusive rename and atomic exchange.
+  Checked replacement has a narrow comparison-to-rename race; even exchange
+  cannot retain writes made through an old file descriptor after its displaced
+  contents were captured. Mac-local overwrites are outside this app's protection;
+  vault-git-sync records the Mac vault periodically.
+  Local recovery history is keyed by vault path, so moving or renaming the vault
+  hides its earlier records until the original location is selected again.
   The LAA shell uses
   a single-column chat even on a wide iPad window; upstream Bots and Tasks tabs
   are not in this five-tab shell.

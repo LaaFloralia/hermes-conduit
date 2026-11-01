@@ -125,6 +125,12 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             shortTitle: "Talk to LAA",
             systemImageName: "mic.fill"
         )
+        AppShortcut(
+            intent: OpenTodayDailyNoteIntent(),
+            phrases: ["\(.applicationName)で今日のデイリーノートを開く"],
+            shortTitle: "今日のデイリーノートを開く",
+            systemImageName: "calendar.badge.plus"
+        )
         #else
         AppShortcut(
             intent: StartVoiceConversationIntent(),
