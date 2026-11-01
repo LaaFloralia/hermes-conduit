@@ -85,8 +85,7 @@ struct LAABrainView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: onRequestSettings) { Image(systemName: "gearshape") }
-                        .accessibilityLabel(Text(verbatim: LAACopy.Brain.settings))
+                    LAASettingsButton(action: onRequestSettings)
                 }
             }
             .navigationDestination(for: LAABrainRoute.self) { route in

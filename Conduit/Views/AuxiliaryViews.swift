@@ -3290,12 +3290,14 @@ private struct AppearanceSettingsDetail: View {
                     Text("Dark").tag(ThemePreference.dark); Text("Light").tag(ThemePreference.light); Text("System").tag(ThemePreference.system)
                 }.pickerStyle(.segmented)
             }
+            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("Accent color"), symbol: "paintpalette", tint: .conduitAccent) {
                 Text("Choose the color of your own messages and Conduit’s highlights.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 AccentColorPicker(selection: $accentChoice)
             }
+            #endif
             ConduitSettingsSection(title: AppLocalization.string("App language"), symbol: "globe", tint: .conduitAccent) {
                 Text("Choose the language Conduit’s interface uses. Speech, transcription, and provider language settings are unaffected.")
                     .font(.footnote)
@@ -3325,6 +3327,7 @@ private struct AppearanceSettingsDetail: View {
                     }
                 }
             }
+            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("App icon"), symbol: "app.badge", tint: .conduitAura) {
                 Text("Choose the icon shown on your Home Screen.")
                     .font(.footnote)
@@ -3371,6 +3374,7 @@ private struct AppearanceSettingsDetail: View {
                     }
                 }
             }
+            #endif
 
             // The gold button beside V2's tabs: voice, or New chat for
             // people who'd rather not talk. A chat keeps its voice button.
@@ -4359,6 +4363,13 @@ private struct AboutSettingsDetail: View {
 
     var body: some View {
         SettingsDetailContainer {
+            #if LAA_BUILD
+            ConduitSettingsSection(title: LAACopy.brand, symbol: "info.circle", tint: .conduitAccent) {
+                ConduitAppIconArtwork(assetName: appState.appIconChoice.previewAssetName, size: 48)
+                SettingsMetricRow(label: AppLocalization.string("Active profile"), value: appState.profileDisplayName(profile))
+                SettingsMetricRow(label: AppLocalization.string("Version"), value: ConduitAppVersion.display)
+            }
+            #else
             ConduitSettingsSection(title: "Hermes Conduit", symbol: "info.circle", tint: .conduitAccent) {
                 HStack(spacing: 12) {
                     ConduitAppIconArtwork(
@@ -4372,6 +4383,7 @@ private struct AboutSettingsDetail: View {
                 SettingsMetricRow(label: AppLocalization.string("Active profile"), value: appState.profileDisplayName(profile))
                 SettingsMetricRow(label: AppLocalization.string("Version"), value: ConduitAppVersion.display)
             }
+            #endif
             ConduitSettingsSection(title: AppLocalization.string("Data handling"), symbol: "hand.raised", tint: .conduitAura) {
                 Text("Conduit connects to the dashboard and gateway you configure. Conversations and attachments are handled by that Hermes installation.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -4405,10 +4417,12 @@ private struct AboutSettingsDetail: View {
                     }
                 }
             }
+            #if !LAA_BUILD
             ConduitSettingsSection(title: AppLocalization.string("Disclaimer"), symbol: "info.circle", tint: .conduitAura) {
                 Text("Hermes Conduit is an independent client and is not affiliated with or endorsed by Nous Research. © 2026 Milim.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
+            #endif
         }.navigationTitle("About & privacy")
     }
 

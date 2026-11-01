@@ -159,6 +159,7 @@
 	<array>
 		<string>com.milim.relay.health-sync</string>
 		<string>com.milim.relay.phone-sync</string>
+		<string>com.laa-inc.laa.usage-refresh</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

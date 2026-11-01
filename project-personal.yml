@@ -37,6 +37,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.conduit
+        # Upstream's icon and name: this build sits beside the App Store
+        # Conduit and the LAA build, so it must not look like either one.
         CODE_SIGN_IDENTITY: "Apple Development"
         CODE_SIGN_ENTITLEMENTS: ""
         PROVISIONING_PROFILE_SPECIFIER: ""
@@ -46,10 +48,10 @@ targets:
         # The TestFlight signing overlay must adopt the same setting.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
     postBuildScripts:
-      # The home screen name, so it isn't mistaken for the App Store app.
-      - name: Personal build name
+      # Only the permission wording is branded here; the name stays the
+      # personal build's own and the icon stays upstream's AppIcon.
+      - name: Brand permission text for the personal build
         basedOnDependencyAnalysis: false
         script: |
-          plist="$TARGET_BUILD_DIR/$INFOPLIST_PATH"
-          /usr/libexec/PlistBuddy -c "Delete :CFBundleDisplayName" "$plist" 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${CONDUIT_PERSONAL_NAME:-Conduit LAA}" "$plist"
+          python3 "$SRCROOT/scripts/laa/brand-bundle.py" --bundle "$TARGET_BUILD_DIR/$WRAPPER_NAME" --kind app --source "$SRCROOT" \
+            --name "${CONDUIT_PERSONAL_NAME:-Conduit LAA}"

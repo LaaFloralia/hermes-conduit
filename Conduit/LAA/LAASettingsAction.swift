@@ -14,4 +14,15 @@ extension EnvironmentValues {
     }
 }
 
+/// The same system toolbar control is used at the root of each tab.
+struct LAASettingsButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) { Image(systemName: "gearshape") }
+            .accessibilityLabel(Text(verbatim: LAACopy.settings))
+            .accessibilityIdentifier("laa.settings.open")
+    }
+}
+
 #endif

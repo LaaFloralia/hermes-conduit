@@ -52,10 +52,7 @@ struct LAAPlaceholderScreen: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: onRequestSettings) {
-                    Image(systemName: "gearshape")
-                }
-                .accessibilityLabel(Text(verbatim: LAACopy.settings))
+                LAASettingsButton(action: onRequestSettings)
             }
         }
         .tint(LAAColors.teal)

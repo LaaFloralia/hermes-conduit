@@ -363,7 +363,7 @@ enum WatchJobAnswer {
         case "finished":
             let result = item.result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !result.isEmpty else {
-                return updatePrompt("\(item.title) has finished. Open it in Conduit on your iPhone to read the result.")
+                return updatePrompt(LAAProductBrand.display("\(item.title) has finished. Open it in Conduit on your iPhone to read the result."))
             }
             return completionPrompt(title: item.title, result: result)
         case "failed":
@@ -380,7 +380,7 @@ enum WatchJobAnswer {
     /// VoiceBackgroundJobSupervisor.failedNotice: Hermes' reason, its first
     /// line kept short, since a provider's raw error can run on.
     static func failedNotice(_ title: String, reason: String) -> String {
-        let notice = "\(title) failed. Open it in Conduit on your iPhone for details."
+        let notice = LAAProductBrand.display("\(title) failed. Open it in Conduit on your iPhone for details.")
         let line = reason.split(whereSeparator: \.isNewline).lazy
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .first { !$0.isEmpty } ?? ""

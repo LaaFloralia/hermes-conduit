@@ -45,12 +45,12 @@ final class LAAEmployeeWidgetConfigurationTests: XCTestCase {
         let first = now.addingTimeInterval(600)
         let second = now.addingTimeInterval(900)
         let meter = WidgetUsageMeter(id: "one", label: "Claude", remainingPercent: 12,
-            observedAt: now, freshUntil: first, resetsAt: second, stale: false, retained: false)
+            observedAt: now, freshUntil: now.addingTimeInterval(1200), resetsAt: second, stale: false, retained: false)
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: [])
             .withUsage(WidgetUsageSnapshot(meters: [meter], checkedAt: now))
         let timeline = LAAEmployeeTimelineProvider.makeTimeline(configuration: LAAEmployeeWidgetIntent(), snapshot: snapshot)
-        XCTAssertEqual(timeline.entries.count, 3)
-        XCTAssertEqual(timeline.entries.dropFirst().map(\.date), [first, second])
+        XCTAssertEqual(timeline.entries.count, 4)
+        XCTAssertEqual(timeline.entries.dropFirst().map(\.date), [first, second, now.addingTimeInterval(1200)])
         XCTAssertFalse(timeline.entries[0].usage!.meters[0].isPast(at: timeline.entries[0].date))
         XCTAssertTrue(timeline.entries[1].usage!.meters[0].isPast(at: timeline.entries[1].date))
     }

@@ -132,7 +132,8 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         let bubbleTrailing = try XCTUnwrap(bubbleTrailingEdge(image, style: style), "Own bubble must be visible")
         XCTAssertEqual(canvas.width - bubbleTrailing, LAASpacing.horizontal, accuracy: 2,
                        "The own bubble must end at the chat's trailing margin")
-        let headerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 10..<60), "The header controls must be visible")
+        // The bar sits under the status bar (about 59pt), not in the top 60.
+        let headerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 56..<106), "The header controls must be visible")
         XCTAssertEqual(canvas.width - headerTrailing, LAASpacing.horizontal, accuracy: 3,
                        "The header controls must end at the chat's trailing margin")
         let composerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 800..<940), "The composer controls must be visible")

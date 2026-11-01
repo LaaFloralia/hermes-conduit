@@ -16,7 +16,11 @@ struct LAAAppShell: View {
     @State private var chatsPath: [V2Route] = []
 
     private var requiresLogin: Bool {
-        appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["CONDUIT_UITEST"] == "1",
+           ProcessInfo.processInfo.arguments.contains("-LAA_UI_TEST_FORCE_LOGIN") { return true }
+        #endif
+        return appState.showLogin || (appState.connection == nil && appState.offlineChatPresentation == nil)
     }
 
     private var conversationVisible: Bool {
@@ -50,7 +54,17 @@ struct LAAAppShell: View {
             .background(LAAColor.background.ignoresSafeArea())
             .environment(\.laaSettingsAction, onRequestSettings)
             .task(id: "\(bridge.revision)|\(scenePhase == .active)") {
-                await usageState.synchronize(bridge: bridge, active: scenePhase == .active)
+                let active = scenePhase == .active
+                await usageState.synchronize(bridge: bridge, active: active)
+                guard active else { return }
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(120)) } catch { return }
+                    guard !Task.isCancelled else { return }
+                    await usageState.refreshAndPublish(bridge: bridge)
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { LAAUsageBackground.schedule() }
             }
             .onChange(of: appState.laaWidgetUsagePending, initial: true) { _, pending in
                 guard pending else { return }
@@ -179,8 +193,10 @@ struct LAAAppShell: View {
             LoginView()
         } else {
             NavigationStack(path: $chatsPath) {
+                // LAAChatsContent owns the bar (an empty title and the
+                // settings button); a title here would repeat the "Chats"
+                // heading in the body.
                 LAAChatsView(appState: appState)
-                    .navigationTitle(LAATab.chats.title)
                     .navigationDestination(for: V2Route.self) { route in
                         switch route {
                         case .conversation:

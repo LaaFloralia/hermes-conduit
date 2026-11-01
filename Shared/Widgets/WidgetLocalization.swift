@@ -16,9 +16,17 @@ enum WidgetLocalization {
         guard language != "system", !language.isEmpty,
               let path = Bundle.main.path(forResource: language, ofType: "lproj"),
               let bundle = Bundle(path: path) else {
+            #if LAA_BUILD
+            return LAAProductBrand.display(Bundle.main.localizedString(forKey: key, value: key, table: nil))
+            #else
             return Bundle.main.localizedString(forKey: key, value: key, table: nil)
+            #endif
         }
+        #if LAA_BUILD
+        return LAAProductBrand.display(bundle.localizedString(forKey: key, value: key, table: nil))
+        #else
         return bundle.localizedString(forKey: key, value: key, table: nil)
+        #endif
     }
 
     static func title(_ copy: WidgetTitleCopy, language: String) -> String {

@@ -16,7 +16,7 @@ final class LAAUsageUITests: XCTestCase {
                 XCTAssertTrue(deliver.waitForExistence(timeout: 15))
                 deliver.tap()
             }
-            XCTAssertTrue(app.buttons["laa.usage.menu"].waitForExistence(timeout: 20))
+            XCTAssertTrue(app.buttons["laa.usage.refresh"].waitForExistence(timeout: 20))
             app.terminate()
         }
     }
@@ -38,7 +38,7 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(address.waitForExistence(timeout: 15))
         for _ in 0..<4 {
             let value = address.value as? String ?? ""
-            if value.isEmpty || value == "接続先" { break }
+            if value.isEmpty || value == "Address" { break }
             address.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.5)).tap()
             address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count + 10))
         }
