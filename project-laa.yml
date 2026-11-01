@@ -181,21 +181,11 @@ targets:
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
-        INFOPLIST_FILE: "$(DERIVED_FILE_DIR)/LAA-Widget-Info.plist"
+        INFOPLIST_FILE: scripts/laa/Widget-Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.widgets
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitWidgets.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"
-    preBuildScripts:
-      - name: LAA widget calendar permission description
-        inputFiles:
-          - "$(SRCROOT)/ConduitWidgets/Info.plist"
-        outputFiles:
-          - "$(DERIVED_FILE_DIR)/LAA-Widget-Info.plist"
-        script: |
-          mkdir -p "$DERIVED_FILE_DIR"
-          cp "$SCRIPT_INPUT_FILE_0" "$SCRIPT_OUTPUT_FILE_0"
-          /usr/libexec/PlistBuddy -c "Add :NSCalendarsFullAccessUsageDescription string Show upcoming calendar events in LAA." "$SCRIPT_OUTPUT_FILE_0"
     postBuildScripts:
       - name: Brand LAA widget resources
         basedOnDependencyAnalysis: false
