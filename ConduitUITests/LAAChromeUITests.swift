@@ -234,6 +234,7 @@ final class LAAChromeUITests: XCTestCase {
             if !voice.isHittable { app.scrollViews.firstMatch.swipeUp() }
             voice.tap()
             XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: 10))
+            XCTAssertTrue(app.staticTexts["Macの音声設定を取得できません。テキストの会話は引き続き使えます。"].waitForExistence(timeout: 15))
             capture("remnants-voice-\(appearance)")
             let advanced = app.buttons["voice.advancedToggle"]
             for _ in 0..<10 where !advanced.isHittable { app.scrollViews.firstMatch.swipeUp() }

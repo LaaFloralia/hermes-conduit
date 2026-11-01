@@ -415,7 +415,11 @@ enum DashboardTicketBridgeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .notReady, .answeredAfterSwitch:
+            #if LAA_BUILD
+            return LAACopy.macConnectingBody
+            #else
             return AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment.")
+            #endif
         case .signInRequired:
             return AppLocalization.string("Dashboard sign-in has expired. Sign in again to continue.")
         case .requestFailed(let message):

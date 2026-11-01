@@ -187,7 +187,11 @@ final class HermesVoiceConfigurationService: ObservableObject {
         let environment = await environmentResult
 
         guard case .success(let configObject) = config else {
+            #if LAA_BUILD
+            let reason = LAACopy.macVoiceSettingsUnavailable
+            #else
             let reason = AppLocalization.string("This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works.")
+            #endif
             snapshot = .unavailable(profile: profile, reason: reason)
             errorMessage = Self.message(from: config)
             return
