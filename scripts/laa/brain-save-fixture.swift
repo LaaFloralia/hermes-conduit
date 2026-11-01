@@ -12,6 +12,17 @@ import Darwin
         guard args.count >= 3 else { throw FixtureFailure() }
         let root = URL(fileURLWithPath: args[2], isDirectory: true)
         if args[1] == "selftest" { try selftest(root); return }
+        if args[1] == "create-note", args.count == 7 || args.count == 8 {
+            let journal = LAABrainSaveJournal(directory: URL(fileURLWithPath: args[3], isDirectory: true))
+            let created = try LAABrainFolderStore.create(root: root, parent: args[4], name: args[5], kind: .note,
+                                                        body: Data(args[6].utf8), journal: journal,
+                                                        forceFallback: args.count == 8 && args[7] == "fallback")
+            let versions = try journal.versions(vault: LAABrainSaveJournal.vaultID(root), path: created)
+            try check(tryData(root.appendingPathComponent(created)) == Data(args[6].utf8), "created contents differ")
+            try check(versions.contains { $0.kind == .draft && $0.bytes == Data(args[6].utf8) }, "created draft missing")
+            print("PASS: created and journaled note")
+            return
+        }
         if args[1] == "prepare-ignore" {
             try check(LAABrainSaveCoordinator.ensureFallbackIgnored(root: root), "could not install ignore rule")
             return

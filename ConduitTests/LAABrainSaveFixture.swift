@@ -27,6 +27,13 @@ struct BrainSaveFixture {
         let ignoreBytes = try Data(contentsOf: ignoreFile)
         try check(ignoreBytes == Data("// existing rule\nother-pattern\n.laa-tmp\n".utf8), "existing ignore bytes changed")
         try check(LAABrainSaveCoordinator.ensureFallbackIgnored(root: root) && tryData(ignoreFile) == ignoreBytes, "ignore rule duplicated")
+        let selective = work.appendingPathComponent("selective", isDirectory: true)
+        try manager.createDirectory(at: selective, withIntermediateDirectories: true)
+        let selectiveIgnore = selective.appendingPathComponent(".stignore")
+        let selectiveBytes = Data("!/selected\n*\n".utf8)
+        try selectiveBytes.write(to: selectiveIgnore)
+        try check(!LAABrainSaveCoordinator.ensureFallbackIgnored(root: selective) && tryData(selectiveIgnore) == selectiveBytes,
+                  "selective SyncTrain ignore changed")
         let journal = LAABrainSaveJournal(directory: privateDir)
         let coordinator = LAABrainSaveCoordinator(journal: journal)
         func put(_ path: String, _ content: String) throws { try Data(content.utf8).write(to: root.appendingPathComponent(path)) }

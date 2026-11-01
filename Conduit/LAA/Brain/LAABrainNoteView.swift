@@ -43,6 +43,10 @@ struct LAABrainNoteView: View {
                                     .laaTextStyle(.secondary)
                             }
                         }
+                        if isLocal && !LAABrainEditingGate.enabled && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
+                            Text("編集機能は確認中です。")
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        }
                         if loading { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                         else if let localError {
                             Text(verbatim: localError).foregroundStyle(LAAColor.attention)
@@ -91,8 +95,8 @@ struct LAABrainNoteView: View {
                 }
                 if isLocal && LAABrainEditingGate.enabled && note != nil && !LAABrainSaveCoordinator.isConflictCopy(reference.path) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button { editorRoot = try? local.snapshot() } label: { Image(systemName: "square.and.pencil") }
-                            .accessibilityLabel(Text(verbatim: "Edit note"))
+                        Button("編集") { editorRoot = try? local.snapshot() }
+                            .accessibilityLabel(Text(verbatim: "ノートを編集"))
                             .accessibilityIdentifier("laa.brain.edit")
                     }
                 }

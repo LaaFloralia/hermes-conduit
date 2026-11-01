@@ -393,6 +393,12 @@ struct LAABrainSaveCoordinator {
             let exists = fstatat(directory, ".stignore", &info, AT_SYMLINK_NOFOLLOW) == 0
             if exists && (info.st_mode & S_IFMT != S_IFREG || readIgnore(directory) == nil) { return }
             if !exists && errno != ENOENT { return }
+            // SyncTrain recognizes selective sync by a final catch-all '*'.
+            // Appending after it changes that format and can alter sync settings.
+            // Leave it untouched; fallback remains unavailable until configured.
+            if let prior = readIgnore(directory), let text = String(data: prior, encoding: .utf8),
+               text.components(separatedBy: .newlines).map({ $0.trimmingCharacters(in: .whitespaces) })
+                   .filter({ !$0.isEmpty && !$0.hasPrefix("//") }).last == "*" { return }
             let fd = openat(directory, ".stignore", O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o600)
             guard fd >= 0 else { return }
             defer { close(fd) }
@@ -408,7 +414,7 @@ struct LAABrainSaveCoordinator {
         return coordinationError == nil && safe
     }
 
-    private static func isFallbackIgnored(root: URL) -> Bool {
+    static func isFallbackIgnored(root: URL) -> Bool {
         let directory = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
         guard directory >= 0 else { return false }
         defer { close(directory) }

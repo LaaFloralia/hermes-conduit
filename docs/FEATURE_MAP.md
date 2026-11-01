@@ -450,7 +450,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Server availability copy and checks: `Conduit/LAA/Design/LAAServerAvailabilityCopy.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAACompactAvailabilitySnapshotTests.swift`
 - Pairing and Usage: `Conduit/LAA/LAABridgeClient.swift`, `Conduit/LAA/LAAPairingView.swift`, `Conduit/LAA/Usage/LAAUsageModels.swift`, `Conduit/LAA/Usage/LAAUsageState.swift`, `Conduit/LAA/Usage/LAAUsageView.swift`, `ConduitTests/LAAUsageStateTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitTests/LAAUsageViewSnapshotTests.swift`, `ConduitUITests/LAAUsageUITests.swift`, `scripts/laa/usage-ui-fixture.mjs`, `scripts/laa/test-bridge-client.swift`, `scripts/laa/test-bridge-timeout.py`
 - Assets: `Conduit/LAA/Assets/LAAAssetsView.swift`, `Conduit/LAA/Assets/LAAAssetsData.swift`, `Conduit/LAA/Drive/LAADriveViews.swift`, `Conduit/LAA/Drive/LAADriveTransport.swift`, `Conduit/LAA/Drive/LAADrivePlayer.swift`, `ConduitTests/LAAAssetsTests.swift`, `ConduitTests/LAADriveRangeTests.swift`, `ConduitTests/LAACompactDriveSnapshotTests.swift`, `ConduitUITests/LAAAssetsUITests.swift`
-- Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
+- Brain: `Conduit/LAA/Brain/LAABrainCopy.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`, `Conduit/LAA/Brain/LAABrainCreateView.swift`, `Conduit/LAA/Brain/LAABrainLocalCreateView.swift`, `Conduit/LAA/Brain/LAABrainFolderStore.swift`, `Conduit/LAA/Brain/LAABrainModels.swift`, `Conduit/LAA/Brain/LAABrainData.swift`, `Conduit/LAA/Brain/LAABrainPendingStore.swift`, `ConduitTests/LAABrainTests.swift`, `ConduitUITests/LAABrainUITests.swift`, `docs/laa/BRAIN-WRITE.md`
 - Integration and contracts: `Conduit/ConduitApp.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/V2/V2ChatsView.swift`, `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/UsageSettingsViews.swift`, `project-personal.yml`, `docs/laa/BRIDGE.md`, `docs/laa/USAGE.md`
 
 **Rulings**
@@ -485,18 +485,20 @@ App Store build · the Bridge API, Brain and Usage data contracts
   readings and their times on failure, disables duplicate refreshes and
   distinguishes missing, zero, stale, expired and unavailable data. Hermes'
   existing Settings report remains available.
-- Brain lists the default permitted areas, optionally adds Inbox on request,
-  searches locally through the Bridge, and opens Markdown or its exact source.
-  Frontmatter remains available, unresolved syntax and image references remain
-  visible, and wiki links resolve only against the permitted listing. New notes
-  use the opt-in `brain:create` scope and the server's conflict-safe name.
-  An uncertain create retains its exact request and key in ThisDeviceOnly
-  Keychain until the same device reconciles it or the user checks Inbox.
+- Brain first opens a user-selected, security-scoped local folder: the initial
+  list shows folders (including empty ones) and Markdown notes. The user can
+  browse, search, read and create folders or new notes with Markdown content.
+  New notes journal their draft and use exclusive atomic creation, with an
+  ignored staging fallback only when needed; an existing name is never replaced.
+  The Mac Bridge remains a secondary source, with its opt-in `brain:create`
+  scope and conflict-safe server naming. An uncertain Bridge create retains its
+  exact request and key in ThisDeviceOnly Keychain for reconciliation.
 - Existing-note editing remains disabled in the product. Its test-only recovery
   journal reserves 30 ordinary versions and at most 128 MiB per note; unique
   displaced and interrupted versions are never automatically evicted. If those
   versions fill the limit, the pending stage remains available for export.
-  The local vault appends `.laa-tmp` to its device-local `.stignore` on connect;
+  The local vault appends `.laa-tmp` to its device-local `.stignore` on connect
+  unless its final `*` indicates SyncTrain selective sync, which it leaves intact;
   checked replacement requires that rule to pass a conservative local check;
   SyncTrain applying it still needs device verification. Otherwise the
   draft is exported. The temp folder is created only if fallback is needed.
@@ -509,8 +511,8 @@ App Store build · the Bridge API, Brain and Usage data contracts
   current Bridge, so those documents show an Open on Mac reason. Inspiration
   and Studio remain disabled; missing Drive authorization and Bridge failures
   are distinct. The current Bridge supplies neither owners nor thumbnails.
-- Brain shows Recent and Folders with Tags disabled until supported; the note
-  body uses an opaque surface and all existing links and create-only flow remain.
+- Brain keeps Recent, Tags and conflict copies as secondary local views; its
+  Bridge source retains the earlier Recent and Folders controls.
 - Settings opens from the gear. New chat and voice remain reachable from the
   Chats list; the App Store build keeps its existing shell.
 
@@ -525,6 +527,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   notes; relative images are shown as references until Bridge supports them.
   Existing-note editing still needs simulator and device verification; the
   Mac's Syncthing and Git ignore rules must be installed before enabling it.
+  On the actual iPhone, verify SyncTrain full-sync/send-receive mode, the folder
+  picker, bookmark persistence, creation and synchronization in both directions,
+  and whether the provider supports exclusive rename and atomic exchange.
   Local recovery history is keyed by vault path, so moving or renaming the vault
   hides its earlier records until the original location is selected again.
   The LAA shell uses

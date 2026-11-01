@@ -22,6 +22,7 @@ import Foundation
                 let root = FileManager.default.temporaryDirectory.appendingPathComponent("brain-fixture-" + UUID().uuidString, isDirectory: true)
                 try FileManager.default.createDirectory(at: root.appendingPathComponent("Company"), withIntermediateDirectories: true)
                 try FileManager.default.createDirectory(at: root.appendingPathComponent("Assets"), withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(at: root.appendingPathComponent("Company/Empty"), withIntermediateDirectories: true)
                 try Data("# 見出し\n\nオフラインの検索本文です。 fixture-search #garden\n\n[[Other#Details|次のメモ]]\n\n![[Assets/fixture.png]]\n\n![[Other]]\n".utf8)
                     .write(to: root.appendingPathComponent("Company/Start.md"))
                 try Data("# 別のメモ\n\n## Details\n本文\n".utf8).write(to: root.appendingPathComponent("Company/Other.md"))
@@ -151,13 +152,13 @@ enum LAABrainVaultError: Error {
 
     var message: String {
         switch self {
-        case .access: return "Folder access is unavailable. Choose it again or use the Mac connection."
-        case .notDirectory: return "Choose a folder."
-        case .invalidPath: return "This item is outside the selected folder or is a symbolic link."
-        case .unreadable: return "The folder or note could not be read. Check its availability and try again."
-        case .invalidText: return "This note is not valid UTF-8 text."
-        case .tooLarge: return "This file is too large to preview."
-        case .ambiguous: return "More than one attachment has this name. Use its full path."
+        case .access: return "フォルダにアクセスできません。もう一度選んでください。"
+        case .notDirectory: return "フォルダを選んでください。"
+        case .invalidPath: return "選んだフォルダの外、またはシンボリックリンクは開けません。"
+        case .unreadable: return "フォルダまたはノートを読めません。保存先を確認してください。"
+        case .invalidText: return "このノートはUTF-8のテキストではありません。"
+        case .tooLarge: return "ファイルが大きすぎるため表示できません。"
+        case .ambiguous: return "同名の添付が複数あります。フルパスを指定してください。"
         }
     }
 }
@@ -166,8 +167,16 @@ enum LAABrainVaultError: Error {
 enum LAABrainVaultIO {
     private static let excludedDirectories: Set<String> = [".obsidian", ".git", ".trash", ".stfolder", ".stversions", ".laa-tmp"]
 
-    static func files(root: URL) throws -> [LAABrainFile] {
-        var result: Result<[LAABrainFile], Error> = .failure(LAABrainVaultError.unreadable)
+    struct Listing {
+        let files: [LAABrainFile]
+        /// Relative paths, including empty directories.
+        let folders: [String]
+    }
+
+    static func files(root: URL) throws -> [LAABrainFile] { try listing(root: root).files }
+
+    static func listing(root: URL) throws -> Listing {
+        var result: Result<Listing, Error> = .failure(LAABrainVaultError.unreadable)
         var coordinationError: NSError?
         NSFileCoordinator().coordinate(readingItemAt: root, options: [], error: &coordinationError) { coordinatedRoot in
             result = Result { try enumerate(root: coordinatedRoot) }
@@ -176,7 +185,7 @@ enum LAABrainVaultIO {
         return try result.get()
     }
 
-    private static func enumerate(root: URL) throws -> [LAABrainFile] {
+    private static func enumerate(root: URL) throws -> Listing {
         let manager = FileManager.default
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey]
         var enumerationError: Error?
@@ -187,14 +196,18 @@ enum LAABrainVaultIO {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         var files: [LAABrainFile] = []
+        var folders: [String] = []
         for case let url as URL in enumerator {
             let values = try url.resourceValues(forKeys: keys)
             if values.isSymbolicLink == true { enumerator.skipDescendants(); continue }
             if values.isDirectory == true {
-                if excludedDirectories.contains(url.lastPathComponent) { enumerator.skipDescendants() }
+                if url.lastPathComponent.hasPrefix(".") { enumerator.skipDescendants(); continue }
+                if url.standardizedFileURL.path.hasPrefix(prefix) {
+                    folders.append(String(url.standardizedFileURL.path.dropFirst(prefix.count)))
+                }
                 continue
             }
-            guard values.isRegularFile == true, url.pathExtension.lowercased() == "md",
+            guard values.isRegularFile == true, !url.lastPathComponent.hasPrefix("."), url.pathExtension.lowercased() == "md",
                   url.standardizedFileURL.path.hasPrefix(prefix) else { continue }
             let path = String(url.standardizedFileURL.path.dropFirst(prefix.count))
             let reference = LAABrainReference(path: path, includeInbox: true)
@@ -203,7 +216,7 @@ enum LAABrainVaultIO {
                 modifiedAt: values.contentModificationDate.map(formatter.string) ?? "", area: "local", unreadable: nil))
         }
         if let enumerationError { throw enumerationError }
-        return files
+        return Listing(files: files, folders: folders)
     }
 
     static func note(root: URL, path: String) throws -> LAABrainNote {

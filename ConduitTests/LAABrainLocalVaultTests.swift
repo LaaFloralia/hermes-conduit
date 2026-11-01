@@ -56,5 +56,33 @@ final class LAABrainLocalVaultTests: XCTestCase {
         try Data([3]).write(to: root.appendingPathComponent("Other/図.png"))
         XCTAssertThrowsError(try LAABrainVaultIO.attachment(root: root, currentPath: "Folder/日本語.md", target: "図.png"))
     }
+    func testFolderListingIncludesEmptyAndNestedFoldersButNotHiddenOrSymlinks() throws {
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("Folder/Empty"), withIntermediateDirectories: true)
+        let listing = try LAABrainVaultIO.listing(root: root)
+        XCTAssertEqual(Set(listing.folders), Set(["Folder", "Folder/Empty"]))
+        XCTAssertEqual(listing.files.map(\.path), ["Folder/日本語.md"])
+    }
+
+    func testCreateFolderAndNoteNeverReplaceExistingItems() throws {
+        let journal = LAABrainSaveJournal(directory: outside.appendingPathComponent("history", isDirectory: true))
+        let folder = try LAABrainFolderStore.create(root: root, parent: "Folder", name: "新しいフォルダ", kind: .folder)
+        XCTAssertEqual(folder, "Folder/新しいフォルダ")
+        let note = try LAABrainFolderStore.create(root: root, parent: folder, name: "メモ", kind: .note, body: Data("NEW".utf8), journal: journal)
+        XCTAssertEqual(note, "Folder/新しいフォルダ/メモ.md")
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent(note)), Data("NEW".utf8))
+        XCTAssertTrue(try journal.versions(vault: LAABrainSaveJournal.vaultID(root), path: note).contains { $0.bytes == Data("NEW".utf8) })
+        try Data("ORIGINAL".utf8).write(to: root.appendingPathComponent(note))
+        XCTAssertThrowsError(try LAABrainFolderStore.create(root: root, parent: folder, name: "メモ.md", kind: .note, journal: journal))
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent(note)), Data("ORIGINAL".utf8))
+        XCTAssertThrowsError(try LAABrainFolderStore.create(root: root, parent: "Folder", name: "新しいフォルダ", kind: .folder))
+        for unsafe in ["", ".hidden", "../escape", "path/name", "x\\y", "note.sync-conflict-20261101-A"] {
+            XCTAssertThrowsError(try LAABrainFolderStore.create(root: root, parent: "", name: unsafe, kind: .note), unsafe)
+        }
+        for unsafe in ["../outside", "linked", ".obsidian"] {
+            XCTAssertThrowsError(try LAABrainFolderStore.create(root: root, parent: unsafe, name: "Escape", kind: .note), unsafe)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: outside.appendingPathComponent("Escape.md").path))
+    }
+
 }
 #endif

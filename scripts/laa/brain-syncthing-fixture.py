@@ -251,6 +251,7 @@ def build_swift_fixture(root):
         "swiftc", "-parse-as-library", "-D", "LAA_BUILD", "-D", "DEBUG", "-D", "LAA_FIXTURE_CLI",
         str(REPO_DIR / "Conduit/LAA/Brain/LAABrainSaveJournal.swift"),
         str(REPO_DIR / "Conduit/LAA/Brain/LAABrainSaveCoordinator.swift"),
+        str(REPO_DIR / "Conduit/LAA/Brain/LAABrainFolderStore.swift"),
         str(REPO_DIR / "ConduitTests/LAABrainSaveFixture.swift"),
         str(REPO_DIR / "scripts/laa/brain-save-fixture.swift"), "-o", str(binary),
     ], check=True, timeout=90)
@@ -309,6 +310,15 @@ def run_fixture(root, *, retention):
         peer_temp = mac.notes / ".laa-tmp"
         assert not remaining_temp and not peer_temp.exists(), (remaining_temp, peer_temp.exists())
         print("PASS: ignored fallback staging stays local; checked replacement syncs and leaves no temporary draft")
+
+        for name, content, mode in (("created", "NEW_NOTE_BODY", "private"),
+                                    ("created-fallback", "FALLBACK_NEW_BODY", "fallback")):
+            subprocess.run([str(swift_fixture), "create-note", str(phone.notes), str(root / "create-private"),
+                            "", name, content, mode], check=True, timeout=30, capture_output=True)
+            phone.scan()
+            wait_for(f"new note {name} to sync", lambda: file_is(mac.notes / (name + ".md"), content.encode()), (phone, mac))
+        assert not list(temporary_dir.iterdir()) and not (mac.notes / ".laa-tmp").exists()
+        print("PASS: created notes and journaled drafts sync via private and ignored fallback staging")
 
         send(mac, phone, "remote-archive.md", b"MAC_BASE")
         send(phone, mac, "remote-archive.md", b"PHONE_CHANGE")
