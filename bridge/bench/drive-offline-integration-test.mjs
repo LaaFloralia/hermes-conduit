@@ -15,6 +15,7 @@ try {
   const stubs = join(temporary, 'Stubs.swift');
   writeFileSync(stubs, `import Foundation\n` + assets.slice(start, end) + `\n` + `
 enum LAACopy { enum Assets { static let folder = "Folder", image = "Image", document = "Document", file = "File" } }
+enum AppLocalization { static func string(_ key: String) -> String { key } }
 enum LAABridgeError: Error, Equatable { case networkUnreachable }
 struct LAABridgeHTTPError: Error { let status: Int; let code: String? }
 enum LAADriveRangeError: Error { case versionChanged }
