@@ -264,6 +264,35 @@ test('cost readings carry UTC periods and declared lag without inventing a water
   }
 });
 
+test('a missing todayAmount keeps the month amount and hides only today', () => {
+  const base = { kind: 'cost', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
+    currency: 'USD', periodTimezone: 'UTC', monthAmount: 1.25 };
+  const items = projection([{ ...base, id: 'openai-api', sourceLag: 'undisclosed' },
+    { ...base, id: 'claude-api', sourceLag: 'typical-5m' }]);
+  for (const id of ['openai-api', 'claude-api']) {
+    const today = byId(items, `provider.${id}.cost-today`);
+    const month = byId(items, `provider.${id}.cost-month`);
+    assert.equal(today.value, null);
+    assert.equal(today.nullReason, 'freshness_unknown');
+    assert.equal(today.detail, undefined);
+    assert.equal(month.value, 1.25);
+    assert.equal(month.nullReason, undefined);
+    assert.equal(month.detail.periodTimezone, 'UTC');
+  }
+});
+
+test('an empty cost response is an unavailable provider, not a zero', () => {
+  const row = { id: 'openai-api', kind: 'cost', source: 'live', available: false,
+    updatedAt: null, reason: 'freshness_unknown' };
+  const items = projection([row]);
+  for (const period of ['today', 'month']) {
+    const item = byId(items, `provider.openai-api.cost-${period}`);
+    assert.equal(item.value, null);
+    assert.equal(item.nullReason, 'freshness_unknown');
+    assert.equal(item.detail, undefined);
+  }
+});
+
 test('the host sampler computes CPU from a tick delta and caches for 10 seconds', async () => {
   let ticks = { user: 100, sys: 0, idle: 100 };
   let calls = 0;
