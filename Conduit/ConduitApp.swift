@@ -51,6 +51,10 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             }
             // Calendar, reminders and phone status: a background refresh, and
             // the calendar changing while Conduit runs.
+            #if LAA_BUILD
+            LAAUsageBackground.register()
+            LAAUsageBackground.schedule()
+            #endif
             AppState.registerPhoneSyncTask()
             if PhoneSyncPreferences.load().isOn {
                 AppStateRuntimeRegistry.shared.appState.resumePhoneSyncAtLaunch()

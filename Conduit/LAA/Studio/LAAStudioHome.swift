@@ -18,9 +18,11 @@ struct LAAStudioHomeView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             HStack(spacing: LAASpacing.x3) {
-                Picker("Studio", selection: $section) {
+                Picker(selection: $section) {
                     Text(verbatim: LAACopy.Studio.works).tag(0)
                     Text(verbatim: LAACopy.Studio.requests).tag(1)
+                } label: {
+                    Text(verbatim: "Studio")
                 }.pickerStyle(.segmented).frame(minHeight: LAASpacing.minimumTouchTarget)
                     .accessibilityIdentifier("laa.studio.section")
                 if let snapshot {

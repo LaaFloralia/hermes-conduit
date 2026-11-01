@@ -6,12 +6,31 @@ import XCTest
 
 @MainActor
 final class LAAUsageViewSnapshotTests: XCTestCase {
+    func testUnavailableReasonsAndBillingLink() async throws {
+        let rows: [[String: Any]] = [
+            ["id": "provider.jev.balance", "kind": "balance", "label": "Jev", "nullReason": "not_auto"],
+            ["id": "provider.openai-api.cost-today", "kind": "cost", "label": "GPT API", "nullReason": "not_configured"],
+            ["id": "provider.claude-api.cost-today", "kind": "cost", "label": "Claude API", "nullReason": "freshness_unknown"]
+        ].map { row in
+            row.merging(["value": NSNull(), "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": NSNull(),
+                         "availability": "unavailable", "stale": false, "estimated": false, "expired": false]) { original, _ in original }
+        }
+        let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
+        XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません"])
+        XCTAssertEqual(LAAUsageView.billingURL(items[0])?.absoluteString, "https://app.typesafe.ai/")
+        XCTAssertNil(LAAUsageView.billingURL(items[1]))
+        let state = LAAUsageState()
+        await state.refreshUsage { items }
+        try capture(state: state, paired: true, style: .light, name: "usage-unavailable-reasons-light")
+        try capture(state: state, paired: true, style: .dark, name: "usage-unavailable-reasons-dark")
+    }
+
     func testUsageStatesLightAndDark() async throws {
-        for name in ["normal", "empty", "error", "offline", "unpaired", "stale", "balance", "extras"] {
+        for name in ["normal", "empty", "error", "offline", "unpaired", "stale", "balance", "extras", "cost"] {
             for style in [UIUserInterfaceStyle.light, .dark] {
                 let state = LAAUsageState()
                 if name != "unpaired" {
-                    let items = name == "empty" ? try unavailableFixture() : try fixture(stale: name == "stale", balanceOnly: name == "balance", extrasOnly: name == "extras")
+                    let items = name == "empty" ? try unavailableFixture() : try fixture(stale: name == "stale", balanceOnly: name == "balance", extrasOnly: name == "extras", costOnly: name == "cost")
                     await state.refreshUsage { items }
                     if name == "error" { await state.refreshUsage { throw LAABridgeError.unavailable } }
                     if name == "offline" { await state.refreshUsage { throw LAABridgeError.networkUnreachable } }
@@ -22,7 +41,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
     }
 
-    private func fixture(stale: Bool, balanceOnly: Bool = false, extrasOnly: Bool = false) throws -> [LAAUsageItem] {
+    private func fixture(stale: Bool, balanceOnly: Bool = false, extrasOnly: Bool = false, costOnly: Bool = false) throws -> [LAAUsageItem] {
         let now = Date()
         let formatter = ISO8601DateFormatter()
         let observed = formatter.string(from: now.addingTimeInterval(stale ? -3600 : -60))
@@ -37,24 +56,32 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
         json[0]["detail"] = ["freshUntil": freshUntil,
             "windows": [["label": "Session", "remainingPercent": 62, "resetsAt": reset]],
-            "credits": ["remaining": 7, "updatedAt": observed],
-            "resetPasses": ["available": false, "remaining": 0, "updatedAt": observed, "expiresAt": reset]]
-        let fal: [String: Any] = ["id": "provider.fal.balance", "kind": "balance", "label": "fal", "value": 3.5,
+            "credits": ["remaining": 7, "updatedAt": observed]]
+        let balance: [String: Any] = ["id": "provider.jev.balance", "kind": "balance", "label": "Jev", "value": 3.5,
             "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
-            "stale": false, "estimated": false, "expired": false, "detail": ["sourceKind": "verified", "currency": "USD"]]
+            "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "currency": "USD"]]
+        let costs: [[String: Any]] = [("claude-api", "Claude API", "typical-5m"), ("openai-api", "GPT API", "undisclosed")].flatMap { id, label, lag in
+            ["today", "month"].map { period in
+                ["id": "provider.\(id).cost-\(period)", "kind": "cost", "label": label, "value": period == "today" ? 1.23 : 17.25,
+                 "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
+                 "stale": stale, "estimated": false, "expired": false,
+                 "detail": ["freshUntil": freshUntil, "sourceLag": lag, "periodTimezone": "UTC"]] as [String: Any]
+            }
+        }
         let d1: [String: Any] = ["id": "provider.liquid.usage", "kind": "usage", "label": "Liquid AI", "value": 123,
             "unit": "tokens", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
             "stale": stale, "estimated": false, "expired": false,
             "detail": ["freshUntil": freshUntil, "recordedCostUsd": 1.31, "recordedRequestCount": 50, "lastRecordedAt": observed,
                        "models": [["inputTokens": 123, "outputTokens": 0]]]]
-        if balanceOnly { json = [fal] }
+        if costOnly { json = costs }
+        else if balanceOnly { json = [balance] }
         else if extrasOnly { json = [json[0]] }
-        else { json = [d1] + json + [fal] }
+        else { json = [d1] + json + [balance] + costs }
         return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: json))
     }
 
     private func unavailableFixture() throws -> [LAAUsageItem] {
-        let ids = ["claude", "codex", "antigravity", "jev", "google-cloud", "venice", "claude-api", "fal",
+        let ids = ["claude", "codex", "antigravity", "jev", "google-cloud", "claude-api",
                    "gemini", "google-flow", "liquid", "deepseek", "grok-bot", "refuseless", "opencode-go", "magnific"]
         let rows: [[String: Any]] = ids.map { id in
             ["id": "provider.\(id).unavailable", "kind": "quota", "label": id, "value": NSNull(),

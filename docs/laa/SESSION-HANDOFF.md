@@ -51,9 +51,9 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
 
 ## シミュレーターとMacの負荷
 
-- このプロジェクトの端末は同時に1台だけ起動する。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で下の2台の停止を待ってから渡す。
-- 検証用の端末は2台。`LAA 16 Pro Max`（iOS 27.0、`DFFD3966-F54E-4C7A-A161-59201C7EA105`、社長の端末と同じ画面）と `iPhone Duo`（iOS 27.1、`228F6BE7-98B2-4AF6-861F-F76BC8CA0DE7`）。作業用に端末を増やしたら、終了時に削除する。
-- xcodebuildは同時3本・各 `-jobs 4` まで。空き容量はビルド中だけ75 GiBまで下がってよく、75.0 GiBを切ったら止める。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。親はゲートが終わるたびに `LAA 16 Pro Max` を `simctl erase` で初期化し、起動して `defaults write -g AppleLanguages -array en-US` と `AppleLocale en_US` を書いて読み戻してから停止する（試験のたびに端末のデータが増え、2時間で約2 GB増えた）。
+- このプロジェクトの端末は同時に1台だけ起動する。他の作業（音声入力など）の端末には触れない。workerは起動前に親へ使用枠を求め、終わったら停止を報告する。親は `scripts/laa/sim-turn.sh <id> "<枠を渡す文>"` で端末の停止を待ってから渡す。
+- 検証用の端末は `LAA 16 Pro Max`（iOS 27.0、`DFFD3966-F54E-4C7A-A161-59201C7EA105`、社長の端末と同じ画面）の1台だけ（iPhone Duoは社長の指示で使わない）。作業用に端末を増やしたら、終了時に削除する。
+- xcodebuildは同時3本・各 `-jobs 4` まで。容量では試験を止めない（社長、2026-11-01）。空きが80 GiBを切ったら、試験を続けたまま親が不要物の削除・Driveへの退避を並行して進める。30 GiBを切った時だけ新しいビルドを始めずに親へ知らせる。作業後はDerivedData・xcresult・一時端末を消し、80 GiB以上へ戻す。親はゲートが終わるたびに `LAA 16 Pro Max` を `simctl erase` で初期化し、起動して `defaults write -g AppleLanguages -array en-US` と `AppleLocale en_US` を書いて読み戻してから停止する（試験のたびに端末のデータが増え、2時間で約2 GB増えた）。
 
 ## マージとTestFlight
 
@@ -62,24 +62,23 @@ paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --th
   2. `python3 scripts/plan-tests.py smoke --repo-root . --suite scripts/smoke-suite.json --changed-from <mergeしたmasterのSHA> --out <file>` で選ばれたunit・UIクラスを、既定のConduit scheme（`project.yml`。LAA版ではない）で流す。端末は言語と地域を英語（米国）に設定して読み戻したものを使う（`-AppleLanguages` だけでは効かなかった）。同じクラスをmasterでも流し、候補だけの失敗が0であること。
   3. `xcodegen generate --spec project-personal.yml` の後、`xcodebuild build -quiet -project Conduit.xcodeproj -scheme Conduit -configuration Release -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO` が成功すること。生成したprojectはcommitしない。
   4. masterをfast-forwardしてpushし、branchを消し、local/remoteのSHA一致を確かめる。
-- 既知の失敗: `LAA 16 Pro Max`（master `638a2af6`、英語（米国））は `ConnectionSetupUITests` 5件のみ。`ProfilePickerUITests` は3件とも成功した。`iPhone Duo`（master `21cec9ed`）は `ConnectionSetupUITests` 5件と `ProfilePickerUITests` 1件。
+- 既知の失敗: `LAA 16 Pro Max`（master `638a2af6`、英語（米国））は `ConnectionSetupUITests` 5件のみ。`ProfilePickerUITests` は3件とも成功した。
 - Mac版の署名と公証は親だけが行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
-- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2610312000（2026-11-01、master 638a2af6、LAA Internal）。終わったら `build/laa/DerivedData` を消す。
+- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは 2611010116（2026-11-01、master 3ca1f24a、AI usage・音声BUS-332入り、LAA Internal）。終わったら `build/laa/DerivedData` を消す。
 
 ## 現在の状態（2026-10-31）
 
 - 完了: ROADMAP 01–14・24・25・28、デザインv2、W3の仕上げ（プラグイン更新表示の撤去、社員呼出しボタンの表示条件）。
 - 残り: 15–18 Paseo移行、19–22 Linear移行、23 PC幅プレビュー、26–27 Brain編集・ギャラリー（方式が判断待ち）、29 写真の取込、30 会話の保管、31 Mac画面の配信、32 実機での総合検証、33 Mac版（branch `laa/mac-catalyst` で実装中）、34 Studio依頼（アプリ・Bridge実装済み。BridgeはLAA Studioの契約v1ローカル受付へ中継し、依頼・進行・回答・停止・成果物プレビューまで。実機確認と契約v2の成果物確認・審美眼はこれから）。
-- Driveの閲覧・再生は実装済み。認可がないため、Bridgeは `503 drive_not_configured` を返す（BUS-318）。
-- 再生画面の再生ボタンとシークバーは素の部品のままで、デザインの手直しが要る。
+- Driveのマウント方式とネイティブ再生は `laa/drive-viewer` の候補。稼働中の `com.laa.bridge` は両Driveルートの読取が `EPERM` で、macOS権限と実機での検証が残る。
 - Bridgeで有効な端末は社長のiPhone 1台だけ。試験用の端末はすべて失効済み。
 
 ## 判断待ちと未解決（Linear「LAAアプリ」）
 
 | 課題 | 内容 |
 |---|---|
-| BUS-318 | Google Driveの読取認可（GCPのOAuthクライアント作成と同意） |
+| BUS-318 | 旧OAuth案は取り下げ。Google DriveマウントのmacOS権限を親が判断し、課題状態を更新 |
 | BUS-319 | HermesのChatGPT再ログイン（GPT-Liveの通話） |
 | BUS-320 | TestFlight用のXcode（27.1を併設するか27.2正式版を待つか）と自動更新 |
 | BUS-321 | Brainの既存ノートを編集する方式 |

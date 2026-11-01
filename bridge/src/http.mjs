@@ -67,6 +67,7 @@ export function createBridge({
 } = {}) {
   const startedAt = now();
   const enrollFailures = [];
+  const cleanup = [];
 
   function sendJson(res, status, body, requestId, headers = {}) {
     const payload = `${JSON.stringify(body)}\n`;
@@ -219,7 +220,8 @@ export function createBridge({
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
     ...driveRoutes({ adapter: drive === undefined ? createDriveMountAdapter() : drive, now, log: log === null ? null : undefined }),
-    ...businessRoutes({ store, now, options: routeOptions }),
+    ...businessRoutes({ store, now, options: { ...routeOptions,
+      usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) } } }),
   ];
 
   // --- request pipeline -----------------------------------------------------
@@ -373,6 +375,7 @@ export function createBridge({
       });
     },
     close() {
+      for (const fn of cleanup.splice(0)) fn();
       return new Promise((resolvePromise) => {
         this.server.closeAllConnections?.();
         this.server.close(() => resolvePromise());
