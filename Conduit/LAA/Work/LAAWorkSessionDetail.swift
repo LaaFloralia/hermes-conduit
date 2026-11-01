@@ -10,12 +10,12 @@ struct LAAWorkSessionDetail: View {
     @State private var session: LAAWorkSession?
     @State private var events: [LAAWorkEvent] = []
     @State private var artifacts: [LAAWorkArtifact] = []
+    @State private var messages: [LAAWorkConversationMessage] = []
+    @State private var conversationUnavailable = false
     @State private var cursor: String?
     @State private var notice: String?
     @State private var failure: String?
-    @State private var showResume = false
     @State private var stopping = false
-    @State private var successor: LAAWorkSession?
     @State private var historyGapSeen = false
     @State private var observationEpoch = 0
     @AppStorage(ChatTypography.preferenceKey) private var responseSize = ChatTypography.defaultSize.rawValue
@@ -46,8 +46,7 @@ struct LAAWorkSessionDetail: View {
                             }.workCard()
                         }
                         if session.needsDecision { decisionBanner }
-                        resultBody
-                        timeline
+                        conversation
                         actions(session)
                         LAAWorkMessageForm(sessionID: id, mode: .followUp, drafts: drafts,
                                            canStart: session.phase == "awaiting_review") { _ in
@@ -67,20 +66,26 @@ struct LAAWorkSessionDetail: View {
         .tint(LAAColor.link)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .sheet(isPresented: $showResume) {
-            NavigationStack {
-                LAAWorkMessageForm(sessionID: id, mode: .resume, drafts: drafts, canStart: true) { created in
-                    successor = created
-                    showResume = false
-                    Task { await refreshSnapshot() }
-                }
-                .padding(LAASpacing.x4)
-                .navigationTitle(Text(verbatim: LAACopy.WorkTab.successor))
-                .background(LAAColor.background)
-                .tint(LAAColor.link)
-            }.environmentObject(bridge)
-        }
         .task(id: "\(bridge.revision)-\(id)-\(observationEpoch)") { await observe() }
+    }
+
+    private var conversation: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x4) {
+            if conversationUnavailable {
+                Text(verbatim: "会話履歴を取得できません。更新して再確認してください。")
+                    .foregroundStyle(LAAColor.attention)
+            } else if messages.isEmpty {
+                Text(verbatim: "会話はまだありません。") .foregroundStyle(LAAColor.secondaryText)
+            }
+            ForEach(messages) { message in
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Text(verbatim: message.role == "user" ? "あなた" : "回答")
+                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    MarkdownText(source: message.text, foregroundStyle: LAAColor.text)
+                        .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
+                }.workCard()
+            }
+        }
     }
 
     private func sessionHeader(_ session: LAAWorkSession) -> some View {
@@ -88,19 +93,13 @@ struct LAAWorkSessionDetail: View {
             Text(verbatim: session.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
             Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase) + " " + LAAWorkPresentation.phase(session.phase))
                 .foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(session.phase) ? LAAColor.attention : LAAColor.link)
-            Text(verbatim: "プロジェクト: " + (projects.first { $0.id == session.projectId }?.name ?? (session.projectId == nil ? "なし" : "未確認")))
-            Text(verbatim: "作業場所: " + workspace(session.workspaceId))
-            Text(verbatim: "要求: " + (session.requested?.display ?? "未確認"))
-            Text(verbatim: "観測: " + (session.observed?.display ?? "未確認"))
+            Text(verbatim: session.observed?.model ?? session.requested?.model ?? "モデル未確認")
+                .foregroundStyle(LAAColor.secondaryText)
             if session.modelMismatch {
                 Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention)
             } else if session.runtimeVerified != true {
                 Text(verbatim: "○ 実行時のモデルは未確認です。系統や設定の一致だけでは確定しません。")
                     .foregroundStyle(LAAColor.secondaryText)
-            }
-            if let version = session.instructionVersion {
-                Text(verbatim: "プロジェクト指示版: \(version) · \(session.instructionHash ?? "ハッシュ未確認")")
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Text(verbatim: "最終活動: " + LAAWorkPresentation.date(session.updatedAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         }.laaTextStyle(.secondary).workCard()
@@ -166,19 +165,12 @@ struct LAAWorkSessionDetail: View {
                     .foregroundStyle(LAAColor.attention)
                 Button(LAACopy.WorkTab.checkStop) { Task { await refreshSnapshot() } }
             } else if session.phase == "stopped" {
-                Text(verbatim: "再開は同じ作業場所・プロファイルの後継セッションです。履歴は自動では引き継がれません。")
+                Text(verbatim: "停止したセッションの再開は現在利用できません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                Button(LAACopy.WorkTab.resume) { showResume = true }
-                    .buttonStyle(.borderedProminent).tint(LAAColor.filledButton)
-                    .foregroundStyle(LAAColor.filledButtonText)
             } else {
                 Button(LAACopy.WorkTab.stop) { beginStop() }.buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
             }
-            if let next = successor {
-                NavigationLink("\(LAACopy.WorkTab.successor): \(next.name)") {
-                    LAAWorkSessionDetail(id: next.id, projects: projects, workspaces: workspaces, drafts: drafts)
-                }
-            } else if let nextID = session.resumedTo {
+            if let nextID = session.resumedTo {
                 NavigationLink(LAACopy.WorkTab.openSuccessor) {
                     LAAWorkSessionDetail(id: nextID, projects: projects, workspaces: workspaces, drafts: drafts)
                 }
@@ -197,6 +189,13 @@ struct LAAWorkSessionDetail: View {
             let fetched: LAAWorkArtifacts = try await bridge.read("/v1/sessions/\(id)/artifacts")
             session = detail
             artifacts = fetched.items
+            do {
+                let history: LAAWorkPage<LAAWorkConversationMessage> = try await bridge.read("/v1/sessions/\(id)/conversation")
+                messages = history.items
+                conversationUnavailable = false
+            } catch {
+                conversationUnavailable = true
+            }
             failure = nil
             if detail.phase == "stopped", !stopping, let pendingStop,
                !drafts.finishSubmission(pendingStop.id, restoring: false) {

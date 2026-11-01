@@ -24,6 +24,7 @@ import { createOwnerTaskService } from '../tasks/owner-service.mjs';
 import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
 import { studioRoutes } from './studio.mjs';
+import { routineRoutes } from './routines.mjs';
 
 export function businessRoutes({ store, now = () => Date.now(), options = {} } = {}) {
   const projectStore = createProjectStore({ file: `${store.dir}/projects.json`, now });
@@ -71,5 +72,6 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...createSessionRoutes({ sessions: sessionService }),
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
+    ...routineRoutes(options.routines ?? {}),
   ];
 }

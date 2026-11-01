@@ -596,7 +596,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 The LAA build's Bridge-backed session, project and owner-task views.
 
 **Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
-store · the session and project API · the owner-task API
+store · the session and project API · the owner-task API · Console job observations
 
 **Code**
 - Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
@@ -615,7 +615,8 @@ store · the session and project API · the owner-task API
 - Session and successor writes keep the exact body, request ID and idempotency
   key until their outcome is known; the existing composer never sends through
   Hermes for these requests. Event history gaps trigger a detail and artifact
-  reread. Requested and observed models stay visible, including mismatches.
+  reread. The row shows the model with an unverified marker where needed;
+  mismatches remain visible.
 - Closing the full-screen composer refreshes the inline editor immediately.
   If a created workspace's actual branch differs from the requested name,
   show both names and the actual branch in the session confirmation.
@@ -631,7 +632,9 @@ store · the session and project API · the owner-task API
   request to another device requires an explicit choice and does not send it.
   Revisions are opaque; a 409 keeps the input and requires an explicit choice
   before it becomes an editable draft again.
-  Routines remain a placeholder.
+  Routines show Console job observations read-only; unavailable observations
+  remain unknown and a failed source is an error.
+- A project detail lists its sessions and passes the project to session creation.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
@@ -639,7 +642,7 @@ store · the session and project API · the owner-task API
 - Owner-task UI, accessibility and live integration await the parent's single
   integrated simulator gate, Bridge integration and real-account checks.
 
-**Checked:** 2026-10-29, 67166210. Signed Simulator tests covered pairing,
+**Checked:** 2026-11-01, based on c6aba8d7; routine endpoint fixture tests passed. Updated screens await simulator checks. Earlier signed Simulator tests covered pairing,
 sections, workspace entry, durable composer draft, empty, 503 and offline
 states. Against the real Bridge, a scratch session was created, messaged,
 stopped and resumed; artifacts and a stale If-Match 412 were read back.
@@ -3818,3 +3821,21 @@ and rollback instructions · the upstream App Store build
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
 **Checked:** 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+
+
+## LAA Work session presentation
+
+**Siblings:** Work session list and filters · session detail and model verification · Bridge session observations · upstream chats
+
+**Code**
+- List and detail: `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
+- Routines: `bridge/src/routes/routines.mjs`, `bridge/test/routines.test.mjs`
+- Tests: `ConduitTests/LAAWorkTests.swift`
+
+**Rulings**
+- Session rows show the session name, phase, model and last update; an unverified runtime model is labelled and a mismatch remains visible. Filtered ancestors remain labelled.
+
+**Open gaps**
+- Creation controls and complete conversation history need follow-up; light and dark snapshots require the simulator slot.
+
+**Checked:** 2026-11-01, based on 638a2af6; presentation change pending simulator verification.

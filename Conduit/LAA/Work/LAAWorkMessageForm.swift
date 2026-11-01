@@ -51,7 +51,6 @@ struct LAAWorkMessageForm: View {
                     } else {
                         Button(LAACopy.WorkTab.resolveSend) { showResolution = true }.disabled(sending)
                     }
-                    Button(LAACopy.WorkTab.retryRequest) { Task { await perform(pending) } }.disabled(sending)
                 }.workCard()
             }
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention) }

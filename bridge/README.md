@@ -23,6 +23,7 @@
 | 指示版 | 指示本文は Project ごとに Bridge の state（0600）へ保存し、`instructionHash` は本文そのものの SHA-256、変更ごとに `instructionVersion` と直近10版の履歴（本文・hash・版・時刻）を残す。**本文のみ**を受け付け、`instructionRef` は書き込み時に 400 `instruction_ref_unsupported`（Bridge はファイルを読まない）。イベント・ログへ本文は出さない | §9。iPhone から編集し、全セッションへ同じ版を適用する |
 | workspace | 既存の repo / worktree を許可 root（既定 `~/dev`・`~/.paseo/worktrees`）から読取専用で棚卸し、branch と `git status` を返す。作成は `paseo worktree create` のみ。削除・rename・archive・force は持たない | §4。既存 worktree を壊さない |
 | session | 実体は既存 `laa-personal-agent`（create/status/send/stop）。Bridge の `ses_<16hex>` は requestId から決定論的に導出し、委譲先の requestId も同じく決定論的なので、結果不明の再送は二重起動せず同じ agent に戻る。要求した profile は変更も代替もしない | §4・§9。二重実行防止を2層（Bridge の Idempotency-Key と委譲先の requestId）で持つ |
+| routines | Consoleの `jobs` 読取結果から名前・予定・前回と結果だけを返す。変更操作はなく、読取失敗は503 | 認証とsessions:readが必要。未観測はnull |
 | session event | セッション記録と journal を同じ JSON に置き、状態変化とイベントを同時に commit する。seq は prune 後も進み、24時間を超えた cursor は 410、journal が届かない cursor も 410 | §5・§9。欠落を「新着なし」と偽らない |
 
 ## 起動

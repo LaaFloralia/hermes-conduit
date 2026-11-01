@@ -8,16 +8,15 @@ struct LAAWorkView: View {
     @StateObject private var drafts = ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
     @State private var section = 0
     @State private var projects: [LAAWorkProject] = []
-    @State private var workspaces: [LAAWorkWorkspace] = []
+    private let workspaces: [LAAWorkWorkspace] = []
     @State private var sessions: [LAAWorkSession] = []
+    @State private var routines: [LAAWorkRoutine] = []
     @State private var projectInstructionsAvailable = false
     @State private var projectFilter = ""
     @State private var phaseFilter = ""
     @State private var failure: String?
     @State private var isLoading = false
-    @State private var sessionContextReady = false
     @State private var showPairing = false
-    @State private var showNewSession = false
     @State private var showNewProject = false
     @State private var refreshID = 0
     @State private var loadID = UUID()
@@ -29,9 +28,7 @@ struct LAAWorkView: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x6) {
                     header
                     segmentPicker
-                    if section == 3 {
-                        routinePlaceholder
-                    } else if section == 2 {
+                    if section == 2 {
                         LAAOwnerTasksView(drafts: drafts, refreshID: refreshID).environmentObject(bridge)
                     } else if bridge.status != .paired {
                         connection
@@ -60,9 +57,6 @@ struct LAAWorkView: View {
         }
         .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
-        .sheet(isPresented: $showNewSession, onDismiss: { refreshID += 1 }) {
-            LAAWorkNewSessionView(projects: projects, workspaces: workspaces, drafts: drafts).environmentObject(bridge)
-        }
         .sheet(isPresented: $showNewProject, onDismiss: { refreshID += 1 }) {
             LAAWorkProjectEditor(project: nil, canEditInstructions: projectInstructionsAvailable, drafts: drafts).environmentObject(bridge)
         }
@@ -78,9 +72,9 @@ struct LAAWorkView: View {
                 Text(verbatim: LAACopy.WorkTab.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
-            if section == 0 || section == 1 {
+            if section == 1 {
                 Button {
-                    if section == 0 { showNewSession = true } else { showNewProject = true }
+                    showNewProject = true
                 } label: {
                     Image(systemName: "plus")
                         .foregroundStyle(LAAColor.link)
@@ -89,9 +83,9 @@ struct LAAWorkView: View {
                         .overlay(Circle().stroke(LAAColor.separator))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text(verbatim: section == 0 ? LAACopy.WorkTab.newSession : LAACopy.WorkTab.newProject))
+                .accessibilityLabel(Text(verbatim: LAACopy.WorkTab.newProject))
                 .accessibilityHint(Text(verbatim: bridge.status != .paired ? "Macへの接続が必要です。" : ""))
-                .disabled(bridge.status != .paired || (section == 0 && (!sessionContextReady || isLoading)))
+                .disabled(bridge.status != .paired)
             }
         }
     }
@@ -118,12 +112,20 @@ struct LAAWorkView: View {
         .accessibilityIdentifier("work.segment")
     }
 
-    private var routinePlaceholder: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: "準備中").laaTextStyle(.body).fontWeight(.semibold)
-            Text(verbatim: "習慣の原本との連携はまだ利用できません。")
-                .foregroundStyle(LAAColor.secondaryText)
-        }.workCard()
+    private var routineList: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            if routines.isEmpty && !isLoading && failure == nil {
+                Text(verbatim: "ルーティンはありません。").foregroundStyle(LAAColor.secondaryText)
+            }
+            ForEach(routines) { routine in
+                VStack(alignment: .leading, spacing: LAASpacing.x2) {
+                    Text(verbatim: routine.name).fontWeight(.semibold)
+                    Text(verbatim: "次回: " + (routine.nextRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
+                    Text(verbatim: "前回: " + (routine.lastRunAt.map { LAAWorkPresentation.date($0) } ?? "未確認"))
+                    Text(verbatim: "結果: " + (routine.result ?? "未確認"))
+                }.laaTextStyle(.secondary).workCard()
+            }
+        }
     }
 
     private var connection: some View {
@@ -161,12 +163,14 @@ struct LAAWorkView: View {
         switch section {
         case 0: sessionList
         case 1: projectList
-        default: routinePlaceholder
+        default: routineList
         }
     }
 
     private var sessionList: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            Text(verbatim: "新しいセッションの作成は現在利用できません。")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: LAASpacing.x2) {
                     filter(LAACopy.WorkTab.projectFilter, selection: $projectFilter, values: projects.map { ($0.id, $0.name) })
@@ -192,31 +196,20 @@ struct LAAWorkView: View {
                             Text(verbatim: LAAWorkPresentation.phaseSymbol(row.session.phase) + " " + LAAWorkPresentation.phase(row.session.phase))
                                 .laaTextStyle(.secondary).foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(row.session.phase) ? LAAColor.attention : LAAColor.link)
                         }
-                        if row.session.resumedFrom != nil {
-                            Text(verbatim: "後継セッション").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        }
                         if (!projectFilter.isEmpty && row.session.projectId != projectFilter) ||
                             (!phaseFilter.isEmpty && row.session.phase != phaseFilter) {
-                            Text(verbatim: "親セッション（階層を表示するため含む）")
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                            Text(verbatim: "親セッション").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        Text(verbatim: projectName(row.session.projectId) + " · " + workspaceName(row.session.workspaceId))
+                        Text(verbatim: (row.session.observed?.model ?? row.session.requested?.model ?? "モデル未確認") +
+                             (row.session.runtimeVerified == true ? "" : "（実行時未確認）") + " · " + LAAWorkPresentation.date(row.session.updatedAt))
                             .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        Text(verbatim: "要求: " + (row.session.requested?.display ?? "未確認"))
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        Text(verbatim: "観測: " + (row.session.observed?.display ?? "未確認"))
-                            .laaTextStyle(.secondary).foregroundStyle(row.session.modelMismatch ? LAAColor.attention : LAAColor.secondaryText)
                         if row.session.modelMismatch {
                             Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
                                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                        } else if row.session.runtimeVerified != true {
-                            Text(verbatim: "○ 実行時のモデルは未確認").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        Text(verbatim: "最終活動 " + LAAWorkPresentation.date(row.session.updatedAt))
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     }
                     .padding(.leading, CGFloat(row.depth) * LAASpacing.x3)
-                    .workListRow()
+                    .workCard()
                 }.buttonStyle(.plain)
             }
             let decisions = LAAWorkPresentation.decisionRows(rows, projectID: projectFilter, phase: phaseFilter)
@@ -250,7 +243,7 @@ struct LAAWorkView: View {
             }
             ForEach(projects) { project in
                 NavigationLink {
-                    LAAWorkProjectDetail(project: project, drafts: drafts)
+                    LAAWorkProjectDetail(project: project, drafts: drafts, workspaces: workspaces)
                 } label: {
                     VStack(alignment: .leading, spacing: LAASpacing.x2) {
                         Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
@@ -282,28 +275,19 @@ struct LAAWorkView: View {
         guard let id else { return "プロジェクトなし" }
         return projects.first(where: { $0.id == id })?.name ?? "プロジェクト未確認"
     }
-    private func workspaceName(_ id: String) -> String {
-        guard let item = workspaces.first(where: { $0.id == id }) else { return "作業場所未確認" }
-        return (item.displayPath ?? item.path) + (item.branch.map { " · " + $0 } ?? "")
-    }
-
     @MainActor private func load() async {
         let id = UUID()
         loadID = id
         let selected = section
-        guard bridge.status == .paired, selected == 0 || selected == 1 else { isLoading = false; failure = nil; return }
+        guard bridge.status == .paired, selected != 2 else { isLoading = false; failure = nil; return }
         isLoading = true
         failure = nil
         defer { if loadID == id { isLoading = false } }
         do {
             if selected == 0 || selected == 1 {
-                sessionContextReady = false
                 let projectPage: [LAAWorkProject] = try await loadItems("/v1/projects")
-                let workspacePage: [LAAWorkWorkspace] = try await loadItems("/v1/workspaces")
                 guard !Task.isCancelled, loadID == id else { return }
                 projects = projectPage
-                workspaces = workspacePage
-                sessionContextReady = true
                 if let first = projectPage.first {
                     let detail: LAAWorkProject? = try? await bridge.read("/v1/projects/\(first.id)")
                     guard !Task.isCancelled, loadID == id else { return }
@@ -313,6 +297,9 @@ struct LAAWorkView: View {
                     let page: [LAAWorkSession] = try await loadItems("/v1/sessions")
                     if !Task.isCancelled && loadID == id { sessions = page }
                 }
+            } else if selected == 3 {
+                let page: LAAWorkPage<LAAWorkRoutine> = try await bridge.read("/v1/routines")
+                if !Task.isCancelled && loadID == id { routines = page.items }
             }
         } catch is CancellationError {
             return

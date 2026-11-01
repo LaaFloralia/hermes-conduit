@@ -107,10 +107,15 @@ export function createSessionRoutes({ sessions }) {
     return { status: 200, data: { items: result.items, nextCursor: null } };
   }
 
+  async function conversation({ params }) {
+    return { status: 200, data: { items: await sessions.conversation(params[0]) } };
+  }
+
   return [
     { method: 'GET', path: '/v1/sessions', auth: true, scope: 'sessions:read', handler: list },
     { method: 'POST', path: '/v1/sessions', auth: true, scope: 'sessions:write', idempotent: true, handler: create },
     { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})$/, auth: true, scope: 'sessions:read', handler: detail },
+    { method: 'GET', pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/conversation$/, auth: true, scope: 'sessions:read', handler: conversation },
     {
       method: 'GET',
       pattern: /^\/v1\/sessions\/(ses_[0-9a-f]{16})\/events$/,

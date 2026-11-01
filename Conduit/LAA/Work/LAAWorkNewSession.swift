@@ -28,8 +28,9 @@ struct LAAWorkNewSessionView: View {
     @State private var error: String?
     @State private var created: LAAWorkSession?
 
-    init(projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore) {
+    init(projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore, initialProjectID: String = "") {
         self.projects = projects; self.drafts = drafts
+        _projectID = State(initialValue: initialProjectID)
         _workspaceItems = State(initialValue: workspaces)
     }
     private var key: ComposerDraftKey? {
@@ -119,7 +120,6 @@ struct LAAWorkNewSessionView: View {
             Text(verbatim: "同じ依頼とIDで再照合します。新しいセッションを重複して開始しません。")
             Text(verbatim: item.draft.text).laaTextStyle(.secondary).lineLimit(4)
             Button(LAACopy.WorkTab.checkSession) { Task { await reconcile(item) } }.disabled(starting)
-            Button(LAACopy.WorkTab.retryRequest) { Task { await perform(item) } }.disabled(starting)
         }.workCard()
     }
     private func saveDraft(_ text: String) {

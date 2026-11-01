@@ -17,6 +17,15 @@ final class LAAWorkTests: XCTestCase {
         return try JSONDecoder().decode(LAAWorkSession.self, from: JSONSerialization.data(withJSONObject: json))
     }
 
+    func testRoutineReadsMissingObservationsAsUnknown() throws {
+        let data = Data(#"{"items":[{"id":"job:a","name":"Daily","schedule":"daily","nextRunAt":null,"lastRunAt":null,"result":null}],"nextCursor":null}"#.utf8)
+        let page = try JSONDecoder().decode(LAAWorkPage<LAAWorkRoutine>.self, from: data)
+        XCTAssertEqual(page.items.first?.name, "Daily")
+        XCTAssertNil(page.items.first?.nextRunAt)
+        XCTAssertNil(page.items.first?.lastRunAt)
+        XCTAssertNil(page.items.first?.result)
+    }
+
     func testSessionsShowChildrenBeneathParentsAndRetainManualNames() throws {
         let parent = try session("p", name: "社長の名前", updated: "2026-10-01T00:00:00Z")
         let child = try session("c", name: "子｜調査", parent: "p", updated: "2026-10-03T00:00:00Z")

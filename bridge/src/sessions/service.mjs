@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 import { BridgeError, badRequest, conflict, notFound } from '../errors.mjs';
 import { encodeEventCursor, parseEventCursor } from './cursor.mjs';
 import { DELEGATION_ORIGIN } from './adapter.mjs';
+import { readConversation } from './history.mjs';
 
 export const CHILD_NAME_PREFIX = '子｜';
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
@@ -271,6 +272,11 @@ export function createSessionService({
         observedAt: (sessionStore.get(id) ?? record).observedAt ?? null,
       },
     };
+  }
+
+  async function conversation(id) {
+    const record = requireSession(id);
+    return readConversation(record.delegate.sessionId);
   }
 
   async function sendMessage({ id, body = {}, key }) {
@@ -552,6 +558,7 @@ export function createSessionService({
     createSession,
     listSessions,
     getSession,
+    conversation,
     sendMessage,
     stopSession,
     resumeSession,
