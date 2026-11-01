@@ -70,7 +70,7 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(folder.waitForExistence(timeout: 30))
         XCTAssertTrue(folder.isEnabled)
         XCTAssertFalse(app.buttons["Inspiration"].isEnabled)
-        XCTAssertTrue(app.buttons["Studio"].isEnabled)
+        XCTAssertTrue(app.scrollViews.buttons["Studio"].firstMatch.isEnabled)
         XCTAssertTrue(item("image1", in: app).isEnabled)
         folder.tap()
         XCTAssertTrue(item("doc2", in: app).waitForExistence(timeout: 10))
@@ -159,7 +159,13 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Save files"].waitForExistence(timeout: 20))
         let message = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Existing saved copies are kept if saving fails.")).firstMatch
         XCTAssertTrue(message.exists)
-        app.buttons["Cancel"].tap()
+        if app.buttons["Cancel"].exists {
+            app.buttons["Cancel"].tap()
+        } else {
+            let dismiss = app.otherElements["PopoverDismissRegion"]
+            XCTAssertTrue(dismiss.exists)
+            dismiss.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        }
     }
 
     func testEmptyUnconfiguredOfflineAndUnpaired() {

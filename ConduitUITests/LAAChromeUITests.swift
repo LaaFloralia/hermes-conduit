@@ -39,7 +39,7 @@ final class LAAChromeUITests: XCTestCase {
         for appearance in ["light", "dark"] {
             let app = launch(appearance)
             var firstFrame: CGRect?
-            for tab in ["Chats", "Work", "Brain", "Assets", "Usage"] {
+            for tab in ["Chats", "Today", "Brain", "Studio", "Work"] {
                 let tabButton = app.buttons[tab]
                 XCTAssertTrue(tabButton.waitForExistence(timeout: 30), tab)
                 tabButton.tap()

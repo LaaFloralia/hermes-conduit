@@ -59,7 +59,7 @@ final class LAAChatDesignUITests: XCTestCase {
         let preview = app.buttons["composer.markdown.preview"]
         XCTAssertTrue(preview.waitForExistence(timeout: 5))
         preview.tap()
-        XCTAssertTrue(app.staticTexts["Title"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["Title"].waitForExistence(timeout: 5))
         app.buttons["閉じる"].tap()
         XCTAssertTrue((field.value as? String ?? "").contains("Second line"))
     }

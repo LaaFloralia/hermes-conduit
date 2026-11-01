@@ -112,17 +112,19 @@ final class LAAWorkUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Projects"].exists)
         XCTAssertTrue(app.buttons["Tasks"].exists)
         app.buttons["Routines"].tap()
-        XCTAssertTrue(app.staticTexts["準備中"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["習慣の原本との連携はまだ利用できません。"].exists)
+        XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["ルーティンはありません。"].exists)
         app.buttons["Sessions"].tap()
         XCTAssertTrue(app.buttons["Connect to Mac"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["New Session"].isEnabled)
+        XCTAssertFalse(app.buttons["New Session"].exists || app.buttons["New Session"].isEnabled)
     }
 
     func testOwnerTasksAndPendingAreAvailableWithoutPairing() {
         let app = XCUIApplication()
         app.launchArguments += ["-laa-tab", "work", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
+        let work = app.buttons["Sessions, projects and tasks"]
+        XCTAssertTrue(work.waitForExistence(timeout: 30)); work.tap()
         XCTAssertTrue(app.buttons["Tasks"].waitForExistence(timeout: 15))
         app.buttons["Tasks"].tap()
         let input = app.textFields["work.ownerTasks.newTitle"]

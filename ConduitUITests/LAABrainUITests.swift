@@ -405,7 +405,7 @@ final class LAABrainUITests: XCTestCase {
         draft.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'SAVED-DRAFT'")).firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["laa.brain.history.use"].isEnabled)
-        let backToHistory = app.navigationBars.buttons.element(boundBy: 0)
+        let backToHistory = app.navigationBars["Draft"].buttons["History"]
         XCTAssertTrue(backToHistory.waitForExistence(timeout: 10))
         backToHistory.tap()
         app.buttons["laa.brain.history.close"].tap()

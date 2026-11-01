@@ -169,6 +169,8 @@ final class LAAUsageUITests: XCTestCase {
         app.terminate()
         app.launch()
         // The isolated test Keychain deliberately uses a new service per launch.
+        let usage = app.buttons["AI usage"]
+        XCTAssertTrue(usage.waitForExistence(timeout: 30)); usage.tap()
         let reconnect = app.buttons["laa.bridge.openPairing"]
         XCTAssertTrue(reconnect.waitForExistence(timeout: 15))
         reconnect.tap()
