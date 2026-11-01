@@ -42,7 +42,7 @@ struct LAANextEventWidget: Widget {
                     Text(event.allDay ? "All day" : event.start.formatted(date: .omitted, time: .shortened)).font(.headline)
                     Text(verbatim: event.title).font(.body).lineLimit(3)
                 } else if entry.authorized { Text("予定はありません").font(.body) }
-                else { Text("Calendar access unavailable").font(.body) }
+                else { Text(verbatim: "Calendar access unavailable").font(.body) }
                 Spacer(minLength: 0)
             }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .containerBackground(.background, for: .widget)
