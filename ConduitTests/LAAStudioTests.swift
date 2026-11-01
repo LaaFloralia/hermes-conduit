@@ -199,7 +199,11 @@ final class LAAStudioTests: XCTestCase {
         XCTAssertTrue(LAAStudioMedia.bridgePathIsValid(output))
         XCTAssertNil(LAAStudioMedia.bridgePath("https://example.com" + input))
         XCTAssertNil(LAAStudioMedia.bridgePath("/api/studio/media/../\(sha).mp4"))
-        XCTAssertNil(LAAStudioMedia.bridgePath("/api/studio/media/project-1/\(sha).pdf"))
+        XCTAssertNotNil(LAAStudioMedia.bridgePath("/api/studio/media/project-1/\(sha).pdf"))
+        XCTAssertNotNil(LAAStudioMedia.bridgePath("/api/studio/media/project-1/\(sha).usdz"))
+        XCTAssertNil(LAAStudioMedia.bridgePath("/api/studio/media/project-1/\(sha).html"))
+        XCTAssertNotNil(LAAStudioMedia.bridgePath("/api/studio/media/project-1/\(sha).usdz", allowed: ["usdz"]))
+        XCTAssertNil(LAAStudioMedia.bridgePath("/api/studio/media/project-1/\(sha).png", allowed: ["usdz"]))
         XCTAssertNotNil(LAAStudioMedia.driveURL("https://drive.google.com/file/d/1234567890/view"))
         XCTAssertNil(LAAStudioMedia.driveURL("https://drive.google.com.evil.example/file/d/1234567890/view"))
     }

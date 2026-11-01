@@ -39,7 +39,8 @@ function fakeBackend() {
       const stream = Object.assign(Readable.from([sliced ? body.subarray(2, 6) : body]), {
         statusCode: sliced ? 206 : 200,
         headers: { 'content-type': state.mediaType ?? 'video/mp4', 'content-length': String(state.mediaLength ?? (sliced ? 4 : body.length)),
-          'accept-ranges': 'bytes', ...(sliced ? { 'content-range': state.badRange ? 'bytes 2-20/10' : `bytes 2-5/${body.length}` } : {}) },
+          'accept-ranges': 'bytes', ...(state.spoofRange ? { 'content-range': 'bytes 0-3/10' } :
+            sliced ? { 'content-range': state.badRange ? 'bytes 2-20/10' : `bytes 2-5/${body.length}` } : {}) },
       });
       state.lastMediaStream = stream;
       return stream;
@@ -120,8 +121,14 @@ describe('Studio Bridge routes', () => {
     backend.state.mediaType = 'text/html';
     assert.equal((await bridge.request(path, { token: readToken })).body.error.code, 'studio_media_invalid');
     backend.state.mediaType = undefined;
-    backend.state.mediaLength = 16 * 1024 * 1024 + 1;
+    // The v2 contract permits converted previews larger than 128 MiB, but
+    // lengths that cannot be represented exactly are still rejected.
+    backend.state.mediaLength = Number.MAX_SAFE_INTEGER + 1;
     assert.equal((await bridge.request(path, { token: readToken })).body.error.code, 'studio_media_invalid');
+    backend.state.mediaLength = 256 * 1024 * 1024 + 1;
+    backend.state.spoofRange = true;
+    assert.equal((await bridge.request(path, { token: readToken })).body.error.code, 'studio_media_invalid');
+    backend.state.spoofRange = false;
     backend.state.mediaLength = undefined;
     const head = await fetch(bridge.base + path, { method: 'HEAD', headers: { authorization: `Bearer ${readToken}` } });
     assert.equal(head.status, 200);
