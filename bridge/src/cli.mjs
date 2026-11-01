@@ -20,6 +20,7 @@ import {
 } from './config.mjs';
 import { createStore } from './store.mjs';
 import { grantStudio, issuePairing, revokeDevice } from './pairing.mjs';
+import { TASKS_USAGE, tasksCommand } from './cli-tasks.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -36,8 +37,11 @@ Usage:
   laa-bridge revoke <device-id|prefix>     revoke one device (--reason <text>)
   laa-bridge grant-studio <device-id|prefix> --reason <text>  grant Studio scopes
   laa-bridge status [--json]               local health check of the running service
+  laa-bridge tasks <add|list|get|update|status|import-linear|backup|restore>
+                                           owner tasks (same store as the app; see below)
   laa-bridge version
 
+${TASKS_USAGE}
 State directory: ${resolveStateDir()} (override with LAA_BRIDGE_STATE_DIR)
 Loopback port:   ${resolvePort()} (override with LAA_BRIDGE_PORT)
 `;
@@ -47,6 +51,12 @@ function fail(message, code = 1) {
   process.exit(code);
 }
 
+// Flags that take no value, and flags that may repeat (each occurrence is
+// appended). Everything else takes exactly one value; a missing value is a usage
+// error rather than a silent `true`.
+const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'include-closed', 'clear-due', 'force', 'allow-live', 'help']);
+const REPEATED_FLAGS = new Set(['link']);
+
 function parseArgs(argv) {
   const positional = [];
   const flags = {};
@@ -54,13 +64,17 @@ function parseArgs(argv) {
     const arg = argv[i];
     if (arg.startsWith('--')) {
       const name = arg.slice(2);
-      if (['json'].includes(name)) {
+      if (BOOLEAN_FLAGS.has(name)) {
         flags[name] = true;
         continue;
       }
       const value = argv[i + 1];
       if (value === undefined || value.startsWith('--')) fail(`missing value for --${name}`, 2);
-      flags[name] = value;
+      if (REPEATED_FLAGS.has(name)) {
+        flags[name] = [...(flags[name] ?? []), value];
+      } else {
+        flags[name] = value;
+      }
       i += 1;
       continue;
     }
@@ -212,6 +226,9 @@ switch (command) {
   }
   case 'status':
     await commandStatus(flags);
+    break;
+  case 'tasks':
+    process.exitCode = await tasksCommand(positional, flags);
     break;
   case 'version':
     process.stdout.write(`${VERSION}\n`);

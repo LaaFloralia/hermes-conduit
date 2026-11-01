@@ -1,10 +1,10 @@
 # LAA Bridge（Mac側サービスの骨格）
 
-`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）・Usage と Mac 状態（読取のみ）**で、他の業務エンドポイントと iOS クライアントは後続タスク。
+`docs/laa/BRIDGE.md` の §9（親の決定）に沿った、Mac mini 上の単一 Bridge プロセスの骨格。実装済みは**端末認証・health・idempotency 台帳・起動停止・Drive（一覧／metadata／Range配信）・Project と workspace の契約・タスク読取・Session（作成／追加入力／停止／再開／イベント再接続／成果物）・Brain（一覧／取得／検索／新規作成のみ）・Usage と Mac 状態（読取のみ）・社長タスク（`/v1/owner-tasks`。保存・操作台帳・CLI・Linear からの一度限りの取込み）**で、他の業務エンドポイントと iOS クライアントは後続タスク。
 
 - 待受け: `127.0.0.1:9137` のみ（LAN・tailnet へ直接 bind しない）
 - 公開: Tailscale Serve の専用HTTPSポート `8445` → `http://127.0.0.1:9137`（既存 8443 / 8444 は触らない）
-- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal、`brain-create/journal.jsonl`＝Brain新規作成の intent／committed 記録）
+- 状態: `~/.local/state/laa-bridge/`（`state.json`＝端末・ペアリングコードの hash・idempotency 台帳、`projects.json`、`workspaces.json`、`sessions.json`＝セッション記録と24時間のイベント journal、`brain-create/journal.jsonl`＝Brain新規作成の intent／committed 記録、`owner-tasks.json`＝社長タスクと操作台帳・取込み対応表 0600）
 - 依存: Node.js 20.11+ の標準モジュールのみ（npm install 不要）。`laa-personal-agent`（`hq/harness/personal_agent_bridge.mjs`）と同じ ESM/Node 系に合わせ、外部依存を持たない
 
 ## 設計上の決定
@@ -200,6 +200,48 @@ ROADMAP 19。**読取専用**で、担当の設定も worker の起動もしな�
 - 読み取り専用の担保: Linear アダプターは `query` 以外の GraphQL 文書を拒否し（`linear_read_only_guard`）、mutation を定義しない。Kanban アダプターは `/dispatch` や reassign を呼ばない。ルートは GET のみ。
 - 照合: 2026-10-25 に Linear を直接読んだ結果と 57 件を突き合わせ、件数・title・状態・owner/executor・依存・project・updatedAt が一致（差分 0）。詳細 3 件もコメント・添付・依存が一致。再実行は `node scripts/verify-tasks.mjs`。
 
+## 社長タスク（`/v1/owner-tasks`）
+
+計画 `work/laa-linear-app-20261101/PLAN-TASKS.md` の M1・M4。社長タスクの正本を Bridge が持ち、iPhone と CLI が同じ保存サービスを使う。契約（端点・JSON・エラー・CLI の終了コード・取込み・バックアップと復元）は [docs/owner-tasks.md](docs/owner-tasks.md)。Linear はエージェント課題の正本として残し、`/v1/tasks` の読取り専用表示はそのまま。
+
+| method / path | 認証 | 応答 |
+|---|---|---|
+| `GET /v1/owner-tasks?status=&limit=&cursor=` | `tasks:read` | `{items,nextCursor,total,counts,filter,observedAt}`。`items` は要約（本文・リンクなし） |
+| `GET /v1/owner-tasks/{id}` | `tasks:read` | タスク1件 + `ETag` |
+| `POST /v1/owner-tasks` | `tasks:write` + `Idempotency-Key` | 201 + タスク + `ETag` |
+| `PATCH /v1/owner-tasks/{id}` | `tasks:write` + `Idempotency-Key` + `If-Match` | 200 + タスク + `ETag`。欠落 428、不一致 412（`details.current`） |
+
+| 項目 | 決定 | 理由 |
+|---|---|---|
+| 状態 | `todo` / `doing` / `done` / `canceled` の4種。物理削除は無い（取消は状態）。完了チェックの往復と題名・メモ・期限のその場編集は `PATCH` だけで行う（契約 §5.5） | 親の決定。取消から戻せる。専用の端点を増やさない |
+| 並び | 未完了を先に、期限の近い順、期限なしは更新の新しい順。完了・取消は後ろ。`status=open\|closed\|all\|<list>` で除外 | 親の決定。iOS は `counts` で折りたたみの件数を出す |
+| 保存 | `<stateDir>/owner-tasks.json` の1ファイル（0700/0600）。タスク・操作台帳・取込み対応表を同じ1回の原子的置換（tmp → fsync → rename → ディレクトリ fsync）で確定する | データと台帳が食い違う瞬間を作らない。`state.json` の7日台帳は二重予約しない |
+| 台帳 | 成功した操作だけを残す（検証拒否と 412 は何も書いていないので記録しない）。端末＋鍵＋正規化本文で照合し、同じ再送は記録済みの結果、別本文は 409。7日で tombstone に畳み、以後は 410 | 再送で二重作成しない。成功を「未送信」と判定しない |
+| ロック | 持ち主の pid が生きていれば待ち、死んでいれば回収する。読めないロックでは書込みを止める | 経過時間だけで生存中の writer から奪わない |
+| 消失 | データが無い・壊れている時は空で作り直さない（マーカー `owner-tasks.initialized` と 503）。まだ一度も保存していない時だけ空の一覧を返す | 正本を黙って初期化しない |
+| 権限 | 既存の `tasks:read` / `tasks:write`。新しいペアリング・権限追加は要らない | 親の決定 |
+| 取込み | Linear は固定の `query` だけ（mutation なし）。dry-run は manifest を 0600 で書き `contentHash` を出すだけ。実行は承認ハッシュを照合し、直前に再取得して照合し、1トランザクションで作る。同じ manifest の再実行は結果を返す | 実データの dry-run と承認は親。実装担当は fixture と模擬応答だけ |
+
+```sh
+laa-bridge tasks add --request-id r1 --input - --json <<'JSON'
+{"title":"契約内容を確認する","dueDate":"2026-11-05"}
+JSON
+laa-bridge tasks list --status open --json
+laa-bridge tasks get --id <uuid> --json
+laa-bridge tasks update --id <uuid> --if-match 1 --request-id r2 --status doing
+laa-bridge tasks status --json
+laa-bridge tasks import-linear --dry-run --assignee <linear-user-id>
+laa-bridge tasks import-linear --manifest <file> --approve <contentHash>
+laa-bridge tasks backup --keep 14
+laa-bridge tasks restore --from <snapshot> --to <dir>
+```
+
+長い本文は `--input -`（標準入力）で渡し、コマンド履歴・プロセス引数へ残さない。書込みは `--request-id` が必須で、再試行でも同じ値を使う。終了コードは 0 適用/再送、1 想定外、2 引数、3 対象なし、4 競合、5 入力拒否、6 保存先、7 Linear 側。
+
+日次バックアップの launchd 追加、Mac 外の保存先の採否、実アカウントでの dry-run と取込み承認、`docs/laa/BRIDGE.md`・`FEATURE_MAP.md` への追記、Bridge の再起動は親の作業（契約 §13）。バックアップは `tasks backup` が14世代を既定で残し、`tasks restore` で別ディレクトリへ戻して件数・最大 revision・最新 updatedAt を読み戻す。
+
+検証: `test/owner-tasks-{store,api,cli,backup,import}.test.mjs`（67 tests）。実 Linear・実データ・資格情報・シミュレーターは使わず、loopback の模擬 GraphQL と fixture だけで、送る文書が `query` のみであることも検査する。復元試験は別ディレクトリへ戻して全タスクと台帳の一致を確かめる。
+
 ## Session（`/v1/sessions`）
 
 ROADMAP 14。実体は既存の Mac 委譲経路 `/Users/laa/.local/bin/laa-personal-agent`（= `hq/harness/personal_agent_bridge.mjs`）で、Bridge は JSON を stdin に渡して1操作ごとに1プロセス起動する（約0.5秒）。Paseo SDK を直接使わないのは、CLI 0.11.4 と daemon 0.12.0 の差（BASELINE §2）と、requestId の冪等性・実 provider/model/effort の照合・停止中や承認待ちへの送信拒否を既存ラッパーが既に持っているため。**動く経路を1本だけ使い、二重実装しない**。
@@ -340,7 +382,7 @@ Bridge の Serve エントリ削除 → LaunchAgent の停止・解除 → `127.
 ## テスト
 
 ```sh
-cd bridge && npm test        # node --test "test/**/*.test.mjs"（153 tests、約2秒。Drive・sessions・brain・usageはfakeアダプタで検証）
+cd bridge && npm test        # node --test "test/**/*.test.mjs"（286 tests、約5秒。Drive・sessions・brain・usage・社長タスクはfakeアダプタで検証）
 ```
 
 CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導入なし）が `bridge/**` の変更時に実行する。macOS ランナーは使わない。
@@ -357,6 +399,6 @@ CI は `.github/workflows/laa-bridge.yml`（ubuntu-latest、Node 24、依存導�
 
 ## 未対応（後続タスク）
 
-iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、DriveのWorkspace文書export、タスクの書込（`tasks:write`）。Kanban の読取は親が認証済みラッパーを承認するまで無効。
+iOS クライアント、`/v1/sessions/{id}/reply`（承認・質問への回答はタスク15）、`/v1/events`（セッション横断）、`/v1/jobs`、GUI lease、Brain の既存ノート編集（`brain:write`。§9未決4の実証まで提供しない）、DriveのWorkspace文書export、Linear への書込み。Kanban の読取は親が認証済みラッパーを承認するまで無効。社長タスクの日次バックアップの定刻実行と Mac 外の保管は親が決める。
 
 Project 側の残り: 端末をまたぐ「どの端末がどの Project を見られるか」の個別付与（今は `sessions:read/write` の範囲内で全 Project）、自動命名の生成器そのもの（Bridge は `nameSource` の規則だけを持つ）。共通指示は本文の保存・版管理・適用まで実装済みで、外部ファイル参照は持たない。

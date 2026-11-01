@@ -154,7 +154,7 @@ export function assertReadOnlyDocument(document) {
   }
 }
 
-function authorizationHeader(token) {
+export function authorizationHeader(token) {
   // The helper returns either a personal API key (lin_api_...) or a bearer
   // token, matching the laa-agent CLI's handling of the same credential.
   return token.startsWith('lin_api_') ? token : `Bearer ${token}`;
