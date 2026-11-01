@@ -228,6 +228,14 @@ class LAABrandBundleTests(unittest.TestCase):
         self.assertEqual(brand.display("Hermes replied to %@", "Hermes replied to %@"), "Ciel replied to %@")
         self.assertEqual(brand.display("Hermesサーバーが応答しました", "Hermes server replied"), "Macが応答しました")
 
+    def test_english_copy_can_name_the_agent_and_mac_in_the_same_sentence(self):
+        source = "Hermes replies. The Hermes notifier plugin runs on your Hermes server."
+        self.assertEqual(brand.values_only({source: source})[source],
+                         "Ciel replies. The connection service runs on your Mac.")
+        source = "Your Hermes server doesn't offer voice. Update Hermes to use Voice."
+        self.assertEqual(brand.values_only({source: source})[source],
+                         "Your Mac doesn't offer voice. Update the connection service to use Voice.")
+
     def test_all_catalog_translations_keep_format_arguments(self):
         for file in ("Conduit/Localizable.xcstrings", "ConduitWatch/Localizable.xcstrings"):
             catalog = json.loads((ROOT / file).read_text())["strings"]

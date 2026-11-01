@@ -63,11 +63,16 @@ def validate_bundle_name(value):
     return value
 
 
-def display(value, source_key=None):
+def display(value, source_key=None, locale="en"):
     # Agent and connection are different things. Keep each translation and
     # its format arguments; only replace the product names in display values.
     for old, new in (("Hermes Conduit", "LAA"), ("Conduit-chan", "Ciel"),
+                     ("Conduit notifier plugin", "connection service"),
                      ("Conduit plugin", "connection service"),
+                     ("Hermes notifier plugin", "connection service"),
+                     ("Hermes Desktop", "desktop app"),
+                     ("Update Hermes", "Update the connection service"),
+                     ("restart Hermes", "restart the connection service"),
                      ("Hermes server", "Mac"), ("Hermes host", "Mac"),
                      ("Hermes gateway", "Mac"), ("Hermes dashboard", "Mac"),
                      ("Hermes installation", "Mac"), ("Hermesサーバー", "Mac"),
@@ -75,7 +80,11 @@ def display(value, source_key=None):
         value = value.replace(old, new)
     # The key gives context to translated strings whose word order differs.
     # Other occurrences address the agent, Ciel.
-    connection = source_key and re.search(r"Hermes (?:server|host|gateway|dashboard|installation)", source_key, re.I)
+    # English phrases above already identify the connection. A remaining
+    # occurrence can name the agent even in a sentence that also names the
+    # server. Translations may reverse their word order, so retain their
+    # source-key context where the English phrase was not present verbatim.
+    connection = locale != "en" and source_key and re.search(r"Hermes (?:server|host|gateway|dashboard|installation)", source_key, re.I)
     value = value.replace("Hermes", "Mac" if connection else "Ciel")
     return value
 
@@ -106,7 +115,7 @@ def values_only(value, source_key=None, locale="en"):
     if source_key and "conduit_push plugin together" in source_key:
         # The Watch error keeps its translated text and any format argument.
         value = value.replace("conduit_push", "Mac")
-    return value if is_identifier(value) else display(value, source_key)
+    return value if is_identifier(value) else display(value, source_key, locale)
 
 
 def read_plist(path):
@@ -131,7 +140,7 @@ def permission_strings(catalog, locale):
             if not match:
                 raise ValueError(f"Cannot isolate upstream-developer sentence for {key}/{locale}")
             text = match.group(1).strip()
-        result[key] = display(text, english)
+        result[key] = display(text, english, locale)
     return result
 
 
