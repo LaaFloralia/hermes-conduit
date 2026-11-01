@@ -9,8 +9,9 @@ import { createUsageFeedSource } from '../src/usage/feed.mjs';
 import { usageItemsFromFeed } from '../src/usage/proxy.mjs';
 
 const observed = '2026-10-29T04:49:23Z';
-const feed = { version: 1, fetchedAt: observed, providers: [{ id: 'claude', available: true,
-  updatedAt: observed, windows: [{ label: 'Session', remaining: 62, resetsAt: null }] }] };
+// Codex is first in the projection's fixed provider order, so [0] is this row.
+const feed = { version: 1, fetchedAt: observed, providers: [{ id: 'codex', available: true,
+  updatedAt: observed, windows: [{ label: 'Weekly', remaining: 62, resetsAt: null }] }] };
 const response = (body = feed) => ({ ok: true, headers: { get: () => null }, text: async () => JSON.stringify(body) });
 
 test('initial read never waits for a background fetch', async (t) => {
@@ -79,8 +80,8 @@ test('repeated observations cannot extend a future-clock allowance', async (t) =
   let now = start;
   let updatedAt = new Date(start + 120_000).toISOString();
   const source = createUsageFeedSource({ now: () => now, fetcher: async () => response({
-    version: 1, fetchedAt: new Date(now).toISOString(), providers: [{ id: 'claude', available: true,
-      updatedAt, windows: [{ label: 'Session', remaining: 42, resetsAt: null }] }],
+    version: 1, fetchedAt: new Date(now).toISOString(), providers: [{ id: 'codex', available: true,
+      updatedAt, windows: [{ label: 'Weekly', remaining: 42, resetsAt: null }] }],
   }) });
   t.after(source.close);
   const project = async () => {

@@ -478,12 +478,16 @@ App Store build · the Bridge API, Brain and Usage data contracts
   and per-request timeouts. It retains response metadata and structured HTTP
   errors; long-poll callers allow the wait plus ten seconds. Existing reads
   retain their original error mapping, and writes are never retried by the client.
-- Usage reads the Console's visible services in the same order from the Bridge
-  usage-proxy projection. Quota windows, reset times, balances, credits and D1's
-  recorded cost, input/output tokens and request counts stay in their own units;
-  model names, Hermes token usage and Mac status are not
-  part of this screen. Opening the tab refreshes after a 60-second quiet interval;
-  manual refresh and app foreground refresh remain available. It retains previous
+- Usage reads the Bridge usage-proxy projection in one fixed order: Codex
+  Weekly, OpenCode Weekly, Claude Weekly, GPT API, Claude API, Liquid AI, then the
+  remaining providers. A 7-day window is called Weekly (ウィークリー), never D1.
+  Jev, Google Cloud and Google Flow are retired: the proxy and the Bridge no longer
+  read them, and a cached row is dropped before drawing. Quota windows, reset
+  times, balances, credits and Liquid AI's recorded cost, input/output tokens and
+  request counts stay in their own units; model names, Hermes token usage and Mac
+  status are not part of this screen. The refresh button only re-reads the feed and
+  never opens an external URL. Opening the tab refreshes after a 60-second quiet
+  interval; manual refresh and app foreground refresh remain available. It retains previous
   readings and their times on failure, disables duplicate refreshes and
   distinguishes missing, zero, stale, expired and unavailable data. Hermes'
   existing Settings report remains available.

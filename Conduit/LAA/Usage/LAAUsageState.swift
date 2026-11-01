@@ -214,54 +214,143 @@ struct LAAUsageGroup: Identifiable {
         return result
     }
 
-    /// Match the Console's visible provider order; do not add Hermes profiles.
+    /// The owner's display order (2026-11-01): Codex Weekly, OpenCode Weekly,
+    /// Claude Weekly, GPT API, Claude API, Liquid AI, then the rest. Retired
+    /// providers (Jev, Google Cloud, Google Flow) are never listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
-        let ids = ["liquid", "claude", "codex", "opencode-go", "magnific", "openai-api", "claude-api", "jev", "google-cloud", "google-flow"]
+        let ids = ["codex", "opencode-go", "claude", "venice", "openai-api", "claude-api", "liquid",
+                   "antigravity", "magnific", "grok-bot"]
+        let names = ["opencode-go": "OpenCode", "liquid": "Liquid AI"]
         return ids.compactMap { id in
             let prefix = "provider.\(id)."
             let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
             guard let first = selected.first else { return nil }
-            return LAAUsageGroup(id: "provider.\(id)", label: id == "liquid" ? "D1" : first.label, items: selected)
+            return LAAUsageGroup(id: "provider.\(id)", label: names[id] ?? first.label, items: selected)
         }
     }
 }
 
 enum LAAWidgetUsageBuilder {
-    static func make(items: [LAAUsageItem], receivedAt: Date = Date()) -> WidgetUsageSnapshot {
-        let visible = LAAUsageGroup.consoleGroups(items).flatMap(\.items)
-        let meters = visible.flatMap { item -> [WidgetUsageMeter] in
-            guard item.kind == "quota", item.availability == "available" else { return [] }
-            return (item.detail?.windows ?? []).enumerated().compactMap { index, window in
-                guard let value = window.remainingPercent, value.isFinite, (0...100).contains(value) else { return nil }
-                let observed = LAAUsageItem.date(item.observedAt)
-                let verified = item.detail?.sourceKind == "verified"
-                let rawDeadline = item.detail?.freshUntil
-                let upstreamDeadline = LAAUsageItem.date(rawDeadline)
-                let limit = observed.map { min($0, item.freshnessAnchor ?? receivedAt, receivedAt).addingTimeInterval(10 * 60) }
-                let deadline = rawDeadline == nil && !verified ? limit : upstreamDeadline.flatMap { upstream in
-                    limit.map { min($0, upstream) }
-                }
-                return WidgetUsageMeter(id: "\(item.id).\(index)", label: "\(item.label) · \(window.label)",
-                    remainingPercent: value, observedAt: observed, freshUntil: deadline,
-                    resetsAt: LAAUsageItem.date(window.resetsAt),
-                    stale: item.stale || (rawDeadline != nil && deadline == nil),
-                    retained: false, verified: verified,
-                    legacyFreshness: rawDeadline == nil && !verified)
-            }
-        }.sorted {
-            if $0.remainingPercent != $1.remainingPercent { return $0.remainingPercent < $1.remainingPercent }
-            return $0.id < $1.id
+    /// The six rows the home-screen widget shows, in the owner's priority order.
+    struct Slot {
+        enum Reading { case weeklyQuota, balance, monthCost, recordedUsage }
+        let provider: String
+        let name: String
+        let reading: Reading
+
+        var label: String {
+            reading == .weeklyQuota ? name + " " + AppLocalization.string("Weekly") : name
         }
-        let selected = Array(meters.prefix(3))
+    }
+
+    static let slots: [Slot] = [
+        Slot(provider: "codex", name: "Codex", reading: .weeklyQuota),
+        Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota),
+        Slot(provider: "claude", name: "Claude", reading: .weeklyQuota),
+        Slot(provider: "venice", name: "Venice", reading: .balance),
+        Slot(provider: "openai-api", name: "GPT API", reading: .monthCost),
+        Slot(provider: "claude-api", name: "Claude API", reading: .monthCost),
+        Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage),
+    ]
+
+    static func make(items: [LAAUsageItem], receivedAt: Date = Date()) -> WidgetUsageSnapshot {
+        let feed = items.filter { $0.source == "codexbar-usage-proxy" }
+        let meters = slots.compactMap { meter(for: $0, feed: feed, receivedAt: receivedAt) }
         // The feed can be cached even when the app has just contacted Bridge.
-        // Only show a confirmation time if all displayed meters have one.
-        let observations = selected.compactMap(\.observedAt)
-        let oldestObservation = observations.count == selected.count ? observations.min() : nil
-        let otherUsage = visible.filter { $0.availability == "available" && $0.kind != "quota" }
-        let otherObservations = otherUsage.compactMap { LAAUsageItem.date($0.observedAt) }
-        let oldestOther = otherObservations.count == otherUsage.count ? otherObservations.min() : nil
-        return WidgetUsageSnapshot(meters: selected, checkedAt: selected.isEmpty ? oldestOther : oldestObservation,
-                                   hasOtherUsage: !otherUsage.isEmpty)
+        // Only show a confirmation time if all displayed readings have one.
+        let observations = meters.filter(\.available).compactMap(\.observedAt)
+        let checkedAt = observations.isEmpty ? nil : observations.min()
+        return WidgetUsageSnapshot(meters: meters, checkedAt: checkedAt)
+    }
+
+    private static func meter(for slot: Slot, feed: [LAAUsageItem], receivedAt: Date) -> WidgetUsageMeter? {
+        let prefix = "provider.\(slot.provider)."
+        let available = { (item: LAAUsageItem) in
+            item.availability == "available" && !LAAUsageFreshness.isPast(item, at: receivedAt)
+        }
+        switch slot.reading {
+        case .weeklyQuota:
+            guard let item = feed.first(where: { $0.id.hasPrefix(prefix) && $0.kind == "quota" }) else { return nil }
+            let window = weeklyWindow(item.detail?.windows ?? [])
+            guard available(item), let window,
+                  let remaining = window.remainingPercent, remaining.isFinite, (0...100).contains(remaining) else {
+                return .missing(id: "\(item.id).weekly", label: slot.label)
+            }
+            return meter(id: "\(item.id).weekly", label: slot.label, unit: .percent, amount: remaining,
+                         item: item, freshUntil: item.detail?.freshUntil,
+                         resetsAt: LAAUsageItem.date(window.resetsAt), receivedAt: receivedAt)
+        case .balance:
+            guard let item = feed.first(where: { $0.id == "\(prefix)balance" }) else { return nil }
+            guard available(item), let amount = item.value, amount.isFinite else {
+                return .missing(id: item.id, label: slot.label)
+            }
+            return meter(id: item.id, label: slot.label, unit: .usd, amount: amount,
+                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
+        case .monthCost:
+            guard let item = feed.first(where: { $0.id == "\(prefix)cost-month" }) else { return nil }
+            guard available(item), let amount = item.value, amount.isFinite else {
+                return .missing(id: item.id, label: slot.label)
+            }
+            return meter(id: item.id, label: slot.label, unit: .usd, amount: amount,
+                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
+        case .recordedUsage:
+            guard let item = feed.first(where: { $0.id.hasPrefix(prefix) && $0.kind == "usage" }) else { return nil }
+            guard available(item), let amount = item.detail?.recordedCostUsd, amount.isFinite else {
+                return .missing(id: item.id, label: slot.label)
+            }
+            return meter(id: item.id, label: slot.label, unit: .usd, amount: amount,
+                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
+        }
+    }
+
+    /// The window the owner means by "Weekly": the 7-day quota when the feed
+    /// names its duration, otherwise the window the feed itself calls Weekly.
+    private static func weeklyWindow(_ windows: [LAAUsageItem.Window]) -> LAAUsageItem.Window? {
+        windows.first { window in
+            if let minutes = window.windowMinutes { return minutes == 10_080 }
+            return LAAUsageLabel.isWeekly(window.label)
+        }
+    }
+
+    private static func meter(id: String, label: String, unit: WidgetUsageMeter.Unit, amount: Double,
+                              item: LAAUsageItem, freshUntil: String?, resetsAt: Date?,
+                              receivedAt: Date) -> WidgetUsageMeter {
+        let observed = LAAUsageItem.date(item.observedAt)
+        let verified = item.detail?.sourceKind == "verified"
+        let upstreamDeadline = LAAUsageItem.date(freshUntil)
+        let limit = observed.map { min($0, item.freshnessAnchor ?? receivedAt, receivedAt).addingTimeInterval(10 * 60) }
+        let deadline: Date?
+        if freshUntil == nil {
+            deadline = verified ? nil : limit
+        } else {
+            deadline = upstreamDeadline.flatMap { upstream in limit.map { min($0, upstream) } }
+        }
+        return WidgetUsageMeter(id: id, label: label, unit: unit, amount: amount,
+                                observedAt: observed, freshUntil: deadline, resetsAt: resetsAt,
+                                stale: item.stale || (freshUntil != nil && deadline == nil),
+                                retained: false, verified: verified,
+                                legacyFreshness: freshUntil == nil && !verified)
+    }
+}
+
+/// One naming rule for the quota windows, shared by the app list and the widget.
+enum LAAUsageLabel {
+    static func isWeekly(_ label: String) -> Bool {
+        ["weekly", "週間", "週次", "週刊", "ウィークリー"].contains(label.lowercased())
+    }
+
+    /// Display name for one window. A duration the feed reports wins, so a 7-day
+    /// pool reads Weekly (ウィークリー in Japanese) whatever the proxy calls it.
+    static func window(_ window: LAAUsageItem.Window) -> String {
+        if let minutes = window.windowMinutes {
+            if minutes == 10_080 { return AppLocalization.string("Weekly") }
+            if minutes == 43_200 { return AppLocalization.string("Monthly") }
+        }
+        if isWeekly(window.label) { return AppLocalization.string("Weekly") }
+        if ["monthly", "月間", "マンスリー"].contains(window.label.lowercased()) {
+            return AppLocalization.string("Monthly")
+        }
+        return window.label
     }
 }
 

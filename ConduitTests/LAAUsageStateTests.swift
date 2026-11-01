@@ -14,7 +14,7 @@ final class LAAUsageStateTests: XCTestCase {
         {"id":"provider.claude.quota","kind":"quota","label":"Claude","value":\(percentage),"unit":"percent",
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,
-         "detail":{"windows":[{"label":"Session","remainingPercent":\(percentage),"resetsAt":"2026-11-02T00:00:00Z"}]}}
+         "detail":{"windows":[{"label":"Weekly","windowMinutes":10080,"remainingPercent":\(percentage),"resetsAt":"2026-11-02T00:00:00Z"}]}}
         """)
     }
 
@@ -192,7 +192,7 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertFalse(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-120)))
         XCTAssertTrue(LAAUsageFreshness.isStale(reading, at: observed.addingTimeInterval(-121)))
         let verified = try item("""
-        {"id":"provider.jev.balance","kind":"balance","label":"Jev","value":1,"unit":"usd",
+        {"id":"provider.magnific.credits","kind":"balance","label":"Magnific","value":1,"unit":"usd",
          "source":"codexbar-usage-proxy","observedAt":"2026-10-31T00:00:00Z","availability":"available",
          "stale":false,"estimated":false,"expired":false,"detail":{"sourceKind":"verified"}}
         """)

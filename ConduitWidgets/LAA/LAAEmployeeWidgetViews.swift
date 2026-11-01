@@ -35,9 +35,8 @@ struct LAAEmployeeWidgetEntry: TimelineEntry {
 
     static func make(employee: LAAWidgetEmployee, snapshot: WidgetSnapshot?, date: Date = Date(), freshnessAnchor: Date? = nil) -> Self {
         let usage = snapshot?.usage.map { usage in
-            WidgetUsageSnapshot(meters: usage.meters.filter {
-                !$0.id.hasPrefix("provider.fal.") && !$0.id.hasPrefix("provider.venice.")
-            }, checkedAt: usage.checkedAt, hasOtherUsage: usage.hasOtherUsage ?? false)
+            WidgetUsageSnapshot(meters: usage.displayableMeters, checkedAt: usage.checkedAt,
+                                hasOtherUsage: usage.hasOtherUsage ?? false)
         }
         return Self(date: date, freshnessAnchor: freshnessAnchor ?? date, employee: employee,
              chat: LAAEmployeeWidgetLinks.link(employee: employee, action: .employeeChat, snapshot: snapshot),
@@ -104,7 +103,6 @@ struct LAAEmployeeWidgetView: View {
     var renderedAtOverride: Date? = nil
     @Environment(\.widgetFamily) private var family
     @Environment(\.widgetRenderingMode) private var renderingMode
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var effectiveRenderingMode: WidgetRenderingMode { renderingModeOverride ?? renderingMode }
     private var renderedAt: Date { max(entry.date, renderedAtOverride ?? Date()) }
 
@@ -154,183 +152,59 @@ struct LAAEmployeeWidgetView: View {
 
     @ViewBuilder
     private var usageSummary: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            accessibleUsageSummary
-        } else {
-            regularUsageSummary
+        let meters = entry.usage?.meters ?? []
+        // The rows are already in the owner's priority order: show as many as
+        // fit, from the top, and drop the time and notice lines entirely.
+        ViewThatFits(in: .vertical) {
+            usageList(meters: meters, limit: 7)
+            usageList(meters: meters, limit: 6)
+            usageList(meters: meters, limit: 5)
+            usageList(meters: meters, limit: 4)
+            usageList(meters: meters, limit: 3)
+            usageList(meters: meters, limit: 2)
+            usageList(meters: meters, limit: 1)
+            usageList(meters: meters, limit: 0)
         }
     }
 
-    private var regularUsageSummary: some View {
+    private func usageList(meters: [WidgetUsageMeter], limit: Int) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
             Text(verbatim: "AI Usage").laaTextStyle(.section).fontWeight(.bold)
                 .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
-            if let usage = entry.usage, !usage.meters.isEmpty {
-                let displayed = usage.meters
-                ForEach(displayed) { meter in
-                    let past = Self.isPast(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor)
-                    let percentage = percentageText(meter.remainingPercent)
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: LAASpacing.x1) {
-                            Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.8)
-                            Spacer(minLength: 0)
-                            Text(verbatim: past ? "未取得" : percentage)
-                                .font(LAAType.employeeName).monospacedDigit()
-                        }
-                        .laaTextStyle(.section)
-                        .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
-                        if !past {
-                            ProgressView(value: meter.remainingPercent, total: 100).tint(LAAColor.link)
-                        }
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(past ? "\(meter.label), 取得できません" : "\(meter.label), 残り \(percentage)")
-                }
-                Spacer(minLength: 0)
-                if displayed.contains(where: { Self.isPast($0, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor) }) {
-                    Text(verbatim: "一部 取得できません").laaTextStyle(.section)
-                        .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
-                } else if displayed.contains(where: { $0.legacyFreshness == true || ($0.freshUntil == nil && $0.verified != true) }) {
-                    Text(verbatim: "旧Bridge・鮮度は目安").laaTextStyle(.section)
-                        .foregroundStyle(LAAColor.attention).lineLimit(1).minimumScaleFactor(0.8)
-                }
-                if let checked = usage.checkedAt ?? displayed.compactMap(\.observedAt).min() {
-                    Text(verbatim: Self.checkedLabel(checked, relativeTo: renderedAt))
-                        .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                        .lineLimit(1).minimumScaleFactor(0.75)
-                } else {
-                    Text(verbatim: "確認時刻 未取得").laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                }
-            } else {
-                Text(verbatim: entry.usage?.hasOtherUsage == true ? "枠は未取得・他のUsageあり" : LAACopy.notFetched)
-                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                if let checked = entry.usage?.checkedAt {
-                    Text(verbatim: Self.checkedLabel(checked, relativeTo: renderedAt))
-                        .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                        .lineLimit(1).minimumScaleFactor(0.75)
-                }
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    // A widget cannot grow with Dynamic Type. Keep the requested text size,
-    // showing one meter when two would push the freshness or time offscreen.
-    private var accessibleUsageSummary: some View {
-        ViewThatFits(in: .vertical) {
-            accessibleUsageLayout(maxMeters: 2).fixedSize(horizontal: false, vertical: true)
-            accessibleUsageLayout(maxMeters: 1).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func accessibleUsageLayout(maxMeters: Int) -> some View {
-        let notice = entry.usage.flatMap { Self.accessibleNotice(for: $0.meters, at: renderedAt, anchor: entry.freshnessAnchor) }
-        return VStack(alignment: .leading, spacing: LAASpacing.x1) {
-            HStack(spacing: LAASpacing.x1) {
-                Text(verbatim: "Usage").laaTextStyle(.section).fontWeight(.bold)
-                    .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
-                if let notice {
-                    Spacer(minLength: 0)
-                    Text(verbatim: notice.compactText).laaTextStyle(.section)
-                        .foregroundStyle(LAAColor.attention)
-                        .lineLimit(1).layoutPriority(1)
-                        .accessibilityLabel(notice.text)
-                }
-            }
-            if let usage = entry.usage, !usage.meters.isEmpty {
-                ForEach(Array(usage.meters.prefix(maxMeters))) { meter in
-                    let past = Self.isPast(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor)
-                    let percentage = percentageText(meter.remainingPercent)
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: LAASpacing.x1) {
-                            Text(verbatim: meter.label.components(separatedBy: " · ").first ?? meter.label)
-                                .lineLimit(1)
-                            Spacer(minLength: 0)
-                            Text(verbatim: past ? "未取得" : percentage).font(LAAType.employeeName).monospacedDigit()
-                        }
-                        .laaTextStyle(.section)
-                        .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
-                        if !past {
-                            ProgressView(value: meter.remainingPercent, total: 100).tint(LAAColor.link)
-                        }
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(past ? "\(meter.label), 取得できません" : "\(meter.label), 残り \(percentage)")
-                }
-            } else {
-                let hasOtherUsage = entry.usage?.hasOtherUsage == true
-                Text(verbatim: hasOtherUsage ? "枠未取得" : LAACopy.notFetched)
+            if meters.isEmpty {
+                Text(verbatim: LAACopy.notFetched)
                     .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                    .lineLimit(1)
-                    .accessibilityLabel(hasOtherUsage ? "枠は未取得、他のUsageあり" : LAACopy.notFetched)
-            }
-            if let checked = entry.usage?.checkedAt ?? entry.usage?.meters.compactMap(\.observedAt).min() {
-                let parts = Self.accessibleCheckedParts(checked, relativeTo: renderedAt)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(verbatim: parts.date)
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                    Text(verbatim: "取得 \(parts.time)")
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                }
-                .laaTextStyle(.section).foregroundStyle(LAAColor.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("取得 \(parts.date) \(parts.time)")
+                    .lineLimit(2).minimumScaleFactor(0.8)
             } else {
-                Text(verbatim: "未確認").laaTextStyle(.section)
-                    .foregroundStyle(LAAColor.secondaryText).lineLimit(1)
-                    .accessibilityLabel("確認時刻は未取得")
+                ForEach(Array(meters.prefix(limit))) { meter in usageRow(meter) }
+                Spacer(minLength: 0)
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
     }
 
-    enum AccessibleNotice: Equatable {
-        case stale, uncertain
-
-        var text: String {
-            switch self {
-            case .stale: return "古い・要確認"
-            case .uncertain: return "要確認"
-            }
+    private func usageRow(_ meter: WidgetUsageMeter) -> some View {
+        let past = Self.isPast(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor)
+        return HStack(spacing: LAASpacing.x1) {
+            Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.75)
+            Spacer(minLength: LAASpacing.x1)
+            Text(verbatim: past ? "未取得" : Self.valueText(meter))
+                .monospacedDigit().lineLimit(1).layoutPriority(1)
         }
+        .laaTextStyle(.section)
+        .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(past ? "\(meter.label), 取得できません" : "\(meter.label), \(Self.valueText(meter))")
+    }
 
-        var compactText: String {
-            switch self {
-            case .stale: return "古い"
-            case .uncertain: return "注意"
-            }
+    static func valueText(_ meter: WidgetUsageMeter) -> String {
+        switch meter.unit {
+        case .percent: return percentageText(meter.amount)
+        case .usd: return "$" + meter.amount.formatted(.number.precision(.fractionLength(2)))
         }
     }
 
-    static func accessibleNotice(for meters: [WidgetUsageMeter], at date: Date, anchor: Date? = nil) -> AccessibleNotice? {
-        // A hidden stale meter must not make the overall snapshot look fresh.
-        if meters.contains(where: { $0.isPast(at: date, anchor: anchor) }) { return .stale }
-        if meters.contains(where: { $0.legacyFreshness == true || ($0.freshUntil == nil && $0.verified != true) }) {
-            return .uncertain
-        }
-        return nil
-    }
-
-    static func accessibleCheckedParts(_ checked: Date, relativeTo reference: Date,
-                                       calendar: Calendar = .autoupdatingCurrent) -> (date: String, time: String) {
-        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: checked)
-        let time = String(format: "%02d:%02d", components.hour ?? 0, components.minute ?? 0)
-        let month = components.month ?? 0
-        let day = components.day ?? 0
-        if components.year == calendar.component(.year, from: reference) {
-            return ("\(month)/\(day)", time)
-        }
-        return ("\(components.year ?? 0)/\(month)/\(day)", time)
-    }
-
-    static func checkedLabel(_ checked: Date, relativeTo reference: Date,
-                             calendar: Calendar = .autoupdatingCurrent) -> String {
-        let parts = accessibleCheckedParts(checked, relativeTo: reference, calendar: calendar)
-        return calendar.isDate(checked, inSameDayAs: reference)
-            ? "取得 \(parts.time)" : "取得 \(parts.date) \(parts.time)"
-    }
-
-    private func percentageText(_ value: Double) -> String {
+    static func percentageText(_ value: Double) -> String {
         if value > 0 && value < 0.01 { return "<0.01%" }
         if value < 100 && value > 99.99 { return ">99.99%" }
         return value.formatted(.number.precision(.fractionLength(0...2))) + "%"

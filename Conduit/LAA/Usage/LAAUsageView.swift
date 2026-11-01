@@ -92,6 +92,9 @@ struct LAAUsageView: View {
                         .background(LAAColor.surface, in: Circle())
                         .overlay(Circle().strokeBorder(LAAColor.separator))
                 }
+                // The button only re-reads the feed. Borderless keeps the List
+                // row from claiming the tap, so no other control can fire.
+                .buttonStyle(.borderless)
                 .disabled(state.isRefreshing || bridge.status != .paired)
                 .accessibilityLabel(Text(verbatim: LAACopy.usageRefresh))
                 .accessibilityIdentifier("laa.usage.refresh")
@@ -212,7 +215,6 @@ struct LAAUsageView: View {
                 }
             }
         }
-        if let url = Self.billingURL(item), item.availability != "available" { Link("公式画面で確認", destination: url).laaTextStyle(.secondary) }
         if item.availability == "available" && !warning {
             flags(item)
             if let renews = LAAUsageItem.date(item.detail?.renewsAt) { caption("更新予定 " + time(renews)) }
@@ -249,16 +251,7 @@ struct LAAUsageView: View {
     }
 
     private func past(_ item: LAAUsageItem) -> Bool {
-        if LAAUsageFreshness.isStale(item) { return true }
-        if item.kind == "cost" {
-            let lag: String
-            if item.id.hasPrefix("provider.claude-api.") { lag = "typical-5m" }
-            else if item.id.hasPrefix("provider.openai-api.") { lag = "undisclosed" }
-            else { return true }
-            if item.detail?.sourceLag != lag || item.detail?.periodTimezone != "UTC" { return true }
-        }
-        // A quota item's expired bit describes only its lowest remaining window.
-        return item.kind != "quota" && (item.isExpired() || needsRenewal(item))
+        LAAUsageFreshness.isPast(item)
     }
 
     private func outdated(_ text: String?) -> Bool {
@@ -266,15 +259,11 @@ struct LAAUsageView: View {
     }
 
     private func reachedUTCDate(_ text: String?) -> Bool {
-        guard let text, text.count == 10, let start = LAAUsageItem.date(text + "T00:00:00Z") else { return false }
-        return start <= Date()
+        LAAUsageFreshness.reachedUTCDate(text)
     }
 
     private func needsRenewal(_ item: LAAUsageItem) -> Bool {
-        if LAAUsageFreshness.extraNeedsAttention(item) { return true }
-        if LAAUsageItem.date(item.detail?.renewsAt).map({ $0 <= Date() }) == true { return true }
-        if reachedUTCDate(item.detail?.expiresOnUtc) { return true }
-        return (item.detail?.components ?? []).contains { $0.amount > 0 && reachedUTCDate($0.expiresOnUtc) }
+        LAAUsageFreshness.needsRenewal(item)
     }
 
     @ViewBuilder private func flags(_ item: LAAUsageItem) -> some View {
@@ -300,13 +289,7 @@ struct LAAUsageView: View {
     }
 
     private func windowLabel(_ window: LAAUsageItem.Window) -> String {
-        guard let minutes = window.windowMinutes, minutes > 0, minutes.rounded() == minutes else { return window.label }
-        let duration: String
-        if minutes == 10_080 { duration = "週間枠" }
-        else if minutes == 43_200 { duration = "月間枠" }
-        else if minutes.truncatingRemainder(dividingBy: 60) == 0 { duration = "\(Int(minutes / 60))時間枠" }
-        else { duration = "\(Int(minutes))分枠" }
-        return window.label + " · " + duration
+        LAAUsageLabel.window(window)
     }
 
     private func metric(_ label: String, _ result: String, warning: Bool = false, prominent: Bool = false) -> some View {
@@ -344,14 +327,6 @@ struct LAAUsageView: View {
         case "auth_required": return "利用不可・認証が必要"
         default: return "未取得"
         }
-    }
-
-    static func billingURL(_ item: LAAUsageItem) -> URL? {
-        let paths = ["jev": "https://app.typesafe.ai/", "google-cloud": "https://console.cloud.google.com/billing",
-                     "google-flow": "https://labs.google/fx/tools/flow"]
-        let pieces = item.id.split(separator: ".")
-        guard pieces.count >= 3, let raw = paths[String(pieces[1])] else { return nil }
-        return URL(string: raw)
     }
 
     private func money(_ number: Double?, precision: Int = 2) -> String {

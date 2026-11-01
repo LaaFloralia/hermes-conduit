@@ -8,10 +8,10 @@
 |---|---|---|
 | 各サービスの利用枠 | CodexBar → ローカルproxy `/widget`、残り% | 数値なし |
 | 自動取得可能な残高 | 同proxy、USD・クレジット | 数値なし |
-| Liquid D1の記録済み使用 | ローカル台帳に記録された呼出しのトークン・費用 | 数値なし。全利用分とは限らない |
+| Liquid AIの記録済み使用 | ローカル台帳に記録された呼出しのトークン・費用 | 数値なし。全利用分とは限らない |
 | Claude API使用額 | Anthropic従来Cost API、今日・今月のUSD | Admin key未設定・認証失敗・取得失敗を区別 |
 | GPT API使用額 | OpenAI Costs API、今日・今月のUSD | 同上 |
-| 自動取得できないGoogle Cloud・Flow・Jev | 固定の管理画面へのリンク | 数値なし、自動取得なし |
+| Jev・Google Cloud・Google Flow | 取得も表示もしない（2026-11-01に廃止。古い保存値は表示しない） | — |
 | CPU・メモリ | Bridge内サンプラ、percent・bytes、10秒キャッシュ | nullと理由 |
 | Mac空き容量 | `laa-storage-guard` 状態ファイルのGB、`checked_at` | 読取失敗はnull。26時間超はstale |
 
@@ -44,6 +44,9 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - API費用のIDは `provider.openai-api.cost-today` / `cost-month`、`provider.claude-api.cost-today` / `cost-month`。`detail.periodTimezone` は `UTC`、`detail.sourceLag` はAnthropic `typical-5m`、OpenAI `undisclosed`。反映済み時刻を推測して作らない。応答に今日（UTC）のバケットが無い場合、費用取得処理は `todayAmount` を返さず、Bridgeは `cost-today` だけ `freshness_unknown`（数値なし）、`cost-month` は返ったバケットの合計を出す。
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
+
+- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、GPT API、Claude API、Liquid AI。7日の枠は「Weekly」（日本語表示は「ウィークリー」）に統一し、`D1` とは書かない。ウィジェットは取得時刻などの脚注を出さず、この順で入る分だけを上から並べ、取れない項目は数値なしの状態行にする。
+- Jev・Google Cloud・Google Flow は取得も表示もしない（2026-11-01に廃止）。端末に古い保存値が残っていても落ちず、描画しない。
 
 `GET /v1/mac/status` は従来どおり `host.cpu`・`host.memory`・`host.disk` を返す。usageと別のホスト状態であり、diskの26時間判定を変更しない。
 
