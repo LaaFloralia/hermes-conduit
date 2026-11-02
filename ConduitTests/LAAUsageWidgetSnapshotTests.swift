@@ -135,8 +135,8 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
             ("claude.quota.weekly", "Claude Weekly", .percent, 12),
             ("venice.balance", "Venice", .usd, 14.5),
             ("magnific.credits", "Magnific", .credits, 236025),
-            ("openai-api.cost-month", "GPT API", .usd, 4.5),
-            ("claude-api.cost-month", "Claude API", .usd, 17.25),
+            ("openai-api.balance", "GPT API", .usd, 4.5),
+            ("claude-api.balance", "Claude API", .usd, 17.25),
             ("liquid.usage", "Liquid AI", .usd, 1.31),
         ]
         let meters = rows.enumerated().map { index, row in

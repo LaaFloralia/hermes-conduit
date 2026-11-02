@@ -1,6 +1,6 @@
 # AI Usage・Mac状態のデータ契約
 
-2026-11-02更新。AI Usageは自動取得した現在の値だけを扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
+2026-11-03更新。AI Usageは自動取得した現在の値だけを扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
 
 ## 1. 指標と取得元
 
@@ -8,6 +8,7 @@
 |---|---|---|
 | 各サービスの利用枠 | CodexBar → ローカルproxy `/widget`、残り% | 数値なし |
 | 自動取得可能な残高 | 同proxy、USD・クレジット | 数値なし |
+| GPT API・Claude APIの残高 | 同上流feedの `amount`（USD）だけ。両社のCost APIは残高を返さない | `not_auto`・数値なし。使用額で代用しない |
 | Venice | 自動取得したUSD残高と補助残高 | 数値なし |
 | Liquid AIの記録済み使用 | ローカル台帳に記録された呼出しのトークン・費用 | 数値なし。全利用分とは限らない |
 | Claude API使用額 | Anthropic従来Cost API、今日・今月のUSD | Admin key未設定・認証失敗・取得失敗を区別 |
@@ -42,11 +43,13 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 
 - 自動取得項目の期限 `detail.freshUntil` はproviderの `updatedAt`、feedの `fetchedAt`、受信時刻の最も早い時刻から10分以内。provider側の期限がさらに早ければそちらを採用する。期限ちょうどから値を消す。時計差のため未来120秒まで許容し、期限の起点は受信時刻を超えない。時刻の欠落・120秒超の未来・不正は取得失敗とする。
 - `verified` や手動確認だけの値は自動取得なしとし、数値を返さない。quotaのいずれかのresetが経過した場合も値を消す。付帯クレジットの取得時刻は別に評価する。手動reset passは返さない。
-- API費用のIDは `provider.openai-api.cost-today` / `cost-month`、`provider.claude-api.cost-today` / `cost-month`。`detail.periodTimezone` は `UTC`、`detail.sourceLag` はAnthropic `typical-5m`、OpenAI `undisclosed`。反映済み時刻を推測して作らない。応答に今日（UTC）のバケットが無い場合、費用取得処理は `todayAmount` を返さず、Bridgeは `cost-today` だけ `freshness_unknown`（数値なし）、`cost-month` は返ったバケットの合計を出す。
+- API費用のIDは `provider.openai-api.cost-today` / `cost-month`、`provider.claude-api.cost-today` / `cost-month`。`detail.periodTimezone` は `UTC`、`detail.sourceLag` はAnthropic `typical-5m`、OpenAI `undisclosed`。反映済み時刻を推測して作らない。応答に今日（UTC）のバケットが無い場合、費用取得処理は `todayAmount` を返さず、Bridgeは `cost-today` だけ `freshness_unknown`（数値なし）、`cost-month` は返ったバケットの合計を出す。この4件は「使用額」であり、残高ではない。
+- API残高のIDは `provider.openai-api.balance` / `provider.claude-api.balance`。同じprovider行の `amount`（`currency` は `USD`、無指定もUSD）が10分以内に自動取得できた時だけ `available` と数値を返す。上流行に `amount` が無い時は `not_auto`、`amount` はあるが数値でない時は `fetch_failed`、`verified` など手入力だけの値は `not_auto` とし、いずれも `value:null`・数値を含むdetailなしで返す。Costの金額をこのIDへ写さない。両社のCost APIは残高を返さないため、2026-11-03時点で残高は常に未取得になる。
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットはこの順で入る分を並べ、最後に取得できた値と「HH:mm時点」を表示する。行ごとの取得時刻が異なる場合は最古の時刻、別日は日付も示す。保存値のない項目だけを未取得にする。
+- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットはこの順で入る分を並べ、最後に取得できた値と「HH:mm時点」を表示する。行ごとの取得時刻が異なる場合は最古の時刻、別日は日付も示す。残高の行は保存値がなくても残して未取得にする。
+- GPT API・Claude APIは残高の行を先に、取得できた時だけ数値を出す。残高が未取得でも行は残し、理由と公式の請求画面へのリンクを出す。今日・今月の金額は必ず「使用額」と書き、残高として読ませない。ウィジェットのこの2枠も残高だけで、App Groupに残った旧 `provider.<id>.cost-month` は描画も前回値の代用もしない。
 - アプリは開いた時と明示更新で取得する。表示中はshellの自動取得を抑止し、鮮度・期限の判定も最終取得時点に固定する。ウィジェットはApp Groupのlauncher-v1.jsonを読み、Bridgeへ直接通信しない。アプリが/v1/usageを取得して保存する。期限超過・通信失敗・一部行の欠測では、保存済みの値と元の取得時刻を保持する。接続解除・接続先変更・アクセス拒否では消去する。Magnificの単位はAI creditsで、USDに換算しない。
 - Jev・Google Cloud・Google Flow は取得も表示もしない（2026-11-01に廃止）。端末に古い保存値が残っていても落ちず、描画しない。
 
@@ -78,4 +81,4 @@ SwiftBarは毎分feedの期限を判定するが、MacのスリープやSwiftBar
 
 ## 7. 検証
 
-proxyはfixtureで10分境界、失敗・部分ページ・手動値・金額とページング、今日バケットの欠落、空応答、疎な日次バケット、`next_page` の無い最終ページを検証する。Bridgeは `npm test` で期限とreset、数値の欠落（今日だけ状態行・月は金額）、背景取得、再起動、認証、HTTP応答を検証する。`python3 scripts/laa/test-widget-bundle-registration.py` はLAA版と上流版の登録を検証する。実接続・鍵権限・iOS実機の表示はfixture試験と区別する。
+proxyはfixtureで10分境界、失敗・部分ページ・手動値・金額とページング、今日バケットの欠落、空応答、疎な日次バケット、`next_page` の無い最終ページを検証する。API残高は、`amount` の無い上流行が `not_auto` になり費用を写さないこと、残高と使用額が同じ行に共存すること、10分経過・手入力・JPYで数値を出さないことを検証する。Bridgeは `npm test` で期限とreset、数値の欠落（今日だけ状態行・月は金額）、背景取得、再起動、認証、HTTP応答を検証する。アプリ側は、旧snapshotの `cost-month` を描画も前回値の代用もせず残高を未取得にすること、正式な残高の正常値、残高と費用の共存、10分・期限・失敗を `LAAUsageWidgetTests` で検証する。`python3 scripts/laa/test-widget-bundle-registration.py` はLAA版と上流版の登録を検証する。実接続・鍵権限・iOS実機の表示はfixture試験と区別する。

@@ -31,17 +31,24 @@ const DEFAULT_MAX_BYTES = 512 * 1024;
 
 // Fixed order, so the list is stable between polls and between providers that
 // appear and disappear. Labels match the Console collector's code-owned names.
-// The owner's priority (2026-11-01): the weekly quotas, then the API costs, then
-// the recorded Liquid usage. Jev, Google Cloud and Google Flow are retired: the
-// proxy no longer reads them, and a cached row never brings them back.
+// The owner's priority (2026-11-01): the weekly quotas, then the API balances
+// and costs, then the recorded Liquid usage. Jev, Google Cloud and Google Flow
+// are retired: the proxy no longer reads them, and a cached row never brings
+// them back.
+//
+// The two API providers carry a balance item beside their cost items. Neither
+// provider publishes an automatic balance today; the balance item then reports
+// `not_auto` with no value, and the cost item stays what it is, an amount used.
 export const USAGE_PROVIDERS = Object.freeze([
   { id: 'codex', label: 'Codex', kind: 'quota' },
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
   { id: 'venice', label: 'Venice', kind: 'balance' },
   { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
+  { id: 'openai-api', label: 'GPT API', kind: 'balance' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'month' },
+  { id: 'claude-api', label: 'Claude API', kind: 'balance' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'today' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'month' },
   { id: 'liquid', label: 'Liquid AI', kind: 'usage' },
@@ -236,7 +243,12 @@ function balanceItem(row, provider, context) {
   const expired = balanceExpired(row, context.now);
   const base = { ...baseOf(provider), unit: currency === 'JPY' ? 'jpy' : 'usd' };
   if (amount === null) {
-    return unavailableItem({ ...base, reason: 'fetch_failed', expired });
+    // A row that carries no balance field at all is a provider that publishes
+    // usage only: there is no automatic balance to read, so the item reports
+    // `not_auto` rather than a failed read. The cost item for the same provider
+    // stays an amount used and is never copied here.
+    const reason = row.amount === undefined ? 'not_auto' : 'fetch_failed';
+    return unavailableItem({ ...base, reason, expired });
   }
   const detail = {};
   if (row.source === 'verified') detail.sourceKind = 'verified';
