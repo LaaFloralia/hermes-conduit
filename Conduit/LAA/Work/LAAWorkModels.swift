@@ -220,7 +220,6 @@ struct LAAWorkSession: Codable, Identifiable, Hashable {
     let mode: String?
     let fast: Bool?
     let worktree: Bool?
-    let delegateSessionId: String?
 
     var isFavorite: Bool { favorite == true }
     var isArchived: Bool { archivedAt != nil }

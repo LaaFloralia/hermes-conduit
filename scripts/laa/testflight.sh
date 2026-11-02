@@ -155,7 +155,7 @@ xcodegen generate --spec "$spec" --project "$repo" >/dev/null
 # the archive that follows finds the packages already checked out.
 if [ -z "${LAA_WEBRTC_XCFRAMEWORK:-}" ]; then
   echo "Resolving Swift packages (no credentials consulted)..."
-  if ! xcodebuild -resolvePackageDependencies \
+  if ! xcodebuild -resolvePackageDependencies -jobs 4 \
       -project Conduit.xcodeproj \
       -scheme Conduit \
       -scmProvider system \
@@ -185,7 +185,7 @@ extra=()
 #    and makes the profiles the archive needs.
 echo "Archiving Release for generic iOS..."
 log="$work/archive.log"
-if ! xcodebuild archive \
+if ! xcodebuild archive -jobs 4 \
     -project Conduit.xcodeproj \
     -scheme Conduit \
     -configuration Release \
@@ -236,7 +236,7 @@ PLIST
 [ "$destination" = upload ] && echo "Exporting and uploading to App Store Connect..." \
   || echo "Exporting to $work/export (no upload)..."
 export_log="$work/export.log"
-if ! xcodebuild -exportArchive \
+if ! xcodebuild -exportArchive -jobs 4 \
     -archivePath "$archive" \
     -exportPath "$work/export" \
     -exportOptionsPlist "$options" \
