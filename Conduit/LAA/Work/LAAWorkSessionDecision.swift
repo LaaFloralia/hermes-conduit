@@ -111,7 +111,7 @@ struct LAAWorkSessionDecision: View {
             }
             let _: LAAWorkSession = try await LAAWorkHTTP.write(bridge, path: "/v1/sessions/\(sessionID)/reply", body: body, key: token)
             _ = drafts.finishSubmission(submission.id, restoring: false)
-            self.snapshot = nil
+            await load()
             onReply()
         } catch let error as LAABridgeHTTPError {
             if LAAWorkHTTP.outcomeUnknown(error) { drafts.markSubmissionUnknown(submission.id) }
