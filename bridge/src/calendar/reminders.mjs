@@ -20,7 +20,7 @@ export function createCalendarReminders({ service, notify = notifyOwner, now = D
         const time = now();
         const calendars = (await service.calendars()).items.filter(c => c.selected);
         for (const calendar of calendars) {
-          const events = await service.list({ start: new Date(time - 86400_000).toISOString(),
+          const events = await service.list({ start: new Date(time - 2 * 86400_000).toISOString(),
             end: new Date(time + 29 * 86400_000).toISOString(), calendarIds: [calendar.id] });
           for (const event of events.items) {
             // Date-only starts belong to the calendar timezone, not UTC.
@@ -38,7 +38,7 @@ export function createCalendarReminders({ service, notify = notifyOwner, now = D
             for (const reminder of reminders ?? []) {
               if (reminder.method !== 'popup') continue;
               const due = start - reminder.minutes * 60_000;
-              if (due > time || due < time - 90_000) continue;
+              if (due > time || due < time - 24 * 3600_000) continue;
               const key = `calendar:${calendar.id}:${event.id}:${event.start}:${reminder.minutes}`;
               if (sent[key]) continue;
               const result = await notify({ kind: 'calendar', title: event.title, body: event.allDay ? '終日の予定' : event.start,

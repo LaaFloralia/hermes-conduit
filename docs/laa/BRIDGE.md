@@ -142,8 +142,9 @@ Paseoセッションのアプリ置換（2026-11-02）:
 
 Google接続は `bridge/src/google/connection.mjs` に共通化し、既存helperのJSON形式を維持する。追加OAuth scopeは `drive.readonly`、`drive.file`、`calendar.events`、`calendar.calendarlist.readonly`（すべて`https://www.googleapis.com/auth/`配下）。親が同意と端末の追加grantを行うまで書込みは使えない。
 
-- `GET /v1/calendar/calendars`、`GET /v1/calendar/events/<id>?calendarId=`: `calendar:read`。
+- `GET /v1/calendar/calendars`、`GET /v1/calendar/events/<id>?calendarId=`: `calendar:read`。予定IDは招待・ICSの`@`も安全にエンコードして扱う。一覧は不正な予定だけを除外し`skippedCount`を返す。削除済み404、競合409を再試行可能な503へ変換しない。
 - `POST /v1/calendar/events`、`PATCH|DELETE /v1/calendar/events/<id>`: `calendar:write`とIdempotency-Key。編集・削除はbodyのetag必須。Googleの条件付き更新失敗は409。参加者への通知を伴う保存・削除はアプリで確認する。
 - `POST /v1/drive/uploads`: `media:write`とIdempotency-Key。name/mimeType/sizeと任意folderIdを渡す。
 - `PUT /v1/drive/uploads/<opaque-id>/chunks/<offset>`: 同scopeとIdempotency-Key、最大4MiBのバイナリ。Googleのresumable URLやtokenを端末へ渡さず端末IDに束縛する。再起動で未完了uploadは失効する。任意フォルダへの追加にはGoogle側でdrive.fileの対象となる権限が必要で、拒否時はマイドライブへ保存する。
-- Calendar通知は`LAA_GOOGLE_REMINDERS_ENABLED=1`で有効化する。Googleのpopup設定に従い、共通notifyOwnerへ送る。deepLinkは`laa://today/events/<id>?calendar=<calendarId>`。親が通知経路を統合し、本人の端末で到着と遷移を確かめる。
+- `GET /v1/drive/uploads/<opaque-id>`: `media:write`。空PUTでGoogleの受信位置を照会し、応答喪失後も再送前に照会する。完了応答もセッション期限まで保持する。端末画面を閉じた後やBridge再起動をまたぐ再開は未対応。Driveのメディア302はHTTPSの許可Googleホストだけへ最大3回追従する。
+- Calendar通知は`LAA_GOOGLE_REMINDERS_ENABLED=1`で有効化する。直近24時間の未配信を起動・復帰時にも追送し、永続dedupeKeyで重複を避ける。Googleのpopup設定に従い、共通notifyOwnerへ送る。deepLinkは`laa://today/events/<id>?calendar=<calendarId>`。親が通知経路を統合し、本人の端末で到着と遷移を確かめる。

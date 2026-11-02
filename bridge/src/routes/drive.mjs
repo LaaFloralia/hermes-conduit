@@ -1,5 +1,5 @@
 // /v1/drive/files — authenticated listing and byte ranges from the read-only
-// Drive for desktop mount. Google-native documents are links, not file bytes.
+// Drive API metadata and content. Google-native documents export as PDF.
 
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -79,7 +79,7 @@ function driveError(error) {
   if (error instanceof BridgeError) return error;
   switch (error?.code) {
     case 'drive_not_configured':
-      return new BridgeError(503, 'drive_not_configured', 'the Drive desktop mount is unavailable');
+      return new BridgeError(503, 'drive_not_configured', 'Google Drive is not connected');
     case 'drive_export_too_large':
       return new BridgeError(409, 'export_too_large', 'the exported PDF exceeds the size limit');
     default:
@@ -126,7 +126,7 @@ function checkVersion(item, requestedVersion) {
 export function driveRoutes({ adapter = null, now = () => Date.now(), log = defaultDriveLog() } = {}) {
   function requireAdapter() {
     if (!adapter) {
-      throw new BridgeError(503, 'drive_not_configured', 'the Drive desktop mount is unavailable');
+      throw new BridgeError(503, 'drive_not_configured', 'Google Drive is not connected');
     }
     return adapter;
   }
@@ -459,6 +459,11 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
   }
 
   return [
+    { method: 'GET', pattern: /^\/v1\/drive\/uploads\/([a-f0-9-]{36})$/, auth: true, scope: 'media:write', handler: async ({ params, device }) => {
+      const service = requireAdapter();
+      if (!service.uploadStatus) throw new BridgeError(503, 'upload_unavailable', 'Upload is unavailable');
+      return { status: 200, data: await service.uploadStatus({ id: params[0], deviceId: device.id }) };
+    } },
     { method: 'POST', path: '/v1/drive/uploads', auth: true, scope: 'media:write', idempotent: true, handler: beginUpload },
     { method: 'PUT', pattern: /^\/v1\/drive\/uploads\/([a-f0-9-]{36})\/chunks\/(\d{1,16})$/, auth: true, scope: 'media:write', idempotent: true,
       bodyLimit: 4 * 1024 * 1024, handler: uploadChunk },

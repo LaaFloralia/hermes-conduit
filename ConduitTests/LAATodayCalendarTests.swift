@@ -4,6 +4,23 @@ import SwiftUI
 @testable import Conduit
 
 final class LAATodayCalendarTests: XCTestCase {
+    func testCalendarEventPathStrictlyEncodesOpaqueIDs() throws {
+        for id in ["invite@host", "part#name", "a+b", "a_b", "all@#+_/?%"] {
+            let path = try LAACalendarRequest.eventPath(id: id, calendarID: id)
+            let parts = try XCTUnwrap(URLComponents(string: path))
+            let segment = String(parts.percentEncodedPath.dropFirst("/v1/calendar/events/".count))
+            XCTAssertEqual(segment.removingPercentEncoding, id)
+            XCTAssertFalse(segment.contains(where: { "/?# +@".contains($0) }))
+            XCTAssertEqual(parts.queryItems?.first?.value, id)
+            XCTAssertNil(parts.fragment)
+            XCTAssertEqual(try LAACalendarRequest.eventPath(id: id), "/v1/calendar/events/" + segment)
+        }
+        for id in ["", String(repeating: "a", count: 1025)] {
+            XCTAssertThrowsError(try LAACalendarRequest.eventPath(id: id))
+            XCTAssertThrowsError(try LAACalendarRequest.eventPath(id: "valid", calendarID: id))
+        }
+    }
+
     func testEventsOverlappingMidnightAppearOnBothDays() {
         let day = Date(timeIntervalSince1970: 1_800_000_000)
         let event = LAACalendarEvent(id: "night", title: "Night", start: day.addingTimeInterval(-3600),
@@ -115,6 +132,17 @@ final class LAATodayCalendarTests: XCTestCase {
         await oldRead.value
         XCTAssertFalse(state.loaded)
         XCTAssertNotNil(state.errorMessage)
+    }
+
+    func testSwitchingToAllDayPreservesAnExclusiveNextDayEndAcrossDST() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 10))!
+        let range = LAACalendarDates.allDayRange(start: start, end: start.addingTimeInterval(3600), calendar: calendar)
+        XCTAssertEqual(calendar.component(.hour, from: range.start), 0)
+        XCTAssertEqual(calendar.component(.day, from: range.end), 2)
+        XCTAssertEqual(calendar.component(.hour, from: range.end), 0)
+        XCTAssertEqual(range.duration, 25 * 3600)
     }
 
     func testCalendarModesUseLocalDayBoundariesAcrossDST() throws {

@@ -88,19 +88,19 @@ export function createGoogleConnection({
     };
   }
 
-  const request = async (signal, url, options) => {
+  const request = async (signal, url, options, area = 'calendar') => {
     try {
-      return await fetchImpl(url, { ...options, signal, redirect: 'error' });
+      return await fetchImpl(url, { ...options, signal, redirect: 'manual' });
     } catch {
-      throw failure('calendar_unavailable', 'Google Calendar could not be reached', true);
+      throw failure(`${area}_unavailable`, `Google ${area} could not be reached`, true);
     }
   };
 
-  const json = async (response) => {
+  const json = async (response, area = 'calendar') => {
     try {
       return await response.json();
     } catch {
-      throw failure('calendar_invalid_response', 'Google Calendar returned an invalid response', true);
+      throw failure(`${area}_invalid_response`, `Google ${area} returned an invalid response`, true);
     }
   };
 
@@ -129,7 +129,7 @@ export function createGoogleConnection({
     return cachedToken;
   }
 
-  function accessToken() {
+  function sharedAccessToken() {
     if (cachedToken && now() < cachedToken.expiresAt) return Promise.resolve(cachedToken);
     if (!pendingRefresh) {
       pendingRefresh = (async () => {
@@ -143,25 +143,57 @@ export function createGoogleConnection({
     return pendingRefresh;
   }
 
+  async function accessToken(area = 'calendar') {
+    try { return await sharedAccessToken(); }
+    catch (error) {
+      if (area !== 'calendar' && error instanceof BridgeError && error.code?.startsWith('calendar_')) {
+        throw new BridgeError(error.status, error.code.replace('calendar_', `${area}_`), `Google ${area} connection failed`, { retryable: error.retryable });
+      }
+      throw error;
+    }
+  }
+  function targetURL(value) {
+    let target;
+    try { target = new URL(value); } catch { }
+    if (!target || target.protocol !== 'https:' || target.port || target.username || target.password ||
+      !['www.googleapis.com', 'content.googleapis.com', 'drive.usercontent.google.com',
+        'lh3.googleusercontent.com','lh4.googleusercontent.com','lh5.googleusercontent.com','lh6.googleusercontent.com'].includes(target.hostname)) {
+      throw new BridgeError(400, 'google_url_invalid', 'Unsupported Google request target');
+    }
+    return target;
+  }
   return {
     accessToken,
     async request(url, options = {}, area = 'calendar') {
-      const target = new URL(url);
-      if (target.protocol !== 'https:' || target.port || target.username || target.password ||
-        !['www.googleapis.com','lh3.googleusercontent.com','lh4.googleusercontent.com','lh5.googleusercontent.com','lh6.googleusercontent.com'].includes(target.hostname)) {
-        throw new BridgeError(400, 'google_url_invalid', 'Unsupported Google request target');
+      let target = targetURL(url);
+      const token = await accessToken(area);
+      const signal = options.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+      const method = options.method ?? 'GET';
+      let response;
+      for (let hop = 0; hop <= 3; hop++) {
+        response = await request(signal, target, { ...options, method,
+          headers: { ...options.headers, authorization: `Bearer ${token.value}` } }, area);
+        // Resumable uploads use 308 as an acknowledgement, never a redirect.
+        if (![301,302,303,307].includes(response.status)) break;
+        const location = response.headers.get('location');
+        await response.body?.cancel().catch(() => {});
+        if (!['GET','HEAD'].includes(method) || !location || hop === 3) {
+          throw failure(`${area}_invalid_response`, `Google ${area} redirect could not be followed`);
+        }
+        let next;
+        try { next = new URL(location, target); } catch { }
+        target = targetURL(next);
       }
-      const token = await accessToken();
-      const response = await request(options.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS), url,
-        { method: 'GET', ...options, headers: { ...options.headers, authorization: `Bearer ${token.value}` } });
       if (!response.ok && response.status !== 308 && response.status !== 416) {
         if (response.status === 401 && cachedToken === token) cachedToken = null;
+        const conflict = [409,412].includes(response.status);
         const code = response.status === 401 ? `${area}_auth_required`
           : response.status === 403 ? `${area}_access_denied`
             : response.status === 404 ? `${area}_not_found`
-              : response.status === 412 ? `${area}_conflict` : `${area}_unavailable`;
-        throw new BridgeError(response.status === 412 ? 409 : 503, code,
-          `Google ${area} request failed`, { retryable: response.status === 429 || response.status >= 500 });
+              : conflict ? `${area}_conflict` : `${area}_unavailable`;
+        const status = conflict ? 409 : [404,410].includes(response.status) ? response.status : 503;
+        throw new BridgeError(status, code, `Google ${area} request failed`,
+          { retryable: response.status === 429 || response.status >= 500 });
       }
       return response;
     },

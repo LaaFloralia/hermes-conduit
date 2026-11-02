@@ -22,10 +22,11 @@ export function driveItem(f) {
 export function createGoogleDrive({ connection = googleConnection, now = Date.now } = {}) {
   const uploads = new Map();
   const request = (url, options) => connection.request(url, options, 'drive');
+  const json = response => connection.json(response, 'drive');
   async function get(id, { signal } = {}) {
     const url = new URL(`${api}/files/${encodeURIComponent(id)}`);
     url.search = new URLSearchParams({ fields, supportsAllDrives: 'true' });
-    return { item: driveItem(await connection.json(await request(url, { signal }))) };
+    return { item: driveItem(await json(await request(url, { signal }))) };
   }
   async function bounded(response, limit) {
     const parts = []; let size = 0;
@@ -42,7 +43,7 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
       if (view === 'shared' && !folderId) {
         const url = new URL(`${api}/drives`);
         url.search = new URLSearchParams({ pageSize: String(pageSize), fields: 'drives(id,name),nextPageToken', ...(pageToken ? { pageToken } : {}) });
-        const data = await connection.json(await request(url, { signal }));
+        const data = await json(await request(url, { signal }));
         if (!Array.isArray(data.drives)) throw fail('drive_invalid_response', 'Invalid shared drives');
         return { items: data.drives.filter(d => !query || d.name.toLowerCase().includes(query.toLowerCase()))
           .map(d => driveItem({ ...d, mimeType: folderType })), nextPageToken: data.nextPageToken, incompleteSearch: false };
@@ -58,7 +59,7 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
         supportsAllDrives: 'true', includeItemsFromAllDrives: 'true',
         orderBy: view === 'recent' ? 'viewedByMeTime desc,modifiedTime desc' : 'folder,name',
         fields: `files(${fields}),nextPageToken,incompleteSearch`, ...(pageToken ? { pageToken } : {}) });
-      const data = await connection.json(await request(url, { signal }));
+      const data = await json(await request(url, { signal }));
       if (!Array.isArray(data.files)) throw fail('drive_invalid_response', 'Invalid Google Drive listing');
       return { items: data.files.map(driveItem), nextPageToken: data.nextPageToken, incompleteSearch: data.incompleteSearch ?? false };
     },
@@ -72,7 +73,7 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
       return { body: await bounded(response, 10_000_000), mimeType: 'application/pdf' };
     },
     async thumbnail(id, { signal } = {}) {
-      const meta = await connection.json(await request(`${api}/files/${encodeURIComponent(id)}?fields=thumbnailLink&supportsAllDrives=true`, { signal }));
+      const meta = await json(await request(`${api}/files/${encodeURIComponent(id)}?fields=thumbnailLink&supportsAllDrives=true`, { signal }));
       if (!meta.thumbnailLink) return null;
       const url = new URL(meta.thumbnailLink);
       // Only Google-issued image hosts, never a file's user-supplied link.
@@ -90,32 +91,63 @@ export function createGoogleDrive({ connection = googleConnection, now = Date.no
         'x-upload-content-type': mimeType, 'x-upload-content-length': String(size) },
         body: JSON.stringify({ name, ...(folderId ? { parents: [folderId] } : {}) }) });
       const location = response.headers.get('location');
-      const target = location && new URL(location);
-      if (!target || target.origin !== 'https://www.googleapis.com' || !target.pathname.startsWith('/upload/drive/')) throw fail('drive_invalid_response', 'Invalid upload response');
+      let target; try { target = location && new URL(location); } catch { }
+      if (!target || target.origin !== 'https://www.googleapis.com' || target.username || target.password || target.port || !target.pathname.startsWith('/upload/drive/')) throw fail('drive_invalid_response', 'Invalid upload response');
       const id = randomUUID();
       uploads.set(id, { location, deviceId, size, mimeType, offset: 0, expires: now() + 3600_000 });
       return { id, chunkSize: 4 * 1024 * 1024 };
     },
+    async uploadStatus({ id, deviceId }) {
+      const state = uploadState(id, deviceId);
+      if (state.completed) return { completed: true, offset: state.size, item: state.item };
+      if (state.inflight) throw fail('upload_busy', 'Upload chunk is already in flight', 409);
+      state.inflight = true;
+      try {
+        const response = await request(state.location, { method: 'PUT', headers: {
+          'content-range': `bytes */${state.size}`, 'content-length': '0' }, body: Buffer.alloc(0) });
+        if (response.status === 308) {
+          state.offset = acknowledgedOffset(response, state.size);
+          return { completed: false, offset: state.offset };
+        }
+        return await completeUpload(state, response);
+      } finally { state.inflight = false; }
+    },
     async uploadChunk({ id, offset, body, deviceId }) {
-      const state = uploads.get(id);
-      if (!state || state.deviceId !== deviceId || state.expires < now()) throw fail('upload_expired', 'Upload expired; select the file again', 410);
+      const state = uploadState(id, deviceId);
+      if (state.completed) return { completed: true, offset: state.size, item: state.item };
       if (state.inflight) throw fail('upload_busy', 'Upload chunk is already in flight', 409);
       if (offset !== state.offset || !body.length || offset + body.length > state.size ||
         (offset + body.length < state.size && body.length % (256 * 1024) !== 0)) throw fail('upload_offset_invalid', 'Invalid upload offset', 409);
       state.inflight = true;
       try {
-      const response = await request(state.location, { method: 'PUT', headers: { 'content-type': state.mimeType,
-        'content-range': `bytes ${offset}-${offset + body.length - 1}/${state.size}` }, body });
-      if (response.status === 308) {
-        const match = /^bytes=0-(\d+)$/.exec(response.headers.get('range') ?? '');
-        if (!match || Number(match[1]) + 1 !== offset + body.length) throw fail('drive_invalid_response', 'Invalid upload acknowledgement');
-        state.offset += body.length;
-        return { completed: false, offset: state.offset };
-      }
-      const item = driveItem(await connection.json(response));
-      uploads.delete(id);
-      return { completed: true, offset: state.size, item };
+        const response = await request(state.location, { method: 'PUT', headers: { 'content-type': state.mimeType,
+          'content-range': `bytes ${offset}-${offset + body.length - 1}/${state.size}` }, body });
+        if (response.status === 308) {
+          const next = acknowledgedOffset(response, state.size);
+          if (next !== offset + body.length) throw fail('drive_invalid_response', 'Invalid upload acknowledgement');
+          state.offset = next;
+          return { completed: false, offset: state.offset };
+        }
+        return await completeUpload(state, response);
       } finally { state.inflight = false; }
     },
   };
+  function uploadState(id, deviceId) {
+    const state = uploads.get(id);
+    if (!state || state.deviceId !== deviceId || state.expires < now()) throw fail('upload_expired', 'Upload expired; select the file again', 410);
+    return state;
+  }
+  function acknowledgedOffset(response, size) {
+    const range = response.headers.get('range');
+    if (!range) return 0;
+    const match = /^bytes=0-(\d+)$/.exec(range);
+    const next = match ? Number(match[1]) + 1 : NaN;
+    if (!Number.isSafeInteger(next) || next < 0 || next >= size) throw fail('drive_invalid_response', 'Invalid upload acknowledgement');
+    return next;
+  }
+  async function completeUpload(state, response) {
+    const item = driveItem(await json(response));
+    state.completed = true; state.item = item; state.offset = state.size;
+    return { completed: true, offset: state.size, item };
+  }
 }

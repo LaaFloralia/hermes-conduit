@@ -531,7 +531,9 @@ App Store build · the Bridge API, Brain and Usage data contracts
   previews. Existing Range playback, PiP/AirPlay controls, version-scoped resume,
   offline copies and sharing remain in use. Photos/files upload through bounded
   resumable chunks and opt-in `media:write`; no device receives write access by
-  default. Unknown upload outcomes ask for reconciliation before retry.
+  default. A lost chunk or final response queries Google’s received offset before
+  resuming; completion is retained until the one-hour session expiry. Closing the
+  upload view or restarting Bridge does not preserve the session.
   Inspiration remains disabled. Google consent is an operator prerequisite.
 - Assets Studio lists works and requests, preserves unsent or uncertain drafts,
   and supports typed approvals and stopping through the scoped Bridge. Studio
@@ -3871,11 +3873,17 @@ and rollback instructions · the upstream App Store build
 
 **Rulings**
 - Calendar reads require opt-in `calendar:read`; creating, editing and deleting require separate opt-in `calendar:write`. Both remain outside default enrollment. The app confirms writes and attendee notifications; edits/deletes use Google etags and Bridge idempotency. Expanded recurring instances and whole-series edits are separate operations.
-- Calendar list supplies colours, access roles, selection and Google default reminders. Read ranges cover at most 42 days; date-only end dates remain exclusive. Details include location/map, meeting link, attendees, notes and attachments. The widget retains its one-hour freshness limit and is refreshed only for a range containing today.
+- Calendar list supplies colours, access roles, selection and Google default reminders. Read ranges cover at most 42 days; date-only end dates remain exclusive, including newly created all-day events
+  across DST. Malformed events are skipped individually with a visible count.
+  Opaque event and calendar IDs are strictly encoded before requests; imported
+  IDs containing `@`, `#`, `+` and `_` retain their exact value. Details include location/map, meeting link, attendees, notes and attachments. The widget retains its one-hour freshness limit and is refreshed only for a range containing today.
 - Google credentials use one runtime helper and in-memory token for Drive and Calendar. The helper format is unchanged; OAuth tokens never reach the phone, URLs or logs. Consent and device grants remain operator actions.
-- Saved metadata appears before network refresh; an error keeps the saved view visibly stale. Unpairing clears the displayed calendar and widget snapshot. Notification polling is opt-in (`LAA_GOOGLE_REMINDERS_ENABLED=1`) and calls the shared `notifyOwner`; Google email reminders remain with Google. Links use `laa://today/events/<eventID>?calendar=<calendarID>`.
+- Saved metadata appears before network refresh; an error keeps the saved view visibly stale. Unpairing clears the displayed calendar and widget snapshot. Notification polling is opt-in (`LAA_GOOGLE_REMINDERS_ENABLED=1`) and calls the shared `notifyOwner`; the previous 24 hours of undelivered popup reminders are caught up after
+  startup/recovery using persisted delivery dedupe. Google email reminders remain
+  with Google. Links use `laa://today/events/<eventID>?calendar=<calendarID>`.
 
 **Open gaps**
 - Parent must complete additional Google consent, device write grants and notification setup. Real Google reads/writes, notification delivery/tap, WidgetKit timing, PiP/AirPlay and one-second launch on the physical iPhone remain unverified. Raw Google recurrence rules support custom cases; the editor's presets cover daily/weekly/monthly/yearly. The direct daily-note destination remains pending.
 
-**Checked:** 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 416 Bridge tests passed; Debug build exited 0. Owner-size visual verification is pending. Real-device acceptance remains pending.
+**Checked:** 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
+Debug build exited 0 before review fixes, updated build pending. Owner-size visual verification is pending. Real-device acceptance remains pending.

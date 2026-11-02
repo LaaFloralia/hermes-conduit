@@ -57,9 +57,8 @@ struct LAACalendarDetail: View {
         guard let id = event.recurringEventId, let calendarId = event.calendarId else { return }
         busy = true; defer { busy = false }
         do {
-            var url = URLComponents(); url.path = "/v1/calendar/events/" + id; url.queryItems = [URLQueryItem(name: "calendarId", value: calendarId)]
-            url.percentEncodedQuery = url.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-            let response: LAABridgeResponse<LAACalendarResponse.Event> = try await bridge.request(method: "GET", path: url.string!)
+            let path = try LAACalendarRequest.eventPath(id: id, calendarID: calendarId)
+            let response: LAABridgeResponse<LAACalendarResponse.Event> = try await bridge.request(method: "GET", path: path)
             series = try response.data.value()
         } catch { message = LAATodayCalendar.message(for: error) }
     }
@@ -69,7 +68,7 @@ struct LAACalendarDetail: View {
         do {
             struct Result: Decodable { let deleted: Bool }
             let body = try JSONSerialization.data(withJSONObject: ["calendarId": calendarId, "etag": etag])
-            let _: LAABridgeResponse<Result> = try await bridge.request(method: "DELETE", path: "/v1/calendar/events/" + id, jsonBody: body, idempotencyKey: LAABridgeIdempotencyKey())
+            let _: LAABridgeResponse<Result> = try await bridge.request(method: "DELETE", path: try LAACalendarRequest.eventPath(id: id), jsonBody: body, idempotencyKey: LAABridgeIdempotencyKey())
             changed(); dismiss()
         } catch { message = LAATodayCalendar.message(for: error) }
     }
