@@ -615,6 +615,8 @@ store · the session and project API · the owner-task API · Console job observ
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
 - Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/src/routes/skill-metadata.mjs`, `bridge/src/routes/routines.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`, `bridge/test/routines.test.mjs`
+  List cache and latency regressions: `bridge/src/tasks/list-cache.mjs`,
+  `bridge/test/linear-list-cache.test.mjs`, `bridge/test/linear-owner-performance.test.mjs`.
 - Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
@@ -672,6 +674,11 @@ store · the session and project API · the owner-task API · Console job observ
 - Protected device/filter caches precede network reads. Task links use
   laa://work/tasks/<UUID or identifier>. Session hints come from issue text/comments
   and current session-list data, always labeled as inferred.
+- Owner lists filter open states on Linear; archives use a separate query.
+  Bridge owner/legacy lists use 45-second stale-while-revalidate snapshots.
+  All Linear write transports invalidate both snapshots and fence in-flight refreshes.
+  Agent inbox synchronization runs in the background, retains its last complete
+  snapshot and reports retryable synchronization status before the first snapshot.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks

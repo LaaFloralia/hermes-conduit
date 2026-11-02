@@ -1,5 +1,6 @@
 // Fixed Linear operations, bound to the authenticated actor. Agent mode uses
 // the existing credential and a separate owner-scoped local activity inbox.
+import { invalidateLinearLists } from './list-cache.mjs';
 import { isAbsolute } from 'node:path';
 import { createHash } from 'node:crypto';
 import { authorizationHeader, readTokenViaHelper } from './linear.mjs';
@@ -14,6 +15,8 @@ const ISSUE_FIELDS = `
   labels(first: 100) { nodes { id name color } pageInfo { hasNextPage endCursor } }
 `;
 const PAGE = 'pageInfo { hasNextPage endCursor }';
+const ACTIVITY_ISSUE_FIELDS = `id identifier title updatedAt description assignee { id } creator { id }
+  subscribers(first: 1, filter: $subscriberFilter) { nodes { id } ${PAGE} }`;
 const NOTIFICATION_FIELDS = `id type title subtitle createdAt updatedAt readAt archivedAt snoozedUntilAt
   user { id } actor { id name }
   ... on IssueNotification { issue { id identifier title } comment { id } }`;
@@ -52,14 +55,13 @@ export const PERSONAL_DOCUMENTS = Object.freeze({
   viewer: 'query LAAPersonalViewer { viewer { id name app } }',
   ownerProfile: 'query LAAOwnerProfile($id: String!) { user(id: $id) { id name displayName avatarUrl url } }',
   activity: `query LAAOwnerActivity($first: Int!, $after: String, $filter: IssueFilter, $subscriberFilter: UserFilter) {
-    issues(first: $first, after: $after, filter: $filter) { nodes { ${ISSUE_FIELDS} description
-      creator { id } subscribers(first: 1, filter: $subscriberFilter) { nodes { id } ${PAGE} }
+    issues(first: $first, after: $after, filter: $filter) { nodes { ${ACTIVITY_ISSUE_FIELDS}
       parent { id identifier title assignee { id } creator { id } subscribers(first: 1, filter: $subscriberFilter) { nodes { id } } }
     } ${PAGE} }
   }`,
   activityComments: `query LAAOwnerCommentActivity($first: Int!, $after: String, $filter: CommentFilter, $subscriberFilter: UserFilter) {
     comments(first: $first, after: $after, filter: $filter) { nodes { ${COMMENT_FIELDS}
-      issue { ${ISSUE_FIELDS} creator { id } subscribers(first: 1, filter: $subscriberFilter) { nodes { id } ${PAGE} } }
+      issue { ${ACTIVITY_ISSUE_FIELDS} }
     } ${PAGE} }
   }`,
   issues: `query LAAPersonalIssues($first: Int!, $after: String, $filter: IssueFilter) {
@@ -298,6 +300,12 @@ export function createPersonalLinearSource({
       && Object.keys(body.data).every((key) => key === root) && body.data[root] == null));
   }
   async function graph(token, document, variables = {}) {
+    const write = document.trimStart().startsWith('mutation');
+    if (write) invalidateLinearLists();
+    try { return await graphUncached(token, document, variables); }
+    finally { if (write) invalidateLinearLists(); }
+  }
+  async function graphUncached(token, document, variables = {}) {
     let response;
     try {
       response = await fetchImpl(endpoint, {

@@ -11,6 +11,7 @@ export function createOwnerTaskNotificationPoller({ source, notify = notifyOwner
     if (running || source?.ownerInboxAvailable !== true) return { available: false };
     running = true;
     try {
+      await source.refreshInbox?.();
       let cursor, pages = 0, delivered = 0;
       do {
         const page = await source.listCollection('inbox', { limit: 100, cursor });

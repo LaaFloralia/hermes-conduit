@@ -11,6 +11,7 @@
 // it, comment on it, or start a worker.
 
 import { execFile } from 'node:child_process';
+import { createLinearListCache } from './list-cache.mjs';
 import { TaskSourceError } from './errors.mjs';
 
 export { TaskSourceError };
@@ -227,8 +228,11 @@ export function createLinearTaskSource({
   fetchImpl = globalThis.fetch,
   readToken = () => readTokenViaHelper(tokenHelper),
   requestTimeoutMs = 15_000,
+  now = Date.now,
+  listTtlMs = 45_000,
 } = {}) {
   let cachedToken = null;
+  const cachedList = createLinearListCache({ now, ttlMs: listTtlMs });
 
   async function token({ refresh = false } = {}) {
     if (cachedToken && !refresh) return cachedToken;
@@ -337,6 +341,10 @@ export function createLinearTaskSource({
   }
 
   async function listTasks() {
+    return cachedList('tasks', loadTasks);
+  }
+
+  async function loadTasks() {
     const items = [];
     let cursor = null;
     for (let page = 0; page < MAX_PAGES; page += 1) {

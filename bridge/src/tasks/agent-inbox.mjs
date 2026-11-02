@@ -29,9 +29,8 @@ export function createAgentInboxSource({ source, store, now = () => Date.now() }
     if (cursor) throw fail('linear_activity_incomplete', 503);
     return items;
   }
-  async function refresh() {
-    if (pending) await pending;
-    const session = await source.session();
+  async function refresh(session) {
+    if (pending) return pending;
     if (refreshedViewer === session.viewer.id && now() - refreshedAt < 55_000) return;
     pending = (async () => {
       const viewer = session.viewer.id;
@@ -66,18 +65,9 @@ export function createAgentInboxSource({ source, store, now = () => Date.now() }
           if (mention(issue.description)) add(issue, 'issueMention', `description:${issue.updatedAt}`, issue.updatedAt, '社長へのメンション', issue.description.slice(0, 250));
           const relevant = related || watched[issue.id] === true;
           if (related) watched[issue.id] = true; else delete watched[issue.id];
-          const [comments, history, children] = await Promise.all([
-            section('comments', issue.id, session), relevant ? section('history', issue.id, session) : [], relevant ? section('children', issue.id, session) : [],
-          ]);
-          const allComments = new Map(comments.map((comment) => [comment.id, comment]));
-          for (const root of comments.filter((comment) => !comment.parentId)) {
-            for (const reply of await section('commentReplies', issue.id, session, root.id)) allComments.set(reply.id, reply);
-          }
-          for (const comment of allComments.values()) {
-            if (mention(comment.body) || relevant) add(issue, mention(comment.body) ? 'issueMention' : 'issueNewComment',
-              comment.id + ':' + comment.updatedAt, comment.updatedAt ?? comment.createdAt,
-              mention(comment.body) ? '社長へのメンション' : 'コメント', comment.body?.slice(0, 250));
-          }
+          // Root comment activity includes replies; root issue activity includes
+          // children. Reading those sections again caused an unbounded N+1 scan.
+          const history = relevant ? await section('history', issue.id, session) : [];
           for (const item of history) {
             const fields = [];
             if (item.fromState || item.toState) fields.push('状態');
@@ -86,9 +76,9 @@ export function createAgentInboxSource({ source, store, now = () => Date.now() }
             if (item.fromPriority !== null && item.fromPriority !== undefined || item.toPriority !== null && item.toPriority !== undefined) fields.push('優先度');
             if (fields.length) add(issue, 'issueUpdated', item.id, item.createdAt, fields.join('・') + 'を変更');
           }
-          for (const child of children) add(issue, 'issueSubtask', (child.linearId ?? child.id) + ':' + child.updatedAt, child.updatedAt, 'サブ課題', child.title);
           versions[issue.id] = issue.updatedAt;
         }
+        if (page.pageInfo.hasNextPage && !page.pageInfo.endCursor) throw fail('linear_pagination_stalled', 503);
         after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
         if (after && seen.has(after)) throw fail('linear_pagination_stalled', 503);
         if (after) seen.add(after);
@@ -109,6 +99,7 @@ export function createAgentInboxSource({ source, store, now = () => Date.now() }
             comment.id + ':' + comment.updatedAt, comment.updatedAt ?? comment.createdAt,
             mention(comment.body) ? '社長へのメンション' : 'コメント', comment.body?.slice(0, 250));
         }
+        if (page.pageInfo.hasNextPage && !page.pageInfo.endCursor) throw fail('linear_pagination_stalled', 503);
         after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
         if (after && seen.has(after)) throw fail('linear_pagination_stalled', 503);
         if (after) seen.add(after);
@@ -132,10 +123,17 @@ export function createAgentInboxSource({ source, store, now = () => Date.now() }
     return item;
   }
   return { ...source, ownerInboxAvailable: true,
+    async refreshInbox() { await refresh(await source.session()); },
     async listCollection(name, options = {}) {
       if (name !== 'inbox') return source.listCollection(name, options);
-      await refresh();
       const session = await source.session();
+      if (options.waitForRefresh === true) await refresh(session);
+      else {
+        void refresh(session).catch(() => {});
+        // Never report an unsynchronized empty snapshot as an empty inbox.
+        if (!snapshot(session.viewer.id).watermark) throw new TaskSourceError('linear_inbox_refreshing',
+          '受信箱を同期中です。少し待ってから更新してください。', { status: 503, retryable: true });
+      }
       const includeArchived = options.includeArchived === 'true';
       const items = Object.values(snapshot(session.viewer.id).events).filter((v) => includeArchived || !v.archivedAt)
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id));
@@ -147,7 +145,7 @@ export function createAgentInboxSource({ source, store, now = () => Date.now() }
       const offset = cursor?.offset ?? 0;
       return { items: items.slice(offset, offset + limit), nextCursor: offset + limit < items.length
         ? Buffer.from(JSON.stringify({ viewer: session.viewer.id, archive: includeArchived, offset: offset + limit })).toString('base64url') : null,
-        viewerId: session.viewer.id, observedAt: new Date(refreshedAt).toISOString(), inboxMode: 'laa',
+        viewerId: session.viewer.id, observedAt: snapshot(session.viewer.id).watermark, inboxMode: 'laa',
         notice: 'LAAアプリ独自の受信箱。Linearの既読とは同期しません。' };
     },
     getNotificationInSession: notification,

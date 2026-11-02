@@ -15,23 +15,29 @@ function fixture(t) {
     description: '', updatedAt: date }, { id: 'mention', identifier: 'BUS-2', title: 'Mention', description: '', updatedAt: date },
     { id: 'other', identifier: 'BUS-3', title: 'Unrelated', description: '', updatedAt: date,
       subscribers: { nodes: [{ id: 'other' }], pageInfo: { hasNextPage: true } } }];
+  issues.push({ id: 'assigned-child', title: 'Child', updatedAt: date, parent: issues[0] });
   const source = { ownerUserId: 'owner', agentAccount: true,
     async session() { return { viewer: { id: viewer } }; },
     async ownerProfile() { return { id: 'owner', url: 'https://linear.app/owner' }; },
     async listActivityCandidates(_s, options) { reads++; if (fails) throw new Error('read failed');
       source.last = options; return { nodes: structuredClone(issues), pageInfo: { hasNextPage: false } }; },
-    async listCommentActivityCandidates() { return { nodes: source.freshComments ?? [], pageInfo: { hasNextPage: false } }; },
+    async listCommentActivityCandidates() { return { nodes: source.freshComments ?? [
+      ...['assigned', 'mention'].map(id => ({ id: id + '-comment', body: id === 'mention' ? 'Hello https://linear.app/owner' : 'Plain', updatedAt: date, issue: issues.find(i => i.id === id) })),
+      { id: 'assigned-reply', body: 'Plain reply', updatedAt: date, issue: issues[0] },
+    ], pageInfo: { hasNextPage: false } }; },
     async listTaskSection(name, id, options) {
       assert.equal(options.personalSession.viewer.id, viewer);
-      if (name === 'comments') return { items: [{ id: id + '-comment', body: id === 'mention' ? 'Hello https://linear.app/owner' : 'Plain', updatedAt: date }], nextCursor: null };
-      if (name === 'commentReplies') return { items: [{ id: id + '-reply', parentId: 'root', body: 'Plain reply', updatedAt: date }], nextCursor: null };
       if (name === 'history') return { items: [{ id: id + '-history', createdAt: date, fromAssignee: { id: 'owner' }, toAssignee: null, fromDueDate: date, toDueDate: null, fromPriority: 0, toPriority: 1, toState: { id: 'todo' } }], nextCursor: null };
-      if (name === 'children') return { items: [{ id: 'child', linearId: id + '-child', updatedAt: date, title: 'Child' }], nextCursor: null };
       throw new Error('unexpected section');
     },
     async listCollection() { return { items: ['native'] }; },
   };
-  const wrap = () => createAgentInboxSource({ source, store: { dir }, now: () => time });
+  const wrap = (blocking = true) => {
+    const inbox = createAgentInboxSource({ source, store: { dir }, now: () => time });
+    if (!blocking) return inbox;
+    const list = inbox.listCollection.bind(inbox);
+    return { ...inbox, listCollection: (name, options) => list(name, { ...options, waitForRefresh: true }) };
+  };
   return { source, issues, wrap, now: () => time, tick: () => { time += 60_000; }, viewer: (v) => { viewer = v; }, fails: (v) => { fails = v; }, reads: () => reads };
 }
 
@@ -93,4 +99,24 @@ test('subtask activity does not depend on the parent updatedAt changing', async 
   f.issues.push({ id: 'new-child', identifier: 'BUS-4', title: 'New child', updatedAt: new Date(f.now()).toISOString(), parent: f.issues[0] });
   const page = await inbox.listCollection('inbox');
   assert.equal(page.items.find((v) => v.subtitle === 'New child').issue.id, 'assigned');
+});
+
+test('first synchronization runs in the background; cached inbox reads never await a slow activity scan', async (t) => {
+  const f = fixture(t); const inbox = f.wrap(false);
+  const list = f.source.listActivityCandidates;
+  let release;
+  f.source.listActivityCandidates = async (...args) => {
+    await new Promise(r => { release = r; }); return list(...args);
+  };
+  await assert.rejects(inbox.listCollection('inbox'), { code: 'linear_inbox_refreshing', retryable: true });
+  await new Promise(setImmediate);
+  release(); await inbox.refreshInbox();
+  assert.equal((await inbox.listCollection('inbox')).items.length, 5);
+  f.tick();
+  const page = await inbox.listCollection('inbox');
+  assert.equal(page.items.length, 5);
+  await new Promise(setImmediate);
+  // A second request also returns the existing snapshot while the scan is blocked.
+  assert.equal((await inbox.listCollection('inbox')).items.length, 5);
+  release(); await inbox.refreshInbox();
 });

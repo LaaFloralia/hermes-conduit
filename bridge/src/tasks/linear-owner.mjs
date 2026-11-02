@@ -20,6 +20,7 @@
 import { markBeforeWrite, markWriteStarted } from '../errors.mjs';
 import { TaskSourceError } from './errors.mjs';
 import { authorizationHeader, readTokenViaHelper } from './linear.mjs';
+import { createLinearListCache, invalidateLinearLists } from './list-cache.mjs';
 
 export { TaskSourceError };
 
@@ -52,26 +53,31 @@ const ISSUE_FIELDS = `
   team { id key name }
 `;
 
-const VIEWER_QUERY = `query BridgeOwnerViewer {
+const VIEWER_QUERY = `query BridgeOwnerViewer($key: String!) {
   viewer { id name }
-}`;
-
-const TEAM_QUERY = `query BridgeOwnerTeam($key: String!) {
   teams(filter: { key: { eq: $key } }) {
-    nodes { id key name }
-  }
-}`;
-
-const STATES_QUERY = `query BridgeOwnerStates($teamId: String!) {
-  team(id: $teamId) {
-    states { nodes { id name type } }
+    nodes { id key name states { nodes { id name type } } }
   }
 }`;
 
 const LIST_QUERY = `query BridgeOwnerTasks($team: String!, $owner: ID!, $after: String) {
+  issues(first: ${PAGE_SIZE}, after: $after, filter: {
+    team: { key: { eq: $team } }
+    assignee: { id: { eq: $owner } }
+    state: { type: { nin: ["completed", "canceled"] } }
+    delegate: { null: true }
+  }) {
+    nodes { ${ISSUE_FIELDS} }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+const ARCHIVED_LIST_QUERY = `query BridgeOwnerArchivedTasks($team: String!, $owner: ID!, $after: String) {
   issues(first: ${PAGE_SIZE}, after: $after, includeArchived: true, filter: {
     team: { key: { eq: $team } }
     assignee: { id: { eq: $owner } }
+    archivedAt: { null: false }
+    delegate: { null: true }
   }) {
     nodes { ${ISSUE_FIELDS} }
     pageInfo { hasNextPage endCursor }
@@ -105,9 +111,8 @@ const RESTORE_MUTATION = `mutation BridgeOwnerTaskRestore($id: String!) {
 
 const DOCUMENTS = new Set([
   VIEWER_QUERY,
-  TEAM_QUERY,
-  STATES_QUERY,
   LIST_QUERY,
+  ARCHIVED_LIST_QUERY,
   ISSUE_QUERY,
   CREATE_MUTATION,
   UPDATE_MUTATION,
@@ -131,6 +136,8 @@ function statusOf(type) {
   if (type === 'canceled') return 'canceled';
   return 'todo';
 }
+
+export const LINEAR_OWNER_DOCUMENTS = Object.freeze([...DOCUMENTS]);
 
 function isClosed(issue) {
   const type = issue?.state?.type;
@@ -164,10 +171,12 @@ export function createLinearOwnerTaskSource({
   readToken = () => readTokenViaHelper(tokenHelper),
   requestTimeoutMs = 15_000,
   configTtlMs = CONFIG_TTL_MS,
+  listTtlMs = 45_000,
   now = () => Date.now(),
 } = {}) {
   let cachedToken = null;
   let cachedConfig = null;
+  const cachedList = createLinearListCache({ now, ttlMs: listTtlMs });
 
   async function token({ refresh = false } = {}) {
     if (cachedToken && !refresh) return cachedToken;
@@ -197,11 +206,14 @@ export function createLinearOwnerTaskSource({
   // Every error from a mutation document is marked as "a write may have
   // started", whatever its HTTP status becomes. Read documents stay unmarked.
   async function gql(document, variables = {}, options = {}) {
+    if (options.write === true) invalidateLinearLists();
     try {
       return await gqlUnmarked(document, variables, options);
     } catch (error) {
       if (options.write === true) markWriteStarted(error);
       throw error;
+    } finally {
+      if (options.write === true) invalidateLinearLists();
     }
   }
 
@@ -263,7 +275,7 @@ export function createLinearOwnerTaskSource({
   async function resolveConfig({ refresh = false } = {}) {
     if (!refresh && cachedConfig && now() - cachedConfig.at < configTtlMs) return cachedConfig.value;
 
-    const viewerData = await gql(VIEWER_QUERY);
+    const viewerData = await gql(VIEWER_QUERY, { key: teamKey });
     const viewer = viewerData.viewer;
     if (!viewer || typeof viewer.id !== 'string') {
       throw new TaskSourceError('linear_owner_config_incomplete', 'Linear did not return the signed-in user');
@@ -276,8 +288,7 @@ export function createLinearOwnerTaskSource({
       );
     }
 
-    const teamData = await gql(TEAM_QUERY, { key: teamKey });
-    const teams = teamData.teams?.nodes;
+    const teams = viewerData.teams?.nodes;
     if (!Array.isArray(teams)) {
       throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected team list');
     }
@@ -296,8 +307,7 @@ export function createLinearOwnerTaskSource({
       );
     }
 
-    const stateData = await gql(STATES_QUERY, { teamId: team.id });
-    const states = stateData.team?.states?.nodes;
+    const states = team.states?.nodes;
     if (!Array.isArray(states)) {
       throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected state list');
     }
@@ -336,6 +346,10 @@ export function createLinearOwnerTaskSource({
   }
 
   async function listOwnerTasks({ archived = false } = {}) {
+    return cachedList(archived, () => loadOwnerTasks({ archived }));
+  }
+
+  async function loadOwnerTasks({ archived }) {
     await config();
     const items = [];
     // Every cursor that was used: a cycle (A -> B -> A) would otherwise read
@@ -343,7 +357,7 @@ export function createLinearOwnerTaskSource({
     const seen = new Set();
     let cursor = null;
     for (let page = 0; page < MAX_PAGES; page += 1) {
-      const data = await gql(LIST_QUERY, { team: teamKey, owner: ownerUserId, after: cursor });
+      const data = await gql(archived ? ARCHIVED_LIST_QUERY : LIST_QUERY, { team: teamKey, owner: ownerUserId, after: cursor });
       const connection = data.issues;
       if (!connection || !Array.isArray(connection.nodes)) {
         throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected issue list');
