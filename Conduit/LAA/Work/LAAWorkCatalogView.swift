@@ -35,7 +35,7 @@ struct LAAWorkCatalogView: View {
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }
             if kind == .routines, LAAWorkFreshness.isStale(fetchedAt) {
-                Text(verbatim: "最終取得 \(clock(fetchedAt))。新しい内容を確認しています。")
+                Text(verbatim: "最終取得 \(clock(fetchedAt))。最新ではない可能性があります。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                     .accessibilityIdentifier("work.routines.fetchedAt")
             }
