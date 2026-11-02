@@ -1,0 +1,537 @@
+{
+  "observed_at": "2026-11-02T20:59:56+09:00",
+  "host": {
+    "processes": 2921,
+    "running": 129,
+    "stuck": 16,
+    "load_average": [
+      246.63,
+      230.69,
+      300.02
+    ],
+    "cpu_idle_percent": 1.17,
+    "memory_used_gib": 22,
+    "wired_gib": 11,
+    "compressed_mib": 5954,
+    "swap_used_mib": 48375.5,
+    "swap_total_mib": 49152
+  },
+  "test_process": {
+    "pid": 69356,
+    "wall_elapsed": "30:35",
+    "cpu_time": "4:20.33",
+    "rss_kib": 10144
+  },
+  "comparison": {
+    "prior_same_suite_two_snapshots_seconds": 3.655,
+    "current_test": "LAAUsageViewSnapshotTests.testUsageStatesLightAndDark",
+    "started_at": "20:49:03",
+    "latest_stdout_at": "20:49:03"
+  },
+  "progress": [
+    {
+      "time": "20:38:26.835",
+      "attachment": "compact-440x956-light"
+    },
+    {
+      "time": "20:43:44.692",
+      "attachment": "compact-440x956-dark"
+    },
+    {
+      "time": "20:43:46.975",
+      "attachment": "default-call-pending-440x956-light"
+    },
+    {
+      "time": "20:43:49.011",
+      "attachment": "default-call-pending-440x956-dark"
+    },
+    {
+      "time": "20:43:51.459",
+      "attachment": "group-file-error-440x956-light"
+    },
+    {
+      "time": "20:43:53.300",
+      "attachment": "group-file-error-440x956-dark"
+    },
+    {
+      "time": "20:43:55.186",
+      "attachment": "unsupported-settings-sync-440x956-light"
+    },
+    {
+      "time": "20:43:56.989",
+      "attachment": "unsupported-settings-sync-440x956-dark"
+    },
+    {
+      "time": "20:43:58.842",
+      "attachment": "unsupported-predictive-440x956-light"
+    },
+    {
+      "time": "20:44:00.576",
+      "attachment": "unsupported-predictive-440x956-dark"
+    },
+    {
+      "time": "20:44:16.571",
+      "attachment": "unsupported-phone-sharing-440x956-light"
+    },
+    {
+      "time": "20:44:19.560",
+      "attachment": "unsupported-phone-sharing-440x956-dark"
+    },
+    {
+      "time": "20:44:41.424",
+      "attachment": "unsupported-health-sharing-440x956-light"
+    },
+    {
+      "time": "20:45:16.579",
+      "attachment": "unsupported-health-sharing-440x956-dark"
+    },
+    {
+      "time": "20:45:19.198",
+      "attachment": "unsupported-location-sharing-440x956-light"
+    },
+    {
+      "time": "20:45:20.931",
+      "attachment": "unsupported-location-sharing-440x956-dark"
+    },
+    {
+      "time": "20:45:40.218",
+      "attachment": "unsupported-artifacts-440x956-light"
+    },
+    {
+      "time": "20:45:42.012",
+      "attachment": "unsupported-artifacts-440x956-dark"
+    },
+    {
+      "time": "20:45:43.737",
+      "attachment": "voice-setup-440x956-light"
+    },
+    {
+      "time": "20:46:17.081",
+      "attachment": "voice-setup-440x956-dark"
+    },
+    {
+      "time": "20:47:01.899",
+      "attachment": "header-375-normal-light"
+    },
+    {
+      "time": "20:47:02.397",
+      "attachment": "header-375-normal-dark"
+    },
+    {
+      "time": "20:47:02.907",
+      "attachment": "header-375-accessibility-light"
+    },
+    {
+      "time": "20:47:04.369",
+      "attachment": "header-375-accessibility-dark"
+    },
+    {
+      "time": "20:48:29.814",
+      "attachment": "header-440-normal-light"
+    },
+    {
+      "time": "20:48:30.498",
+      "attachment": "header-440-normal-dark"
+    },
+    {
+      "time": "20:48:31.004",
+      "attachment": "header-440-accessibility-light"
+    },
+    {
+      "time": "20:48:31.551",
+      "attachment": "header-440-accessibility-dark"
+    },
+    {
+      "time": "20:49:02.768",
+      "attachment": "usage-unavailable-reasons-light"
+    },
+    {
+      "time": "20:49:03.395",
+      "attachment": "usage-unavailable-reasons-dark"
+    },
+    {
+      "time": "20:49:04.224",
+      "attachment": "usage-normal-light"
+    },
+    {
+      "time": "20:49:04.924",
+      "attachment": "usage-normal-dark"
+    },
+    {
+      "time": "20:49:05.623",
+      "attachment": "usage-empty-light"
+    },
+    {
+      "time": "20:49:08.140",
+      "attachment": "usage-empty-dark"
+    },
+    {
+      "time": "20:49:36.047",
+      "attachment": "usage-error-light"
+    },
+    {
+      "time": "20:49:36.636",
+      "attachment": "usage-error-dark"
+    },
+    {
+      "time": "20:52:08.172",
+      "attachment": "usage-offline-light"
+    },
+    {
+      "time": "20:52:10.332",
+      "attachment": "usage-offline-dark"
+    },
+    {
+      "time": "20:52:11.801",
+      "attachment": "usage-unpaired-light"
+    },
+    {
+      "time": "20:52:12.379",
+      "attachment": "usage-unpaired-dark"
+    },
+    {
+      "time": "20:52:16.247",
+      "attachment": "usage-stale-light"
+    },
+    {
+      "time": "20:52:17.394",
+      "attachment": "usage-stale-dark"
+    },
+    {
+      "time": "20:53:52.044",
+      "attachment": "usage-balance-light"
+    },
+    {
+      "time": "21:00:53.416",
+      "attachment": "usage-balance-dark"
+    },
+    {
+      "time": "21:06:38.509",
+      "attachment": "usage-extras-light"
+    },
+    {
+      "time": "21:07:46.406",
+      "attachment": "usage-extras-dark"
+    },
+    {
+      "time": "21:13:17.360",
+      "attachment": "usage-cost-light"
+    },
+    {
+      "time": "21:15:11.609",
+      "attachment": "usage-cost-dark"
+    },
+    {
+      "time": "21:18:53.529",
+      "attachment": "compare-stale-light-ax3"
+    },
+    {
+      "time": "21:18:58.826",
+      "attachment": "compare-stale-light-ax5"
+    },
+    {
+      "time": "21:19:00.218",
+      "attachment": "compare-no-quota-light-ax3"
+    },
+    {
+      "time": "21:19:01.251",
+      "attachment": "compare-no-quota-light-ax5"
+    },
+    {
+      "time": "21:24:48.341",
+      "attachment": "compare-stale-dark-ax3"
+    },
+    {
+      "time": "21:33:53.759",
+      "attachment": "compare-stale-dark-ax5"
+    },
+    {
+      "time": "21:34:11.636",
+      "attachment": "compare-no-quota-dark-ax3"
+    },
+    {
+      "time": "21:34:12.396",
+      "attachment": "compare-no-quota-dark-ax5"
+    },
+    {
+      "time": "21:34:13.219",
+      "attachment": "compare-stale-tinted-ax3"
+    },
+    {
+      "time": "21:34:13.930",
+      "attachment": "compare-stale-tinted-ax5"
+    },
+    {
+      "time": "21:34:14.568",
+      "attachment": "compare-no-quota-tinted-ax3"
+    },
+    {
+      "time": "21:34:15.355",
+      "attachment": "compare-no-quota-tinted-ax5"
+    },
+    {
+      "time": "21:37:23.149",
+      "attachment": "wallpaper-light-color"
+    },
+    {
+      "time": "21:37:42.852",
+      "attachment": "wallpaper-light-tinted"
+    },
+    {
+      "time": "21:42:47.601",
+      "attachment": "wallpaper-dark-color"
+    },
+    {
+      "time": "21:42:50.680",
+      "attachment": "wallpaper-dark-tinted"
+    },
+    {
+      "time": "21:48:08.372",
+      "attachment": "medium-before-expiry"
+    },
+    {
+      "time": "21:48:09.420",
+      "attachment": "medium-late-draw"
+    },
+    {
+      "time": "21:48:10.045",
+      "attachment": "medium-expiry-entry"
+    },
+    {
+      "time": "21:48:10.734",
+      "attachment": "medium-light"
+    },
+    {
+      "time": "21:50:27.781",
+      "attachment": "medium-dark"
+    },
+    {
+      "time": "21:51:26.833",
+      "attachment": "medium-tinted"
+    },
+    {
+      "time": "21:51:30.411",
+      "attachment": "medium-expired-light"
+    },
+    {
+      "time": "21:51:31.172",
+      "attachment": "medium-expired-dark"
+    },
+    {
+      "time": "21:51:33.587",
+      "attachment": "medium-unset-light"
+    },
+    {
+      "time": "21:51:34.523",
+      "attachment": "medium-unset-dark"
+    },
+    {
+      "time": "21:51:35.158",
+      "attachment": "medium-stale-light"
+    },
+    {
+      "time": "21:51:35.919",
+      "attachment": "medium-stale-older-light"
+    },
+    {
+      "time": "21:51:36.576",
+      "attachment": "medium-stale-dark"
+    },
+    {
+      "time": "21:51:37.874",
+      "attachment": "medium-stale-tinted"
+    },
+    {
+      "time": "21:51:38.552",
+      "attachment": "medium-no-quota-light"
+    },
+    {
+      "time": "21:51:39.143",
+      "attachment": "medium-no-quota-dark"
+    },
+    {
+      "time": "21:51:39.774",
+      "attachment": "medium-no-quota-tinted"
+    },
+    {
+      "time": "21:54:32.792",
+      "attachment": "medium-accessibility-light"
+    },
+    {
+      "time": "21:54:33.780",
+      "attachment": "medium-accessibility-dark"
+    },
+    {
+      "time": "21:54:34.411",
+      "attachment": "medium-accessibility-tinted"
+    },
+    {
+      "time": "21:54:35.079",
+      "attachment": "medium-stale-accessibility-light"
+    },
+    {
+      "time": "21:54:35.893",
+      "attachment": "medium-stale-accessibility-dark"
+    },
+    {
+      "time": "21:55:07.524",
+      "attachment": "medium-stale-accessibility-tinted"
+    },
+    {
+      "time": "21:55:09.038",
+      "attachment": "medium-stale-older-accessibility-light"
+    },
+    {
+      "time": "21:55:09.754",
+      "attachment": "medium-stale-older-accessibility-dark"
+    },
+    {
+      "time": "21:55:10.368",
+      "attachment": "medium-stale-older-accessibility-tinted"
+    },
+    {
+      "time": "21:55:19.853",
+      "attachment": "medium-no-quota-accessibility-light"
+    },
+    {
+      "time": "22:00:05.059",
+      "attachment": "medium-no-quota-accessibility-dark"
+    },
+    {
+      "time": "22:02:20.341",
+      "attachment": "medium-no-quota-accessibility-tinted"
+    },
+    {
+      "time": "22:03:21.262",
+      "attachment": "medium-no-quota-older-accessibility-light"
+    },
+    {
+      "time": "22:05:35.294",
+      "attachment": "medium-no-quota-older-accessibility-dark"
+    },
+    {
+      "time": "22:05:36.067",
+      "attachment": "medium-no-quota-older-accessibility-tinted"
+    },
+    {
+      "time": "22:05:42.249",
+      "attachment": "medium-stale-accessibility5-light"
+    },
+    {
+      "time": "22:28:51.705",
+      "attachment": "medium-stale-accessibility5-dark"
+    },
+    {
+      "time": "22:28:53.094",
+      "attachment": "medium-stale-accessibility5-tinted"
+    },
+    {
+      "time": "22:29:48.796",
+      "attachment": "medium-stale-older-accessibility5-light"
+    },
+    {
+      "time": "22:30:00.107",
+      "attachment": "medium-stale-older-accessibility5-dark"
+    },
+    {
+      "time": "22:36:02.434",
+      "attachment": "medium-stale-older-accessibility5-tinted"
+    },
+    {
+      "time": "22:36:05.204",
+      "attachment": "medium-no-quota-accessibility5-light"
+    },
+    {
+      "time": "22:36:25.658",
+      "attachment": "medium-no-quota-accessibility5-dark"
+    },
+    {
+      "time": "22:36:27.287",
+      "attachment": "medium-no-quota-accessibility5-tinted"
+    },
+    {
+      "time": "22:36:27.917",
+      "attachment": "medium-no-quota-older-accessibility5-light"
+    },
+    {
+      "time": "22:36:28.532",
+      "attachment": "medium-no-quota-older-accessibility5-dark"
+    },
+    {
+      "time": "22:36:29.126",
+      "attachment": "medium-no-quota-older-accessibility5-tinted"
+    },
+    {
+      "time": "22:36:30.529",
+      "attachment": "small-wallpaper-light-color"
+    },
+    {
+      "time": "22:36:31.703",
+      "attachment": "small-wallpaper-light-tinted"
+    },
+    {
+      "time": "22:36:32.494",
+      "attachment": "small-wallpaper-dark-color"
+    },
+    {
+      "time": "22:36:33.211",
+      "attachment": "small-wallpaper-dark-tinted"
+    }
+  ],
+  "inference": "Host CPU saturation and heavy swapping are confirmed. The snapshot loop is still advancing; a pure infinite layout loop is not established. No process was stopped.",
+  "usage_18_states_result": {
+    "status": "passed",
+    "seconds": 1568.41,
+    "finished_at": "21:15:11"
+  },
+  "sample_comparison": {
+    "first": "layoutSubviews at capture line 114",
+    "second": "UIGraphicsImageRenderer/drawHierarchy at capture line 117",
+    "inference": "Different stacks and later attachments establish progress. Host pressure is a supported cause candidate; no infinite layout loop established."
+  },
+  "followup_observations": [
+    {
+      "time": "22:18:34",
+      "test": "LAAUsageWidgetSnapshotTests.testMediumLightDarkAndTinted",
+      "completed_images": 30,
+      "total_medium_images": 41,
+      "remaining_images_in_batch": 15,
+      "last_attachment": "22:05:42.268 medium-stale-accessibility5-light",
+      "host_load_average": [
+        147.37,
+        162.06,
+        197.89
+      ],
+      "swap_used_mib": 41715.56,
+      "test_cpu_percent": 90.9,
+      "cpu_time": "21:59.96",
+      "context": "Parent archiving inactive child sessions; active test preserved."
+    },
+    {
+      "time": "22:26:08",
+      "test": "LAAUsageWidgetSnapshotTests.testMediumLightDarkAndTinted",
+      "last_attachment": "22:05:42.268 medium-stale-accessibility5-light",
+      "completed_images": 30,
+      "remaining_images_in_batch": 15,
+      "host_load_average": [
+        174.3,
+        159.12,
+        180.06
+      ],
+      "swap_used_mib": 45818.5,
+      "cpu_time": "22:24.91",
+      "rss_kib": 3472,
+      "inference": "Only 17.11s CPU time gained since 22:19; not evidence of a continuously executing layout loop. CPU/VM saturation remains a cause candidate. No forced stop."
+    }
+  ],
+  "final_result": {
+    "exit_code": 65,
+    "total_tests": 234,
+    "passed_tests": 233,
+    "failed_tests": 1,
+    "assertion_failures": 2,
+    "seconds": 7336.439,
+    "last_image": "22:36:33.211 small-wallpaper-dark-tinted"
+  },
+  "widget_sample": "RunLoop, CA::Transaction commit; capture frame waiting for run loop. Eventually completed; infinite layout loop not established."
+}
