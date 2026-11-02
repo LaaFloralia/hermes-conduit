@@ -34,3 +34,11 @@ composer試験は紙／写真×ライト／ダークの4条件。キーボード
 実機では音楽を流して会話・社員詳細・スクロール・社員切替を試し、通話／音声入力の開始時だけ音声が切り替わり、終了後に他アプリの音楽を再開できることを確認する。Widgetは期限切れ数値、色調、Call／Chatの遷移を確認。5アプリの操作別置換表は各機能担当の成果と統合し、この品質修正だけで削除可能とは判定しない。
 
 取得遅延はホスト負荷を伴う。20:59時点でload average 246.63、CPU空き1.17%、swap使用48,375MB。18状態snapshotは20:49開始、添付はbalance-dark 21:00:53、extras-dark 21:08:11、cost-light 21:13:17へ進行した。先行2画面は3.655秒。停止も同一条件の再実行も行っていない。
+
+## fixes runの最終結果（2026-11-02 22:47、親の照合済み）
+
+- unit: exit 65。234件中233 pass、1 failed。失敗は既知の中央名（`LAACompactChatSnapshotTests.testCompactChatLightAndDark` 内の2 assert）で、名前中心104pt／期待220±2pt。source修正（`.toolbarRole(.editor)` 除去・独自Backの撤回）は未再試験のため、統合ゲートで再確認する。
+- 画像: 112 PNG＋manifestをexport済み。evidence は `/Users/laa/work/fixes-20261102/evidence/`。
+- 解放: 専用sim E555BA47をshutdown→delete、simctl一覧から消失。slot1なし、wrapper/xcodebuild/test app（68879/68887/69356）の消失を確認。証跡 `evidence/resource-release.json`。
+- 候補SHA: origin/laa/fixes = 5fa0b607f77eb5648b438fc42a3c73097262b0da。source変更は追加しない。
+- 統合側の扱い: この候補は `laa/integrate-1102` に通常merge済み（merge commit 6a0f84b6）。上記1 failedは統合ビルドで再試験し、結果を統合ゲート証跡へ記録する。
