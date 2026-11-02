@@ -4,6 +4,10 @@ import SwiftUI
 /// The Bridge uses the existing IME-safe field and full editor; it never sends
 /// through ComposerBar or the Hermes AppState.
 struct LAAWorkComposer: View {
+    @EnvironmentObject private var appState: AppState
+    @StateObject private var dictation = ComposerDictationService()
+    @State private var dictationPrefix = ""
+    @State private var dictatedText: String?
     @Binding var text: String
     @Binding var revision: UInt64
     let placeholder: String
@@ -14,6 +18,7 @@ struct LAAWorkComposer: View {
     var submitLabel = LAACopy.WorkTab.send
     var accessibilityPrefix = "work.composer"
     var showsTextSize = true
+    var onImage: ((UIImage) -> Void)? = nil
 
     @State private var focus = false
     @State private var height = ComposerPasteTextView.minimumHeight
@@ -57,7 +62,9 @@ struct LAAWorkComposer: View {
                 }
                 ComposerPasteTextView(
                     text: $text, isFocused: $focus, measuredHeight: $height, enabled: enabled,
-                    onPastedImage: { _ in warning = "セッションへの画像添付はまだ対応していません。" },
+                    onPastedImage: { image in
+                        if let onImage, let decoded = UIImage(data: image.data) { onImage(decoded) } else { warning = "この入力欄では画像を添付できません。" }
+                    },
                     onPastedImageError: { _ in warning = "画像を追加できません。" },
                     editorIdentity: editorIdentity,
                     inputTextSize: ChatTypography.inputSize(rawValue: inputSize),
@@ -70,6 +77,7 @@ struct LAAWorkComposer: View {
             .overlay(RoundedRectangle(cornerRadius: LAARadius.card).stroke(LAAColor.separator))
             if let warning { Text(verbatim: warning).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
             HStack {
+                dictateButton
                 Spacer()
                 Button(action: onSubmit) {
                     Text(verbatim: submitLabel).frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -79,14 +87,18 @@ struct LAAWorkComposer: View {
                     .accessibilityIdentifier("\(accessibilityPrefix).send")
             }
         }
-        .onChange(of: text) { _, value in onChange(value) }
+        .onChange(of: text) { _, value in
+            if dictation.isDictating && dictatedText != value { dictation.yieldToTyping() }
+            onChange(value)
+        }
+        .onDisappear { dictation.cancel() }
         .sheet(isPresented: $fullEditor, onDismiss: { revision &+= 1 }) {
             ComposerFullEditor(
                 text: $text, placeholder: placeholder, programmaticRevision: revision,
                 fieldIdentifier: "\(accessibilityPrefix).fullEditor.field", enabled: enabled,
                 onUserEdit: { _ in }, onCollapse: { fullEditor = false },
                 canSubmitFromReturn: false, onSubmitFromReturn: { false },
-                attachments: { EmptyView() }, dictateButton: { EmptyView() },
+                attachments: { EmptyView() }, dictateButton: { dictateButton },
                 actionButton: {
                     Button { fullEditor = false; onSubmit() } label: {
                         Text(verbatim: submitLabel).frame(minHeight: LAASpacing.minimumTouchTarget)
@@ -97,6 +109,34 @@ struct LAAWorkComposer: View {
             ).tint(LAAColor.link)
         }
     }
+    private var dictateButton: some View {
+        Button {
+            if dictation.isDictating { dictation.stop(); return }
+            guard let token = dictation.reserveStart() else { return }
+            dictationPrefix = text
+            dictatedText = nil
+            dictation.onTranscript = { transcript in
+                guard ComposerDictation.draftIsAsDictationLeftIt(text, prefix: dictationPrefix, lastWrite: dictatedText) else {
+                    dictation.cancel(); return
+                }
+                let next = ComposerDictation.draft(before: dictationPrefix, dictated: transcript)
+                dictatedText = next
+                text = next
+                revision &+= 1
+            }
+            dictation.onFailure = { warning = $0 }
+            Task {
+                do { try await dictation.start(token: token, hermesGateway: { appState.makeVoiceGateway() }) }
+                catch { warning = UserFacingError.message(for: error) }
+            }
+        } label: {
+            Image(systemName: dictation.isDictating ? "stop.circle" : "mic")
+                .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+        }
+        .disabled(!enabled || dictation.isStarting || appState.isVoiceInUse)
+        .accessibilityLabel(Text(verbatim: dictation.isDictating ? "音声入力を停止" : "音声入力"))
+    }
+
 }
 
 /// A separate file using Task 08's durable store. The existing submission
@@ -139,12 +179,13 @@ enum LAAWorkDrafts {
     }
     @MainActor static func reserve(_ store: ComposerDraftStore, key: ComposerDraftKey,
                                    text: String, body: Data, idempotency: LAABridgeIdempotencyKey,
+                                   attachments: [Attachment] = [],
                                    expectedVersion: String? = nil, now: Date = Date()) -> ComposerDraftStore.Submission? {
         guard pending(store, key: key) == nil, let payload = String(data: body, encoding: .utf8),
               let record = try? JSONEncoder().encode(RequestRecord(body: payload, reservedAt: now)) else { return nil }
         let submission = ComposerDraftStore.Submission(
             id: UUID(), key: key, dashboardID: dashboardID,
-            draft: ComposerDraft(text: text, attachments: []), pendingSendID: nil,
+            draft: ComposerDraft(text: text, attachments: attachments), pendingSendID: nil,
             screenshotID: expectedVersion, groupEventID: idempotency.value,
             groupOutboundText: recordPrefix + String(decoding: record, as: UTF8.self)
         )

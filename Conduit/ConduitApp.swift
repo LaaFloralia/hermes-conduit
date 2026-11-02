@@ -347,6 +347,9 @@ struct ConduitApp: App {
             // Another app opening a chat: only session links, opened through
             // the same route as an in-app link once Hermes is connected.
             .onOpenURL { url in
+                #if LAA_BUILD
+                if LAAWorkLinkRequest.shared.open(url) { return }
+                #endif
                 if appState.routeWidgetLaunchURL(url) { return }
                 // A sign-in code tapped in another app (a Telegram chat with
                 // Hermes): Conduit asks before it signs in.

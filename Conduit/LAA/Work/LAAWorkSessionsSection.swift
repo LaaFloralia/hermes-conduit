@@ -8,6 +8,9 @@ struct LAAWorkSessionsSection: View {
     @ObservedObject var drafts: ComposerDraftStore
     let refreshID: Int
 
+    @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
+    @State private var search = ""
+    @State private var linkedSessionID: String?
     @State private var sessions: [LAAWorkSession] = []
     @State private var projects: [LAAWorkProject] = []
     @State private var options: LAAWorkSessionOptions?
@@ -25,7 +28,9 @@ struct LAAWorkSessionsSection: View {
             if let failure { LAAWorkFailure(text: failure) { Task { await load() } } }
             if loading && sessions.isEmpty { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
 
-            let visible = LAAWorkSessionOrder.rows(sessions)
+            TextField("", text: $search, prompt: Text(verbatim: "セッションを検索"))
+                .textFieldStyle(.roundedBorder).accessibilityIdentifier("work.sessions.search")
+            let visible = LAAWorkSessionOrder.rows(filteredSessions)
             if visible.pinned.isEmpty && visible.recent.isEmpty && !loading && failure == nil {
                 Text(verbatim: showArchived ? "アーカイブしたセッションはありません。" : "セッションはまだありません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -51,6 +56,10 @@ struct LAAWorkSessionsSection: View {
         .navigationDestination(item: $opened) { session in
             LAAWorkSessionDetail(id: session.id, projects: projects, workspaces: [], drafts: drafts)
         }
+        .navigationDestination(item: $linkedSessionID) { id in
+            LAAWorkSessionDetail(id: id, projects: projects, workspaces: [], drafts: drafts)
+        }
+        .task(id: linkRequest.generation) { await openLinkedSession() }
         .sheet(isPresented: $showLauncher) {
             LAAWorkSessionLauncher(projects: projects, options: options, drafts: drafts) { created in
                 showLauncher = false
@@ -62,7 +71,14 @@ struct LAAWorkSessionsSection: View {
             }
             .environmentObject(bridge)
         }
-        .task(id: "\(bridge.revision)-\(refreshID)") { await load() }
+        .task(id: "\(bridge.revision)-\(refreshID)") {
+            sessions = LAAWorkSessionCache.read([LAAWorkSession].self, store: drafts, device: bridge.deviceID, target: "list") ?? []
+            await load()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+                await load()
+            }
+        }
     }
 
     private func group(_ title: String, _ rows: [LAAWorkSession]) -> some View {
@@ -80,6 +96,7 @@ struct LAAWorkSessionsSection: View {
                                                     tint: LAAColor.attention) { Task { await update(session, archived: !session.isArchived) } }) {
                         Button { opened = session } label: {
                             LAAWorkSessionRow(session: session, projectName: projectName(session.projectId), options: options)
+                                .padding(.leading, CGFloat(LAAWorkSessionOrder.depth(session, in: sessions)) * 16)
                         }
                         .buttonStyle(.plain)
                     }
@@ -99,9 +116,34 @@ struct LAAWorkSessionsSection: View {
         }
     }
 
+    private var filteredSessions: [LAAWorkSession] {
+        guard !search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return sessions }
+        var ids = Set(sessions.filter { ($0.name + " " + ($0.observed?.model ?? $0.requested?.model ?? "")).localizedCaseInsensitiveContains(search) }.map(\.id))
+        for session in sessions where ids.contains(session.id) {
+            var parent = session.parentId
+            var seen = Set<String>()
+            while let id = parent, seen.insert(id).inserted, let row = sessions.first(where: { $0.id == id }) {
+                ids.insert(id); parent = row.parentId
+            }
+        }
+        return sessions.filter { ids.contains($0.id) }
+    }
+
     private func projectName(_ id: String?) -> String? {
         guard let id else { return nil }
         return projects.first { $0.id == id }?.name
+    }
+
+    @MainActor private func openLinkedSession() async {
+        guard let target = linkRequest.sessionTarget else { return }
+        if let id = linkRequest.sessionID { linkedSessionID = id; return }
+        if let known = sessions.first(where: { $0.delegateSessionId == target }) { linkedSessionID = known.id; return }
+        do {
+            let rows: [LAAWorkSession] = try await LAAWorkPaging.all(bridge, "/v1/sessions", query: [URLQueryItem(name: "scope", value: "all")])
+            guard !Task.isCancelled, linkRequest.sessionTarget == target else { return }
+            guard let row = rows.first(where: { $0.delegateSessionId == target }) else { failure = "リンク先のPaseo会話を確認できません。"; return }
+            linkedSessionID = row.id
+        } catch { if !Task.isCancelled { failure = "リンク先のPaseo会話を読み取れません。再接続して確認してください。" } }
     }
 
     @MainActor private func load() async {
@@ -115,7 +157,8 @@ struct LAAWorkSessionsSection: View {
             let (loaded, loadedProjects) = try await (page, projectPage)
             guard !Task.isCancelled else { return }
             // An older Bridge ignores the filters: keep worktree and archived rows out here too.
-            sessions = loaded.filter { $0.worktree != true && $0.isArchived == showArchived }
+            sessions = loaded.filter { $0.isArchived == showArchived }
+            LAAWorkSessionCache.save(sessions, store: drafts, device: bridge.deviceID, target: showArchived ? "archived" : "list")
             projects = loadedProjects
             failure = nil
         } catch is CancellationError {
@@ -191,7 +234,27 @@ enum LAAWorkSessionOrder {
     /// Favourites first, then the rest; each newest first.
     static func rows(_ sessions: [LAAWorkSession]) -> (pinned: [LAAWorkSession], recent: [LAAWorkSession]) {
         let sorted = sessions.sorted { $0.updatedAt > $1.updatedAt }
-        return (sorted.filter(\.isFavorite), sorted.filter { !$0.isFavorite })
+        let ids = Set(sessions.map(\.id))
+        let roots = sorted.filter { $0.parentId == nil || !ids.contains($0.parentId!) }
+        var visited = Set<String>()
+        func tree(_ row: LAAWorkSession) -> [LAAWorkSession] {
+            guard visited.insert(row.id).inserted else { return [] }
+            return [row] + sorted.filter { $0.parentId == row.id }.flatMap(tree)
+        }
+        var pinned: [LAAWorkSession] = [], recent: [LAAWorkSession] = []
+        for root in roots {
+            let rows = tree(root)
+            if rows.contains(where: \.isFavorite) { pinned += rows } else { recent += rows }
+        }
+        recent += sorted.filter { !visited.contains($0.id) }
+        return (pinned, recent)
+    }
+    static func depth(_ row: LAAWorkSession, in rows: [LAAWorkSession]) -> Int {
+        var parent = row.parentId, depth = 0, seen = Set([row.id])
+        while let id = parent, seen.insert(id).inserted, let found = rows.first(where: { $0.id == id }), depth < 4 {
+            depth += 1; parent = found.parentId
+        }
+        return depth
     }
 }
 

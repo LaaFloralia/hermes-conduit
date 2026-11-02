@@ -1,9 +1,10 @@
 #if LAA_BUILD
 import SwiftUI
+import PhotosUI
 
 struct LAAWorkMessageForm: View {
     enum Mode { case followUp, resume }
-    private struct Payload: Codable { let message: String; let requestId: String? }
+    private struct Payload: Codable { let message: String; let requestId: String?; var images: [LAAWorkImagePayload]? = nil }
 
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
@@ -12,6 +13,8 @@ struct LAAWorkMessageForm: View {
     let canStart: Bool
     let onSuccess: (LAAWorkSession) -> Void
     @State private var text = ""
+    @State private var attachments: [Attachment] = []
+    @State private var photo: PhotosPickerItem?
     @State private var revision: UInt64 = 0
     @State private var sending = false
     @State private var showResolution = false
@@ -55,13 +58,25 @@ struct LAAWorkMessageForm: View {
             }
             if let error { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(LAAColor.attention) }
             if !canStart && mode == .followUp {
-                Text(verbatim: "実行中・判断待ち・停止中は追加送信できません。状態を確認してください。")
+                Text(verbatim: "判断待ち・停止中は追加送信できません。状態を確認してください。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            }
+            if mode == .followUp {
+                HStack {
+                    PhotosPicker(selection: $photo, matching: .images) { Label { Text(verbatim: "画像を添付") } icon: { Image(systemName: "photo") } }
+                        .disabled(sending || pending != nil || attachments.count >= 4)
+                    ForEach(attachments) { attachment in
+                        Button { attachments.removeAll { $0.id == attachment.id }; saveDraft(text) } label: {
+                            Label { Text(verbatim: attachment.name) } icon: { Image(systemName: "xmark.circle") }
+                        }
+                    }
+                }.laaTextStyle(.secondary)
             }
             LAAWorkComposer(text: $text, revision: $revision, placeholder: promptPlaceholder,
                             enabled: !sending && pending == nil && !drafts.persistenceFailed, canSend: canStart,
                             onChange: saveDraft, onSubmit: submit,
-                            accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer")
+                            accessibilityPrefix: mode == .resume ? "work.resume.composer" : "work.composer",
+                            onImage: mode == .followUp ? addImage : nil)
             if drafts.persistenceFailed {
                 Text(verbatim: "下書きを保存できません。送信せず、端末の保存状態を確認してください。")
                     .foregroundStyle(LAAColor.attention).laaTextStyle(.secondary)
@@ -71,6 +86,13 @@ struct LAAWorkMessageForm: View {
             guard let key = draftKey else { return }
             revision &+= 1
             text = drafts.draft(for: key).text
+            attachments = drafts.draft(for: key).attachments
+        }
+        .onChange(of: photo) { _, selected in
+            Task { @MainActor in
+                if let data = try? await selected?.loadTransferable(type: Data.self), let image = UIImage(data: data) { addImage(image) }
+                photo = nil
+            }
         }
         .confirmationDialog(LAAWorkPresentation.japanese("送信状況を確認しましたか？"), isPresented: $showResolution, titleVisibility: .visible) {
             if let pending, mode == .followUp {
@@ -83,6 +105,16 @@ struct LAAWorkMessageForm: View {
         }
     }
 
+    private func addImage(_ image: UIImage) {
+        guard attachments.count < 4 else { error = "画像は4枚までです。"; return }
+        let scale = min(1, 1600 / max(image.size.width, image.size.height))
+        let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let resized = UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+        guard let data = resized.jpegData(compressionQuality: 0.7), data.count <= 900_000 else { error = "画像を小さくして再追加してください。"; return }
+        attachments.append(Attachment(id: UUID().uuidString, name: "画像\(attachments.count + 1)", uri: "data:image/jpeg;base64," + data.base64EncodedString(), mimeType: "image/jpeg", kind: .image))
+        saveDraft(text)
+    }
+
     private func resolve(_ item: ComposerDraftStore.Submission, restoring: Bool) {
         guard !sending, pending?.id == item.id else { return }
         guard drafts.finishSubmission(item.id, restoring: restoring) else {
@@ -91,13 +123,14 @@ struct LAAWorkMessageForm: View {
         if restoring, let draftKey {
             revision &+= 1
             text = drafts.draft(for: draftKey).text
+            attachments = drafts.draft(for: draftKey).attachments
         }
         error = nil
     }
 
     private func saveDraft(_ value: String) {
         guard let key = draftKey else { return }
-        if !drafts.save(ComposerDraft(text: value, attachments: []), for: key) {
+        if !drafts.save(ComposerDraft(text: value, attachments: attachments), for: key) {
             error = "下書きを端末に保存できませんでした。"
         }
     }
@@ -105,16 +138,21 @@ struct LAAWorkMessageForm: View {
     private func submit() {
         guard let key = draftKey, pending == nil, canStart else { return }
         let message = text
-        let payload = Payload(message: message, requestId: mode == .resume ? UUID().uuidString.lowercased() : nil)
+        let images = attachments.compactMap { attachment -> LAAWorkImagePayload? in
+            guard let value = attachment.uri.components(separatedBy: ",").last else { return nil }
+            return LAAWorkImagePayload(data: value, mimeType: attachment.mimeType ?? "image/jpeg")
+        }
+        let payload = Payload(message: message, requestId: mode == .resume ? UUID().uuidString.lowercased() : nil, images: images.isEmpty ? nil : images)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         guard let data = try? encoder.encode(payload),
               let item = LAAWorkDrafts.reserve(drafts, key: key, text: message, body: data,
-                                               idempotency: LAABridgeIdempotencyKey()) else {
+                                               idempotency: LAABridgeIdempotencyKey(), attachments: attachments) else {
             error = "送信前に下書きと要求IDを保存できませんでした。"; return
         }
         revision &+= 1
         text = ""
+        attachments = []
         Task { await perform(item) }
     }
 
@@ -134,6 +172,7 @@ struct LAAWorkMessageForm: View {
             if LAAWorkHTTP.outcomeUnknown(failure) { drafts.markSubmissionUnknown(item.id) }
             else if drafts.finishSubmission(item.id, restoring: true), let draftKey {
                 revision &+= 1; text = drafts.draft(for: draftKey).text
+            attachments = drafts.draft(for: draftKey).attachments
             }
             error = LAAWorkHTTP.message(failure)
         } catch let failure as LAABridgeError {

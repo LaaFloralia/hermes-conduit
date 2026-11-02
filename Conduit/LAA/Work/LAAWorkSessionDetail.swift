@@ -9,7 +9,6 @@ struct LAAWorkSessionDetail: View {
     let workspaces: [LAAWorkWorkspace]
     @State private var session: LAAWorkSession?
     @State private var events: [LAAWorkEvent] = []
-    @State private var artifacts: [LAAWorkArtifact] = []
     @State private var messages: [LAAWorkConversationMessage] = []
     @State private var conversationUnavailable = false
     @State private var cursor: String?
@@ -18,6 +17,7 @@ struct LAAWorkSessionDetail: View {
     @State private var stopping = false
     @State private var historyGapSeen = false
     @State private var observationEpoch = 0
+    @State private var followsConversation = true
     @AppStorage(ChatTypography.preferenceKey) private var responseSize = ChatTypography.defaultSize.rawValue
 
     init(id: String, projects: [LAAWorkProject], workspaces: [LAAWorkWorkspace], drafts: ComposerDraftStore) {
@@ -25,7 +25,7 @@ struct LAAWorkSessionDetail: View {
     }
 
     private var stopKey: ComposerDraftKey? {
-        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "stop:\(id)") }
+        bridge.deviceID.map { LAAWorkDrafts.key(deviceID: $0, target: "interrupt:\(id)") }
     }
     private var pendingStop: ComposerDraftStore.Submission? {
         stopKey.flatMap { LAAWorkDrafts.pending(drafts, key: $0) }
@@ -34,6 +34,7 @@ struct LAAWorkSessionDetail: View {
     var body: some View {
         ZStack {
             LAAColor.background.ignoresSafeArea()
+            ScrollViewReader { scroll in
             ScrollView {
                 VStack(alignment: .leading, spacing: LAASpacing.x4) {
                     if let session {
@@ -45,11 +46,14 @@ struct LAAWorkSessionDetail: View {
                                 Button(LAACopy.WorkTab.reconnect) { observationEpoch += 1 }
                             }.workCard()
                         }
-                        if session.needsDecision { decisionBanner }
+                        if session.needsDecision { LAAWorkSessionDecision(sessionID: id, drafts: drafts) { observationEpoch += 1 } }
                         conversation
+                        Color.clear.frame(height: 1).id("conversation-end")
+                            .onAppear { followsConversation = true }
+                            .onDisappear { followsConversation = false }
                         actions(session)
                         LAAWorkMessageForm(sessionID: id, mode: .followUp, drafts: drafts,
-                                           canStart: session.phase == "awaiting_review") { _ in
+                                           canStart: ["awaiting_review", "running"].contains(session.phase) && !session.needsDecision) { _ in
                             Task { await refreshSnapshot() }
                         }
                     } else if let failure {
@@ -61,6 +65,10 @@ struct LAAWorkSessionDetail: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable { await refreshSnapshot() }
+            .onChange(of: messages.last?.text) { _, _ in
+                if followsConversation { scroll.scrollTo("conversation-end", anchor: .bottom) }
+            }
+            }
         }
         .navigationTitle(Text(verbatim: session?.name ?? LAACopy.WorkTab.sessions))
         .tint(LAAColor.link)
@@ -81,8 +89,16 @@ struct LAAWorkSessionDetail: View {
                 VStack(alignment: .leading, spacing: LAASpacing.x2) {
                     Text(verbatim: message.role == "user" ? "あなた" : "回答")
                         .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    MarkdownText(source: message.text, foregroundStyle: LAAColor.text)
+                    if message.role == "tool" {
+                        DisclosureGroup {
+                            Text(verbatim: message.text).laaTextStyle(.secondary)
+                        } label: { Text(verbatim: (message.toolName ?? "ツール") + " · " + (message.toolStatus ?? "")) }
+                    } else { MarkdownText(source: message.text, foregroundStyle: LAAColor.text)
                         .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
+                    }
+                    ForEach(message.images ?? [], id: \.self) { imageID in
+                        LAAWorkSessionImage(sessionID: id, imageID: imageID)
+                    }
                 }.workCard()
             }
         }
@@ -105,57 +121,10 @@ struct LAAWorkSessionDetail: View {
         }.laaTextStyle(.secondary).workCard()
     }
 
-    private var decisionBanner: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Label(LAAWorkPresentation.japanese("判断待ち"), systemImage: "exclamationmark.triangle.fill").laaTextStyle(.body).fontWeight(.semibold)
-            Text(verbatim: "内容を表示しています。回答は後続の機能で対応します。")
-            if let decision = artifacts.first(where: { $0.type == "decision" })?.content {
-                Text(verbatim: decision).laaTextStyle(.secondary).textSelection(.enabled)
-            } else { Text(verbatim: "判断内容を取得できていません。") }
-        }.foregroundStyle(LAAColor.attention).workCard()
-    }
-
-    private var resultBody: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: "最新の回答").laaTextStyle(.body).fontWeight(.semibold)
-            if let answer = artifacts.first(where: { $0.type == "message" }) {
-                if let content = answer.content, !content.isEmpty {
-                    MarkdownText(source: content, foregroundStyle: LAAColor.text)
-                        .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
-                    if answer.truncated == true { Text(verbatim: "回答は途中まで表示しています。") .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                } else {
-                    Text(verbatim: answer.available == false ? "回答を取得できていません。" : "まだ回答はありません。")
-                        .foregroundStyle(LAAColor.secondaryText)
-                }
-            } else { Text(verbatim: "まだ回答はありません。").foregroundStyle(LAAColor.secondaryText) }
-        }.workCard()
-    }
-
-    private var timeline: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            Text(verbatim: "経過").laaTextStyle(.body).fontWeight(.semibold)
-            if events.isEmpty { Text(verbatim: "記録を取得中です。").foregroundStyle(LAAColor.secondaryText) }
-            ForEach(events) { event in
-                HStack(alignment: .top) {
-                    Text(verbatim: LAAWorkPresentation.event(event.type))
-                    Spacer()
-                    Text(verbatim: LAAWorkPresentation.date(event.occurredAt)).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                }
-                Divider()
-            }
-            if let log = artifacts.first(where: { $0.type == "log" }) {
-                DisclosureGroup(LAACopy.WorkTab.log) {
-                    if let content = log.content { Text(verbatim: content).laaTextStyle(.secondary).monospaced().textSelection(.enabled) }
-                    if log.truncated == true { Text(verbatim: "ログは途中まで表示しています。").laaTextStyle(.secondary).foregroundStyle(LAAColor.attention) }
-                }
-            }
-        }.workCard()
-    }
-
     private func actions(_ session: LAAWorkSession) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x3) {
             if pendingStop != nil {
-                Label(LAAWorkPresentation.japanese("停止要求の結果は未確認です。状態を確認してから同じ要求を再照合できます。"), systemImage: "exclamationmark.triangle.fill")
+                Label(LAAWorkPresentation.japanese("中断要求の結果は未確認です。状態を確認してから同じ要求を再照合できます。"), systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(LAAColor.attention)
                 Button(LAACopy.WorkTab.checkStop) { Task { await refreshSnapshot() } }.disabled(stopping)
                 Button(LAACopy.WorkTab.retryStop) { if let pendingStop { Task { await performStop(pendingStop) } } }
@@ -168,7 +137,7 @@ struct LAAWorkSessionDetail: View {
                 Text(verbatim: "停止したセッションの再開は現在利用できません。")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             } else {
-                Button(LAACopy.WorkTab.stop) { beginStop() }.buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
+                Button { beginStop() } label: { Text(verbatim: "中断") }.buttonStyle(.bordered).tint(LAAColor.end).disabled(stopping)
             }
             if let nextID = session.resumedTo {
                 NavigationLink(LAACopy.WorkTab.openSuccessor) {
@@ -178,20 +147,17 @@ struct LAAWorkSessionDetail: View {
         }.workCard()
     }
 
-    private func workspace(_ id: String) -> String {
-        guard let item = workspaces.first(where: { $0.id == id }) else { return "未確認" }
-        return (item.displayPath ?? item.path) + (item.branch.map { " · " + $0 } ?? "")
-    }
-
     @discardableResult @MainActor private func refreshSnapshot() async -> Bool {
         do {
-            let detail: LAAWorkSession = try await bridge.read("/v1/sessions/\(id)")
-            let fetched: LAAWorkArtifacts = try await bridge.read("/v1/sessions/\(id)/artifacts")
+            async let detailRead: LAAWorkSession = bridge.read("/v1/sessions/\(id)")
+            async let historyRead: LAAWorkPage<LAAWorkConversationMessage> = bridge.read("/v1/sessions/\(id)/conversation")
+            let detail = try await detailRead
             session = detail
-            artifacts = fetched.items
+            LAAWorkSessionCache.save(detail, store: drafts, device: bridge.deviceID, target: id)
             do {
-                let history: LAAWorkPage<LAAWorkConversationMessage> = try await bridge.read("/v1/sessions/\(id)/conversation")
+                let history = try await historyRead
                 messages = history.items
+                LAAWorkSessionCache.save(messages, store: drafts, device: bridge.deviceID, target: id + ":messages")
                 conversationUnavailable = false
             } catch {
                 conversationUnavailable = true
@@ -212,6 +178,8 @@ struct LAAWorkSessionDetail: View {
     }
 
     @MainActor private func observe() async {
+        session = LAAWorkSessionCache.read(LAAWorkSession.self, store: drafts, device: bridge.deviceID, target: id)
+        messages = LAAWorkSessionCache.read([LAAWorkConversationMessage].self, store: drafts, device: bridge.deviceID, target: id + ":messages") ?? []
         cursor = nil
         events.removeAll()
         guard await refreshSnapshot(), let initial = session else { return }
@@ -219,7 +187,7 @@ struct LAAWorkSessionDetail: View {
         var consecutiveGaps = 0
         while !Task.isCancelled {
             do {
-                var query = [URLQueryItem(name: "wait", value: "10"), URLQueryItem(name: "limit", value: "100")]
+                var query = [URLQueryItem(name: "wait", value: "2"), URLQueryItem(name: "limit", value: "100")]
                 if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
                 else if let afterSeq { query.append(URLQueryItem(name: "afterSeq", value: String(afterSeq))) }
                 let response: LAABridgeResponse<LAAWorkEventPage> = try await bridge.request(
@@ -235,7 +203,7 @@ struct LAAWorkSessionDetail: View {
                     notice = "委譲先を観測できず再同期が必要です。詳細と成果物を読み直しています。"
                     await refreshSnapshot()
                     try await Task.sleep(for: .seconds(5))
-                } else if !page.items.isEmpty {
+                } else {
                     await refreshSnapshot()
                     if !historyGapSeen && session?.observation?.available != false { notice = nil }
                 }
@@ -262,21 +230,21 @@ struct LAAWorkSessionDetail: View {
 
     private func beginStop() {
         guard let key = stopKey, let body = "{}".data(using: .utf8),
-              let item = LAAWorkDrafts.reserve(drafts, key: key, text: "停止要求", body: body,
+              let item = LAAWorkDrafts.reserve(drafts, key: key, text: "中断要求", body: body,
                                                idempotency: LAABridgeIdempotencyKey()) else {
-            failure = "停止要求を端末に安全に記録できませんでした。"; return
+            failure = "中断要求を端末に安全に記録できませんでした。"; return
         }
         Task { await performStop(item) }
     }
 
     @MainActor private func performStop(_ item: ComposerDraftStore.Submission) async {
         guard LAAWorkDrafts.canRepeat(item) else { failure = LAAWorkDrafts.expiredMessage; return }
-        guard let (body, key) = LAAWorkDrafts.request(item) else { failure = "停止要求の記録を読み取れません。"; return }
+        guard let (body, key) = LAAWorkDrafts.request(item) else { failure = "中断要求の記録を読み取れません。"; return }
         stopping = true
         defer { stopping = false }
         do {
-            let _: LAAWorkSession = try await LAAWorkHTTP.write(bridge, path: "/v1/sessions/\(id)/stop", body: body, key: key)
-            if !drafts.finishSubmission(item.id, restoring: false) { failure = "結果を端末に保存できません。停止状態を確認してください。" }
+            let _: LAAWorkSession = try await LAAWorkHTTP.write(bridge, path: "/v1/sessions/\(id)/interrupt", body: body, key: key)
+            if !drafts.finishSubmission(item.id, restoring: false) { failure = "結果を端末に保存できません。中断状態を確認してください。" }
             await refreshSnapshot()
         } catch let error as LAABridgeHTTPError {
             if LAAWorkHTTP.outcomeUnknown(error) { drafts.markSubmissionUnknown(item.id) }
@@ -286,7 +254,7 @@ struct LAAWorkSessionDetail: View {
             notice = explanation
         } catch {
             drafts.markSubmissionUnknown(item.id)
-            notice = "停止要求の結果は未確認です。停止済みとは表示しません。"
+            notice = "中断要求の結果は未確認です。中断済みとは表示しません。"
             await refreshSnapshot()
         }
     }

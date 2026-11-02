@@ -5,6 +5,7 @@ struct LAAWorkHub: View {
     let onRequestSettings: () -> Void
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @StateObject private var drafts = LAAWorkDrafts.makeStore()
     @State private var section: Section = .priority
     @State private var showPairing = false
@@ -61,6 +62,10 @@ struct LAAWorkHub: View {
                 case .skills: LAAWorkCatalogView(kind: .skills).id(section)
                 }
             }
+        }
+        .onChange(of: linkRequest.generation, initial: true) { _, _ in
+            let url = linkRequest.url
+            if url?.host == "work" { section = linkRequest.sessionTarget == nil ? .tasks : .sessions }
         }
         .background(LAAColor.background.ignoresSafeArea())
         .foregroundStyle(LAAColor.text)

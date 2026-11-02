@@ -8,11 +8,14 @@ struct LAAWorkPage<Item: Decodable>: Decodable {
     let total: Int?
 }
 
-struct LAAWorkConversationMessage: Decodable, Identifiable {
+struct LAAWorkConversationMessage: Codable, Identifiable {
     let id: String
     let role: String
     let text: String
     let timestamp: String?
+    var images: [String]? = nil
+    var toolName: String? = nil
+    var toolStatus: String? = nil
 }
 
 struct LAAWorkRoutine: Decodable, Identifiable {
@@ -140,7 +143,7 @@ struct LAAWorkWorkspace: Decodable, Identifiable, Hashable {
     let repoId: String?
 }
 
-struct LAAWorkModel: Decodable, Hashable {
+struct LAAWorkModel: Codable, Hashable {
     let provider: String?
     let model: String?
     let effort: String?
@@ -151,17 +154,17 @@ struct LAAWorkModel: Decodable, Hashable {
     }
 }
 
-struct LAAWorkSession: Decodable, Identifiable, Hashable {
-    struct Cursor: Decodable, Hashable {
+struct LAAWorkSession: Codable, Identifiable, Hashable {
+    struct Cursor: Codable, Hashable {
         let lastSeq: Int
         let oldestSeq: Int
         let cursor: String
     }
-    struct Pending: Decodable, Hashable {
+    struct Pending: Codable, Hashable {
         let count: Int
         let kinds: [String]?
     }
-    struct Observation: Decodable, Hashable {
+    struct Observation: Codable, Hashable {
         let available: Bool
         let code: String?
     }
@@ -194,6 +197,7 @@ struct LAAWorkSession: Decodable, Identifiable, Hashable {
     let mode: String?
     let fast: Bool?
     let worktree: Bool?
+    let delegateSessionId: String?
 
     var isFavorite: Bool { favorite == true }
     var isArchived: Bool { archivedAt != nil }

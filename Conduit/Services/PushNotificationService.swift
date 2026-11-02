@@ -2219,6 +2219,11 @@ final class PushNotificationService: ObservableObject {
                 call: target.call
             )
         }
+        #if LAA_BUILD
+        if target.sessionId.hasPrefix("laa-bridge:"),
+           let url = URL(string: String(target.sessionId.dropFirst("laa-bridge:".count))),
+           LAAWorkLinkRequest.shared.open(url) { return }
+        #endif
         retainRelayGatewayID(for: target)
         if case .verified = evaluation { persistEncryptedGatewayID(for: target) }
         route(target)
