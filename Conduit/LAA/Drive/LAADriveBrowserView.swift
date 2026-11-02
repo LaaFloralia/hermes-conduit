@@ -13,6 +13,9 @@ struct LAADriveBrowserView: View {
     typealias ShortcutLoader = @MainActor (LAADriveListingItem, Set<String>) async throws -> LAADriveListingItem
 
     let revision: Int
+    let refreshID: Int
+    let cached: (LAADriveBrowseQuery) -> LAADriveListingPage?
+    let upload: (String?) -> Void
     let load: Loader
     let loadThumbnail: ThumbnailLoader
     let resolveShortcut: ShortcutLoader
@@ -20,11 +23,12 @@ struct LAADriveBrowserView: View {
     let open: (LAADriveListingItem, [LAADriveItem]) -> Void
     let saveFolder: (LAADriveListingItem) -> Void
 
-    init(revision: Int, load: @escaping Loader, loadThumbnail: @escaping ThumbnailLoader,
+    init(revision: Int, refreshID: Int = 0, cached: @escaping (LAADriveBrowseQuery) -> LAADriveListingPage? = { _ in nil }, upload: @escaping (String?) -> Void = { _ in }, load: @escaping Loader, loadThumbnail: @escaping ThumbnailLoader,
          resolveShortcut: @escaping ShortcutLoader,
          errorMessage: @escaping (Error) -> String, open: @escaping (LAADriveListingItem, [LAADriveItem]) -> Void,
          saveFolder: @escaping (LAADriveListingItem) -> Void = { _ in }) {
-        self.revision = revision
+        self.cached = cached; self.upload = upload
+        self.revision = revision; self.refreshID = refreshID
         self.load = load
         self.loadThumbnail = loadThumbnail
         self.resolveShortcut = resolveShortcut
@@ -50,12 +54,13 @@ struct LAADriveBrowserView: View {
     private enum Layout { case grid, list }
     private struct LoadKey: Equatable {
         let revision: Int
+        let refreshID: Int
         let section: LAADriveBrowseSection
         let folderID: String?
         let search: String
     }
     private var key: LoadKey {
-        .init(revision: revision, section: section, folderID: folders.last?.id, search: search)
+        .init(revision: revision, refreshID: refreshID, section: section, folderID: folders.last?.id, search: search)
     }
     private var columns: [GridItem] {
         dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
@@ -83,7 +88,11 @@ struct LAADriveBrowserView: View {
                     .accessibilityIdentifier("laa.drive.offline.folder")
                 }
             }
-            header
+            HStack {
+                header
+                Button { upload(folders.last?.id) } label: { Image(systemName: "plus") }
+                    .frame(minWidth: 44, minHeight: 44).accessibilityLabel(Text(verbatim: "アップロード"))
+            }
             results
         }
         .tint(LAAColor.link)
@@ -150,7 +159,7 @@ struct LAADriveBrowserView: View {
 
     private var searchScope: String {
         if !folders.isEmpty { return AppLocalization.string("Searching this folder only.") }
-        if section == .my { return AppLocalization.string("Searching the top level of My Drive only.") }
+        if section == .my { return "マイドライブ全体を検索します。" }
         return AppLocalization.string("Searching \(section.title).")
     }
 
@@ -336,8 +345,8 @@ struct LAADriveBrowserView: View {
             try Task.checkCancellation()
             guard key == requested else { return }
             waiting = false
-            await controller.reload(.init(section: requested.section, folderID: requested.folderID,
-                                          search: requested.search), using: load)
+            let query = LAADriveBrowseQuery(section: requested.section, folderID: requested.folderID, search: requested.search)
+            await controller.reload(query, cached: cached(query), using: load)
         } catch is CancellationError {
             if key == requested { waiting = false }
         } catch { waiting = false }
@@ -349,6 +358,7 @@ private extension LAADriveBrowseSection {
         switch self {
         case .my: return AppLocalization.string("My Drive")
         case .shared: return AppLocalization.string("Shared drives")
+        case .sharedWithMe: return AppLocalization.string("Shared with me")
         case .recent: return AppLocalization.string("Recent")
         case .starred: return AppLocalization.string("Starred")
         }

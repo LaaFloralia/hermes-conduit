@@ -11,6 +11,9 @@ struct LAAAssetsView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     let onRequestSettings: () -> Void
+    @State private var showUpload = false
+    @State private var uploadFolderID: String?
+    @State private var driveRevision = 0
     @State private var studioSelected = false
     private let initialStudioSection: Int
     @State private var showPairing = false
@@ -47,7 +50,9 @@ struct LAAAssetsView: View {
                         } else if let folderMessage {
                             Text(verbatim: folderMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                         }
-                        LAADriveBrowserView(revision: bridge.revision, load: { query in
+                        LAADriveBrowserView(revision: bridge.revision, refreshID: driveRevision, cached: { query in
+                            LAADriveData.cachedListing(query, bridge: bridge)
+                        }, upload: { folderID in uploadFolderID = folderID; showUpload = true }, load: { query in
                             try await LAADriveData.listingPage(query, bridge: bridge)
                         }, loadThumbnail: { entry in
                             try await thumbnail(entry)
@@ -77,6 +82,7 @@ struct LAAAssetsView: View {
             ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
         }
         .tint(LAAColor.link)
+        .sheet(isPresented: $showUpload) { LAADriveUpload(folderId: uploadFolderID) { driveRevision &+= 1 }.environmentObject(bridge) }
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .navigationDestination(item: $selected) { selected in
             LAADriveDetailView(item: selected.entry.item, webViewURL: selected.entry.safeWebViewURL, images: selected.images)

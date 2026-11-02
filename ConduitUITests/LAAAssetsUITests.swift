@@ -173,7 +173,7 @@ final class LAAAssetsUITests: XCTestCase {
         XCTAssertTrue(empty.staticTexts["No items found."].waitForExistence(timeout: 30))
         empty.terminate()
         let unconfigured = launch("unconfigured")
-        XCTAssertTrue(unconfigured.staticTexts["Google Drive for desktop is unavailable on the Mac."].waitForExistence(timeout: 30))
+        XCTAssertTrue(unconfigured.staticTexts["Google Driveは未連携です。Mac側のGoogle接続を確認してください。"].waitForExistence(timeout: 30))
         unconfigured.terminate()
         let scopeDenied = launch("scopeDenied")
         XCTAssertTrue(scopeDenied.staticTexts["This device needs the media:read permission."].waitForExistence(timeout: 30))

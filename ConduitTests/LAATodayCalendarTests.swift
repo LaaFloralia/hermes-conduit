@@ -117,16 +117,50 @@ final class LAATodayCalendarTests: XCTestCase {
         XCTAssertNotNil(state.errorMessage)
     }
 
+    func testCalendarModesUseLocalDayBoundariesAcrossDST() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 12))!
+        for mode in LAACalendarMode.allCases {
+            let range = mode.range(containing: date, calendar: calendar)
+            XCTAssertEqual(calendar.component(.hour, from: range.start), 0)
+            XCTAssertEqual(calendar.component(.hour, from: range.end), 0)
+            XCTAssertTrue(range.contains(date))
+            let days = calendar.dateComponents([.day], from: range.start, to: range.end).day
+            XCTAssertEqual(days, mode == .month ? 42 : mode == .day ? 1 : 7)
+        }
+    }
+
+    func testIdenticalEventIDsInDifferentCalendarsRemainDistinctAndKeepDetail() throws {
+        let source = #"{"items":[{"id":"same","calendarId":"one+team@example.com","title":"Meeting","start":"2026-11-02T01:00:00Z","end":"2026-11-02T02:00:00Z","allDay":false,"description":"Notes","etag":"version","attendees":[{"email":"guest@example.com","name":"Guest","response":"accepted"}],"attachments":[{"title":"Brief","url":"https://example.com/brief"}],"recurrence":["RRULE:FREQ=WEEKLY"]},{"id":"same","calendarId":"two@example.com","title":"Other","start":"2026-11-02T01:00:00Z","end":"2026-11-02T02:00:00Z","allDay":false}]}"#
+        let decoded = try JSONDecoder().decode(LAACalendarResponse.self, from: Data(source.utf8))
+        let values = try decoded.items.map { try $0.value() }
+        XCTAssertEqual(Set(values.map(\.id)).count, 2)
+        let stored = try JSONDecoder().decode([LAACalendarEvent].self, from: JSONEncoder().encode(values))
+        XCTAssertEqual(stored.first?.calendarId, "one+team@example.com")
+        XCTAssertEqual(stored.first?.notes, "Notes")
+        XCTAssertEqual(stored.first?.attendees?.first?.response, "accepted")
+        XCTAssertEqual(stored.first?.attachments?.first?.title, "Brief")
+        XCTAssertEqual(stored.first?.recurrence, ["RRULE:FREQ=WEEKLY"])
+    }
+
     @MainActor func testTodaySnapshotsAtOwnerSize() throws {
         let today = Calendar.current.startOfDay(for: Date())
-        let samples = [
+        var samples = [
             LAACalendarEvent(id: "meeting", title: "制作の打合せ", start: today.addingTimeInterval(10 * 3600),
                 end: today.addingTimeInterval(11 * 3600), allDay: false, location: "オンライン"),
             LAACalendarEvent(id: "visit", title: "展示会", start: today.addingTimeInterval(86400),
                 end: today.addingTimeInterval(2 * 86400), allDay: true, location: "東京")
         ]
+        samples[0].googleID = "meeting"; samples[0].calendarId = "work@example.com"; samples[0].etag = "version"
+        samples[0].notes = "新しい展示と制作の進め方を確認します。"
+        samples[0].meetingLink = "https://meet.google.com/abc-defg-hij"
+        samples[0].attendees = [.init(email: "guest@example.com", name: "参加者", response: "accepted")]
+        let calendars = [LAAGoogleCalendar(id: "work@example.com", title: "仕事", color: "#1a73e8", selected: true, writable: true)]
+        let month = LAATodayCalendar(eventsForTesting: samples, calendarsForTesting: calendars); month.mode = .month
         let states: [(String, LAATodayCalendar)] = [
-            ("events", LAATodayCalendar(eventsForTesting: samples)),
+            ("month", month),
+            ("events", LAATodayCalendar(eventsForTesting: samples, calendarsForTesting: calendars)),
             ("empty", LAATodayCalendar(eventsForTesting: [])),
             ("not-configured", LAATodayCalendar(errorForTesting: "Googleカレンダーは未連携です。Mac側の連携設定が必要です。")),
             ("offline", LAATodayCalendar(errorForTesting: "予定を取得できませんでした。Macとネットワークの接続を確認し、再読み込みしてください。"))
@@ -135,9 +169,12 @@ final class LAATodayCalendarTests: XCTestCase {
         let previous = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
         let scene = try XCTUnwrap(previous?.windowScene ?? scenes.first)
         let insets = previous?.safeAreaInsets ?? .zero
-        for (name, state) in states {
+        var views = states.map { ($0.0, AnyView(LAATodayView(snapshot: $0.1))) }
+        views += [("detail", AnyView(LAACalendarDetail(event: samples[0], calendars: calendars, changed: {}))),
+                  ("editor", AnyView(LAACalendarEditor(event: samples[0], calendars: calendars, date: today, saved: {})))]
+        for (name, view) in views {
             for style in [UIUserInterfaceStyle.light, .dark] {
-                let host = UIHostingController(rootView: NavigationStack { LAATodayView(snapshot: state) }
+                let host = UIHostingController(rootView: NavigationStack { view }
                     .environmentObject(LAABridgeSession(statusForTesting: .paired))
                     .environment(\.locale, Locale(identifier: "ja_JP"))
                     .preferredColorScheme(style == .dark ? .dark : .light))

@@ -1,6 +1,7 @@
 #if LAA_BUILD
 import SwiftUI
 import PDFKit
+import QuickLook
 import UIKit
 
 extension LAACopy {
@@ -57,7 +58,9 @@ enum LAADrivePresentation {
             }
         }
         if let error = error as? LAABridgeHTTPError {
-            if error.code == "drive_not_configured" { return LAACopy.Assets.configureDrive }
+            if ["drive_not_configured", "calendar_not_configured"].contains(error.code ?? "") { return "Google Driveは未連携です。Mac側のGoogle接続を確認してください。" }
+            if error.code == "drive_auth_required" { return "Googleの認証が切れています。Mac側で再連携してください。" }
+            if error.code == "drive_access_denied" { return "Google Driveのアクセス権限を確認してください。" }
             if error.code == "drive_permission_required" { return AppLocalization.string("The Mac has not allowed the Bridge to read Google Drive.") }
             if error.code == "drive_access_timeout" { return AppLocalization.string("Google Drive on the Mac did not respond. Try again.") }
             if error.code == "insufficient_scope" { return LAACopy.Assets.scope }
@@ -89,7 +92,7 @@ enum LAADrivePresentation {
         if item.isWorkspace && item.exportFormats?.contains("application/pdf") != true { return LAACopy.Drive.workspace }
         guard let downloadable = item.downloadable else { return LAACopy.Drive.downloadUnknown }
         if !downloadable { return LAACopy.Drive.notDownloadable }
-        if !(item.isMedia || item.isImage || item.isPDF || item.isWorkspace) { return LAACopy.Drive.unsupported }
+        if !(item.isMedia || item.isImage || item.isPDF || item.isWorkspace || item.isDocument) { return LAACopy.Drive.unsupported }
         return nil
     }
 }
@@ -236,6 +239,8 @@ struct LAADrivePreviewView: View {
     @State private var error: String?
     @State private var loading = true
     @State private var retry = 0
+    @State private var localFile: LAADriveShareFile?
+    @State private var showShare = false
 
     var body: some View {
         Group {
@@ -246,6 +251,7 @@ struct LAADrivePreviewView: View {
             } else if let data {
                 if item.isImage, let image = UIImage(data: data) { LAADriveZoomImage(image: image) }
                 else if (item.isPDF || item.isWorkspace), let document = PDFDocument(data: data) { LAADrivePDF(document: document) }
+                else if item.isDocument, let localFile { LAADriveQuickLook(url: localFile.url) }
                 else { Text(verbatim: LAACopy.Drive.invalidPreview).foregroundStyle(LAAColor.attention) }
             } else if let error {
                 VStack(spacing: LAASpacing.x4) {
@@ -259,20 +265,65 @@ struct LAADrivePreviewView: View {
         .tint(LAAColor.link)
         .navigationTitle(Text(verbatim: item.name)).navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .task(id: retry) {
+        .toolbar {
+            if localFile != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showShare = true } label: { Image(systemName: "square.and.arrow.up") }
+                        .accessibilityLabel(Text(verbatim: "共有・ファイルに保存"))
+                }
+            }
+        }
+        .sheet(isPresented: $showShare) {
+            if let localFile { LAADriveShareSheet(items: [localFile.url], onComplete: { showShare = false }) }
+        }
+        .onDisappear { releaseLocal() }
+        .task(id: "\(retry):\(bridge.revision)") {
             guard !item.isMedia, !(item.isImage && images.count > 1) else { return }
-            loading = true; error = nil
+            loading = true; error = nil; data = nil; releaseLocal()
+            let revision = bridge.revision
             do {
                 if item.isWorkspace {
                     data = try await LAADriveData.exportPDF(item, bridge: bridge, expectedVersion: item.version).data
                 } else {
                     data = try await LAADriveContent.preview(item, bridge: bridge)
                 }
+                try Task.checkCancellation()
+                guard revision == bridge.revision else { throw CancellationError() }
+                if let data {
+                    let prepared = try await LAADriveOfflineOperations.shared.shares.prepare(data: data,
+                        name: item.isWorkspace ? item.name + ".pdf" : item.name, mimeType: item.isWorkspace ? "application/pdf" : item.mimeType)
+                    guard revision == bridge.revision, !Task.isCancelled else {
+                        try? await LAADriveOfflineOperations.shared.shares.release(prepared.id); throw CancellationError()
+                    }
+                    localFile = prepared
+                }
             }
             catch is CancellationError { }
             catch { self.error = LAADrivePresentation.message(error) }
             loading = false
         }
+    }
+    private func releaseLocal() {
+        guard let localFile else { return }
+        self.localFile = nil
+        Task { try? await LAADriveOfflineOperations.shared.shares.release(localFile.id) }
+    }
+}
+
+private struct LAADriveQuickLook: UIViewControllerRepresentable {
+    let url: URL
+    func makeCoordinator() -> Coordinator { Coordinator(url) }
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController(); controller.dataSource = context.coordinator; return controller
+    }
+    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
+        context.coordinator.url = url; controller.reloadData()
+    }
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var url: URL
+        init(_ url: URL) { self.url = url }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> any QLPreviewItem { url as NSURL }
     }
 }
 

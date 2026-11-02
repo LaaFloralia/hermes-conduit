@@ -36,7 +36,9 @@
 | `tasks:read`, `tasks:write` | Linearの許可対象のみ。ownerとexecutorを区別し、担当設定ではworkerを起動しない |
 | `brain:read`, `brain:write` | 許可vault・対象範囲のみ。現行のBrain検索・禁止領域とdailyの制約を守る。writeは調停実証まで無効 |
 | `brain:create` | Brainへの新規ノート作成のみ。既存ノートの変更・削除は含めない。既定付与に含めず、端末ごとに付与する |
-| `calendar:read` | 既存のGoogle Calendar認可で予定を読むだけ。書き込み・参加者・説明・OAuthトークンは返さない。既定付与に含めない |
+| `calendar:read` | Google Calendarの一覧と予定詳細（参加者・説明・添付を含む）。既定付与に含めずOAuthトークンは返さない |
+| `calendar:write` | 予定の作成・条件付き編集・削除。端末ごとのoperator opt-in |
+| `media:write` | Driveへの写真・ファイルの分割アップロード。端末ごとのoperator opt-in |
 | `media:read`, `photos:select` | Driveの既存権限内の読取、Pickerで本人が選択した写真のみ。Google資格情報を渡さない |
 | `usage:read` | 選定済み集計とMac状態のみ。認証情報・生の請求データを返さない |
 | `archives:read`, `archives:create`, `archives:restore` | 許可対象のsnapshot／確認／隔離復元。runtime上書きや削除は別判断、初版は自動削除しない |
@@ -63,7 +65,7 @@ JSONはUTF-8、時刻はUTC ISO 8601。成功は `{"data":...,"requestId":"..."}
 | `GET /v1/sessions/{id}/events`; `GET /v1/sessions/{id}/artifacts` | cursor → event一覧／`{items:[{id,name,type}]}`、同上 | 認可・重複・欠落・ファイル範囲外・再接続を確認 |
 | `GET /v1/tasks`; `GET /v1/tasks/{id}` | `{title,owner,executor,status,dependencies,sourceId,version}` → task、Linear。読取専用 | 版競合・担当変更で自動起動しない・Linearに読戻し |
 | `GET/POST /v1/linear-owner-tasks`; `GET/PATCH /v1/linear-owner-tasks/{id}`; `POST /{id}/archive`・`/restore` | `{id,title,description,dueDate,priority}` → 社長本人のLinear課題。PATCH・archive/restoreは `If-Match` 必須 | 削除は確認後にissueArchive、戻すはissueUnarchive。担当・状態を維持し、ゴミ箱を除く。`?archived=only` でアーカイブ一覧 |
-| `GET /v1/calendar/events?start=&end=` | RFC3339の8日以内 → `{items:[{id,title,start,end,allDay,location}],source,start,end}`、Google Calendar | `calendar:read` 必須。設定・認可・API失敗は503で、空の予定にしない |
+| `GET /v1/calendar/events?start=&end=` | RFC3339の42日以内、任意の複数calendarId → `{items:[予定詳細],source,start,end}`、Google Calendar | `calendar:read` 必須。設定・認可・API失敗は503で、空の予定にしない |
 | `GET /v1/skills` | → `{items:[{id,name,description,source}]}`、Macのスキル定義 | frontmatterの2項目だけ。本文は返さない。読取失敗は503で、空一覧にしない |
 | `GET /v1/routines` | Console `jobs` の名前、予定、直近実行と結果を読み取り専用で返す | 未観測はnull、読取失敗は503。既存 `sessions:read` を使用 |
 | `GET /v1/brain/files`; `GET /v1/brain/files/{id}`; `GET /v1/brain/search?q=...` | → `{id,content,contentHash,version}` または一覧、Brain | 許可領域・未知Markdown・画像参照保持、path traversal拒否 |
@@ -118,13 +120,13 @@ Syncthing（sendreceive）、Git同期、Obsidian、iPhone側の未確認writer�
 - 端末認証：要求ごとの署名・nonce台帳は採らない。Tailscale Serve のTLS、tailnetのACL（社長の端末のみ）、端末ごとの256bitランダムトークン（iOS Keychain、ThisDeviceOnly）、変更系の `Idempotency-Key` で足りる。単一利用者の閉じたtailnetで、署名の追加コストに見合う脅威がないため。トークンはBridgeにhashだけを保存する。
 - 登録と失効：Mac側のCLI（`laa-bridge pair` / `revoke`）が10分有効・1回限りのペアリングコードを出し、アプリで入力またはQR読取する。CLIはエージェントも実行してよく、コードはチャット・ログへ出さず、Mac画面かアプリへの直接表示だけにする。
 - 初期scope：社長の端末には `sessions:*`、`tasks:*`、`brain:read`、`media:read`、`photos:select`、`usage:read`、`archives:read`、`archives:create` を付与する。`brain:write`、`gui:operate`、`archives:restore`、`devices:admin` は各ゲートを満たすまで付与しない。
-- 追加付与（2026-11-02）：`calendar:read` と `brain:create` は既定に含めない。有効な端末へ `laa-bridge grant <device-id|prefix> --scopes <comma-list> --reason <理由>` で付与する。付与できるのはこの2つだけで、`brain:write`・`gui:operate`・`archives:restore`・`devices:admin` やscope groupを含む要求は、一部だけを適用せず全体を拒否する。失効端末は拒否し、既に付与済みなら `alreadyGranted` を返して監査記録を重複させない。監査は端末ごとの `scopeGrants` に理由・時刻・実行UID・対象scopeを残す。同一UIDで変更できるため、改ざん不能な監査ではない。
+- 追加付与（2026-11-02）：`calendar:read` と `brain:create` は既定に含めない。有効な端末へ `laa-bridge grant <device-id|prefix> --scopes <comma-list> --reason <理由>` で付与する。Google追加分の`calendar:write`・`media:write`も個別opt-inとし、`brain:write`・`gui:operate`・`archives:restore`・`devices:admin` やscope groupを含む要求は、一部だけを適用せず全体を拒否する。失効端末は拒否し、既に付与済みなら `alreadyGranted` を返して監査記録を重複させない。監査は端末ごとの `scopeGrants` に理由・時刻・実行UID・対象scopeを残す。同一UIDで変更できるため、改ざん不能な監査ではない。
 - Studio受付（2026-10-31、タスク34）：新規ペアリングの初期scopeには含めず、ペアリング済みの有効な端末へ管理者が `laa-bridge grant-studio <device-id> --reason <理由>` で `studio:read`（一覧・1件・資材・v2 catalog）と `studio:request`（依頼作成・回答・停止・v2講評）を付与する。承認も同じ端末権限であり、別の認証要素ではない。既存端末は再ペアリングしない。Bridgeは同じMacのStudio受付契約v1・v2にUnixソケットで接続する。v2はsnapshotの `contract >= 2` のとき表示する。契約と実装の稼働は別に確認する。
 - Studio依頼の `studio_work_busy` は保存なしの契約により台帳の予約を解除し、同じ依頼ID・本文・keyの明示的な再送を許可する。その要求内でStudioを起動した直後だけ、1.5秒後に1回自動再送する。起動間隔は30秒以上。
 - 保持：idempotency台帳は7日、event cursorは24時間。期限切れのcursorは410を返し、アプリは全件を再取得する。
 - Project共通指示（2026-10-29、タスク13b）：Projectごとの指示本文はBridgeのstate（0600、既存state dir配下）に保存する。`instructionVersion`（整数）、`instructionHash`（本文のSHA-256）、ETagを持ち、直近10版（本文・hash・版・時刻）を比較・復元用に保持する。`GET /v1/projects/{id}` は `instructions`（本文）と版・hashを返し、一覧は本文を省略する。`POST` は `instructions` を受け付け、`PATCH` は `If-Match` で置換する（欠落428、不一致412では現在の版・hash・ETag・本文を返し、自動マージしない）。`GET /v1/projects/{id}/instructions/versions` は保持中の版を本文つきで返す。指示は**本文のみ**で、`instructionRef`（外部ファイル参照）は受け付けない（400 `instruction_ref_unsupported`）。Bridgeが任意のファイルを読む経路は作らず、AGENTS.md／PROJECT-RULES.mdは各エージェントが自分で読む。判断前に書かれた旧レコードがrefを持つ場合はメタデータとして返すだけで、読まず・適用せず、`PATCH {instructionRef:null}`または本文の保存で消える。`POST /v1/sessions` に `projectId` を渡すと、委譲プロンプトを区切った指示ブロック（版とhashをヘッダ行に含む）＋利用者のプロンプトとして構成し、セッションに `projectId`・`instructionVersion`・`instructionHash` を記録、requestIdの束縛にも含める（指示が変わった再送は409）。作成時に `instructions: null` または `applyProjectInstructions: false` を明示すれば適用しない（社長の明示指定を優先）。イベントは版とhashのみで本文を含めない。委譲先には会話名として `title`（Project名｜セッション名、Projectなしはセッション名）を渡し、requestIdの同一性判定には含めない。旧来の「本文を保存せずhashだけ」「指示は外部ファイル参照でよい」の記述はこの項で置き換える。Projectの資料（2026-11-02）：`POST /v1/projects/{id}/files` で受け取ったファイル（5 MiB・20件まで）をstate dir配下の `project-files/` に0600で保存し、そのProjectのセッションには資料のパスだけを区切ったブロックで渡す（本文はプロンプトへ入れず、エージェントが必要な時に読む）。端末へはMacのパスを返さない。
 - 社長のLinearタスク（2026-11-02）：`/v1/linear-owner-tasks` は本人担当・委譲なしの課題だけを扱う。team（BUS）・owner・Todoはアカウントから解決する。作成はクライアント生成UUID、PATCHとarchive/restoreは `If-Match` 必須。画面の削除は確認後の `issueArchive`、戻すは `issueUnarchive`。担当・状態を変えず、旧DELETE・completed指定は受け付けない。`includeArchived` の結果は `trashed` を除き、`?archived=only` でアーカイブを取得する。書込みの `success:true`、または本人担当・ゴミ箱以外の再読取が目的のアーカイブ状態と一致した場合だけ成功とする。`null`・ゴミ箱・壊れた応答を成功根拠にしない。
-- 予定・スキル・定期実行（2026-11-02）：`GET /v1/calendar/events` は `calendar:read`、`GET /v1/skills` と `GET /v1/routines` は `sessions:read` を要求する読取専用の端点。Calendarの範囲は8日以内で、設定・認可・APIの失敗は空の予定にせず503を返す。Skillsはfrontmatterの `name`・`description` に、名前別の分類・日本語要約・詳細を加える。未登録は「その他」と元の説明。SKILL.md本文は返さず保存しない。RoutinesはConsoleの観測値と構造化された `triggerKind` を投影する。定期実行を通常一覧、常駐・手動・未確認を折りたたみに表示し、未観測はnull、読取失敗は503とする。
+- 予定・スキル・定期実行（2026-11-02）：`GET /v1/calendar/events` は `calendar:read`、`GET /v1/skills` と `GET /v1/routines` は `sessions:read` を要求する読取専用の端点。Calendarの範囲は42日以内で、設定・認可・APIの失敗は空の予定にせず503を返す。Skillsはfrontmatterの `name`・`description` に、名前別の分類・日本語要約・詳細を加える。未登録は「その他」と元の説明。SKILL.md本文は返さず保存しない。RoutinesはConsoleの観測値と構造化された `triggerKind` を投影する。定期実行を通常一覧、常駐・手動・未確認を折りたたみに表示し、未観測はnull、読取失敗は503とする。
 - 未決の3（GUI）と4（Brain書込み）は本書の案どおり、実証まで提供しない。5（Usage）はタスク05の結果で決める。
 
 
@@ -135,3 +137,13 @@ Paseoセッションのアプリ置換（2026-11-02）:
 - `POST /v1/sessions/{id}/interrupt`は現在の手番を中断し、同じ会話への追加指示を許す。従来の`stop`の契約は保つ。`GET .../decision`が発行した5分ticketとpending hashを`POST .../reply`で照合し、回答の消化を再読取する。
 - 追加指示は安定したmessage IDとsteerを使う。画像は最大4枚・合計4 MiBをstate内の0600ファイルへ保存する。既存Paseo画像の参照は公開履歴にないため、表示はLAAから送った分に限る。
 - `notifyOwner`は既存Hermesプラグインの暗号化配送を使う。未達は永続化して30秒ごとに再試行し、同時配送は2件までとする。実通知・実会話書込・実機性能は親が最終確認する。
+
+### Google API追加（BUS-338・BUS-318）
+
+Google接続は `bridge/src/google/connection.mjs` に共通化し、既存helperのJSON形式を維持する。追加OAuth scopeは `drive.readonly`、`drive.file`、`calendar.events`、`calendar.calendarlist.readonly`（すべて`https://www.googleapis.com/auth/`配下）。親が同意と端末の追加grantを行うまで書込みは使えない。
+
+- `GET /v1/calendar/calendars`、`GET /v1/calendar/events/<id>?calendarId=`: `calendar:read`。
+- `POST /v1/calendar/events`、`PATCH|DELETE /v1/calendar/events/<id>`: `calendar:write`とIdempotency-Key。編集・削除はbodyのetag必須。Googleの条件付き更新失敗は409。参加者への通知を伴う保存・削除はアプリで確認する。
+- `POST /v1/drive/uploads`: `media:write`とIdempotency-Key。name/mimeType/sizeと任意folderIdを渡す。
+- `PUT /v1/drive/uploads/<opaque-id>/chunks/<offset>`: 同scopeとIdempotency-Key、最大4MiBのバイナリ。Googleのresumable URLやtokenを端末へ渡さず端末IDに束縛する。再起動で未完了uploadは失効する。任意フォルダへの追加にはGoogle側でdrive.fileの対象となる権限が必要で、拒否時はマイドライブへ保存する。
+- Calendar通知は`LAA_GOOGLE_REMINDERS_ENABLED=1`で有効化する。Googleのpopup設定に従い、共通notifyOwnerへ送る。deepLinkは`laa://today/events/<id>?calendar=<calendarId>`。親が通知経路を統合し、本人の端末で到着と遷移を確かめる。

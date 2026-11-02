@@ -19,6 +19,17 @@ final class LAAAssetsTests: XCTestCase {
         XCTAssertNil(LAADriveData.path(query: String(repeating: "🪴", count: 101), folderID: nil, cursor: nil))
     }
 
+    func testProtectedMetadataFormatKeepsFlatItemsAndShortcutTargets() throws {
+        let source = #"{"items":[{"id":"shortcut01","name":"Project","mimeType":"application/vnd.google-apps.shortcut","kind":"shortcut","version":"123","shortcut":{"targetId":"folder01","targetMimeType":"application/vnd.google-apps.folder","requiresResourceKey":false},"webViewLink":"https://drive.google.com/file/d/shortcut01/view","hasThumbnail":true}],"nextCursor":"opaque+cursor","incompleteSearch":false}"#
+        let page = try JSONDecoder().decode(LAADriveListingPage.self, from: Data(source.utf8))
+        let stored = try JSONDecoder().decode(LAADriveListingPage.self, from: JSONEncoder().encode(page))
+        XCTAssertEqual(stored.items.first?.item.id, "shortcut01")
+        XCTAssertEqual(stored.items.first?.version, "123")
+        XCTAssertEqual(stored.items.first?.shortcut?.targetID(visited: []), "folder01")
+        XCTAssertEqual(stored.items.first?.safeWebViewURL?.host, "drive.google.com")
+        XCTAssertEqual(stored.nextCursor, "opaque+cursor")
+    }
+
     func testFiltersUseServerKindAndMimeWithoutDroppingUnknownFiles() throws {
         let folder = try item("Projects", mime: "application/vnd.google-apps.folder", kind: "folder")
         let image = try item("Portrait", mime: "image/png", kind: "file")
@@ -28,6 +39,15 @@ final class LAAAssetsTests: XCTestCase {
         XCTAssertTrue(LAADriveFilter.images.contains(image))
         XCTAssertFalse(LAADriveFilter.documents.contains(unknown))
         XCTAssertTrue([folder, image, unknown].allSatisfy(LAADriveFilter.all.contains))
+    }
+
+    func testOfficeFilesAreEligibleForNativePreview() throws {
+        for mime in ["application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] {
+            let data = try JSONSerialization.data(withJSONObject: ["id": "office01", "name": "Office", "mimeType": mime, "kind": "file", "downloadable": true])
+            let value = try JSONDecoder().decode(LAADriveItem.self, from: data)
+            XCTAssertTrue(value.isDocument)
+            XCTAssertNil(LAADrivePresentation.reason(value))
+        }
     }
 
     func testMetadataAndUnsupportedReasonsUseOnlyReturnedValues() throws {

@@ -524,18 +524,15 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - The App Shortcut “今日のデイリーノートを開く” opens `daily journal/YYYY-MM-DD.md`
   for editing, creating an empty note exclusively if absent. A pending request
   waits for local folder access and for any open editor to close.
-- Assets Drive uses the paired `media:read` Bridge for My Drive, shared drives,
-  folder navigation, search, paging and bounded thumbnails. Recent and starred
-  are unavailable from the desktop mount. Search scope and incomplete results
-  are shown. Images, PDFs and audio/video have previews; Google-native documents
-  open through validated web links. Images page through the already-loaded list. The native
-  player keeps authenticated bounded Range requests and offers PiP/AirPlay
-  controls; resume positions are scoped to pairing and content version. An
-  explicit offline save checks permission and version, stores a protected
-  app-private copy, and rechecks access when online. Folder saves report their
-  estimate and partial results. Sharing uses a selected temporary copy or a
-  validated Google link. Inspiration remains disabled, and mount or macOS
-  access failures remain distinct.
+- Assets Drive uses the paired `media:read` Bridge and Google Drive API for My Drive,
+  shared drives, shared items, recent, starred, full-text search, folders, paging and
+  bounded thumbnails. Protected local metadata appears before refresh. Images,
+  PDFs, Office files (Quick Look), exported Google documents and audio/video have
+  previews. Existing Range playback, PiP/AirPlay controls, version-scoped resume,
+  offline copies and sharing remain in use. Photos/files upload through bounded
+  resumable chunks and opt-in `media:write`; no device receives write access by
+  default. Unknown upload outcomes ask for reconciliation before retry.
+  Inspiration remains disabled. Google consent is an operator prerequisite.
 - Assets Studio lists works and requests, preserves unsent or uncertain drafts,
   and supports typed approvals and stopping through the scoped Bridge. Studio
   remains the executor; media and Drive delivery are linked from the work.
@@ -594,7 +591,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-11-02, laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests).
+**Checked:** 2026-11-02, laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 
@@ -3867,19 +3864,22 @@ and rollback instructions · the upstream App Store build
 **Checked:** 2026-11-02, based on a2726666 plus the Paseo replacement changes; physical iPhone verification pending.
 ## LAA Today and calendar widget
 
-**Siblings:** Google Calendar in Today · small next-event widget · Brain entry point.
+**Siblings:** Google Calendar in Today · small next-event widget · calendar notifications and deep links · Drive's shared Google connection · Brain entry point.
 
 **Code**
-- Today and Google Calendar: `Conduit/LAA/Today/LAATodayView.swift`, `Conduit/LAA/Today/LAATodayCalendar.swift`.
-- Widget: `ConduitWidgets/LAA/LAANextEventWidget.swift`.
+- Today, calendar selection, day/week/month/agenda, detail and editor: `Conduit/LAA/Today/`.
+- Protected pairing-specific metadata: `Conduit/LAA/Google/LAAGoogleCache.swift`.
+- Widget snapshot: `Shared/Widgets/LAACalendarSnapshot.swift`, `ConduitWidgets/LAA/LAANextEventWidget.swift`.
+- Bridge: `bridge/src/google/connection.mjs`, `bridge/src/calendar/`, `bridge/src/routes/calendar.mjs`, `bridge/test/calendar.test.mjs`, `bridge/test/google.test.mjs`.
 - Navigation: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Today/LAAWorkHub.swift`.
 
 **Rulings**
-- Today reads seven local calendar days through the authenticated Mac Bridge (`GET /v1/calendar/events`, opt-in `calendar:read` scope). It shows times, titles and locations, expands recurring events and preserves all-day date boundaries. Open tasks was removed; tasks live in Work.
-- Google OAuth provisioning is an operator prerequisite, not performed by the app. Missing configuration, expired authorization, missing scope and network failures remain visible errors rather than empty calendars. The widget uses the latest Google snapshot from Today, expires it after one hour and asks to open Today; it never reads EventKit.
-- Bridge implementation/tests: `bridge/src/calendar/google.mjs`, `bridge/src/routes/calendar.mjs`, `bridge/test/calendar.test.mjs`. Calendar model/widget snapshot: `Shared/Widgets/LAACalendarSnapshot.swift`.
+- Calendar reads require opt-in `calendar:read`; creating, editing and deleting require separate opt-in `calendar:write`. Both remain outside default enrollment. The app confirms writes and attendee notifications; edits/deletes use Google etags and Bridge idempotency. Expanded recurring instances and whole-series edits are separate operations.
+- Calendar list supplies colours, access roles, selection and Google default reminders. Read ranges cover at most 42 days; date-only end dates remain exclusive. Details include location/map, meeting link, attendees, notes and attachments. The widget retains its one-hour freshness limit and is refreshed only for a range containing today.
+- Google credentials use one runtime helper and in-memory token for Drive and Calendar. The helper format is unchanged; OAuth tokens never reach the phone, URLs or logs. Consent and device grants remain operator actions.
+- Saved metadata appears before network refresh; an error keeps the saved view visibly stale. Unpairing clears the displayed calendar and widget snapshot. Notification polling is opt-in (`LAA_GOOGLE_REMINDERS_ENABLED=1`) and calls the shared `notifyOwner`; Google email reminders remain with Google. Links use `laa://today/events/<eventID>?calendar=<calendarID>`.
 
 **Open gaps**
-- Actual Google reads require operator-provisioned OAuth credentials and the device calendar scope; neither is configured by this change. The direct daily-note destination remains pending. WidgetKit timing and Today refresh need real-device confirmation.
+- Parent must complete additional Google consent, device write grants and notification setup. Real Google reads/writes, notification delivery/tap, WidgetKit timing, PiP/AirPlay and one-second launch on the physical iPhone remain unverified. Raw Google recurrence rules support custom cases; the editor's presets cover daily/weekly/monthly/yearly. The direct daily-note destination remains pending.
 
-**Checked:** 2026-11-02, based on 9f581505. LAA Debug build, 12 calendar unit/snapshot tests, two Today UI tests, 15 Bridge/auth/HTTP tests and translation coverage passed. Owner-size light/dark fixtures verified; real Google OAuth setup and device verification remain pending.
+**Checked:** 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 416 Bridge tests passed; Debug build exited 0. Owner-size visual verification is pending. Real-device acceptance remains pending.
