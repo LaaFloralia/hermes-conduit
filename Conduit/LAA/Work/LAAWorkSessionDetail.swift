@@ -46,7 +46,7 @@ struct LAAWorkSessionDetail: View {
                                 Button(LAACopy.WorkTab.reconnect) { observationEpoch += 1 }
                             }.workCard()
                         }
-                        if session.needsDecision { LAAWorkSessionDecision(sessionID: id, drafts: drafts) { observationEpoch += 1 } }
+                        if session.needsDecision { LAAWorkSessionDecision(sessionID: id, drafts: drafts) { observationEpoch += 1 }.id("decision-start") }
                         conversation
                         Color.clear.frame(height: 1).id("conversation-end")
                             .onAppear { followsConversation = true }
@@ -65,8 +65,11 @@ struct LAAWorkSessionDetail: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .refreshable { await refreshSnapshot() }
+            .onChange(of: session?.needsDecision) { _, waiting in
+                if waiting == true { scroll.scrollTo("decision-start", anchor: .top) }
+            }
             .onChange(of: messages.last?.text) { _, _ in
-                if followsConversation { scroll.scrollTo("conversation-end", anchor: .bottom) }
+                if followsConversation && session?.needsDecision != true { scroll.scrollTo("conversation-end", anchor: .bottom) }
             }
             }
         }
