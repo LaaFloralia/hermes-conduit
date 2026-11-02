@@ -510,14 +510,16 @@ struct MainView: View {
         )
     }
 
-    /// The LAA build's five-tab shell (Conduit/LAA/LAAAppShell.swift), or nil.
-    /// Only the LAA overlay defines `LAA_BUILD`, so the App Store build never
-    /// compiles the shell and this stays nil: its chat shells below are the
-    /// only ones it has. Everything MainView presents for the app as a whole
-    /// (calls, approvals, settings, the model picker) still wraps it.
+    /// The LAA build's shell, or nil: the phone's five tabs
+    /// (Conduit/LAA/LAAAppShell.swift) or, on a Mac, the sidebar window
+    /// (Conduit/LAA/Mac/LAAMacShell.swift). Only the LAA overlay defines
+    /// `LAA_BUILD`, so the App Store build never compiles either shell and
+    /// this stays nil: its chat shells below are the only ones it has.
+    /// Everything MainView presents for the app as a whole (calls, approvals,
+    /// settings, the model picker) still wraps it.
     private var laaShell: AnyView? {
         #if LAA_BUILD
-        AnyView(LAAAppShell(onRequestSettings: presentSettings, employeeCalls: employeeCalls)
+        AnyView(shellSurface
             .environmentObject(laaBridge)
             .modifier(LAACallPresentation(calls: employeeCalls, topBanner: AnyView(callTopBanners),
                                           bottomOverlay: AnyView(presentedConfirmOverlay(inCall: true))))
@@ -534,6 +536,15 @@ struct MainView: View {
             })
         #else
         nil
+        #endif
+    }
+
+    /// The Mac's window keeps the same tabs' screens but not their tab bar.
+    @ViewBuilder private var shellSurface: some View {
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        LAAMacShell(onRequestSettings: presentSettings, employeeCalls: employeeCalls)
+        #elseif LAA_BUILD
+        LAAAppShell(onRequestSettings: presentSettings, employeeCalls: employeeCalls)
         #endif
     }
 
