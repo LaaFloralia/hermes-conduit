@@ -27,7 +27,7 @@ import {
   randomToken,
 } from './auth.mjs';
 import { IDEMPOTENCY_KEY_PATTERN, complete, release, requestFingerprint, reserve } from './idempotency.mjs';
-import { createDriveMountAdapter } from './drive/mount.mjs';
+import { createGoogleDrive } from './drive/google.mjs';
 import { driveRoutes } from './routes/drive.mjs';
 import { BridgeError, badRequest } from './errors.mjs';
 import { businessRoutes } from './routes/index.mjs';
@@ -219,8 +219,9 @@ export function createBridge({
     { method: 'POST', path: '/v1/devices/enroll', auth: false, idempotent: false, handler: enroll },
     { method: 'GET', path: '/v1/me', auth: true, handler: me },
     { method: 'POST', path: '/v1/_test/echo', auth: true, scope: 'sessions:write', idempotent: true, testOnly: true, handler: testEcho },
-    ...driveRoutes({ adapter: drive === undefined ? createDriveMountAdapter() : drive, now, log }),
+    ...driveRoutes({ adapter: drive === undefined ? createGoogleDrive() : drive, now, log }),
     ...businessRoutes({ store, now, options: { ...routeOptions,
+      calendar: { ...routeOptions.calendar, registerCleanup: (fn) => cleanup.push(fn) },
       usage: { ...routeOptions.usage, registerCleanup: (fn) => cleanup.push(fn) } } }),
   ];
 

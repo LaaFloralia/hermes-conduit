@@ -13,7 +13,7 @@
 |---|---|---|
 | 認証 | 端末ごとの 256bit ランダムトークン（`Authorization: Bearer`）。保存は SHA-256 hash のみ | §9。要求ごとの署名・nonce 台帳は採らない |
 | ペアリング | Mac の CLI が10分有効・1回限りのコードを発行。state には hash のみ保存し、コードは端末に一度だけ表示 | §9。コードはログ・引数・チャットへ出さない |
-| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`calendar:read` と `brain:create` は端末ごとのopt-inで、`laa-bridge grant <device-id|prefix> --scopes <calendar:read|brain:create> --reason <理由>` で付与する。この2つ以外（`brain:write` `gui:operate` `archives:restore` `devices:admin`、scope group）はgrantで付与しない。混在要求は全体を拒否し、失効端末も拒否する | §9・BRAIN-WRITE §7 |
+| scope | 初期付与は §9 の集合（`sessions:*` `tasks:*` `brain:read` `media:read` `photos:select` `usage:read` `archives:read` `archives:create`）。Studioの2権限はペアリング後に `grant-studio` で付与する。`calendar:read`・`calendar:write`・`media:write`・`brain:create` は端末ごとのopt-inで、`laa-bridge grant <device-id|prefix> --scopes <calendar:read|calendar:write|media:write|brain:create> --reason <理由>` で付与する。この4つ以外（`brain:write` `gui:operate` `archives:restore` `devices:admin`、scope group）はgrantで付与しない。混在要求は全体を拒否し、失効端末も拒否する | §9・BRAIN-WRITE §7 |
 | 失効 | `laa-bridge revoke` は state を書き換えるだけ。稼働中サーバーは毎リクエスト state を読むため再起動不要で 401 になる | 失効の即時性 |
 | idempotency | 変更系は `Idempotency-Key` 必須。端末ID＋メソッド＋path＋生body の SHA-256 で照合し、同一内容は原則として保存応答を再返却（Studioの作成・操作は現在の状態を取得）、異内容は 409、実行中は 409、7日で失効 | §2・§9。失効後の自動再実行はしない |
 | 失敗時 | state が壊れていたら起動しない（端末・台帳を失ったまま稼働させない） | §7 |
@@ -56,7 +56,7 @@ laa-bridge devices              # id・状態・scope
 laa-bridge revoke dev_ab12…     # 失効（4文字以上の一意な接頭辞でよい）
 laa-bridge revoke dev_ab12… --reason "lost phone"
 laa-bridge grant-studio dev_ab12… --reason 'Owner device' # ペアリング済みの有効な端末にStudioの2 scopeだけ追加
-laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner phone' # この2 scopeだけ追加
+laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner phone' # 指定したopt-in scopeだけ追加
 ```
 
 失効後、そのトークンの要求は `401 token_revoked`。実行中の下流処理は自動停止しないので、必要なら既存の停止制御で別途止める。再登録は新しいコードと新しい端末IDになる。
@@ -88,7 +88,7 @@ laa-bridge grant dev_ab12… --scopes calendar:read,brain:create --reason 'Owner
 | `POST /v1/linear-owner-tasks/{id}/archive`・`/restore` | Bearer + `tasks:write` + `tasks:read` + `Idempotency-Key` + `If-Match` | `{id,archived}`。担当・状態を保ってアーカイブ／復元。旧DELETE・completed指定は受け付けない |
 | `GET /v1/skills` | Bearer + `sessions:read` | `{items:[{id,name,description,source,category,summary,detail,metadataKnown}]}`。分類・日本語説明は名前別メタデータ、未登録は「その他」と元の説明。SKILL.md本文は返さない。読取失敗は503 |
 | `GET /v1/routines` | Bearer + `sessions:read` | Console `jobs` の名前・予定・配信先・状態・直近実行・結果・`triggerKind`。定期実行以外は別枠。未観測はnull、読取失敗は503 |
-| `GET /v1/calendar/events?start=&end=` | Bearer + `calendar:read` | RFC3339の8日以内 → `{items:[{id,title,start,end,allDay,location}],source,start,end}`。設定・認可・API失敗は503で、空の予定にしない |
+| `GET /v1/calendar/events?start=&end=` | Bearer + `calendar:read` | RFC3339の42日以内 → `{items:[予定詳細],source,start,end}`。設定・認可・API失敗は503で、空の予定にしない |
 | `POST /v1/_test/echo` | Bearer + `sessions:write` | テスト専用。`LAA_BRIDGE_TEST_ENDPOINTS=1` のときだけ存在 |
 | `GET /v1/projects` | Bearer + `sessions:read` | `{items,nextCursor}`。本文は含めない。`limit`（1–100、既定50）と `cursor` |
 | `POST /v1/projects` | Bearer + `sessions:write` + `Idempotency-Key` | `{name,nameSource?,instructions?}` → `{id,version,etag,instructions,instructionHash,instructionVersion,…}`（201）。`instructionRef` は 400 `instruction_ref_unsupported` |
@@ -429,34 +429,38 @@ Project 側の残り: 端末をまたぐ「どの端末がどの Project を見�
 
 指示ファイルAPIは独立レビューまで既定で無効（ルート未登録）。アプリの編集画面も `LAA_INSTRUCTION_EDITOR` が未定義のため無効。専用scopeは自動付与しない。対象端末を確認して `laa-bridge grant-instructions <device-id> --reason <reason>` で明示付与する。保存は最終再照合後のatomic renameだが、ロック非参加の外部編集がその間に書いた場合の競合は完全に防げない。バックアップはBridge stateの `instruction-backups/`（0600）に残る。
 
-### Google Calendar (Today)
+### Google Drive and Calendar
 
-`GET /v1/calendar/events?start=<RFC3339>&end=<RFC3339>` requires an explicitly granted
-`calendar:read` device scope (not part of the default enrollment). The range is
-limited to eight days; Today requests seven local days. Events are read only,
-including recurring instances, title, start/end and location. Date-only all-day
-end dates are exclusive. No attendee list, description or OAuth token is returned.
+Both adapters share `src/google/connection.mjs`, including one in-memory refresh
+and the existing runtime credential helper. Helper JSON remains `client_id`,
+`client_secret`, `refresh_token`, optional `calendar_id`. Nothing is logged or
+returned from helper output; tokens never reach the phone. Missing credentials
+and authorization errors remain distinct from an empty result.
 
-The adapter reads credentials at runtime from the default helper
-`/Users/laa/.config/laa/google-calendar-credential.sh`, executed directly with
-`execFile` (no shell, no arguments, bounded timeout and output). The helper prints
-one JSON object to stdout with `client_id`, `client_secret`, `refresh_token` and an
-optional `calendar_id`. stderr is discarded, and neither the output nor its values
-are logged or returned. A missing, failing, malformed or incomplete helper result
-returns `calendar_not_configured` (503), never an empty calendar. The helper is
-provisioned by the operator; this implementation does not create it.
-`LAA_GOOGLE_CALENDAR_CLIENT_ID`, `LAA_GOOGLE_CALENDAR_CLIENT_SECRET` and
-`LAA_GOOGLE_CALENDAR_REFRESH_TOKEN` remain only as an explicit test override when
-all three are set. `LAA_GOOGLE_CALENDAR_ID` overrides the helper's `calendar_id`,
-which defaults to `primary`. Access tokens stay in memory, are reused until their
-`expires_in` lifetime ends or the events API rejects the token, and concurrent
-reads share one refresh.
-Do not put values in the plist, source, command arguments or a plain `.env` file.
-OAuth clients, consent and Google Cloud configuration are **not** created by this
-implementation. An operator must first confirm an existing authorized OAuth route
-or arrange Calendar API enablement and consent for
-`https://www.googleapis.com/auth/calendar.events.readonly`. Existing Codex connector
-authentication and Google web login credentials are not transferable to the Bridge.
-Without these prerequisites the endpoint returns `calendar_not_configured` (503),
-not an empty event list. OAuth/permissions/API and connection errors have separate
-safe codes. See [Google events.list](https://developers.google.com/workspace/calendar/api/v3/reference/events/list).
+Drive now uses its API, independent of the desktop mount's macOS permission.
+`GET /v1/drive/files?view=my|shared|sharedWithMe|recent|starred` retains existing
+paging, metadata, thumbnail, export and Range contracts. Search in My Drive spans
+all accessible files rather than only the root. Google documents export to PDF
+(up to Google's 10 MB limit); binary content streams without whole-file buffering.
+`POST /v1/drive/uploads` and `PUT /v1/drive/uploads/<id>/chunks/<offset>` require
+opt-in `media:write` and idempotency keys. Upload sessions are device-bound,
+expire after one hour and accept at most 4 MiB per chunk. The final chunk returns
+the created file; an uncertain write must be reconciled before retrying.
+
+Calendar list and event/detail reads require `calendar:read`. Day/week/month/agenda
+ranges span up to 42 days. Create/PATCH/DELETE require separate `calendar:write`;
+etags protect edits and deletes, and Bridge idempotency protects retries. Expanded
+instances and a recurring master have different IDs. The editor confirms attendee
+notifications before saving. No device gains these writes by default.
+
+The parent provisions additional consent for `drive.readonly`, `drive.file`,
+`calendar.events`, and `calendar.calendarlist.readonly` under
+`https://www.googleapis.com/auth/`. `drive.file` may not permit uploads to an
+existing folder until it has been authorized for this app; root uploads remain
+available. Do not reuse another connector's OAuth credentials.
+
+Popup reminders use Google defaults/overrides, a 30-second non-overlapping poll
+and shared `notifyOwner`; email reminders stay with Google. Enable polling only
+after parent setup (`LAA_GOOGLE_REMINDERS_ENABLED=1`). Delivery dedupes on calendar,
+instance, start and reminder offset, persisting only successful deliveries.
+Notification links are `laa://today/events/<id>?calendar=<calendarId>`.

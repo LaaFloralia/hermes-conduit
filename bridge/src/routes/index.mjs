@@ -27,6 +27,8 @@ import { createOwnerTaskService } from '../tasks/owner-service.mjs';
 import { brainRoutes } from './brain.mjs';
 import { usageRoutes } from './usage.mjs';
 import { studioRoutes } from './studio.mjs';
+import { createGoogleCalendar } from '../calendar/google.mjs';
+import { createCalendarReminders } from '../calendar/reminders.mjs';
 import { calendarRoutes } from './calendar.mjs';
 import { routineRoutes } from './routines.mjs';
 import { instructionRoutes } from './instructions.mjs';
@@ -63,6 +65,17 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ?? createOwnerTaskStore({ dir: ownerTasks.dir ?? store.dir, now, lockTimeoutMs: ownerTasks.lockTimeoutMs });
   const ownerTaskService = ownerTasks.service ?? createOwnerTaskService({ store: ownerTaskStore, now });
 
+  const calendarOptions = options.calendar ?? {};
+  const calendarService = calendarOptions.service ?? createGoogleCalendar();
+  // Opt-in until the parent has completed Google consent and notification setup.
+  if (calendarOptions.remindersEnabled ?? process.env.LAA_GOOGLE_REMINDERS_ENABLED === '1') {
+    const reminders = createCalendarReminders({ service: calendarService, now,
+      file: `${store.dir}/calendar-reminders.json`, ...calendarOptions.reminders });
+    const timer = setInterval(() => { reminders.tick().catch(() => {}); }, 30_000);
+    timer.unref();
+    calendarOptions.registerCleanup?.(() => clearInterval(timer));
+  }
+
   return [
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
     ...linearOwnerTaskRoutes(options.linearOwnerTasks ?? {}),
@@ -84,7 +97,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
     ...usageRoutes({ ...(options.usage ?? {}), now }),
     ...studioRoutes(options.studio ?? {}),
     ...routineRoutes(options.routines ?? {}),
-    ...calendarRoutes(options.calendar ?? {}),
+    ...calendarRoutes({ ...calendarOptions, service: calendarService }),
     // Disabled in production pending independent review; explicit injection is for tests.
     ...(options.instructions?.enabled === true
       ? instructionRoutes({ backupDir: `${store.dir}/instruction-backups`, ...options.instructions })
