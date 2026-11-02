@@ -1,0 +1,116 @@
+{
+  "branch": "laa/fixes",
+  "baseline": "a2726666",
+  "merged_master": "156c096d",
+  "model": "GPT-6.1 Sol High",
+  "delegation": "none; explicitly assigned model and tightly coupled app edits",
+  "issues": {
+    "BUS-332": {
+      "result": "Existing master audio fix; seven avatar audio tests and all selected call-session tests passed. Physical Music/call/dictation checks remain pending.",
+      "device_check": "Play Music, open Chat and employee details, scroll and switch employees. Music continues. Start call/dictation, finish, verify other audio may resume."
+    },
+    "BUS-331": {
+      "result": "Existing shared settings implementation; corrected fixture tab label. All-five-tabs UI deferred to parent integration gate."
+    },
+    "BUS-343": {
+      "result": "compact/accessible name-only header and full accessible status implemented; isolated 375/440 normal/accessibility light/dark renders passed. Existing compact chat test found a toolbarRole(editor) alignment regression; source removed that role, binary rebuild and rerun pending."
+    },
+    "BUS-335": {
+      "result": "existing LAACopy controls retained; employee-details Close now LAACopy"
+    },
+    "BUS-330": {
+      "result": "LAA login icon; display branding retained; Ciel/LAA refusal expectation passed with 40 ComposerDraftStore tests. Eight app-brand tests and 32 branding-script tests passed."
+    },
+    "BUS-333": {
+      "result": "existing eight-service Console order retained; expired and failed reads display no numbers, recovery service links added"
+    },
+    "BUS-334": {
+      "result": "existing company icon, Ciel, bare call/chat controls and no observation time retained; expired widget numbers hidden"
+    },
+    "BUS-341": {
+      "result": "live-only branch already ancestor of master; visible Usage refreshes and reevaluates freshness; failed widget fetch marks retained observations stale; API admin keys remain unset"
+    },
+    "BUS-323": {
+      "result": "unresolved by read-only API inspection",
+      "evidence": {
+        "repository_actions_enabled": true,
+        "workflow_state": "active",
+        "master_push_trigger_present": true,
+        "workflow_diff_since_last_success": "none",
+        "last_ci_run_time": "2026-10-29T23:34:30Z",
+        "last_ci_run_sha": "5c6654a4",
+        "subsequent_actions_runs": "none; unrelated Claude/Vercel check suites exist"
+      },
+      "next": "Parent inspect account/org Actions restrictions and Actions UI; do not change settings without scope."
+    },
+    "additional-composer": {
+      "result": "LAA transcript laid out above the full composer; primary group placeholder ink on photo; regression UI tests extended"
+    }
+  },
+  "service_apps_replacement": {
+    "scope": "Quality fixes only. No new service operation or real record mutation was performed. Replacement feature matrices belong to the corresponding parent delegates.",
+    "operations": [
+      {
+        "app": "Paseo",
+        "operation": "Sessions and notifications",
+        "status": "separate delegate",
+        "reason": "outside fixes ownership"
+      },
+      {
+        "app": "Linear",
+        "operation": "Read/update tasks and notifications",
+        "status": "separate delegate",
+        "reason": "outside fixes ownership; no real task mutations"
+      },
+      {
+        "app": "Obsidian",
+        "operation": "Brain navigation/read/edit",
+        "status": "separate delegate",
+        "reason": "outside fixes ownership; Brain not read"
+      },
+      {
+        "app": "Google Drive",
+        "operation": "Assets browsing/files",
+        "status": "separate delegate",
+        "reason": "outside fixes ownership; no real data mutations"
+      },
+      {
+        "app": "Google Calendar",
+        "operation": "Today schedule",
+        "status": "separate delegate",
+        "reason": "outside fixes ownership; no real data mutations"
+      }
+    ]
+  },
+  "verification": {
+    "debug": "Passed before removal of toolbarRole(editor); corrected source intentionally not rebuilt here; parent integration gate.",
+    "l10n": "passed (6543 sites, 13 shipped languages)",
+    "feature_map": "passed (104 entries, 1579 paths)",
+    "brand_bundle_scripts": "32 passed",
+    "usage_bridge_readonly_regression": "37 passed",
+    "real_device": "not performed; parent TestFlight gate",
+    "units": "Finished exit 65: 234 tests, 233 passed, 1 failed (2 compact-center assertions before source correction). All Usage/Widget/audio tests passed. Corrected source intentionally not rebuilt/rerun.",
+    "ui": "Deferred to integration worker b92 by explicit parent instruction dp-20261102211127-92a595; no new UI invocation.",
+    "attachments": "112 PNGs exported with manifest; screenshot-index.json maps names."
+  },
+  "real_services": {
+    "mutations": "none",
+    "new_authorization": "none",
+    "service_restarts": "none"
+  },
+  "parent": "fbdaf031-cee0-4262-b0cf-83f2facd958e",
+  "dispatch_plan": "dp-20261102204621-f2020a",
+  "source_sha": "5fa0b607f77eb5648b438fc42a3c73097262b0da",
+  "remote_sha_matches": true,
+  "pending_owner": "b92 integration worker: corrected header build, compact-center rerun, required UI; parent: TestFlight/device/CI account restrictions/API admin keys.",
+  "resource_release": {
+    "own_simulator": "E555BA47-800E-4A8F-92F2-A4B197DBE77A",
+    "present_after_delete": [],
+    "own_slot1_present": false,
+    "processes": "PID STAT COMMAND",
+    "unit_exit_code": 65,
+    "attachments_exported_png": 112,
+    "own_derived_data_removed": true
+  },
+  "visual_inspection": "375/440 isolated headers and fresh/stale Usage inspected. Wallpaper widget shows full approved header; 169pt standalone fixture clips top, so WidgetKit/device verification remains pending."
+}

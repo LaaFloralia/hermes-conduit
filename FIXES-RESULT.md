@@ -6,9 +6,9 @@
 
 Debug `build-for-testing` は成功。ただし、その後の中央配置修正は未ビルド・未再試験。初回の `LAACompactChatSnapshotTests.testCompactChatLightAndDark` は名前中心104pt／期待220±2ptでライト・ダークの2assertが失敗した。原因の `.toolbarRole(.editor)` を除去し、独自Backも取りやめた。`V2ConversationScreen.swift` は `f752d5e2` と同一で、native Backと戻るジェスチャーを維持する。**中央名2assertの解消と新規UI検証は未了**。
 
-検証証跡は `/Users/laa/work/fixes-20261102/evidence/`。`debug-incremental.log`、`unit-tests.log`、`acceptance.json`、`performance-observations.json` を参照。単体試験の最終結果・画像exportは正常終了後に追記する。翻訳6543箇所／13言語、FEATURE_MAP 104項目／1579パス、ブランドスクリプト32件、Usage Bridge関連37件は通過。
+検証証跡は `/Users/laa/work/fixes-20261102/evidence/`。`debug-incremental.log`、`unit-tests.log`、`acceptance.json`、`performance-observations.json` を参照。既存runはexit 65で終了し、234件中233件通過・1件失敗（上記中央名の2assert）。Usage18状態、Widget画像全件、音声関連は通過。画像112枚とmanifestを `evidence/unit-screenshots/` へexportし、名前対応は `evidence/screenshot-index.json`、集計は `evidence/unit-summary.json` に保存した。翻訳6543箇所／13言語、FEATURE_MAP 104項目／1579パス、ブランドスクリプト32件、Usage Bridge関連37件は通過。
 
-BUS-323は未解決。Actionsはenabled・allowed_actions=all、workflowはactive、masterのpush対象と設定差分なしを確認したが、最新runは2026-10-29T23:34:30Z／5c6654a4のまま。設定は変更していない。API管理者キーと音声・WidgetKitの実機確認も残る。
+BUS-323は未解決。Actionsはenabled・allowed_actions=all、workflowはactive、masterのpush対象と設定差分なしを確認したが、最新runは2026-10-29T23:34:30Z／5c6654a4のまま。設定は変更していない。fixes branchへのpush後も13分時点でActions runは0件で、master固有の不発とは確認できていない。API管理者キーと音声・WidgetKitの実機確認も残る。
 
 統合後の同じLAA_BUILDで次を選ぶ。`xcodebuild` は共通 `build-slot.sh` 経由、`-jobs 4`、統合担当の専用sim・DerivedDataを使う。
 
@@ -33,4 +33,8 @@ composer試験は紙／写真×ライト／ダークの4条件。キーボード
 
 実機では音楽を流して会話・社員詳細・スクロール・社員切替を試し、通話／音声入力の開始時だけ音声が切り替わり、終了後に他アプリの音楽を再開できることを確認する。Widgetは期限切れ数値、色調、Call／Chatの遷移を確認。5アプリの操作別置換表は各機能担当の成果と統合し、この品質修正だけで削除可能とは判定しない。
 
-取得遅延はホスト負荷を伴う。20:59時点でload average 246.63、CPU空き1.17%、swap使用48,375MB。18状態snapshotは20:49開始、添付はbalance-dark 21:00:53、extras-dark 21:08:11、cost-light 21:13:17へ進行した。先行2画面は3.655秒。停止も同一条件の再実行も行っていない。
+取得遅延はホスト負荷を伴う。20:59時点でload average 246.63、CPU空き1.17%、swap使用48,375MB。18状態snapshotは20:49開始、添付はbalance-dark 21:00:53、extras-dark 21:08:11、cost-light 21:13:17へ進行した。先行2画面は3.655秒。18状態は1568.410秒で通過し、全試験は7336.439秒。Widgetも22:05:42の30/41枚で一度止まり、22:28:51から再開、22:36:33に最後の画像を保存した。追加sampleはRunLoop内のCA transaction処理で、最終的に完走したため無限layoutループとは確定しない。停止も同一条件の再実行も行っていない。
+
+専用sim `E555BA47-800E-4A8F-92F2-A4B197DBE77A` は停止・削除し、一覧からの消失、slot1とPID 68879／68887／69356の消失を読み戻した。解放は親とb92へ直接報告済み。`evidence/resource-release.json` を参照。
+
+画像確認では375pt／拡大文字の名前、Usageの古い数値非表示とリンク、写真壁紙上Widgetの会社アイコン・Ciel・裸の操作アイコンを確認した。169pt単独Widget fixtureは上端が欠けるが、300pt壁紙fixtureでは全体が見えるため、単独画像だけでWidgetKit実表示を合格とは扱わない。実機確認は引き続き必要。
