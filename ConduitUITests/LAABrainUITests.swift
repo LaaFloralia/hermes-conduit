@@ -77,8 +77,10 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Renamed.md"].waitForExistence(timeout: 15))
         XCTAssertTrue(manage.waitForExistence(timeout: 10)); manage.tap()
         app.buttons["laa.brain.manage.trash"].tap()
-        let confirm = app.buttons["laa.brain.manage.confirmTrash"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10)); confirm.tap()
+        // The confirmation is one visible action expressed as two nested buttons
+        // with the same label and frame, so either one is the same button.
+        let confirm = app.buttons["laa.brain.manage.confirmTrash"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Trash confirmation missing. Tree:\n\(app.debugDescription)"); confirm.tap()
         XCTAssertTrue(filters.waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["laa.brain.gallery.note"].firstMatch.waitForNonExistence(timeout: 15))
     }

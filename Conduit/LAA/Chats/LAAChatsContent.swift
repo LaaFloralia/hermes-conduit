@@ -51,16 +51,16 @@ struct LAAChatsContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            // New chat and Settings share one glass in the bar, as in the
-            // system's Messages.
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            // Creation sits on the leading edge so settings is the only
+            // trailing item, in the same place as every other tab's.
+            ToolbarItem(placement: .topBarLeading) {
                 Button(action: newChat) { Image(systemName: "plus") }
                     .disabled(!snapshot.canCreateChat)
                     .accessibilityLabel(Text(verbatim: LAACopy.chatsNew))
                     .accessibilityHint(Text(verbatim: snapshot.canCreateChat ? "" : LAACopy.chatsNewUnavailable))
                     .accessibilityIdentifier("laa.chats.new")
-                if settingsAvailable { LAASettingsButton(action: openSettings) }
             }
+            if settingsAvailable { ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: openSettings) } }
         }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: query) { _, _ in searchChanged() }

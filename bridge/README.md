@@ -39,6 +39,8 @@ cd bridge && LAA_BRIDGE_PORT=9141 node src/main.mjs
 
 install は plist を `~/Library/LaunchAgents/com.laa.bridge.plist` へ書き、`launchctl bootstrap` し、`~/.local/bin/laa-bridge` をリンクする。再実行は再インストールとして扱う。ポートが他のプロセスに使われていれば中止する。
 
+再インストールでも、`LAA_LINEAR_PERSONAL_TOKEN_HELPER`・`LAA_LINEAR_PERSONAL_VIEWER_ID`・`LAA_GOOGLE_REMINDERS_ENABLED` の3つだけは、既に設定されていた時に限り引き継ぐ（`scripts/preserve-plist-env.py`）。それ以外の環境変数はテンプレートの値に戻るため、未設定の新規インストールで自動的に有効になることはない。plistは0600の一時ファイルへ描画し、`plutil -lint`の成功後に本番へatomic renameする（`scripts/install-plist.sh`）。既存plistが壊れていて読めない時は、値を出さずに失敗し、本番plistは変更しない。
+
 ## ペアリング（端末の追加）
 
 ```sh

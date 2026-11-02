@@ -3,10 +3,16 @@ import { notifyOwner } from '../notify/index.mjs';
 
 // Google email reminders remain Google's responsibility. Popup reminders are
 // delivered through the app's single owner-notification entry point.
+// The ledger also records when reminders were first switched on. Anything that
+// came due before that moment is history, not a missed notification, so a new
+// opt-in never delivers the previous day's calendar in one burst.
+const ENABLED_AT = '@enabledAt';
+
 export function createCalendarReminders({ service, notify = notifyOwner, now = Date.now, file } = {}) {
   let running = false;
   let sent = {};
   try { sent = JSON.parse(readFileSync(file, 'utf8')); } catch { }
+  let enabledAt = Number.isFinite(sent[ENABLED_AT]) ? sent[ENABLED_AT] : null;
   function persist() {
     if (!file) return;
     const temporary = `${file}.tmp`;
@@ -18,6 +24,13 @@ export function createCalendarReminders({ service, notify = notifyOwner, now = D
       running = true;
       try {
         const time = now();
+        if (enabledAt === null) {
+          // First run of this ledger: start counting from now.
+          enabledAt = time;
+          sent[ENABLED_AT] = time;
+          persist();
+        }
+        const earliest = Math.max(time - 24 * 3600_000, enabledAt);
         const calendars = (await service.calendars()).items.filter(c => c.selected);
         for (const calendar of calendars) {
           const events = await service.list({ start: new Date(time - 2 * 86400_000).toISOString(),
@@ -38,7 +51,7 @@ export function createCalendarReminders({ service, notify = notifyOwner, now = D
             for (const reminder of reminders ?? []) {
               if (reminder.method !== 'popup') continue;
               const due = start - reminder.minutes * 60_000;
-              if (due > time || due < time - 24 * 3600_000) continue;
+              if (due > time || due < earliest) continue;
               const key = `calendar:${calendar.id}:${event.id}:${event.start}:${reminder.minutes}`;
               if (sent[key]) continue;
               const result = await notify({ kind: 'calendar', title: event.title, body: event.allDay ? '終日の予定' : event.start,
@@ -47,7 +60,8 @@ export function createCalendarReminders({ service, notify = notifyOwner, now = D
             }
           }
         }
-        sent = Object.fromEntries(Object.entries(sent).filter(([,time]) => time > now() - 8 * 86400_000));
+        sent = Object.fromEntries(Object.entries(sent)
+          .filter(([key, at]) => key === ENABLED_AT || at > now() - 8 * 86400_000));
       } finally { running = false; }
     },
   };

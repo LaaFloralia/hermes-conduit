@@ -76,7 +76,7 @@ struct LAATodayView: View {
         }
         .background(LAAColor.background)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 Button { showNewEvent = true } label: { Image(systemName: "plus") }
                     .disabled(!calendar.calendars.contains(where: \.writable))
                     .accessibilityLabel(Text(verbatim: "予定を作成"))

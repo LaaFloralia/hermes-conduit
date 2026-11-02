@@ -5,7 +5,7 @@ import { createGoogleDrive } from '../src/drive/google.mjs';
 import { createGoogleCalendar } from '../src/calendar/google.mjs';
 import { createCalendarReminders } from '../src/calendar/reminders.mjs';
 import { startBridge } from './helpers.mjs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { DEFAULT_SCOPES } from '../src/config.mjs';
@@ -253,6 +253,8 @@ test('reminders catch up after upstream failure and restart without delivering t
   const dir = await mkdtemp(join(tmpdir(), 'google-reminders-')); t.after(() => rm(dir, { recursive: true, force: true }));
   const file = join(dir, 'reminders.json'); const notices = []; let fail = true;
   const time = Date.parse('2026-11-02T03:00:00Z');
+  // Switched on a day earlier, so this is a restart catch-up.
+  await writeFile(file, JSON.stringify({ '@enabledAt': time - 86400_000 }), { mode: 0o600 });
   const service = { calendars: async () => ({ items: [{ id: 'primary', selected: true, timeZone: 'Asia/Tokyo', defaultReminders: [{ method: 'popup', minutes: 0 }] }] }),
     list: async () => { if (fail) throw new Error('temporary upstream error'); return { items: [{ id: 'late', title: 'Late', start: '2026-11-02', allDay: true, reminders: { useDefault: true } }] }; } };
   const options = { service, file, now: () => time, notify: async notice => { notices.push(notice); return { delivered: true }; } };
@@ -266,12 +268,57 @@ test('enabled reminders catch up immediately when Bridge routes start', async t 
   let delivered;
   const notification = new Promise(resolve => { delivered = resolve; });
   const now = Date.parse('2026-11-02T12:00:00Z');
+  // A ledger that is already switched on: the missed reminder is a restart
+  // catch-up, not a first enablement.
+  const dir = await mkdtemp(join(tmpdir(), 'google-reminders-start-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'calendar-reminders.json');
+  await writeFile(file, JSON.stringify({ '@enabledAt': Date.parse('2026-11-02T10:00:00Z') }), { mode: 0o600 });
   const service = {
     calendars: async () => ({ items: [{ id: 'primary', selected: true }] }),
     list: async () => ({ items: [{ id: 'missed', title: 'Fixture', start: '2026-11-02T11:00:00Z', reminders: { overrides: [{ method: 'popup', minutes: 0 }] } }] })
   };
-  const bridge = await startBridge({ now: () => now, calendar: { service, remindersEnabled: true, reminders: { notify: async value => { delivered(value); return { delivered: true }; } } } });
+  const bridge = await startBridge({ now: () => now, calendar: { service, remindersEnabled: true, reminders: { file, notify: async value => { delivered(value); return { delivered: true }; } } } });
   t.after(() => bridge.close());
   const value = await Promise.race([notification, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Startup reminder was not sent')), 1000); timer.unref(); })]);
   assert.match(value.deepLink, /^laa:\/\/today\/events\/missed\?calendar=primary$/);
 });
+
+test('a reminders ledger delivers nothing that came due before it was switched on', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'google-reminders-first-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'calendar-reminders.json'); const notices = [];
+  const time = Date.parse('2026-11-03T01:00:00Z');
+  const service = { calendars: async () => ({ items: [{ id: 'primary', selected: true }] }),
+    list: async () => ({ items: [
+      { id: 'old', title: 'Before', start: '2026-11-02T23:00:00Z', reminders: { overrides: [{ method: 'popup', minutes: 0 }] } },
+      { id: 'later', title: 'After', start: '2026-11-03T02:00:00Z', reminders: { overrides: [{ method: 'popup', minutes: 0 }] } }
+    ] }) };
+  const reminders = createCalendarReminders({ service, file, now: () => time,
+    notify: async notice => { notices.push(notice); return { delivered: true }; } });
+  await reminders.tick();
+  assert.equal(notices.length, 0, 'nothing that expired before the opt-in is delivered');
+  const ledger = JSON.parse(await readFile(file, 'utf8'));
+  assert.equal(ledger['@enabledAt'], time);
+  assert.equal(ledger['calendar:primary:old:2026-11-02T23:00:00Z:0'], undefined);
+});
+
+test('after enablement a failed delivery is retried once across a restart', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'google-reminders-retry-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'calendar-reminders.json'); const notices = []; let broken = true;
+  const time = Date.parse('2026-11-03T01:00:00Z');
+  await writeFile(file, JSON.stringify({ '@enabledAt': time - 3600_000 }), { mode: 0o600 });
+  const service = { calendars: async () => ({ items: [{ id: 'primary', selected: true }] }),
+    list: async () => ({ items: [{ id: 'due', title: 'Due', start: '2026-11-03T00:30:00Z', reminders: { overrides: [{ method: 'popup', minutes: 0 }] } }] }) };
+  const notify = async notice => {
+    if (broken) throw new Error('notification relay unavailable');
+    notices.push(notice); return { delivered: true };
+  };
+  await assert.rejects(createCalendarReminders({ service, file, now: () => time, notify }).tick());
+  broken = false;
+  await createCalendarReminders({ service, file, now: () => time, notify }).tick();
+  await createCalendarReminders({ service, file, now: () => time, notify }).tick();
+  assert.equal(notices.length, 1, 'delivered once after the restart, never twice');
+});
+
