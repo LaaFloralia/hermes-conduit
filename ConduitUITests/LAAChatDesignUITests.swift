@@ -45,23 +45,33 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertTrue((field.value as? String ?? "").contains("second line"))
     }
 
-    func testComposerFormattingAndPreviewPreserveDraft() {
-        let app = launch()
+    /// Typing is plain text: no formatting bar or preview over the
+    /// keyboard, and the transcript moves to its latest message, above the
+    /// composer rather than behind it.
+    func testComposerIsPlainTextOnTheKeyboard() {
+        let app = launch(["-LAA_FORCE_COMPACT_CHAT"])
         let field = app.textViews["composer.field"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         field.tap()
-        let format = app.buttons["composer.markdown.format"]
-        XCTAssertTrue(format.waitForExistence(timeout: 10))
-        format.tap()
-        app.buttons["見出し"].tap()
-        field.typeText("Title\nSecond line")
-        XCTAssertTrue((field.value as? String ?? "").contains("# Title\nSecond line"))
-        let preview = app.buttons["composer.markdown.preview"]
-        XCTAssertTrue(preview.waitForExistence(timeout: 5))
-        preview.tap()
-        XCTAssertTrue(app.textViews["Title"].waitForExistence(timeout: 5))
-        app.buttons["閉じる"].tap()
-        XCTAssertTrue((field.value as? String ?? "").contains("Second line"))
+        field.typeText("**plain**")
+        XCTAssertEqual(field.value as? String, "**plain**")
+        XCTAssertFalse(app.buttons["composer.markdown.format"].exists)
+        XCTAssertFalse(app.buttons["composer.markdown.preview"].exists)
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.waitForExistence(timeout: 5) {
+            let send = app.buttons["composer.action"]
+            XCTAssertLessThanOrEqual(send.frame.maxY, keyboard.frame.minY + 1)
+        }
+        let latest = app.buttons["chat.replyMoreMenu"]
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            latest.exists && latest.frame.maxY <= field.frame.minY
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [settled], timeout: 5), .completed,
+                       "The latest reply \(latest.frame) must sit above the composer \(field.frame)")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "composer-focused"
+        shot.lifetime = .keepAlways
+        add(shot)
     }
 
     func testCompactHeadersKeepTheirControlsTogether() {
@@ -108,6 +118,14 @@ final class LAAChatDesignUITests: XCTestCase {
         XCTAssertTrue(back.isHittable)
         XCTAssertTrue(menu.isHittable)
         XCTAssertFalse(back.frame.intersects(header.frame), "Back \(back.frame) must not overlap the employee header \(header.frame)")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "header-pushed"
+        shot.lifetime = .keepAlways
+        add(shot)
+        let screen = app.windows.firstMatch.frame
+        XCTAssertEqual(header.frame.midX, screen.midX, accuracy: 2, "The name \(header.frame) must sit on the screen's center")
+        XCTAssertEqual(screen.maxX - menu.frame.maxX, back.frame.minX - screen.minX, accuracy: 4,
+                       "The menu \(menu.frame) must keep Back's \(back.frame) margin")
         back.tap()
         XCTAssertTrue(app.buttons["fixture.group"].waitForExistence(timeout: 10))
     }

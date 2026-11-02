@@ -40,16 +40,7 @@ struct LAAChatsFixtureView: View {
         let rooms = mode == "normal" ? [GroupRoom(roomID: "team", name: "LAA team", members: members,
             authorityGatewayID: "fixture", authorityEpoch: 1, revision: 1, createdAt: 1, updatedAt: 2,
             disbandedAt: nil, latestSeq: 1)] : []
-        let sessions = mode == "normal" ? [
-            SessionSummary(id: "week", alternateIds: [], title: "今週の予定", model: "", updatedLabel: "9:32",
-                           lastActivityAt: 20, profile: "laa-ciel", source: .chat, isActive: false,
-                           isArchived: false, preview: "今日の優先事項を整理しました"),
-            SessionSummary(id: "design", alternateIds: [], title: "Design review", model: "", updatedLabel: "昨日",
-                           lastActivityAt: 10, profile: "laa-cto", source: .chat, isActive: false,
-                           isArchived: false, preview: "Review the draft")
-        ] : []
-        return LAAChatsSnapshot(people: people, rooms: rooms, sessions: sessions, activeProfile: "laa-ciel",
-                                groupsState: state, sessionsState: state,
+        return LAAChatsSnapshot(people: people, rooms: rooms, groupsState: state,
                                 canCreateChat: mode == "normal", canCreateGroup: mode == "normal")
     }
     private var bots: [BotProfile] {
@@ -64,7 +55,6 @@ struct LAAChatsFixtureView: View {
         LAAChatsContent(snapshot: snapshot, settingsAvailable: true,
                         openPerson: { selection = Selection(label: "person:\($0.profile)") },
                         openRoom: { selection = Selection(label: "group:\($0.roomID)") },
-                        openSession: { selection = Selection(label: "session:\($0.id)") },
                         newChat: { selection = Selection(label: "new-chat") },
                         newGroup: { showingGroupCreator = true },
                         openSettings: {

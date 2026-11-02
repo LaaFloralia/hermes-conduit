@@ -7,9 +7,11 @@ import UIKit
 /// waits on a bot; the room updates as polled events arrive.
 struct GroupChatView: View {
 #if LAA_BUILD
-    var compactMenu: AnyView? = nil
-    var compactWidth: CGFloat = 0
-    var compactLeadingInset: CGFloat = 0
+    /// The screen width, which bounds the title so the bar can keep it on
+    /// the screen's center.
+    var screenWidth: CGFloat = 0
+    /// The conversation menu, after the call button in the same glass.
+    var menu: AnyView? = nil
 #endif
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var appLanguage = AppLanguageStore.shared
@@ -357,18 +359,14 @@ struct GroupChatView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
 #if LAA_BUILD
-        if let compactMenu {
-            ToolbarItem(placement: .principal) {
-                LAACompactConversationToolbar(width: compactWidth, leadingInset: compactLeadingInset) {
-                    roomTitle
-                } controls: {
-                    roomCallButton
-                    compactMenu
-                }
+        ToolbarItem(placement: .principal) {
+            roomTitle.frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            LAAConversationControls {
+                roomCallButton
+                if let menu { menu }
             }
-        } else {
-            ToolbarItem(placement: .topBarTrailing) { roomCallButton }
-            ToolbarItem(placement: .principal) { roomTitle }
         }
 #else
         ToolbarItem(placement: .principal) { roomTitle }

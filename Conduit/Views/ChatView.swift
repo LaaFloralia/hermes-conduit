@@ -363,23 +363,29 @@ struct ChatView: View {
                 bottomBar
             }
         }
-#if LAA_BUILD
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if composerFloats { bottomBar }
-        }
-#else
         .v2EdgeBar(.bottom) {
             if composerFloats {
                 bottomBar
                     .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
-#endif
         .onPreferenceChange(V2ComposerTypingKey.self) { typing in
             withAnimation(ConduitMotion.ease(reduceMotion: composerReduceMotion)) {
                 composerTyping = typing
             }
+#if LAA_BUILD
+            // Typing starts at the latest message, so what is being
+            // answered sits above the composer rather than behind it.
+            if typing { requestLatest(animated: true) }
+#endif
         }
+#if LAA_BUILD
+        // Once more when the keyboard is up: it raises the composer after
+        // focus does, and the transcript would stay where it was.
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+            if composerTyping { requestLatest(animated: true) }
+        }
+#endif
         .environment(\.chatTextSize, chatTextSize)
         .environment(\.markdownTablePlainCells, true)
         .environment(\.markdownJoinsProseRuns, true)

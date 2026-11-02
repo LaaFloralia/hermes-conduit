@@ -7,7 +7,6 @@ struct LAAChatsContent: View {
     var settingsAvailable: Bool
     var openPerson: (LAAChatsPerson) -> Void
     var openRoom: (GroupRoom) -> Void
-    var openSession: (SessionSummary) -> Void
     var newChat: () -> Void
     var newGroup: () -> Void
     var openSettings: () -> Void
@@ -15,9 +14,6 @@ struct LAAChatsContent: View {
     var searchChanged: () -> Void
 
     @State private var query = ""
-    @State private var allEmployees = false
-    @State private var allGroups = false
-    @State private var allRecent = false
     @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
@@ -27,18 +23,10 @@ struct LAAChatsContent: View {
         snapshot.people.filter { LAAStaff(profile: $0.profile) != .ciel && LAAChatsSearch.person($0, matches: query) }
     }
     private var rooms: [GroupRoom] { snapshot.rooms.filter { LAAChatsSearch.room($0, matches: query) } }
-    private var sessions: [SessionSummary] {
-        snapshot.sessions.filter { session in
-            LAAChatsSearch.session(session, ownerName: person(for: session.profile ?? snapshot.activeProfile)?.name, matches: query)
-        }
-    }
     private var matchingCiel: LAAChatsPerson? {
         ciel.flatMap { LAAChatsSearch.person($0, matches: query) ? $0 : nil }
     }
-    private var hasResults: Bool { matchingCiel != nil || !employees.isEmpty || !rooms.isEmpty || !sessions.isEmpty }
-    private func person(for profile: String) -> LAAChatsPerson? {
-        snapshot.people.first { $0.profile.caseInsensitiveCompare(profile) == .orderedSame }
-    }
+    private var hasResults: Bool { matchingCiel != nil || !employees.isEmpty || !rooms.isEmpty }
 
     var body: some View {
         ScrollView {
@@ -52,7 +40,6 @@ struct LAAChatsContent: View {
                     if let ciel = matchingCiel { cielSection(ciel) }
                     if !searching || !employees.isEmpty { employeeSection }
                     if !searching || !rooms.isEmpty { groupSection }
-                    if !searching || !sessions.isEmpty { recentSection }
                     if searching { searchIncomplete }
                 }
             }
@@ -159,17 +146,11 @@ struct LAAChatsContent: View {
 
     private var employeeSection: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            HStack {
-                sectionHeader(LAACopy.chatsEmployees)
-                Spacer()
-                if employees.count > 3 && !searching {
-                    moreButton(expanded: $allEmployees, id: "employees")
-                }
-            }
+            sectionHeader(LAACopy.chatsEmployees)
             if employees.isEmpty {
                 note(LAACopy.chatsNoEmployees)
             } else {
-                ForEach(Array((searching || allEmployees ? employees : Array(employees.prefix(3))))) { employee in
+                ForEach(employees) { employee in
                     Button { openPerson(employee) } label: { personRow(employee, size: 40) }
                         .buttonStyle(.plain)
                         .disabled(!employee.available)
@@ -185,7 +166,6 @@ struct LAAChatsContent: View {
             HStack {
                 sectionHeader(LAACopy.chatsGroups)
                 Spacer()
-                if rooms.count > 3 && !searching { moreButton(expanded: $allGroups, id: "groups") }
                 Button(action: newGroup) {
                     Image(systemName: "plus").laaTextStyle(.body)
                         .foregroundStyle(LAAColor.link)
@@ -197,36 +177,15 @@ struct LAAChatsContent: View {
                 .accessibilityIdentifier("laa.chats.group.new")
             }
             if rooms.isEmpty {
-                loadNote(snapshot.groupsState, empty: LAACopy.chatsNoGroups, group: true)
+                loadNote(snapshot.groupsState, empty: LAACopy.chatsNoGroups)
             } else {
-                ForEach(searching || allGroups ? rooms : Array(rooms.prefix(3))) { room in
+                ForEach(rooms) { room in
                     Button { openRoom(room) } label: { roomRow(room) }
                         .buttonStyle(.plain)
                         .disabled(snapshot.groupsState == .offline)
                         .accessibilityIdentifier("laa.chats.group.\(room.roomID)")
                 }
-                if snapshot.groupsState != .ready { loadNote(snapshot.groupsState, empty: "", group: true) }
-            }
-        }
-    }
-
-    private var recentSection: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x2) {
-            HStack {
-                sectionHeader(LAACopy.chatsRecent)
-                Spacer()
-                if sessions.count > 3 && !searching { moreButton(expanded: $allRecent, id: "recent") }
-            }
-            if sessions.isEmpty {
-                loadNote(snapshot.sessionsState, empty: LAACopy.chatsNoRecent, group: false)
-            } else {
-                let displayed = searching || allRecent ? sessions : Array(sessions.prefix(3))
-                ForEach(Array(displayed.enumerated()), id: \.offset) { _, session in
-                    Button { openSession(session) } label: { sessionRow(session) }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("laa.chats.session.\(session.id)")
-                }
-                if snapshot.sessionsState != .ready { loadNote(snapshot.sessionsState, empty: "", group: false) }
+                if snapshot.groupsState != .ready { loadNote(snapshot.groupsState, empty: "") }
             }
         }
     }
@@ -247,9 +206,7 @@ struct LAAChatsContent: View {
 
     private func roomRow(_ room: GroupRoom) -> some View {
         HStack(spacing: LAASpacing.x3) {
-            Image(systemName: "number").laaTextStyle(.body).foregroundStyle(LAAColor.link)
-                .frame(width: 40, height: 40).background(LAAColor.subtleSurface, in: Circle())
-                .accessibilityHidden(true)
+            LAAGroupFaces(members: room.members, size: 40)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                 Text(verbatim: room.name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
                 let names = room.members.compactMap { $0.displayName ?? $0.profile ?? $0.handle }.joined(separator: ", ")
@@ -257,27 +214,6 @@ struct LAAChatsContent: View {
             }
             Spacer(minLength: LAASpacing.x2)
             Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-        }
-        .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
-        .contentShape(Rectangle())
-    }
-
-    private func sessionRow(_ session: SessionSummary) -> some View {
-        HStack(alignment: .top, spacing: LAASpacing.x3) {
-            let profile = session.profile ?? snapshot.activeProfile
-            avatar(profile: profile, name: person(for: profile)?.name ?? profile, size: 40)
-            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(verbatim: session.title).laaTextStyle(.body).foregroundStyle(LAAColor.text)
-                    Spacer(minLength: LAASpacing.x2)
-                    if !session.updatedLabel.isEmpty {
-                        Text(verbatim: session.updatedLabel).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    }
-                }
-                if let preview = session.preview, !preview.isEmpty {
-                    Text(verbatim: preview).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
-                }
-            }
         }
         .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
         .contentShape(Rectangle())
@@ -305,15 +241,6 @@ struct LAAChatsContent: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    private func moreButton(expanded: Binding<Bool>, id: String) -> some View {
-        Button { expanded.wrappedValue.toggle() } label: {
-            Text(verbatim: expanded.wrappedValue ? LAACopy.chatsSeeLess : LAACopy.chatsSeeAll)
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
-                .frame(minHeight: LAASpacing.minimumTouchTarget)
-        }
-        .accessibilityIdentifier("laa.chats.seeAll.\(id)")
-    }
-
     private func note(_ message: String) -> some View {
         Text(verbatim: message).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -323,7 +250,7 @@ struct LAAChatsContent: View {
         snapshot.groupsState == .unsupported ? LAACopy.chatsGroupUnsupported : LAACopy.chatsUnavailable
     }
 
-    @ViewBuilder private func loadNote(_ state: LAAChatsLoadState, empty: String, group: Bool) -> some View {
+    @ViewBuilder private func loadNote(_ state: LAAChatsLoadState, empty: String) -> some View {
         switch state {
         case .ready: note(empty)
         case .loading:
@@ -340,17 +267,87 @@ struct LAAChatsContent: View {
     }
 
     @ViewBuilder private var searchEmpty: some View {
-        let state = LAAChatsSearch.emptySearchState(groups: snapshot.groupsState, sessions: snapshot.sessionsState)
+        let state = LAAChatsSearch.emptySearchState(groups: snapshot.groupsState)
         if state == .ready {
             note(LAACopy.chatsNoResults).accessibilityIdentifier("laa.chats.search.empty")
         } else {
-            loadNote(state, empty: LAACopy.chatsNoResults, group: false)
+            loadNote(state, empty: LAACopy.chatsNoResults)
         }
     }
 
     @ViewBuilder private var searchIncomplete: some View {
-        let state = LAAChatsSearch.emptySearchState(groups: snapshot.groupsState, sessions: snapshot.sessionsState)
-        if state != .ready { loadNote(state, empty: "", group: false) }
+        let state = LAAChatsSearch.emptySearchState(groups: snapshot.groupsState)
+        if state != .ready { loadNote(state, empty: "") }
+    }
+}
+
+/// A group's members as overlapping faces in one avatar-sized square, so the
+/// row shows who is in it: two faces on a diagonal, three in a cluster, the
+/// third giving way to a count when there are more.
+struct LAAGroupFaces: View {
+    let members: [GroupMember]
+    var size: CGFloat = 40
+
+    private struct Face: Identifiable {
+        let id: String
+        let profile: String?
+        let initial: String
+        var more: Int = 0
+    }
+
+    private var faces: [Face] {
+        let all = members.enumerated().map { index, member in
+            Face(id: "\(index)", profile: member.profile,
+                 initial: String((member.displayName ?? member.profile ?? member.handle ?? "?").prefix(1)))
+        }
+        guard all.count > 3 else { return all }
+        var shown = Array(all.prefix(2))
+        shown.append(Face(id: "more", profile: nil, initial: "", more: all.count - 2))
+        return shown
+    }
+
+    var body: some View {
+        let faces = faces
+        ZStack(alignment: .topLeading) {
+            switch faces.count {
+            case 0:
+                Image(systemName: "person.2.fill").laaTextStyle(.secondary).foregroundStyle(LAAColor.link)
+                    .frame(width: size, height: size).background(LAAColor.subtleSurface, in: Circle())
+            case 1:
+                face(faces[0], diameter: size)
+            case 2:
+                let diameter = size * 0.7
+                face(faces[0], diameter: diameter)
+                face(faces[1], diameter: diameter).offset(x: size - diameter, y: size - diameter)
+            default:
+                let diameter = size * 0.6
+                face(faces[0], diameter: diameter).offset(x: (size - diameter) / 2, y: 0)
+                face(faces[1], diameter: diameter).offset(x: 0, y: size - diameter)
+                face(faces[2], diameter: diameter).offset(x: size - diameter, y: size - diameter)
+            }
+        }
+        .frame(width: size, height: size, alignment: .topLeading)
+        .accessibilityHidden(true)
+    }
+
+    private func face(_ face: Face, diameter: CGFloat) -> some View {
+        Group {
+            if face.more > 0 {
+                Text(verbatim: "+\(face.more)").font(.system(size: diameter * 0.4, weight: .semibold))
+                    .foregroundStyle(LAAColor.link)
+            } else if let url = face.profile.flatMap({ StaffAssetResolver.bundled.resolve(profile: $0).avatar }),
+                      let image = UIImage(contentsOfFile: url.path) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Text(verbatim: face.initial).font(.system(size: diameter * 0.45, weight: .medium))
+                    .foregroundStyle(LAAColor.link)
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .background(LAAColor.selectionFill)
+        .clipShape(Circle())
+        // The page's own colour as a ring, so overlapping faces stay apart.
+        .overlay(Circle().stroke(LAAColor.background, lineWidth: 1.5))
     }
 }
 #endif

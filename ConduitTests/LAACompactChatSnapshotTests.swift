@@ -104,9 +104,6 @@ final class LAACompactChatSnapshotTests: XCTestCase {
         XCTAssertEqual(host.traitCollection.userInterfaceStyle, style)
         XCTAssertFalse(ChatSidePanel.fits(width: canvas.width))
         XCTAssertFalse(V2SplitLayout.isSplit(width: canvas.width))
-        XCTAssertTrue(LAACompactHeaderLayout.isInline(width: canvas.width, sizeClass: .compact))
-        XCTAssertFalse(LAACompactHeaderLayout.isInline(width: 466, sizeClass: .compact))
-        XCTAssertFalse(LAACompactHeaderLayout.isInline(width: canvas.width, sizeClass: .regular))
         XCTAssertTrue(textHosts(in: host.view).contains { $0.displayedText.contains("優先すること") },
                       "The real rich-message content must be mounted")
         let editor = try XCTUnwrap(firstView(in: host.view, matching: ImagePasteTextView.self))
@@ -134,8 +131,16 @@ final class LAACompactChatSnapshotTests: XCTestCase {
                        "The own bubble must end at the chat's trailing margin")
         // The bar sits under the status bar (about 59pt), not in the top 60.
         let headerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 56..<106), "The header controls must be visible")
-        XCTAssertEqual(canvas.width - headerTrailing, LAASpacing.horizontal, accuracy: 3,
-                       "The header controls must end at the chat's trailing margin")
+        // The capsule is a system bar item: it keeps the bar's own margin,
+        // the one Back has on the other side.
+        let bar = try XCTUnwrap(firstView(in: window, matching: UINavigationBar.self))
+        print("LAA bar margins", bar.directionalLayoutMargins)
+        XCTAssertEqual(canvas.width - headerTrailing, bar.directionalLayoutMargins.trailing, accuracy: 3,
+                       "The header controls must keep the bar's margin, as Back does")
+        XCTAssertEqual(bar.directionalLayoutMargins.leading, bar.directionalLayoutMargins.trailing, accuracy: 0.5)
+        let name = try XCTUnwrap(leadingControlSpan(image, rows: 56..<106), "The name must be visible")
+        XCTAssertEqual((name.lowerBound + name.upperBound) / 2, canvas.width / 2, accuracy: 2,
+                       "The name \(name) must sit on the screen's center")
         let composerTrailing = try XCTUnwrap(trailingControlEdge(image, rows: 800..<940), "The composer controls must be visible")
         XCTAssertEqual(canvas.width - composerTrailing, LAASpacing.horizontal, accuracy: 3,
                        "The send control must end at the chat's trailing margin")
@@ -223,6 +228,40 @@ final class LAACompactChatSnapshotTests: XCTestCase {
             }
             return trailing.map(CGFloat.init)
         }
+    }
+
+    /// The first control from the leading edge in the bar's rows: the
+    /// columns that differ from the paper, up to the first wide gap.
+    private func leadingControlSpan(_ image: UIImage, rows: Range<Int>) -> ClosedRange<CGFloat>? {
+        guard let cgImage = image.cgImage else { return nil }
+        let width = Int(canvas.width), height = rows.count, components = 4
+        let crop = CGRect(x: 0, y: CGFloat(rows.lowerBound) * image.scale,
+                          width: CGFloat(cgImage.width), height: CGFloat(height) * image.scale)
+        guard let section = cgImage.cropping(to: crop) else { return nil }
+        var pixels = [UInt8](repeating: 0, count: width * height * components)
+        let occupied: [Bool] = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height,
+                                          bitsPerComponent: 8, bytesPerRow: width * components,
+                                          space: CGColorSpaceCreateDeviceRGB(),
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                                            | CGBitmapInfo.byteOrder32Big.rawValue) else { return [] }
+            context.interpolationQuality = .high
+            context.draw(section, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return (0..<width).map { x in
+                (0..<height).contains { y in
+                    let offset = (y * width + x) * components
+                    let background = (y * width + 2) * components
+                    return (0..<3).contains { abs(Int(buffer[offset + $0]) - Int(buffer[background + $0])) >= 8 }
+                }
+            }
+        }
+        guard let start = occupied.firstIndex(of: true) else { return nil }
+        var end = start
+        var gap = 0
+        for x in start..<width {
+            if occupied[x] { end = x; gap = 0 } else { gap += 1; if gap >= 8 { break } }
+        }
+        return CGFloat(start)...CGFloat(end + 1)
     }
 
     private func hasVisibleContent(_ image: UIImage) -> Bool {
