@@ -25,7 +25,7 @@ struct LAAWorkSessionDecision: View {
             Text(verbatim: "確認と回答").fontWeight(.semibold)
             if let snapshot {
                 ForEach(snapshot.requests) { request in
-                    Text(verbatim: request.name).fontWeight(.semibold)
+                    Text(verbatim: request.kind == "question" ? "質問" : request.name).fontWeight(.semibold)
                     if let pending = pendingSubmission(request.id) {
                         Text(verbatim: "前の回答の結果は未確認です。同じ要求IDで再照合できます。")
                             .foregroundStyle(LAAColor.attention)
