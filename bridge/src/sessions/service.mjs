@@ -732,7 +732,8 @@ export function isWorktree(record) {
 }
 
 function parseMode(raw) {
-  if (raw === undefined || raw === null) return 'bypass';
+  // Bypass is always an explicit request (the app sends it as its default).
+  if (raw === undefined || raw === null) return 'default';
   if (!MODES.has(raw)) throw badRequest('payload_invalid', 'mode must be "bypass" or "default"');
   return raw;
 }

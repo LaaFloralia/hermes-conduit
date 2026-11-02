@@ -777,11 +777,11 @@ test('a retry of a record created before instructions still reconciles', async (
   assert.equal(ctx.adapter.calls.filter((call) => call.op === 'create').length, 1);
 });
 
-test('a session without a workspace runs in the home folder with bypass by default and a prompt-derived name', async (t) => {
+test('a session without a workspace runs in the home folder, bypass only when asked, with a prompt-derived name', async (t) => {
   const ctx = await boot(t, { sessions: { homeCwd: '/Users/owner' } });
   const created = await ctx.bridge.request('/v1/sessions', {
     method: 'POST', token: ctx.token, key: 'k-home',
-    body: { requestId: 'req-home', profile: 'deepseek-flash-high', prompt: '\n  明日の環境認識を  まとめて、要点を三つに絞ってください。\n詳細' },
+    body: { requestId: 'req-home', profile: 'deepseek-flash-high', mode: 'bypass', prompt: '\n  明日の環境認識を  まとめて、要点を三つに絞ってください。\n詳細' },
   });
   assert.equal(created.status, 201, JSON.stringify(created.body));
   const session = created.body.data;
@@ -798,7 +798,7 @@ test('a session without a workspace runs in the home folder with bypass by defau
 
   const fast = await ctx.bridge.request('/v1/sessions', {
     method: 'POST', token: ctx.token, key: 'k-home-2',
-    body: { requestId: 'req-home-2', profile: 'opus-high', prompt: 'ok', mode: 'default', fast: true },
+    body: { requestId: 'req-home-2', profile: 'opus-high', prompt: 'ok', fast: true },
   });
   assert.equal(fast.status, 201);
   assert.equal(fast.body.data.mode, 'default');
