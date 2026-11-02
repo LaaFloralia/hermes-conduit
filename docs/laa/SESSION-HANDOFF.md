@@ -60,18 +60,18 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 - 既知の失敗: `LAA 16 Pro Max`（英語（米国））の `ConnectionSetupUITests` 5件。master `156c096d` と候補の同一smokeで両方同じ5件だけが失敗し、`ProfilePickerUITests` は候補・masterとも3件成功（統合1102で確認）。
 - Mac版の署名と公証は親だけが `scripts/laa/mac-release.sh` で行う。Developer ID証明書（G2、期限2027-11-30）は1PasswordのAgents「LAA Developer ID Application」、テンプレートは `~/.config/laa/mac-release.env.tpl`。できたら親が `/Applications` へ入れて起動を確かめ、Mac miniのDockへ追加する（重複させず、既存の項目は動かさない）。更新時は通常終了後のプロセス消滅を待ってから入れ替える。画面の再取得はアプリを起動することがあるため、終了の判定には使わない。
 - Bridgeは `/Users/laa/dev/hermes-conduit/bridge` から直接動く。`bridge/` を変えた候補をmasterへ入れたら、親が `launchctl kickstart -k gui/$(id -u)/com.laa.bridge` で再起動し、`/v1/health` の起動時間で反映を確かめる。
-- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは **2611021725**（master `ab165c9a`、2026-11-03にApp Store Connectの `VALID`・`IN_BETA_TESTING` と `LAA Internal` 配信を確認）。署名用秘密はxcodebuildへ引き継がず、終了時にDerivedDataと一時署名ファイルを清掃する。
+- TestFlightは親だけが出す: `cd /Users/laa/dev/hermes-conduit && /Users/laa/.config/laa/op-run-batch.sh /Users/laa/.config/laa/asc.env.tpl scripts/laa/testflight.sh`。配信済みは **2611021926**（master `ba36e230`、2026-11-03にApp Store Connectの `VALID`・`IN_BETA_TESTING` と `LAA Internal` 配信を確認）。署名用秘密はxcodebuildへ引き継がず、終了時にDerivedDataと一時署名ファイルを清掃する。
 
 ## 現在の状態（2026-11-03）
 
 - 統合1102（`4bebd0c8`）で Google（Drive/Calendar）・Brain・Paseo・Linear・fixes・bridge-speed をmasterへ統合した。配信したmasterでBridge **522/522** が成功（失敗・skipとも0、全件ログ保存済み）。翻訳6546箇所、FEATURE_MAP 104節/1616パスも通る。
 - Workのタスクは Linear の一覧・本人受信箱・作成/変更・コメント・添付・アーカイブ復元を実装済み。Bridgeへ既存のLinear helperと期待する本人viewer IDを設定し、本番設定から本人受信箱を読めることを確認した。Mac版から既存課題BUS-322の本文を保存し、Linear側の更新を読戻した。iPhoneの操作・通知配送は別の受入確認とする。
 - Driveは Studio タブの「Drive」から既存の Assets 画面（Drive/Studio切替）へ入る。5タブは変えていない。設定は全タブで右上の同じ位置（作成系は左上）。
-- Mac版 **2611021827** はApple Silicon／Intel両対応で、アプリとDMGのDeveloper ID署名・公証・staple・Gatekeeperを確認した。Mac miniの `/Applications/LAA.app` へ導入し、既存の接続保持とDock登録1件を確認。DMGは本体チェックアウトの `build/laa/mac/2611021827/`。MacでLinear本人受信箱・Googleカレンダー・Driveの実動画とGoogleドキュメントのPDF・Studioの実作品と書出し動画を表示できた。3サイズとライト／ダークは2611021742、更新後の接続済みダーク画面は2611021827で確認。MacBookへTailscaleのTaildropでDMGを転送済みだが、導入と端末固有のペアリングは未確認。
+- Mac版 **2611021827** はApple Silicon／Intel両対応で、アプリとDMGのDeveloper ID署名・公証・staple・Gatekeeperを確認した。Mac miniの `/Applications/LAA.app` へ導入し、既存の接続保持とDock登録1件を確認。DMGは本体チェックアウトの `build/laa/mac/2611021827/`。MacでLinear本人受信箱・Googleカレンダー・Driveの実動画とGoogleドキュメントのPDF・Studioの実作品と書出し動画を表示できた。3サイズとライト／ダークは2611021742、更新後の接続済みダーク画面は2611021827で確認。MacBookへTaildropでDMGを転送し、画面共有でApplicationsへのコピーを確認した。初回起動の「開く」は遠隔クリックとReturnで閉じられず、本人操作待ち。MacBookでの起動と端末固有のペアリングは未確認。
 - AI Usageは収集元の応答が30秒を超えることがあるため、表示サービスの取得待機を65秒へ調整した（devのusage-meters、関連45試験成功）。社長の承認後に表示サービスだけ再起動し、04:08 JSTに8提供元の新しいfeedとMac版の利用枠・API月次値・取得時刻を確認。指標ごとの取得不能は数値を出さない。
 - Bridgeの遅い読み取り（routines/Studio/usage）は前回成功値と `fetchedAt` を返し、期限切れはアプリが「最新ではない可能性」を表示する。Googleのカレンダー通知は初回有効化時刻を台帳に残し、有効化前の過去分をまとめて送らない（以後の失敗・再起動の追送と重複抑止は維持）。
 - 本番Bridgeは2026-11-03 02:25 JSTに再起動してhealthを確認。既存の本人端末だけへ `brain:owner`・`calendar:write`・`media:write` を追加した。Google通知は `LAA_GOOGLE_REMINDERS_ENABLED=1` で有効化し、初回時刻保存と過去分の送信0件を確認した。実際の通知到着は未確認。
-- iPhoneは04:12 JSTにロック解除とTestFlightの正常起動を確認し、LAA **2611021725**・音声 **2026110201** が「開く」表示だった。音声のオーブ復元版 **2026110301** も内部配信済み（打鍵クラッシュ修正は維持）。別の操作で画面が切り替わったため実機確認の順番を調整中。Drive/Calendarの実データ、Linearの実書込み・通知、PaseoのIME/音声、WidgetKit、通話と音楽の受入は未完了。旧アプリの削除やStudio Webの撤去を配信成功だけで進めない。
+- iPhoneは04:12 JSTにロック解除とTestFlightの正常起動を確認し、LAA **2611021725**・音声 **2026110201** が「開く」表示だった。音声のオーブ復元版 **2026110301** も内部配信済み（打鍵クラッシュ修正は維持）。別の操作で画面が切り替わったため実機確認の順番を調整中。Brain・HQのSyncTrain移行とiPhoneのObsidian削除はHQ台帳の別作業で確認済みのため、フォルダ選択や削除を重ねて行わない。Drive/Calendarの実データ、Linearの実書込み・通知、PaseoのIME/音声、WidgetKit、通話と音楽の受入は未完了。旧アプリの削除やStudio Webの撤去を配信成功だけで進めない。
 
 ## 判断待ちと未解決（Linear「LAAアプリ」）
 
@@ -83,7 +83,8 @@ paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v
 - Claude Codeのサンドボックス内ではsimctlが止まる。サンドボックスの外で実行する。
 - App Storeの自動更新でXcodeが変わることがある。27.2では `xcodebuild -runFirstLaunch`（`laa-admin` 経由）とMetal Toolchainの追加が必要だった。
 - push relay（launchd `com.laa.conduit-relay-laa`）は本体チェックアウトの `scripts/laa/relay-run.sh` から動く。worktreeから入れない。
-- Bridgeの `brain:write`（既存ノートの上書き）は無効を維持する。本人が選んだSyncTrain同期フォルダでは、iPhone内の編集・移動・.trash・競合検出・保存履歴を実装済み。両経路を区別し、[BRAIN-WRITE §10](BRAIN-WRITE.md#10-iphoneローカルのノート管理と下書き2026-11-02) を参照する。
+- Bridgeの `brain:write`（既存ノートの上書き）は無効を維持する。iPhoneのSyncTrainとLAAは「このiPhone内/LAA」のBrain・HQへ結び付け済み（HQ台帳96101d7）。オフライン編集・移動・.trash・競合検出・保存履歴はこの端末内の経路で、Bridgeの上書きとは区別する。[BRAIN-WRITE §10](BRAIN-WRITE.md#10-iphoneローカルのノート管理と下書き2026-11-02) を参照する。
+- Mac CatalystのTextEditorでは、AXの値だけの書換えがSwiftUIの保存内容へ反映されなかった。通常入力の選択範囲を確認して保存し、Linearから本文を読戻す。送信成功だけで入力の一致を確定しない。
 - 秘密は親だけが1Password Agents経由で扱い、workerへ渡さない。workerにBrainを読ませない。
 - StudioのUI試験（`LAAStudioUITests`）は `scripts/laa/studio-ui-fixture.mjs`（api 19582／control 19583）を先に起動し、アプリへ `LAA_BRIDGE_DEFAULT_ADDRESS=http://127.0.0.1:19582` を渡す（DEBUGのみ有効。simulatorのhttpは127.0.0.1だけ許可）。
 - Conduitプラグインの更新は、HQの定期処理（`hq/tools/CONDUIT-UPDATE.md`）が判断する。
