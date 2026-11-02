@@ -94,19 +94,19 @@ enum LAAUsageFreshness {
     static func isStale(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
         if item.stale { return true }
         guard let observed = LAAUsageItem.date(item.observedAt),
-              observed <= min(item.freshnessAnchor ?? now, now).addingTimeInterval(120) else { return true }
+              !(min(item.freshnessAnchor ?? now, now).addingTimeInterval(120) < observed) else { return true }
         let limit = min(observed, item.freshnessAnchor ?? now, now).addingTimeInterval(10 * 60)
         if item.detail?.sourceKind == "verified" { return true }
         if let raw = item.detail?.freshUntil {
             guard let deadline = LAAUsageItem.date(raw) else { return true }
-            return min(deadline, limit) <= now
+            return !(now < min(deadline, limit))
         }
         // Older Bridges do not supply freshUntil, but do send observedAt and stale.
-        return limit <= now
+        return !(now < limit)
     }
 
     static func windowExpired(_ window: LAAUsageItem.Window, at now: Date = Date()) -> Bool {
-        LAAUsageItem.date(window.resetsAt).map { $0 <= now } ?? false
+        LAAUsageItem.date(window.resetsAt).map { !(now < $0) } ?? false
     }
 
     static func outdated(_ text: String?, at now: Date = Date()) -> Bool {
@@ -121,12 +121,12 @@ enum LAAUsageFreshness {
 
     static func reachedUTCDate(_ text: String?, at now: Date = Date()) -> Bool {
         guard let text, text.count == 10, let start = LAAUsageItem.date(text + "T00:00:00Z") else { return false }
-        return start <= now
+        return !(now < start)
     }
 
     static func needsRenewal(_ item: LAAUsageItem, at now: Date = Date()) -> Bool {
         if extraNeedsAttention(item, at: now) { return true }
-        if LAAUsageItem.date(item.detail?.renewsAt).map({ $0 <= now }) == true { return true }
+        if LAAUsageItem.date(item.detail?.renewsAt).map({ !(now < $0) }) == true { return true }
         if reachedUTCDate(item.detail?.expiresOnUtc, at: now) { return true }
         return (item.detail?.components ?? []).contains { $0.amount > 0 && reachedUTCDate($0.expiresOnUtc, at: now) }
     }
