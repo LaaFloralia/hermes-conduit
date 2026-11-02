@@ -42,12 +42,24 @@ struct LAAChatsView: View {
             case .failed(let message): groupsState = .failed(message)
             }
         }
+        var unread: [String: Int] = [:]
+        for person in people {
+            if let count = appState.unreadChatCount(profile: person.profile), count > 0 { unread[person.profile] = count }
+        }
+        let runs = appState.sessions
+            .filter { $0.source == .cron && !$0.isArchived }
+            .sorted { ($0.lastActivityAt ?? 0) > ($1.lastActivityAt ?? 0) }
         return LAAChatsSnapshot(
             people: people,
             rooms: groupReadDashboard == appState.activeDashboardID ? loadedRooms : [],
             groupsState: groupsState,
             canCreateChat: appState.canTapNewChat,
-            canCreateGroup: appState.isConnected && appState.groupChatPhase == .available
+            canCreateGroup: appState.isConnected && appState.groupChatPhase == .available,
+            unreadByProfile: unread,
+            cronJobs: appState.cronJobs,
+            cronRuns: Array(runs.prefix(5)),
+            cronZoneLabel: ProfileTimeZone.scheduleZoneLabel(profileSetting: appState.activeProfileTimeZoneSetting),
+            cronProfile: appState.activeProfile
         )
     }
 
@@ -70,6 +82,8 @@ struct LAAChatsView: View {
                         selection: selection,
                         openPerson: openPerson, openRoom: { room in
             Task { await appState.openGroupRoom(room) }
+        }, openRun: { run in
+            _ = appState.openChatFromLiveCall(run.id)
         }, newChat: {
             appState.startNewChat()
         }, newGroup: {

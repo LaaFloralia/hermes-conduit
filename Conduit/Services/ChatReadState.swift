@@ -147,6 +147,19 @@ struct ChatReadState: Equatable {
     }
 
     /// The latest time Desktop had this conversation, under any of its ids.
+    /// How many messages read as unread, when the counts can say it. Hermes
+    /// carries a flag, not a number; the ledger's seen count is what turns the
+    /// flag into a count. A chat that is unread without a usable count reads
+    /// as one, so the badge never understates an unread chat.
+    func unreadCount(_ session: SessionSummary, profile: String, now: Date = Date()) -> Int? {
+        guard isUnread(session, profile: profile, now: now) else { return nil }
+        let id = Self.durableID(for: session)
+        if let count = session.messageCount, let seen = ledger.seenCounts[profile]?[id], count > seen {
+            return count - seen
+        }
+        return 1
+    }
+
     func desktopSeenTime(for session: SessionSummary, profile: String) -> TimeInterval? {
         guard let views = desktopSeenThrough[profile], !views.isEmpty else { return nil }
         let ids = [session.id, session.storedSessionId, session.lineageRootId].compactMap { $0 } + session.alternateIds

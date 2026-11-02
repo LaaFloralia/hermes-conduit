@@ -9,6 +9,8 @@ struct LAAChatsContent: View {
     var selection: LAAChatsListSelection? = nil
     var openPerson: (LAAChatsPerson) -> Void
     var openRoom: (GroupRoom) -> Void
+    /// A cron run's own conversation, from the scheduled section's history.
+    var openRun: (SessionSummary) -> Void = { _ in }
     var newChat: () -> Void
     var newGroup: () -> Void
     var openSettings: () -> Void
@@ -43,6 +45,7 @@ struct LAAChatsContent: View {
                     if let ciel = matchingCiel { cielSection(ciel) }
                     if !searching || !employees.isEmpty { employeeSection }
                     if !searching || !rooms.isEmpty { groupSection }
+                    if !searching { scheduledSection }
                     if searching { searchIncomplete }
                 }
             }
@@ -240,10 +243,25 @@ struct LAAChatsContent: View {
                 Text(verbatim: person.role).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
+            if let unread = snapshot.unreadByProfile[person.profile], unread > 0 {
+                unreadBadge(unread)
+            }
             Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
         }
         .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
         .contentShape(Rectangle())
+    }
+
+    /// A count, as the phone's chat lists show one: messages past the read
+    /// watermark, or one when only the server's flag is known.
+    private func unreadBadge(_ count: Int) -> some View {
+        Text(verbatim: count > 99 ? "99+" : String(count))
+            .laaTextStyle(.secondary).fontWeight(.semibold)
+            .foregroundStyle(.white)
+            .padding(.horizontal, LAASpacing.x2)
+            .frame(minWidth: 22, minHeight: 22)
+            .background(LAAColor.attention, in: Capsule())
+            .accessibilityLabel(Text(verbatim: LAACopy.chatsUnread(count)))
     }
 
     private func roomRow(_ room: GroupRoom, selected: Bool = false) -> some View {
@@ -282,6 +300,117 @@ struct LAAChatsContent: View {
             .laaTextStyle(.section).fontWeight(.bold).tracking(0.8)
             .foregroundStyle(LAAColor.secondaryText)
             .accessibilityAddTraits(.isHeader)
+    }
+
+    // MARK: Scheduled jobs
+
+    /// What this profile's jobs do, split by where their results land, with
+    /// the next run and whether the job runs at all. Jobs stay Hermes' own:
+    /// this only reads them, and the runs are the cron chats the list holds.
+    private var scheduledSection: some View {
+        let jobs = snapshot.cronJobs
+        return VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            sectionHeader(LAACopy.chatsCron)
+            if jobs.isEmpty {
+                note(LAACopy.chatsCronNone)
+            } else {
+                ForEach(scheduledGroups, id: \.0) { group in
+                    scheduledGroup(group.0, jobs: group.1)
+                }
+            }
+            if !snapshot.cronRuns.isEmpty { recentRuns }
+        }
+    }
+
+    /// Jobs under the person whose chat receives them: a bot-chat target names
+    /// its profile, and anything else runs in this connection's own conversation.
+    private var scheduledGroups: [(String, [CronJob])] {
+        var order: [String] = snapshot.people.map(\.profile).filter { !$0.isEmpty }
+        var buckets: [String: [CronJob]] = [:]
+        for job in snapshot.cronJobs {
+            let profile = Self.deliveryProfile(job) ?? snapshot.cronProfile
+            if !order.contains(profile) { order.append(profile) }
+            buckets[profile, default: []].append(job)
+        }
+        return order.compactMap { profile in
+            guard let jobs = buckets[profile], !jobs.isEmpty else { return nil }
+            let name = Self.profileName(profile, people: snapshot.people)
+            let sorted = jobs.sorted { ($0.nextRunAt ?? "~") < ($1.nextRunAt ?? "~") }
+            return (name, sorted)
+        }
+    }
+
+    private static func deliveryProfile(_ job: CronJob) -> String? {
+        guard let deliver = job.deliver, deliver.hasPrefix("bot-chat:") else { return nil }
+        let profile = String(deliver.dropFirst("bot-chat:".count))
+        return profile.isEmpty ? nil : profile
+    }
+
+    private static func profileName(_ profile: String, people: [LAAChatsPerson]) -> String {
+        if let person = people.first(where: { $0.profile == profile }) { return person.name }
+        return profile.hasPrefix("laa-") ? String(profile.dropFirst("laa-".count)) : profile
+    }
+
+    private func scheduledGroup(_ title: String, jobs: [CronJob]) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            Text(verbatim: title).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            ForEach(jobs) { job in scheduledRow(job) }
+        }
+    }
+
+    private func scheduledRow(_ job: CronJob) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            HStack(spacing: LAASpacing.x2) {
+                Text(verbatim: job.displayName).laaTextStyle(.body).fontWeight(.medium)
+                Spacer(minLength: LAASpacing.x2)
+                Text(verbatim: job.statusLabel).laaTextStyle(.secondary)
+                    .foregroundStyle(job.isActive ? LAAColor.link : LAAColor.secondaryText)
+            }
+            HStack(spacing: LAASpacing.x2) {
+                if let schedule = CronScheduleText.describe(job, zoneLabel: snapshot.cronZoneLabel) {
+                    Text(verbatim: schedule).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                }
+                Spacer(minLength: LAASpacing.x2)
+                if let next = Self.nextRunText(job.nextRunAt) {
+                    Text(verbatim: "次回 \(next)").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                }
+            }
+        }
+        .padding(LAASpacing.x3)
+        .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("laa.chats.cron.\(job.id)")
+    }
+
+    private var recentRuns: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+            Text(verbatim: LAACopy.chatsCronRuns).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            ForEach(snapshot.cronRuns) { run in
+                Button { openRun(run) } label: {
+                    HStack(spacing: LAASpacing.x2) {
+                        Text(verbatim: run.title).laaTextStyle(.body).lineLimit(1)
+                        Spacer(minLength: LAASpacing.x2)
+                        Text(verbatim: run.updatedLabel).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                        Image(systemName: "chevron.right").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    }
+                    .padding(.vertical, LAASpacing.x1)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("laa.chats.cronRun.\(run.id)")
+            }
+        }
+    }
+
+    /// Hermes' ISO instants, shown in the device's own words.
+    private static func nextRunText(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        var date = formatter.date(from: raw)
+        if date == nil { formatter.formatOptions = [.withInternetDateTime]; date = formatter.date(from: raw) }
+        guard let date else { return raw }
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func note(_ message: String) -> some View {
