@@ -24,6 +24,16 @@ final class LAAWorkLinearUITests: XCTestCase {
         return app
     }
 
+    func testFirstProjectToolbarAllowsSharedInstructions() throws {
+        let app = try launch()
+        app.buttons["work.section.projects"].tap()
+        let add = app.buttons["プロジェクトを追加"]
+        XCTAssertTrue(add.waitForExistence(timeout: 10))
+        add.tap()
+        XCTAssertTrue(app.textViews["work.project.instructions"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Bridgeが指示本文を返すまで編集できません。"].exists)
+    }
+
     func testCreateEditCompleteAndDeleteOwnerTasks() throws {
         let app = try launch()
         XCTAssertFalse(app.buttons["今週の振り返りをまとめる"].exists)

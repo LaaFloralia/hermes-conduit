@@ -69,7 +69,7 @@ struct LAAWorkView: View {
         .tint(LAAColor.link)
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .sheet(isPresented: $showNewProject, onDismiss: { refreshID += 1 }) {
-            LAAWorkProjectEditor(project: nil, canEditInstructions: projectInstructionsAvailable, drafts: drafts).environmentObject(bridge)
+            LAAWorkProjectEditor(project: nil, canEditInstructions: true, drafts: drafts).environmentObject(bridge)
         }
         .onChange(of: embeddedSection) { _, value in if let value { section = value } }
         .task(id: "\(bridge.revision)-\(section)-\(refreshID)") { await load() }
