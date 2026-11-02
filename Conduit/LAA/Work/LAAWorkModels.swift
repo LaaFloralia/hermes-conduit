@@ -6,6 +6,28 @@ struct LAAWorkPage<Item: Decodable>: Decodable {
     let nextCursor: String?
     let sources: [LAAWorkSource]?
     let total: Int?
+    /// When the Bridge last read a cacheable list successfully. Its slow
+    /// read-only routes answer from the last good value while they refresh,
+    /// so a page older than the freshness window is shown as such.
+    let fetchedAt: String?
+}
+
+enum LAAWorkFreshness {
+    static let staleAfter: TimeInterval = 60
+
+    static func date(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: value)
+    }
+
+    static func isStale(_ fetchedAt: Date?, now: Date = Date()) -> Bool {
+        guard let fetchedAt else { return false }
+        return now.timeIntervalSince(fetchedAt) > staleAfter
+    }
 }
 
 struct LAAWorkConversationMessage: Codable, Identifiable {

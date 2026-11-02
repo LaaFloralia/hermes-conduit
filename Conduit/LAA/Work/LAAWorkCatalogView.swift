@@ -25,6 +25,7 @@ struct LAAWorkCatalogView: View {
     @State private var failure: String?
     @State private var loadID = UUID()
     @State private var deviceID: String?
+    @State private var fetchedAt: Date?
 
     var body: some View {
         List {
@@ -33,6 +34,11 @@ struct LAAWorkCatalogView: View {
                 Button { Task { await load() } } label: { Text(verbatim: "読み直す") }
             }
             if loading { ProgressView().frame(maxWidth: .infinity) }
+            if kind == .routines, LAAWorkFreshness.isStale(fetchedAt) {
+                Text(verbatim: "最終取得 \(clock(fetchedAt))。新しい内容を確認しています。")
+                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityIdentifier("work.routines.fetchedAt")
+            }
             if kind == .routines {
                 ForEach(routines.filter { $0.triggerKind == nil || $0.triggerKind == "scheduled" }) { routine in routineRow(routine) }
                 let services = routines.filter { $0.triggerKind != nil && $0.triggerKind != "scheduled" }
@@ -114,6 +120,12 @@ struct LAAWorkCatalogView: View {
         }
     }
 
+    private func clock(_ date: Date?) -> String {
+        guard let date else { return "時刻不明" }
+        let parts = Calendar.autoupdatingCurrent.dateComponents([.hour, .minute], from: date)
+        return String(format: "%02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+    }
+
     private func detail(_ label: String, _ value: String, singleLine: Bool = false) -> some View {
         HStack(alignment: .top) {
             Text(verbatim: label).foregroundStyle(LAAColor.secondaryText)
@@ -126,7 +138,7 @@ struct LAAWorkCatalogView: View {
     private func load() async {
         let epoch = UUID(); loadID = epoch
         let device = bridge.deviceID
-        if device != deviceID { routines = []; skills = []; loaded = false; deviceID = device }
+        if device != deviceID { routines = []; skills = []; loaded = false; fetchedAt = nil; deviceID = device }
         guard bridge.status == .paired else { return }
         loading = true; failure = nil
         defer { if loadID == epoch { loading = false } }
@@ -136,6 +148,7 @@ struct LAAWorkCatalogView: View {
                 guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
                 guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
                 routines = page.items
+                fetchedAt = LAAWorkFreshness.date(page.fetchedAt)
             } else {
                 let page: LAAWorkPage<LAAWorkSkill> = try await bridge.read("/v1/skills")
                 guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }

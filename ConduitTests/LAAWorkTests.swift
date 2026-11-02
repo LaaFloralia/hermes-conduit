@@ -26,6 +26,24 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNil(page.items.first?.result)
     }
 
+    func testRoutinePageKeepsTheBridgeFetchTime() throws {
+        let data = Data(#"{"items":[],"nextCursor":null,"fetchedAt":"2026-11-02T12:00:00.000Z"}"#.utf8)
+        let page = try JSONDecoder().decode(LAAWorkPage<LAAWorkRoutine>.self, from: data)
+        let fetched = try XCTUnwrap(LAAWorkFreshness.date(page.fetchedAt))
+        XCTAssertEqual(fetched.timeIntervalSince1970, 1_793_620_800, accuracy: 0.001)
+    }
+
+    func testRoutineFreshnessUsesTheBridgeWindow() {
+        let fetched = Date(timeIntervalSince1970: 1_793_620_800)
+        XCTAssertFalse(LAAWorkFreshness.isStale(fetched, now: fetched.addingTimeInterval(59)))
+        XCTAssertFalse(LAAWorkFreshness.isStale(fetched, now: fetched.addingTimeInterval(60)))
+        XCTAssertTrue(LAAWorkFreshness.isStale(fetched, now: fetched.addingTimeInterval(61)))
+        XCTAssertFalse(LAAWorkFreshness.isStale(nil))
+        XCTAssertEqual(LAAWorkFreshness.date("2026-11-02T12:00:00Z"), fetched)
+        XCTAssertNil(LAAWorkFreshness.date(nil))
+        XCTAssertNil(LAAWorkFreshness.date(""))
+    }
+
     func testFavouritesComeFirstAndArchivedOrWorktreeFieldsDecode() throws {
         let older = try session("o", name: "古い", updated: "2026-10-01T00:00:00Z")
         let newer = try session("n", name: "新しい", updated: "2026-10-03T00:00:00Z")
