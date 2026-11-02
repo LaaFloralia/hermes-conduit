@@ -416,10 +416,20 @@ limited to eight days; Today requests seven local days. Events are read only,
 including recurring instances, title, start/end and location. Date-only all-day
 end dates are exclusive. No attendee list, description or OAuth token is returned.
 
-The adapter needs `LAA_GOOGLE_CALENDAR_CLIENT_ID`,
-`LAA_GOOGLE_CALENDAR_CLIENT_SECRET` and `LAA_GOOGLE_CALENDAR_REFRESH_TOKEN` in the
-Bridge process environment, injected from 1Password Agents via the existing
-`op-run-batch.sh` route. `LAA_GOOGLE_CALENDAR_ID` defaults to `primary`.
+The adapter reads credentials at runtime from the default helper
+`/Users/laa/.config/laa/google-calendar-credential.sh`, executed directly with
+`execFile` (no shell, no arguments, bounded timeout and output). The helper prints
+one JSON object to stdout with `client_id`, `client_secret`, `refresh_token` and an
+optional `calendar_id`. stderr is discarded, and neither the output nor its values
+are logged or returned. A missing, failing, malformed or incomplete helper result
+returns `calendar_not_configured` (503), never an empty calendar. The helper is
+provisioned by the operator; this implementation does not create it.
+`LAA_GOOGLE_CALENDAR_CLIENT_ID`, `LAA_GOOGLE_CALENDAR_CLIENT_SECRET` and
+`LAA_GOOGLE_CALENDAR_REFRESH_TOKEN` remain only as an explicit test override when
+all three are set. `LAA_GOOGLE_CALENDAR_ID` overrides the helper's `calendar_id`,
+which defaults to `primary`. Access tokens stay in memory, are reused until their
+`expires_in` lifetime ends or the events API rejects the token, and concurrent
+reads share one refresh.
 Do not put values in the plist, source, command arguments or a plain `.env` file.
 OAuth clients, consent and Google Cloud configuration are **not** created by this
 implementation. An operator must first confirm an existing authorized OAuth route
