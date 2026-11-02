@@ -8,7 +8,7 @@
 - Export attachments from one `xcresult` one call at a time: concurrent `xcresulttool export` runs on the same bundle race on its index and fail.
 - Keep generated output out of git: `.deriveddata*`, `*.xcresult` and `build/` never enter a commit. Stage the files you own by name instead of `git add -A` (a worktree's DerivedData sits beside the sources), and read `git diff --cached --name-only` before committing.
 - Merge one candidate at a time. Require GitHub CI and the LAA personal build on the candidate. GitHub CI selects tests with `--changed-from HEAD^1`; integration candidates also require the selected smoke tests locally with `--changed-from <master SHA>`.
-- Compare candidate and master on `LAA 16 Pro Max`; the known smoke failures are listed in the handoff's merge gate. New failures block the merge.
+- Compare candidate and master on `LAA 16 Pro Max`; the known smoke failures are listed in the handoff's merge gate. New failures block the merge. Judge every check, build and test by its exit code and its saved full log (tests: the result bundle's pass/fail counts), never by a tail of the output, and name that log in the report.
 - GitHub CI currently does not run on pushes to master (BUS-323). Until it does, and whenever GitHub Actions is unavailable, gate on the local master-based smoke with no new failures and a local personal Release build: generate `project-personal.yml` and build for generic iOS with `CODE_SIGNING_ALLOWED=NO`.
 - The parent session runs TestFlight uploads because it holds the required secrets.
 - Install launchd services such as the push relay (`scripts/laa/relay-install.sh`) only from the main checkout `/Users/laa/dev/hermes-conduit`, never from a worktree; worktrees are removed after merges.
