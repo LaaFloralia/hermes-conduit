@@ -49,6 +49,7 @@ export const STUDIO_SCOPES = Object.freeze(['studio:read', 'studio:request']);
 export const ALL_SCOPES = Object.freeze([
   ...DEFAULT_SCOPES,
   ...STUDIO_SCOPES,
+  'calendar:read',
   'brain:create',
   'instructions:read',
   'instructions:write',

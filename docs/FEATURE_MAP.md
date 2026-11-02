@@ -3842,17 +3842,19 @@ and rollback instructions · the upstream App Store build
 **Checked:** 2026-11-01, based on 638a2af6; presentation change pending simulator verification.
 ## LAA Today and calendar widget
 
-**Siblings:** Today calendar · small next-event widget · existing calendar tools · Work and Brain entry points.
+**Siblings:** Google Calendar in Today · small next-event widget · Brain entry point.
 
 **Code**
-- Today and EventKit: `Conduit/LAA/Today/LAATodayView.swift`, `Conduit/LAA/Today/LAATodayCalendar.swift`.
+- Today and Google Calendar: `Conduit/LAA/Today/LAATodayView.swift`, `Conduit/LAA/Today/LAATodayCalendar.swift`.
 - Widget: `ConduitWidgets/LAA/LAANextEventWidget.swift`.
 - Navigation: `Conduit/LAA/LAAAppShell.swift`, `Conduit/LAA/Today/LAAWorkHub.swift`.
 
 **Rulings**
-- Today reads the iPhone's calendars with EventKit full access; it does not modify events. The widget reads EventKit on timeline refresh; Today also requests a refresh after calendar changes.
+- Today reads seven local calendar days through the authenticated Mac Bridge (`GET /v1/calendar/events`, opt-in `calendar:read` scope). It shows times, titles and locations, expands recurring events and preserves all-day date boundaries. Open tasks was removed; tasks live in Work.
+- Google OAuth provisioning is an operator prerequisite, not performed by the app. Missing configuration, expired authorization, missing scope and network failures remain visible errors rather than empty calendars. The widget uses the latest Google snapshot from Today, expires it after one hour and asks to open Today; it never reads EventKit.
+- Bridge implementation/tests: `bridge/src/calendar/google.mjs`, `bridge/src/routes/calendar.mjs`, `bridge/test/calendar.test.mjs`. Calendar model/widget snapshot: `Shared/Widgets/LAACalendarSnapshot.swift`.
 
 **Open gaps**
-- The owner-task view and direct daily-note destination require integration with their parallel branches. WidgetKit controls refresh timing; device permission and background refresh need real-device confirmation.
+- Actual Google reads require operator-provisioned OAuth credentials and the device calendar scope; neither is configured by this change. The direct daily-note destination remains pending. WidgetKit timing and Today refresh need real-device confirmation.
 
-**Checked:** 2026-11-01, based on 72a248ad; integration pending.
+**Checked:** 2026-11-02, based on 9f581505. LAA Debug build, 12 calendar unit/snapshot tests, two Today UI tests, 15 Bridge/auth/HTTP tests and translation coverage passed. Owner-size light/dark fixtures verified; real Google OAuth setup and device verification remain pending.

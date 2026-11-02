@@ -206,7 +206,6 @@ targets:
       - path: assets/laa/LAAAccent.xcassets
         buildPhase: resources
       - path: Conduit/LAA/Design/LAAColorValues.swift
-      - path: Conduit/LAA/Today/LAATodayCalendar.swift
       - path: Shared/LAAProductBrand.swift
       - path: ConduitWidgets/Resources/LAAStaff.xcassets
         buildPhase: resources
