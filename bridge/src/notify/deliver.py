@@ -16,6 +16,11 @@ package = types.ModuleType('_laa_bridge_conduit')
 package.__path__ = [str(home / '.hermes/plugins/conduit_push')]
 sys.modules[package.__name__] = package
 try:
+    # The launcher uses a bare Python; Hermes keeps its installed dependencies
+    # in a separately selected environment. Activate it before the plugin so
+    # encryption cannot silently degrade because cryptography is absent.
+    from pm.environments import activate_dependencies
+    activate_dependencies(home / '.local/share/hermes-agent')
     from _laa_bridge_conduit import client
     payload = json.load(sys.stdin)
     if client.load_state() is None:
