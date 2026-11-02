@@ -48,6 +48,7 @@ struct LAABrainManageNoteView: View {
             }
             .confirmationDialog(Text(verbatim: "このノートをゴミ箱へ移動しますか？"), isPresented: $confirmTrash, titleVisibility: .visible) {
                 Button(role: .destructive) { perform(trash: true) } label: { Text(verbatim: "ゴミ箱へ移動") }
+                    .accessibilityIdentifier("laa.brain.manage.confirmTrash")
                 Button(role: .cancel) {} label: { Text(verbatim: "キャンセル") }
             }
         }

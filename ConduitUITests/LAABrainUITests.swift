@@ -72,10 +72,10 @@ final class LAABrainUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Renamed.md"].waitForExistence(timeout: 15))
         XCTAssertTrue(manage.waitForExistence(timeout: 10)); manage.tap()
         app.buttons["laa.brain.manage.trash"].tap()
-        let confirm = app.buttons["ゴミ箱へ移動"].firstMatch
+        let confirm = app.buttons["laa.brain.manage.confirmTrash"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 10)); confirm.tap()
         XCTAssertTrue(filters.waitForExistence(timeout: 15))
-        XCTAssertFalse(app.buttons["laa.brain.gallery.note"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["laa.brain.gallery.note"].firstMatch.waitForNonExistence(timeout: 15))
     }
 
     func testBrowseReadRawAndSearch() {
