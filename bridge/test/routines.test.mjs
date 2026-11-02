@@ -127,7 +127,10 @@ test('an expired routine value is served at once and one console read refreshes 
   const stale = await bridge.request('/v1/routines', { token });
   const elapsed = Date.now() - started;
   assert.equal(stale.status, 200);
-  assert.ok(elapsed < 50, `an expired value took ${elapsed} ms`);
+  // The stale answer must not wait for the 300 ms refresh behind it. The bound
+  // stays below that so the contract is still proved, but tolerates a busy
+  // developer Mac (a 74 ms answer under load 200 failed a 50 ms bound).
+  assert.ok(elapsed < 250, `an expired value took ${elapsed} ms`);
   assert.equal(stale.body.data.fetchedAt, first.body.data.fetchedAt);
 
   const concurrent = await Promise.all(Array.from({ length: 4 }, () => bridge.request('/v1/routines', { token })));
