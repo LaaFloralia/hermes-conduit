@@ -5,6 +5,10 @@ import XCTest
 
 @MainActor
 final class LAACompactStudioSnapshotTests: XCTestCase {
+    /// The create screen's composer reads AppState for its dictation button.
+    private lazy var appState = AppState(defaults: UserDefaults(suiteName: "LAACompactStudioSnapshotTests")!,
+                                         loadSavedConnection: false)
+
     func testScreensAtOwnerSizeLightAndDark() throws {
         defer { LAAStudioData.snapshotFixture = nil; LAAStudioData.fixtureRecords = [:] }
         let bridge = LAABridgeSession(statusForTesting: .unpaired)
@@ -59,7 +63,7 @@ final class LAACompactStudioSnapshotTests: XCTestCase {
         let scene = try XCTUnwrap(previous?.windowScene ?? scenes.first)
         let insets = previous?.safeAreaInsets ?? .zero
         let host = UIHostingController(rootView: NavigationStack { content() }
-            .environmentObject(bridge).preferredColorScheme(style == .dark ? .dark : .light))
+            .environmentObject(bridge).environmentObject(appState).preferredColorScheme(style == .dark ? .dark : .light))
         let window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: 440 + insets.left + insets.right, height: 956)
         window.traitOverrides.horizontalSizeClass = .compact
