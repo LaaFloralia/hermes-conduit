@@ -17,7 +17,8 @@ struct LAACalendarDetail: View {
     var body: some View {
         NavigationStack {
             List {
-                Text(verbatim: event.title).font(.title2).textSelection(.enabled)
+                Section {
+                    Text(verbatim: event.title).font(.title2).textSelection(.enabled)
                     .accessibilityIdentifier("laa.calendar.detail.title")
                 Text(verbatim: event.start.formatted(date: .abbreviated, time: event.allDay ? .omitted : .shortened) + " – " + event.end.formatted(date: .abbreviated, time: event.allDay ? .omitted : .shortened))
                 if let location = event.location, !location.isEmpty {
@@ -42,8 +43,12 @@ struct LAACalendarDetail: View {
                     Button { editing = true } label: { Text(verbatim: "編集") }.disabled(busy)
                     Button(role: .destructive) { confirmDelete = true } label: { Text(verbatim: "削除") }.disabled(busy)
                 }
-                if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
+                    if let message { Text(verbatim: message).foregroundStyle(LAAColor.attention) }
+                }
+                .listRowBackground(LAAColor.surface)
+                .listRowSeparatorTint(LAAColor.separator)
             }
+            .foregroundStyle(LAAColor.text)
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(LAAColor.surface)

@@ -108,7 +108,6 @@ struct LAAWorkHub: View {
                     Text(verbatim: LAACopy.WorkTab.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
                 }
                 Spacer(minLength: LAASpacing.x4)
-                Text(verbatim: "WORKSPACE").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
             }
             HStack(spacing: 0) {
                 ForEach(Section.allCases) { value in
