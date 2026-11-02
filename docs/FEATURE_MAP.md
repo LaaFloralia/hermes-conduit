@@ -3875,7 +3875,8 @@ and rollback instructions · the upstream App Store build
 - Calendar reads require opt-in `calendar:read`; creating, editing and deleting require separate opt-in `calendar:write`. Both remain outside default enrollment. The app confirms writes and attendee notifications; edits/deletes use Google etags and Bridge idempotency. Expanded recurring instances and whole-series edits are separate operations.
 - Calendar list supplies colours, access roles, selection and Google default reminders. Read ranges cover at most 42 days; date-only end dates remain exclusive, including newly created all-day events
   across DST. Malformed events are skipped individually with a visible count.
-  Imported event IDs containing `@` are encoded safely. Details include location/map, meeting link, attendees, notes and attachments. The widget retains its one-hour freshness limit and is refreshed only for a range containing today.
+  Opaque event and calendar IDs are strictly encoded before requests; imported
+  IDs containing `@`, `#`, `+` and `_` retain their exact value. Details include location/map, meeting link, attendees, notes and attachments. The widget retains its one-hour freshness limit and is refreshed only for a range containing today.
 - Google credentials use one runtime helper and in-memory token for Drive and Calendar. The helper format is unchanged; OAuth tokens never reach the phone, URLs or logs. Consent and device grants remain operator actions.
 - Saved metadata appears before network refresh; an error keeps the saved view visibly stale. Unpairing clears the displayed calendar and widget snapshot. Notification polling is opt-in (`LAA_GOOGLE_REMINDERS_ENABLED=1`) and calls the shared `notifyOwner`; the previous 24 hours of undelivered popup reminders are caught up after
   startup/recovery using persisted delivery dedupe. Google email reminders remain
@@ -3884,5 +3885,5 @@ and rollback instructions · the upstream App Store build
 **Open gaps**
 - Parent must complete additional Google consent, device write grants and notification setup. Real Google reads/writes, notification delivery/tap, WidgetKit timing, PiP/AirPlay and one-second launch on the physical iPhone remain unverified. Raw Google recurrence rules support custom cases; the editor's presets cover daily/weekly/monthly/yearly. The direct daily-note destination remains pending.
 
-**Checked:** 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 398 Bridge tests passed (obsolete mount tests removed);
+**Checked:** 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
 Debug build exited 0 before review fixes, updated build pending. Owner-size visual verification is pending. Real-device acceptance remains pending.

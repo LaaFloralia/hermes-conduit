@@ -261,3 +261,17 @@ test('reminders catch up after upstream failure and restart without delivering t
   await createCalendarReminders(options).tick(); assert.equal(notices.length, 1);
   assert.match(notices[0].deepLink, /calendar=primary/);
 });
+
+test('enabled reminders catch up immediately when Bridge routes start', async t => {
+  let delivered;
+  const notification = new Promise(resolve => { delivered = resolve; });
+  const now = Date.parse('2026-11-02T12:00:00Z');
+  const service = {
+    calendars: async () => ({ items: [{ id: 'primary', selected: true }] }),
+    list: async () => ({ items: [{ id: 'missed', title: 'Fixture', start: '2026-11-02T11:00:00Z', reminders: { overrides: [{ method: 'popup', minutes: 0 }] } }] })
+  };
+  const bridge = await startBridge({ now: () => now, calendar: { service, remindersEnabled: true, reminders: { notify: async value => { delivered(value); return { delivered: true }; } } } });
+  t.after(() => bridge.close());
+  const value = await Promise.race([notification, new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Startup reminder was not sent')), 1000); timer.unref(); })]);
+  assert.match(value.deepLink, /^laa:\/\/today\/events\/missed\?calendar=primary$/);
+});

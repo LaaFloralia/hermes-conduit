@@ -71,7 +71,9 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   if (calendarOptions.remindersEnabled ?? process.env.LAA_GOOGLE_REMINDERS_ENABLED === '1') {
     const reminders = createCalendarReminders({ service: calendarService, now,
       file: `${store.dir}/calendar-reminders.json`, ...calendarOptions.reminders });
-    const timer = setInterval(() => { reminders.tick().catch(() => {}); }, 30_000);
+    const tick = () => { reminders.tick().catch(() => {}); };
+    tick(); // Catch up once at startup, rather than waiting for the first interval.
+    const timer = setInterval(tick, 30_000);
     timer.unref();
     calendarOptions.registerCleanup?.(() => clearInterval(timer));
   }
