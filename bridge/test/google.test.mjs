@@ -322,3 +322,17 @@ test('after enablement a failed delivery is retried once across a restart', asyn
   assert.equal(notices.length, 1, 'delivered once after the restart, never twice');
 });
 
+
+test('a ledger written before the marker keeps its rolling catch-up window', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'google-reminders-legacy-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'calendar-reminders.json'); const notices = [];
+  const time = Date.parse('2026-11-03T01:00:00Z');
+  // Delivered before this build existed: no marker, one old key.
+  await writeFile(file, JSON.stringify({ 'calendar:primary:older:2026-11-01T00:00:00Z:0': time - 7200_000 }), { mode: 0o600 });
+  const service = { calendars: async () => ({ items: [{ id: 'primary', selected: true }] }),
+    list: async () => ({ items: [{ id: 'due', title: 'Due', start: '2026-11-03T00:30:00Z', reminders: { overrides: [{ method: 'popup', minutes: 0 }] } }] }) };
+  await createCalendarReminders({ service, file, now: () => time,
+    notify: async notice => { notices.push(notice); return { delivered: true }; } }).tick();
+  assert.equal(notices.length, 1, 'an existing install still catches up the last day');
+});

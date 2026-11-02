@@ -32,20 +32,15 @@ extension HermesClientTests {
         XCTAssertEqual(ChatTakeoverState.owner(nil), .otherWindow)
     }
 
+    /// Each owner has its own whole sentences, read in the source language.
     /// The LAA build rebrands the catalogs (scripts/laa/brand-bundle.py), so
     /// each flavour is checked against its own exact sentence.
-    #if LAA_BUILD
-    private let brand = "Ciel"
-    private let product = "LAA"
-    private let desktopOwner = "desktop app"
-    #else
-    private let brand = "Hermes"
-    private let product = "Conduit"
-    private let desktopOwner = "Hermes Desktop"
-    #endif
-
-    /// Each owner has its own whole sentences, read in the source language.
     func testOwnerSentences() {
+        #if LAA_BUILD
+        let brand = "Ciel", product = "LAA", desktopOwner = "desktop app"
+        #else
+        let brand = "Hermes", product = "Conduit", desktopOwner = "Hermes Desktop"
+        #endif
         let defaults = UserDefaults.standard
         let previous = defaults.string(forKey: AppLanguageStore.defaultsKey)
         defaults.set(AppLanguage.source.rawValue, forKey: AppLanguageStore.defaultsKey)

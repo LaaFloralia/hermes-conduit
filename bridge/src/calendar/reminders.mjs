@@ -8,10 +8,19 @@ import { notifyOwner } from '../notify/index.mjs';
 // opt-in never delivers the previous day's calendar in one burst.
 const ENABLED_AT = '@enabledAt';
 
+// No delivered key beside the marker: nothing has ever run on this ledger.
+function neverDelivered(ledger) {
+  return !Object.keys(ledger).some(key => key !== ENABLED_AT);
+}
+
 export function createCalendarReminders({ service, notify = notifyOwner, now = Date.now, file } = {}) {
   let running = false;
   let sent = {};
   try { sent = JSON.parse(readFileSync(file, 'utf8')); } catch { }
+  // A ledger written before this marker existed has already been delivering:
+  // keep its 24-hour catch-up window instead of exporting it to "switched on
+  // now". Only a ledger with nothing in it starts at its first tick.
+  const fresh = neverDelivered(sent);
   let enabledAt = Number.isFinite(sent[ENABLED_AT]) ? sent[ENABLED_AT] : null;
   function persist() {
     if (!file) return;
@@ -25,9 +34,10 @@ export function createCalendarReminders({ service, notify = notifyOwner, now = D
       try {
         const time = now();
         if (enabledAt === null) {
-          // First run of this ledger: start counting from now.
-          enabledAt = time;
-          sent[ENABLED_AT] = time;
+          // A first run starts counting from now; a ledger that predates the
+          // marker keeps the rolling window it has always had.
+          enabledAt = fresh ? time : time - 24 * 3600_000;
+          sent[ENABLED_AT] = enabledAt;
           persist();
         }
         const earliest = Math.max(time - 24 * 3600_000, enabledAt);

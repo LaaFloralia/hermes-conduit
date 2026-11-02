@@ -43,14 +43,30 @@ final class LAAFullTaskUITests: XCTestCase {
         XCTAssertTrue(description.waitForExistence(timeout: 20))
         capture("linear-detail-" + appearance)
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let inbox = app.buttons["work.tasks.inbox"]
+        // Back once more to WorkHub: its inbox opens the same personal inbox
+        // view, with the same read mark, one level above the browse screen.
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let inbox = app.buttons["work.linear.inbox"]
         XCTAssertTrue(inbox.waitForExistence(timeout: 10)); inbox.tap()
         XCTAssertTrue(app.staticTexts["Fixture notification"].waitForExistence(timeout: 20))
         capture("linear-inbox-" + appearance)
-        let mark = app.buttons["work.inbox.read.fixture-notification-1"]
+        // SwiftUI exposes this card's identifier on its children. Match the
+        // notification and action label together, as shown by the AX snapshot.
+        let notificationID = "work.inbox.item.fixture-notification-1"
+        let mark = app.buttons.matching(NSPredicate(
+            format: "identifier == %@ AND label IN %@",
+            notificationID, ["既読にする", "未読に戻す"]
+        )).firstMatch
         XCTAssertTrue(mark.waitForExistence(timeout: 10))
-        if !app.staticTexts["既読"].exists { mark.tap() }
-        XCTAssertTrue(app.staticTexts["既読"].waitForExistence(timeout: 15))
+        if mark.label == "既読にする" {
+            XCTAssertTrue(mark.isEnabled)
+            mark.tap()
+        }
+        let readStatus = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND label == %@", notificationID, "既読"
+        )).firstMatch
+        XCTAssertTrue(readStatus.waitForExistence(timeout: 15))
+        capture("linear-inbox-read-" + appearance)
     }
 }
 #endif
