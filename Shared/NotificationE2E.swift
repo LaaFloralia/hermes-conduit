@@ -1,6 +1,9 @@
 import CryptoKit
 import Foundation
 import Security
+#if LAA_BUILD && targetEnvironment(macCatalyst)
+import os.log
+#endif
 
 /// End-to-end encrypted notification content (#431), shared by Conduit and
 /// its Notification Service Extension.
@@ -391,7 +394,14 @@ struct KeychainE2EKeyStore: E2EKeyStoring {
         query[kSecReturnAttributes as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitAll
         var result: CFTypeRef?
-        switch SecItemCopyMatching(query as CFDictionary, &result) {
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        if Bundle.main.bundleURL.pathExtension == "appex", status != errSecSuccess, status != errSecItemNotFound {
+            os_log("Notification keychain read failed (status: %{public}d)",
+                   log: OSLog(subsystem: "com.milim.relay", category: "NotificationE2E"), type: .error, status)
+        }
+        #endif
+        switch status {
         case errSecSuccess:
             break
         case errSecInteractionNotAllowed, errSecNotAvailable:

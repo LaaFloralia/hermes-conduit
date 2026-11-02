@@ -21,7 +21,7 @@ private struct MacTooltip: ViewModifier {
     let text: String
 
     func body(content: Content) -> some View {
-        if ProcessInfo.processInfo.isiOSAppOnMac {
+        if ProcessInfo.processInfo.isMacCatalystApp {
             content.help(text)
         } else {
             content

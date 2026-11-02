@@ -50,6 +50,12 @@ targets:
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD LAA_WIDGET_TEST"
+        SUPPORTS_MACCATALYST: YES
+        # Match the app's iOS 17 / macOS 14 baseline; Xcode otherwise uses
+        # the Mac SDK version as the test bundle's minimum macOS version.
+        "MACOSX_DEPLOYMENT_TARGET[sdk=macosx*]": "14.0"
+        # A Catalyst app has the macOS bundle layout, unlike the iOS host.
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/Conduit.app/Contents/MacOS/Conduit"
   ConduitUITests:
     settings:
       base:
@@ -73,12 +79,20 @@ targets:
     dependencies:REPLACE:
       - package: WebRTC
       - target: ConduitWatch
+        platformFilter: iOS
       - target: ConduitNotificationService
       - target: ConduitWidgets
+        platformFilter: iOS
       - target: ConduitShareExtension
+        platformFilter: iOS
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/Conduit-mac.entitlements
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        "REGISTER_APP_GROUPS[sdk=macosx*]": YES
         # The LAA icon (design, on master): Conduit/Resources/AppIcon-LAA.icon,
         # an Icon Composer bundle for iOS 26+, with the matching appiconset in
         # Assets.xcassets as the fallback for older Xcode and OS versions. The
@@ -188,10 +202,13 @@ targets:
   ConduitNotificationService:
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
-        # The extension rewrites the notifier's redacted approval text, which
-        # names the app, so it needs the LAA brand too.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        PRODUCT_BUNDLE_IDENTIFIER: com.laa-inc.laa.NotificationService
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": scripts/laa/entitlements/ConduitNotificationService-mac.entitlements
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
+        "REGISTER_APP_GROUPS[sdk=macosx*]": YES
         CODE_SIGN_ENTITLEMENTS: scripts/laa/entitlements/ConduitNotificationService.entitlements
         PROVISIONING_PROFILE_SPECIFIER: ""
         CODE_SIGN_IDENTITY: "Apple Development"

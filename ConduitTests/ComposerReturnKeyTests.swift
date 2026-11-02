@@ -500,7 +500,7 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertFalse(ComposerReturnKey.sendsByDefault(onMac: false))
         XCTAssertEqual(
             ComposerReturnKey.sendsByDefault,
-            ProcessInfo.processInfo.isiOSAppOnMac
+            ProcessInfo.processInfo.isMacCatalystApp
         )
     }
 

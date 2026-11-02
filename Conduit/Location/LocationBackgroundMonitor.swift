@@ -150,6 +150,9 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
         guard on != pushesOn || !pushesReported else { return }
         pushesReported = true
         pushesOn = on
+        #if LAA_BUILD && targetEnvironment(macCatalyst)
+        locationPushToken?(nil)
+        #else
         if on {
             manager.startMonitoringLocationPushes { [weak self] token, error in
                 let hex = token.map { $0.map { String(format: "%02x", $0) }.joined() }
@@ -172,6 +175,7 @@ final class LocationBackgroundMonitor: NSObject, CLLocationManagerDelegate {
             manager.stopMonitoringLocationPushes()
             locationPushToken?(nil)
         }
+        #endif
     }
 
     // MARK: Calls

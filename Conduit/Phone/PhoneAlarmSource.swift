@@ -13,7 +13,7 @@
 
 import Foundation
 import SwiftUI
-#if canImport(AlarmKit)
+#if canImport(AlarmKit) && (!LAA_BUILD || !targetEnvironment(macCatalyst))
 import AlarmKit
 #endif
 
@@ -79,7 +79,7 @@ struct PhoneAlarmRecord: Codable, Equatable {
 enum PhoneAlarmSources {
     /// AlarmKit on iOS 26, a source that can't set anything before it.
     static func system(defaults: UserDefaults = .standard) -> PhoneAlarmSource {
-        #if canImport(AlarmKit)
+        #if canImport(AlarmKit) && (!LAA_BUILD || !targetEnvironment(macCatalyst))
         if #available(iOS 26.0, *) { return AlarmKitPhoneSource(defaults: defaults) }
         #endif
         return UnsupportedPhoneAlarmSource()
@@ -112,7 +112,7 @@ final class UnsupportedPhoneAlarmSource: PhoneAlarmSource {
     func cancel(id: String) throws { throw PhoneAlarmError.unsupported }
 }
 
-#if canImport(AlarmKit)
+#if canImport(AlarmKit) && (!LAA_BUILD || !targetEnvironment(macCatalyst))
 /// AlarmKit needs a metadata type; Conduit's alarms carry none.
 @available(iOS 26.0, *)
 struct ConduitAlarmMetadata: AlarmMetadata {}

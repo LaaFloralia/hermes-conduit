@@ -130,6 +130,8 @@ extension WidgetLaunchLinkTests {
         XCTAssertNil(older.glowColor)
     }
 
+    // LAA Catalyst uses an inert Live Activities stub without the iOS helpers.
+    #if !LAA_BUILD || !targetEnvironment(macCatalyst)
     /// A turn that ended while Conduit was closed (or in a chat not on
     /// screen, with no relay to end it) may be over once the live registry
     /// shows its chat isn't running, but only on its own dashboard and
@@ -167,6 +169,7 @@ extension WidgetLaunchLinkTests {
         object["dashboardID"] = nil
         XCTAssertNil(try JSONDecoder().decode(HermesTurnAttributes.self, from: JSONSerialization.data(withJSONObject: object)).dashboardID, "An older build's activity decodes")
     }
+    #endif
 
     /// One snapshot without the chat (a gateway restarting can serve an
     /// empty registry) doesn't end the turn: the absence has to last from
@@ -203,6 +206,7 @@ extension WidgetLaunchLinkTests {
         XCTAssertEqual(absences.record(.absent, for: "a", at: at(long + span), span: span), .over)
     }
 
+    #if !LAA_BUILD || !targetEnvironment(macCatalyst)
     /// Which turns ending a dashboard's activities ends: its own and an
     /// older build's, except, when asked, those whose token the relay
     /// installation still in use took.
@@ -228,6 +232,7 @@ extension WidgetLaunchLinkTests {
         XCTAssertFalse(LiveTurnActivities.needsRegistration(pushToken: "aa", tokenInstallationID: "I1"))
         XCTAssertFalse(LiveTurnActivities.needsRegistration(pushToken: nil, tokenInstallationID: nil))
     }
+    #endif
 
     /// The relay hears how long ago the activity started, so it can end one
     /// whose turn ended first (#1361): never negative or unreadable.
@@ -266,6 +271,7 @@ extension WidgetLaunchLinkTests {
         XCTAssertEqual(appState.liveActivityLinkSessionID(for: "unknown"), "unknown", "Nothing known: the id it was sent on")
     }
 
+    #if !LAA_BUILD || !targetEnvironment(macCatalyst)
     /// A card an older build left up names the runtime id; the other ids it
     /// carries find the chat once the list no longer knows that runtime.
     @MainActor
@@ -322,4 +328,5 @@ extension WidgetLaunchLinkTests {
         XCTAssertEqual(AppState.linkedResumeID("rt2", matching: "rt", "stored", rows: [aliasedRow]), "stored")
         XCTAssertEqual(AppState.linkedResumeID("rt2", matching: "rt", rows: [aliasedRow]), "rt2", "Nothing ties the row to the id")
     }
+    #endif
 }

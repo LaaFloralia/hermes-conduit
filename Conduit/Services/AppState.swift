@@ -828,7 +828,7 @@ final class AppState: ObservableObject {
     var newChatLaunchStartedInApp = false
     /// A Mac has a keyboard at hand, so the app's own New Chat opens ready
     /// to type. Tests stand in for a Mac.
-    var newChatFocusesComposer = ProcessInfo.processInfo.isiOSAppOnMac
+    var newChatFocusesComposer = ProcessInfo.processInfo.isMacCatalystApp
     /// A widget action waits out the return-to-app refresh: that refresh
     /// can drop a socket that died in the background and restore the last
     /// chat, which would fail a new chat or take over the screen it opened.
@@ -18967,8 +18967,10 @@ final class AppState: ObservableObject {
             // Health data the phone gathered while Conduit was away.
             Task { await runHealthSync(reason: .foreground) }
             // Location permissions may have changed; unsent location goes.
+            #if !LAA_BUILD || !targetEnvironment(macCatalyst)
             activateLocationSharing()
             LocationSharingController.shared.appBecameActive()
+            #endif
             Task { await runPhoneSync(reason: .foreground) }
             Task { await syncPresentedScreens() }
             scheduleWakeRefresh()

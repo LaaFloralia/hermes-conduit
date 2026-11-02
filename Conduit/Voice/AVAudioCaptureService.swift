@@ -4,6 +4,9 @@
 //
 
 import AVFAudio
+#if LAA_BUILD && targetEnvironment(macCatalyst)
+import CoreAudio
+#endif
 import Foundation
 import OSLog
 import os
