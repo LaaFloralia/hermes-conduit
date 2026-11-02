@@ -12,7 +12,7 @@ struct LAAWorkView: View {
         _section = State(initialValue: embeddedSection ?? 0)
     }
 
-    @StateObject private var drafts = ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
+    @StateObject private var drafts = LAAWorkDrafts.makeStore()
     @State private var section = 0
     @State private var projects: [LAAWorkProject] = []
     private let workspaces: [LAAWorkWorkspace] = []

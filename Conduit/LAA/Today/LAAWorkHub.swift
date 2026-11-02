@@ -5,7 +5,7 @@ struct LAAWorkHub: View {
     let onRequestSettings: () -> Void
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @StateObject private var drafts = ComposerDraftStore(capacity: .max, fileURL: LAAWorkDrafts.fileURL)
+    @StateObject private var drafts = LAAWorkDrafts.makeStore()
     @State private var section: Section = .priority
     @State private var showPairing = false
 

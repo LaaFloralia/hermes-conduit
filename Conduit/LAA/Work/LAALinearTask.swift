@@ -49,6 +49,12 @@ struct LAALinearTaskMutation: Codable {
         if let action { return "\(base)/\(id)/\(action)" }
         return base + (method == "POST" ? "" : "/\(id)")
     }
+    var isRetired: Bool {
+        if method == "DELETE" { return true }
+        guard method == "PATCH", let body,
+              let fields = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else { return false }
+        return fields.keys.contains("completed")
+    }
     var isValid: Bool {
         guard UUID(uuidString: id) != nil else { return false }
         if let action { return method == "POST" && ["archive", "restore"].contains(action) && body == nil && version != nil }

@@ -110,7 +110,6 @@ struct LAAWorkCatalogView: View {
         case "paused": "一時停止"
         case "error": "要確認"
         case "scheduled": "実行待ち"
-        case "service": "常駐"
         default: "未確認"
         }
     }

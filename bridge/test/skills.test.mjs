@@ -78,6 +78,26 @@ test('lists the Claude and Hermes skills from frontmatter only', async () => {
   }
 });
 
+test('the skills HTTP response includes known category and Japanese metadata', async () => {
+  const files = workspace();
+  try {
+    const root = files.root('claude');
+    files.skill(root, 'cf-cli', 'name: cf-cli\ndescription: Cloudflareの標準');
+    await withBridge([{ source: 'Claude', dir: root }], [], async ({ bridge, token }) => {
+      const response = await bridge.request('/v1/skills', { token });
+      assert.equal(response.status, 200);
+      const [skill] = response.body.data.items;
+      assert.equal(skill.name, 'cf-cli');
+      assert.equal(skill.category, '開発・運用');
+      assert.equal(skill.metadataKnown, true);
+      assert.equal(skill.summary, 'Cloudflareを既存のCLIで操作する');
+      assert.equal(skill.detail, 'Worker、D1、R2、DNSなどを確認・変更し、配信後の状態を検証します。');
+    });
+  } finally {
+    files.cleanup();
+  }
+});
+
 test('a missing folder is an empty list, a real read failure is a 503', async () => {
   const files = workspace();
   try {

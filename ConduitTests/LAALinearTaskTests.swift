@@ -51,6 +51,38 @@ final class LAALinearTaskTests: XCTestCase {
         XCTAssertFalse(current.needsAttention(today: "2026-11-02"))
         XCTAssertFalse(LAALinearTaskMutation(method: "DELETE", id: current.id, body: nil, version: "now").isValid)
     }
+    @MainActor func testRestartDiscardsRetiredLinearIntentsAndKeepsCurrentOperations() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("work-drafts.json")
+        let first = ComposerDraftStore(capacity: .max, fileURL: url)
+        let id = UUID().uuidString
+        let mutations = [
+            LAALinearTaskMutation(method: "DELETE", id: id, body: nil, version: "before"),
+            LAALinearTaskMutation(method: "PATCH", id: id, body: Data(#"{"completed":true}"#.utf8), version: "before"),
+            LAALinearTaskMutation(method: "PATCH", id: id, body: Data(#"{"title":"保持"}"#.utf8), version: "before"),
+            LAALinearTaskMutation(method: "POST", id: id, body: nil, version: "before", action: "archive")
+        ]
+        let payloads = try mutations.map { try JSONEncoder().encode($0) }
+        for index in mutations.indices {
+            let key = LAAWorkDrafts.key(deviceID: "device-\(index)", target: "linear-owner-operation")
+            let item = try XCTUnwrap(LAAWorkDrafts.reserve(first, key: key, text: "Linearの変更",
+                body: payloads[index], idempotency: LAABridgeIdempotencyKey()))
+            first.markSubmissionUnknown(item.id)
+        }
+        let restored = LAAWorkDrafts.makeStore(fileURL: url)
+        for index in 0..<2 {
+            XCTAssertNil(LAAWorkDrafts.pending(restored, key: LAAWorkDrafts.key(deviceID: "device-\(index)", target: "linear-owner-operation")))
+        }
+        XCTAssertEqual(restored.unknownSubmissions.count, 2)
+        for index in 2..<4 {
+            let key = LAAWorkDrafts.key(deviceID: "device-\(index)", target: "linear-owner-operation")
+            let remaining = try XCTUnwrap(LAAWorkDrafts.pending(restored, key: key))
+            XCTAssertEqual(LAAWorkDrafts.request(remaining)?.0, payloads[index])
+        }
+        // Cleanup is durable, so a second launch cannot bring back a warning.
+        XCTAssertEqual(ComposerDraftStore(capacity: .max, fileURL: url).submissions.count, 2)
+    }
     func testSuccessfulTaskReadbackClearsOnlyMatchingEdit() throws {
         let current = task(priority: 2)
         let body = Data(#"{"title":"確認","description":"","priority":2,"dueDate":null}"#.utf8)

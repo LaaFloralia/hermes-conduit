@@ -118,6 +118,19 @@ enum LAAWorkDrafts {
             .appendingPathComponent("Work", isDirectory: true)
             .appendingPathComponent("drafts-v1.json")
     }
+    @MainActor static func makeStore(fileURL: URL = LAAWorkDrafts.fileURL) -> ComposerDraftStore {
+        let store = ComposerDraftStore(capacity: .max, fileURL: fileURL)
+        // Retired Linear writes cannot be repeated or reconciled by this version.
+        // Remove their local records before the store is exposed to the UI.
+        for item in store.submissions where item.key.profile == "laa-bridge"
+            && item.key.dashboardID == dashboardID && item.key.sessionID.hasSuffix(":linear-owner-operation") {
+            guard let (bytes, _) = request(item),
+                  let mutation = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes),
+                  mutation.isRetired else { continue }
+            _ = store.finishSubmission(item.id, restoring: false)
+        }
+        return store
+    }
     static func key(deviceID: String, target: String) -> ComposerDraftKey {
         ComposerDraftKey(profile: "laa-bridge", sessionID: "\(deviceID):\(target)", dashboardID: dashboardID)
     }

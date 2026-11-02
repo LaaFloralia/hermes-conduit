@@ -55,7 +55,8 @@ final class LAAWorkLinearUITests: XCTestCase {
         app.buttons["保存"].tap()
         XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["work.linear.complete.b9d2f664-cda3-4c56-8d39-c4d6df597254"].exists)
-        XCTAssertFalse(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].exists)
+        XCTAssertTrue(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].waitForNonExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["保存結果を確認できませんでした。"].waitForNonExistence(timeout: 2))
         let row = app.buttons[updatedTitle]
         row.swipeLeft()
         app.buttons["削除"].firstMatch.tap()
@@ -93,9 +94,9 @@ final class LAAWorkLinearUITests: XCTestCase {
             field.tap(); field.typeText("改")
             title = try XCTUnwrap(field.value as? String)
             app.buttons["保存"].tap()
-            XCTAssertFalse(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].exists)
             XCTAssertTrue(taskRow(app, title).waitForExistence(timeout: 10))
-            XCTAssertFalse(app.staticTexts["保存結果を確認できませんでした。"].exists)
+            XCTAssertTrue(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].waitForNonExistence(timeout: 2))
+            XCTAssertTrue(app.staticTexts["保存結果を確認できませんでした。"].waitForNonExistence(timeout: 2))
         }
     }
 

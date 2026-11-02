@@ -90,14 +90,14 @@ struct LAALinearTasksView: View {
             } header: {
                 Text(verbatim: archivedOnly ? "アーカイブ" : priorityOnly ? "期限・優先度の高いタスク" : "社長のタスク")
             } footer: {
-                Text(verbatim: "Linear · LAA担当")
+                Text(verbatim: archivedOnly ? "アーカイブしたタスクです。スワイプで戻せます。" : "Linear · LAA担当")
             }
             if loaded && rows.isEmpty && !loading && failure == nil {
                 ContentUnavailableView {
                     Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : priorityOnly ? "優先タスクはありません" : "タスクはありません") }
                     icon: { Image(systemName: "checkmark.circle") }
                 } description: {
-                    Text(verbatim: archivedOnly ? "削除したタスクをここから戻せます。" : priorityOnly ? "緊急・高優先度、または今日までが期限のタスクを表示します。" : "＋から追加できます。")
+                    Text(verbatim: archivedOnly ? "アーカイブしたタスクは、スワイプで戻せます。" : priorityOnly ? "緊急・高優先度、または今日までが期限のタスクを表示します。" : "＋から追加できます。")
                 }.listRowBackground(Color.clear)
             }
         }
@@ -196,12 +196,14 @@ struct LAALinearTasksView: View {
         } catch let error as LAABridgeHTTPError where [400, 403, 404, 412, 422, 428].contains(error.status)
             || (error.status == 409 && ["linear_owner_task_conflict", "linear_owner_task_archived"].contains(error.code ?? "")) {
             guard bridge.deviceID == device else { return }
+            let archivedMessage = error.status == 409 && error.code == "linear_owner_task_archived"
+                ? "このタスクはアーカイブ済みです。読み直してください。" : nil
             if retry {
-                failure = "前の操作の結果は未確認です。Linearで状態を確認してください。"
+                failure = archivedMessage ?? "前の操作の結果は未確認です。Linearで状態を確認してください。"
             } else if !drafts.finishSubmission(item.id, restoring: false) {
                 failure = "端末の控えを更新できません。入力を保持しています。"
             } else {
-                failure = error.status == 412 ? "Linearで更新されています。編集画面を閉じて読み直してください。" : "操作が受け付けられませんでした。入力と接続を確認してください。"
+                failure = archivedMessage ?? (error.status == 412 ? "Linearで更新されています。編集画面を閉じて読み直してください。" : "操作が受け付けられませんでした。入力と接続を確認してください。")
             }
         } catch {
             guard bridge.deviceID == device else { return }
