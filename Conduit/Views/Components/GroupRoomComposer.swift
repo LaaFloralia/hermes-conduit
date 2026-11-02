@@ -418,7 +418,11 @@ struct GroupRoomComposer: View {
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
                     Text(AppLocalization.string("Message the room"))
+#if LAA_BUILD
+                        .foregroundStyle(.primary)
+#else
                         .foregroundStyle(.tertiary)
+#endif
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }

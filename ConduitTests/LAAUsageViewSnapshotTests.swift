@@ -6,7 +6,7 @@ import XCTest
 
 @MainActor
 final class LAAUsageViewSnapshotTests: XCTestCase {
-    func testUnavailableReasonsHaveNoExternalLink() async throws {
+    func testUnavailableReasonsAndCodeOwnedServiceLinks() async throws {
         let rows: [[String: Any]] = [
             ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "nullReason": "not_auto"],
             ["id": "provider.openai-api.cost-today", "kind": "cost", "label": "GPT API", "nullReason": "not_configured"],
@@ -17,6 +17,8 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         }
         let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
         XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません"])
+        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https", "https"])
+        XCTAssertNil(LAAUsageGroup(id: "unknown", label: "Unknown", items: []).serviceURL)
         let state = LAAUsageState()
         await state.refreshUsage { items }
         try capture(state: state, paired: true, style: .light, name: "usage-unavailable-reasons-light")

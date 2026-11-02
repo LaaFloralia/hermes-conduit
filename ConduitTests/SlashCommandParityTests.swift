@@ -100,13 +100,20 @@ extension ComposerDraftStoreTests {
             reason: "unsupported_command",
             detail: "Run `hermes profile export [name] -o <file>` in a terminal."
         )
+#if LAA_BUILD
+        let service = "Ciel"
+        let app = "LAA"
+#else
+        let service = "Hermes"
+        let app = "Conduit"
+#endif
         XCTAssertEqual(
             AppState.slashFailureNote(command: "export", error: refusal),
-            "Hermes doesn't run /export for Conduit chats.\nRun `hermes profile export [name] -o <file>` in a terminal."
+            "\(service) doesn't run /export for \(app) chats.\nRun `hermes profile export [name] -o <file>` in a terminal."
         )
         XCTAssertEqual(
             AppState.slashFailureNote(command: "save", error: RpcError(code: 4001, message: "unsupported_command", reason: "unsupported_command")),
-            "Hermes doesn't run /save for Conduit chats."
+            "\(service) doesn't run /save for \(app) chats."
         )
         XCTAssertEqual(
             AppState.slashFailureNote(command: "status", error: RpcError(code: 4009, message: "session busy")),

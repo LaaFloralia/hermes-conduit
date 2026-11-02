@@ -211,7 +211,25 @@ final class LAAChatDesignUITests: XCTestCase {
             XCTAssertEqual(XCTWaiter.wait(for: [grown], timeout: 5), .completed, "The field grows with the draft")
             XCTAssertTrue(app.buttons["composer.expand-editor"].isHittable)
             XCTAssertTrue(app.buttons["composer.action"].isEnabled)
+            XCTAssertLessThanOrEqual(app.scrollViews["chat.transcript"].frame.maxY, field.frame.minY + 1,
+                                     "The growing composer must reserve space for its controls row")
             capture(app, "\(name)-multiline")
+            app.terminate()
+        }
+    }
+
+    func testGroupPlaceholderOnPhotoLightAndDark() {
+        for dark in [false, true] {
+            let app = XCUIApplication()
+            app.launchArguments = ["-LAA_UI_TEST_BACKGROUND", "-LAA_V2_CHAT_FIXTURE", "rich",
+                                   "-LAA_CAPTURE_SURFACE", "group", "-LAA_CAPTURE_KIND", "photo"]
+                + (dark ? ["-LAA_V2_DARK"] : [])
+            app.launch()
+            XCTAssertTrue(app.staticTexts["fixture.capture.ready"].waitForExistence(timeout: 25))
+            let field = app.textViews["room.composer.field"]
+            XCTAssertTrue(field.waitForExistence(timeout: 15))
+            XCTAssertEqual(field.value as? String ?? "", "")
+            capture(app, "group-placeholder-photo-\(dark ? "dark" : "light")")
             app.terminate()
         }
     }

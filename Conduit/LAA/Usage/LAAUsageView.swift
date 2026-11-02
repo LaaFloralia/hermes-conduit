@@ -1,11 +1,13 @@
 #if LAA_BUILD
 import SwiftUI
+import Combine
 
 private extension LAACopy {
     static let usageConnection = "Connection"
     static let usageRefresh = "Refresh"
     static let usageConnect = "Connect to Mac"
     static let usageMore = "More"
+    static let usageOpenService = "Open service"
 }
 
 struct LAAUsageView: View {
@@ -13,6 +15,7 @@ struct LAAUsageView: View {
     @Environment(\.locale) private var locale
     @ObservedObject private var state: LAAUsageState
     @State private var showPairing = false
+    @State private var evaluatedAt = Date()
     private let automaticallyRefresh: Bool
     let onRequestSettings: () -> Void
     init(state: LAAUsageState, onRequestSettings: @escaping () -> Void) {
@@ -53,6 +56,7 @@ struct LAAUsageView: View {
                 .refreshable { await refresh() }
             }
         }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { evaluatedAt = $0 }
         .tint(LAAColor.link)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -71,9 +75,6 @@ struct LAAUsageView: View {
         }
         .onDisappear { if automaticallyRefresh { state.setPresented(false) } }
     }
-
-    // A displayed snapshot is evaluated at receipt, until the next explicit refresh.
-    private var evaluatedAt: Date { state.usage.fetchedAt ?? Date() }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
@@ -107,7 +108,7 @@ struct LAAUsageView: View {
                 .accessibilityLabel(Text(verbatim: LAACopy.usageRefresh))
                 .accessibilityIdentifier("laa.usage.refresh")
             }
-            Text(verbatim: "最終取得時点の残り枠・残高")
+            Text(verbatim: "鮮度を確認できる残り枠・残高")
                 .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
             Text(verbatim: "通信 " + time(state.updatedAt))
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -161,6 +162,13 @@ struct LAAUsageView: View {
                             }
                         }
                         ForEach(group.items) { item in usageItem(item) }
+                        if let url = group.serviceURL,
+                           group.items.contains(where: { $0.availability != "available" || past($0) }) {
+                            Link(destination: url) { Text(verbatim: LAACopy.usageOpenService) }
+                                .laaTextStyle(.secondary)
+                                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                                .accessibilityIdentifier("laa.usage.open.\(group.id)")
+                        }
                     }
                     .padding(LAASpacing.x4)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -169,6 +177,15 @@ struct LAAUsageView: View {
                 }
             } else if !state.isRefreshing {
                 caption(state.usage.error == nil ? LAACopy.notFetched : "利用できません。")
+                ForEach(LAAWidgetUsageBuilder.slots, id: \.provider) { slot in
+                    let group = LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.label, items: [])
+                    if let url = group.serviceURL {
+                        Link(destination: url) { Text(verbatim: group.label) }
+                            .laaTextStyle(.body)
+                            .frame(minHeight: LAASpacing.minimumTouchTarget)
+                            .accessibilityIdentifier("laa.usage.open.\(group.id)")
+                    }
+                }
             } else { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
         }
     }
