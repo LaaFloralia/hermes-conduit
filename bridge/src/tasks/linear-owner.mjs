@@ -9,12 +9,10 @@
 // What keeps this module from becoming a general Linear client:
 //   * every document is a module constant, and the transport refuses anything
 //     that is not one of those constants by identity (no arbitrary GraphQL);
-//   * the team (key BUS), the owner id and the two workflow states are resolved
+//   * the team (key BUS), the owner id and the Todo workflow state are resolved
 //     from the account itself and cached briefly, never taken from the client;
 //   * every write first re-reads the issue and requires it to be in team BUS,
-//     assigned to the owner, with no delegate. A task the Bridge completed is
-//     unassigned, so a closed unassigned issue is still readable by its id: the
-//     client-generated UUID is the only way to name it.
+//     assigned to the owner, with no delegate, including archived issues.
 //
 // Errors carry no upstream body: a GraphQL echo can contain the query, values
 // or a token, so only the fact of a rejection is surfaced.
@@ -32,7 +30,6 @@ const DEFAULT_OWNER_USER_ID = 'd1f71177-5355-4f4f-b42c-7894c0870112';
 const DEFAULT_TEAM_KEY = 'BUS';
 const DEFAULT_TEAM_NAME = 'LAA';
 const TODO_STATE_NAME = 'Todo';
-const DONE_STATE_NAME = 'Done';
 
 const PAGE_SIZE = 100;
 const MAX_PAGES = 20;
@@ -49,8 +46,6 @@ const ISSUE_FIELDS = `
   updatedAt
   archivedAt
   trashed
-  completedAt
-  canceledAt
   state { name type }
   assignee { id name }
   delegate { id name }
@@ -74,7 +69,7 @@ const STATES_QUERY = `query BridgeOwnerStates($teamId: String!) {
 }`;
 
 const LIST_QUERY = `query BridgeOwnerTasks($team: String!, $owner: ID!, $after: String) {
-  issues(first: ${PAGE_SIZE}, after: $after, filter: {
+  issues(first: ${PAGE_SIZE}, after: $after, includeArchived: true, filter: {
     team: { key: { eq: $team } }
     assignee: { id: { eq: $owner } }
   }) {
@@ -101,12 +96,11 @@ const UPDATE_MUTATION = `mutation BridgeOwnerTaskUpdate($id: String!, $input: Is
   }
 }`;
 
-// Linear's IssueArchivePayload has a non-null `success`. It is the primary
-// evidence of a delete; a node that is still readable after a failed mutation
-// is checked for `trashed` so a trashed issue is not reported as a failure
-// forever. An archived but not trashed issue is not proof of deletion.
-const DELETE_MUTATION = `mutation BridgeOwnerTaskDelete($id: String!) {
-  issueDelete(id: $id) { success }
+const ARCHIVE_MUTATION = `mutation BridgeOwnerTaskArchive($id: String!) {
+  issueArchive(id: $id) { success }
+}`;
+const RESTORE_MUTATION = `mutation BridgeOwnerTaskRestore($id: String!) {
+  issueUnarchive(id: $id) { success }
 }`;
 
 const DOCUMENTS = new Set([
@@ -117,7 +111,8 @@ const DOCUMENTS = new Set([
   ISSUE_QUERY,
   CREATE_MUTATION,
   UPDATE_MUTATION,
-  DELETE_MUTATION,
+  ARCHIVE_MUTATION,
+  RESTORE_MUTATION,
 ]);
 
 // Only an unknown issue id produces this shape; every other rejection stays a
@@ -152,6 +147,7 @@ function toTask(issue) {
     status: statusOf(issue.state?.type),
     stateName: typeof issue.state?.name === 'string' ? issue.state.name : '',
     updatedAt: typeof issue.updatedAt === 'string' ? issue.updatedAt : '',
+    archivedAt: typeof issue.archivedAt === 'string' ? issue.archivedAt : null,
   };
   if (typeof issue.dueDate === 'string' && issue.dueDate !== '') task.dueDate = issue.dueDate;
   if (typeof issue.url === 'string' && issue.url !== '') task.url = issue.url;
@@ -251,7 +247,7 @@ export function createLinearOwnerTaskSource({
     return payload.data;
   }
 
-  // The team, the two states and the signed-in user are configuration, not
+  // The team, the Todo state and the signed-in user are configuration, not
   // request input: resolve them from the account and keep them for a few
   // minutes. A missing team or state is a 503, never an empty list. This path
   // only reads, so its failures are safe to release from the idempotency
@@ -306,16 +302,10 @@ export function createLinearOwnerTaskSource({
       throw new TaskSourceError('linear_response_invalid', 'Linear returned an unexpected state list');
     }
     const todo = states.find((state) => state?.name === TODO_STATE_NAME && state?.type !== 'completed' && state?.type !== 'canceled');
-    const done = states.find((state) => state?.name === DONE_STATE_NAME && state?.type === 'completed')
-      ?? states.find((state) => state?.type === 'completed');
     if (!todo || typeof todo.id !== 'string' || todo.id === '') {
       throw new TaskSourceError('linear_owner_config_incomplete', `the Linear team has no ${TODO_STATE_NAME} state`);
     }
-    if (!done || typeof done.id !== 'string' || done.id === '') {
-      throw new TaskSourceError('linear_owner_config_incomplete', 'the Linear team has no completed state');
-    }
-
-    const value = { teamId: team.id, todoStateId: todo.id, doneStateId: done.id };
+    const value = { teamId: team.id, todoStateId: todo.id };
     cachedConfig = { at: now(), value };
     return value;
   }
@@ -335,18 +325,17 @@ export function createLinearOwnerTaskSource({
     return issue;
   }
 
-  // Ownership: team BUS, no delegate, and either the owner or an unassigned
-  // closed issue (what this module leaves behind after a completion).
+  // Archived tasks retain their owner; unassigned and trashed tasks are excluded.
   function owned(issue) {
     if (!issue) return false;
     if (issue.trashed === true) return false;
     if (issue.team?.key !== teamKey) return false;
     if (issue.delegate) return false;
     if (issue.assignee) return issue.assignee.id === ownerUserId;
-    return isClosed(issue);
+    return false;
   }
 
-  async function listOwnerTasks() {
+  async function listOwnerTasks({ archived = false } = {}) {
     await config();
     const items = [];
     // Every cursor that was used: a cycle (A -> B -> A) would otherwise read
@@ -366,7 +355,7 @@ export function createLinearOwnerTaskSource({
         // The query already filters by team and assignee; the same rule is
         // applied to the rows themselves so a filter change or an unexpected
         // row can never put an agent's or another team's task in this list.
-        if (issue.archivedAt || issue.trashed === true || isClosed(issue) || !owned(issue)) continue;
+        if (Boolean(issue.archivedAt) !== archived || issue.trashed === true || (!archived && isClosed(issue)) || !owned(issue)) continue;
         items.push(toTask(issue));
       }
       const pageInfo = connection.pageInfo;
@@ -461,12 +450,6 @@ export function createLinearOwnerTaskSource({
     if (Object.hasOwn(patch, 'description')) input.description = patch.description;
     if (Object.hasOwn(patch, 'dueDate')) input.dueDate = patch.dueDate;
     if (Object.hasOwn(patch, 'priority')) input.priority = patch.priority;
-    if (patch.completed === true) {
-      const settings = await config();
-      input.stateId = settings.doneStateId;
-      // The shared rule for a finished owner task: done and unassigned.
-      input.assigneeId = null;
-    }
 
     const data = await gql(UPDATE_MUTATION, { id, input }, { write: true });
     const payload = data.issueUpdate;
@@ -476,50 +459,26 @@ export function createLinearOwnerTaskSource({
     return toTask(payload.issue);
   }
 
-  // The effect, not the payload alone, distinguishes "deleted" from "already
-  // deleted". A read failure is unknown, never evidence of deletion.
-  async function issueGone(id) {
-    let issue;
+  async function setArchived(id, archived) {
+    const document = archived ? ARCHIVE_MUTATION : RESTORE_MUTATION;
+    const field = archived ? 'issueArchive' : 'issueUnarchive';
+    let failure;
     try {
-      issue = await getIssue(id);
-    } catch {
-      return 'unknown';
-    }
-    if (issue === null) return 'gone';
-    // An archived issue is not necessarily trashed: Linear can archive without
-    // deleting, so only `trashed === true` proves the delete's effect.
-    if (issue.trashed === true) return 'gone';
-    return 'present';
-  }
-
-  async function deleteOwnerTask(id) {
-    let payload = null;
-    let failure = null;
+      const data = await gql(document, { id }, { write: true });
+      if (data[field]?.success === true) return;
+    } catch (error) { failure = error; }
+    // Missing or trashed is never evidence of a successful archive/restore.
     try {
-      const data = await gql(DELETE_MUTATION, { id }, { write: true });
-      payload = data.issueDelete;
-    } catch (error) {
-      failure = error;
-    }
-
-    // `success === true` is Linear's own confirmation. Do not turn it into a
-    // failure because a later read still returns the trashed node.
-    if (payload?.success === true) return { alreadyDeleted: false };
-
-    // A failed / missing / ambiguous answer: only a null read or a trashed node
-    // proves the requested state already holds. An issue that is still present
-    // is a failure, never a success.
-    if (await issueGone(id) === 'gone') return { alreadyDeleted: true };
+      const current = await getIssue(id);
+      if (owned(current) && Boolean(current.archivedAt) === archived) return;
+    } catch { /* Preserve the uncertainty of the attempted write. */ }
     if (failure) throw failure;
-    throw new TaskSourceError('linear_delete_unconfirmed', 'Linear did not remove the issue', { writeStarted: true });
+    throw new TaskSourceError('linear_archive_unconfirmed', 'Linear did not confirm the archive state', { writeStarted: true });
   }
 
   return {
-    config,
-    listOwnerTasks,
-    readOwnerTask,
-    createOwnerTask,
-    patchOwnerTask,
-    deleteOwnerTask,
+    config, listOwnerTasks, readOwnerTask, createOwnerTask, patchOwnerTask,
+    archiveOwnerTask: (id) => setArchived(id, true),
+    restoreOwnerTask: (id) => setArchived(id, false),
   };
 }

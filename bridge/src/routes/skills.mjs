@@ -20,6 +20,7 @@
 import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
+import { describeSkill } from './skill-metadata.mjs';
 import { BridgeError } from '../errors.mjs';
 import { resolveBrainRoot } from '../config.mjs';
 
@@ -169,6 +170,7 @@ export function createSkillIndex({
         name: meta.name === '' ? name : meta.name,
         description,
         source: root.source,
+        ...describeSkill(meta.name === '' ? name : meta.name, description),
       });
       // A skill's own folders (references, scripts) are not more skills.
       return;

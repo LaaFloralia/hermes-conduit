@@ -8,15 +8,23 @@ const reset = () => { tasks = [
 reset();
 const send = (res, status, data) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ data, requestId: 'work-fixture' })); };
 const api = http.createServer(async (req, res) => {
-  const path = new URL(req.url, 'http://127.0.0.1').pathname;
+  const url = new URL(req.url, 'http://127.0.0.1');
+  const path = url.pathname;
   if (path === '/v1/devices/enroll') { req.resume(); return send(res, 201, { deviceId: 'work-fixture', token: 'fixture-token', scopes: ['tasks:read', 'tasks:write', 'sessions:read'] }); }
   if (req.headers.authorization !== 'Bearer fixture-token') { res.writeHead(401); return res.end(); }
-  if (path === '/v1/linear-owner-tasks' && req.method === 'GET') return send(res, 200, { items: tasks, nextCursor: null });
+  if (path === '/v1/linear-owner-tasks' && req.method === 'GET') return send(res, 200, { items: tasks.filter(t => Boolean(t.archivedAt) === (url.searchParams.get('archived') === 'only')), nextCursor: null });
   if (path.startsWith('/v1/linear-owner-tasks') && ['POST', 'PATCH', 'DELETE'].includes(req.method)) {
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = raw ? JSON.parse(raw) : {};
-    const id = path.split('/').at(-1);
-    if (req.method === 'DELETE') { tasks = tasks.filter(t => t.id !== id); return send(res, 200, { id, deleted: true }); }
+    const action = path.split('/').at(-1);
+    const id = ['archive', 'restore'].includes(action) ? path.split('/').at(-2) : action;
+    if (['archive', 'restore'].includes(action)) {
+      const task = tasks.find(t => t.id === id);
+      if (!task) { res.writeHead(404); return res.end(); }
+      task.archivedAt = action === 'archive' ? new Date().toISOString() : null;
+      task.updatedAt = new Date().toISOString();
+      return send(res, 200, { id, archived: action === 'archive' });
+    }
     if (req.method === 'POST') {
       const task = { ...body, identifier: 'BUS-TEST3', status: 'todo', stateName: 'Todo', updatedAt: new Date().toISOString(), url: null };
       tasks.push(task); return send(res, 201, task);
@@ -24,11 +32,11 @@ const api = http.createServer(async (req, res) => {
     const task = tasks.find(t => t.id === id);
     if (!task) { res.writeHead(404); return res.end(); }
     Object.assign(task, body, { updatedAt: new Date().toISOString() });
-    if (body.completed) { task.status = 'done'; tasks = tasks.filter(t => t.id !== id); }
+    await new Promise(resolve => setTimeout(resolve, 700));
     return send(res, 200, task);
   }
-  if (path === '/v1/routines') return send(res, 200, { items: [{ id: 'daily', name: '朝の確認', schedule: '毎日 07:30', destination: 'Cielの定期実行チャット', state: 'scheduled', lastRunAt: '2026-11-01T22:30:00Z', nextRunAt: null, businessStatus: 'completed', notificationStatus: 'sent', result: '業務終了' }], nextCursor: null });
-  if (path === '/v1/skills') return send(res, 200, { items: [{ id: 'test:weekly', name: 'weekly-report', description: '指定した内容から週報を作成します。', source: 'Claude' }], nextCursor: null });
+  if (path === '/v1/routines') return send(res, 200, { items: [{ id: 'daily', name: '朝の確認', schedule: '毎日 07:30', destination: 'Cielの定期実行チャット', triggerKind: 'scheduled', state: 'scheduled', lastRunAt: '2026-11-01T22:30:00Z', nextRunAt: null, businessStatus: 'completed', notificationStatus: 'sent', result: '業務終了' }, { id: 'service', name: '常駐の確認用', triggerKind: 'service', schedule: '常駐', state: 'running' }], nextCursor: null });
+  if (path === '/v1/skills') return send(res, 200, { items: [{ id: 'test:weekly', name: 'weekly-report', description: '指定した内容から週報を作成します。', category: '日常業務', summary: 'カオナビの週報を作成する', detail: '社長の指定内容に沿って現職の週報を入力します。', source: 'Claude' }], nextCursor: null });
   if (path === '/v1/projects' || path === '/v1/sessions') return send(res, 200, { items: [], nextCursor: null });
   res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'fixture_unavailable', message: 'Fixture unavailable', retryable: false }, requestId: 'fixture' }));
 });

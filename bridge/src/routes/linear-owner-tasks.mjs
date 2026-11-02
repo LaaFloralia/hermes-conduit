@@ -30,7 +30,7 @@ const PRIORITY_MIN = 0;
 const PRIORITY_MAX = 4;
 
 const CREATE_FIELDS = ['id', 'title', 'description', 'dueDate', 'priority'];
-const PATCH_FIELDS = ['title', 'description', 'dueDate', 'priority', 'completed'];
+const PATCH_FIELDS = ['title', 'description', 'dueDate', 'priority'];
 
 function toBridgeError(error, fallbackCode = 'linear_unavailable') {
   if (error instanceof BridgeError) return error;
@@ -138,9 +138,12 @@ const beforeWrite = (error) => error?.writeStarted === false;
 export function linearOwnerTaskRoutes({ source } = {}) {
   const tasks = source ?? createLinearOwnerTaskSource();
 
-  async function list() {
+  async function list({ req }) {
+    const url = new URL(req.url, 'http://bridge.local');
     try {
-      const outcome = await tasks.listOwnerTasks();
+      const archived = url.searchParams.get('archived');
+      if (archived !== null && archived !== 'only') throw badRequest('query_invalid', 'archived must be only');
+      const outcome = await tasks.listOwnerTasks({ archived: archived === 'only' });
       return { status: 200, data: { items: outcome.items, nextCursor: null } };
     } catch (error) {
       throw toBridgeError(error);
@@ -200,27 +203,15 @@ export function linearOwnerTaskRoutes({ source } = {}) {
       checkFields(body, PATCH_FIELDS);
 
       fields = {};
-      if (Object.hasOwn(body, 'completed')) {
-        if (body.completed !== true) {
-          throw badRequest('payload_invalid', 'completed may only be true; a task is reopened in Linear');
-        }
-        const extra = Object.keys(body).filter((name) => name !== 'completed');
-        if (extra.length > 0) {
-          throw badRequest('payload_invalid', 'completed cannot be combined with other fields');
-        }
-        fields.completed = true;
-      } else {
-        if (Object.hasOwn(body, 'title')) fields.title = checkTitle(body.title);
-        if (Object.hasOwn(body, 'description')) fields.description = checkDescription(body.description);
-        if (Object.hasOwn(body, 'dueDate')) fields.dueDate = checkDueDate(body.dueDate);
-        if (Object.hasOwn(body, 'priority')) fields.priority = checkPriority(body.priority);
-        if (Object.keys(fields).length === 0) {
-          throw badRequest('payload_invalid', 'at least one of title, description, dueDate, priority or completed is required');
-        }
-      }
+      if (Object.hasOwn(body, 'title')) fields.title = checkTitle(body.title);
+      if (Object.hasOwn(body, 'description')) fields.description = checkDescription(body.description);
+      if (Object.hasOwn(body, 'dueDate')) fields.dueDate = checkDueDate(body.dueDate);
+      if (Object.hasOwn(body, 'priority')) fields.priority = checkPriority(body.priority);
+      if (Object.keys(fields).length === 0) throw badRequest('payload_invalid', 'at least one editable field is required');
 
       const current = await tasks.readOwnerTask(id);
       if (!current) throw new BridgeError(404, 'linear_owner_task_not_found', 'no such owner task');
+      if (current.archivedAt) throw new BridgeError(409, 'linear_owner_task_archived', 'restore before editing');
       if (current.updatedAt !== expected) {
         throw new BridgeError(412, 'precondition_failed', 'the task changed since it was read', {
           details: { updatedAt: current.updatedAt },
@@ -239,31 +230,23 @@ export function linearOwnerTaskRoutes({ source } = {}) {
     return { status: 200, data: task };
   }
 
-  async function remove({ req, params }) {
-    let id;
-    try {
-      id = checkTaskId(params?.[0]);
-      // The app cannot undo a delete, so it carries the same If-Match as an
-      // edit: a task that changed since it was read is not deleted by this
-      // request.
-      const expected = checkIfMatch(req.headers['if-match']);
-      const current = await tasks.readOwnerTask(id);
-      if (!current) throw new BridgeError(404, 'linear_owner_task_not_found', 'no such owner task');
-      if (current.updatedAt !== expected) {
-        throw new BridgeError(412, 'precondition_failed', 'the task changed since it was read', {
-          details: { updatedAt: current.updatedAt },
-        });
-      }
-    } catch (error) {
-      throw markBeforeWrite(toBridgeError(error));
-    }
-    let outcome;
-    try {
-      outcome = await tasks.deleteOwnerTask(id);
-    } catch (error) {
-      throw toBridgeError(error);
-    }
-    return { status: 200, data: { id, deleted: true, alreadyDeleted: outcome?.alreadyDeleted === true } };
+  function archiveAction(archived) {
+    return async ({ req, params }) => {
+      let id;
+      try {
+        id = checkTaskId(params?.[0]);
+        const expected = checkIfMatch(req.headers['if-match']);
+        const current = await tasks.readOwnerTask(id);
+        if (!current) throw new BridgeError(404, 'linear_owner_task_not_found', 'no such owner task');
+        if (current.updatedAt !== expected) throw new BridgeError(412, 'precondition_failed', 'the task changed since it was read');
+        if (Boolean(current.archivedAt) === archived) return { status: 200, data: { id, archived } };
+      } catch (error) { throw markBeforeWrite(toBridgeError(error)); }
+      try {
+        if (archived) await tasks.archiveOwnerTask(id);
+        else await tasks.restoreOwnerTask(id);
+      } catch (error) { throw toBridgeError(error); }
+      return { status: 200, data: { id, archived } };
+    };
   }
 
   return [
@@ -296,16 +279,11 @@ export function linearOwnerTaskRoutes({ source } = {}) {
       handler: patch,
       releaseOnError: beforeWrite,
     },
-    {
-      method: 'DELETE',
-      path: '/v1/linear-owner-tasks/{id}',
-      auth: true,
-      scope: 'tasks:write',
-      additionalScopes: ['tasks:read'],
-      idempotent: true,
-      pattern: DETAIL_PATH,
-      handler: remove,
-      releaseOnError: beforeWrite,
-    },
+    ...['archive', 'restore'].map((action) => ({
+      method: 'POST', path: `/v1/linear-owner-tasks/{id}/${action}`,
+      auth: true, scope: 'tasks:write', additionalScopes: ['tasks:read'], idempotent: true,
+      pattern: new RegExp(`^/v1/linear-owner-tasks/([^/]+)/${action}$`),
+      handler: archiveAction(action === 'archive'), releaseOnError: beforeWrite,
+    })),
   ];
 }

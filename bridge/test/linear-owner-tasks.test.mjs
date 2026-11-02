@@ -28,7 +28,8 @@ const DOCUMENT_NAMES = new Set([
   'BridgeOwnerTask',
   'BridgeOwnerTaskCreate',
   'BridgeOwnerTaskUpdate',
-  'BridgeOwnerTaskDelete',
+  'BridgeOwnerTaskArchive',
+  'BridgeOwnerTaskRestore',
 ]);
 
 function uuid(n) {
@@ -64,10 +65,9 @@ function fakeLinear({
   issues = [],
   pageSize = 100,
   failOn = null,
-  deleteKeepsIssue = false,
-  deleteOutcome = null,
-  deleteRemovesIssue = false,
-  deleteMarks = null,
+  archiveOutcome = 'success',
+  archiveEffect = true,
+  archiveMarks = null,
   malformedIssueRead = null,
 } = {}) {
   const store = new Map(issues.map((item) => [item.id, { ...item }]));
@@ -176,26 +176,13 @@ function fakeLinear({
       return reply({ issueUpdate: { success: true, issue: next } });
     }
 
-    if (name === 'BridgeOwnerTaskDelete') {
-      if (deleteOutcome === 'graphql-error') {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            data: null,
-            errors: [{ message: 'delete rejected', path: ['issueDelete'], extensions: { code: 'INPUT_ERROR', userError: true } }],
-          }),
-        };
-      }
-      if (deleteOutcome === 'missing') return reply({});
-      const success = deleteOutcome !== 'success-false';
-      if (success && !deleteKeepsIssue) store.delete(variables.id);
-      if (!success && deleteRemovesIssue) store.delete(variables.id);
-      if (deleteKeepsIssue && deleteMarks) {
-        const found = store.get(variables.id);
-        if (found) store.set(found.id, { ...found, ...deleteMarks });
-      }
-      return reply({ issueDelete: { success } });
+    if (name === 'BridgeOwnerTaskArchive' || name === 'BridgeOwnerTaskRestore') {
+      const archived = name === 'BridgeOwnerTaskArchive';
+      const found = store.get(variables.id);
+      if (archiveEffect && found) store.set(found.id, { ...found, archivedAt: archived ? stamp() : null, updatedAt: stamp(), ...archiveMarks });
+      if (archiveOutcome === 'graphql-error') return { ok: true, status: 200, json: async () => ({ errors: [{ message: 'rejected' }] }) };
+      if (archiveOutcome === 'missing') return reply({});
+      return reply({ [archived ? 'issueArchive' : 'issueUnarchive']: { success: archiveOutcome === 'success' } });
     }
 
     return { ok: false, status: 500, json: async () => ({ errors: [{ message: 'unhandled' }] }) };
@@ -258,6 +245,7 @@ test('the list is only the owner\'s open tasks, across every page', async () => 
       status: 'todo',
       stateName: 'Todo',
       updatedAt: '2026-11-02T00:00:00.000Z',
+      archivedAt: null,
       url: 'https://linear.app/laa/issue/BUS-201',
     });
     assert.equal(response.body.data.items[1].status, 'doing');
@@ -443,7 +431,6 @@ test('incomplete settings or a non-owner credential is a 503, not an empty list'
     { name: 'no team', fetchImpl: fakeLinear({ teams: [] }), code: 'linear_owner_config_incomplete' },
     { name: 'renamed team', fetchImpl: fakeLinear({ teams: [{ ...TEAM, name: 'Other' }] }), code: 'linear_owner_config_incomplete' },
     { name: 'no Todo state', fetchImpl: fakeLinear({ states: STATES.filter((state) => state.name !== 'Todo') }), code: 'linear_owner_config_incomplete' },
-    { name: 'no completed state', fetchImpl: fakeLinear({ states: STATES.filter((state) => state.type !== 'completed') }), code: 'linear_owner_config_incomplete' },
     { name: 'agent credential', fetchImpl: fakeLinear({ viewer: { id: AGENT, name: 'LAA' } }), code: 'linear_owner_identity_mismatch' },
   ];
   for (const item of cases) {
@@ -510,9 +497,7 @@ test('detail reads one task and hides everyone else\'s', async () => {
     }
 
     const completed = await bridge.request(`/v1/linear-owner-tasks/${uuid(4)}`, { token });
-    assert.equal(completed.status, 200);
-    assert.equal(completed.body.data.status, 'done');
-    assert.equal(completed.body.data.stateName, 'Done');
+    assert.equal(completed.status, 404);
   } finally {
     await bridge.close();
   }
@@ -887,227 +872,74 @@ test('patch requires If-Match, refuses a stale one, and only touches the owner\'
   }
 });
 
-test('completing a task moves it to Done and unassigns it, and stays readable', async () => {
-  const fetchImpl = fakeLinear({ issues: [issue({ id: uuid(51) })] });
-  const { bridge, token } = await bridgeWith(fetchImpl);
-  const url = `/v1/linear-owner-tasks/${uuid(51)}`;
-  try {
-    const done = await bridge.request(url, {
-      method: 'PATCH',
-      token,
-      key: 'c1',
-      headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-      body: { completed: true },
-    });
-    assert.equal(done.status, 200);
-    assert.equal(done.body.data.status, 'done');
-    assert.equal(done.body.data.stateName, 'Done');
-    const update = fetchImpl.calls.find((call) => call.name === 'BridgeOwnerTaskUpdate');
-    assert.deepEqual(update.variables.input, { stateId: 'state-done', assigneeId: null });
-
-    // Reconciling a completion: the id is the capability, so a second device
-    // that kept the draft can still read the finished task.
-    const read = await bridge.request(url, { token });
-    assert.equal(read.status, 200);
-    assert.equal(read.body.data.status, 'done');
-
-    // A fresh key (the app was relaunched) can also repeat the completion.
-    const again = await bridge.request(url, {
-      method: 'PATCH',
-      token,
-      key: 'c2',
-      headers: { 'if-match': done.body.data.updatedAt },
-      body: { completed: true },
-    });
-    assert.equal(again.status, 200);
-    assert.equal(again.body.data.status, 'done');
-
-    // The finished task is gone from the list.
-    const list = await bridge.request('/v1/linear-owner-tasks', { token });
-    assert.deepEqual(list.body.data.items, []);
-
-    for (const [body, code] of [
-      [{ completed: false }, 'payload_invalid'],
-      [{ completed: true, title: '同時' }, 'payload_invalid'],
-      [{ completed: 'yes' }, 'payload_invalid'],
-      [{}, 'payload_invalid'],
-      [{ status: 'done' }, 'payload_field_unknown'],
-      [{ assigneeId: null }, 'payload_field_unknown'],
-    ]) {
-      const response = await bridge.request(url, {
-        method: 'PATCH',
-        token,
-        key: `x-${Math.random()}`,
-        headers: { 'if-match': done.body.data.updatedAt },
-        body,
-      });
-      assert.equal(response.status, 400, JSON.stringify(body));
-      assert.equal(response.body.error.code, code, JSON.stringify(body));
-    }
-
-    const writeOnly = await bridge.token(['tasks:write']);
-    const denied = await bridge.request(url, {
-      method: 'PATCH',
-      token: writeOnly,
-      key: 'w1',
-      headers: { 'if-match': done.body.data.updatedAt },
-      body: { title: 'x' },
-    });
-    assert.equal(denied.status, 403);
-  } finally {
-    await bridge.close();
-  }
-});
-
-test('delete removes the owner\'s issue only, once, and reports an unconfirmed delete', async () => {
-  const fetchImpl = fakeLinear({
-    issues: [
-      issue({ id: uuid(61) }),
-      issue({ id: uuid(62), assignee: { id: AGENT, name: 'LAA' } }),
-    ],
-  });
-  const { bridge, token } = await bridgeWith(fetchImpl);
+test('archive and restore retain the owner and workflow state, exclude trash, and replay once', async () => {
+  const fake = fakeLinear({ pageSize: 1, issues: [issue({ id: uuid(61) }), issue({ id: uuid(62), trashed: true, archivedAt: '2026-11-01T00:00:00Z' }),
+    issue({ id: uuid(63), assignee: { id: AGENT }, archivedAt: '2026-11-01T00:00:00Z' })] });
+  const { bridge, token, writeOnly, readOnly } = await bridgeWith(fake);
   try {
     const url = `/v1/linear-owner-tasks/${uuid(61)}`;
-    const noMatch = await bridge.request(url, { method: 'DELETE', token, key: 'd0' });
-    assert.equal(noMatch.status, 428);
-    assert.equal(noMatch.body.error.code, 'precondition_required');
-
-    const stale = await bridge.request(url, {
-      method: 'DELETE',
-      token,
-      key: 'd0b',
-      headers: { 'if-match': '2026-01-01T00:00:00.000Z' },
-    });
-    assert.equal(stale.status, 412);
-    assert.equal(stale.body.error.code, 'precondition_failed');
-    assert.equal(fetchImpl.calls.filter((call) => call.name === 'BridgeOwnerTaskDelete').length, 0);
-
-    const deleted = await bridge.request(url, {
-      method: 'DELETE',
-      token,
-      key: 'd1',
-      headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-    });
-    assert.equal(deleted.status, 200);
-    assert.deepEqual(deleted.body.data, { id: uuid(61), deleted: true, alreadyDeleted: false });
-    assert.equal(fetchImpl.issues.has(uuid(61)), false);
-
-    const replay = await bridge.request(url, {
-      method: 'DELETE',
-      token,
-      key: 'd1',
-      headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-    });
-    assert.equal(replay.status, 200);
+    const archiveURL = `${url}/archive`;
+    const headers = { 'if-match': '2026-11-02T00:00:00.000Z' };
+    assert.equal((await bridge.request(archiveURL, { method: 'POST', token, key: 'no-version' })).status, 428);
+    assert.equal((await bridge.request(archiveURL, { method: 'POST', token, key: 'stale', headers: { 'if-match': 'old' } })).status, 412);
+    assert.equal((await bridge.request(archiveURL, { method: 'POST', token: writeOnly, key: 'write-only', headers })).status, 403);
+    assert.equal((await bridge.request(archiveURL, { method: 'POST', token: readOnly, key: 'read-only', headers })).status, 403);
+    const archived = await bridge.request(archiveURL, { method: 'POST', token, key: 'archive-1', headers });
+    assert.equal(archived.status, 200);
+    assert.deepEqual(archived.body.data, { id: uuid(61), archived: true });
+    assert.equal(fake.issues.get(uuid(61)).assignee.id, OWNER);
+    assert.equal(fake.issues.get(uuid(61)).state.type, 'unstarted');
+    const replay = await bridge.request(archiveURL, { method: 'POST', token, key: 'archive-1', headers });
     assert.equal(replay.headers.get('idempotency-replayed'), 'true');
-    assert.equal(fetchImpl.calls.filter((call) => call.name === 'BridgeOwnerTaskDelete').length, 1);
-
-    const others = await bridge.request(`/v1/linear-owner-tasks/${uuid(62)}`, {
-      method: 'DELETE',
-      token,
-      key: 'd2',
-      headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-    });
-    assert.equal(others.status, 404);
-    assert.equal(fetchImpl.calls.filter((call) => call.name === 'BridgeOwnerTaskDelete').length, 1);
-
-    const missingKey = await bridge.request(`/v1/linear-owner-tasks/${uuid(62)}`, {
-      method: 'DELETE',
-      token,
-      headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-    });
-    assert.equal(missingKey.status, 400);
-    assert.equal(missingKey.body.error.code, 'idempotency_key_required');
-  } finally {
-    await bridge.close();
-  }
-
-  const stubborn = fakeLinear({ issues: [issue({ id: uuid(63) })], deleteKeepsIssue: true, deleteOutcome: 'success-false' });
-  const second = await bridgeWith(stubborn);
-  try {
-    const response = await second.bridge.request(`/v1/linear-owner-tasks/${uuid(63)}`, {
-      method: 'DELETE',
-      token: second.token,
-      key: 'd3',
-      headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-    });
-    assert.equal(response.status, 503);
-    assert.equal(response.body.error.code, 'linear_delete_unconfirmed');
-  } finally {
-    await second.bridge.close();
-  }
+    assert.equal(fake.calls.filter(c => c.name === 'BridgeOwnerTaskArchive').length, 1);
+    assert.deepEqual((await bridge.request('/v1/linear-owner-tasks', { token })).body.data.items, []);
+    const list = await bridge.request('/v1/linear-owner-tasks?archived=only', { token });
+    assert.deepEqual(list.body.data.items.map(t => t.id), [uuid(61)]);
+    assert.ok(fake.calls.filter(c => c.name === 'BridgeOwnerTasks').every(c => c.query.includes('includeArchived: true')));
+    assert.equal((await bridge.request(url, { method: 'PATCH', token, key: 'edit-archived', headers: { 'if-match': list.body.data.items[0].updatedAt }, body: { title: 'bad' } })).status, 409);
+    const restoreHeaders = { 'if-match': list.body.data.items[0].updatedAt };
+    const restored = await bridge.request(`${url}/restore`, { method: 'POST', token, key: 'restore-1', headers: restoreHeaders });
+    assert.equal(restored.status, 200);
+    assert.deepEqual(restored.body.data, { id: uuid(61), archived: false });
+    assert.equal((await bridge.request(`${url}/restore`, { method: 'POST', token, key: 'restore-1', headers: restoreHeaders })).headers.get('idempotency-replayed'), 'true');
+    assert.equal(fake.calls.filter(c => c.name === 'BridgeOwnerTaskRestore').length, 1);
+    assert.equal((await bridge.request('/v1/linear-owner-tasks', { token })).body.data.items[0].id, uuid(61));
+    assert.deepEqual((await bridge.request('/v1/linear-owner-tasks?archived=only', { token })).body.data.items, []);
+    assert.equal((await bridge.request(`/v1/linear-owner-tasks/${uuid(63)}/restore`, { method: 'POST', token, key: 'other', headers })).status, 404);
+    assert.equal((await bridge.request(`/v1/linear-owner-tasks/${uuid(62)}/restore`, { method: 'POST', token, key: 'trash', headers })).status, 404);
+    assert.equal((await bridge.request(url, { method: 'DELETE', token, key: 'old-delete', headers })).status, 405);
+    assert.equal((await bridge.request('/v1/linear-owner-tasks?archived=bad', { token })).status, 400);
+  } finally { await bridge.close(); }
 });
 
-test('delete reports success, already deleted and failure without turning failure into success', async () => {
-  const cases = [
-    { name: 'success with a readable node', options: { deleteKeepsIssue: true }, status: 200, alreadyDeleted: false },
-    { name: 'success false but the issue is gone', options: { deleteOutcome: 'success-false', deleteRemovesIssue: true }, status: 200, alreadyDeleted: true },
-    { name: 'success false and the node is trashed', options: { deleteOutcome: 'success-false', deleteKeepsIssue: true, deleteMarks: { trashed: true } }, status: 200, alreadyDeleted: true },
-    { name: 'success false and the node is only archived', options: { deleteOutcome: 'success-false', deleteKeepsIssue: true, deleteMarks: { trashed: false, archivedAt: '2026-11-02T00:00:00.000Z' } }, status: 503, code: 'linear_delete_unconfirmed' },
-    { name: 'success false and the issue is still active', options: { deleteOutcome: 'success-false', deleteKeepsIssue: true }, status: 503, code: 'linear_delete_unconfirmed' },
-    { name: 'missing payload and the issue is still active', options: { deleteOutcome: 'missing', deleteKeepsIssue: true }, status: 503, code: 'linear_delete_unconfirmed' },
-    { name: 'GraphQL error and the issue is still active', options: { deleteOutcome: 'graphql-error', deleteKeepsIssue: true }, status: 503, code: 'linear_request_rejected' },
-  ];
-  for (const item of cases) {
-    const fake = fakeLinear({ issues: [issue({ id: uuid(80) })], ...item.options });
+test('failed archive never confuses a missing or trashed issue with an archived issue', async () => {
+  for (const options of [
+    { archiveOutcome: 'success-false', archiveEffect: false },
+    { archiveOutcome: 'missing', archiveEffect: false },
+    { archiveOutcome: 'success-false', archiveMarks: { trashed: true } },
+  ]) {
+    const fake = fakeLinear({ issues: [issue()], ...options });
     const { bridge, token } = await bridgeWith(fake);
     try {
-      const response = await bridge.request(`/v1/linear-owner-tasks/${uuid(80)}`, {
-        method: 'DELETE',
-        token,
-        key: 'delete-case',
-        headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-      });
-      assert.equal(response.status, item.status, item.name);
-      if (item.status === 200) {
-        assert.deepEqual(response.body.data, { id: uuid(80), deleted: true, alreadyDeleted: item.alreadyDeleted }, item.name);
-      } else {
-        assert.equal(response.body.error.code, item.code, item.name);
-        assert.equal(response.body.data, undefined, item.name);
-      }
-    } finally {
-      await bridge.close();
-    }
+      const url = `/v1/linear-owner-tasks/${uuid(1)}/archive`;
+      const args = { method: 'POST', token, key: 'uncertain', headers: { 'if-match': '2026-11-02T00:00:00.000Z' } };
+      assert.equal((await bridge.request(url, args)).status, 503);
+      assert.equal((await bridge.request(url, args)).status, 409);
+      assert.equal(fake.calls.filter(c => c.name === 'BridgeOwnerTaskArchive').length, 1);
+    } finally { await bridge.close(); }
   }
 });
 
-test('a broken issue read after a failed delete is a 503, never already-deleted success', async () => {
-  for (const mode of ['missing', 'string']) {
-    let deleted = false;
-    const base = fakeLinear({
-      issues: [issue({ id: uuid(81) })],
-      deleteOutcome: 'success-false',
-      deleteKeepsIssue: true,
-    });
-    const flaky = async (url, init) => {
-      const { query } = JSON.parse(init.body);
-      const name = /(?:query|mutation)\s+([A-Za-z_]+)/.exec(query)?.[1];
-      if (name === 'BridgeOwnerTaskDelete') deleted = true;
-      if (deleted && name === 'BridgeOwnerTask') {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => (mode === 'missing' ? { data: {} } : { data: { issue: 'not-an-issue' } }),
-        };
-      }
-      return base(url, init);
-    };
-    const { bridge, token } = await bridgeWith(null, { source: sourceFor(flaky) });
-    try {
-      const response = await bridge.request(`/v1/linear-owner-tasks/${uuid(81)}`, {
-        method: 'DELETE',
-        token,
-        key: 'delete-broken',
-        headers: { 'if-match': '2026-11-02T00:00:00.000Z' },
-      });
-      assert.equal(response.status, 503, mode);
-      assert.equal(response.body.error.code, 'linear_delete_unconfirmed', mode);
-      assert.equal(response.body.data, undefined, mode);
-    } finally {
-      await bridge.close();
-    }
-  }
+test('an ambiguous archive or restore is reconciled only by an owned non-trashed issue state', async () => {
+  const fake = fakeLinear({ issues: [issue()], archiveOutcome: 'missing' });
+  const { bridge, token } = await bridgeWith(fake);
+  try {
+    const path = `/v1/linear-owner-tasks/${uuid(1)}`;
+    assert.equal((await bridge.request(`${path}/archive`, { method: 'POST', token, key: 'a', headers: { 'if-match': '2026-11-02T00:00:00.000Z' } })).status, 200);
+    const current = (await bridge.request(path, { token })).body.data;
+    assert.ok(current.archivedAt);
+    assert.equal((await bridge.request(`${path}/restore`, { method: 'POST', token, key: 'r', headers: { 'if-match': current.updatedAt } })).status, 200);
+  } finally { await bridge.close(); }
 });
 
 test('an upstream failure is a sanitised 503 and never sends an arbitrary document', async () => {
@@ -1135,7 +967,8 @@ test('the source sends only its own fixed documents', async () => {
   await source.readOwnerTask(uuid(71));
   await source.createOwnerTask({ id: uuid(72), title: 't', priority: 0 });
   await source.patchOwnerTask(uuid(72), { title: 'u' });
-  await source.deleteOwnerTask(uuid(72));
+  await source.archiveOwnerTask(uuid(72));
+  await source.restoreOwnerTask(uuid(72));
 
   const names = fetchImpl.calls.map((call) => call.name);
   assert.deepEqual(names, [
@@ -1146,7 +979,8 @@ test('the source sends only its own fixed documents', async () => {
     'BridgeOwnerTask',
     'BridgeOwnerTaskCreate',
     'BridgeOwnerTaskUpdate',
-    'BridgeOwnerTaskDelete',
+    'BridgeOwnerTaskArchive',
+  'BridgeOwnerTaskRestore',
   ]);
   for (const call of fetchImpl.calls) {
     assert.match(call.query, /^(query|mutation) BridgeOwner/);
@@ -1162,7 +996,8 @@ test('the routes are registered with the Work tab\'s scopes', () => {
       ['POST', '/v1/linear-owner-tasks', 'tasks:write', true],
       ['GET', '/v1/linear-owner-tasks/{id}', 'tasks:read', false],
       ['PATCH', '/v1/linear-owner-tasks/{id}', 'tasks:write', true],
-      ['DELETE', '/v1/linear-owner-tasks/{id}', 'tasks:write', true],
+      ['POST', '/v1/linear-owner-tasks/{id}/archive', 'tasks:write', true],
+      ['POST', '/v1/linear-owner-tasks/{id}/restore', 'tasks:write', true],
     ],
   );
 });

@@ -5,6 +5,8 @@ struct LAALinearTasksView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
     @ObservedObject var drafts: ComposerDraftStore
     let priorityOnly: Bool
+    var archivedOnly = false
+    @State private var showingArchive = false
     @State private var items: [LAALinearTask] = []
     @State private var loading = false
     @State private var busy = false
@@ -24,7 +26,7 @@ struct LAALinearTasksView: View {
     }
     private var pending: ComposerDraftStore.Submission? { LAAWorkDrafts.pending(drafts, key: journalKey) }
     private var rows: [LAALinearTask] {
-        items.filter { $0.isOpen && (!priorityOnly || $0.needsAttention(today: LAALinearTask.today())) }
+        items.filter { archivedOnly ? $0.isArchived : ($0.isOpen && (!priorityOnly || $0.needsAttention(today: LAALinearTask.today()))) }
             .sorted {
                 let a = $0.priority == 0 ? 5 : $0.priority
                 let b = $1.priority == 0 ? 5 : $1.priority
@@ -42,26 +44,19 @@ struct LAALinearTasksView: View {
                     Button { Task { await load() } } label: { Text(verbatim: "読み直す") }
                 }
             }
-            if let pending {
+            if let pending, !busy {
                 Section {
-                    Text(verbatim: "前の操作の結果を確認しています。入力は端末に残っています。")
-                    Button { Task { await send(pending, retry: true) } } label: { Text(verbatim: "同じ操作を再確認") }
+                    Text(verbatim: "保存結果を確認できませんでした。")
+                    Button { startSend(pending, retry: true) } label: { Text(verbatim: "保存結果を確認") }
                         .disabled(busy || !LAAWorkDrafts.canRepeat(pending))
                     Button { acknowledge = true } label: { Text(verbatim: "Linearで結果を確認済み") }
                         .disabled(busy)
                 }
             }
-            if loading { ProgressView().frame(maxWidth: .infinity) }
+            if loading || busy { ProgressView().frame(maxWidth: .infinity) }
             Section {
                 ForEach(rows) { task in
                     HStack(alignment: .top, spacing: LAASpacing.x3) {
-                        Button { complete(task) } label: {
-                            Image(systemName: "circle")
-                                .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel(Text(verbatim: "\(task.title)を完了"))
-                        .accessibilityIdentifier("work.linear.complete.\(task.id)")
                         Button { editor = Editor(id: task.id, task: task) } label: {
                             VStack(alignment: .leading, spacing: LAASpacing.x1) {
                                 Text(verbatim: task.title).foregroundStyle(LAAColor.text).fontWeight(.medium)
@@ -76,27 +71,33 @@ struct LAALinearTasksView: View {
                                     }
                                 }.laaTextStyle(.secondary)
                             }.frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget, alignment: .leading)
-                        }.buttonStyle(.borderless)
+                        }.buttonStyle(.borderless).disabled(archivedOnly)
                     }
                     .disabled(busy || pending != nil)
                     .listRowBackground(LAAColor.surface)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) { deleting = task } label: {
-                            Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
-                        }.disabled(busy || pending != nil)
+                        if archivedOnly {
+                            Button { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "restore") } label: {
+                                Label { Text(verbatim: "戻す") } icon: { Image(systemName: "arrow.uturn.backward") }
+                            }.tint(LAAColor.link).disabled(busy || pending != nil)
+                        } else {
+                            Button(role: .destructive) { deleting = task } label: {
+                                Label { Text(verbatim: "削除") } icon: { Image(systemName: "trash") }
+                            }.disabled(busy || pending != nil)
+                        }
                     }
                 }
             } header: {
-                Text(verbatim: priorityOnly ? "期限・優先度の高いタスク" : "社長のタスク")
+                Text(verbatim: archivedOnly ? "アーカイブ" : priorityOnly ? "期限・優先度の高いタスク" : "社長のタスク")
             } footer: {
                 Text(verbatim: "Linear · LAA担当")
             }
             if loaded && rows.isEmpty && !loading && failure == nil {
                 ContentUnavailableView {
-                    Label { Text(verbatim: priorityOnly ? "優先タスクはありません" : "タスクはありません") }
+                    Label { Text(verbatim: archivedOnly ? "アーカイブはありません" : priorityOnly ? "優先タスクはありません" : "タスクはありません") }
                     icon: { Image(systemName: "checkmark.circle") }
                 } description: {
-                    Text(verbatim: priorityOnly ? "緊急・高優先度、または今日までが期限のタスクを表示します。" : "＋から追加できます。")
+                    Text(verbatim: archivedOnly ? "削除したタスクをここから戻せます。" : priorityOnly ? "緊急・高優先度、または今日までが期限のタスクを表示します。" : "＋から追加できます。")
                 }.listRowBackground(Color.clear)
             }
         }
@@ -105,11 +106,29 @@ struct LAALinearTasksView: View {
         .tint(LAAColor.link)
         .refreshable { await load() }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if !archivedOnly {
+                    Button { showingArchive = true } label: { Image(systemName: "archivebox") }
+                        .accessibilityLabel(Text(verbatim: "アーカイブ"))
+                        .accessibilityIdentifier("work.linear.archive")
+                        .disabled(busy || pending != nil)
                 Button { editor = Editor(id: UUID().uuidString.lowercased(), task: nil) } label: { Image(systemName: "plus") }
                     .accessibilityLabel(Text(verbatim: "タスクを追加"))
                     .accessibilityIdentifier("work.linear.add")
                     .disabled(busy || pending != nil)
+                } else {
+                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibilityLabel(Text(verbatim: "読み直す"))
+                }
+            }
+        }
+        .sheet(isPresented: $showingArchive, onDismiss: { Task { await load() } }) {
+            NavigationStack {
+                LAALinearTasksView(drafts: drafts, priorityOnly: false, archivedOnly: true)
+                    .navigationTitle(Text(verbatim: "アーカイブ"))
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button { showingArchive = false } label: { Text(verbatim: "閉じる") }
+                    } }
             }
         }
         .task(id: bridge.revision) { await load() }
@@ -119,49 +138,50 @@ struct LAALinearTasksView: View {
                        body: body, version: value.task?.updatedAt)
             }
         }
-        .confirmationDialog(Text(verbatim: "タスクを削除しますか？"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+        .confirmationDialog(Text(verbatim: "このタスクを削除しますか？"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
             Button(role: .destructive) {
-                if let task = deleting { submit(method: "DELETE", id: task.id, body: nil, version: task.updatedAt) }
+                if let task = deleting { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "archive") }
                 deleting = nil
             } label: { Text(verbatim: "削除") }
             Button(role: .cancel) { deleting = nil } label: { Text(verbatim: "キャンセル") }
-        } message: { Text(verbatim: deleting?.title ?? "") }
+        } message: { Text(verbatim: "アーカイブに移り、あとで戻せます。") }
         .confirmationDialog(Text(verbatim: "操作の控えを閉じますか？"), isPresented: $acknowledge) {
             Button { if let pending { _ = drafts.finishSubmission(pending.id, restoring: false) }; Task { await load() } }
             label: { Text(verbatim: "結果を確認して閉じる") }
         } message: { Text(verbatim: "Linearで反映結果を確認した場合だけ閉じてください。この操作は変更を取り消しません。") }
     }
 
-    private func complete(_ task: LAALinearTask) {
-        submit(method: "PATCH", id: task.id, body: Data(#"{"completed":true}"#.utf8), version: task.updatedAt)
-    }
-
-    private func submit(method: String, id: String, body: Data?, version: String?) {
+    private func submit(method: String, id: String, body: Data?, version: String?, action: String? = nil) {
         guard bridge.status == .paired, !busy, pending == nil else { return }
-        let mutation = LAALinearTaskMutation(method: method, id: id, body: body, version: version)
+        let mutation = LAALinearTaskMutation(method: method, id: id, body: body, version: version, action: action)
         guard mutation.isValid, let data = try? JSONEncoder().encode(mutation),
               let item = LAAWorkDrafts.reserve(drafts, key: journalKey, text: "Linearタスクの変更", body: data,
                                              idempotency: LAABridgeIdempotencyKey()) else {
             failure = "入力を端末に保存できません。もう一度お試しください。"; return
         }
         drafts.markSubmissionUnknown(item.id)
-        Task { await send(item) }
+        startSend(item)
+    }
+
+    private func startSend(_ item: ComposerDraftStore.Submission, retry: Bool = false) {
+        guard !busy else { return }
+        busy = true
+        Task { await send(item, retry: retry) }
     }
 
     private func send(_ item: ComposerDraftStore.Submission, retry: Bool = false) async {
-        guard !busy, item.key == journalKey, LAAWorkDrafts.canRepeat(item),
+        defer { busy = false }
+        guard item.key == journalKey, LAAWorkDrafts.canRepeat(item),
               let (bytes, key) = LAAWorkDrafts.request(item),
               let mutation = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes), mutation.isValid else { return }
-        busy = true
         failure = nil
         let device = bridge.deviceID
-        defer { busy = false }
         do {
-            if mutation.method == "DELETE" {
-                struct Deleted: Decodable { let id: String; let deleted: Bool }
-                let result: LAABridgeResponse<Deleted> = try await bridge.request(method: mutation.method, path: mutation.path,
+            if let action = mutation.action {
+                struct ArchiveResult: Decodable { let id: String; let archived: Bool }
+                let result: LAABridgeResponse<ArchiveResult> = try await bridge.request(method: mutation.method, path: mutation.path,
                     idempotencyKey: key, ifMatch: mutation.version)
-                guard result.data.id == mutation.id, result.data.deleted else { throw LAABridgeError.invalidResponse }
+                guard result.data.id == mutation.id, result.data.archived == (action == "archive") else { throw LAABridgeError.invalidResponse }
             } else {
                 let result: LAABridgeResponse<LAALinearTask> = try await bridge.request(method: mutation.method, path: mutation.path,
                     jsonBody: mutation.body, idempotencyKey: key, ifMatch: mutation.version)
@@ -174,7 +194,7 @@ struct LAALinearTasksView: View {
             editor = nil
             await load()
         } catch let error as LAABridgeHTTPError where [400, 403, 404, 412, 422, 428].contains(error.status)
-            || (error.status == 409 && error.code == "linear_owner_task_conflict") {
+            || (error.status == 409 && ["linear_owner_task_conflict", "linear_owner_task_archived"].contains(error.code ?? "")) {
             guard bridge.deviceID == device else { return }
             if retry {
                 failure = "前の操作の結果は未確認です。Linearで状態を確認してください。"
@@ -186,7 +206,19 @@ struct LAALinearTasksView: View {
         } catch {
             guard bridge.deviceID == device else { return }
             editor = nil
-            failure = "反映結果を確認できません。同じ操作を再確認するか、Linearで結果を確認してください。"
+            await reconcile(item, mutation: mutation, device: device)
+        }
+    }
+
+    private func reconcile(_ item: ComposerDraftStore.Submission, mutation: LAALinearTaskMutation, device: String?) async {
+        do {
+            let current: LAALinearTask = try await bridge.read("/v1/linear-owner-tasks/\(mutation.id)")
+            guard bridge.deviceID == device, mutation.isReflected(in: current),
+                  drafts.finishSubmission(item.id, restoring: false) else { throw LAABridgeError.invalidResponse }
+            editor = nil
+            await load()
+        } catch {
+            if bridge.deviceID == device { failure = "保存結果を確認できません。接続を確認して、もう一度お試しください。" }
         }
     }
 
@@ -198,10 +230,19 @@ struct LAALinearTasksView: View {
         loading = true
         defer { if loadID == epoch { loading = false } }
         do {
-            let page: LAAWorkPage<LAALinearTask> = try await bridge.read("/v1/linear-owner-tasks")
+            let page: LAAWorkPage<LAALinearTask> = try await bridge.read(archivedOnly ? "/v1/linear-owner-tasks?archived=only" : "/v1/linear-owner-tasks")
             guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
             guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
             items = page.items; loaded = true; failure = nil
+            if !busy, let pending, let (bytes, _) = LAAWorkDrafts.request(pending),
+               let mutation = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes), mutation.isValid {
+                // A restarted app may have missed a successful reply. Read only;
+                // never replace its key or replay a write during refresh.
+                if let current: LAALinearTask = try? await bridge.read("/v1/linear-owner-tasks/\(mutation.id)"),
+                   loadID == epoch, device == bridge.deviceID, mutation.isReflected(in: current) {
+                    _ = drafts.finishSubmission(pending.id, restoring: false)
+                }
+            }
         } catch is CancellationError { return }
         catch {
             guard loadID == epoch, device == bridge.deviceID else { return }
@@ -262,7 +303,7 @@ private struct LAALinearTaskEditor: View {
                         if task == nil { body["id"] = id }
                         if let data = try? JSONSerialization.data(withJSONObject: body, options: .sortedKeys) { save(data) }
                     } label: { Text(verbatim: "保存") }
-                    .disabled(busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.trimmingCharacters(in: .whitespacesAndNewlines).count > 200 || detail.count > 20000)
+                    .disabled(busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 200 || detail.utf16.count > 20000)
                 }
             }
         }.interactiveDismissDisabled(busy)

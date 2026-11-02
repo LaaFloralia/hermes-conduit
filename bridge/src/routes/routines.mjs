@@ -25,13 +25,20 @@ export function routineDestination(job) {
   return name ? `${name}の定期実行チャット` : null;
 }
 
+export function routineKind(job) {
+  if (['scheduled', 'service', 'manual', 'unknown'].includes(job.triggerKind)) return job.triggerKind;
+  if (job.reading?.source === 'launchd') return 'unknown';
+  if (['hermes', 'hermes-shared', 'paseo'].includes(job.reading?.source)) return 'scheduled';
+  return 'unknown';
+}
+
 export function projectRoutines(document) {
   if (!Array.isArray(document?.data)) throw new Error('invalid jobs response');
   return document.data.map((job) => {
     if (typeof job?.id !== 'string' || typeof job?.name !== 'string') throw new Error('invalid job');
     const reading = job.reading && typeof job.reading === 'object' ? job.reading : {};
     return { id: job.id, name: job.name, schedule: boundedString(job.schedule),
-      destination: routineDestination(job), state: routineState(job, reading),
+      triggerKind: routineKind(job), destination: routineDestination(job), state: routineState(job, reading),
       nextRunAt: boundedString(reading.nextRunAt), lastRunAt: boundedString(reading.lastRunAt),
       businessStatus: boundedString(reading.businessStatus), notificationStatus: boundedString(reading.notificationStatus),
       result: boundedString(reading.result) };

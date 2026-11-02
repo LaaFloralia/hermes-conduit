@@ -34,7 +34,7 @@ final class LAAWorkLinearUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Bridgeが指示本文を返すまで編集できません。"].exists)
     }
 
-    func testCreateEditCompleteAndDeleteOwnerTasks() throws {
+    func testCreateEditArchiveAndRestoreOwnerTasks() throws {
         let app = try launch()
         XCTAssertFalse(app.buttons["今週の振り返りをまとめる"].exists)
         app.buttons["work.section.tasks"].tap()
@@ -54,22 +54,71 @@ final class LAAWorkLinearUITests: XCTestCase {
         XCTAssertNotEqual(updatedTitle, "UI確認タスク")
         app.buttons["保存"].tap()
         XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
-        app.buttons["次の打ち合わせを確認するを完了"].tap()
-        XCTAssertTrue(app.staticTexts["次の打ち合わせを確認する"].waitForNonExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["work.linear.complete.b9d2f664-cda3-4c56-8d39-c4d6df597254"].exists)
+        XCTAssertFalse(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].exists)
         let row = app.buttons[updatedTitle]
         row.swipeLeft()
         app.buttons["削除"].firstMatch.tap()
         let confirm = app.sheets.buttons["削除"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["アーカイブに移り、あとで戻せます。"].exists)
+        if app.sheets.buttons["キャンセル"].exists { app.sheets.buttons["キャンセル"].tap() }
+        else { app.otherElements["PopoverDismissRegion"].tap() }
+        XCTAssertTrue(app.buttons[updatedTitle].exists)
+        app.buttons[updatedTitle].swipeLeft()
+        app.buttons["削除"].firstMatch.tap()
         XCTAssertTrue(confirm.waitForExistence(timeout: 5)); confirm.tap()
         XCTAssertTrue(app.buttons[updatedTitle].waitForNonExistence(timeout: 10))
+        app.buttons["work.linear.archive"].tap()
+        let archived = app.buttons[updatedTitle]
+        XCTAssertTrue(archived.waitForExistence(timeout: 10))
+        archived.swipeLeft()
+        app.buttons["戻す"].tap()
+        XCTAssertTrue(archived.waitForNonExistence(timeout: 10))
+        app.buttons["閉じる"].tap()
+        XCTAssertTrue(app.buttons[updatedTitle].waitForExistence(timeout: 10))
+
+    }
+
+    func testSevenSuccessfulEditsDoNotLeavePendingWarning() throws {
+        let app = try launch()
+        app.buttons["work.section.tasks"].tap()
+        var title = "次の打ち合わせを確認する"
+        for _ in 0..<7 {
+            let row = taskRow(app, title)
+            XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
+            let text = app.textFields["work.linear.title"].firstMatch
+            let field = text.exists ? text : app.textViews["work.linear.title"].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap(); field.typeText("改")
+            title = try XCTUnwrap(field.value as? String)
+            app.buttons["保存"].tap()
+            XCTAssertFalse(app.staticTexts["前の操作の結果を確認しています。入力は端末に残っています。"].exists)
+            XCTAssertTrue(taskRow(app, title).waitForExistence(timeout: 10))
+            XCTAssertFalse(app.staticTexts["保存結果を確認できませんでした。"].exists)
+        }
+    }
+
+    func testSkillDetailRoutineServiceFoldAndRefresh() throws {
+        let app = try launch()
+        selectSection(app, "skills")
+        let skill = app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch
+        XCTAssertTrue(skill.waitForExistence(timeout: 10)); skill.tap()
+        XCTAssertTrue(app.staticTexts["社長の指定内容に沿って現職の週報を入力します。"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.firstMatch.tap()
+        selectSection(app, "routines")
+        XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["常駐の確認用"].exists)
+        app.buttons["work.routines.services"].tap()
+        XCTAssertTrue(app.staticTexts["常駐の確認用"].exists)
+        app.buttons["work.catalog.refresh"].tap()
+        XCTAssertTrue(app.staticTexts["朝の確認"].waitForExistence(timeout: 10))
     }
 
     private func capture(_ appearance: String) throws {
         let app = try launch(appearance)
         for section in ["priority", "tasks", "sessions", "projects", "routines", "skills"] {
-            let button = app.buttons["work.section.\(section)"]
-            if !button.isHittable { app.scrollViews["work.segment"].swipeLeft() }
-            button.tap()
+            selectSection(app, section)
             let ready = section == "routines" ? "朝の確認" : section == "skills" ? "weekly-report" : "次の打ち合わせを確認する"
             if section == "sessions" || section == "projects" {
                 XCTAssertTrue(app.buttons["work.section.\(section)"].isSelected)
@@ -78,6 +127,27 @@ final class LAAWorkLinearUITests: XCTestCase {
             }
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
             shot.name = "work-\(section)-\(appearance)"; shot.lifetime = .keepAlways; add(shot)
+            if section == "tasks" {
+                let row = taskRow(app, "次の打ち合わせを確認する")
+                row.swipeLeft(); app.buttons["削除"].firstMatch.tap()
+                XCTAssertTrue(app.sheets.buttons["削除"].waitForExistence(timeout: 5))
+                attach("work-delete-confirm-\(appearance)")
+                app.sheets.buttons["削除"].tap()
+                XCTAssertTrue(row.waitForNonExistence(timeout: 10))
+                app.buttons["work.linear.archive"].tap()
+                XCTAssertTrue(row.waitForExistence(timeout: 10))
+                attach("work-archive-\(appearance)")
+                app.buttons["閉じる"].tap()
+            } else if section == "skills" {
+                app.buttons.containing(.staticText, identifier: "weekly-report").firstMatch.tap()
+                XCTAssertTrue(app.staticTexts["社長の指定内容に沿って現職の週報を入力します。"].waitForExistence(timeout: 5))
+                attach("work-skill-detail-\(appearance)")
+                app.navigationBars.buttons.firstMatch.tap()
+            } else if section == "routines" {
+                app.buttons["work.routines.services"].tap()
+                XCTAssertTrue(app.staticTexts["常駐の確認用"].exists)
+                attach("work-routine-services-\(appearance)")
+            }
         }
         app.buttons["laa.settings.open"].firstMatch.tap()
         let usage = app.buttons["settings.ai-usage"]
@@ -90,5 +160,18 @@ final class LAAWorkLinearUITests: XCTestCase {
     }
     func testWorkScreensLight() throws { try capture("light") }
     func testWorkScreensDark() throws { try capture("dark") }
+    private func taskRow(_ app: XCUIApplication, _ title: String) -> XCUIElement {
+        app.buttons.containing(.staticText, identifier: title).firstMatch
+    }
+    private func selectSection(_ app: XCUIApplication, _ section: String) {
+        let button = app.buttons["work.section.\(section)"]
+        let strip = app.scrollViews["work.segment"]
+        for _ in 0..<2 where button.frame.maxX > app.frame.maxX - 10 || !button.isHittable { strip.swipeLeft() }
+        button.tap()
+    }
+    private func attach(_ name: String) {
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = name; shot.lifetime = .keepAlways; add(shot)
+    }
 }
 #endif

@@ -37,10 +37,36 @@ final class LAALinearTaskTests: XCTestCase {
         XCTAssertFalse(LAALinearTaskMutation(method: "POST", id: "../../other", body: body, version: nil).isValid)
         XCTAssertFalse(LAALinearTaskMutation(method: "GET", id: id, body: body, version: nil).isValid)
     }
+    func testArchiveAndRestoreHaveSeparateReplayTargetsAndReflectOnlyTheirOwnState() throws {
+        var current = task()
+        let archive = LAALinearTaskMutation(method: "POST", id: current.id, body: nil, version: "now", action: "archive")
+        let restore = LAALinearTaskMutation(method: "POST", id: current.id, body: nil, version: "now", action: "restore")
+        XCTAssertTrue(archive.isValid)
+        XCTAssertEqual(archive.path, "/v1/linear-owner-tasks/\(current.id)/archive")
+        XCTAssertEqual(restore.path, "/v1/linear-owner-tasks/\(current.id)/restore")
+        XCTAssertFalse(archive.isReflected(in: current))
+        current.archivedAt = "now"
+        XCTAssertTrue(archive.isReflected(in: current))
+        XCTAssertFalse(restore.isReflected(in: current))
+        XCTAssertFalse(current.needsAttention(today: "2026-11-02"))
+        XCTAssertFalse(LAALinearTaskMutation(method: "DELETE", id: current.id, body: nil, version: "now").isValid)
+    }
+    func testSuccessfulTaskReadbackClearsOnlyMatchingEdit() throws {
+        let current = task(priority: 2)
+        let body = Data(#"{"title":"確認","description":"","priority":2,"dueDate":null}"#.utf8)
+        let edit = LAALinearTaskMutation(method: "PATCH", id: current.id, body: body, version: "before")
+        XCTAssertTrue(edit.isReflected(in: current))
+        var changed = current; changed.title = "別の内容"
+        XCTAssertFalse(edit.isReflected(in: changed))
+        let unsupported = LAALinearTaskMutation(method: "PATCH", id: current.id, body: Data(#"{"unknown":true}"#.utf8), version: "before")
+        XCTAssertFalse(unsupported.isValid)
+        XCTAssertFalse(unsupported.isReflected(in: current))
+    }
     func testRoutineExtraObservationsDecodeWithoutLosingHistory() throws {
-        let data = Data(#"{"id":"mail","name":"メール","schedule":"毎日","state":"scheduled","destination":"Cielの定期実行チャット","businessStatus":"success","notificationStatus":"sent","result":"timeout","lastRunAt":"2026-11-02T00:00:00Z"}"#.utf8)
+        let data = Data(#"{"id":"mail","name":"メール","schedule":"毎日","state":"scheduled","triggerKind":"scheduled","destination":"Cielの定期実行チャット","businessStatus":"success","notificationStatus":"sent","result":"timeout","lastRunAt":"2026-11-02T00:00:00Z"}"#.utf8)
         let row = try JSONDecoder().decode(LAAWorkRoutine.self, from: data)
         XCTAssertEqual(row.state, "scheduled")
+        XCTAssertEqual(row.triggerKind, "scheduled")
         XCTAssertEqual(row.result, "timeout")
         XCTAssertEqual(row.businessStatus, "success")
         XCTAssertEqual(row.destination, "Cielの定期実行チャット")

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describeSkill, unregisteredSkills, skillMetadata } from '../src/routes/skill-metadata.mjs';
 import { parseFrontmatter } from '../src/routes/skills.mjs';
 import { startBridge } from './helpers.mjs';
 
@@ -62,7 +63,7 @@ test('lists the Claude and Hermes skills from frontmatter only', async () => {
         const response = await bridge.request('/v1/skills', { token });
         assert.equal(response.status, 200);
         assert.equal(response.body.data.nextCursor, null);
-        assert.deepEqual(response.body.data.items, [
+        assert.deepEqual(response.body.data.items.map(({ category, summary, detail, metadataKnown, ...raw }) => raw), [
           { id: 'claude:cf-cli', name: 'cf-cli', description: 'Cloudflareの標準', source: 'Claude' },
           { id: 'claude:docx', name: 'docx', description: 'Word文書', source: 'Claude' },
           { id: 'hermes:software-development/github', name: 'github', description: 'GitHub操作', source: 'Hermes' },
@@ -100,7 +101,7 @@ test('a missing folder is an empty list, a real read failure is a 503', async ()
       async ({ bridge, token }) => {
         const response = await bridge.request('/v1/skills', { token });
         assert.equal(response.status, 200);
-        assert.deepEqual(response.body.data.items, []);
+        assert.deepEqual(response.body.data.items.map(({ category, summary, detail, metadataKnown, ...raw }) => raw), []);
       },
     );
 
@@ -154,7 +155,7 @@ test('a linked skill is listed, a link into the Brain is not opened', async () =
       async ({ bridge, token }) => {
         const response = await bridge.request('/v1/skills', { token });
         assert.equal(response.status, 200);
-        assert.deepEqual(response.body.data.items, [
+        assert.deepEqual(response.body.data.items.map(({ category, summary, detail, metadataKnown, ...raw }) => raw), [
           { id: 'claude:cf-cli', name: 'cf-cli', description: '共有skill', source: 'Claude' },
         ]);
         assert.doesNotMatch(JSON.stringify(response.body), /社長の文脈/);
@@ -230,5 +231,17 @@ test('reading skills needs sessions:read', async () => {
     }
   } finally {
     files.cleanup();
+  }
+});
+
+test('unknown skills preserve the original description, and coverage identifies newly installed names', () => {
+  assert.deepEqual(describeSkill('not-registered', 'Original description'), {
+    category: 'その他', summary: 'Original description', detail: 'Original description', metadataKnown: false,
+  });
+  assert.deepEqual(unregisteredSkills([{ name: 'cf-cli' }, { name: 'new-skill' }, { name: 'new-skill' }]), ['new-skill']);
+  for (const [name, value] of Object.entries(skillMetadata)) {
+    assert.ok(value.category && value.summary && value.detail, name);
+    assert.match(value.summary, /[ぁ-んァ-ン一-龠]/, name);
+    assert.ok(value.summary.length <= 60 && value.detail.length <= 200, name);
   }
 });

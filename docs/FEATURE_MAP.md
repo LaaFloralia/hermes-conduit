@@ -610,7 +610,7 @@ store · the session and project API · the owner-task API · Console job observ
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
-- Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`
+- Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/src/routes/skill-metadata.mjs`, `bridge/src/routes/routines.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`, `bridge/test/routines.test.mjs`
 - Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
@@ -629,15 +629,21 @@ store · the session and project API · the owner-task API · Console job observ
   shown as unapplied metadata and can only be explicitly cleared.
 - Priority and Tasks read only the owner's undelegated Linear issues in team
   BUS (LAA). Priority means urgent/high or due today/overdue. Creation assigns
-  LAA in Todo; completion moves to Done and clears the assignee. Edits and
-  confirmed swipe deletion carry `If-Match: updatedAt`; this is a read/check,
+  LAA in Todo. Confirmed swipe deletion uses Linear issueArchive, preserving
+  the assignee and state; the toolbar archive list restores with issueUnarchive.
+  Trashed issues are excluded even with includeArchived. Edits and archive writes carry `If-Match: updatedAt`; this is a read/check,
   not an atomic Linear compare-and-swap. The exact UUID, body, version and
   idempotency key remain on device while a result is uncertain. Legacy local
   owner-task data is retained without automatic migration.
+  Healthy in-flight writes show progress. A readback can clear an uncertain
+  request only when its requested fields or archive state are reflected.
 - Routines expose schedule, destination and current state separately from the
   last run, business result and notification result. Missing observations stay
-  unknown. Skills show only name and a short description from the read-only
-  index; they do not execute from this list.
+  unknown. Structured triggerKind separates scheduled jobs from folded services,
+  manual jobs and unknown triggers (legacy launchd observations stay folded).
+  Skills are grouped with Japanese summary/detail metadata; unregistered names
+  keep their original description under Other. SKILL.md bodies are never sent.
+  Skills do not execute from this list.
 - A project detail lists its sessions and passes the project to session creation.
 
 **Open gaps**

@@ -22,6 +22,7 @@ struct LAAWorkRoutine: Decodable, Identifiable {
     let nextRunAt: String?
     let lastRunAt: String?
     let result: String?
+    var triggerKind: String? = nil
     var destination: String? = nil
     var state: String? = nil
     var businessStatus: String? = nil

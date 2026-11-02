@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { consoleEnv, projectRoutines, routineDestination, routineState } from '../src/routes/routines.mjs';
+import { consoleEnv, projectRoutines, routineKind, routineDestination, routineState } from '../src/routes/routines.mjs';
 import { startBridge } from './helpers.mjs';
 
 test('routine endpoint requires read access and projects only public fields', async (t) => {
@@ -10,7 +10,7 @@ test('routine endpoint requires read access and projects only public fields', as
   const token = await bridge.token();
   const response = await bridge.request('/v1/routines', { token });
   assert.equal(response.status, 200);
-  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null }]);
+  assert.deepEqual(response.body.data.items, [{ id: 'job:a', name: 'Daily', schedule: 'daily', nextRunAt: '2026-11-01T03:00:00Z', lastRunAt: null, result: 'ok', triggerKind: 'unknown', destination: null, state: 'unknown', businessStatus: null, notificationStatus: null }]);
 });
 
 test('unavailable routine source returns an error rather than an empty list', async (t) => {
@@ -58,4 +58,13 @@ test('console reader puts the Bridge runtime first on the launchd PATH', () => {
   assert.equal(env.PATH, '/opt/laa/node/bin:/usr/bin:/bin');
   assert.equal(env.HOME, '/Users/laa');
   assert.equal(consoleEnv({}, '/opt/laa/node/bin/node').PATH, '/opt/laa/node/bin');
+});
+
+test('routine classification uses structured triggers, never schedule wording', () => {
+  for (const kind of ['scheduled', 'service', 'manual', 'unknown']) {
+    assert.equal(routineKind({ triggerKind: kind, schedule: 'KeepAlive', reading: { source: 'launchd' } }), kind);
+  }
+  assert.equal(routineKind({ schedule: '毎日 07:00', reading: { source: 'launchd' } }), 'unknown');
+  assert.equal(routineKind({ schedule: '常駐', reading: { source: 'hermes' } }), 'scheduled');
+  assert.equal(routineKind({ triggerKind: 'invalid' }), 'unknown');
 });
