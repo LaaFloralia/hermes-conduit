@@ -6,6 +6,9 @@ import SwiftUI
 @MainActor
 struct LAAChatsView: View {
     @ObservedObject var appState: AppState
+    /// The Mac's list column asks for a highlighted row and forwards the
+    /// menu bar's search, reload and new-chat requests. The phone passes none.
+    var selection: LAAChatsListSelection? = nil
     @Environment(\.v2Shell) private var shell
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.laaSettingsAction) private var settings
@@ -64,6 +67,7 @@ struct LAAChatsView: View {
 
     private var liveContent: some View {
         LAAChatsContent(snapshot: snapshot, settingsAvailable: settings != nil,
+                        selection: selection,
                         openPerson: openPerson, openRoom: { room in
             Task { await appState.openGroupRoom(room) }
         }, newChat: {

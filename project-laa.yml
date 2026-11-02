@@ -60,6 +60,10 @@ targets:
     settings:
       base:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) LAA_BUILD"
+        # The Mac window's own tests (LAAMacShellUITests) run on the Catalyst
+        # destination; the iPhone tests are unaffected by these settings.
+        SUPPORTS_MACCATALYST: YES
+        "MACOSX_DEPLOYMENT_TARGET[sdk=macosx*]": "14.0"
   Conduit:
     sources:
       - path: assets/laa/LAAOpenSourceNotices.txt

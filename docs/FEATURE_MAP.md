@@ -3979,3 +3979,30 @@ and rollback instructions · the upstream App Store build
 
 **Checked:** 2026-11-02, based on a2726666 (laa/google). Google API mocks and all 410 Bridge tests passed after the master merge (obsolete mount tests removed);
 Debug build exited 0 before review fixes, updated build pending. Owner-size visual verification is pending. Real-device acceptance remains pending.
+
+## LAA Mac desktop shell
+
+**Siblings:** the iPhone's five-tab shell (`LAAAppShell`) · every section screen the columns reuse · widget, notification and daily-note links · the in-call bar and the Usage sheet · Settings and sign-in · the Bridge connection line · the Mac menu bar and keyboard · window geometry and full screen
+
+**Code**
+- Shell, sidebar, commands and window: `Conduit/LAA/Mac/LAAMacShell.swift`, `Conduit/LAA/Mac/LAAMacSidebar.swift`, `Conduit/LAA/Mac/LAAMacSection.swift`, `Conduit/LAA/Mac/LAAMacCommands.swift`, `Conduit/LAA/Mac/LAAMacWindow.swift`, `Conduit/LAA/Mac/LAADesktopLayout.swift`
+- Chat in two columns: `Conduit/LAA/Mac/LAAMacChatsSection.swift`, `Conduit/LAA/Chats/LAAChatsContent.swift`, `Conduit/LAA/Chats/LAAChatsModel.swift`, `Conduit/LAA/Chats/LAAChatsView.swift`, `Conduit/Views/V2/V2ConversationScreen.swift`
+- Entry points: `Conduit/ConduitApp.swift` (window and `.commands`), `Conduit/Views/RootView.swift` (`shellSurface`)
+- Screenshots: `scripts/laa/mac-screens.sh`
+- Tests: `ConduitTests/LAAMacCatalystTests.swift`, `ConduitUITests/LAAMacShellUITests.swift`
+
+**Rulings**
+- Catalyst keeps "Scale Interface to Match iPad": one UIKit point is drawn at about 0.77 Mac points, so the desktop sizes are divided by that (1280×820 becomes 1662×1065). Optimize for Mac is not switched on (the parent, 2026-11-03).
+- The Mac window is a `NavigationSplitView` — sidebar of Chat, Work, Today, Brain, Studio, Drive and Usage, with the Mac's connection state and Settings beneath — beside a detail column each section fills. The phone keeps its `TabView` unchanged. Sections branch on `laaDesktop`, never on the size class, because the shell hands the reused iPhone screens a compact size class inside the columns.
+- The window opens at 1280×820 Mac points, keeps a 900×600 minimum and has no maximum below the display: full screen and Split View work. The earlier 623-point content cap, the compact size class at the root and the `.contentSize` resizability are gone.
+- Selecting a chat row switches the detail column; it never pushes. The selected row keeps `LAAColor.selectionFill` behind `LAAColor.link` (the same pair as the sidebar), not the system accent fill, and a room's row is marked instead of a person's while a room is open. The conversation sits at `LAADesktopMetrics.readingWidth`.
+- The menu bar carries Go (⌘1–⌘7, ⌃⌘S), Chat (⌘F, ⌘R, Close Conversation), New Chat (⌘N) and Settings (⌘,). Escape closes the open chat. Arrow keys walk the sidebar and the chat list; Return opens the focused row.
+- Sign-in stays in the Chat section, where the phone's Chats tab shows it, rather than covering the window: the other sections keep their own unpaired states.
+
+**Open gaps**
+- The chat list's right-click menu is not added: the rows have no per-row operation today beyond opening them, so there is nothing to repeat. Hover tooltips use `help`; VoiceOver names and the selected trait are set.
+- A Catalyst UI test target cannot run under ad-hoc signing (the runner and the bundle end up with different Team IDs), so `LAAMacShellUITests` compiles but needs the team-signed configuration the parent holds.
+- Selecting a chat row and seeing the conversation needs a live Hermes dashboard; the rule is unit-tested and the live path is the parent's Bridge check.
+- Studio, Drive, Work, Today and Brain still show their phone layouts inside the detail column; each section's own Mac layout is its owner's work.
+
+**Checked:** 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.

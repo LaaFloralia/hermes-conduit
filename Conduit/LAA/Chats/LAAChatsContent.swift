@@ -5,6 +5,8 @@ import UIKit
 struct LAAChatsContent: View {
     let snapshot: LAAChatsSnapshot
     var settingsAvailable: Bool
+    /// The Mac's split list: the highlighted row and the menu bar's requests.
+    var selection: LAAChatsListSelection? = nil
     var openPerson: (LAAChatsPerson) -> Void
     var openRoom: (GroupRoom) -> Void
     var newChat: () -> Void
@@ -14,7 +16,9 @@ struct LAAChatsContent: View {
     var searchChanged: () -> Void
 
     @State private var query = ""
+    @State private var hoveredRow: String?
     @FocusState private var searchFocused: Bool
+    @FocusState private var focusedRow: String?
 
     private var searching: Bool { !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private var ciel: LAAChatsPerson? { snapshot.people.first { LAAStaff(profile: $0.profile) == .ciel } }
@@ -64,7 +68,67 @@ struct LAAChatsContent: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .onChange(of: query) { _, _ in searchChanged() }
+        .onChange(of: selection?.focusSearch) { _, _ in
+            guard selection != nil else { return }
+            searchFocused = true
+        }
+        .onChange(of: selection?.reload) { _, _ in
+            guard selection != nil else { return }
+            retry()
+        }
+        .onChange(of: selection?.newChat) { _, _ in
+            guard selection != nil, snapshot.canCreateChat else { return }
+            newChat()
+        }
+        // The arrow keys walk the rows the list actually shows; Return opens
+        // the focused one, because each row is a Button.
+        .onKeyPress(.downArrow) { moveFocus(by: 1) }
+        .onKeyPress(.upArrow) { moveFocus(by: -1) }
         .accessibilityIdentifier("laa.chats.list")
+    }
+
+    // MARK: Mac rows
+
+    /// The rows a click or the arrow keys can reach, in the order shown.
+    private var rowIDs: [String] {
+        var ids: [String] = []
+        if let ciel = matchingCiel, ciel.available { ids.append("person.\(ciel.profile)") }
+        ids += employees.filter(\.available).map { "person.\($0.profile)" }
+        if snapshot.groupsState != .offline { ids += rooms.map { "room.\($0.roomID)" } }
+        return ids
+    }
+
+    private func isSelected(_ id: String) -> Bool {
+        guard let selection else { return false }
+        if id.hasPrefix("person.") {
+            return selection.roomID == nil && selection.profile == String(id.dropFirst("person.".count))
+        }
+        return selection.roomID == String(id.dropFirst("room.".count))
+    }
+
+    private func moveFocus(by delta: Int) -> KeyPress.Result {
+        guard selection != nil else { return .ignored }
+        let ids = rowIDs
+        guard !ids.isEmpty else { return .ignored }
+        guard let current = focusedRow, let index = ids.firstIndex(of: current) else {
+            focusedRow = delta > 0 ? ids.first : ids.last
+            return .handled
+        }
+        focusedRow = ids[min(max(index + delta, 0), ids.count - 1)]
+        return .handled
+    }
+
+    private func rowChrome(_ id: String) -> some ViewModifier {
+        LAAChatsRowChrome(active: selection != nil, selected: isSelected(id),
+                          hovering: hoveredRow == id)
+    }
+
+    /// One row's pointer entry and exit. A row clears the highlight only if
+    /// it still owns it, so moving between rows keeps the new one lit.
+    private func hover(_ id: String) -> (Bool) -> Void {
+        { inside in
+            if inside { hoveredRow = id } else if hoveredRow == id { hoveredRow = nil }
+        }
     }
 
     private var search: some View {
@@ -97,14 +161,18 @@ struct LAAChatsContent: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionHeader(LAACopy.chatsCiel)
             Button { openPerson(ciel) } label: {
-                personRow(ciel, size: 48)
+                personRow(ciel, size: 48, selected: isSelected("person.\(ciel.profile)"))
                     .padding(LAASpacing.x3)
-                    .background(LAAColor.surface, in: RoundedRectangle(cornerRadius: LAARadius.card))
+                    .background(isSelected("person.\(ciel.profile)") ? LAAColor.selectionFill : LAAColor.surface,
+                                in: RoundedRectangle(cornerRadius: LAARadius.card))
             }
             .buttonStyle(.plain)
             .disabled(!ciel.available)
             .accessibilityHint(Text(verbatim: ciel.available ? "" : LAACopy.chatsUnavailable))
+            .accessibilityAddTraits(isSelected("person.\(ciel.profile)") ? .isSelected : [])
             .accessibilityIdentifier("laa.chats.person.\(ciel.profile)")
+            .focused($focusedRow, equals: "person.\(ciel.profile)")
+            .onHover(perform: hover("person.\(ciel.profile)"))
             if !ciel.available { note(LAACopy.chatsUnavailable) }
         }
     }
@@ -116,11 +184,15 @@ struct LAAChatsContent: View {
                 note(LAACopy.chatsNoEmployees)
             } else {
                 ForEach(employees) { employee in
-                    Button { openPerson(employee) } label: { personRow(employee, size: 40) }
+                    Button { openPerson(employee) } label: { personRow(employee, size: 40, selected: isSelected("person.\(employee.profile)")) }
                         .buttonStyle(.plain)
                         .disabled(!employee.available)
                         .accessibilityHint(Text(verbatim: employee.available ? "" : LAACopy.chatsUnavailable))
+                        .accessibilityAddTraits(isSelected("person.\(employee.profile)") ? .isSelected : [])
                         .accessibilityIdentifier("laa.chats.person.\(employee.profile)")
+                        .modifier(rowChrome("person.\(employee.profile)"))
+                        .focused($focusedRow, equals: "person.\(employee.profile)")
+                        .onHover(perform: hover("person.\(employee.profile)"))
                 }
             }
         }
@@ -145,21 +217,26 @@ struct LAAChatsContent: View {
                 loadNote(snapshot.groupsState, empty: LAACopy.chatsNoGroups)
             } else {
                 ForEach(rooms) { room in
-                    Button { openRoom(room) } label: { roomRow(room) }
+                    Button { openRoom(room) } label: { roomRow(room, selected: isSelected("room.\(room.roomID)")) }
                         .buttonStyle(.plain)
                         .disabled(snapshot.groupsState == .offline)
+                        .accessibilityAddTraits(isSelected("room.\(room.roomID)") ? .isSelected : [])
                         .accessibilityIdentifier("laa.chats.group.\(room.roomID)")
+                        .modifier(rowChrome("room.\(room.roomID)"))
+                        .focused($focusedRow, equals: "room.\(room.roomID)")
+                        .onHover(perform: hover("room.\(room.roomID)"))
                 }
                 if snapshot.groupsState != .ready { loadNote(snapshot.groupsState, empty: "") }
             }
         }
     }
 
-    private func personRow(_ person: LAAChatsPerson, size: CGFloat) -> some View {
+    private func personRow(_ person: LAAChatsPerson, size: CGFloat, selected: Bool = false) -> some View {
         HStack(spacing: LAASpacing.x3) {
             avatar(profile: person.profile, name: person.name, size: size)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: person.name).font(LAAType.employeeName).foregroundStyle(LAAColor.text)
+                Text(verbatim: person.name).font(LAAType.employeeName)
+                    .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                 Text(verbatim: person.role).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
@@ -169,11 +246,12 @@ struct LAAChatsContent: View {
         .contentShape(Rectangle())
     }
 
-    private func roomRow(_ room: GroupRoom) -> some View {
+    private func roomRow(_ room: GroupRoom, selected: Bool = false) -> some View {
         HStack(spacing: LAASpacing.x3) {
             LAAGroupFaces(members: room.members, size: 40)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: room.name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                Text(verbatim: room.name).laaTextStyle(.body)
+                    .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                 let names = room.members.compactMap { $0.displayName ?? $0.profile ?? $0.handle }.joined(separator: ", ")
                 if !names.isEmpty { Text(verbatim: names).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
             }
@@ -313,6 +391,24 @@ struct LAAGroupFaces: View {
         .clipShape(Circle())
         // The page's own colour as a ring, so overlapping faces stay apart.
         .overlay(Circle().stroke(LAAColor.background, lineWidth: 1.5))
+    }
+}
+
+/// Mac only: a row's selected and hovered fill. `active` is false on the
+/// phone, where the list draws neither, so the row is untouched there.
+private struct LAAChatsRowChrome: ViewModifier {
+    let active: Bool
+    let selected: Bool
+    let hovering: Bool
+
+    func body(content: Content) -> some View {
+        content.background {
+            if active {
+                RoundedRectangle(cornerRadius: LAARadius.card)
+                    .fill(selected ? LAAColor.selectionFill
+                          : (hovering ? LAAColor.subtleSurface : Color.clear))
+            }
+        }
     }
 }
 #endif

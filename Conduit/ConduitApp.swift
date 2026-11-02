@@ -272,17 +272,17 @@ struct ConduitApp: App {
         }
         #if LAA_BUILD && targetEnvironment(macCatalyst)
         .defaultSize(width: LAAMacWindow.initialWidth, height: LAAMacWindow.initialHeight)
-        .windowResizability(.contentSize)
+        // The window grows to any width — full screen and Split View
+        // included — and keeps only the minimum the desktop layout needs.
+        .windowResizability(.contentMinSize)
+        .commands { LAAMacCommands() }
         #endif
     }
 
     private var rootContent: some View {
         RootView()
             #if LAA_BUILD && targetEnvironment(macCatalyst)
-            .environment(\.horizontalSizeClass, .compact)
-            .frame(maxWidth: LAAMacWindow.contentWidth)
-            .frame(minWidth: LAAMacWindow.minimumWidth, maxWidth: .infinity,
-                   minHeight: LAAMacWindow.minimumHeight, maxHeight: .infinity)
+            .frame(minWidth: LAAMacWindow.minimumWidth, minHeight: LAAMacWindow.minimumHeight)
             .background(LAAColor.background.ignoresSafeArea())
             .background(LAAMacWindowConstraints())
             #endif
