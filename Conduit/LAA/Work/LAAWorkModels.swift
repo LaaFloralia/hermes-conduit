@@ -69,6 +69,7 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     let id: String
     let name: String
     let nameSource: String?
+    let delegateSessionId: String?
     let instructionRef: String?
     let instructionHash: String?
     let instructionVersion: Int?

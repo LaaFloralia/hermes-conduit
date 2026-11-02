@@ -66,6 +66,9 @@ export function createStore({ dir, idempotencyRetentionMs, now = () => Date.now(
       devices: parsed.devices ?? {},
       pairings: parsed.pairings ?? {},
       idempotency: parsed.idempotency ?? {},
+      // Once personal task writes have been enabled, a missing task ledger
+      // must not be mistaken for a new, empty installation.
+      ...(parsed.taskOperationsInitialized === true ? { taskOperationsInitialized: true } : {}),
     };
   }
 

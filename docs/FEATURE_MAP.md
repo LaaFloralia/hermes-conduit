@@ -618,6 +618,17 @@ store · the session and project API · the owner-task API · Console job observ
 - Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
   `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
+- Full Linear client: `Conduit/LAA/Work/LAAPersonalTaskList.swift`, `Conduit/LAA/Work/LAAPersonalTaskDetail.swift`,
+  `Conduit/LAA/Work/LAAPersonalTaskEditor.swift`, `Conduit/LAA/Work/LAAPersonalTaskConnections.swift`,
+  `Conduit/LAA/Work/LAAPersonalInbox.swift`, `Conduit/LAA/Work/LAAPersonalTaskQueue.swift`,
+  `Conduit/LAA/Work/LAALinearTaskCache.swift`, `Conduit/LAA/Work/LAALinearTaskRoute.swift`,
+  `Conduit/LAA/Work/LAATaskSessionReferences.swift`; contract: `bridge/docs/personal-tasks.md`.
+  Bridge: `bridge/src/tasks/personal.mjs`, `bridge/src/tasks/agent-inbox.mjs`,
+  `bridge/src/tasks/owner-notifications.mjs`, `bridge/src/tasks/operation-ledger.mjs`,
+  `bridge/src/routes/personal-tasks.mjs`. Tests: `ConduitTests/LAAPersonalTaskTests.swift`,
+  `ConduitTests/LAAPersonalTaskQueueTests.swift`, `ConduitTests/LAALinearTaskIntegrationTests.swift`,
+  `ConduitUITests/LAAFullTaskUITests.swift`, `bridge/test/agent-inbox.test.mjs`, `bridge/test/linear-actor.test.mjs`.
+
 **Rulings**
 - Session and successor writes keep the exact body, request ID and idempotency
   key until their outcome is known; the existing composer never sends through
@@ -649,6 +660,18 @@ store · the session and project API · the owner-task API · Console job observ
   keep their original description under Other. SKILL.md bodies are never sent.
   Skills do not execute from this list.
 - A project detail lists its sessions and passes the project to session creation.
+
+- Tasks also opens the full searchable client: owner/all/active/backlog, paginated projects,
+  cycles and saved views; description editing, comments/replies, history, children,
+  relations, links and private files. Writes use the protected draft store and a
+  viewer/device-bound operation ledger; uncertain outcomes require readback before retry.
+- Agent mode supplies an app-owned inbox for owner-assigned/created/subscribed issues
+  and mentions; local read/archive state is separate from Linear. Native personal
+  inbox access is an explicit later configuration switch. New activity calls the
+  common notifyOwner path; real delivery belongs to the parent integration gate.
+- Protected device/filter caches precede network reads. Task links use
+  laa://work/tasks/<UUID or identifier>. Session hints come from issue text/comments
+  and current session-list data, always labeled as inferred.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks

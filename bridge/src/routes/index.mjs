@@ -19,6 +19,7 @@ import { createProjectRoutes, createProjectStore } from './projects.mjs';
 import { createSessionRoutes } from './sessions.mjs';
 import { createWorkspaceRoutes, createWorkspaceStore, workspaceServiceFromOptions } from './workspaces.mjs';
 import { taskRoutes } from './tasks.mjs';
+import { personalTaskRoutes } from './personal-tasks.mjs';
 import { linearOwnerTaskRoutes } from './linear-owner-tasks.mjs';
 import { skillRoutes } from './skills.mjs';
 import { ownerTaskRoutes } from './owner-tasks.mjs';
@@ -66,6 +67,7 @@ export function businessRoutes({ store, now = () => Date.now(), options = {} } =
   return [
     ...taskRoutes({ ...(options.tasks ?? {}), now }),
     ...linearOwnerTaskRoutes(options.linearOwnerTasks ?? {}),
+    ...personalTaskRoutes({ ...(options.tasks ?? {}), store, now }),
     ...skillRoutes(options.skills ?? {}),
     ...ownerTaskRoutes({ service: ownerTaskService }),
     ...brainRoutes({ store, now, options: options.brain ?? {} }),
