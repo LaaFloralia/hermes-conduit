@@ -185,14 +185,22 @@ LAA_BRIDGE_URL=http://127.0.0.1:9137 LAA_BRIDGE_TOKEN=… \
 
 ## Drive（一覧・metadata・Range配信）
 
-`/v1/drive/files` は `~/Library/CloudStorage/GoogleDrive-floralia@laa-inc.com/` の「マイドライブ」と「共有ドライブ」を読み取る（`src/drive/mount.mjs`）。Driveへの書込み・Google Cloud OAuthは使わない。API認証と `media:read` は引き続き必要。
+`/v1/drive/files` reads the Google Drive API through `src/drive/google.mjs` and
+shared runtime Google OAuth. The desktop mount adapter has been removed. Read
+routes require `media:read`; uploads require opt-in `media:write`.
 
-- 指定フォルダの一覧・再帰的な名前検索・ページングを提供する。1回の走査は最大1万エントリで、超えた場合や権限不足で子フォルダを読めない場合は `incompleteSearch` を返す。ページは直前の項目を基準に再走査するため、前方の追加・削除で既存項目は飛ばないが、固定スナップショットではない。共有ドライブは「共有アイテム」とは異なる。最近・スターの情報はマウントから得られないため表示しない。
-- IDはルート内の相対パスを符号化し、Bridge再起動後も同じ場所を指す。移動・改名後は別IDになる。IDから名前を復元できるため、Bridgeのログには記録しない。シンボリックリンクと許可ルート外を検査し、open後にinode・版を再照合するが、検査中の親ディレクトリ差替えに対する原子的な保証はない。
-- 画像・PDF・動画などのローカルファイルは必要範囲だけ開き、206/416・`Content-Range` を返す。版はファイル属性から作成し、各範囲の前に変更を検出する。File Providerがオンライン専用ファイルを実際にどう取得するかは未実測。
-- `.gdoc`・`.gsheet`・`.gslides` 等は安全なGoogleのWebリンクとして開く。PDF変換は行わない。最大2 MiBの対応画像は一覧用にも返す。
-
-2026-11-01の実測では、稼働中の `com.laa.bridge` と同じプロセスから両ルートへの `opendir` が `EPERM` となり、macOSの `FileProviderDomain` アクセスが拒否された。親がBridge専用の実行ファイルにフルディスクアクセスを付け、launchdのplistの実行パスを差し替える。許可画面は操作しておらず、設定・Bridge再起動後の実アクセスは未確認。コードはNodeの固定パスに依存しない。
+- My Drive, shared drives, shared-with-me, recent and starred use Google IDs,
+  opaque pagination and escaped full-text/folder queries.
+- Images and PDF use bounded previews; Office uses native Quick Look on iPhone.
+  Google documents export to PDF. Media streams authenticated Range requests.
+- Uploads use device-bound resumable sessions. `GET /v1/drive/uploads/<id>` queries
+  Google's committed offset with an empty `PUT Content-Range: bytes */<size>`.
+  After a lost chunk/final response the phone queries before resending, retaining
+  the session so the user can resume after a connection failure.
+- Reads manually follow at most three redirects to explicitly allowed Google
+  content hosts. Arbitrary hosts and write redirects are refused before following.
+- No File Provider mount or macOS Full Disk Access change is required. Google
+  consent, device write grants and live verification remain parent actions.
 
 ## タスク読取（`/v1/tasks`）
 
@@ -444,8 +452,8 @@ all accessible files rather than only the root. Google documents export to PDF
 (up to Google's 10 MB limit); binary content streams without whole-file buffering.
 `POST /v1/drive/uploads` and `PUT /v1/drive/uploads/<id>/chunks/<offset>` require
 opt-in `media:write` and idempotency keys. Upload sessions are device-bound,
-expire after one hour and accept at most 4 MiB per chunk. The final chunk returns
-the created file; an uncertain write must be reconciled before retrying.
+expire after one hour and accept at most 4 MiB per chunk. Status queries reconcile
+lost acknowledgements before resending; completed status remains available until expiry.
 
 Calendar list and event/detail reads require `calendar:read`. Day/week/month/agenda
 ranges span up to 42 days. Create/PATCH/DELETE require separate `calendar:write`;
@@ -460,7 +468,8 @@ existing folder until it has been authorized for this app; root uploads remain
 available. Do not reuse another connector's OAuth credentials.
 
 Popup reminders use Google defaults/overrides, a 30-second non-overlapping poll
-and shared `notifyOwner`; email reminders stay with Google. Enable polling only
+and shared `notifyOwner`; email reminders stay with Google. A 24-hour catch-up window
+recovers unsent reminders after restart, sleep or upstream errors. Enable polling only
 after parent setup (`LAA_GOOGLE_REMINDERS_ENABLED=1`). Delivery dedupes on calendar,
 instance, start and reminder offset, persisting only successful deliveries.
 Notification links are `laa://today/events/<id>?calendar=<calendarId>`.

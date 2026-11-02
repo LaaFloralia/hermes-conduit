@@ -3,22 +3,23 @@ import { createGoogleConnection, googleConnection } from '../google/connection.m
 export { DEFAULT_CREDENTIAL_HELPER, readCredentialViaHelper } from '../google/connection.mjs';
 
 const failure = (code = 'calendar_invalid_response') => new BridgeError(503, code, 'Google Calendar returned an invalid response');
+const text = value => typeof value === 'string' ? value : null;
 const eventFields = 'id,etag,status,summary,start,end,location,description,htmlLink,hangoutLink,conferenceData,attendees,attachments,recurrence,recurringEventId,originalStartTime,reminders,organizer';
 export function calendarEvent(event, calendarId) {
   if (!event || typeof event !== 'object') throw failure();
   const allDay = typeof event.start?.date === 'string';
   const start = allDay ? event.start.date : event.start?.dateTime;
   const end = allDay ? event.end?.date : event.end?.dateTime;
-  if (!event.id || typeof start !== 'string' || typeof end !== 'string'
+  if (typeof event.id !== 'string' || !event.id || typeof start !== 'string' || typeof end !== 'string'
     || !Number.isFinite(Date.parse(start)) || !Number.isFinite(Date.parse(end)) || Date.parse(end) <= Date.parse(start)
-    || (allDay && (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)))) throw failure();
-  return { id: event.id, calendarId, title: event.summary?.trim() || '（タイトルなし）', start, end, allDay,
-    location: event.location ?? null, description: event.description ?? null, etag: event.etag ?? null,
-    meetingLink: event.hangoutLink ?? event.conferenceData?.entryPoints?.find(x => x.entryPointType === 'video')?.uri ?? null,
-    attendees: (event.attendees ?? []).map(x => ({ email: x.email, name: x.displayName ?? null, response: x.responseStatus ?? null })),
-    attachments: (event.attachments ?? []).map(x => ({ title: x.title ?? '添付', url: x.fileUrl })),
-    recurrence: event.recurrence ?? [], recurringEventId: event.recurringEventId ?? null,
-    timeZone: event.start.timeZone ?? null, reminders: event.reminders ?? { useDefault: true } };
+    || (allDay && (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || new Date(start).toISOString().slice(0,10) !== start || new Date(end).toISOString().slice(0,10) !== end))) throw failure();
+  return { id: event.id, calendarId, title: (typeof event.summary === 'string' ? event.summary.trim() : '') || '（タイトルなし）', start, end, allDay,
+    location: text(event.location), description: text(event.description), etag: text(event.etag),
+    meetingLink: text(event.hangoutLink) ?? text(event.conferenceData?.entryPoints?.find?.(x => x?.entryPointType === 'video')?.uri),
+    attendees: (Array.isArray(event.attendees) ? event.attendees : []).filter(x => typeof x?.email === 'string').map(x => ({ email: x.email, name: text(x.displayName), response: text(x.responseStatus) })),
+    attachments: (Array.isArray(event.attachments) ? event.attachments : []).filter(x => typeof x?.fileUrl === 'string').map(x => ({ title: text(x.title) ?? '添付', url: x.fileUrl })),
+    recurrence: Array.isArray(event.recurrence) ? event.recurrence.filter(x => typeof x === 'string') : [], recurringEventId: text(event.recurringEventId),
+    timeZone: text(event.start.timeZone), reminders: event.reminders ?? { useDefault: true } };
 }
 export function createGoogleCalendar(options = {}) {
   const connection = options.connection ?? (Object.keys(options).length ? createGoogleConnection(options) : googleConnection);
@@ -51,9 +52,14 @@ export function createGoogleCalendar(options = {}) {
       const groups = await Promise.all(ids.map(async id => {
         const items = await pages(`calendars/${encodeURIComponent(id)}/events`, { timeMin: start, timeMax: end,
           singleEvents: 'true', orderBy: 'startTime', showDeleted: 'false', maxResults: '250', fields: `items(${eventFields}),nextPageToken` });
-        return items.filter(e => e?.status !== 'cancelled').map(e => calendarEvent(e, id));
+        const values = []; let skippedCount = 0;
+        for (const event of items) {
+          if (event?.status === 'cancelled') continue;
+          try { values.push(calendarEvent(event, id)); } catch { skippedCount++; }
+        }
+        return { items: values, skippedCount };
       }));
-      return { items: groups.flat().sort((a,b) => a.start.localeCompare(b.start)), source: 'google', start, end };
+      return { items: groups.flatMap(g => g.items).sort((a,b) => a.start.localeCompare(b.start)), skippedCount: groups.reduce((sum,g) => sum + g.skippedCount, 0), source: 'google', start, end };
     },
     async get({ calendarId, id }) {
       return calendarEvent(await json(await request(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(id)}`)), calendarId);

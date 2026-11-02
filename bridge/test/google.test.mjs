@@ -5,6 +5,9 @@ import { createGoogleDrive } from '../src/drive/google.mjs';
 import { createGoogleCalendar } from '../src/calendar/google.mjs';
 import { createCalendarReminders } from '../src/calendar/reminders.mjs';
 import { startBridge } from './helpers.mjs';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { DEFAULT_SCOPES } from '../src/config.mjs';
 
 const credential = { client_id: 'fixture', client_secret: 'fixture-secret', refresh_token: 'fixture-refresh' };
@@ -83,7 +86,7 @@ test('resumable uploads bind to the device, validate offset and commit only on f
   assert.equal((await drive.uploadChunk({ id: upload.id, offset: 0, body: Buffer.alloc(chunkSize), deviceId: 'owner' })).completed, false);
   const done = await drive.uploadChunk({ id: upload.id, offset: chunkSize, body: Buffer.alloc(4), deviceId: 'owner' });
   assert.equal(done.completed, true); assert.equal(done.item.id, file.id);
-  await assert.rejects(drive.uploadChunk({ id: upload.id, offset: chunkSize, body: Buffer.alloc(4), deviceId: 'owner' }), e => e.code === 'upload_expired');
+  assert.equal((await drive.uploadStatus({ id: upload.id, deviceId: 'owner' })).completed, true);
 });
 
 test('calendar edits require opt-in write scope, idempotency, etag and valid dates; no real data is written', async t => {
@@ -148,4 +151,113 @@ test('calendar save forwards etag, recurrence and attendee notification flag, re
   assert.equal(connection.calls[0].url.searchParams.get('sendUpdates'), 'all');
   assert.equal(connection.calls[0].options.method, 'PATCH');
   assert.equal((await calendar.remove({ calendarId: 'primary', id: 'one', etag: '"v2"' })).deleted, true);
+});
+
+
+test('Drive reads manually follow only trusted Google redirects with a fixed hop limit', async () => {
+  const visited = [];
+  const connection = createGoogleConnection({ env: {}, readCredential: async () => credential, fetchImpl: async (url, options) => {
+    const u = new URL(url); visited.push(u.hostname);
+    assert.equal(options.redirect, 'manual');
+    if (u.hostname === 'oauth2.googleapis.com') return json({ access_token: 'fixture-access' });
+    if (u.hostname === 'www.googleapis.com') return new Response(null, { status: 302, headers: { location: 'https://drive.usercontent.google.com/download?id=fixture' } });
+    assert.equal(options.headers.range, 'bytes=0-3');
+    return new Response('abcd', { status: 206 });
+  } });
+  const opened = await createGoogleDrive({ connection }).open('file123', { range: 'bytes=0-3' });
+  let bytes = ''; for await (const chunk of opened.stream) bytes += chunk;
+  assert.equal(bytes, 'abcd'); assert.deepEqual(visited, ['oauth2.googleapis.com','www.googleapis.com','drive.usercontent.google.com']);
+  for (const location of ['https://evil.example/content', 'http://drive.usercontent.google.com/a', 'https://drive.usercontent.google.com.evil.example/a', 'https://drive.usercontent.google.com@evil.example/a']) {
+    const hosts = [];
+    const denied = createGoogleConnection({ env: {}, readCredential: async () => credential, fetchImpl: async url => {
+      const u = new URL(url); hosts.push(u.hostname);
+      return u.hostname === 'oauth2.googleapis.com' ? json({ access_token: 'fixture-access' }) : new Response(null, { status: 302, headers: { location } });
+    } });
+    await assert.rejects(denied.request('https://www.googleapis.com/drive/v3/files/x?alt=media', {}, 'drive'), e => e.code === 'google_url_invalid');
+    assert.equal(hosts.length, 2);
+  }
+  let reads = 0;
+  const loop = createGoogleConnection({ env: {}, readCredential: async () => credential, fetchImpl: async url => new URL(url).hostname === 'oauth2.googleapis.com'
+    ? json({ access_token: 'fixture-access' }) : (reads++, new Response(null, { status: 302, headers: { location: 'https://www.googleapis.com/loop' } })) });
+  await assert.rejects(loop.request('https://www.googleapis.com/loop', {}, 'drive'), e => e.code === 'drive_invalid_response');
+  assert.equal(reads, 4);
+});
+
+test('Drive errors preserve their area and 404/conflicts preserve nonretryable status without secrets in responses or logs', async t => {
+  for (const status of [404,409,412]) {
+    const connection = createGoogleConnection({ env: {}, readCredential: async () => credential, fetchImpl: async url => new URL(url).hostname === 'oauth2.googleapis.com'
+      ? json({ access_token: 'fixture-access' }) : json({ error: 'fixture-secret' }, status) });
+    await assert.rejects(connection.request('https://www.googleapis.com/drive/v3/files/file123', {}, 'drive'), e =>
+      e.status === (status === 404 ? 404 : 409) && e.code === (status === 404 ? 'drive_not_found' : 'drive_conflict') && !e.retryable && !e.message.includes('fixture-secret'));
+  }
+  const logs = [];
+  const connection = createGoogleConnection({ env: {}, readCredential: async () => credential, fetchImpl: async url => {
+    if (new URL(url).hostname === 'oauth2.googleapis.com') return json({ access_token: 'fixture-access' });
+    throw new Error('fixture-secret');
+  } });
+  const bridge = await startBridge({ drive: createGoogleDrive({ connection }), log: record => logs.push(record) }); t.after(() => bridge.close());
+  const result = await bridge.request('/v1/drive/files', { token: await bridge.token(['media:read']) });
+  assert.equal(result.status, 503); assert.equal(result.body.error.code, 'drive_unavailable');
+  for (const secret of ['fixture-secret','fixture-refresh','fixture-access']) assert.equal(JSON.stringify({ result, logs }).includes(secret), false);
+  const missing = createGoogleConnection({ env: {}, readCredential: async () => { throw new Error('fixture-secret'); } });
+  await assert.rejects(missing.request('https://www.googleapis.com/drive/v3/files', {}, 'drive'), e => e.code === 'drive_not_configured' && !e.message.includes('fixture-secret'));
+});
+
+test('upload recovery queries Google after lost partial and final acknowledgements; hostile locations and mismatched ACKs are rejected', async () => {
+  const size = 256 * 1024 + 4; let received = 0; let complete = false; let queries = 0;
+  const connection = mockConnection((url, options) => {
+    if (options.method === 'POST') return new Response(null, { headers: { location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=fixture' } });
+    if (options.headers['content-range'] === `bytes */${size}`) {
+      queries++; assert.equal(options.body.length, 0);
+      return complete ? json(file) : new Response(null, { status: 308, headers: received ? { range: `bytes=0-${received-1}` } : {} });
+    }
+    received += options.body.length; complete = received === size;
+    throw new Error('response lost');
+  });
+  const drive = createGoogleDrive({ connection });
+  const upload = await drive.beginUpload({ name: 'Test.pdf', mimeType: file.mimeType, size, deviceId: 'owner' });
+  await assert.rejects(drive.uploadChunk({ id: upload.id, deviceId: 'owner', offset: 0, body: Buffer.alloc(256 * 1024) }));
+  assert.equal((await drive.uploadStatus({ id: upload.id, deviceId: 'owner' })).offset, 256 * 1024);
+  await assert.rejects(drive.uploadChunk({ id: upload.id, deviceId: 'owner', offset: received, body: Buffer.alloc(4) }));
+  assert.equal((await drive.uploadStatus({ id: upload.id, deviceId: 'owner' })).completed, true);
+  assert.equal((await drive.uploadStatus({ id: upload.id, deviceId: 'owner' })).completed, true);
+  assert.equal(queries, 2);
+  for (const location of ['https://evil.example/upload/drive/files', 'https://user@www.googleapis.com/upload/drive/files', 'http://www.googleapis.com/upload/drive/files']) {
+    const denied = createGoogleDrive({ connection: mockConnection(() => new Response(null, { headers: { location } })) });
+    await assert.rejects(denied.beginUpload({ name: 'Test.pdf', mimeType: file.mimeType, size, deviceId: 'owner' }), e => e.code === 'drive_invalid_response');
+  }
+  const mismatch = createGoogleDrive({ connection: mockConnection((url, options) => options.method === 'POST'
+    ? new Response(null, { headers: { location: 'https://www.googleapis.com/upload/drive/v3/files?upload_id=mismatch' } })
+    : new Response(null, { status: 308, headers: { range: 'bytes=0-3' } })) });
+  const other = await mismatch.beginUpload({ name: 'Test.pdf', mimeType: file.mimeType, size, deviceId: 'owner' });
+  await assert.rejects(mismatch.uploadChunk({ id: other.id, deviceId: 'owner', offset: 0, body: Buffer.alloc(256 * 1024) }), e => e.code === 'drive_invalid_response');
+});
+
+test('calendar excludes only invalid events, reports their count, and safely accepts encoded imported IDs', async t => {
+  const good = { id: 'imported@example.com', summary: 'Imported', start: { dateTime: draft.start }, end: { dateTime: draft.end } };
+  const service = createGoogleCalendar({ connection: mockConnection(() => json({ items: [good, null, { id: 'bad', start: { date: '2026-02-30' }, end: { date: '2026-03-04' } }] })) });
+  const result = await service.list({ start: draft.start, end: draft.end });
+  assert.equal(result.items.length, 1); assert.equal(result.skippedCount, 2);
+  const calls = [];
+  const bridge = await startBridge({ calendar: { service: { get: async p => (calls.push(p), p), save: async p => (calls.push(p), p), remove: async p => (calls.push(p), { deleted: true }) } } }); t.after(() => bridge.close());
+  const token = await bridge.token(['calendar:read','calendar:write']);
+  const path = '/v1/calendar/events/imported%40example.com';
+  assert.equal((await bridge.request(path + '?calendarId=work%2Bteam%40example.com', { token })).status, 200);
+  assert.equal(calls[0].id, 'imported@example.com'); assert.equal(calls[0].calendarId, 'work+team@example.com');
+  for (const method of ['PATCH','DELETE']) assert.equal((await bridge.request(path, { token, method, body: { ...draft, etag: 'version' }, key: method })).status, 200);
+  assert.equal((await bridge.request('/v1/calendar/events/a%2Fb?calendarId=primary', { token })).status, 400);
+  assert.equal(calls.length, 3);
+});
+
+test('reminders catch up after upstream failure and restart without delivering twice', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'google-reminders-')); t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 'reminders.json'); const notices = []; let fail = true;
+  const time = Date.parse('2026-11-02T03:00:00Z');
+  const service = { calendars: async () => ({ items: [{ id: 'primary', selected: true, timeZone: 'Asia/Tokyo', defaultReminders: [{ method: 'popup', minutes: 0 }] }] }),
+    list: async () => { if (fail) throw new Error('temporary upstream error'); return { items: [{ id: 'late', title: 'Late', start: '2026-11-02', allDay: true, reminders: { useDefault: true } }] }; } };
+  const options = { service, file, now: () => time, notify: async notice => { notices.push(notice); return { delivered: true }; } };
+  const reminders = createCalendarReminders(options);
+  await assert.rejects(reminders.tick()); fail = false; await reminders.tick();
+  await createCalendarReminders(options).tick(); assert.equal(notices.length, 1);
+  assert.match(notices[0].deepLink, /calendar=primary/);
 });

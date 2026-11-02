@@ -84,6 +84,15 @@ struct LAACalendarEditor: View {
                 Button { Task { await save() } } label: { Text(verbatim: "保存") }
             } message: { Text(verbatim: "参加者がいる場合は、Googleから予定の通知が送られます。") }
         }.interactiveDismissDisabled(busy)
+            .onChange(of: allDay) { _, value in
+                if value {
+                    let range = LAACalendarDates.allDayRange(start: start, end: end)
+                    start = range.start; end = range.end
+                }
+            }
+            .onChange(of: start) { _, value in
+                if allDay && end <= value { end = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: value))! }
+            }
     }
     private func save() async {
         busy = true; defer { busy = false }

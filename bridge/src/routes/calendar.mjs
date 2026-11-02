@@ -11,6 +11,11 @@ function calendarId(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 1024 || /[\x00-\x1f]/.test(value)) throw badRequest('calendar_id_invalid', 'A calendar ID is required');
   return value;
 }
+function eventId(value) {
+  let id; try { id = decodeURIComponent(value); } catch { }
+  if (typeof id !== 'string' || !/^[A-Za-z0-9_.@+-]{1,1024}$/.test(id)) throw badRequest('event_id_invalid', 'Invalid event ID');
+  return id;
+}
 const instant = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 export function validateEvent(p) {
   if (typeof p.title !== 'string' || !p.title.trim() || p.title.length > 1024) throw badRequest('event_title_invalid', 'A title is required');
@@ -57,13 +62,13 @@ export function calendarRoutes({ service = createGoogleCalendar() } = {}) {
       const key = createHash('sha256').update(`${device.id}:${req.headers['idempotency-key']}`).digest('hex');
       return { status: 201, data: await service.save({ calendarId: calendarId(p.calendarId), event: validateEvent(p), key }) };
     } },
-    { method: 'GET', pattern: /^\/v1\/calendar\/events\/([A-Za-z0-9_-]{1,1024})$/, auth: true, scope: 'calendar:read', handler: async ({ req, params }) => ({ status: 200,
-      data: await service.get({ calendarId: calendarId(new URL(req.url, 'http://localhost').searchParams.get('calendarId')), id: params[0] }) }) },
-    ...['PATCH','DELETE'].map(method => ({ method, pattern: /^\/v1\/calendar\/events\/([A-Za-z0-9_-]{1,1024})$/, auth: true, scope: 'calendar:write', idempotent: true,
+    { method: 'GET', pattern: /^\/v1\/calendar\/events\/([A-Za-z0-9_.@+%\-]{1,3072})$/, auth: true, scope: 'calendar:read', handler: async ({ req, params }) => ({ status: 200,
+      data: await service.get({ calendarId: calendarId(new URL(req.url, 'http://localhost').searchParams.get('calendarId')), id: eventId(params[0]) }) }) },
+    ...['PATCH','DELETE'].map(method => ({ method, pattern: /^\/v1\/calendar\/events\/([A-Za-z0-9_.@+%\-]{1,3072})$/, auth: true, scope: 'calendar:write', idempotent: true,
       handler: async ({ rawBody, params }) => {
         const p = payload(rawBody);
         if (typeof p.etag !== 'string' || !p.etag || p.etag.length > 256 || /[\r\n]/.test(p.etag)) throw badRequest('event_etag_required', 'Reload the event before editing');
-        const target = { calendarId: calendarId(p.calendarId), id: params[0], etag: p.etag };
+        const target = { calendarId: calendarId(p.calendarId), id: eventId(params[0]), etag: p.etag };
         return { status: 200, data: method === 'DELETE' ? await service.remove(target) : await service.save({ ...target, event: validateEvent(p) }) };
       } })),
   ];

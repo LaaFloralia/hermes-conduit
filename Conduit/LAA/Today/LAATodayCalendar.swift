@@ -51,6 +51,7 @@ struct LAACalendarResponse: Codable {
         }
     }
     let items: [Event]
+    var skippedCount: Int? = nil
 }
 
 @MainActor final class LAATodayCalendar: ObservableObject {
@@ -58,6 +59,7 @@ struct LAACalendarResponse: Codable {
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var loaded = false
+    @Published private(set) var skippedCount = 0
     @Published private(set) var calendars: [LAAGoogleCalendar] = []
     @Published var selectedCalendarIDs: Set<String> = []
     @Published var selectedDate = Date()
@@ -88,7 +90,7 @@ struct LAACalendarResponse: Codable {
             cacheKey = identity
             let cached = LAAGoogleCache.read(LAACalendarLocalState.self, key: identity)
             calendars = cached?.calendars ?? []; selectedCalendarIDs = Set(cached?.selectedIDs ?? [])
-            events = cached?.events ?? []; loaded = cached != nil
+            events = cached?.events ?? []; skippedCount = cached?.skippedCount ?? 0; loaded = cached != nil
         }
         isLoading = true; errorMessage = nil
         generation += 1; let current = generation
@@ -101,7 +103,7 @@ struct LAACalendarResponse: Codable {
             if previous.isEmpty { selectedCalendarIDs = Set(calendars.filter(\.selected).map(\.id)) }
             else { selectedCalendarIDs.formIntersection(Set(calendars.map(\.id))) }
             if selectedCalendarIDs.isEmpty {
-                events = []; loaded = true; saveLocal()
+                events = []; skippedCount = 0; loaded = true; saveLocal()
                 LAACalendarSnapshot.save(nil)
                 WidgetCenter.shared.reloadTimelines(ofKind: "LAANextEvent")
                 return
@@ -115,7 +117,7 @@ struct LAACalendarResponse: Codable {
             let response: LAABridgeResponse<LAACalendarResponse> = try await bridge.request(method: "GET", path: parts.string!, timeout: 30)
             let values = try response.data.items.map { try $0.value() }.sorted { $0.start < $1.start }
             guard current == generation, !Task.isCancelled else { return }
-            events = values; loaded = true; saveLocal()
+            events = values; skippedCount = response.data.skippedCount ?? 0; loaded = true; saveLocal()
             // Only publish a next-event snapshot when this range contains now.
             if range.start <= now && range.end > now {
                 LAACalendarSnapshot.save(.init(updatedAt: now, events: values))
@@ -129,13 +131,13 @@ struct LAACalendarResponse: Codable {
 
     private func saveLocal() {
         guard let cacheKey else { return }
-        LAAGoogleCache.save(LAACalendarLocalState(calendars: calendars, selectedIDs: Array(selectedCalendarIDs), events: events), key: cacheKey)
+        LAAGoogleCache.save(LAACalendarLocalState(calendars: calendars, selectedIDs: Array(selectedCalendarIDs), events: events, skippedCount: skippedCount), key: cacheKey)
     }
 
     func refresh(isPaired: Bool, now: Date = Date(), load: () async throws -> LAACalendarResponse) async {
         generation += 1
         let current = generation
-        events = []; loaded = false; errorMessage = nil
+        events = []; skippedCount = 0; loaded = false; errorMessage = nil
         LAACalendarSnapshot.save(nil)
         WidgetCenter.shared.reloadTimelines(ofKind: "LAANextEvent")
         guard isPaired else {
@@ -165,7 +167,8 @@ struct LAACalendarResponse: Codable {
             case "calendar_auth_required": return "Googleカレンダーの認証が切れています。Mac側で再連携してください。"
             case "calendar_access_denied": return "Googleカレンダーの読取権限を確認してください。"
             case "calendar_unavailable": return "Googleカレンダーに接続できませんでした。しばらく待って再読み込みしてください。"
-            case "calendar_not_found": return "連携先のGoogleカレンダーが見つかりません。"
+            case "calendar_not_found": return "予定またはカレンダーが見つかりません。再読み込みしてください。"
+            case "calendar_conflict": return "別の場所で変更されています。再読み込みしてください。"
             case "calendar_too_many_events": return "予定が多いため取得できませんでした。連携先を確認してください。"
             case "calendar_invalid_response": return "Googleカレンダーの応答を読み取れませんでした。再読み込みしてください。"
             default:

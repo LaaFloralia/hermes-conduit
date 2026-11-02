@@ -58,11 +58,11 @@ enum LAADrivePresentation {
             }
         }
         if let error = error as? LAABridgeHTTPError {
-            if ["drive_not_configured", "calendar_not_configured"].contains(error.code ?? "") { return "Google Driveは未連携です。Mac側のGoogle接続を確認してください。" }
+            if error.code == "drive_not_configured" { return "Google Driveは未連携です。Mac側のGoogle接続を確認してください。" }
             if error.code == "drive_auth_required" { return "Googleの認証が切れています。Mac側で再連携してください。" }
             if error.code == "drive_access_denied" { return "Google Driveのアクセス権限を確認してください。" }
-            if error.code == "drive_permission_required" { return AppLocalization.string("The Mac has not allowed the Bridge to read Google Drive.") }
-            if error.code == "drive_access_timeout" { return AppLocalization.string("Google Drive on the Mac did not respond. Try again.") }
+            if error.code == "drive_not_found" { return "ファイルが削除されたか、アクセスできなくなっています。一覧を更新してください。" }
+            if error.code == "drive_conflict" { return "Driveで変更されています。開き直してください。" }
             if error.code == "insufficient_scope" { return LAACopy.Assets.scope }
             if error.code == "version_changed" { return AppLocalization.string("This file changed in Drive. Reopen it to continue.") }
             return bridgeMessage(error.legacyError)

@@ -117,6 +117,17 @@ final class LAATodayCalendarTests: XCTestCase {
         XCTAssertNotNil(state.errorMessage)
     }
 
+    func testSwitchingToAllDayPreservesAnExclusiveNextDayEndAcrossDST() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/New_York")!
+        let start = calendar.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 10))!
+        let range = LAACalendarDates.allDayRange(start: start, end: start.addingTimeInterval(3600), calendar: calendar)
+        XCTAssertEqual(calendar.component(.hour, from: range.start), 0)
+        XCTAssertEqual(calendar.component(.day, from: range.end), 2)
+        XCTAssertEqual(calendar.component(.hour, from: range.end), 0)
+        XCTAssertEqual(range.duration, 25 * 3600)
+    }
+
     func testCalendarModesUseLocalDayBoundariesAcrossDST() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/New_York")!

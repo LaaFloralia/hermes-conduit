@@ -8,6 +8,14 @@ struct LAAGoogleCalendar: Codable, Identifiable {
 struct LAAGoogleCalendarList: Decodable { let items: [LAAGoogleCalendar] }
 struct LAACalendarLocalState: Codable {
     let calendars: [LAAGoogleCalendar]; let selectedIDs: [String]; let events: [LAACalendarEvent]
+    var skippedCount: Int? = nil
+}
+enum LAACalendarDates {
+    static func allDayRange(start: Date, end: Date, calendar: Calendar = .current) -> DateInterval {
+        let first = calendar.startOfDay(for: start)
+        let proposed = calendar.startOfDay(for: end)
+        return DateInterval(start: first, end: proposed > first ? proposed : calendar.date(byAdding: .day, value: 1, to: first)!)
+    }
 }
 enum LAACalendarMode: String, CaseIterable {
     case day, week, month, list
