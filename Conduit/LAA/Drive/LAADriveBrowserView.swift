@@ -22,11 +22,18 @@ struct LAADriveBrowserView: View {
     let errorMessage: (Error) -> String
     let open: (LAADriveListingItem, [LAADriveItem]) -> Void
     let saveFolder: (LAADriveListingItem) -> Void
+    /// The Mac list shows files as rows with columns and keeps the selection
+    /// visible while the detail column shows the file.
+    var desktop = false
+    var selectedID: String?
 
     init(revision: Int, refreshID: Int = 0, cached: @escaping (LAADriveBrowseQuery) -> LAADriveListingPage? = { _ in nil }, upload: @escaping (String?) -> Void = { _ in }, load: @escaping Loader, loadThumbnail: @escaping ThumbnailLoader,
          resolveShortcut: @escaping ShortcutLoader,
          errorMessage: @escaping (Error) -> String, open: @escaping (LAADriveListingItem, [LAADriveItem]) -> Void,
-         saveFolder: @escaping (LAADriveListingItem) -> Void = { _ in }) {
+         saveFolder: @escaping (LAADriveListingItem) -> Void = { _ in },
+         desktop: Bool = false, selectedID: String? = nil) {
+        self.desktop = desktop
+        self.selectedID = selectedID
         self.cached = cached; self.upload = upload
         self.revision = revision; self.refreshID = refreshID
         self.load = load
@@ -62,6 +69,8 @@ struct LAADriveBrowserView: View {
     private var key: LoadKey {
         .init(revision: revision, refreshID: refreshID, section: section, folderID: folders.last?.id, search: search)
     }
+    private var effectiveLayout: Layout { desktop ? .list : layout }
+
     private var columns: [GridItem] {
         dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
             [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
@@ -71,7 +80,9 @@ struct LAADriveBrowserView: View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             sections
             searchField
-            if let folder = folders.last {
+            if desktop {
+                desktopBreadcrumb
+            } else if let folder = folders.last {
                 HStack {
                     Button {
                         folders.removeLast()
@@ -107,31 +118,73 @@ struct LAADriveBrowserView: View {
         .onDisappear { cancelResolution() }
     }
 
-    private var sections: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: LAASpacing.x2) {
+    /// Section ▸ folder ▸ subfolder, each step clickable, replaces the phone's
+    /// single "Back to" button in the desktop column.
+    private var desktopBreadcrumb: some View {
+        HStack(spacing: LAASpacing.x1) {
+            Button { folders = []; search = "" } label: {
+                Text(verbatim: section.title).laaTextStyle(.secondary)
+                    .foregroundStyle(folders.isEmpty ? LAAColor.text : LAAColor.link)
+            }
+            .buttonStyle(.plain)
+            ForEach(Array(folders.enumerated()), id: \.element.id) { index, folder in
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityHidden(true)
+                Button { folders = Array(folders.prefix(index + 1)); search = "" } label: {
+                    Text(verbatim: folder.item.name).laaTextStyle(.secondary).lineLimit(1)
+                        .foregroundStyle(index == folders.count - 1 ? LAAColor.text : LAAColor.link)
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+            if let folder = folders.last {
+                Button("Save folder") { saveFolder(folder) }
+                    .laaTextStyle(.secondary)
+                    .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    .help("このフォルダをオフライン保存")
+                    .accessibilityIdentifier("laa.drive.offline.folder")
+            }
+        }
+        .frame(minHeight: LAASpacing.minimumTouchTarget)
+    }
+
+    @ViewBuilder private var sections: some View {
+        if desktop {
+            LAAMacFlowLayout(spacing: LAASpacing.x2) {
                 ForEach(LAADriveBrowseSection.allCases, id: \.self) { option in
-                    Button {
-                        guard option != section else { return }
-                        section = option
-                        folders = []
-                        search = ""
-                        searchFocused = false
-                    } label: {
-                        Text(verbatim: option.title).laaTextStyle(.secondary)
-                            .fontWeight(option == section ? .semibold : .regular)
-                            .foregroundStyle(option == section ? LAAColor.filledButtonText : LAAColor.secondaryText)
-                            .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
-                            .background(option == section ? LAAColor.filledButton : LAAColor.subtleSurface,
-                                        in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
-                            .frame(minHeight: LAASpacing.minimumTouchTarget)
+                    sectionChip(option)
+                }
+            }
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: LAASpacing.x2) {
+                    ForEach(LAADriveBrowseSection.allCases, id: \.self) { option in
+                        sectionChip(option)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(option == section ? .isSelected : [])
-                    .accessibilityIdentifier("laa.drive.browser.section.\(option.rawValue)")
                 }
             }
         }
+    }
+
+    private func sectionChip(_ option: LAADriveBrowseSection) -> some View {
+        Button {
+            guard option != section else { return }
+            section = option
+            folders = []
+            search = ""
+            searchFocused = false
+        } label: {
+            Text(verbatim: option.title).laaTextStyle(.secondary)
+                .fontWeight(option == section ? .semibold : .regular)
+                .foregroundStyle(option == section ? LAAColor.filledButtonText : LAAColor.secondaryText)
+                .padding(.horizontal, LAASpacing.x4).padding(.vertical, LAASpacing.x2)
+                .background(option == section ? LAAColor.filledButton : LAAColor.subtleSurface,
+                            in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                .frame(minHeight: LAASpacing.minimumTouchTarget)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(option == section ? .isSelected : [])
+        .accessibilityIdentifier("laa.drive.browser.section.\(option.rawValue)")
     }
 
     private var searchField: some View {
@@ -165,9 +218,13 @@ struct LAADriveBrowserView: View {
 
     private var header: some View {
         HStack {
-            Text(verbatim: folders.last?.item.name ?? section.title)
-                .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-                .accessibilityAddTraits(.isHeader)
+            // The desktop breadcrumb already names the folder, so only the
+            // actions are repeated here.
+            if !desktop {
+                Text(verbatim: folders.last?.item.name ?? section.title)
+                    .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
+                    .accessibilityAddTraits(.isHeader)
+            }
             Spacer()
             Button { Task { await reload(key, debounce: false) } } label: {
                 Image(systemName: "arrow.clockwise")
@@ -175,14 +232,16 @@ struct LAADriveBrowserView: View {
             }
             .accessibilityLabel("Refresh files")
             .accessibilityIdentifier("laa.drive.browser.refresh")
-            Button {
-                layout = layout == .grid ? .list : .grid
-            } label: {
-                Image(systemName: layout == .grid ? "list.bullet" : "square.grid.2x2")
-                    .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+            if !desktop {
+                Button {
+                    layout = layout == .grid ? .list : .grid
+                } label: {
+                    Image(systemName: layout == .grid ? "list.bullet" : "square.grid.2x2")
+                        .frame(minWidth: LAASpacing.minimumTouchTarget, minHeight: LAASpacing.minimumTouchTarget)
+                }
+                .accessibilityLabel(layout == .grid ? AppLocalization.string("Show list") : AppLocalization.string("Show grid"))
+                .accessibilityIdentifier("laa.drive.browser.layout")
             }
-            .accessibilityLabel(layout == .grid ? AppLocalization.string("Show list") : AppLocalization.string("Show grid"))
-            .accessibilityIdentifier("laa.drive.browser.layout")
         }
     }
 
@@ -216,12 +275,12 @@ struct LAADriveBrowserView: View {
                 Text("Could not confirm that these are all results.")
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
-            if layout == .grid {
+            if effectiveLayout == .grid {
                 LazyVGrid(columns: columns, spacing: LAASpacing.x2) {
                     ForEach(controller.items) { entry in cell(entry, grid: true) }
                 }
             } else {
-                LazyVStack(spacing: LAASpacing.x2) {
+                LazyVStack(spacing: desktop ? 0 : LAASpacing.x2) {
                     ForEach(controller.items) { entry in cell(entry, grid: false) }
                 }
             }
@@ -233,7 +292,12 @@ struct LAADriveBrowserView: View {
         }
     }
 
-    private func cell(_ entry: LAADriveListingItem, grid: Bool) -> some View {
+    @ViewBuilder private func cell(_ entry: LAADriveListingItem, grid: Bool) -> some View {
+        if desktop {
+            LAADriveDesktopRow(entry: entry, isSelected: selectedID == entry.id,
+                               select: { select(entry) }, saveFolder: { saveFolder(entry) })
+                .disabled(resolvingID != nil)
+        } else {
         Button { select(entry) } label: {
             Group {
                 if grid {
@@ -265,6 +329,7 @@ struct LAADriveBrowserView: View {
             if entry.item.isFolder {
                 Button("Save folder offline", systemImage: "arrow.down.circle") { saveFolder(entry) }
             }
+        }
         }
     }
 

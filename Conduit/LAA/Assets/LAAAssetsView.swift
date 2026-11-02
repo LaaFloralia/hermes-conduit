@@ -23,6 +23,8 @@ struct LAAAssetsView: View {
     @State private var folderPlan: LAADriveOfflineFolderPlan?
     @State private var confirmFolder = false
     @State private var folderMessage: String?
+    @Environment(\.laaDesktop) private var laaDesktop
+    @State private var desktopSelected: LAADriveSelection?
 
     init(onRequestSettings: @escaping () -> Void, initialStudioSelected: Bool = false, initialStudioSection: Int = 0) {
         self.onRequestSettings = onRequestSettings
@@ -31,49 +33,8 @@ struct LAAAssetsView: View {
     }
 
     var body: some View {
-        ZStack {
-            LAAColor.background.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: LAASpacing.x4) {
-                    heading
-                    segments
-                    if studioSelected {
-                        LAAStudioHomeView(initialSection: initialStudioSection)
-                    } else if LAADriveData.available(bridge) {
-                        NavigationLink("Saved offline") { LAADriveOfflineScreen() }
-                            .accessibilityIdentifier("laa.drive.offline.list")
-                        if folderTask != nil {
-                            HStack {
-                                ProgressView(folderMessage ?? AppLocalization.string("Preparing…"))
-                                Button("Cancel") { folderTask?.cancel() }
-                            }
-                        } else if let folderMessage {
-                            Text(verbatim: folderMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        }
-                        LAADriveBrowserView(revision: bridge.revision, refreshID: driveRevision, cached: { query in
-                            LAADriveData.cachedListing(query, bridge: bridge)
-                        }, upload: { folderID in uploadFolderID = folderID; showUpload = true }, load: { query in
-                            try await LAADriveData.listingPage(query, bridge: bridge)
-                        }, loadThumbnail: { entry in
-                            try await thumbnail(entry)
-                        }, resolveShortcut: { entry, visited in
-                            try await LAADriveShortcutResolver.resolve(entry, visitedFolderIDs: visited) { id in
-                                try await LAADriveData.listingMetadata(id, bridge: bridge)
-                            }
-                        }, errorMessage: LAADrivePresentation.message, open: { entry, images in
-                            selected = .init(entry: entry, images: images)
-                        }, saveFolder: { entry in
-                            planFolder(entry)
-                        })
-                    } else {
-                        connection
-                    }
-                }
-                .padding(.horizontal, LAASpacing.horizontal)
-                .padding(.vertical, LAASpacing.x4)
-                .frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+        Group {
+            if laaDesktop { desktopContent } else { phoneContent }
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
@@ -89,6 +50,7 @@ struct LAAAssetsView: View {
         }
         .onChange(of: bridge.revision) { _, _ in
             selected = nil
+            desktopSelected = nil
             folderTask?.cancel()
             folderPlan = nil
             confirmFolder = false
@@ -107,6 +69,110 @@ struct LAAAssetsView: View {
                 Text(verbatim: "\n") + Text("Existing saved copies are kept if saving fails.")
             }
         }
+    }
+
+    private var phoneContent: some View {
+        ZStack {
+            LAAColor.background.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                    heading
+                    segments
+                    if studioSelected {
+                        LAAStudioHomeView(initialSection: initialStudioSection)
+                    } else if LAADriveData.available(bridge) {
+                        offlineEntry
+                        driveBrowser
+                    } else {
+                        connection
+                    }
+                }
+                .padding(.horizontal, LAASpacing.horizontal)
+                .padding(.vertical, LAASpacing.x4)
+                .frame(maxWidth: 720, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    // MARK: Desktop (Mac) list and preview
+
+    /// The Mac shell gives Assets its own sidebar entry, so the phone's
+    /// Drive/Inspiration/Studio segment bar has nothing left to switch here.
+    private var desktopContent: some View {
+        LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
+            desktopList
+        } detail: {
+            desktopDetail
+        }
+        .background(LAAColor.background.ignoresSafeArea())
+    }
+
+    private var desktopList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                LAATabHeading(title: LAACopy.Assets.drive, identifier: "laa.assets.title")
+                if LAADriveData.available(bridge) {
+                    offlineEntry
+                    driveBrowser
+                } else {
+                    connection
+                }
+            }
+            .padding(.horizontal, LAASpacing.x4)
+            .padding(.vertical, LAASpacing.x4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder private var desktopDetail: some View {
+        if let desktopSelected {
+            LAADriveDetailView(item: desktopSelected.entry.item,
+                               webViewURL: desktopSelected.entry.safeWebViewURL,
+                               images: desktopSelected.images,
+                               contentMaxWidth: LAADesktopMetrics.documentWidth,
+                               usesNavigationTitle: false)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            LAAMacEmptyDetail(symbol: "folder", title: "ファイルを選ぶ",
+                              message: "左の一覧からファイルを選ぶと、ここにプレビューと情報を表示します。")
+        }
+    }
+
+    @ViewBuilder private var offlineEntry: some View {
+        NavigationLink("Saved offline") { LAADriveOfflineScreen() }
+            .accessibilityIdentifier("laa.drive.offline.list")
+        if folderTask != nil {
+            HStack {
+                ProgressView(folderMessage ?? AppLocalization.string("Preparing…"))
+                Button("Cancel") { folderTask?.cancel() }
+            }
+        } else if let folderMessage {
+            Text(verbatim: folderMessage).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+        }
+    }
+
+    private var driveBrowser: some View {
+        LAADriveBrowserView(revision: bridge.revision, refreshID: driveRevision, cached: { query in
+            LAADriveData.cachedListing(query, bridge: bridge)
+        }, upload: { folderID in uploadFolderID = folderID; showUpload = true }, load: { query in
+            try await LAADriveData.listingPage(query, bridge: bridge)
+        }, loadThumbnail: { entry in
+            try await thumbnail(entry)
+        }, resolveShortcut: { entry, visited in
+            try await LAADriveShortcutResolver.resolve(entry, visitedFolderIDs: visited) { id in
+                try await LAADriveData.listingMetadata(id, bridge: bridge)
+            }
+        }, errorMessage: LAADrivePresentation.message, open: { entry, images in
+            if laaDesktop {
+                desktopSelected = .init(entry: entry, images: images)
+            } else {
+                selected = .init(entry: entry, images: images)
+            }
+        }, saveFolder: { entry in
+            planFolder(entry)
+        }, desktop: laaDesktop, selectedID: desktopSelected?.id)
     }
 
     private func planFolder(_ entry: LAADriveListingItem) {

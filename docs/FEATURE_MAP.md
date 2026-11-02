@@ -4052,3 +4052,29 @@ Google data remains a signed-build gate.
 - Each section's own Mac layout (Work, Today, Brain, Studio, Drive) is recorded in that section's entry.
 
 **Checked:** 2026-11-03, 0d7628b5 (first shell, sidebar, chat split, window geometry and menu bar). Mac Catalyst Debug build succeeded; `LAAMacCatalystTests` 8/8 passed on the Catalyst destination with the local dev spec; the iPhone target still builds unsigned for a generic iOS destination.
+
+## LAA Mac desktop Brain, Studio and Drive
+
+**Siblings:** the Mac window and sidebar (`LAAMacShell`, `LAAMacSection`) · the shared desktop layout contract (see Code) · the phone's Brain, Studio and Assets screens in `LAAAppShell` · Brain's save editor, conflict copies and local vault · Studio requests, reviews and catalog · Drive browsing, preview, upload and offline saving · Usage and Work desktop layouts (other owners).
+
+**Code**
+- Shared contract: `Conduit/LAA/Mac/LAADesktopLayout.swift` (`laaDesktop`, `LAAMacListDetail`, `LAAMacEmptyDetail`, `laaReadableWidth`, `LAADesktopMetrics`).
+- Brain: `Conduit/LAA/Brain/LAABrainDesktop.swift`, `Conduit/LAA/Brain/LAABrainView.swift`, `Conduit/LAA/Brain/LAABrainNoteView.swift`.
+- Studio: `Conduit/LAA/Studio/LAAStudioDesktop.swift`, `Conduit/LAA/Studio/LAAStudioHome.swift`.
+- Drive: `Conduit/LAA/Drive/LAADriveDesktop.swift`, `Conduit/LAA/Drive/LAADriveBrowserView.swift`, `Conduit/LAA/Assets/LAAAssetsView.swift`.
+- Tests: `ConduitUITests/LAAMacLibraryUITests.swift` (Mac-only flows); unit coverage of the row/column rules stays inside the views' pure helpers.
+
+**Rulings**
+- The Mac branch is `laaDesktop`, never the size class: the shell keeps the reused phone screens in a compact size class inside each column.
+- The list column keeps the phone's search, source switching, filters and existing Bridge calls; choosing a row fills the detail column instead of pushing. The selection stays highlighted, rows highlight on hover, and each row carries a `.help` tooltip.
+- Brain keeps folder browsing inside the list with a clickable breadcrumb, and a note's wiki links open in the detail column. Create, save, pin, conflict copies, recovery and the `brain:write` boundary are unchanged.
+- Studio lists Works, Requests and Library; the works gallery in the detail column is an adaptive grid with `LAADesktopMetrics.gridItemMinWidth`, and a chosen work opens its existing detail, preview and export rows. Library uses the wide column.
+- Drive lists files as rows with name, kind, updated and size columns when the column is wide, falling back to two lines; folders open in place with a breadcrumb, a file opens its existing preview and metadata sheet in the detail column. Upload, share, shortcut resolution and offline saving are unchanged.
+- Keyboard: ↑/↓ move the list selection, Return keeps the selected row open, ⌘F focuses search, ⌘R reloads, ⌘N creates a note. Phone behaviour, identifiers and tap targets are unchanged.
+- Nothing new is fetched: every screen reuses `LAABridgeSession` and the existing Bridge routes.
+
+**Open gaps**
+- The parent runs the consolidated iPhone compact regression and the Mac UI tests. Physical Mac and iPhone confirmation of the three screens is pending.
+- Drive's rows carry kind, updated and size on a second line rather than in four columns: the shared list column tops out at 460 UIKit points (about 354 Mac points), which no four-column row fits.
+
+**Checked:** 2026-11-03, on 3937945 (the desktop layout contract) merged with b4bc197a and 55c3285c (the Mac shell). Mac Catalyst Debug build succeeded and the three screens were read in the Mac window at 900×600, 1280×820 and 1680×1050, light and dark, with and without a selection; the parent's consolidated iPhone compact run and the owner's own window check are pending.

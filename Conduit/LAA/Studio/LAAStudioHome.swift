@@ -12,12 +12,35 @@ struct LAAStudioHomeView: View {
     @State private var error: String?
     @State private var pairing = false
     @State private var search = ""
+    @Environment(\.laaDesktop) private var laaDesktop
+    @State private var desktopSelection: LAAStudioDesktopSelection?
     init(initialSection: Int = 0) { _section = State(initialValue: initialSection) }
     private var columns: [GridItem] {
         dynamicTypeSize.isAccessibilitySize ? [GridItem(.flexible())] :
             [GridItem(.flexible(), spacing: LAASpacing.x2), GridItem(.flexible())]
     }
     var body: some View {
+        Group {
+            if laaDesktop { desktopContent } else { phoneContent }
+        }
+        .tint(LAAColor.link)
+        .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge).tint(LAAColor.link) }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarLeading) {
+                if let snapshot {
+                    NavigationLink { LAAStudioCreateView(snapshot: snapshot) } label: { Image(systemName: "plus") }
+                        .accessibilityLabel(Text(verbatim: LAACopy.Studio.newRequest)).accessibilityIdentifier("laa.studio.new")
+                }
+                if LAAStudioData.available(bridge) {
+                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                        .disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh)).accessibilityIdentifier("laa.studio.refresh")
+                }
+            }
+        }
+        .task(id: bridge.revision) { await load() }
+    }
+
+    private var phoneContent: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x4) {
             Picker(selection: $section) {
                 Text(verbatim: LAACopy.Studio.works).tag(0)
@@ -57,22 +80,142 @@ struct LAAStudioHomeView: View {
                 }
             }
         }
-        .tint(LAAColor.link)
-        .sheet(isPresented: $pairing) { LAAPairingView().environmentObject(bridge).tint(LAAColor.link) }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarLeading) {
-                if let snapshot {
-                    NavigationLink { LAAStudioCreateView(snapshot: snapshot) } label: { Image(systemName: "plus") }
-                        .accessibilityLabel(Text(verbatim: LAACopy.Studio.newRequest)).accessibilityIdentifier("laa.studio.new")
+    }
+    // MARK: Desktop (Mac) list, gallery and detail
+
+    private var desktopContent: some View {
+        LAAMacListDetail(listWidth: LAADesktopMetrics.listIdealWidth) {
+            desktopList
+        } detail: {
+            desktopDetail
+        }
+        .background(LAAColor.background.ignoresSafeArea())
+    }
+
+    private var desktopList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: LAASpacing.x4) {
+                LAAStudioDesktopHeader(canRefresh: LAAStudioData.available(bridge), isRefreshing: loading) {
+                    Task { await load() }
                 }
-                if LAAStudioData.available(bridge) {
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
-                        .disabled(loading).accessibilityLabel(Text(verbatim: LAACopy.Studio.refresh)).accessibilityIdentifier("laa.studio.refresh")
+                Picker(selection: $section) {
+                    Text(verbatim: LAACopy.Studio.works).tag(0)
+                    Text(verbatim: LAACopy.Studio.requests).tag(1)
+                    if snapshot?.supportsV2 == true { Text(verbatim: "Library").tag(2) }
+                } label: {
+                    Text(verbatim: LAACopy.tabTitle(.studio))
+                }
+                .pickerStyle(.segmented)
+                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                .accessibilityIdentifier("laa.studio.section")
+                if !LAAStudioData.available(bridge) {
+                    Text(verbatim: bridge.status == .keychainError ? LAABridgeError.keychain.japaneseText : LAACopy.bridgeNotPairedBody)
+                        .laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                    if bridge.status != .keychainError {
+                        Button { pairing = true } label: { Text(verbatim: LAACopy.Brain.connect) }
+                            .laaGlassButton(prominent: true)
+                            .accessibilityIdentifier("laa.studio.pair")
+                    }
+                } else {
+                    if let error {
+                        Text(verbatim: error).laaTextStyle(.body).foregroundStyle(LAAColor.attention)
+                        Button { Task { await load() } } label: { Text(verbatim: LAACopy.Studio.retry) }
+                    }
+                    if loading && snapshot == nil { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
+                    if let snapshot {
+                        if !snapshot.online {
+                            Text(verbatim: LAACopy.Studio.disconnected).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                        }
+                        if section == 0 { desktopWorkRows(snapshot) }
+                        else if section == 1 { desktopRequestRows(snapshot) }
+                        else { Text(verbatim: "Library は右側の広い列に表示します。").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
+                    }
+                }
+            }
+            .padding(.horizontal, LAASpacing.x4)
+            .padding(.vertical, LAASpacing.x4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder private func desktopWorkRows(_ snapshot: LAAStudioSnapshot) -> some View {
+        let projects = desktopProjects(snapshot)
+        TextField(text: $search) { Text(verbatim: "作品を検索") }
+            .studioSearchField().accessibilityIdentifier("laa.studio.work.search")
+        if projects.isEmpty {
+            Text(verbatim: snapshot.projects.isEmpty ? LAACopy.Studio.emptyWorks : "一致する作品はありません。")
+                .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+        } else {
+            LAAMacKeyboardList(count: projects.count,
+                              selectedIndex: projects.firstIndex { desktopSelection == .work($0.id) },
+                              move: { index in
+                                  guard projects.indices.contains(index) else { return }
+                                  desktopSelection = .work(projects[index].id)
+                              },
+                              open: {}) {
+                VStack(spacing: 0) {
+                    ForEach(projects) { project in
+                        LAAStudioDesktopRow(title: project.title,
+                                            detail: "\(project.kind) · \(LAAWorkPresentation.date(project.syncedAt))",
+                                            thumbnail: project.pages.first?.preview,
+                                            isSelected: desktopSelection == .work(project.id)) {
+                            desktopSelection = .work(project.id)
+                        }
+                    }
                 }
             }
         }
-        .task(id: bridge.revision) { await load() }
     }
+
+    @ViewBuilder private func desktopRequestRows(_ snapshot: LAAStudioSnapshot) -> some View {
+        if snapshot.requests.isEmpty {
+            Text(verbatim: LAACopy.Studio.emptyRequests).laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
+        } else {
+            desktopRequestGroup(LAACopy.Studio.active, records: snapshot.requests.filter(\.active), snapshot: snapshot)
+            desktopRequestGroup(LAACopy.Studio.finished, records: snapshot.requests.filter { !$0.active }, snapshot: snapshot)
+        }
+    }
+
+    @ViewBuilder private func desktopRequestGroup(_ title: String, records: [LAAStudioRecord], snapshot: LAAStudioSnapshot) -> some View {
+        if !records.isEmpty {
+            Text(verbatim: title.uppercased()).laaTextStyle(.section).fontWeight(.semibold)
+                .foregroundStyle(LAAColor.secondaryText).accessibilityAddTraits(.isHeader)
+            ForEach(records) { record in
+                LAAStudioDesktopRow(title: snapshot.projects.first { $0.id == record.request.projectId }?.title
+                                        ?? record.request.create?.title ?? record.request.prompt,
+                                    detail: LAAWorkPresentation.date(record.updatedAt),
+                                    status: record.status == "approval" ? LAACopy.Studio.needsApproval : LAAStudioPresentation.status(record.status),
+                                    attention: record.status == "approval",
+                                    symbol: "bubble.left.and.text.bubble.right",
+                                    isSelected: desktopSelection == .request(record.id)) {
+                    desktopSelection = .request(record.id)
+                }
+                .accessibilityIdentifier("laa.studio.request.\(record.id)")
+            }
+        }
+    }
+
+    @ViewBuilder private var desktopDetail: some View {
+        if section == 2, let snapshot, snapshot.supportsV2 {
+            LAAStudioCatalogView(snapshot: snapshot)
+        } else if let selection = desktopSelection, case .work(let id) = selection,
+                  let project = snapshot?.projects.first(where: { $0.id == id }) {
+            LAAStudioWorkBody(project: project, snapshot: snapshot)
+        } else if let selection = desktopSelection, case .request(let id) = selection,
+                  let record = snapshot?.requests.first(where: { $0.id == id }) {
+            LAAStudioRequestView(initial: record,
+                                 initialProject: snapshot?.projects.first { $0.id == record.request.projectId })
+                .laaReadableWidth(LAADesktopMetrics.documentWidth)
+        } else {
+            LAAMacEmptyDetail(symbol: "square.stack.3d.up", title: "作品を選ぶ",
+                              message: "左の一覧から作品を選ぶと、ここに詳細とプレビューを表示します。")
+        }
+    }
+
+    private func desktopProjects(_ snapshot: LAAStudioSnapshot) -> [LAAStudioProject] {
+        snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
+    }
+
     private func works(_ snapshot: LAAStudioSnapshot) -> some View {
         let projects = snapshot.projects.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }
         return VStack(alignment: .leading, spacing: LAASpacing.x3) {
