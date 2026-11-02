@@ -593,24 +593,25 @@ App Store build · the Bridge API, Brain and Usage data contracts
 
 ## LAA Work tab
 
-The LAA build's Bridge-backed session, project and owner-task views.
+The LAA build's Work hub contains priority tasks, the owner's Linear tasks, sessions, projects, routines and read-only skills. AI usage is opened from Settings.
 
 **Siblings:** Bridge pairing · the shared IME-safe composer and durable draft
 store · the session and project API · the owner-task API · Console job observations
 
 **Code**
-- Work UI and request journal: `Conduit/LAA/Work/LAAWorkView.swift`,
+- Work UI and request journal: `Conduit/LAA/Today/LAAWorkHub.swift`, `Conduit/LAA/Work/LAALinearTasksView.swift`, `Conduit/LAA/Work/LAALinearTask.swift`, `Conduit/LAA/Work/LAAWorkCatalogView.swift`, `Conduit/LAA/Work/LAAWorkView.swift`,
   `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkComposer.swift`,
   `Conduit/LAA/Work/LAAWorkCopy.swift`
-- Owner tasks: `Conduit/LAA/Work/LAAOwnerTasksView.swift`,
+- Legacy local owner tasks (retained without automatic migration): `Conduit/LAA/Work/LAAOwnerTasksView.swift`,
   `Conduit/LAA/Work/LAAOwnerTaskAPI.swift`, `Conduit/LAA/Work/LAAOwnerTaskOutbox.swift`,
   `Conduit/LAA/Work/LAAOwnerTaskLocalDrafts.swift`
 - LAA composer formatting and instruction-file editor: `Conduit/LAA/Instructions/`; keyboard menu inserts Markdown at the selection and preview renders it. Instruction editing is disabled in both app and Bridge pending independent review. It uses dedicated scopes, conditional saves and backups; external non-cooperating writers retain a check-to-rename race.
 - Composer primitives: `Conduit/Views/Components/ComposerPasteTextView.swift`,
   `Conduit/Views/Components/ComposerFullEditor.swift`, `Conduit/Views/Components/ComposerDraftStore.swift`
 - Bridge contracts: `bridge/README.md`, `docs/laa/BRIDGE.md`
-- Tests: `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
-  `ConduitUITests/LAAWorkUITests.swift`
+- Linear owner endpoints and catalog: `bridge/src/tasks/linear-owner.mjs`, `bridge/src/routes/linear-owner-tasks.mjs`, `bridge/src/routes/skills.mjs`, `bridge/test/linear-owner-tasks.test.mjs`, `bridge/test/skills.test.mjs`
+- Tests: `ConduitTests/LAALinearTaskTests.swift`, `ConduitTests/LAAWorkTests.swift`, `ConduitTests/LAAOwnerTaskAPITests.swift`,
+  `ConduitUITests/LAAWorkUITests.swift`, `ConduitUITests/LAAWorkLinearUITests.swift`, `scripts/laa/work-ui-fixture.mjs`
 
 **Rulings**
 - Session and successor writes keep the exact body, request ID and idempotency
@@ -625,31 +626,34 @@ store · the session and project API · the owner-task API · Console job observ
   both the user's edit and the current version for an explicit choice. A name
   change alone does not replace shared instructions. Legacy references are
   shown as unapplied metadata and can only be explicitly cleared.
-- The Tasks section shows owner tasks from the Mac, not Linear issues. A row
-  opens title, memo and due-date editing; inline creation and absolute-state
-  checkboxes use the owner-task contract. Completed and canceled rows collapse.
-  Conditional updates preserve untouched fields. Drafts and uncertain writes
-  survive offline use; a replay keeps the UUID, body and key, and moving a
-  request to another device requires an explicit choice and does not send it.
-  Revisions are opaque; a 409 keeps the input and requires an explicit choice
-  before it becomes an editable draft again.
-  Routines show Console job observations read-only; unavailable observations
-  remain unknown and a failed source is an error.
+- Priority and Tasks read only the owner's undelegated Linear issues in team
+  BUS (LAA). Priority means urgent/high or due today/overdue. Creation assigns
+  LAA in Todo; completion moves to Done and clears the assignee. Edits and
+  confirmed swipe deletion carry `If-Match: updatedAt`; this is a read/check,
+  not an atomic Linear compare-and-swap. The exact UUID, body, version and
+  idempotency key remain on device while a result is uncertain. Legacy local
+  owner-task data is retained without automatic migration.
+- Routines expose schedule, destination and current state separately from the
+  last run, business result and notification result. Missing observations stay
+  unknown. Skills show only name and a short description from the read-only
+  index; they do not execute from this list.
 - A project detail lists its sessions and passes the project to session creation.
 
 **Open gaps**
 - Decision replies, child-session creation and provider parity belong to Tasks
   15 and 16; preflight model resolution is unavailable in the current API.
-- Owner-task UI, accessibility and live integration await the parent's single
-  integrated simulator gate, Bridge integration and real-account checks.
+- Production Bridge integration and real-account Linear mutations await the
+  parent's integrated gate. Live list/detail reads are verified separately;
+  simulator CRUD uses synthetic data.
 
-**Checked:** 2026-11-01, based on c6aba8d7; routine endpoint fixture tests passed. Updated screens await simulator checks. Earlier signed Simulator tests covered pairing,
-sections, workspace entry, durable composer draft, empty, 503 and offline
-states. Against the real Bridge, a scratch session was created, messaged,
-stopped and resumed; artifacts and a stale If-Match 412 were read back.
-Injected event-history gaps and resynchronization also reread the snapshot.
-Owner tasks: Swift fixtures and Swift-to-Bridge fixtures passed; device UI and
-the integrated Bridge have not yet been verified.
+**Checked:** 2026-11-02, laa/work-tab. Debug build and 34 related Swift/UI tests
+passed (33 in the full run and the corrected CRUD test in its targeted rerun).
+Bridge tests: 381 passed. Six Work sections and the AI usage settings destination
+were captured in light/dark at 440 × 956 pt. Linear list (63 items) and one detail
+returned 200 with the real credential; live mutations were not run. Simulator
+CRUD uses the synthetic fixture; the AI usage fixture exercises its unavailable
+state. Production integration and the owner's device remain separate gates.
+
 
 ## Voice beside the tabs
 
