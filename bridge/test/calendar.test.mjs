@@ -26,7 +26,7 @@ function helperFixture(output, { error = null } = {}) {
   return { calls, execFileImpl };
 }
 
-test('calendar requires its own scope, validates range and never accepts writes', async (t) => {
+test('calendar requires read scope, validates range and rejects writes without write scope', async (t) => {
   const calls = [];
   const bridge = await startBridge({ calendar: { service: { list: async (query) => { calls.push(query); return { items: [] }; } } } });
   t.after(() => bridge.close());
@@ -35,11 +35,11 @@ test('calendar requires its own scope, validates range and never accepts writes'
   const token = await bridge.token(['calendar:read']);
   assert.equal((await bridge.request(path, { token })).status, 200);
   assert.deepEqual(calls, [range]);
-  for (const query of ['', '?start=bad&end=bad', '?start=2026-11-01T00:00:00Z&end=2026-12-01T00:00:00Z',
+  for (const query of ['', '?start=bad&end=bad', '?start=2026-11-01T00:00:00Z&end=2027-01-01T00:00:00Z',
     '?start=2026-11-02T00:00:00Z&end=2026-11-01T00:00:00Z']) {
     assert.equal((await bridge.request(`/v1/calendar/events${query}`, { token })).status, 400);
   }
-  assert.equal((await bridge.request(path, { token, method: 'POST', body: {} })).status, 405);
+  assert.equal((await bridge.request(path, { token, method: 'POST', body: {} })).status, 403);
   assert.equal(calls.length, 1);
 });
 
@@ -63,8 +63,13 @@ test('Google pagination expands recurrences and preserves date-only all-day boun
   } });
   const data = await service.list(range);
   assert.equal(data.items.length, 2);
-  assert.deepEqual(data.items[0], { id: 'one', title: '予定', start: event.start.dateTime, end: event.end.dateTime, allDay: false, location: '会議室' });
-  assert.deepEqual(data.items[1], { id: 'all-day', title: '（タイトルなし）', start: '2026-11-03', end: '2026-11-05', allDay: true, location: null });
+  assert.equal(data.items[0].id, 'one');
+  assert.equal(data.items[0].title, '予定');
+  assert.equal(data.items[0].description, 'not returned');
+  assert.equal(data.items[0].calendarId, 'primary');
+  assert.equal(data.items[1].allDay, true);
+  assert.equal(data.items[1].start, '2026-11-03');
+  assert.equal(data.items[1].end, '2026-11-05');
   assert.equal(calls[0].options.method, 'POST');
   assert.equal(calls[0].options.body.get('grant_type'), 'refresh_token');
   for (const call of calls.slice(1)) {

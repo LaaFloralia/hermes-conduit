@@ -9,7 +9,7 @@ import { BridgeError } from '../errors.mjs';
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_QUERY_LENGTH = 200;
-const VIEWS = new Set(['my', 'shared', 'recent', 'starred']);
+const VIEWS = new Set(['my', 'shared', 'sharedWithMe', 'recent', 'starred']);
 const CURSOR_TTL_MS = 24 * 60 * 60 * 1000;
 const ID_PATTERN = /^[A-Za-z0-9_-]{5,2048}$/;
 const RELAYED_HEADERS = [
@@ -442,7 +442,26 @@ export function driveRoutes({ adapter = null, now = () => Date.now(), log = defa
   const exportPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,2048})\/export$/;
   const itemPattern = /^\/v1\/drive\/files\/([A-Za-z0-9_-]{5,2048})$/;
 
+  async function beginUpload({ rawBody, device }) {
+    let p; try { p = JSON.parse(rawBody); } catch { throw badRequest('upload_invalid', 'Invalid upload file'); }
+    if (!p || typeof p.name !== 'string' || !p.name.trim() || p.name.length > 255 || /[\x00-\x1f/]/.test(p.name)
+      || typeof p.mimeType !== 'string' || !/^[a-zA-Z0-9.+_-]+\/[a-zA-Z0-9.+_-]+$/.test(p.mimeType)
+      || !Number.isSafeInteger(p.size) || p.size < 1 || p.size > 5 * 1024 ** 4
+      || (p.folderId != null && !ID_PATTERN.test(p.folderId))) throw badRequest('upload_invalid', 'Invalid upload file');
+    const service = requireAdapter();
+    if (!service.beginUpload) throw new BridgeError(503, 'upload_unavailable', 'Upload is unavailable');
+    return { status: 201, data: await service.beginUpload({ ...p, deviceId: device.id }) };
+  }
+  async function uploadChunk({ rawBody, params, device }) {
+    const service = requireAdapter();
+    if (!service.uploadChunk) throw new BridgeError(503, 'upload_unavailable', 'Upload is unavailable');
+    return { status: 200, data: await service.uploadChunk({ id: params[0], offset: Number(params[1]), body: rawBody, deviceId: device.id }) };
+  }
+
   return [
+    { method: 'POST', path: '/v1/drive/uploads', auth: true, scope: 'media:write', idempotent: true, handler: beginUpload },
+    { method: 'PUT', pattern: /^\/v1\/drive\/uploads\/([a-f0-9-]{36})\/chunks\/(\d{1,16})$/, auth: true, scope: 'media:write', idempotent: true,
+      bodyLimit: 4 * 1024 * 1024, handler: uploadChunk },
     { method: 'GET', path: '/v1/drive/files', auth: true, scope: 'media:read', handler: listFiles },
     { method: 'GET', pattern: itemPattern, auth: true, scope: 'media:read', handler: fileMetadata },
     { method: 'GET', pattern: contentPattern, auth: true, scope: 'media:read', handler: fileContent },

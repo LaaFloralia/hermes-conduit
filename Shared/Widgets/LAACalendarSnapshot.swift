@@ -9,8 +9,22 @@ struct LAACalendarEvent: Codable, Identifiable {
     let allDay: Bool
     let location: String?
 
+    var googleID: String? = nil
+    var calendarId: String? = nil
+    var notes: String? = nil
+    var meetingLink: String? = nil
+    var etag: String? = nil
+    var attendees: [LAACalendarAttendee]? = nil
+    var attachments: [LAACalendarAttachment]? = nil
+    var recurrence: [String]? = nil
+    var recurringEventId: String? = nil
+    var timeZone: String? = nil
+
     func overlaps(start: Date, end: Date) -> Bool { self.start < end && self.end > start }
 }
+
+struct LAACalendarAttendee: Codable { let email: String; let name: String?; let response: String? }
+struct LAACalendarAttachment: Codable { let title: String; let url: String }
 
 /// The widget shares only the latest successful Google read, never OAuth credentials.
 struct LAACalendarSnapshot: Codable {

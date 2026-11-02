@@ -32,7 +32,7 @@ extension LAACopy {
     }
 }
 
-struct LAADriveItem: Decodable, Identifiable, Hashable {
+struct LAADriveItem: Codable, Identifiable, Hashable {
     let id: String
     let name: String
     let mimeType: String
@@ -52,7 +52,7 @@ struct LAADriveItem: Decodable, Identifiable, Hashable {
     var isWorkspace: Bool { kind == "workspace_document" }
     var isDocument: Bool {
         !isFolder && (mimeType.hasPrefix("text/") || mimeType == "application/pdf" ||
-                      mimeType == "application/msword" || mimeType.hasPrefix("application/vnd.openxmlformats-officedocument.") ||
+                      ["application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint"].contains(mimeType) || mimeType.hasPrefix("application/vnd.openxmlformats-officedocument.") ||
                       kind == "workspace_document")
     }
     var symbol: String { isFolder ? "folder" : isImage ? "photo" : isMedia ? "play.rectangle" : "doc.text" }
@@ -61,7 +61,7 @@ struct LAADriveItem: Decodable, Identifiable, Hashable {
     }
 }
 
-struct LAADriveOwner: Decodable, Hashable {
+struct LAADriveOwner: Codable, Hashable {
     let displayName: String?
 }
 
@@ -188,7 +188,13 @@ enum LAADriveData {
         if let data = try fixturePage(path: path) { return try JSONDecoder().decode(LAADriveListingPage.self, from: data) }
         #endif
         let result: LAABridgeResponse<LAADriveListingPage> = try await bridge.request(method: "GET", path: path)
+        if let deviceID = bridge.deviceID { LAAGoogleCache.save(result.data, key: deviceID + path) }
         return result.data
+    }
+
+    @MainActor static func cachedListing(_ query: LAADriveBrowseQuery, bridge: LAABridgeSession) -> LAADriveListingPage? {
+        guard bridge.status == .paired, let deviceID = bridge.deviceID, let path = query.path else { return nil }
+        return LAAGoogleCache.read(LAADriveListingPage.self, key: deviceID + path)
     }
 
     @MainActor static func listingMetadata(_ id: String, bridge: LAABridgeSession) async throws -> LAADriveListingItem {

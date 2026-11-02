@@ -2,8 +2,7 @@
 import Foundation
 
 enum LAADriveBrowseSection: String, CaseIterable {
-    case my, shared, recent, starred
-    static let allCases: [Self] = [.my, .shared]
+    case my, shared, sharedWithMe, recent, starred
 }
 
 /// A cursor belongs to this exact section, folder, query and page size.
@@ -37,7 +36,7 @@ struct LAADriveBrowseQuery: Hashable {
     }
 }
 
-struct LAADriveShortcut: Decodable, Hashable {
+struct LAADriveShortcut: Codable, Hashable {
     let targetId: String?
     let targetMimeType: String?
     let requiresResourceKey: Bool?
@@ -51,7 +50,7 @@ struct LAADriveShortcut: Decodable, Hashable {
 }
 
 /// Extends the existing item decoder without changing the shared Assets model.
-struct LAADriveListingItem: Decodable, Hashable, Identifiable {
+struct LAADriveListingItem: Codable, Hashable, Identifiable {
     let item: LAADriveItem
     let version: String?
     let parents: [String]
@@ -82,6 +81,19 @@ struct LAADriveListingItem: Decodable, Hashable, Identifiable {
 
     /// The destination receives no Bridge credential. Do not open arbitrary
     /// URLs returned by a malformed or outdated server.
+    func encode(to encoder: Encoder) throws {
+        try item.encode(to: encoder)
+        var container = encoder.container(keyedBy: Keys.self)
+        try container.encodeIfPresent(version, forKey: .version)
+        try container.encode(parents, forKey: .parents)
+        try container.encodeIfPresent(starred, forKey: .starred)
+        try container.encodeIfPresent(viewedAt, forKey: .viewedAt)
+        try container.encodeIfPresent(hasThumbnail, forKey: .hasThumbnail)
+        try container.encodeIfPresent(thumbnailVersion, forKey: .thumbnailVersion)
+        try container.encodeIfPresent(shortcut, forKey: .shortcut)
+        try container.encodeIfPresent(webViewLink, forKey: .webViewLink)
+    }
+
     var safeWebViewURL: URL? {
         guard let url = webViewLink, let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
               parts.scheme?.lowercased() == "https", parts.user == nil, parts.password == nil,
@@ -97,7 +109,7 @@ struct LAADriveListingItem: Decodable, Hashable, Identifiable {
     }
 }
 
-struct LAADriveListingPage: Decodable {
+struct LAADriveListingPage: Codable {
     let items: [LAADriveListingItem]
     let nextCursor: String?
     /// Nil means the Bridge did not report whether results are incomplete.
