@@ -154,3 +154,32 @@ test('install-plist.sh carries the three settings from the live plist it replace
   assert.equal(env.LAA_SOMETHING_ELSE, undefined);
   assert.equal(env.LAA_BRIDGE_PORT, '9137', 'the template still supplies its own values');
 });
+
+test('a malformed value is never echoed, and the live plist keeps its bytes', (t) => {
+  const dir = workspace(t);
+  const live = join(dir, 'com.laa.bridge.plist');
+  const marker = 'SECRET-MARKER-12345';
+  writeFileSync(live, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>EnvironmentVariables</key>
+\t<dict>
+\t\t<key>LAA_GOOGLE_REMINDERS_ENABLED</key>
+\t\t<integer>${marker}</integer>
+\t</dict>
+</dict>
+</plist>
+`);
+  const original = readFileSync(live);
+  const rendered = join(dir, 'rendered.plist');
+  writeFileSync(rendered, plist({ HOME: '/Users/someone' }));
+
+  const result = spawnSync('python3', [helper, live, rendered]);
+
+  assert.notEqual(result.status, 0);
+  assert.deepEqual(readFileSync(live), original, 'the live plist keeps its bytes');
+  assert.doesNotMatch(result.stdout.toString(), new RegExp(marker));
+  assert.doesNotMatch(result.stderr.toString(), new RegExp(marker), 'the parser message is not repeated');
+  assert.match(result.stderr.toString(), /left unchanged/);
+});
