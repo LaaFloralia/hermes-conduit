@@ -45,6 +45,39 @@ final class LAABrainUITests: XCTestCase {
         recovery.tap()
     }
 
+    func testManageRenameTrashAndGalleryLight() { manageRenameTrashAndGallery(style: "Light") }
+    func testManageRenameTrashAndGalleryDark() { manageRenameTrashAndGallery(style: "Dark") }
+
+    private func manageRenameTrashAndGallery(style: String) {
+        let app = XCUIApplication()
+        app.launchArguments += ["-laa-tab", "brain", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-laa-brain-local-fixture", "-AppleInterfaceStyle", style]
+        app.launch()
+        let filters = app.buttons["laa.brain.localDisplay"]
+        XCTAssertTrue(filters.waitForExistence(timeout: 30))
+        filters.tap()
+        app.buttons["laa.brain.filter.gallery"].tap()
+        let gallery = app.buttons["laa.brain.gallery.note"].firstMatch
+        XCTAssertTrue(gallery.waitForExistence(timeout: 15))
+        let galleryShot = XCTAttachment(screenshot: app.screenshot())
+        galleryShot.name = "brain-gallery-" + style.lowercased(); galleryShot.lifetime = .keepAlways; add(galleryShot)
+        gallery.tap()
+        let manage = app.buttons["laa.brain.manage"]
+        XCTAssertTrue(manage.waitForExistence(timeout: 10)); manage.tap()
+        let field = app.textFields["laa.brain.manage.name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        let manageShot = XCTAttachment(screenshot: app.screenshot())
+        manageShot.name = "brain-manage-" + style.lowercased(); manageShot.lifetime = .keepAlways; add(manageShot)
+        field.tap(); field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 5) + "Renamed")
+        app.buttons["laa.brain.manage.move"].tap()
+        XCTAssertTrue(app.navigationBars["Renamed.md"].waitForExistence(timeout: 15))
+        XCTAssertTrue(manage.waitForExistence(timeout: 10)); manage.tap()
+        app.buttons["laa.brain.manage.trash"].tap()
+        let confirm = app.buttons["ゴミ箱へ移動"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10)); confirm.tap()
+        XCTAssertTrue(filters.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.buttons["laa.brain.gallery.note"].firstMatch.exists)
+    }
+
     func testBrowseReadRawAndSearch() {
         let app = launch("normal")
         XCTAssertTrue(app.staticTexts["Start"].waitForExistence(timeout: 30))

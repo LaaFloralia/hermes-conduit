@@ -575,4 +575,50 @@ struct LAABrainSaveJournal {
         guard fsync(fd) == 0 else { throw JournalError.storage }
     }
 }
+/// The latest uncommitted editor buffer is separate from bounded history.
+/// It survives suspension without changing the vault or rotating old versions.
+struct LAABrainDraftStore {
+    struct Draft: Codable, Equatable {
+        let vault: String
+        let path: String
+        let base: Data
+        let bytes: Data
+    }
+    let directory: URL
+    init(directory: URL? = nil) {
+        self.directory = directory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Brain/Drafts", isDirectory: true)
+    }
+    private func url(vault: String, path: String) -> URL {
+        directory.appendingPathComponent(LAABrainSaveJournal.digest(Data((vault + "\u{0}" + path).utf8)) + ".json")
+    }
+    func save(_ draft: Draft) throws {
+        guard draft.base.count <= 32 * 1024 * 1024, draft.bytes.count <= 32 * 1024 * 1024 else {
+            throw LAABrainSaveJournal.JournalError.capacity
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let destination = url(vault: draft.vault, path: draft.path)
+        try JSONEncoder().encode(draft).write(to: destination, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destination.path)
+        #if os(iOS)
+        try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: destination.path)
+        #endif
+        var values = URLResourceValues(); values.isExcludedFromBackup = true
+        var folder = directory; try folder.setResourceValues(values)
+    }
+    func load(vault: String, path: String) throws -> Draft? {
+        let source = url(vault: vault, path: path)
+        guard FileManager.default.fileExists(atPath: source.path) else { return nil }
+        guard let size = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 96 * 1024 * 1024 else {
+            throw LAABrainSaveJournal.JournalError.invalidRecord
+        }
+        let draft = try JSONDecoder().decode(Draft.self, from: Data(contentsOf: source))
+        guard draft.vault == vault, draft.path == path else { throw LAABrainSaveJournal.JournalError.invalidRecord }
+        return draft
+    }
+    func clear(vault: String, path: String) throws {
+        let source = url(vault: vault, path: path)
+        if FileManager.default.fileExists(atPath: source.path) { try FileManager.default.removeItem(at: source) }
+    }
+}
 #endif

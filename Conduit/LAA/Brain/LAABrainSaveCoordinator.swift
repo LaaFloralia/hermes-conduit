@@ -11,7 +11,7 @@ struct LAABrainSaveCoordinator {
         let base: Data
     }
 
-    enum Method { case exchange, checkedReplacement }
+    enum Method { case exchange }
     enum Outcome {
         case saved(Method)
         case conflict(current: Data, draft: Data)
@@ -26,6 +26,7 @@ struct LAABrainSaveCoordinator {
         case recoveryExportRequired, recoveryDestinationExists, conflictCopy, historyUnavailable
         case durabilityUncertain, historyCapacity, recoveryPending
         case exchange(Int32)
+        case sourceChanged, destinationExists
     }
 
     let journal: LAABrainSaveJournal
@@ -67,6 +68,60 @@ struct LAABrainSaveCoordinator {
         return Snapshot(vault: vault, path: path, base: base)
     }
 
+    /// Move the inode, never rewrite Markdown or overwrite a destination.
+    /// A concurrent editor's newer bytes travel with the file and are journalled.
+    func relocate(root: URL, snapshot: Snapshot, destination: String, toTrash: Bool = false) throws -> String {
+        guard snapshot.vault == LAABrainSaveJournal.vaultID(root), snapshot.path != destination,
+              !Self.isConflictCopy(snapshot.path), !Self.isConflictCopy(destination),
+              toTrash == destination.hasPrefix(".trash/") else { throw SaveError.invalidPath }
+        let source = try Self.noteURL(root: root, path: snapshot.path)
+        guard try journal.pending(vault: snapshot.vault, path: snapshot.path).isEmpty else { throw SaveError.pendingRecovery }
+        _ = try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .original, bytes: snapshot.base)
+        if toTrash {
+            let fd = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+            guard fd >= 0 else { throw SaveError.invalidPath }
+            defer { close(fd) }
+            guard mkdirat(fd, ".trash", 0o700) == 0 || errno == EEXIST else { throw SaveError.storage }
+        }
+        var result: Result<String, Error> = .failure(SaveError.coordination)
+        var coordinationError: NSError?
+        let target = root.appendingPathComponent(destination)
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(writingItemAt: source, options: .forMoving,
+                               writingItemAt: target, options: .forReplacing, error: &coordinationError) { a, b in
+            result = Result {
+                guard a.standardizedFileURL == source.standardizedFileURL,
+                      b.standardizedFileURL == target.standardizedFileURL else { throw SaveError.invalidPath }
+                return try Self.withNoteParent(root: root, path: snapshot.path) { sourceFD, sourceName in
+                    try Self.withNoteParent(root: root, path: destination, allowTrash: toTrash) { targetFD, targetName in
+                        let current = try Self.readNote(fd: sourceFD, name: sourceName)
+                        guard LAABrainSaveJournal.digest(current) == LAABrainSaveJournal.digest(snapshot.base) else {
+                            _ = try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .conflict, bytes: current)
+                            throw SaveError.sourceChanged
+                        }
+                        _ = try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .original, bytes: current)
+                        #if DEBUG
+                        try fixtureAfterComparison?()
+                        #endif
+                        try Self.verifyNoteParent(root: root, path: snapshot.path, expected: sourceFD)
+                        try Self.verifyNoteParent(root: root, path: destination, expected: targetFD, allowTrash: toTrash)
+                        guard renameatx_np(sourceFD, sourceName, targetFD, targetName, UInt32(RENAME_EXCL)) == 0 else {
+                            if errno == EEXIST { throw SaveError.destinationExists }
+                            throw SaveError.storage
+                        }
+                        coordinator.item(at: source, didMoveTo: target)
+                        guard fsync(sourceFD) == 0, fsync(targetFD) == 0 else { throw SaveError.durabilityUncertain }
+                        let moved = try Self.readNote(fd: targetFD, name: targetName)
+                        _ = try journal.record(vault: snapshot.vault, path: destination, kind: .original, bytes: moved)
+                        return destination
+                    }
+                }
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        return try result.get()
+    }
+
     /// A failed or interrupted exchange leaves its manifest and stage in app
     /// storage, so the recovery screen can copy the stage into the journal.
     func save(root: URL, snapshot: Snapshot, draft: Data) throws -> Outcome {
@@ -81,7 +136,6 @@ struct LAABrainSaveCoordinator {
         try journal.validate(vault: snapshot.vault, path: snapshot.path)
         let transaction = try journal.makePending(vault: snapshot.vault, path: snapshot.path, base: snapshot.base, draft: draft)
         let stage = try journal.stageURL(transaction)
-        let fallbackIgnored = Self.ensureFallbackIgnored(root: root)
         var result: Result<Outcome, Error> = .failure(SaveError.coordination)
         var coordinationError: NSError?
         NSFileCoordinator().coordinate(writingItemAt: file, options: .forReplacing, error: &coordinationError) { coordinated in
@@ -135,33 +189,16 @@ struct LAABrainSaveCoordinator {
                         return changed ? .intervening(displaced: displaced, draft: draft) : .saved(.exchange)
                     }
                     guard Self.supportsFallback(error: swapError) else { throw SaveError.exchange(swapError) }
-                    // A synced, ignored temporary directory holds only a copy of
-                    // the already journaled draft, never the displaced file.
-                    guard fallbackIgnored, Self.isFallbackIgnored(root: root) else {
+                    // A comparison followed by ordinary rename loses an
+                    // uncoordinated writer in that gap. Never use it as a save.
+                    let latest = try Self.readNote(fd: noteFD, name: noteName)
+                    if LAABrainSaveJournal.digest(latest) != LAABrainSaveJournal.digest(snapshot.base) {
+                        try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .conflict, bytes: latest)
                         try journal.finish(transaction)
-                        throw SaveError.recoveryExportRequired
+                        return .conflict(current: latest, draft: draft)
                     }
-                    do {
-                        return try Self.withFallbackStage(root: root, draft: draft) { directoryFD, name in
-                            let fallbackCurrent = try Self.readNote(fd: noteFD, name: noteName)
-                            if LAABrainSaveJournal.digest(fallbackCurrent) != LAABrainSaveJournal.digest(snapshot.base) {
-                                try journal.record(vault: snapshot.vault, path: snapshot.path, kind: .conflict, bytes: fallbackCurrent)
-                                try journal.finish(transaction)
-                                return .conflict(current: fallbackCurrent, draft: draft)
-                            }
-                            try Self.verifyNoteParent(root: root, path: snapshot.path, expected: noteFD)
-                            guard renameat(directoryFD, name, noteFD, noteName) == 0 else { throw SaveError.storage }
-                            #if DEBUG
-                            if fixtureDirectorySyncFails { throw SaveError.durabilityUncertain }
-                            #endif
-                            guard fsync(noteFD) == 0, fsync(directoryFD) == 0 else { throw SaveError.durabilityUncertain }
-                            try journal.finish(transaction)
-                            return .saved(.checkedReplacement)
-                        }
-                    } catch SaveError.recoveryExportRequired {
-                        try journal.finish(transaction)
-                        throw SaveError.recoveryExportRequired
-                    }
+                    try journal.finish(transaction)
+                    throw SaveError.recoveryExportRequired
                 }
             }
         }
@@ -294,11 +331,11 @@ struct LAABrainSaveCoordinator {
         return (fd, status)
     }
 
-    private static func withNoteParent<T>(root: URL, path: String, _ operation: (Int32, String) throws -> T) throws -> T {
+    private static func withNoteParent<T>(root: URL, path: String, allowTrash: Bool = false, _ operation: (Int32, String) throws -> T) throws -> T {
         let parts = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
-        guard !parts.isEmpty, path.rangeOfCharacter(from: .controlCharacters) == nil,
+        guard !allowTrash || (parts.count == 2 && parts.first == ".trash"), !parts.isEmpty, path.rangeOfCharacter(from: .controlCharacters) == nil,
               !path.contains("\\"), !path.contains(":"),
-              parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && !excluded.contains($0) }),
+              parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." && !excluded.contains($0) || (allowTrash && $0 == ".trash" && parts.first == ".trash") }),
               URL(fileURLWithPath: path).pathExtension.lowercased() == "md" else { throw SaveError.invalidPath }
         var fd = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
         guard fd >= 0 else { throw SaveError.invalidPath }
@@ -321,10 +358,10 @@ struct LAABrainSaveCoordinator {
         return (fd, status)
     }
 
-    private static func verifyNoteParent(root: URL, path: String, expected: Int32) throws {
+    private static func verifyNoteParent(root: URL, path: String, expected: Int32, allowTrash: Bool = false) throws {
         var original = stat()
         guard fstat(expected, &original) == 0 else { throw SaveError.invalidPath }
-        try withNoteParent(root: root, path: path) { current, _ in
+        try withNoteParent(root: root, path: path, allowTrash: allowTrash) { current, _ in
             var status = stat()
             guard fstat(current, &status) == 0, status.st_dev == original.st_dev,
                   status.st_ino == original.st_ino else { throw SaveError.invalidPath }
@@ -455,52 +492,6 @@ struct LAABrainSaveCoordinator {
             if !found && line.hasPrefix("!") { return false }
         }
         return found
-    }
-
-    private static func withFallbackDirectory<T>(root: URL, _ operation: (Int32) throws -> T) throws -> T {
-        let rootFD = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-        guard rootFD >= 0 else { throw SaveError.invalidPath }
-        defer { close(rootFD) }
-        if mkdirat(rootFD, ".laa-tmp", 0o700) != 0 && errno != EEXIST { throw SaveError.storage }
-        let directoryFD = openat(rootFD, ".laa-tmp", O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
-        guard directoryFD >= 0 else { throw SaveError.invalidPath }
-        defer { close(directoryFD) }
-        return try operation(directoryFD)
-    }
-
-    private static func prepareFallback(root: URL) throws {
-        try withFallbackDirectory(root: root) { directoryFD in
-            let folder = root.appendingPathComponent(".laa-tmp", isDirectory: true)
-            let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
-            let cutoff = Date().addingTimeInterval(-24 * 60 * 60).timeIntervalSince1970
-            for name in files where name.hasSuffix(".tmp") && UUID(uuidString: String(name.dropLast(4))) != nil {
-                var status = stat()
-                guard fstatat(directoryFD, name, &status, AT_SYMLINK_NOFOLLOW) == 0,
-                      status.st_mode & S_IFMT == S_IFREG, Double(status.st_mtimespec.tv_sec) < cutoff else { continue }
-                guard unlinkat(directoryFD, name, 0) == 0 else { throw SaveError.storage }
-            }
-        }
-    }
-
-    private static func withFallbackStage<T>(root: URL, draft: Data, _ operation: (Int32, String) throws -> T) throws -> T {
-        var ready = false
-        do {
-            try prepareFallback(root: root)
-            return try withFallbackDirectory(root: root) { directoryFD in
-                let name = UUID().uuidString + ".tmp"
-                let fd = openat(directoryFD, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-                guard fd >= 0 else { throw SaveError.storage }
-                let handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-                defer { try? handle.close(); _ = unlinkat(directoryFD, name, 0) }
-                try handle.write(contentsOf: draft)
-                try handle.synchronize()
-                ready = true
-                return try operation(directoryFD, name)
-            }
-        } catch {
-            if !ready { throw SaveError.recoveryExportRequired }
-            throw error
-        }
     }
 
     private static func exchange(_ stage: URL, noteDirectory: Int32, noteName: String) -> Int32 {
