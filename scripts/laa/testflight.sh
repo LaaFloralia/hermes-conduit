@@ -207,7 +207,7 @@ fi
 if [ -z "${LAA_WEBRTC_XCFRAMEWORK:-}" ]; then
   echo "Resolving Swift packages (no credentials consulted)..."
   derived_touched=1
-  if ! env -u ASC_KEY xcodebuild -resolvePackageDependencies \
+  if ! env -u ASC_KEY xcodebuild -resolvePackageDependencies -jobs 4 \
       -project Conduit.xcodeproj \
       -scheme Conduit \
       -scmProvider system \
@@ -238,7 +238,7 @@ extra=()
 echo "Archiving Release for generic iOS..."
 log="$work/archive.log"
 derived_touched=1
-if ! env -u ASC_KEY xcodebuild archive -hideShellScriptEnvironment \
+if ! env -u ASC_KEY xcodebuild archive -jobs 4 -hideShellScriptEnvironment \
     -project Conduit.xcodeproj \
     -scheme Conduit \
     -configuration Release \
@@ -291,7 +291,7 @@ PLIST
   || echo "Exporting to $work/export (no upload)..."
 export_log="$work/export.log"
 export_started=1
-if ! env -u ASC_KEY xcodebuild -exportArchive \
+if ! env -u ASC_KEY xcodebuild -exportArchive -jobs 4 \
     -archivePath "$archive" \
     -exportPath "$work/export" \
     -exportOptionsPlist "$options" \
