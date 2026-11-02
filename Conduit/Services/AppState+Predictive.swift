@@ -127,7 +127,7 @@ extension AppState {
             guard index >= start || message.rowId.map(noted.contains) == true,
                   message.role == .user,
                   let sent = MessageTimestampFormatter.date(from: message.timestamp) else { return false }
-            return sent <= queuedAt
+            return !(queuedAt < sent)
         }.count
     }
 

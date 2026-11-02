@@ -268,7 +268,7 @@ struct OpenChatSync {
         chatVisible: Bool
     ) -> OpenChatSyncAction {
         track(local, now: now)
-        if let lastSnapshotAt, snapshotAt <= lastSnapshotAt { return .none }
+        if let lastSnapshotAt, !(lastSnapshotAt < snapshotAt) { return .none }
         lastSnapshotAt = snapshotAt
         lastCheckAt = now
         if local.isRunning {

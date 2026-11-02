@@ -2040,7 +2040,7 @@ final class VoiceConversationController: ObservableObject {
             return true
         }
         guard case .started = event else { return false }
-        guard Date() <= deadline else {
+        guard !(deadline < Date()) else {
             promotedSteerReplyDeadline = nil
             return false
         }

@@ -240,7 +240,7 @@ enum NotificationE2E {
             return .untrusted(type: type)
         }
         let issuedAt = Date(timeIntervalSince1970: TimeInterval(envelope.iat))
-        guard issuedAt >= now.addingTimeInterval(-maxAge), issuedAt <= now.addingTimeInterval(maxClockSkew) else {
+        guard !(issuedAt < now.addingTimeInterval(-maxAge)), !(now.addingTimeInterval(maxClockSkew) < issuedAt) else {
             return .untrusted(type: type)
         }
         let aad = pushAAD(

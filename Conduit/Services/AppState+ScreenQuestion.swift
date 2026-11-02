@@ -368,7 +368,7 @@ extension AppState {
     }
 
     private func noteScreenQuestion(_ request: ScreenQuestionRequest) {
-        if let newest = newestScreenQuestionAt, newest >= request.enqueuedAt { return }
+        if let newest = newestScreenQuestionAt, !(newest < request.enqueuedAt) { return }
         newestScreenQuestionAt = request.enqueuedAt
     }
 

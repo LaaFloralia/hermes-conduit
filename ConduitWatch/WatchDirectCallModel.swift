@@ -2197,7 +2197,7 @@ final class WatchDirectCallModel: ObservableObject {
     /// While jobs started through the relay may run, asks Hermes for their
     /// news, wrist up or down: one ask at a time, each grant in turn.
     private func fetchJobNewsIfDue() {
-        guard !newsInFlight, endRequestedAt == nil, now >= nextNewsAt, !jobRelays.isEmpty else { return }
+        guard !newsInFlight, endRequestedAt == nil, !(now < nextNewsAt), !jobRelays.isEmpty else { return }
         // A grant that ended or is about to can't be asked any more: what
         // its jobs do next reaches the user as Conduit notifications.
         // One a renewal may still move waits for it.
@@ -2921,8 +2921,8 @@ final class WatchDirectCallModel: ObservableObject {
     }
 
     private func modelSpoke(since at: TimeInterval) -> Bool {
-        if let audio = lastModelAudioAt, audio >= at { return true }
-        if let words = lastModelTranscriptAt, words >= at { return true }
+        if let audio = lastModelAudioAt, !(audio < at) { return true }
+        if let words = lastModelTranscriptAt, !(words < at) { return true }
         return false
     }
 

@@ -623,7 +623,7 @@ final class LocationSharingController: ObservableObject {
     /// tells the host (pending until it's reachable). `send: false` leaves
     /// the sending to the caller.
     func clearExpiredPause(send: Bool = true) {
-        guard let until = settings.pausedUntil, until <= now() else { return }
+        guard let until = settings.pausedUntil, !(now() < until) else { return }
         save { config in
             config.settings.pausedUntil = nil
             if config.binding != nil { config.settingsPending = true }

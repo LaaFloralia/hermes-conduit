@@ -212,7 +212,7 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 
     func hasRecordedValue(at date: Date) -> Bool {
         guard available, amount.isFinite, amount >= 0, verified != true,
-              let observedAt, observedAt <= date.addingTimeInterval(120) else { return false }
+              let observedAt, !(date.addingTimeInterval(120) < observedAt) else { return false }
         return unit != .percent || amount <= 100
     }
 
@@ -243,11 +243,11 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 
     func isPast(at date: Date, anchor: Date? = nil) -> Bool {
         guard available, !stale, let observedAt,
-              observedAt <= min(anchor ?? date, date).addingTimeInterval(120) else { return true }
-        if resetsAt.map({ $0 <= date }) == true { return true }
+              !(min(anchor ?? date, date).addingTimeInterval(120) < observedAt) else { return true }
+        if resetsAt.map({ !(date < $0) }) == true { return true }
         if verified == true { return true }
         let limit = min(observedAt, anchor ?? date, date).addingTimeInterval(10 * 60)
-        return min(freshUntil ?? limit, limit) <= date
+        return !(date < min(freshUntil ?? limit, limit))
     }
 }
 

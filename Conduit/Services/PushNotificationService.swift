@@ -2489,7 +2489,7 @@ final class PushNotificationService: ObservableObject {
         } ?? false
         pendingRouteRetryFiredAt = nil
         if pendingRouteOpenStarted, !scheduledRetry,
-           let deadline = pendingRouteDeadline, startedAt >= deadline {
+           let deadline = pendingRouteDeadline, !(startedAt < deadline) {
             clearPendingTarget(target)
             return false
         }

@@ -77,7 +77,7 @@ struct LAACalendarEditor: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button { dismiss() } label: { Text(verbatim: "キャンセル") }.disabled(busy) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { confirmSave = true } label: { Text(verbatim: "保存") }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || end <= start || busy || uncertain)
+                    Button { confirmSave = true } label: { Text(verbatim: "保存") }.disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !(start < end) || busy || uncertain)
                 }
             }
             .confirmationDialog(Text(verbatim: "Googleカレンダーに保存しますか？"), isPresented: $confirmSave, titleVisibility: .visible) {
@@ -91,7 +91,7 @@ struct LAACalendarEditor: View {
                 }
             }
             .onChange(of: start) { _, value in
-                if allDay && end <= value { end = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: value))! }
+                if allDay && !(value < end) { end = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: value))! }
             }
     }
     private func save() async {

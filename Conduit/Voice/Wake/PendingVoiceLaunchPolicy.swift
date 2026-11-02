@@ -208,7 +208,7 @@ enum PendingVoiceLaunchPolicy {
         connection: VoiceLaunchConnectionSnapshot,
         now: Date
     ) -> Readiness {
-        if let deadline = intent.externalLaunchDeadline, now >= deadline {
+        if let deadline = intent.externalLaunchDeadline, !(now < deadline) {
             switch intent.source {
             case .wakePhrase: return .failed(message: wakePhraseFailureMessage)
             case .screenQuestion: return .failed(message: screenQuestionFailureMessage)

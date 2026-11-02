@@ -44,7 +44,7 @@ struct LiveActivityUpdateThrottle {
             return .now
         }
         let next = last.at.addingTimeInterval(Self.interval)
-        if now >= next || Self.isUrgent(from: last.state, to: state) {
+        if !(now < next) || Self.isUrgent(from: last.state, to: state) {
             sent[id] = (state, now)
             held[id] = nil
             return .now

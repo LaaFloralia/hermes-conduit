@@ -33174,7 +33174,7 @@ final class AppState: ObservableObject {
     private func expireServerCompactionClaim(sessionId: String, generation: Int) {
         guard let claim = serverCompactionClaims[sessionId],
               claim.generation == generation,
-              claim.expiresAt <= Date() else { return }
+              !(Date() < claim.expiresAt) else { return }
         serverCompactionClaims.removeValue(forKey: sessionId)
         serverCompactionClaimExpiryTasks.removeValue(forKey: sessionId)
         // Keep the spinner only while a newer equivalent claim (established

@@ -440,7 +440,7 @@ extension AppState {
     /// message comes back as a draft, as after Conduit was stopped.
     func returnPendingComposerSendAfterLongAbsence(now: Date = Date()) {
         guard let pending = pendingComposerSend,
-              let leftAt = lastLeftForegroundAt, leftAt >= pending.queuedAt,
+              let leftAt = lastLeftForegroundAt, !(leftAt < pending.queuedAt),
               now.timeIntervalSince(leftAt) >= Self.pendingComposerSendAbsenceLimit else { return }
         returnPendingComposerSendToDraft(pending)
     }

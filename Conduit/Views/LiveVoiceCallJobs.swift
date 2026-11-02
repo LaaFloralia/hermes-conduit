@@ -104,7 +104,7 @@ struct LiveVoiceCallJobStrip: View {
         let count = callJobs.count + cards.count
         if count > 0 {
             VStack(spacing: 6) {
-                if let card = cards.last, card.shownAt >= (callJobs.last?.startedAt ?? .distantPast) {
+                if let card = cards.last, !(card.shownAt < (callJobs.last?.startedAt ?? .distantPast)) {
                     LiveVoiceScreenCardRow(card: card) { onSelectScreen(card) }
                 } else if let latest = callJobs.last {
                     LiveVoiceJobCard(job: latest) { onSelectJob(latest.id) }

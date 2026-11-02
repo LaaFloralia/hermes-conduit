@@ -52,13 +52,13 @@ enum ChatListSection: String, CaseIterable, Hashable {
     static func dateSection(for activity: TimeInterval, now: Date, calendar: Calendar) -> ChatListSection {
         let startOfToday = calendar.startOfDay(for: now)
         let date = Date(timeIntervalSince1970: activity)
-        if date >= startOfToday { return .today }
+        if !(date < startOfToday) { return .today }
         if let startOfYesterday = calendar.date(byAdding: .day, value: -1, to: startOfToday),
-           date >= startOfYesterday {
+           !(date < startOfYesterday) {
             return .yesterday
         }
         if let startOfWeek = calendar.date(byAdding: .day, value: -6, to: startOfToday),
-           date >= startOfWeek {
+           !(date < startOfWeek) {
             return .lastSevenDays
         }
         return .older

@@ -1319,7 +1319,7 @@ final class GPTLiveConversationController: ObservableObject {
     /// model spoke since (or the call is over), else queued once more.
     private func confirmResultSaid(_ send: UUID) {
         guard let result = unconfirmedResults.removeValue(forKey: send) else { return }
-        let spoke = lastModelWordsAt.map { $0 >= result.sentAt } ?? false
+        let spoke = lastModelWordsAt.map { !($0 < result.sentAt) } ?? false
         guard isActive, endRequestedAt == nil, !spoke, !result.resent else {
             result.settle()
             return

@@ -173,7 +173,7 @@ final class HealthKitDataSource: HealthDataSource {
         }
         var buckets: [HealthBucket] = []
         collection.enumerateStatistics(from: from, to: to) { statistics, _ in
-            guard statistics.startDate >= from, statistics.startDate < to else { return }
+            guard !(statistics.startDate < from), statistics.startDate < to else { return }
             var bucket = HealthBucket(start: statistics.startDate, end: statistics.endDate)
             if metric.aggregation == .sum {
                 guard let sum = statistics.sumQuantity() else { return }

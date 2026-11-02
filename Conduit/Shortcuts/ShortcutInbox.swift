@@ -257,7 +257,7 @@ struct ShortcutInboxQueue {
 
     func pending(now: Date = Date()) -> [ShortcutEvent] {
         let oldest = now.addingTimeInterval(-Double(Self.keepDays) * 86_400)
-        return (readAll()?[scope.storageID]?.events ?? []).filter { $0.at >= oldest }
+        return (readAll()?[scope.storageID]?.events ?? []).filter { !($0.at < oldest) }
     }
 
     /// False when the event couldn't be kept.
@@ -265,7 +265,7 @@ struct ShortcutInboxQueue {
     func add(_ event: ShortcutEvent, now: Date = Date()) -> Bool {
         guard var all = readAll() else { return false }
         // Older than the host keeps: it would never go, so it isn't kept.
-        guard event.at >= now.addingTimeInterval(-Double(Self.keepDays) * 86_400) else { return true }
+        guard !(event.at < now.addingTimeInterval(-Double(Self.keepDays) * 86_400)) else { return true }
         let kept = Array((pending(now: now) + [event]).suffix(Self.capacity))
         all[scope.storageID, default: Slot(scope: scope)].events = kept
         return writeAll(all)
@@ -401,7 +401,7 @@ final class ShortcutInboxLocalState: ObservableObject {
         let oldest = now.addingTimeInterval(-Double(ShortcutInboxQueue.keepDays) * 86_400)
         var counts = waiting
         for key in counts.keys where all[key] == nil { counts[key] = 0 }
-        for (id, slot) in all { counts[id] = slot.events.filter { $0.at >= oldest }.count }
+        for (id, slot) in all { counts[id] = slot.events.filter { !($0.at < oldest) }.count }
         if counts != waiting { waiting = counts }
     }
 

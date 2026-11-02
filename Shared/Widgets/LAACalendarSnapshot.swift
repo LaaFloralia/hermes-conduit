@@ -31,7 +31,7 @@ struct LAACalendarSnapshot: Codable {
     let updatedAt: Date
     let events: [LAACalendarEvent]
 
-    func isFresh(at now: Date) -> Bool { now >= updatedAt && now.timeIntervalSince(updatedAt) < 3600 }
+    func isFresh(at now: Date) -> Bool { !(now < updatedAt) && now.timeIntervalSince(updatedAt) < 3600 }
 
     private static var url: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: WidgetSnapshotStore.appGroup)?

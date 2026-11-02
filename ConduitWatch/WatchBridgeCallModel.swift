@@ -1591,8 +1591,8 @@ final class WatchBridgeCallModel: ObservableObject {
     }
 
     private func modelSpoke(since at: TimeInterval) -> Bool {
-        if let loud = lastLoudAt, loud >= at { return true }
-        if let words = lastModelWordsAt, words >= at { return true }
+        if let loud = lastLoudAt, !(loud < at) { return true }
+        if let words = lastModelWordsAt, !(words < at) { return true }
         return false
     }
 
@@ -1634,7 +1634,7 @@ final class WatchBridgeCallModel: ObservableObject {
     /// While jobs started through the relay may run, asks Hermes for their
     /// news, wrist up or down: one ask at a time.
     private func fetchJobNewsIfDue() {
-        guard followingJobs, !newsInFlight, endRequestedAt == nil, now >= nextNewsAt, let relay else { return }
+        guard followingJobs, !newsInFlight, endRequestedAt == nil, !(now < nextNewsAt), let relay else { return }
         // Job news stops before it spends the calls an approval on screen
         // needs; job results still come as notifications.
         guard !relay.isGone, !relay.expires(within: WatchToolRelayClient.expiryMargin),
