@@ -218,7 +218,7 @@ plistlib.dump({
 }, open(sys.argv[2], "wb"))
 PY
 printf 'Exporting Developer ID application...\n'
-if ! xcodebuild -exportArchive -archivePath "$archive" -exportPath "$work/export" \
+if ! xcodebuild -exportArchive -jobs 4 -archivePath "$archive" -exportPath "$work/export" \
     -exportOptionsPlist "$work/ExportOptions.plist" 2>&1 | redact_signing_names > "$work/export.log"; then
     fail "export failed; see $work/export.log"
 fi
