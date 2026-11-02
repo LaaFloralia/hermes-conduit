@@ -264,6 +264,14 @@ echo "  version $(plutil -extract ApplicationProperties.CFBundleShortVersionStri
 python3 "$repo/scripts/laa/check-brand-bundle.py" "$archive/Products/Applications/Conduit.app" \
   || fail "LAA branding inspection failed; nothing was exported or uploaded"
 
+# Fail before export/upload if the app or any extension imports the weak-linked
+# Foundation Date.<= / Date.>= (scripts/laa/check-weak-date-ops.sh).
+date_bundles=()
+while IFS= read -r bundle; do date_bundles+=("$bundle"); done \
+  < <(find "$archive/Products/Applications/Conduit.app" -type d \( -name '*.app' -o -name '*.appex' \))
+"$repo/scripts/laa/check-weak-date-ops.sh" "${date_bundles[@]}" \
+  || fail "weak Date comparison check failed; nothing was exported or uploaded"
+
 # 5. Export and upload. `app-store-connect` is the App Store Connect
 #    destination; with `destination=upload` xcodebuild uploads the .ipa itself.
 options="$work/ExportOptions.plist"

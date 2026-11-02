@@ -173,6 +173,10 @@ app="$archive/Products/Applications/Conduit.app"
 [ -d "$app" ] || app="$archive/Products/Applications/LAA.app"
 [ -d "$app" ] || fail 'archive did not produce LAA.app or Conduit.app'
 python3 "$repo/scripts/laa/check-brand-bundle.py" "$app" || fail 'LAA branding inspection failed'
+date_bundles=()
+while IFS= read -r bundle; do date_bundles+=("$bundle"); done \
+    < <(find "$app" -type d \( -name '*.app' -o -name '*.appex' \))
+"$repo/scripts/laa/check-weak-date-ops.sh" "${date_bundles[@]}" || fail 'weak Date comparison check failed'
 if [ "$archive_only" -eq 1 ]; then
     executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
     for architecture in arm64 x86_64; do
