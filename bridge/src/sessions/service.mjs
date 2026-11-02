@@ -285,8 +285,8 @@ export function createSessionService({
         const previous = known.get(a.id);
         const model = { provider: a.provider, model: a.model ?? null, effort: a.thinkingOptionId ?? a.effectiveThinkingOptionId ?? null };
         return { id: ids.get(a.id), requestId: `paseo-${a.id}`, source: previous ? (previous.source ?? 'bridge') : 'paseo',
-          parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? null,
-          projectId: null, workspaceId: a.workspaceId ?? HOME_WORKSPACE_ID, cwd: a.cwd,
+          parentId: ids.get(a.labels?.['paseo.parent-agent-id']) ?? previous?.parentId ?? null,
+          projectId: null, workspaceId: previous?.workspaceId ?? a.workspaceId ?? HOME_WORKSPACE_ID, cwd: a.cwd,
           name: a.title || '名称未設定', nameSource: 'agent', profile: previous?.profile ?? a.provider,
           requested: model, observed: state.modelCheck.observed, phase: state.phase,
           pending: summarizePending(state.pending), runtimeVerified: state.modelCheck.runtimeVerified,
