@@ -109,7 +109,7 @@ final class LAAWorkUITests: XCTestCase {
             segment.tap()
             XCTAssertTrue(app.buttons["work.connect"].waitForExistence(timeout: 5))
         }
-        XCTAssertFalse(app.buttons["AI usage"].exists)
+        XCTAssertTrue(app.buttons["work.section.usage"].exists)
     }
 
     func testOwnerTasksRequirePairingWithoutExposingLegacyLocalTasks() {
