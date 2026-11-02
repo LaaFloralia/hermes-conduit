@@ -247,6 +247,8 @@ struct V2ConversationScreen: View {
                 }
                 .accessibilityLabel(AppLocalization.string("Close"))
                 .accessibilityIdentifier("conversation.close")
+                // Escape closes the chat beside the list, as it does a sheet.
+                .keyboardShortcut(.cancelAction)
             }
         }
         // A window wide enough for two columns: hide the list for the
