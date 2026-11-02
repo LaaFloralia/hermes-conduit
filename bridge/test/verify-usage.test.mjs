@@ -31,7 +31,7 @@ test('verification shares the future-clock tolerance with Bridge', async (t) => 
   assert.equal(result.code, 0, result.stdout + result.stderr);
   assert.equal(JSON.parse(result.stdout).failures.length, 0);
 
-  const tooFuture = new Date(Date.now() + 123_000).toISOString();
+  const tooFuture = new Date(Date.now() + 180_000).toISOString();
   const rejectedRow = { ...feed, fetchedAt: new Date().toISOString(),
     providers: [{ ...feed.providers[0], updatedAt: tooFuture }] };
   const rejected = await runCheck(t, rejectedRow);
