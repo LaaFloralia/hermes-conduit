@@ -52,6 +52,7 @@ struct LAAMacChatsSection: View {
                 // the phone's Chats tab does.
                 .environment(\.v2Shell, V2ShellContext(values: .init(isTabActive: true, isRootCovered: false)))
                 .environment(\.horizontalSizeClass, .compact)
+                .modifier(LAAMacFlatTopEdge())
         } detail: {
             detail
         }
@@ -103,6 +104,7 @@ struct LAAMacChatsSection: View {
                 ))
                 .environment(\.horizontalSizeClass, .compact)
                 .laaReadableWidth(LAADesktopMetrics.readingWidth)
+                .modifier(LAAMacFlatTopEdge())
                 .accessibilityIdentifier("laa.mac.conversation")
                 .onKeyPress(.escape) {
                     appState.showSidebar = true

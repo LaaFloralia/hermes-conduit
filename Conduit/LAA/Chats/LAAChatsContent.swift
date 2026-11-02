@@ -161,7 +161,7 @@ struct LAAChatsContent: View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             sectionHeader(LAACopy.chatsCiel)
             Button { openPerson(ciel) } label: {
-                personRow(ciel, size: 48)
+                personRow(ciel, size: 48, selected: isSelected("person.\(ciel.profile)"))
                     .padding(LAASpacing.x3)
                     .background(isSelected("person.\(ciel.profile)") ? LAAColor.selectionFill : LAAColor.surface,
                                 in: RoundedRectangle(cornerRadius: LAARadius.card))
@@ -184,7 +184,7 @@ struct LAAChatsContent: View {
                 note(LAACopy.chatsNoEmployees)
             } else {
                 ForEach(employees) { employee in
-                    Button { openPerson(employee) } label: { personRow(employee, size: 40) }
+                    Button { openPerson(employee) } label: { personRow(employee, size: 40, selected: isSelected("person.\(employee.profile)")) }
                         .buttonStyle(.plain)
                         .disabled(!employee.available)
                         .accessibilityHint(Text(verbatim: employee.available ? "" : LAACopy.chatsUnavailable))
@@ -217,7 +217,7 @@ struct LAAChatsContent: View {
                 loadNote(snapshot.groupsState, empty: LAACopy.chatsNoGroups)
             } else {
                 ForEach(rooms) { room in
-                    Button { openRoom(room) } label: { roomRow(room) }
+                    Button { openRoom(room) } label: { roomRow(room, selected: isSelected("room.\(room.roomID)")) }
                         .buttonStyle(.plain)
                         .disabled(snapshot.groupsState == .offline)
                         .accessibilityAddTraits(isSelected("room.\(room.roomID)") ? .isSelected : [])
@@ -231,11 +231,12 @@ struct LAAChatsContent: View {
         }
     }
 
-    private func personRow(_ person: LAAChatsPerson, size: CGFloat) -> some View {
+    private func personRow(_ person: LAAChatsPerson, size: CGFloat, selected: Bool = false) -> some View {
         HStack(spacing: LAASpacing.x3) {
             avatar(profile: person.profile, name: person.name, size: size)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: person.name).font(LAAType.employeeName).foregroundStyle(LAAColor.text)
+                Text(verbatim: person.name).font(LAAType.employeeName)
+                    .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                 Text(verbatim: person.role).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
             }
             Spacer(minLength: LAASpacing.x2)
@@ -245,11 +246,12 @@ struct LAAChatsContent: View {
         .contentShape(Rectangle())
     }
 
-    private func roomRow(_ room: GroupRoom) -> some View {
+    private func roomRow(_ room: GroupRoom, selected: Bool = false) -> some View {
         HStack(spacing: LAASpacing.x3) {
             LAAGroupFaces(members: room.members, size: 40)
             VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                Text(verbatim: room.name).laaTextStyle(.body).foregroundStyle(LAAColor.text)
+                Text(verbatim: room.name).laaTextStyle(.body)
+                    .foregroundStyle(selected ? LAAColor.link : LAAColor.text)
                 let names = room.members.compactMap { $0.displayName ?? $0.profile ?? $0.handle }.joined(separator: ", ")
                 if !names.isEmpty { Text(verbatim: names).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText) }
             }
