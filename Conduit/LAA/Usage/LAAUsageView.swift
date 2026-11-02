@@ -177,6 +177,15 @@ struct LAAUsageView: View {
                 }
             } else if !state.isRefreshing {
                 caption(state.usage.error == nil ? LAACopy.notFetched : "利用できません。")
+                ForEach(LAAWidgetUsageBuilder.slots, id: \.provider) { slot in
+                    let group = LAAUsageGroup(id: "provider.\(slot.provider)", label: slot.label, items: [])
+                    if let url = group.serviceURL {
+                        Link(destination: url) { Text(verbatim: group.label) }
+                            .laaTextStyle(.body)
+                            .frame(minHeight: LAASpacing.minimumTouchTarget)
+                            .accessibilityIdentifier("laa.usage.open.\(group.id)")
+                    }
+                }
             } else { ProgressView().accessibilityLabel(Text(verbatim: LAACopy.loading)) }
         }
     }

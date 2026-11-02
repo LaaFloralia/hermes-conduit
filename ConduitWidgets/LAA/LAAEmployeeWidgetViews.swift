@@ -221,7 +221,7 @@ struct LAAEmployeeWidgetView: View {
         .laaTextStyle(.section)
         .foregroundStyle(!hasValue ? LAAColor.attention : (past ? LAAColor.secondaryText : LAAColor.text))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(hasValue ? "\(meter.label), \(Self.valueText(meter))" : "\(meter.label), 未取得")
+        .accessibilityLabel("\(meter.label), \(Self.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))")
     }
 
     static func timeText(_ observation: Date, at date: Date) -> String {

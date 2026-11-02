@@ -117,8 +117,7 @@ final class LAAUsageState: ObservableObject {
                                               previous: widgetStore?.read()?.usage))
         } else if let error = usage.error, [.bridge(.revoked), .bridge(.unauthorized), .bridge(.forbidden)].contains(error) {
             publish(nil)
-        }
-        else if let previous = widgetStore?.read()?.usage {
+        } else if let previous = widgetStore?.read()?.usage {
             // Preserve the observation for recovery, but immediately mark it
             // stale so a failed fetch can never leave a fresh-looking number.
             publish(WidgetUsageSnapshot(meters: previous.meters.map { $0.lastKnown(label: $0.label) },

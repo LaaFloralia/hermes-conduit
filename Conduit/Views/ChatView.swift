@@ -359,16 +359,24 @@ struct ChatView: View {
                 }
             }
 
+#if LAA_BUILD
+            // The growing composer owns its whole height, including the
+            // controls row. Keep the transcript outside that region.
+            bottomBar
+#else
             if !composerFloats {
                 bottomBar
             }
+#endif
         }
+#if !LAA_BUILD
         .v2EdgeBar(.bottom) {
             if composerFloats {
                 bottomBar
                     .modifier(V2LegacyScrollEdge(edge: .bottom))
             }
         }
+#endif
         .onPreferenceChange(V2ComposerTypingKey.self) { typing in
             withAnimation(ConduitMotion.ease(reduceMotion: composerReduceMotion)) {
                 composerTyping = typing

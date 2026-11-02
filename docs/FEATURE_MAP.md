@@ -388,7 +388,7 @@ build (keeps its own chat and call controls)
 - Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
 - The muted loop runs only while visible and active, after disconnecting from system audio. Reduce Motion, Low Power Mode, scrolling and platforms unable to disconnect use the still, so opening a chat does not take over another app's audio.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
-- The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui). At 375 points and accessibility text sizes, the employee name takes priority over the decorative avatar and status; the full status stays in its accessible label and detail sheet. The chat Back control has a 44-point target and an English label.
+- The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui). At 375 points and accessibility text sizes, the employee name takes priority over the decorative avatar and status; the full status stays in its accessible label and detail sheet. Back keeps its native control and interactive pop gesture.
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
 - The call screen follows the selected light or dark appearance using the v2 background, text, surface and control tokens; either the top back control or Chat returns to the originating conversation.
 - Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
@@ -408,7 +408,7 @@ build (keeps its own chat and call controls)
 - ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-11-02, laa/fixes (narrow header and accessible Back); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
@@ -3833,14 +3833,15 @@ and rollback instructions · the upstream App Store build
 
 **Rulings**
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
-- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the system Back button.
+- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture.
+- The LAA transcript reserves the entire growing composer height, including Model and context controls, so an eight-line draft cannot expose message text behind that row. Group placeholders use primary ink on photo glass.
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.
 
 **Open gaps**
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
-**Checked:** 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+**Checked:** 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
 
 
 ## LAA Work session presentation
