@@ -118,6 +118,17 @@ test('Drive upload routes require explicit write scope and enforce chunk bounds'
   assert.equal((await bridge.request('/v1/drive/uploads', { method: 'POST', token: write, body, key: 'b' })).status, 201);
   assert.equal(calls, 1);
   assert.equal((await bridge.request('/v1/drive/uploads', { method: 'POST', token: write, body: 'not json', key: 'c' })).status, 400);
+  // Phone chunks are raw bytes despite the client's generic JSON request API.
+  const bytes = Buffer.from([0, 255, 10, 128]);
+  const chunkURL = `${bridge.base}/v1/drive/uploads/00000000-0000-0000-0000-000000000000/chunks/0`;
+  const headers = { authorization: `Bearer ${write}`, 'content-type': 'application/json', 'idempotency-key': 'raw-chunk' };
+  const chunk = await fetch(chunkURL, { method: 'PUT', headers, body: bytes });
+  assert.equal(chunk.status, 200); assert.equal((await chunk.json()).data.size, bytes.length);
+  const retry = await fetch(chunkURL, { method: 'PUT', headers, body: bytes });
+  assert.equal(retry.status, 200); assert.equal((await retry.json()).data.size, bytes.length);
+  const oversized = await fetch(chunkURL, { method: 'PUT', headers: { ...headers, 'idempotency-key': 'oversized' }, body: Buffer.alloc(4 * 1024 * 1024 + 1) });
+  assert.equal(oversized.status, 413); await oversized.arrayBuffer();
+
 });
 
 test('reminders use Google defaults, isolate instances, skip email and dedupe successful delivery', async () => {
