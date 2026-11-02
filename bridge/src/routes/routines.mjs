@@ -1,7 +1,13 @@
 // Read only: project the Console's inventory-backed job observations.
+//
+// `laa-console jobs` can take from tens of milliseconds to minutes, so the
+// projection is cached: a request is answered from the last successful read,
+// one read runs at a time, and the cache refreshes in the background once the
+// value is older than `freshMs`. Only a source that has never answered is a 503.
 import { execFile } from 'node:child_process';
 import { dirname } from 'node:path';
 import { promisify } from 'node:util';
+import { createReadCache } from '../cache.mjs';
 import { BridgeError } from '../errors.mjs';
 const exec = promisify(execFile);
 
@@ -50,12 +56,22 @@ export function consoleEnv(env = process.env, execPath = process.execPath) {
   return { ...env, PATH: [dirname(execPath), env.PATH].filter(Boolean).join(':') };
 }
 
-export function routineRoutes({ read = async () => {
-  const { stdout } = await exec('/Users/laa/.local/bin/laa-console', ['jobs'], { timeout: 20000, maxBuffer: 4 * 1024 * 1024, env: consoleEnv() });
-  return JSON.parse(stdout);
-} } = {}) {
+export function routineRoutes({
+  read = async () => {
+    const { stdout } = await exec('/Users/laa/.local/bin/laa-console', ['jobs'], { timeout: 60000, maxBuffer: 4 * 1024 * 1024, env: consoleEnv() });
+    return JSON.parse(stdout);
+  },
+  freshMs = 60000, firstWaitMs = 250, now = () => Date.now(),
+} = {}) {
+  const cache = createReadCache({ read: async () => projectRoutines(await read()), freshMs, waitMs: 0, firstWaitMs, now });
+  // Warm at startup so the app does not pay for the first Console run.
+  cache.warm();
   return [{ method: 'GET', path: '/v1/routines', auth: true, scope: 'sessions:read', handler: async () => {
-    try { return { status: 200, data: { items: projectRoutines(await read()), nextCursor: null } }; }
-    catch { throw new BridgeError(503, 'routines_unavailable', 'routine observations unavailable', { retryable: true }); }
+    let entry = null;
+    try { entry = await cache.get(); } catch { /* nothing has ever been read */ }
+    if (entry === null || entry.fetchedAt === null) {
+      throw new BridgeError(503, 'routines_unavailable', 'routine observations unavailable', { retryable: true });
+    }
+    return { status: 200, data: { items: entry.value, nextCursor: null, fetchedAt: new Date(entry.fetchedAt).toISOString() } };
   } }];
 }

@@ -72,6 +72,9 @@ export function createStudioBackend({
       } catch (error) {
         if (error?.name === 'AbortError') throw error;
         if (attempt === 0 && (error?.code === 'ENOENT' || error?.code === 'ECONNREFUSED' || error?.code === 'studio_not_connected')) {
+          // A read never waits for Studio to start: it is launched behind the
+          // request and the answer is "not connected" now, not in eight seconds.
+          if (args.waitForStart === false) { void startOnce().catch(() => {}); throw unavailable(); }
           if (await startOnce()) context.startedStudio = true;
         } else if (attempt === 0) {
           // A timeout or reset may follow a completed mutation: do not replay it.
@@ -129,8 +132,8 @@ export function createStudioBackend({
     throw new BridgeError(502, 'studio_response_invalid', 'Studio could not process the request');
   }
   return {
-    snapshot: () => json({ path: '/api/studio/snapshot', timeoutMs: controlTimeoutMs }),
-    catalog: (ifNoneMatch) => json({ path: '/api/studio/catalog', ifNoneMatch, timeoutMs: catalogTimeoutMs }, undefined, { catalog: true }),
+    snapshot: () => json({ path: '/api/studio/snapshot', timeoutMs: controlTimeoutMs, waitForStart: false }),
+    catalog: (ifNoneMatch) => json({ path: '/api/studio/catalog', ifNoneMatch, timeoutMs: catalogTimeoutMs, waitForStart: false }, undefined, { catalog: true }),
     project: (id) => json({ path: `/api/studio/projects/${id}`, timeoutMs: controlTimeoutMs }),
     review: (body) => json({ path: '/api/studio/reviews', method: 'POST', body, timeoutMs: controlTimeoutMs }, undefined, { withStatus: true }),
     getRequest: (id) => json({ path: `/api/studio/requests/${id}` }),

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
+import { createLastGood, createReadCache } from '../cache.mjs';
 import { BridgeError } from '../errors.mjs';
 import { createStudioBackend } from '../studio/backend.mjs';
 import { parseBody, validateAction, validateRequest, validateReview } from '../studio/validation.mjs';
@@ -38,14 +39,34 @@ function validateAnswer(action, record) {
   }
 }
 
-export function studioRoutes({ backend = createStudioBackend() } = {}) {
-  async function snapshot() { return { status: 200, data: await backend.snapshot() }; }
+export function studioRoutes({ backend = createStudioBackend(), now = () => Date.now() } = {}) {
+  // Reads must not wait on a slow or absent Studio: the last good answer is
+  // served with `fetchedAt`, and one refresh runs behind it.
+  const snapshots = createReadCache({ read: () => backend.snapshot(), waitMs: 1500, cooldownMs: 5000, now });
+  const catalogs = createLastGood({ now });
+  const iso = (ms) => new Date(ms).toISOString();
+  async function snapshot() {
+    const { value, fetchedAt, stale, error } = await snapshots.get();
+    // The first answer decides the shape; a cached one is marked, never reshaped.
+    if (fetchedAt === null) throw new BridgeError(503, 'studio_not_connected', 'Studio is not connected on the Mac', { retryable: true });
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new BridgeError(502, 'studio_response_invalid', 'Studio returned an invalid snapshot');
+    }
+    const offline = stale && error?.code === 'studio_not_connected';
+    return { status: 200, data: { ...value, ...(offline ? { online: false, accepting: false } : {}),
+      fetchedAt: iso(fetchedAt), ...(stale ? { stale: true } : {}) } };
+  }
   async function catalog({ req, res, requestId }) {
     const ifNoneMatch = req.headers['if-none-match'];
     if (ifNoneMatch !== undefined && (typeof ifNoneMatch !== 'string' || ifNoneMatch.length > 1024)) {
       throw new BridgeError(400, 'studio_payload_invalid', 'Invalid If-None-Match header');
     }
-    const result = await backend.catalog(ifNoneMatch);
+    let result;
+    try { result = await backend.catalog(ifNoneMatch); }
+    catch (error) {
+      const cached = catalogs.fallback(error);
+      return { status: 200, data: { ...cached.value.data, fetchedAt: iso(cached.fetchedAt), stale: true }, headers: { etag: cached.value.etag } };
+    }
     if (typeof result.etag !== 'string' || !result.etag || result.etag.length > 1024 ||
         (result.status === 304 ? !ifNoneMatch : result.status !== 200)) {
       throw new BridgeError(502, 'studio_response_invalid', 'Studio returned an invalid catalog response');
@@ -56,7 +77,9 @@ export function studioRoutes({ backend = createStudioBackend() } = {}) {
       res.end();
       return;
     }
-    return { status: 200, data: result.data, headers };
+    catalogs.accept({ data: result.data, etag: result.etag });
+    const { fetchedAt } = catalogs.peek();
+    return { status: 200, data: { ...result.data, fetchedAt: iso(fetchedAt) }, headers };
   }
   async function project({ params }) { return { status: 200, data: await backend.project(params[0]) }; }
   async function review({ rawBody }) {

@@ -30,7 +30,8 @@ export async function startBridge({ now, testEndpoints = true, drive = null, wor
     ...(ownerTasks ? { ownerTasks } : {}),
     ...(linearOwnerTasks ? { linearOwnerTasks } : {}),
     ...(skills ? { skills } : {}),
-    ...(routines ? { routines } : {}),
+    // A stub keeps every test from spawning the real `laa-console jobs` at startup.
+    routines: routines ?? { read: async () => ({ data: [] }) },
     ...(calendar ? { calendar } : {}),
     ...(instructions ? { instructions } : {}),
   };

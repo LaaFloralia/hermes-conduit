@@ -38,7 +38,7 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 
 ## 4. 契約
 
-`GET /v1/usage` はscope `usage:read` を要求し、`{data:{items,nextCursor},requestId}` を返す。個々のitemは `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。欠測・期限超過・失敗・手動確認のみの項目は `availability:unavailable`、`value:null`、理由を返し、数値を含むdetailを返さない。0は正常に取得した値が0の場合だけ。
+`GET /v1/usage` はscope `usage:read` を要求し、`{data:{items,nextCursor,fetchedAt},requestId}` を返す。`fetchedAt` は表示中のfeedを受け取った時刻（未取得はnull）で、要求はその読み取りを待たない。個々のitemは `{id,kind,label,value,unit,source,observedAt,availability,stale,estimated,expired,nullReason?,detail?}`。欠測・期限超過・失敗・手動確認のみの項目は `availability:unavailable`、`value:null`、理由を返し、数値を含むdetailを返さない。0は正常に取得した値が0の場合だけ。
 
 - 自動取得項目の期限 `detail.freshUntil` はproviderの `updatedAt`、feedの `fetchedAt`、受信時刻の最も早い時刻から10分以内。provider側の期限がさらに早ければそちらを採用する。期限ちょうどから値を消す。時計差のため未来120秒まで許容し、期限の起点は受信時刻を超えない。時刻の欠落・120秒超の未来・不正は取得失敗とする。
 - `verified` や手動確認だけの値は自動取得なしとし、数値を返さない。quotaのいずれかのresetが経過した場合も値を消す。付帯クレジットの取得時刻は別に評価する。手動reset passは返さない。

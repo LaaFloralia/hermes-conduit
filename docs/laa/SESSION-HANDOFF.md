@@ -22,32 +22,26 @@
 
 | 役 | モデル・経路 | 担当 |
 |---|---|---|
-| 親 | 社長が選んだモデル（現在 Opus 5.5） | 指摘の登録、分担、統合、検証、TestFlightとMac版の署名・公証（秘密を扱うため親だけ） |
-| アプリの実装・試験 | GPT-6.1 Sol High（Paseo codex） | シミュレーター・画面撮影を伴う重要・複雑な実装と試験。アプリ側と契約が密に結び付くBridge変更も、その機能の担当がまとめて実装する（2026-11-01、統合の失敗を減らすため） |
-| 通常の実装・調査・文書 | DeepSeek V4.1 Flash High／Max（Paseo dsh） | 単独のBridge・スクリプト等のコード（CLIのビルドと単体テストまで）、調査、文書 |
+| 親 | 社長が選んだモデル（その時点の指定を維持する） | 指摘の登録、分担、統合、検証、TestFlightとMac版の署名・公証（秘密を扱うため親だけ） |
+| 実装・試験・調査 | 公式DSHのDeepSeek V4.1 Flash（High／Max） | 担当ごとに `git worktree` を分け、アプリ・Bridge・スクリプトの実装から単体・UI試験、CLI検証まで持つ。シミュレーターを使う作業も含む |
 | デザイン | design-worker（Opus High） | 外観・Studioの視覚案 |
 
-Terraは、単純で結果を直接照合できる代替だけに使う。独立レビューは原則行わない（2026-11-02 社長指示）。記録の上書き・削除、認証・秘密、お金に関わる部分だけ、親が必要と判断した時に親・実装者と別系統で行う。
+通常の分担は公式DSHのDeepSeekを第一候補にする（2026-11-02 社長指示）。社長が指定したモデル・提供元・推論は変えない。Terraは単純で結果を直接照合できる代替だけに使う。Claudeのサブエージェントはdesign-workerだけ。独立レビューは原則行わない（2026-11-02 社長指示）。記録の上書き・削除、認証・秘密、お金に関わる部分だけ、親が必要と判断した時に親・実装者と別系統で行う。
 
-DSHとTerraは、分担に合う範囲で量の上限を気にせず使ってよい（2026-11-01 社長指示）。Codexの週の枠が尽きてもクレジットで動く（2026-11-01に確認。残りはUsageのCodexの `credits` で見る）。
-
-Claudeのサブエージェントは使わない（design-workerだけ例外）。起動はHQ `tools/PASEO-HERMES.md` の「サブエージェントの統一起動」に従い、親のIDを保ったまま同じワークスペースに置く（新規ワークスペース・detachは使わない）。作業ファイルは担当が `git worktree add` で分ける。起動例:
+担当は再委譲しない。起動はHQ `tools/PASEO-HERMES.md` の「サブエージェントの統一起動」に従い、親のIDを保ったまま同じワークスペースのサブエージェントへ置く。子専用ワークスペース・detach・画面に出ない独立CLI workerは使わない。作業ファイルだけを `git worktree add` で分ける。起動例:
 
 ```sh
-# アプリの実装（担当が /Users/laa/work/<作業>-<日付> に branch laa/<作業> のworktreeを作る）
-paseo run --background --json --provider codex --model gpt-6.1-sol --thinking high \
-  --title "子｜LAAアプリ｜<作業>" --cwd /Users/laa "$(cat <指示ファイル>)"
-# 通常の実装・調査
+# 担当は /Users/laa/work/<作業>-<日付> に branch laa/<作業> のworktreeを作る
 paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --thinking high \
   --title "子｜LAAアプリ｜<作業>" --cwd /Users/laa "$(cat <指示ファイル>)"
 ```
 
-起動後は `paseo inspect <id> --json` で実際のモデル・推論と親IDを照合する。待つ時は `scripts/laa/wait-agents.sh any|all <id>…` を使う。
+起動後は `paseo inspect <id> --json` で実際のモデル・推論・親IDを照合する。待つ時は `scripts/laa/wait-agents.sh any|all <id>…` を使う。
 
 ## 指摘の回し方
 
 1. 社長の指摘は1件1課題でLinear「LAAアプリ」に登録する。担当なし・Todo、題名に番号を付けず、画面（会話・仕事・Brain・素材・Usage・通話・ウィジェット・設定）が分かる短い文にする。指摘はエージェントが直す作業なので、共通指示の「社長の新規タスク」とは扱いを分ける。社長の判断や本人操作が要るものだけLAA担当にする。登録は接続済みのLinear MCP（`save_issue`、team `LAA`、project `LAAアプリ`）で行う。
-2. 親は同じ画面の指摘を束ね、所有ファイルが重ならない単位でTerraへ並行に渡す。指示は下の「worker共通指示」に、課題ID・対象・所有ファイル・完了条件を足す。
+2. 親は同じ画面の指摘を束ね、所有ファイルが重ならない単位で担当へ並行に渡す。指示は下の「worker共通指示」に、課題ID・対象・所有ファイル・完了条件を足す。
 3. 候補は1件ずつ下のゲートを通してmasterへ入れる。親は統合のたびにTestFlightへ出し（まとめて待たない。社長の指摘 2026-11-01）、社長が実機で確かめてから課題を閉じる。
 
 ## シミュレーターとMacの負荷

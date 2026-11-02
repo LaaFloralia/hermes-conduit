@@ -164,7 +164,8 @@
         }
       }
     ],
-    "nextCursor": null
+    "nextCursor": null,
+    "fetchedAt": "2026-10-29T04:49:30Z"
   },
   "requestId": "usage-normal-fixture"
 }

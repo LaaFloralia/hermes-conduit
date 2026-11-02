@@ -10,6 +10,10 @@
 // and no missing reading is ever reported as 0.
 //
 // The feed is refreshed in the background; requests never wait for upstream.
+// Measured on the production Bridge (2026-11-02): p50 9 ms, and the 1-5 s tail
+// coincides with heavy child processes on the Mac (routines, Linear owner tasks,
+// Studio), not with the proxy read, which this handler never waits for. `fetchedAt`
+// reports when the served snapshot was received, not when it was asked for.
 
 import {
   resolveStorageStatusFile,
@@ -64,7 +68,7 @@ export function usageRoutes({
         items = unavailableUsageItems('fetch_failed');
       }
     }
-    return { status: 200, data: { items, nextCursor: null } };
+    return { status: 200, data: { items, nextCursor: null, fetchedAt: receivedAt === null ? null : new Date(receivedAt).toISOString() } };
   }
 
   async function macStatus() {

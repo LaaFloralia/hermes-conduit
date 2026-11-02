@@ -1,6 +1,6 @@
 # /v1/usage・/v1/mac/status のfixture
 
-[USAGE.md](../../USAGE.md) の契約に対応する応答例。値は匿名化した例で、実測値のコピーではない。`data.items`・`data.nextCursor`・`requestId` の封筒は [BRIDGE.md](../../BRIDGE.md) §3に合わせる。
+[USAGE.md](../../USAGE.md) の契約に対応する応答例。値は匿名化した例で、実測値のコピーではない。`data.items`・`data.nextCursor`・`data.fetchedAt`（`/v1/usage` のみ、未取得は null）・`requestId` の封筒は [BRIDGE.md](../../BRIDGE.md) §3に合わせる。
 
 | file | 何を示すか |
 |---|---|
