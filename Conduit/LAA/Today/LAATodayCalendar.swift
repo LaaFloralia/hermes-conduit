@@ -3,14 +3,24 @@ import Combine
 import Foundation
 import WidgetKit
 
-struct LAACalendarResponse: Decodable {
-    struct Event: Decodable {
+struct LAACalendarResponse: Codable {
+    struct Event: Codable {
         let id: String
         let title: String
         let start: String
         let end: String
         let allDay: Bool
         let location: String?
+
+        var calendarId: String? = nil
+        var description: String? = nil
+        var meetingLink: String? = nil
+        var etag: String? = nil
+        var attendees: [LAACalendarAttendee]? = nil
+        var attachments: [LAACalendarAttachment]? = nil
+        var recurrence: [String]? = nil
+        var recurringEventId: String? = nil
+        var timeZone: String? = nil
 
         func value(calendar inputCalendar: Calendar = .current) throws -> LAACalendarEvent {
             var calendar = Calendar(identifier: .gregorian)
@@ -33,7 +43,11 @@ struct LAACalendarResponse: Decodable {
                 return formatter.date(from: text)
             }
             guard let first = date(start), let last = date(end), first < last else { throw LAABridgeError.invalidResponse }
-            return LAACalendarEvent(id: id, title: title, start: first, end: last, allDay: allDay, location: location)
+            var event = LAACalendarEvent(id: calendarId.map { $0 + ":" + id } ?? id, title: title, start: first, end: last, allDay: allDay, location: location)
+            event.googleID = id; event.calendarId = calendarId; event.notes = description; event.meetingLink = meetingLink
+            event.etag = etag; event.attendees = attendees; event.attachments = attachments; event.recurrence = recurrence
+            event.recurringEventId = recurringEventId; event.timeZone = timeZone
+            return event
         }
     }
     let items: [Event]
@@ -44,6 +58,11 @@ struct LAACalendarResponse: Decodable {
     @Published private(set) var isLoading = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var loaded = false
+    @Published private(set) var calendars: [LAAGoogleCalendar] = []
+    @Published var selectedCalendarIDs: Set<String> = []
+    @Published var selectedDate = Date()
+    @Published var mode: LAACalendarMode = .list
+    private var cacheKey: String?
     private var generation = 0
     // LAA personal copy is rendered with Text(verbatim:).
     private static let connectMessage = "予定を表示するには、Macに接続してください。"
@@ -60,11 +79,57 @@ struct LAACalendarResponse: Decodable {
     }
 
     func refresh(bridge: LAABridgeSession, now: Date = Date()) async {
-        await refresh(isPaired: bridge.status == .paired, now: now) {
-            let response: LAABridgeResponse<LAACalendarResponse> = try await bridge.request(
-                method: "GET", path: Self.requestPath(now: now), timeout: 20)
-            return response.data
+        guard bridge.status == .paired, let deviceID = bridge.deviceID else {
+            cacheKey = nil; calendars = []; selectedCalendarIDs = []
+            await refresh(isPaired: false) { LAACalendarResponse(items: []) }; return
         }
+        let identity = deviceID + ":calendar"
+        if cacheKey != identity {
+            cacheKey = identity
+            let cached = LAAGoogleCache.read(LAACalendarLocalState.self, key: identity)
+            calendars = cached?.calendars ?? []; selectedCalendarIDs = Set(cached?.selectedIDs ?? [])
+            events = cached?.events ?? []; loaded = cached != nil
+        }
+        isLoading = true; errorMessage = nil
+        generation += 1; let current = generation
+        defer { if current == generation { isLoading = false } }
+        do {
+            let list: LAABridgeResponse<LAAGoogleCalendarList> = try await bridge.request(method: "GET", path: "/v1/calendar/calendars")
+            guard current == generation else { return }
+            let previous = Set(calendars.map(\.id))
+            calendars = list.data.items
+            if previous.isEmpty { selectedCalendarIDs = Set(calendars.filter(\.selected).map(\.id)) }
+            else { selectedCalendarIDs.formIntersection(Set(calendars.map(\.id))) }
+            if selectedCalendarIDs.isEmpty {
+                events = []; loaded = true; saveLocal()
+                LAACalendarSnapshot.save(nil)
+                WidgetCenter.shared.reloadTimelines(ofKind: "LAANextEvent")
+                return
+            }
+            let range = mode.range(containing: selectedDate)
+            var parts = URLComponents(); parts.path = "/v1/calendar/events"
+            let iso = ISO8601DateFormatter()
+            parts.queryItems = [URLQueryItem(name: "start", value: iso.string(from: range.start)), URLQueryItem(name: "end", value: iso.string(from: range.end))]
+                + selectedCalendarIDs.sorted().map { URLQueryItem(name: "calendarId", value: $0) }
+            parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+            let response: LAABridgeResponse<LAACalendarResponse> = try await bridge.request(method: "GET", path: parts.string!, timeout: 30)
+            let values = try response.data.items.map { try $0.value() }.sorted { $0.start < $1.start }
+            guard current == generation, !Task.isCancelled else { return }
+            events = values; loaded = true; saveLocal()
+            // Only publish a next-event snapshot when this range contains now.
+            if range.start <= now && range.end > now {
+                LAACalendarSnapshot.save(.init(updatedAt: now, events: values))
+                WidgetCenter.shared.reloadTimelines(ofKind: "LAANextEvent")
+            }
+        } catch {
+            guard current == generation, !Task.isCancelled else { return }
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    private func saveLocal() {
+        guard let cacheKey else { return }
+        LAAGoogleCache.save(LAACalendarLocalState(calendars: calendars, selectedIDs: Array(selectedCalendarIDs), events: events), key: cacheKey)
     }
 
     func refresh(isPaired: Bool, now: Date = Date(), load: () async throws -> LAACalendarResponse) async {
@@ -116,7 +181,9 @@ struct LAACalendarResponse: Decodable {
     }
 
     #if DEBUG
-    init(eventsForTesting: [LAACalendarEvent]? = nil, errorForTesting: String? = nil) {
+    init(eventsForTesting: [LAACalendarEvent]? = nil, errorForTesting: String? = nil, calendarsForTesting: [LAAGoogleCalendar] = []) {
+        calendars = calendarsForTesting
+        selectedCalendarIDs = Set(calendarsForTesting.map(\.id))
         events = eventsForTesting ?? []
         loaded = eventsForTesting != nil
         errorMessage = errorForTesting

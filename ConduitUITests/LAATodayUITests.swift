@@ -5,7 +5,7 @@ final class LAATodayUITests: XCTestCase {
     func testTodayAppearanceSnapshots() {
         for appearance in ["light", "dark"] {
             let app = XCUIApplication()
-            app.launchArguments += ["-laa-tab", "today", "-conduit.themePreference", appearance]
+            app.launchArguments += ["-laa-tab", "today", "-LAA_UI_TEST_ISOLATED_BRIDGE", "-conduit.themePreference", appearance]
             app.launch()
             XCTAssertTrue(app.staticTexts["laa.today.title"].waitForExistence(timeout: 30))
             let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
@@ -17,7 +17,7 @@ final class LAATodayUITests: XCTestCase {
     }
     func testTodayAndTabs() {
         let app = XCUIApplication()
-        app.launchArguments += ["-laa-tab", "today"]
+        app.launchArguments += ["-laa-tab", "today", "-LAA_UI_TEST_ISOLATED_BRIDGE"]
         app.launch()
         XCTAssertTrue(app.staticTexts["laa.today.title"].waitForExistence(timeout: 30))
         for name in ["Chat", "Work", "Today", "Brain", "Studio"] {

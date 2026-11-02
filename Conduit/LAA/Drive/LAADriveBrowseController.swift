@@ -27,12 +27,12 @@ final class LAADriveBrowseController: ObservableObject {
         loading = false; error = nil; incompleteSearch = nil
     }
 
-    func reload(_ requested: LAADriveBrowseQuery, using load: Loader) async {
+    func reload(_ requested: LAADriveBrowseQuery, cached: LAADriveListingPage? = nil, using load: Loader) async {
         generation &+= 1
         let expectedGeneration = generation
         let initial = LAADriveBrowseQuery(section: requested.section, folderID: requested.folderID,
                                           search: requested.search, pageSize: requested.pageSize)
-        query = initial; items = []; cursor = nil; seenCursors = []
+        query = initial; items = cached?.items ?? []; cursor = nil; seenCursors = []
         incompleteSearch = nil; error = nil
         guard initial.path != nil else { loading = false; error = LAADriveBrowseError.invalidQuery; return }
         loading = true

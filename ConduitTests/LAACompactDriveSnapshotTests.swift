@@ -14,6 +14,7 @@ final class LAACompactDriveSnapshotTests: XCTestCase {
         let pdf = try item("doc1", "Notes", "application/pdf")
         for style in [UIUserInterfaceStyle.light, .dark] {
             try capture("assets", style, bridge) { AnyView(LAAAssetsView(onRequestSettings: {})) }
+            try capture("upload", style, bridge) { AnyView(LAADriveUpload(folderId: nil, completed: {})) }
             try capture("details", style, bridge) { AnyView(LAADriveDetailView(item: video)) }
             try capture("player", style, bridge) { AnyView(LAADrivePreviewView(item: video)) }
             try capture("image", style, bridge) { AnyView(LAADrivePreviewView(item: image)) }
