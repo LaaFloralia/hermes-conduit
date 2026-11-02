@@ -36,7 +36,7 @@ Usage:
   laa-bridge devices [--json]              list paired devices
   laa-bridge revoke <device-id|prefix>     revoke one device (--reason <text>)
   laa-bridge grant <device-id|prefix> --scopes <list> --reason <text>
-                                            add calendar:read, brain:create or brain:owner
+                                            add calendar:read, calendar:write, brain:create, brain:owner or media:write
   laa-bridge grant-studio <device-id|prefix> --reason <text>  grant Studio scopes
   laa-bridge grant-instructions <device-id|prefix> --reason <text>  grant instruction scopes
   laa-bridge status [--json]               local health check of the running service
