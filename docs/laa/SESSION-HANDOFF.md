@@ -18,30 +18,31 @@
 
 ## 体制
 
+モデル・推論・分担の正本はHQ `guide/models.md`。このrepoでの配置だけを置く。
+
 | 役 | モデル・経路 | 担当 |
 |---|---|---|
 | 親 | 社長が選んだモデル（現在 Opus 5.5） | 指摘の登録、分担、統合、検証、TestFlightとMac版の署名・公証（秘密を扱うため親だけ） |
-| PC操作を伴う実装・試験 | GPT-6.1 Terra max（Paseo codex） | シミュレーター・画面撮影・Macでの起動確認を伴うアプリの実装と試験 |
-| それ以外の実装・レビュー | DeepSeek V4.1 Flash max（Paseo dsh） | 単独のBridge・スクリプト等のコード（CLIのビルドと単体テストまで）、独立レビュー、調査、文書。アプリ側と契約が密に結び付くBridge変更は、その機能のTerra担当がまとめて実装する（2026-11-01、統合の失敗を減らすため） |
-| デザイン | design-worker | Studioでの視覚案（必要な時だけ） |
+| アプリの実装・試験 | GPT-6.1 Sol High（Paseo codex） | シミュレーター・画面撮影を伴う重要・複雑な実装と試験。アプリ側と契約が密に結び付くBridge変更も、その機能の担当がまとめて実装する（2026-11-01、統合の失敗を減らすため） |
+| 通常の実装・調査・文書 | DeepSeek V4.1 Flash High／Max（Paseo dsh） | 単独のBridge・スクリプト等のコード（CLIのビルドと単体テストまで）、調査、文書 |
+| デザイン | design-worker（Opus High） | 外観・Studioの視覚案 |
 
-独立レビューは実装者と別系統にする（Terraの実装はDSH、DSHの実装はTerraが見る。2026-10-31 社長指示）。
+Terraは、単純で結果を直接照合できる代替だけに使う。独立レビューは原則行わない（2026-11-02 社長指示）。記録の上書き・削除、認証・秘密、お金に関わる部分だけ、親が必要と判断した時に親・実装者と別系統で行う。
 
 DSHとTerraは、分担に合う範囲で量の上限を気にせず使ってよい（2026-11-01 社長指示）。Codexの週の枠が尽きてもクレジットで動く（2026-11-01に確認。残りはUsageのCodexの `credits` で見る）。
 
-Claudeのサブエージェントは使わない（design-workerだけ例外）。起動例:
+Claudeのサブエージェントは使わない（design-workerだけ例外）。起動はHQ `tools/PASEO-HERMES.md` の「サブエージェントの統一起動」に従い、親のIDを保ったまま同じワークスペースに置く（新規ワークスペース・detachは使わない）。作業ファイルは担当が `git worktree add` で分ける。起動例:
 
 ```sh
-# iOS実装（専用worktree）
-paseo run -d --provider codex --model gpt-6.1-terra --thinking max --mode full-access \
-  --title "子｜LAAアプリ｜<作業>" --new-workspace worktree --worktree-mode branch-off \
-  --new-branch laa/<作業> --base master "$(cat <指示ファイル>)"
-# レビュー・調査
-paseo run -d --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --thinking max \
-  --title "子｜LAAアプリ｜<作業>" "$(cat <指示ファイル>)"
+# アプリの実装（担当が /Users/laa/work/<作業>-<日付> に branch laa/<作業> のworktreeを作る）
+paseo run --background --json --provider codex --model gpt-6.1-sol --thinking high \
+  --title "子｜LAAアプリ｜<作業>" --cwd /Users/laa "$(cat <指示ファイル>)"
+# 通常の実装・調査
+paseo run --background --json --provider dsh --model '["opencode-go","deepseek-v4.1-flash"]' --thinking high \
+  --title "子｜LAAアプリ｜<作業>" --cwd /Users/laa "$(cat <指示ファイル>)"
 ```
 
-起動後は `paseo inspect <id> --json` で実際のモデル・推論を照合する。待つ時は `scripts/laa/wait-agents.sh any|all <id>…` を使う。
+起動後は `paseo inspect <id> --json` で実際のモデル・推論と親IDを照合する。待つ時は `scripts/laa/wait-agents.sh any|all <id>…` を使う。
 
 ## 指摘の回し方
 
