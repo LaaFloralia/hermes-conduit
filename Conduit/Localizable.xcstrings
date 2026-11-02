@@ -372423,79 +372423,79 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wöchentlich"
+            "value" : "Weekly"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Semanal"
+            "value" : "Weekly"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hebdomadaire"
+            "value" : "Weekly"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mingguan"
+            "value" : "Weekly"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Settimanale"
+            "value" : "Weekly"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ウィークリー"
+            "value" : "Weekly"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "주간"
+            "value" : "Weekly"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tygodniowy"
+            "value" : "Weekly"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Semanal"
+            "value" : "Weekly"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Недельный"
+            "value" : "Weekly"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Haftalık"
+            "value" : "Weekly"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每周"
+            "value" : "Weekly"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每週"
+            "value" : "Weekly"
           }
         }
       }

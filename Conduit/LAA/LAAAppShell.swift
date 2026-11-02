@@ -73,7 +73,7 @@ struct LAAAppShell: View {
                 while !Task.isCancelled {
                     do { try await Task.sleep(for: .seconds(120)) } catch { return }
                     guard !Task.isCancelled else { return }
-                    await usageState.refreshAndPublish(bridge: bridge)
+                    await usageState.refreshAutomatically(bridge: bridge)
                 }
             }
             .onChange(of: scenePhase) { _, phase in

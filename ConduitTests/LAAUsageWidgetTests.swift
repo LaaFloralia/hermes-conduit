@@ -37,7 +37,7 @@ final class LAAUsageWidgetTests: XCTestCase {
         ["label": label, "remainingPercent": percent, "windowMinutes": minutes, "resetsAt": "2030-01-01T00:00:00Z"]
     }
 
-    func testSevenRowsKeepTheOwnerPriorityOrderAndLabels() throws {
+    func testEightRowsKeepTheOwnerPriorityOrderAndLabels() throws {
         let items = try [
             item("liquid", kind: "usage", label: "Liquid AI", value: 123, unit: "tokens",
                  detail: ["recordedCostUsd": 1.31]),
@@ -46,16 +46,17 @@ final class LAAUsageWidgetTests: XCTestCase {
             item("openai-api", kind: "cost-month", label: "GPT API", value: 4.5, unit: "usd",
                  detail: ["sourceLag": "undisclosed", "periodTimezone": "UTC"]),
             item("venice", kind: "balance", label: "Venice", value: 9, unit: "usd"),
+            item("magnific", kind: "credits", label: "Magnific", value: 2100, unit: "credits"),
             item("claude", windows: [weekly(62)]),
             item("codex", windows: [weekly(35)]),
             item("opencode-go", windows: [weekly(72), weekly(40, minutes: 300, label: "5時間")]),
         ]
-        let weekly = AppLocalization.string("Weekly")
+        let weekly = "Weekly"
         let result = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
         XCTAssertEqual(result.meters.map(\.label),
-                       ["Codex", "OpenCode", "Claude"].map { "\($0) \(weekly)" } + ["Venice", "GPT API", "Claude API", "Liquid AI"])
-        XCTAssertEqual(result.meters.map(\.unit), [.percent, .percent, .percent, .usd, .usd, .usd, .usd])
-        XCTAssertEqual(result.meters.map(\.amount), [35, 72, 62, 9, 4.5, 17.25, 1.31])
+                       ["Codex", "OpenCode", "Claude"].map { "\($0) \(weekly)" } + ["Venice", "Magnific", "GPT API", "Claude API", "Liquid AI"])
+        XCTAssertEqual(result.meters.map(\.unit), [.percent, .percent, .percent, .usd, .credits, .usd, .usd, .usd])
+        XCTAssertEqual(result.meters.map(\.amount), [35, 72, 62, 9, 2100, 4.5, 17.25, 1.31])
         XCTAssertTrue(result.meters.allSatisfy(\.available))
         XCTAssertEqual(result.checkedAt, now)
     }
@@ -63,7 +64,7 @@ final class LAAUsageWidgetTests: XCTestCase {
     func testWeeklyWindowIsChosenOverALowerFiveHourWindow() throws {
         let items = try [item("codex", windows: [weekly(5, minutes: 300, label: "Session"), weekly(80)])]
         let meter = try XCTUnwrap(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.first)
-        XCTAssertEqual(meter.label, "Codex " + AppLocalization.string("Weekly"))
+        XCTAssertEqual(meter.label, "Codex " + "Weekly")
         XCTAssertEqual(meter.amount, 80)
     }
 
@@ -77,7 +78,7 @@ final class LAAUsageWidgetTests: XCTestCase {
             item("claude", observedAt: "2026-10-30T20:00:00Z", windows: [weekly(90)]), // older than the window
         ]
         let result = LAAWidgetUsageBuilder.make(items: items, receivedAt: now)
-        let weekly = AppLocalization.string("Weekly")
+        let weekly = "Weekly"
         XCTAssertEqual(result.meters.map(\.label),
                        ["Codex", "OpenCode", "Claude"].map { "\($0) \(weekly)" } + ["GPT API", "Claude API"])
         XCTAssertEqual(result.meters.map(\.available), [true, false, false, false, false])
@@ -93,7 +94,7 @@ final class LAAUsageWidgetTests: XCTestCase {
             item("claude", windows: [weekly(20)]),
         ]
         XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.map(\.label),
-                       ["Claude " + AppLocalization.string("Weekly")])
+                       ["Claude " + "Weekly"])
     }
 
     func testSnapshotCacheSurvivesOtherPublicationsAndCanBeCleared() throws {
@@ -178,12 +179,23 @@ final class LAAUsageWidgetTests: XCTestCase {
                          unavailable("google-flow"), unavailable("magnific", label: "Magnific"),
                          unavailable("antigravity"), unavailable("codex"), unavailable("claude")]
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).map(\.id), ["provider.codex", "provider.claude", "provider.venice",
-            "provider.antigravity", "provider.magnific"])
-        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).first?.label, "Codex")
+            "provider.magnific"])
+        XCTAssertEqual(LAAUsageGroup.consoleGroups(items).first?.label, "Codex Weekly")
         let liquid = try item("liquid", kind: "usage", label: "Liquid AI", value: 1, unit: "tokens")
         XCTAssertEqual(LAAUsageGroup.consoleGroups([liquid]).map(\.label), ["Liquid AI"])
-        XCTAssertEqual(LAAUsageGroup.consoleGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode"])
+        XCTAssertEqual(LAAUsageGroup.consoleGroups([try item("opencode-go", label: "OpenCode Go")]).map(\.label), ["OpenCode Weekly"])
         XCTAssertEqual(LAAWidgetUsageBuilder.make(items: items, receivedAt: now).meters.count, 2)
+    }
+
+    func testMagnificUnavailableAndCreditSnapshotRoundTrip() throws {
+        let missing = try unavailable("magnific", kind: "credits", label: "Magnific")
+        let absent = LAAWidgetUsageBuilder.make(items: [missing], receivedAt: now)
+        XCTAssertEqual(absent.meters.first?.label, "Magnific")
+        XCTAssertEqual(absent.meters.first?.available, false)
+        let fresh = LAAWidgetUsageBuilder.make(items: [try item("magnific", kind: "credits", value: 1234, unit: "credits")], receivedAt: now)
+        let decoded = try JSONDecoder().decode(WidgetUsageSnapshot.self, from: JSONEncoder().encode(fresh))
+        XCTAssertEqual(decoded.displayableMeters.first?.unit, .credits)
+        XCTAssertEqual(decoded.displayableMeters.first?.amount, 1234)
     }
 
     func testWindowNamesAreOneWording() throws {
@@ -193,9 +205,9 @@ final class LAAUsageWidgetTests: XCTestCase {
                 "windowMinutes": minutes.map { $0 as Any } ?? NSNull(),
             ]))
         }
-        XCTAssertEqual(LAAUsageLabel.window(try window("週間", 10_080)), AppLocalization.string("Weekly"))
-        XCTAssertEqual(LAAUsageLabel.window(try window("Weekly", 10_080)), AppLocalization.string("Weekly"))
-        XCTAssertEqual(LAAUsageLabel.window(try window("週次プール", nil)), AppLocalization.string("Weekly"))
+        XCTAssertEqual(LAAUsageLabel.window(try window("週間", 10_080)), "Weekly")
+        XCTAssertEqual(LAAUsageLabel.window(try window("Weekly", 10_080)), "Weekly")
+        XCTAssertEqual(LAAUsageLabel.window(try window("週次プール", nil)), "Weekly")
         XCTAssertEqual(LAAUsageLabel.window(try window("月間", 43_200)), AppLocalization.string("Monthly"))
         XCTAssertEqual(LAAUsageLabel.window(try window("Session", 300)), "Session")
         XCTAssertEqual(LAAUsageLabel.window(try window("Claude/GPT", nil)), "Claude/GPT")

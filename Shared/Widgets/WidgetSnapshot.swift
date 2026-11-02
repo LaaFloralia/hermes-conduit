@@ -152,7 +152,7 @@ struct WidgetWorkspaceSnapshot: Codable, Hashable {
 /// usage rows carry US dollars. A row whose reading is missing keeps its place
 /// with no number, so the owner still sees that the item was not fetched.
 struct WidgetUsageMeter: Codable, Equatable, Identifiable {
-    enum Unit: String, Codable { case percent, usd }
+    enum Unit: String, Codable { case percent, usd, credits }
 
     let id: String
     let label: String
@@ -240,8 +240,8 @@ struct WidgetUsageMeter: Codable, Equatable, Identifiable {
 
 struct WidgetUsageSnapshot: Codable, Equatable {
     /// The owner's display order and labels are fixed in the app; the widget
-    /// only ever shows these seven providers.
-    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "venice", "openai-api", "claude-api", "liquid"]
+    /// only ever shows these eight providers.
+    static let shownProviders: Set<String> = ["codex", "opencode-go", "claude", "venice", "magnific", "openai-api", "claude-api", "liquid"]
 
     let meters: [WidgetUsageMeter]
     let checkedAt: Date?

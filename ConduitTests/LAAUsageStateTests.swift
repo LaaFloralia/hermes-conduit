@@ -101,6 +101,43 @@ final class LAAUsageStateTests: XCTestCase {
         XCTAssertEqual(calls, 2)
     }
 
+    func testPairingWhileUsageIsVisibleLoadsInitialSnapshot() async throws {
+        let reading = try quota()
+        var calls = 0
+        let state = LAAUsageState(widgetStore: nil, loader: { _ in calls += 1; return [reading] })
+        state.setPresented(true)
+        await state.synchronize(bridge: LAABridgeSession(statusForTesting: .unpaired), active: true)
+        XCTAssertEqual(calls, 0)
+        await state.synchronize(bridge: LAABridgeSession(statusForTesting: .paired), active: true)
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
+    }
+
+    func testVisibleUsageIgnoresAutomaticRefreshButAllowsManualRefresh() async throws {
+        let bridge = LAABridgeSession(statusForTesting: .paired)
+        let first = try quota(62)
+        let next = try quota(25)
+        var calls = 0
+        let state = LAAUsageState(widgetStore: nil, loader: { _ in
+            calls += 1
+            return [calls == 1 ? first : next]
+        })
+        await state.synchronize(bridge: bridge, active: true)
+        state.setPresented(true)
+        let displayedAt = state.usage.fetchedAt
+        await state.refreshAutomatically(bridge: bridge)
+        await state.synchronize(bridge: bridge, active: true)
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(state.usage.value?.first?.value, 62)
+        XCTAssertEqual(state.usage.fetchedAt, displayedAt)
+        await state.refreshAndPublish(bridge: bridge)
+        XCTAssertEqual(calls, 2)
+        XCTAssertEqual(state.usage.value?.first?.value, 25)
+        state.setPresented(false)
+        await state.refreshAutomatically(bridge: bridge)
+        XCTAssertEqual(calls, 3)
+    }
+
     func testFailedRefreshClearsWidgetSnapshotAndReloads() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

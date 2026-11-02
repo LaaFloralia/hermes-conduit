@@ -69,7 +69,7 @@ final class LAAUsageUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
-    func testReturningToUsageAfterIntervalRefreshes() throws {
+    func testVisibleUsageRemainsStableUntilManualRefresh() throws {
         guard (try? helper("health")) == "ok" else { throw XCTSkip("Run the local Usage fixture first.") }
         continueAfterFailure = false
         _ = try helper("mode/normal")
@@ -85,25 +85,17 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         connect.tap()
         try pair(app, port: 19492, codeRoute: "fixture-code")
-        XCTAssertTrue(app.staticTexts["Claude"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Claude Weekly"].waitForExistence(timeout: 30))
         XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
 
-        let chats = app.buttons["Chats"]
-        XCTAssertTrue(chats.waitForExistence(timeout: 10))
-        chats.tap()
-        // This UI-only interval is two seconds; the real 60-second boundary is unit tested.
-        RunLoop.current.run(until: Date().addingTimeInterval(3))
         let before = try XCTUnwrap(Int(helper("counts")))
-        XCTAssertGreaterThan(before, 0)
-        app.buttons["Work"].tap()
-        let deadline = Date().addingTimeInterval(15)
-        var after = before
-        while Date() < deadline && after == before {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-            after = try XCTUnwrap(Int(helper("counts")))
-        }
-        XCTAssertEqual(after, before + 1)
-        XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
+        _ = try helper("mode/stale")
+        RunLoop.current.run(until: Date().addingTimeInterval(6))
+        XCTAssertEqual(Int(try helper("counts")), before)
+        XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)
+        app.buttons["laa.usage.refresh"].tap()
+        XCTAssertTrue(text(containing: "更新待ち・取得できません", app: app).waitForExistence(timeout: 30))
+        XCTAssertEqual(Int(try helper("counts")), before + 1)
     }
 
     func testUsageRefreshAndFailureStates() throws {
@@ -128,7 +120,7 @@ final class LAAUsageUITests: XCTestCase {
             app.buttons["Connection"].tap()
         }
         try pair(app, port: 19492, codeRoute: "fixture-code")
-        XCTAssertTrue(app.staticTexts["Claude"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Claude Weekly"].waitForExistence(timeout: 30))
         let refresh = app.buttons["laa.usage.refresh"]
         XCTAssertTrue(enabled(refresh))
         XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)

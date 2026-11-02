@@ -156,6 +156,7 @@ struct LAAEmployeeWidgetView: View {
         // The rows are already in the owner's priority order: show as many as
         // fit, from the top, and drop the time and notice lines entirely.
         ViewThatFits(in: .vertical) {
+            usageList(meters: meters, limit: 8)
             usageList(meters: meters, limit: 7)
             usageList(meters: meters, limit: 6)
             usageList(meters: meters, limit: 5)
@@ -168,7 +169,7 @@ struct LAAEmployeeWidgetView: View {
     }
 
     private func usageList(meters: [WidgetUsageMeter], limit: Int) -> some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x1) {
+        VStack(alignment: .leading, spacing: LAASpacing.x1 / 4) {
             Text(verbatim: "AI Usage").laaTextStyle(.section).fontWeight(.bold)
                 .foregroundStyle(LAAColor.text).accessibilityAddTraits(.isHeader)
             if meters.isEmpty {
@@ -189,7 +190,7 @@ struct LAAEmployeeWidgetView: View {
             Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.75)
             Spacer(minLength: LAASpacing.x1)
             Text(verbatim: past ? "未取得" : Self.valueText(meter))
-                .monospacedDigit().lineLimit(1).layoutPriority(1)
+                .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
         }
         .laaTextStyle(.section)
         .foregroundStyle(past ? LAAColor.attention : LAAColor.text)
@@ -201,6 +202,7 @@ struct LAAEmployeeWidgetView: View {
         switch meter.unit {
         case .percent: return percentageText(meter.amount)
         case .usd: return "$" + meter.amount.formatted(.number.precision(.fractionLength(2)))
+        case .credits: return meter.amount.formatted(.number.precision(.fractionLength(0...2))) + " credits"
         }
     }
 

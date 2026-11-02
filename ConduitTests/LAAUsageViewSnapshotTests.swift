@@ -50,12 +50,15 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
             ["id": "provider.\(id).quota", "kind": "quota", "label": label, "value": percent,
              "unit": "percent", "source": "codexbar-usage-proxy", "observedAt": observed,
              "availability": "available", "stale": stale, "estimated": false, "expired": false,
-             "detail": ["freshUntil": freshUntil, "windows": [["label": "Session", "remainingPercent": percent, "resetsAt": reset]]]]
+             "detail": ["freshUntil": freshUntil, "windows": [["label": "週間", "windowMinutes": 10080, "remainingPercent": percent, "resetsAt": reset]]]]
         }
         json[0]["detail"] = ["freshUntil": freshUntil,
-            "windows": [["label": "Session", "remainingPercent": 62, "resetsAt": reset]],
+            "windows": [["label": "Weekly", "windowMinutes": 10080, "remainingPercent": 62, "resetsAt": reset]],
             "credits": ["remaining": 7, "updatedAt": observed]]
-        let balance: [String: Any] = ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "value": 3.5,
+        let balance: [String: Any] = ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "value": 236025,
+            "unit": "credits", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
+            "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "creditUnit": "AI credits"]]
+        let venice: [String: Any] = ["id": "provider.venice.balance", "kind": "balance", "label": "Venice", "value": 14.5,
             "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
             "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "currency": "USD"]]
         let costs: [[String: Any]] = [("claude-api", "Claude API", "typical-5m"), ("openai-api", "GPT API", "undisclosed")].flatMap { id, label, lag in
@@ -72,9 +75,9 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
             "detail": ["freshUntil": freshUntil, "recordedCostUsd": 1.31, "recordedRequestCount": 50, "lastRecordedAt": observed,
                        "models": [["inputTokens": 123, "outputTokens": 0]]]]
         if costOnly { json = costs }
-        else if balanceOnly { json = [balance] }
+        else if balanceOnly { json = [venice, balance] }
         else if extrasOnly { json = [json[0]] }
-        else { json = [d1] + json + [balance] + costs }
+        else { json = [d1] + json + [venice, balance] + costs }
         return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: json))
     }
 

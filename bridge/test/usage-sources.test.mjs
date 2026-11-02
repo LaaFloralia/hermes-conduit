@@ -432,3 +432,27 @@ test('the storage-guard status file is read as written, and bad files stay unava
   const absent = await readDiskStatus({ file: join(dir, 'nope.json'), now: () => NOW });
   assert.equal(absent.nullReason, 'not_configured');
 });
+
+
+test('Venice USD and Magnific credits keep their units and priority, without Antigravity', () => {
+  const items = projection([
+    { id: 'magnific', kind: 'unitCredits', available: true, source: 'live',
+      updatedAt: '2026-10-29T04:58:00Z', remaining: 2100, unit: 'AI credits' },
+    { id: 'venice', kind: 'balance', available: true, source: 'live',
+      updatedAt: '2026-10-29T04:58:00Z', amount: 14.5, currency: 'USD',
+      components: [{ kind: 'DIEM', amount: 2 }] },
+    { id: 'antigravity', available: true, updatedAt: '2026-10-29T04:58:00Z',
+      windows: [{ label: 'Weekly', remaining: 90 }] },
+  ]);
+  assert.deepEqual([...new Set(items.map(item => item.id.split('.')[1]))].slice(0, 8),
+    ['codex', 'opencode-go', 'claude', 'venice', 'magnific', 'openai-api', 'claude-api', 'liquid']);
+  assert.equal(items.some(item => item.id.startsWith('provider.antigravity.')), false);
+  const venice = byId(items, 'provider.venice.balance');
+  assert.equal(venice.unit, 'usd');
+  assert.equal(venice.value, 14.5);
+  assert.equal(venice.detail.components[0].amount, 2);
+  const magnific = byId(items, 'provider.magnific.credits');
+  assert.equal(magnific.unit, 'credits');
+  assert.equal(magnific.value, 2100);
+  assert.equal(magnific.detail.creditUnit, 'AI credits');
+});

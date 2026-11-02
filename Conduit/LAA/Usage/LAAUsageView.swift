@@ -37,7 +37,7 @@ struct LAAUsageView: View {
                     VStack(alignment: .leading, spacing: LAASpacing.section) {
                         header
                         if bridge.status != .paired { connectionCard }
-                        else { TimelineView(.periodic(from: .now, by: 5)) { _ in services } }
+                        else { services }
                     }
                     .padding(.horizontal, geometry.size.width < 360 ? LAASpacing.compactHorizontal : LAASpacing.horizontal)
                     .padding(.top, LAASpacing.x4)
@@ -63,9 +63,14 @@ struct LAAUsageView: View {
         .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
         .onAppear {
             guard automaticallyRefresh else { return }
-            Task { await state.refreshOnTabOpen(bridge: bridge, minimumInterval: 0) }
+            state.setPresented(true)
+            Task { await state.refreshOnTabOpen(bridge: bridge) }
         }
+        .onDisappear { if automaticallyRefresh { state.setPresented(false) } }
     }
+
+    // A displayed snapshot is evaluated at receipt, until the next explicit refresh.
+    private var evaluatedAt: Date { state.usage.fetchedAt ?? Date() }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: LAASpacing.x1) {
@@ -99,7 +104,7 @@ struct LAAUsageView: View {
                 .accessibilityLabel(Text(verbatim: LAACopy.usageRefresh))
                 .accessibilityIdentifier("laa.usage.refresh")
             }
-            Text(verbatim: "サービスごとの残り枠・残高")
+            Text(verbatim: "最終取得時点の残り枠・残高")
                 .laaTextStyle(.body).foregroundStyle(LAAColor.secondaryText)
             Text(verbatim: "通信 " + time(state.updatedAt))
                 .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
@@ -224,7 +229,7 @@ struct LAAUsageView: View {
     }
 
     private func meter(_ window: LAAUsageItem.Window, item: LAAUsageItem) -> some View {
-        let expired = LAAUsageFreshness.windowExpired(window)
+        let expired = LAAUsageFreshness.windowExpired(window, at: evaluatedAt)
         let stale = past(item)
         return VStack(alignment: .leading, spacing: LAASpacing.x2) {
             HStack(alignment: .firstTextBaseline) {
@@ -242,7 +247,7 @@ struct LAAUsageView: View {
             if !expired && !stale, let remaining = window.remainingPercent, remaining.isFinite, (0...100).contains(remaining) {
                 ProgressView(value: remaining, total: 100)
                     .tint(expired || stale ? LAAColor.attention : LAAColor.link)
-                    .accessibilityLabel(Text(verbatim: item.label + " " + window.label + " 残り"))
+                    .accessibilityLabel(Text(verbatim: item.label + " " + windowLabel(window) + " 残り"))
                     .accessibilityValue(Text(verbatim: value(remaining, unit: "percent")))
             }
             caption((expired ? "リセット時刻経過・最終取得 " : "リセット ") + time(LAAUsageItem.date(window.resetsAt)))
@@ -251,28 +256,28 @@ struct LAAUsageView: View {
     }
 
     private func past(_ item: LAAUsageItem) -> Bool {
-        LAAUsageFreshness.isPast(item)
+        LAAUsageFreshness.isPast(item, at: evaluatedAt)
     }
 
     private func outdated(_ text: String?) -> Bool {
-        LAAUsageFreshness.outdated(text)
+        LAAUsageFreshness.outdated(text, at: evaluatedAt)
     }
 
     private func reachedUTCDate(_ text: String?) -> Bool {
-        LAAUsageFreshness.reachedUTCDate(text)
+        LAAUsageFreshness.reachedUTCDate(text, at: evaluatedAt)
     }
 
     private func needsRenewal(_ item: LAAUsageItem) -> Bool {
-        LAAUsageFreshness.needsRenewal(item)
+        LAAUsageFreshness.needsRenewal(item, at: evaluatedAt)
     }
 
     @ViewBuilder private func flags(_ item: LAAUsageItem) -> some View {
         if item.availability == "available" {
-            let expiredWindow = item.kind == "quota" && (item.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0) }
+            let expiredWindow = item.kind == "quota" && (item.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0, at: evaluatedAt) }
             let flags = [expiredWindow ? "一部の枠がリセット済み" : nil,
-                         item.kind != "quota" && item.isExpired() ? "期限切れ" : nil,
+                         item.kind != "quota" && item.isExpired(now: evaluatedAt) ? "期限切れ" : nil,
                          needsRenewal(item) ? "追加項目・期限を要確認" : nil,
-                         LAAUsageFreshness.isStale(item) ? "古い値または鮮度不明" : nil].compactMap { $0 }
+                         LAAUsageFreshness.isStale(item, at: evaluatedAt) ? "古い値または鮮度不明" : nil].compactMap { $0 }
             if !flags.isEmpty {
                 Label { Text(verbatim: flags.joined(separator: "・")) } icon: { Image(systemName: "exclamationmark.triangle") }
                     .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
@@ -281,9 +286,9 @@ struct LAAUsageView: View {
     }
 
     private func groupWarning(_ group: LAAUsageGroup) -> String? {
-        if group.items.contains(where: { LAAUsageFreshness.isStale($0) && $0.availability == "available" }) { return "更新待ち" }
-        if group.items.contains(where: { $0.kind == "quota" && ($0.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0) } }) { return "一部の枠がリセット済み" }
-        if group.items.contains(where: { $0.availability == "available" && ($0.isExpired() || needsRenewal($0)) }) { return "期限・追加項目 要確認" }
+        if group.items.contains(where: { LAAUsageFreshness.isStale($0, at: evaluatedAt) && $0.availability == "available" }) { return "更新待ち" }
+        if group.items.contains(where: { $0.kind == "quota" && ($0.detail?.windows ?? []).contains { LAAUsageFreshness.windowExpired($0, at: evaluatedAt) } }) { return "一部の枠がリセット済み" }
+        if group.items.contains(where: { $0.availability == "available" && ($0.isExpired(now: evaluatedAt) || needsRenewal($0)) }) { return "期限・追加項目 要確認" }
         if group.items.contains(where: { $0.availability == "available" && $0.detail?.sourceKind != "verified" && $0.detail?.freshUntil == nil }) { return "旧Bridge・鮮度は目安" }
         return nil
     }

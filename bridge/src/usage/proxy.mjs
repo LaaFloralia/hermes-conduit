@@ -39,16 +39,15 @@ export const USAGE_PROVIDERS = Object.freeze([
   { id: 'opencode-go', label: 'OpenCode', kind: 'quota' },
   { id: 'claude', label: 'Claude', kind: 'quota' },
   { id: 'venice', label: 'Venice', kind: 'balance' },
+  { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'today' },
   { id: 'openai-api', label: 'GPT API', kind: 'cost', period: 'month' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'today' },
   { id: 'claude-api', label: 'Claude API', kind: 'cost', period: 'month' },
   { id: 'liquid', label: 'Liquid AI', kind: 'usage' },
-  { id: 'antigravity', label: 'Antigravity', kind: 'quota' },
   { id: 'deepseek', label: 'DeepSeek API', kind: 'balance' },
   { id: 'grok-bot', label: 'Grok Bot', kind: 'quota' },
   { id: 'refuseless', label: 'Refuseless', kind: 'balance' },
-  { id: 'magnific', label: 'Magnific', kind: 'unitCredits' },
 ]);
 
 const SHAPES = Object.freeze({

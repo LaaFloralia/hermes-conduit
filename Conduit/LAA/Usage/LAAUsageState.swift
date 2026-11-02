@@ -47,6 +47,7 @@ final class LAAUsageState: ObservableObject {
     @Published private(set) var usage = LAAUsageSnapshot<[LAAUsageItem]>()
     @Published private(set) var updatedAt: Date?
     @Published private(set) var isRefreshing = false
+    private var isPresented = false
     private var generation = 0
     private var completedGeneration: Int?
     private var bridgeRevision: Int?
@@ -68,13 +69,21 @@ final class LAAUsageState: ObservableObject {
     func synchronize(bridge: LAABridgeSession, active: Bool) async {
         let changed = selectScope(bridgeRevision: bridge.revision)
         if changed || bridge.status != .paired { publish(nil) }
-        guard active, bridge.status == .paired else { return }
+        guard active, bridge.status == .paired, (!isPresented || lastRefreshAttempt == nil) else { return }
         let revision = bridge.revision
         let inFlight = isRefreshing ? generation : nil
         await waitUntilIdle()
-        guard !Task.isCancelled, bridge.status == .paired, bridge.revision == revision else { return }
+        guard !Task.isCancelled, (!isPresented || lastRefreshAttempt == nil), bridge.status == .paired, bridge.revision == revision else { return }
         // A refresh already running for this scope also updates the widget.
         if !changed, let inFlight, completedGeneration == inFlight { return }
+        await refreshAndPublish(bridge: bridge)
+    }
+
+    func setPresented(_ presented: Bool) { isPresented = presented }
+
+    /// Background widget maintenance must not replace the screen being read.
+    func refreshAutomatically(bridge: LAABridgeSession) async {
+        guard !isPresented else { return }
         await refreshAndPublish(bridge: bridge)
     }
 
@@ -215,25 +224,28 @@ struct LAAUsageGroup: Identifiable {
     }
 
     /// The owner's display order (2026-11-01): Codex Weekly, OpenCode Weekly,
-    /// Claude Weekly, Venice, GPT API, Claude API, Liquid AI, then the rest. Retired
+    /// Claude Weekly, Venice, Magnific, GPT API, Claude API, Liquid AI. Retired
     /// providers (Jev, Google Cloud, Google Flow) are never listed.
     static func consoleGroups(_ items: [LAAUsageItem]) -> [LAAUsageGroup] {
-        let ids = ["codex", "opencode-go", "claude", "venice", "openai-api", "claude-api", "liquid",
-                   "antigravity", "magnific", "grok-bot"]
-        let names = ["codex": "Codex", "claude": "Claude", "opencode-go": "OpenCode", "liquid": "Liquid AI"]
+        let ids = ["codex", "opencode-go", "claude", "venice", "magnific", "openai-api", "claude-api", "liquid"]
+        let names = ["codex": "Codex Weekly", "claude": "Claude Weekly", "opencode-go": "OpenCode Weekly", "liquid": "Liquid AI"]
         return ids.compactMap { id in
             let prefix = "provider.\(id)."
             let selected = items.filter { $0.id.hasPrefix(prefix) && $0.source == "codexbar-usage-proxy" }
             guard let first = selected.first else { return nil }
-            return LAAUsageGroup(id: "provider.\(id)", label: names[id] ?? first.label, items: selected)
+            return LAAUsageGroup(id: "provider.\(id)", label: names[id] ?? first.label, items: selected.sorted { left, right in
+                let leftOrder = left.id.hasSuffix("cost-today") ? 0 : 1
+                let rightOrder = right.id.hasSuffix("cost-today") ? 0 : 1
+                return leftOrder == rightOrder ? left.id < right.id : leftOrder < rightOrder
+            })
         }
     }
 }
 
 enum LAAWidgetUsageBuilder {
-    /// The seven rows the home-screen widget shows, in the owner's priority order.
+    /// The eight rows the home-screen widget shows, in the owner's priority order.
     struct Slot {
-        enum Reading { case weeklyQuota, balance, monthCost, recordedUsage }
+        enum Reading { case weeklyQuota, balance, credits, monthCost, recordedUsage }
         let provider: String
         let name: String
         let reading: Reading
@@ -248,6 +260,7 @@ enum LAAWidgetUsageBuilder {
         Slot(provider: "opencode-go", name: "OpenCode", reading: .weeklyQuota),
         Slot(provider: "claude", name: "Claude", reading: .weeklyQuota),
         Slot(provider: "venice", name: "Venice", reading: .balance),
+        Slot(provider: "magnific", name: "Magnific", reading: .credits),
         Slot(provider: "openai-api", name: "GPT API", reading: .monthCost),
         Slot(provider: "claude-api", name: "Claude API", reading: .monthCost),
         Slot(provider: "liquid", name: "Liquid AI", reading: .recordedUsage),
@@ -285,6 +298,13 @@ enum LAAWidgetUsageBuilder {
                 return .missing(id: item.id, label: slot.label)
             }
             return meter(id: item.id, label: slot.label, unit: .usd, amount: amount,
+                         item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
+        case .credits:
+            guard let item = feed.first(where: { $0.id == "\(prefix)credits" }) else { return nil }
+            guard available(item), item.unit == "credits", let amount = item.value, amount.isFinite, amount >= 0 else {
+                return .missing(id: item.id, label: slot.label)
+            }
+            return meter(id: item.id, label: slot.label, unit: .credits, amount: amount,
                          item: item, freshUntil: item.detail?.freshUntil, resetsAt: nil, receivedAt: receivedAt)
         case .monthCost:
             guard let item = feed.first(where: { $0.id == "\(prefix)cost-month" }) else { return nil }
@@ -340,7 +360,7 @@ enum LAAUsageLabel {
     }
 
     /// Display name for one window. A duration the feed reports wins, so a 7-day
-    /// pool reads Weekly (ウィークリー in Japanese) whatever the proxy calls it.
+    /// pool reads Weekly in every language whatever the proxy calls it.
     static func window(_ window: LAAUsageItem.Window) -> String {
         if let minutes = window.windowMinutes {
             if minutes == 10_080 { return AppLocalization.string("Weekly") }

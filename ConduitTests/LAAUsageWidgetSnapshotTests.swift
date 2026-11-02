@@ -105,12 +105,21 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
                          stale: Bool = false, otherOnly: Bool = false, expired: Bool = false, unset: Bool = false,
                          dynamicTypeSize: DynamicTypeSize = .large,
                          checkedAtOffset: TimeInterval = 0, now: Date = Date(), renderedAtOffset: TimeInterval = 0) throws -> Data {
-        let meters = [("Claude Weekly", 12.0), ("Codex Weekly", 35.0), ("OpenCode Weekly", 72.0)]
-            .enumerated().map { index, pair in
-                WidgetUsageMeter(id: "provider.\(["claude", "codex", "opencode-go"][index]).quota.weekly", label: pair.0, unit: .percent, amount: pair.1,
-                    observedAt: now, freshUntil: now.addingTimeInterval(1200), resetsAt: now.addingTimeInterval(3600),
-                    stale: stale && index != 1, retained: stale && index == 1)
-            }
+        let rows: [(String, String, WidgetUsageMeter.Unit, Double)] = [
+            ("codex.quota.weekly", "Codex Weekly", .percent, 35),
+            ("opencode-go.quota.weekly", "OpenCode Weekly", .percent, 72),
+            ("claude.quota.weekly", "Claude Weekly", .percent, 12),
+            ("venice.balance", "Venice", .usd, 14.5),
+            ("magnific.credits", "Magnific", .credits, 236025),
+            ("openai-api.cost-month", "GPT API", .usd, 4.5),
+            ("claude-api.cost-month", "Claude API", .usd, 17.25),
+            ("liquid.usage", "Liquid AI", .usd, 1.31),
+        ]
+        let meters = rows.enumerated().map { index, row in
+            WidgetUsageMeter(id: "provider.\(row.0)", label: row.1, unit: row.2, amount: row.3,
+                observedAt: now, freshUntil: now.addingTimeInterval(1200), resetsAt: now.addingTimeInterval(3600),
+                stale: stale && index != 1, retained: stale && index == 1)
+        }
         let usage = WidgetUsageSnapshot(meters: otherOnly ? [] : meters,
             checkedAt: now.addingTimeInterval(checkedAtOffset), hasOtherUsage: otherOnly)
         let snapshot = WidgetSnapshot(appLanguage: "ja", currentWorkspaceID: nil, workspaces: []).withUsage(unset ? nil : usage)

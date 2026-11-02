@@ -1,6 +1,6 @@
 # AI Usage・Mac状態のデータ契約
 
-2026-11-01更新。AI Usageは自動取得した現在の値だけを扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
+2026-11-02更新。AI Usageは自動取得した現在の値だけを扱う。認証情報や上流の請求データ本文は返さない。応答例は [fixtures/usage/](fixtures/usage/) にある。
 
 ## 1. 指標と取得元
 
@@ -46,7 +46,8 @@ proxyとBridgeはバックグラウンドで取得し、要求時に上流を待
 - `nullReason` は `not_configured` / `auth_required` / `not_auto` / `freshness_unknown` / `fetch_failed` / `unsupported`。原文エラー、鍵、cookieは渡さない。
 - 古いBridgeの応答に `freshUntil` がない場合、アプリは観測時刻と受信時刻の早い方から10分を上限にする。同じ観測時刻を再受信しても期限は延ばさない。ただし旧Bridgeはfeedの取得時刻を渡さないため、この代用だけでfeed側の期限は再現できない。更新後のBridgeを使う。
 
-- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、GPT API、Claude API、Liquid AI。7日の枠は「Weekly」（日本語表示は「ウィークリー」）に統一し、`D1` とは書かない。ウィジェットは取得時刻などの脚注を出さず、この順で入る分だけを上から並べ、取れない項目は数値なしの状態行にする。
+- 表示順と表記は、アプリ内のAI usage画面もウィジェットも同じ: Codex Weekly、OpenCode Weekly、Claude Weekly、Venice、Magnific、GPT API、Claude API、Liquid AI。7日の枠は全言語で「Weekly」に統一し、`D1` とは書かない。ウィジェットは取得時刻などの脚注を出さず、この順で入る分だけを上から並べ、取れない項目は数値なしの状態行にする。
+- アプリは開いた時と明示更新で取得する。表示中はshellの自動取得を抑止し、鮮度・期限の判定も最終取得時点に固定する。ウィジェットは従来どおり期限到来時に数値を消す。Magnificの単位はAI creditsで、USDに換算しない。
 - Jev・Google Cloud・Google Flow は取得も表示もしない（2026-11-01に廃止）。端末に古い保存値が残っていても落ちず、描画しない。
 
 `GET /v1/mac/status` は従来どおり `host.cpu`・`host.memory`・`host.disk` を返す。usageと別のホスト状態であり、diskの26時間判定を変更しない。
