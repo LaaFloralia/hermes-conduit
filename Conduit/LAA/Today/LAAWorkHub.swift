@@ -5,6 +5,7 @@ struct LAAWorkHub: View {
     let onRequestSettings: () -> Void
     @EnvironmentObject private var bridge: LAABridgeSession
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject private var linkRequest = LAAWorkLinkRequest.shared
     @StateObject private var drafts = LAAWorkDrafts.makeStore()
     @State private var section: Section = .priority
@@ -23,9 +24,38 @@ struct LAAWorkHub: View {
             case .skills: AppLocalization.string("Skills")
             }
         }
+        var desktopTitle: String {
+            switch self {
+            case .priority: AppLocalization.string("Priority")
+            case .tasks: AppLocalization.string("Tasks")
+            case .sessions: AppLocalization.string("Sessions")
+            case .projects: AppLocalization.string("Projects")
+            case .routines: AppLocalization.string("Routines")
+            case .skills: AppLocalization.string("Skills")
+            }
+        }
     }
 
     var body: some View {
+        Group {
+            if laaDesktop { desktopBody } else { phoneBody }
+        }
+        .onChange(of: linkRequest.generation, initial: true) { _, _ in
+            let url = linkRequest.url
+            if url?.host == "work" { section = linkRequest.sessionTarget == nil ? .tasks : .sessions }
+        }
+        .background(LAAColor.background.ignoresSafeArea())
+        .foregroundStyle(LAAColor.text)
+        .navigationTitle(Text(verbatim: laaDesktop ? "" : "Work"))
+        .navigationBarTitleDisplayMode(laaDesktop ? .inline : .large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+        }
+        .tint(LAAColor.link)
+        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
+    }
+
+    private var phoneBody: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -41,17 +71,7 @@ struct LAAWorkHub: View {
             }
             .accessibilityIdentifier("work.segment")
             if bridge.status != .paired {
-                VStack(spacing: LAASpacing.x4) {
-                    Image(systemName: "desktopcomputer").font(.largeTitle).foregroundStyle(LAAColor.secondaryText)
-                    Text(verbatim: "Macに接続してください").fontWeight(.semibold)
-                    Text(verbatim: "接続するとタスクやセッションを確認できます。")
-                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("work.connect")
-                }
-                .padding(LAASpacing.horizontal)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                connectionState
             } else {
                 switch section {
                 case .priority, .tasks:
@@ -63,19 +83,83 @@ struct LAAWorkHub: View {
                 }
             }
         }
-        .onChange(of: linkRequest.generation, initial: true) { _, _ in
-            let url = linkRequest.url
-            if url?.host == "work" { section = linkRequest.sessionTarget == nil ? .tasks : .sessions }
+    }
+
+    private var desktopBody: some View {
+        VStack(spacing: 0) {
+            desktopHeader
+            Rectangle().fill(LAAColor.separator).frame(height: 1)
+            if bridge.status != .paired {
+                connectionState
+            } else {
+                desktopSection
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .background(LAAColor.background.ignoresSafeArea())
-        .foregroundStyle(LAAColor.text)
-        .navigationTitle(Text(verbatim: "Work"))
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { LAASettingsButton(action: onRequestSettings) }
+    }
+
+    private var desktopHeader: some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x3) {
+            HStack(alignment: .firstTextBaseline, spacing: LAASpacing.x4) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: "LAA").laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.link)
+                    Text(verbatim: LAACopy.WorkTab.title).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(verbatim: LAACopy.WorkTab.subtitle).laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                }
+                Spacer(minLength: LAASpacing.x4)
+            }
+            HStack(spacing: 0) {
+                ForEach(Section.allCases) { value in
+                    Button { section = value } label: {
+                        Text(verbatim: value.desktopTitle)
+                            .laaTextStyle(.secondary)
+                            .fontWeight(value == section ? .semibold : .regular)
+                            .foregroundStyle(value == section ? LAAColor.filledButtonText : LAAColor.secondaryText)
+                            .padding(.horizontal, LAASpacing.x3)
+                            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumTouchTarget)
+                            .background(value == section ? LAAColor.filledButton : .clear,
+                                        in: RoundedRectangle(cornerRadius: LAARadius.selectionChip))
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(value == section ? .isSelected : [])
+                    .accessibilityIdentifier("work.section.\(value.rawValue)")
+                }
+            }
+            .padding(3)
+            .frame(maxWidth: 760)
+            .background(LAAColor.subtleSurface, in: RoundedRectangle(cornerRadius: LAARadius.selectionChip + 3))
+            .accessibilityIdentifier("work.segment")
         }
-        .tint(LAAColor.link)
-        .sheet(isPresented: $showPairing) { LAAPairingView().environmentObject(bridge) }
+        .padding(.horizontal, LAASpacing.x6)
+        .padding(.top, LAASpacing.x4)
+        .padding(.bottom, LAASpacing.x3)
+    }
+
+    @ViewBuilder private var desktopSection: some View {
+        switch section {
+        case .priority: LAALinearTasksView(drafts: drafts, priorityOnly: true)
+        case .tasks: LAALinearTasksView(drafts: drafts, priorityOnly: false)
+        case .sessions: LAAWorkDesktopSessionsView(drafts: drafts, refreshID: 0)
+        case .projects: LAAWorkDesktopProjectsView(drafts: drafts, refreshID: 0)
+        case .routines: LAAWorkDesktopCatalogView(kind: .routines)
+        case .skills: LAAWorkDesktopCatalogView(kind: .skills)
+        }
+    }
+
+    private var connectionState: some View {
+        VStack(spacing: LAASpacing.x4) {
+            Image(systemName: "desktopcomputer").font(.largeTitle).foregroundStyle(LAAColor.secondaryText)
+            Text(verbatim: "Macに接続してください").fontWeight(.semibold)
+            Text(verbatim: "接続するとタスクやセッションを確認できます。")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            Button { showPairing = true } label: { Text(verbatim: "Macに接続") }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("work.connect")
+        }
+        .padding(LAASpacing.horizontal)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder private func pill(_ value: Section) -> some View {

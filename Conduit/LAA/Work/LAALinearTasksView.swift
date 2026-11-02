@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LAALinearTasksView: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject private var taskRoute = LAALinearTaskRoute.shared
     @ObservedObject var drafts: ComposerDraftStore
     let priorityOnly: Bool
@@ -19,9 +20,20 @@ struct LAALinearTasksView: View {
     @State private var detail: LAALinearTask?
     @State private var deleting: LAALinearTask?
     @State private var acknowledge = false
+    @State private var desktopSelection: DesktopSelection?
+    @State private var desktopSearch = ""
+    @State private var hoveredID: String?
+    @State private var reloadID = 0
+    @FocusState private var searchFocused: Bool
+    @FocusState private var listFocused: Bool
     private struct Editor: Identifiable {
         var id: String
         var task: LAALinearTask?
+    }
+    private enum DesktopSelection: Equatable {
+        case inbox
+        case browse
+        case task(String)
     }
     private var journalKey: ComposerDraftKey {
         LAAWorkDrafts.key(deviceID: bridge.deviceID ?? "unpaired", target: "linear-owner-operation")
@@ -39,6 +51,75 @@ struct LAALinearTasksView: View {
     }
 
     var body: some View {
+        Group {
+            if laaDesktop && !archivedOnly { desktopBody } else { phoneBody }
+        }
+        .tint(LAAColor.link)
+        .refreshable { await load() }
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                if !archivedOnly {
+                    Button { showingArchive = true } label: { Image(systemName: "archivebox") }
+                        .accessibilityLabel(Text(verbatim: "アーカイブ"))
+                        .accessibilityIdentifier("work.linear.archive")
+                        .disabled(busy || pending != nil)
+                    Button { editor = Editor(id: UUID().uuidString.lowercased(), task: nil) } label: { Image(systemName: "plus") }
+                        .accessibilityLabel(Text(verbatim: "タスクを追加"))
+                        .accessibilityIdentifier("work.linear.add")
+                        .disabled(busy || pending != nil)
+                        .macTooltip("New task (⌘N)")
+                } else {
+                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
+                        .accessibilityLabel(Text(verbatim: "読み直す"))
+                }
+            }
+        }
+        .sheet(isPresented: $showingArchive, onDismiss: { Task { await load() } }) {
+            NavigationStack {
+                LAALinearTasksView(drafts: drafts, priorityOnly: false, archivedOnly: true)
+                    .navigationTitle(Text(verbatim: "アーカイブ"))
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button { showingArchive = false } label: { Text(verbatim: "閉じる") }
+                    } }
+            }
+        }
+        .task(id: "\(bridge.revision)-\(reloadID)") { await load() }
+        .sheet(item: $taskRoute.target) { target in
+            NavigationStack {
+                LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button { taskRoute.target = nil } label: { Text(verbatim: "閉じる") }
+                    } }
+            }
+        }
+        .sheet(item: $detail) { task in
+            NavigationStack {
+                LAAPersonalTaskDetailView(id: task.identifier.isEmpty ? task.id : "linear:\(task.identifier)", drafts: drafts)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) {
+                        Button { detail = nil } label: { Text(verbatim: "閉じる") }
+                    } }
+            }
+        }
+        .sheet(item: $editor) { value in
+            LAALinearTaskEditor(id: value.id, task: value.task, busy: busy || pending != nil, failure: failure) { body in
+                submit(method: value.task == nil ? "POST" : "PATCH", id: value.id,
+                       body: body, version: value.task?.updatedAt)
+            }
+        }
+        .confirmationDialog(Text(verbatim: "このタスクを削除しますか？"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+            Button(role: .destructive) {
+                if let task = deleting { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "archive") }
+                deleting = nil
+            } label: { Text(verbatim: "削除") }
+            Button(role: .cancel) { deleting = nil } label: { Text(verbatim: "キャンセル") }
+        } message: { Text(verbatim: "アーカイブに移り、あとで戻せます。") }
+        .confirmationDialog(Text(verbatim: "操作の控えを閉じますか？"), isPresented: $acknowledge) {
+            Button { if let pending { _ = drafts.finishSubmission(pending.id, restoring: false) }; Task { await load() } }
+            label: { Text(verbatim: "結果を確認して閉じる") }
+        } message: { Text(verbatim: "Linearで反映結果を確認した場合だけ閉じてください。この操作は変更を取り消しません。") }
+    }
+
+    private var phoneBody: some View {
         List {
             if !archivedOnly {
                 Section {
@@ -124,68 +205,189 @@ struct LAALinearTasksView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .tint(LAAColor.link)
-        .refreshable { await load() }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if !archivedOnly {
-                    Button { showingArchive = true } label: { Image(systemName: "archivebox") }
-                        .accessibilityLabel(Text(verbatim: "アーカイブ"))
-                        .accessibilityIdentifier("work.linear.archive")
+    }
+
+    private var desktopRows: [LAALinearTask] {
+        rows.filter { LAAWorkDesktopList.matches($0.title + " " + ($0.description ?? ""), query: desktopSearch) }
+    }
+    private var selectedTask: LAALinearTask? {
+        guard case let .task(id) = desktopSelection else { return nil }
+        return items.first { $0.id == id }
+    }
+
+    private var desktopBody: some View {
+        LAAMacListDetail {
+            VStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: LAASpacing.x3) {
+                    HStack(spacing: LAASpacing.x2) {
+                        Button { editor = Editor(id: UUID().uuidString.lowercased(), task: nil) } label: {
+                            Label {
+                                    Text(verbatim: "New task").foregroundStyle(LAAColor.filledButtonText)
+                                } icon: {
+                                    Image(systemName: "plus").foregroundStyle(LAAColor.filledButtonText)
+                                }
+                                .laaTextStyle(.secondary).fontWeight(.semibold)
+                                .frame(minHeight: LAASpacing.minimumTouchTarget)
+                        }
+                        .buttonStyle(.plain)
+                        .background(LAAColor.filledButton, in: Capsule())
+                        .accessibilityIdentifier("work.linear.add")
                         .disabled(busy || pending != nil)
-                Button { editor = Editor(id: UUID().uuidString.lowercased(), task: nil) } label: { Image(systemName: "plus") }
-                    .accessibilityLabel(Text(verbatim: "タスクを追加"))
-                    .accessibilityIdentifier("work.linear.add")
-                    .disabled(busy || pending != nil)
-                } else {
-                    Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }
-                        .accessibilityLabel(Text(verbatim: "読み直す"))
+                        Spacer(minLength: 0)
+                        Button { showingArchive = true } label: { Image(systemName: "archivebox") }
+                            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                            .accessibilityLabel(Text(verbatim: "Archive"))
+                            .macTooltip("Archive")
+                            .disabled(busy || pending != nil)
+                        Button { reloadID += 1 } label: { Image(systemName: "arrow.clockwise") }
+                            .frame(width: LAASpacing.minimumTouchTarget, height: LAASpacing.minimumTouchTarget)
+                            .accessibilityLabel(Text(verbatim: "Reload tasks"))
+                            .macTooltip("Reload (⌘R)")
+                    }
+                    TextField("", text: $desktopSearch, prompt: Text(verbatim: "Search tasks"))
+                        .textFieldStyle(.roundedBorder).focused($searchFocused)
+                    if let failure {
+                        Text(verbatim: failure).laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                        Button { reloadID += 1 } label: { Text(verbatim: "読み直す").foregroundStyle(LAAColor.link) }.buttonStyle(.plain)
+                    }
+                    if let pending, !busy {
+                        Text(verbatim: "保存結果を確認できませんでした。")
+                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
+                        Button { startSend(pending, retry: true) } label: { Text(verbatim: "保存結果を確認") }
+                            .disabled(busy || !LAAWorkDrafts.canRepeat(pending))
+                    }
+                    if loading { ProgressView().controlSize(.small) }
+                }
+                .padding(LAASpacing.x3)
+                Rectangle().fill(LAAColor.separator).frame(height: 1)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        desktopNavRow("Inbox", icon: "tray", selection: .inbox, identifier: "work.linear.inbox")
+                        desktopNavRow("All tasks · search · projects", icon: "magnifyingglass", selection: .browse, identifier: "work.linear.browse")
+                        Divider().overlay(LAAColor.separator).padding(.vertical, LAASpacing.x2)
+                        Text(verbatim: priorityOnly ? "NEEDS ATTENTION" : "TASKS")
+                            .laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
+                            .padding(.horizontal, LAASpacing.x4).padding(.bottom, LAASpacing.x1)
+                        ForEach(desktopRows) { task in desktopTaskRow(task) }
+                        if loaded && desktopRows.isEmpty && !loading && failure == nil {
+                            Text(verbatim: priorityOnly ? "No priority tasks." : "No tasks yet.")
+                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+                                .padding(LAASpacing.x4)
+                        }
+                    }
                 }
             }
+            .background(LAAColor.background)
+            .accessibilityIdentifier("work.desktop.tasks.list")
+            .focusable()
+            .focused($listFocused)
+            .onAppear { listFocused = true }
+            .onKeyPress(.upArrow) { move(-1); return .handled }
+            .onKeyPress(.downArrow) { move(1); return .handled }
+            .onKeyPress(.escape) { desktopSelection = nil; return .handled }
+            .onKeyPress(.return) {
+                if desktopSelection == nil, let first = desktopRows.first { desktopSelection = .task(first.id) }
+                return .handled
+            }
+            .onKeyPress(.init("f"), phases: .down) { press in
+                guard press.modifiers.contains(.command) else { return .ignored }
+                searchFocused = true; return .handled
+            }
+            .onKeyPress(.init("r"), phases: .down) { press in
+                guard press.modifiers.contains(.command) else { return .ignored }
+                reloadID += 1; return .handled
+            }
+            .onKeyPress(.init("n"), phases: .down) { press in
+                guard press.modifiers.contains(.command) else { return .ignored }
+                editor = Editor(id: UUID().uuidString.lowercased(), task: nil); return .handled
+            }
+        } detail: {
+            desktopDetail
         }
-        .sheet(isPresented: $showingArchive, onDismiss: { Task { await load() } }) {
+        .accessibilityIdentifier("work.desktop.tasks")
+    }
+
+    private func desktopNavRow(_ title: String, icon: String, selection: DesktopSelection, identifier: String) -> some View {
+        Button { desktopSelection = selection } label: {
+            Label { Text(verbatim: title) } icon: { Image(systemName: icon) }
+                .laaTextStyle(.body)
+                .foregroundStyle(LAAColor.text)
+                .padding(.horizontal, LAASpacing.x4)
+                .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+                .background(desktopSelection == selection ? LAAColor.selectionFill : .clear,
+                            in: RoundedRectangle(cornerRadius: LAARadius.card))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func desktopTaskRow(_ task: LAALinearTask) -> some View {
+        Button { desktopSelection = .task(task.id) } label: {
+            VStack(alignment: .leading, spacing: LAASpacing.x1) {
+                Text(verbatim: task.title).laaTextStyle(.body).fontWeight(.medium)
+                    .foregroundStyle(LAAColor.text).lineLimit(2)
+                HStack(spacing: LAASpacing.x2) {
+                    if task.priority != 0 {
+                        Text(verbatim: LAALinearTask.priorityLabel(task.priority))
+                            .foregroundStyle(task.priority <= 2 ? LAAColor.attention : LAAColor.secondaryText)
+                    }
+                    if let due = task.dueDate {
+                        Label { Text(verbatim: due) } icon: { Image(systemName: "calendar") }
+                            .foregroundStyle(due <= LAALinearTask.today() ? LAAColor.attention : LAAColor.secondaryText)
+                    }
+                }.laaTextStyle(.secondary)
+            }
+            .padding(.horizontal, LAASpacing.x4)
+            .frame(maxWidth: .infinity, minHeight: LAASpacing.minimumRowHeight, alignment: .leading)
+            .background(rowBackground(task.id), in: RoundedRectangle(cornerRadius: LAARadius.card))
+        }
+        .buttonStyle(.plain)
+        .onHover { hoveredID = $0 ? task.id : (hoveredID == task.id ? nil : hoveredID) }
+        .contextMenu {
+            Button { desktopSelection = .task(task.id) } label: { Text(verbatim: "Open") }
+            Button { editor = Editor(id: task.id, task: task) } label: { Text(verbatim: "Edit") }
+            Button(role: .destructive) { deleting = task } label: { Text(verbatim: "Archive") }
+        }
+        .disabled(busy || pending != nil)
+        .accessibilityAddTraits(selectedTask?.id == task.id ? .isSelected : [])
+        .accessibilityIdentifier("work.task.\(task.id)")
+    }
+
+    @ViewBuilder private var desktopDetail: some View {
+        if let selectedTask {
             NavigationStack {
-                LAALinearTasksView(drafts: drafts, priorityOnly: false, archivedOnly: true)
-                    .navigationTitle(Text(verbatim: "アーカイブ"))
-                    .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { showingArchive = false } label: { Text(verbatim: "閉じる") }
-                    } }
+                LAAPersonalTaskDetailView(id: selectedTask.identifier.isEmpty ? selectedTask.id : "linear:\(selectedTask.identifier)", drafts: drafts)
+                    .id(selectedTask.id)
             }
-        }
-        .task(id: bridge.revision) { await load() }
-        .sheet(item: $taskRoute.target) { target in
+        } else if desktopSelection == .inbox {
+            NavigationStack { LAAPersonalInboxEntry(drafts: drafts) }
+        } else if desktopSelection == .browse {
             NavigationStack {
-                LAAPersonalTaskDetailView(id: target.id, drafts: drafts)
-                    .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { taskRoute.target = nil } label: { Text(verbatim: "閉じる") }
-                    } }
+                ScrollView {
+                    LAAPersonalTaskList(drafts: drafts, refreshID: 0)
+                        .padding(LAASpacing.horizontal)
+                }
+                .background(LAAColor.background)
+                .navigationTitle(Text(verbatim: "課題を探す"))
             }
+        } else {
+            LAAMacEmptyDetail(symbol: "checklist", title: "Select a task",
+                              message: "Choose a task on the left to read, edit and comment here.")
         }
-        .sheet(item: $detail) { task in
-            NavigationStack {
-                LAAPersonalTaskDetailView(id: task.identifier.isEmpty ? task.id : "linear:\(task.identifier)", drafts: drafts)
-                    .toolbar { ToolbarItem(placement: .cancellationAction) {
-                        Button { detail = nil } label: { Text(verbatim: "閉じる") }
-                    } }
-            }
+    }
+
+    private func rowBackground(_ id: String) -> Color {
+        if selectedTask?.id == id { return LAAColor.selectionFill }
+        if hoveredID == id { return LAAColor.subtleSurface }
+        return .clear
+    }
+
+    private func move(_ delta: Int) {
+        let ids = desktopRows.map(\.id)
+        let current = selectedTask.flatMap { ids.firstIndex(of: $0.id) }
+        if let next = LAAWorkDesktopList.next(current: current, count: ids.count, delta: delta) {
+            desktopSelection = .task(ids[next])
         }
-        .sheet(item: $editor) { value in
-            LAALinearTaskEditor(id: value.id, task: value.task, busy: busy || pending != nil, failure: failure) { body in
-                submit(method: value.task == nil ? "POST" : "PATCH", id: value.id,
-                       body: body, version: value.task?.updatedAt)
-            }
-        }
-        .confirmationDialog(Text(verbatim: "このタスクを削除しますか？"), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
-            Button(role: .destructive) {
-                if let task = deleting { submit(method: "POST", id: task.id, body: nil, version: task.updatedAt, action: "archive") }
-                deleting = nil
-            } label: { Text(verbatim: "削除") }
-            Button(role: .cancel) { deleting = nil } label: { Text(verbatim: "キャンセル") }
-        } message: { Text(verbatim: "アーカイブに移り、あとで戻せます。") }
-        .confirmationDialog(Text(verbatim: "操作の控えを閉じますか？"), isPresented: $acknowledge) {
-            Button { if let pending { _ = drafts.finishSubmission(pending.id, restoring: false) }; Task { await load() } }
-            label: { Text(verbatim: "結果を確認して閉じる") }
-        } message: { Text(verbatim: "Linearで反映結果を確認した場合だけ閉じてください。この操作は変更を取り消しません。") }
     }
 
     private func submit(method: String, id: String, body: Data?, version: String?, action: String? = nil) {
@@ -278,6 +480,7 @@ struct LAALinearTasksView: View {
             guard loadID == epoch, device == bridge.deviceID, !Task.isCancelled else { return }
             guard page.nextCursor == nil else { throw LAABridgeError.invalidResponse }
             items = page.items; loaded = true; failure = nil
+            if laaDesktop, !archivedOnly, desktopSelection == nil, let first = desktopRows.first { desktopSelection = .task(first.id) }
             if let device { LAALinearTaskCache.save(LAALinearTaskCache.OwnerSnapshot(items: items), device: device, scope: archivedOnly ? "archive" : "owner") }
             if !busy, let pending, let (bytes, _) = LAAWorkDrafts.request(pending),
                let mutation = try? JSONDecoder().decode(LAALinearTaskMutation.self, from: bytes), mutation.isValid {

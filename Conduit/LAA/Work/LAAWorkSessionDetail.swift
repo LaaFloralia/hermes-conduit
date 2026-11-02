@@ -3,6 +3,7 @@ import SwiftUI
 
 struct LAAWorkSessionDetail: View {
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.laaDesktop) private var laaDesktop
     @ObservedObject var drafts: ComposerDraftStore
     let id: String
     let projects: [LAAWorkProject]
@@ -61,8 +62,9 @@ struct LAAWorkSessionDetail: View {
                         Button(LAACopy.WorkTab.retry) { observationEpoch += 1 }
                     } else { ProgressView().accessibilityLabel(Text(verbatim: "読み込み中")) }
                 }
-                .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4).frame(maxWidth: 720, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, LAASpacing.horizontal).padding(.vertical, LAASpacing.x4)
+                .frame(maxWidth: laaDesktop ? LAADesktopMetrics.readingWidth : 720, alignment: .leading)
+                .frame(maxWidth: .infinity, alignment: laaDesktop ? .center : .leading)
             }
             .refreshable { await refreshSnapshot() }
             .onChange(of: session?.needsDecision) { _, waiting in
@@ -88,28 +90,33 @@ struct LAAWorkSessionDetail: View {
             } else if messages.isEmpty {
                 Text(verbatim: "会話はまだありません。") .foregroundStyle(LAAColor.secondaryText)
             }
-            ForEach(messages) { message in
-                VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                    Text(verbatim: message.role == "user" ? "あなた" : "回答")
-                        .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                    if message.role == "tool" {
-                        DisclosureGroup {
-                            Text(verbatim: message.text).laaTextStyle(.secondary)
-                        } label: { Text(verbatim: (message.toolName ?? "ツール") + " · " + (message.toolStatus ?? "")) }
-                    } else { MarkdownText(source: message.text, foregroundStyle: LAAColor.text)
-                        .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
-                    }
-                    ForEach(message.images ?? [], id: \.self) { imageID in
-                        LAAWorkSessionImage(sessionID: id, imageID: imageID)
-                    }
-                }.workCard()
+            ForEach(LAAWorkToolRuns.groups(messages)) { group in
+                switch group.kind {
+                case .message:
+                    if let message = group.messages.first { messageCard(message) }
+                case .tools:
+                    LAAWorkToolRunsView(tools: group.messages)
+                }
             }
         }
+    }
+
+    private func messageCard(_ message: LAAWorkConversationMessage) -> some View {
+        VStack(alignment: .leading, spacing: LAASpacing.x2) {
+            Text(verbatim: message.role == "user" ? "あなた" : "回答")
+                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
+            MarkdownText(source: message.text, foregroundStyle: LAAColor.text)
+                .environment(\.chatTextSize, ChatTextAppearance(size: ChatTypography.resolve(rawValue: responseSize), style: .standard))
+            ForEach(message.images ?? [], id: \.self) { imageID in
+                LAAWorkSessionImage(sessionID: id, imageID: imageID)
+            }
+        }.workCard()
     }
 
     private func sessionHeader(_ session: LAAWorkSession) -> some View {
         VStack(alignment: .leading, spacing: LAASpacing.x2) {
             Text(verbatim: session.name).font(LAAType.screenTitle).foregroundStyle(LAAColor.text)
+                .accessibilityIdentifier("work.session.detail.title")
             Text(verbatim: LAAWorkPresentation.phaseSymbol(session.phase) + " " + LAAWorkPresentation.phase(session.phase))
                 .foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(session.phase) ? LAAColor.attention : LAAColor.link)
             Text(verbatim: session.observed?.model ?? session.requested?.model ?? "モデル未確認")
