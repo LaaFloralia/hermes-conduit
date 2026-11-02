@@ -64,7 +64,9 @@ export APNS_WATCH_TOPIC="${LAA_RELAY_WATCH_TOPIC:-com.laa-inc.laa.watchkitapp}"
 # tailscale serve is the one hop in front of it, and it sets X-Forwarded-For.
 export TRUST_PROXY=1
 
-node src/server.mjs &
+# APNs connections from this Mac can need longer than Node's 250 ms per
+# address attempt. Keep both IP families available and allow each one 1 s.
+node --network-family-autoselection-attempt-timeout=1000 src/server.mjs &
 node_pid=$!
 
 cleanup() {
