@@ -419,8 +419,8 @@ export function createSessionService({
     return { session: updated?.record ?? requireSession(id) };
   }
 
-  // Bridge-side organisation only: favourites, archive and an owner rename never
-  // stop, archive or rename the Paseo agent behind the session.
+  // Archive and owner rename stay Bridge-side; favourites mirror a Paseo
+  // workspace pin when one is available. None of these actions stops a turn.
   async function updateSession({ id, body = {} }) {
     const existing = requireSession(id);
     const favorite = body.favorite === undefined ? undefined : parseBoolean(body.favorite, 'favorite');
