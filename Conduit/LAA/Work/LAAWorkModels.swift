@@ -43,13 +43,15 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
     let version: Int?
     let etag: String?
     let updatedAt: String?
+    let fileCount: Int?
+    let files: [LAAWorkProjectFile]?
 
     // An older server simply omits this field. Do not offer editing until the
     // Bridge confirms it can return the actual body and protect the version.
     let hasInstructionBody: Bool
     enum CodingKeys: String, CodingKey {
         case id, name, nameSource, instructionRef, instructionHash, instructionVersion
-        case instructions, instructionError, version, etag, updatedAt
+        case instructions, instructionError, version, etag, updatedAt, fileCount, files
     }
     init(from decoder: Decoder) throws {
         let box = try decoder.container(keyedBy: CodingKeys.self)
@@ -65,7 +67,33 @@ struct LAAWorkProject: Decodable, Identifiable, Hashable {
         version = try box.decodeIfPresent(Int.self, forKey: .version)
         etag = try box.decodeIfPresent(String.self, forKey: .etag)
         updatedAt = try box.decodeIfPresent(String.self, forKey: .updatedAt)
+        fileCount = try box.decodeIfPresent(Int.self, forKey: .fileCount)
+        files = try box.decodeIfPresent([LAAWorkProjectFile].self, forKey: .files)
     }
+}
+
+/// A project's reference file on the Mac. The phone sees its name and size only.
+struct LAAWorkProjectFile: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let size: Int?
+    let mimeType: String?
+    let createdAt: String?
+}
+
+/// Model/effort choices for a new session, from the HQ model table.
+struct LAAWorkSessionOptions: Decodable {
+    struct Profile: Decodable, Identifiable, Hashable {
+        let id: String
+        let label: String
+        let provider: String
+        let model: String
+        let effort: String
+        let fast: Bool
+    }
+    let profiles: [Profile]
+    let defaultProfile: String?
+    let defaultMode: String?
 }
 
 struct LAAWorkWorkspace: Decodable, Identifiable, Hashable {
@@ -126,6 +154,15 @@ struct LAAWorkSession: Decodable, Identifiable, Hashable {
     let observedAt: String?
     let events: Cursor
     let observation: Observation?
+    // Newer Bridge fields; an older Bridge omits them.
+    let favorite: Bool?
+    let archivedAt: String?
+    let mode: String?
+    let fast: Bool?
+    let worktree: Bool?
+
+    var isFavorite: Bool { favorite == true }
+    var isArchived: Bool { archivedAt != nil }
 
     var needsDecision: Bool {
         phase == "awaiting_decision" || (pending?.count ?? 0) > 0
@@ -184,62 +221,6 @@ struct LAAWorkTask: Decodable, Identifiable, Hashable {
 }
 enum LAAWorkPresentation {
     static func japanese(_ text: String) -> String { text }
-
-    struct SessionRow: Identifiable {
-        let session: LAAWorkSession
-        let depth: Int
-        var id: String { session.id }
-    }
-
-    static func sessionRows(_ sessions: [LAAWorkSession]) -> [SessionRow] {
-        let sorted = sessions.sorted { $0.createdAt > $1.createdAt }
-        let ids = Set(sorted.map(\.id))
-        var children: [String: [LAAWorkSession]] = [:]
-        var roots: [LAAWorkSession] = []
-        for session in sorted {
-            if let parent = session.parentId, ids.contains(parent), parent != session.id {
-                children[parent, default: []].append(session)
-            } else {
-                roots.append(session)
-            }
-        }
-        var rows: [SessionRow] = []
-        var visited = Set<String>()
-        func append(_ session: LAAWorkSession, depth: Int) {
-            guard visited.insert(session.id).inserted else { return }
-            rows.append(SessionRow(session: session, depth: depth))
-            for child in children[session.id] ?? [] { append(child, depth: min(depth + 1, 4)) }
-        }
-        for session in roots { append(session, depth: 0) }
-        // Keep malformed/cyclic parent relationships visible too.
-        for session in sorted where !visited.contains(session.id) { append(session, depth: 0) }
-        return rows
-    }
-
-    static func filteredSessionRows(_ sessions: [LAAWorkSession], projectID: String, phase: String) -> [SessionRow] {
-        let matches = sessions.filter {
-            (projectID.isEmpty || $0.projectId == projectID) && (phase.isEmpty || $0.phase == phase)
-        }
-        let byID = Dictionary(sessions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var included = Set(matches.map(\.id))
-        for match in matches {
-            var next = match.parentId
-            var visited: Set<String> = [match.id]
-            while let id = next, visited.insert(id).inserted, let parent = byID[id] {
-                included.insert(id)
-                next = parent.parentId
-            }
-        }
-        return sessionRows(sessions.filter { included.contains($0.id) })
-    }
-
-    static func decisionRows(_ rows: [SessionRow], projectID: String, phase: String) -> [SessionRow] {
-        rows.filter { row in
-            row.session.needsDecision &&
-                (projectID.isEmpty || row.session.projectId == projectID) &&
-                (phase.isEmpty || row.session.phase == phase)
-        }
-    }
 
     static func phase(_ raw: String) -> String {
         switch raw {

@@ -3826,20 +3826,25 @@ and rollback instructions · the upstream App Store build
 
 ## LAA Work session presentation
 
-**Siblings:** Work session list and filters · session detail and model verification · Bridge session observations · upstream chats
+**Siblings:** Work sessions and projects · session detail and model verification · Bridge session options, PATCH and project files · the HQ delegation wrapper (mode and fast) · upstream chats
 
 **Code**
-- List and detail: `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
+- Sessions and projects: `Conduit/LAA/Work/LAAWorkSessionsSection.swift`, `Conduit/LAA/Work/LAAWorkSessionLauncher.swift`, `Conduit/LAA/Work/LAAWorkProjectsSection.swift`, `Conduit/LAA/Work/LAAWorkView.swift`, `Conduit/LAA/Work/LAAWorkSessionDetail.swift`, `Conduit/LAA/Work/LAAWorkProject.swift`, `Conduit/LAA/Work/LAAWorkModels.swift`
+- Bridge: `bridge/src/sessions/service.mjs`, `bridge/src/sessions/options.mjs`, `bridge/src/routes/sessions.mjs`, `bridge/src/routes/projects.mjs`
 - Routines: `bridge/src/routes/routines.mjs`, `bridge/test/routines.test.mjs`
-- Tests: `ConduitTests/LAAWorkTests.swift`
+- Tests: `ConduitTests/LAAWorkTests.swift`, `bridge/test/sessions.test.mjs`, `bridge/test/session-options.test.mjs`
 
 **Rulings**
-- Session rows show the session name, phase, model and last update; an unverified runtime model is labelled and a mismatch remains visible. Filtered ancestors remain labelled.
+- New sessions always start in /Users/laa; the app offers no worktree choice and hides worktree sessions from the default list (owner, 2026-11-02). The app sends `mode: bypass` by default; the Bridge treats a missing mode as `default`.
+- Model, effort and Fast come from the HQ model table through `/v1/session-options`; saved model favourites live on the device. The model bar is the only Liquid Glass control on the sheet.
+- Rows show name, project, model and relative time; favourites are pinned on top. Swipe leading pins, trailing archives; the same actions are in the context menu and as accessibility actions. Archive and favourite are Bridge-side only.
+- The session name follows the agent's own Paseo rename unless the owner renamed it.
+- Project files are stored on the Mac and passed to sessions as paths; the phone never sees the path.
 
 **Open gaps**
-- Creation controls and complete conversation history need follow-up; light and dark snapshots require the simulator slot.
+- Archiving does not archive the Paseo agent; child-session nesting is no longer shown.
 
-**Checked:** 2026-11-01, based on 638a2af6; presentation change pending simulator verification.
+**Checked:** 2026-11-02, based on 9f581505 (sessions-ui); physical iPhone verification pending.
 ## LAA Today and calendar widget
 
 **Siblings:** Today calendar · small next-event widget · existing calendar tools · Work and Brain entry points.

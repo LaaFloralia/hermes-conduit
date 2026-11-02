@@ -26,14 +26,30 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertNil(page.items.first?.result)
     }
 
-    func testSessionsShowChildrenBeneathParentsAndRetainManualNames() throws {
-        let parent = try session("p", name: "社長の名前", updated: "2026-10-01T00:00:00Z")
-        let child = try session("c", name: "子｜調査", parent: "p", updated: "2026-10-03T00:00:00Z")
-        let newest = try session("n", name: "別の仕事", updated: "2026-10-04T00:00:00Z")
-        let rows = LAAWorkPresentation.sessionRows([parent, child, newest])
-        XCTAssertEqual(rows.map(\.session.id), ["n", "p", "c"])
-        XCTAssertEqual(rows.map(\.depth), [0, 0, 1])
-        XCTAssertEqual(rows.last?.session.name, "子｜調査")
+    func testFavouritesComeFirstAndArchivedOrWorktreeFieldsDecode() throws {
+        let older = try session("o", name: "古い", updated: "2026-10-01T00:00:00Z")
+        let newer = try session("n", name: "新しい", updated: "2026-10-03T00:00:00Z")
+        let pinnedData = Data(#"{"id":"f","name":"ピン","requestId":"f","workspaceId":"home","profile":"opus-high","phase":"running","createdAt":"2026-09-01T00:00:00Z","updatedAt":"2026-09-01T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"},"favorite":true,"archivedAt":null,"mode":"bypass","fast":true,"worktree":false}"#.utf8)
+        let pinned = try JSONDecoder().decode(LAAWorkSession.self, from: pinnedData)
+        let rows = LAAWorkSessionOrder.rows([older, pinned, newer])
+        XCTAssertEqual(rows.pinned.map(\.id), ["f"])
+        XCTAssertEqual(rows.recent.map(\.id), ["n", "o"])
+        XCTAssertTrue(pinned.isFavorite)
+        XCTAssertFalse(pinned.isArchived)
+        XCTAssertEqual(pinned.fast, true)
+        XCTAssertFalse(older.isFavorite, "an older Bridge omits the field")
+    }
+
+    func testModelLabelsAndSavedFavouritesRoundTrip() throws {
+        let data = Data(#"{"profiles":[{"id":"opus-high","label":"Claude Opus 5.5","provider":"claude","model":"claude-opus-5-5","effort":"high","fast":true},{"id":"sol-xhigh","label":"GPT-6.1 Terra","provider":"codex","model":"gpt-6.1-terra","effort":"xhigh","fast":true}],"defaultProfile":"opus-high","defaultMode":"bypass"}"#.utf8)
+        let options = try JSONDecoder().decode(LAAWorkSessionOptions.self, from: data)
+        XCTAssertEqual(LAAWorkSessionStyle.profileLabel(options.profiles[0]), "Opus 5.5 High")
+        XCTAssertEqual(LAAWorkSessionStyle.profileLabel(options.profiles[0], fast: true), "Opus 5.5 High ⚡︎")
+        XCTAssertEqual(LAAWorkSessionStyle.profileLabel(options.profiles[1]), "GPT-6.1 Terra XHigh")
+        XCTAssertEqual(LAAWorkSessionStyle.shortLabel("DeepSeek V4.1-Flash-1017"), "DeepSeek V4.1-Flash")
+        let saved = [LAAWorkModelFavorite(profile: "opus-high", fast: true), LAAWorkModelFavorite(profile: "sol-xhigh", fast: false)]
+        XCTAssertEqual(LAAWorkModelPreferences.decode(LAAWorkModelPreferences.encode(saved)), saved)
+        XCTAssertEqual(LAAWorkModelPreferences.decode("not json"), [])
     }
 
     func testMissingObservationIsNotTreatedAsMatchOrMismatch() throws {
@@ -44,16 +60,6 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertFalse(missing.modelMismatch)
         XCTAssertFalse(missing.runtimeVerified ?? false)
         XCTAssertTrue(mismatched.modelMismatch)
-    }
-
-    func testFilteredChildKeepsItsParentForContext() throws {
-        let parent = try session("p", name: "親", updated: "2026-10-01T00:00:00Z")
-        let childData = Data(#"{"id":"c","name":"子｜調査","requestId":"c","parentId":"p","workspaceId":"ws","profile":"test","phase":"stopped","createdAt":"2026-10-02T00:00:00Z","updatedAt":"2026-10-02T00:00:00Z","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8)
-        let child = try JSONDecoder().decode(LAAWorkSession.self, from: childData)
-        let rows = LAAWorkPresentation.filteredSessionRows([parent, child], projectID: "", phase: "stopped")
-        XCTAssertEqual(rows.map(\.session.id), ["p", "c"])
-        XCTAssertEqual(rows.map(\.depth), [0, 1])
-        XCTAssertTrue(LAAWorkPresentation.filteredSessionRows([parent, child], projectID: "", phase: "error").isEmpty)
     }
 
     func testDecisionShortcutRequiresReportedPendingWorkOrDecisionPhase() throws {
@@ -70,30 +76,12 @@ final class LAAWorkTests: XCTestCase {
         XCTAssertFalse(try decode("awaiting_review", pending: nil).needsDecision)
     }
 
-    func testDecisionShortcutExcludesContextParentsOutsideTheSelectedProject() throws {
-        let parentData = Data(#"{"id":"p","name":"親","requestId":"p","workspaceId":"ws","profile":"test","phase":"awaiting_decision","createdAt":"1","updatedAt":"1","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8)
-        let childData = Data(#"{"id":"c","name":"子｜調査","requestId":"c","parentId":"p","projectId":"target","workspaceId":"ws","profile":"test","phase":"awaiting_decision","createdAt":"2","updatedAt":"2","events":{"lastSeq":1,"oldestSeq":1,"cursor":"c"}}"#.utf8)
-        let decoder = JSONDecoder()
-        let sessions = try [decoder.decode(LAAWorkSession.self, from: parentData), decoder.decode(LAAWorkSession.self, from: childData)]
-        let rows = LAAWorkPresentation.filteredSessionRows(sessions, projectID: "target", phase: "awaiting_decision")
-        XCTAssertEqual(rows.map(\.session.id), ["p", "c"])
-        XCTAssertEqual(LAAWorkPresentation.decisionRows(rows, projectID: "target", phase: "awaiting_decision").map(\.session.id), ["c"])
-    }
-
     func testInstructionEditingRequiresBodyFromServer() throws {
         let old = try JSONDecoder().decode(LAAWorkProject.self, from: Data(#"{"id":"p","name":"旧","etag":"\"1\""}"#.utf8))
         let new = try JSONDecoder().decode(LAAWorkProject.self, from: Data(#"{"id":"p","name":"新","etag":"\"2\"","instructions":"共有"}"#.utf8))
         XCTAssertFalse(old.hasInstructionBody)
         XCTAssertTrue(new.hasInstructionBody)
         XCTAssertEqual(new.instructions, "共有")
-    }
-
-    func testWorkspaceBranchNameChangesAreReported() {
-        XCTAssertNil(LAAWorkWorkspaceCreator.branchNotice(requested: "feature", actual: "feature"))
-        let notice = LAAWorkWorkspaceCreator.branchNotice(requested: "laa/example", actual: "laa-example")
-        XCTAssertTrue(notice?.contains("laa/example") == true)
-        XCTAssertTrue(notice?.contains("laa-example") == true)
-        XCTAssertNotNil(LAAWorkWorkspaceCreator.branchNotice(requested: "feature", actual: nil))
     }
 
     func testLinearTaskDetailDecodesTaskInsideResponse() throws {

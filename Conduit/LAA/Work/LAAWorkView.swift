@@ -9,11 +9,8 @@ struct LAAWorkView: View {
     @State private var section = 0
     @State private var projects: [LAAWorkProject] = []
     private let workspaces: [LAAWorkWorkspace] = []
-    @State private var sessions: [LAAWorkSession] = []
     @State private var routines: [LAAWorkRoutine] = []
     @State private var projectInstructionsAvailable = false
-    @State private var projectFilter = ""
-    @State private var phaseFilter = ""
     @State private var failure: String?
     @State private var isLoading = false
     @State private var showPairing = false
@@ -44,7 +41,7 @@ struct LAAWorkView: View {
                 .laaTextStyle(.body).foregroundStyle(LAAColor.text)
             }
             .refreshable {
-                if section == 2 { refreshID += 1 } else { await load() }
+                if section == 3 { await load() } else { refreshID += 1 }
             }
         }
         .navigationTitle("")
@@ -168,113 +165,13 @@ struct LAAWorkView: View {
     }
 
     private var sessionList: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            Text(verbatim: "新しいセッションの作成は現在利用できません。")
-                .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: LAASpacing.x2) {
-                    filter(LAACopy.WorkTab.projectFilter, selection: $projectFilter, values: projects.map { ($0.id, $0.name) })
-                    filter(LAACopy.WorkTab.phaseFilter, selection: $phaseFilter, values: phaseOptions)
-                }
-            }
-            let rows = LAAWorkPresentation.filteredSessionRows(sessions, projectID: projectFilter, phase: phaseFilter)
-            sectionHeading(LAACopy.WorkTab.sessions.uppercased())
-            if rows.isEmpty && !isLoading && failure == nil {
-                Text(verbatim: projectFilter.isEmpty && phaseFilter.isEmpty
-                     ? "セッションがありません。＋から始められます。" : "条件に合うセッションはありません。")
-                    .foregroundStyle(LAAColor.secondaryText).workCard()
-            }
-            ForEach(rows) { row in
-                NavigationLink {
-                    LAAWorkSessionDetail(id: row.session.id, projects: projects, workspaces: workspaces, drafts: drafts)
-                } label: {
-                    VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                        HStack {
-                            Text(verbatim: row.session.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                                .accessibilityIdentifier("work.session.\(row.session.id)")
-                            Spacer()
-                            Text(verbatim: LAAWorkPresentation.phaseSymbol(row.session.phase) + " " + LAAWorkPresentation.phase(row.session.phase))
-                                .laaTextStyle(.secondary).foregroundStyle(LAAWorkPresentation.phaseNeedsAttention(row.session.phase) ? LAAColor.attention : LAAColor.link)
-                        }
-                        if (!projectFilter.isEmpty && row.session.projectId != projectFilter) ||
-                            (!phaseFilter.isEmpty && row.session.phase != phaseFilter) {
-                            Text(verbatim: "親セッション").laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        }
-                        Text(verbatim: (row.session.observed?.model ?? row.session.requested?.model ?? "モデル未確認") +
-                             (row.session.runtimeVerified == true ? "" : "（実行時未確認）") + " · " + LAAWorkPresentation.date(row.session.updatedAt))
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                        if row.session.modelMismatch {
-                            Label(LAAWorkPresentation.japanese("要求と観測が一致しません"), systemImage: "exclamationmark.triangle.fill")
-                                .laaTextStyle(.secondary).foregroundStyle(LAAColor.attention)
-                        }
-                    }
-                    .padding(.leading, CGFloat(row.depth) * LAASpacing.x3)
-                    .workCard()
-                }.buttonStyle(.plain)
-            }
-            let decisions = LAAWorkPresentation.decisionRows(rows, projectID: projectFilter, phase: phaseFilter)
-            if !decisions.isEmpty {
-                sectionHeading(LAACopy.WorkTab.needsDecision).padding(.top, LAASpacing.x6)
-                ForEach(decisions) { row in
-                    NavigationLink {
-                        LAAWorkSessionDetail(id: row.session.id, projects: projects, workspaces: workspaces, drafts: drafts)
-                    } label: {
-                        HStack(spacing: LAASpacing.x3) {
-                            VStack(alignment: .leading, spacing: LAASpacing.x1) {
-                                Text(verbatim: row.session.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                                Text(verbatim: "内容を開いて確認できます。回答は後続の機能で対応します。")
-                                    .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText)
-                            }
-                            Spacer(minLength: LAASpacing.x2)
-                            Image(systemName: "chevron.right").foregroundStyle(LAAColor.link)
-                        }.workCard()
-                    }.buttonStyle(.plain)
-                }
-            }
-        }
-        .accessibilityIdentifier("work.sessions")
+        LAAWorkSessionsSection(drafts: drafts, refreshID: refreshID).environmentObject(bridge)
     }
 
     private var projectList: some View {
-        VStack(alignment: .leading, spacing: LAASpacing.x3) {
-            if projects.isEmpty && !isLoading && failure == nil {
-                Text(verbatim: "プロジェクトがありません。＋から作成できます。")
-                    .foregroundStyle(LAAColor.secondaryText).workCard()
-            }
-            ForEach(projects) { project in
-                NavigationLink {
-                    LAAWorkProjectDetail(project: project, drafts: drafts, workspaces: workspaces)
-                } label: {
-                    VStack(alignment: .leading, spacing: LAASpacing.x2) {
-                        Text(verbatim: project.name).laaTextStyle(.body).fontWeight(.semibold).foregroundStyle(LAAColor.text)
-                        Text(verbatim: "指示版 \(project.instructionVersion.map(String.init) ?? "未確認") · " + (project.instructionHash ?? "ハッシュ未確認"))
-                            .laaTextStyle(.secondary).foregroundStyle(LAAColor.secondaryText).lineLimit(2)
-                    }.workListRow()
-                }.buttonStyle(.plain)
-            }
-        }.accessibilityIdentifier("work.projects")
+        LAAWorkProjectsSection(drafts: drafts, refreshID: refreshID).environmentObject(bridge)
     }
 
-    private func filter(_ title: String, selection: Binding<String>, values: [(String, String)]) -> some View {
-        Picker(selection: selection, label: Text(verbatim: title)) {
-            Text(verbatim: "\(title): \(LAACopy.WorkTab.all)").tag("")
-            ForEach(values.indices, id: \.self) { index in Text(verbatim: values[index].1).tag(values[index].0) }
-        }.pickerStyle(.menu).laaTextStyle(.secondary)
-    }
-    private func sectionHeading(_ title: String) -> some View {
-        Text(verbatim: title).laaTextStyle(.section).fontWeight(.semibold).foregroundStyle(LAAColor.secondaryText)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    private func unique(_ values: [String]) -> [String] { Array(Set(values)).sorted() }
-    private var phaseOptions: [(String, String)] {
-        let known = ["created", "running", "awaiting_decision", "awaiting_review", "stopped", "stop_unconfirmed", "closed", "error"]
-        let extra = unique(sessions.map(\.phase)).filter { !known.contains($0) }
-        return (known + extra).map { ($0, LAAWorkPresentation.phase($0)) }
-    }
-    private func projectName(_ id: String?) -> String {
-        guard let id else { return "プロジェクトなし" }
-        return projects.first(where: { $0.id == id })?.name ?? "プロジェクト未確認"
-    }
     @MainActor private func load() async {
         let id = UUID()
         loadID = id
@@ -293,10 +190,6 @@ struct LAAWorkView: View {
                     guard !Task.isCancelled, loadID == id else { return }
                     projectInstructionsAvailable = detail?.hasInstructionBody == true && detail?.instructionError == nil
                 } else { projectInstructionsAvailable = false }
-                if selected == 0 {
-                    let page: [LAAWorkSession] = try await loadItems("/v1/sessions")
-                    if !Task.isCancelled && loadID == id { sessions = page }
-                }
             } else if selected == 3 {
                 let page: LAAWorkPage<LAAWorkRoutine> = try await bridge.read("/v1/routines")
                 if !Task.isCancelled && loadID == id { routines = page.items }
