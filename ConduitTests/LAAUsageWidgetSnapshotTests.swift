@@ -19,7 +19,7 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(entry.usage?.meters.map(\.id), ["provider.claude.quota.0"])
     }
 
-    func testLateRenderingKeepsHistoricalNumberAndSpokenObservationTime() {
+    func testLateRenderingMarksHistoricalNumberUnavailable() {
         let observed = Date(timeIntervalSince1970: 1_000)
         let meter = WidgetUsageMeter(id: "late", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed, freshUntil: observed.addingTimeInterval(600), resetsAt: nil, stale: false, retained: false)
@@ -27,7 +27,9 @@ final class LAAUsageWidgetSnapshotTests: XCTestCase {
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)))
         XCTAssertTrue(LAAEmployeeWidgetView.isPast(meter, entryDate: observed.addingTimeInterval(600), renderedAt: observed))
         XCTAssertTrue(meter.hasRecordedValue(at: observed.addingTimeInterval(86400)))
-        XCTAssertEqual(LAAEmployeeWidgetView.valueText(meter), "42%")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(599)), "42%")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter, entryDate: observed, renderedAt: observed.addingTimeInterval(600)), "更新待ち")
+        XCTAssertEqual(LAAEmployeeWidgetView.displayValue(meter.lastKnown(label: meter.label), entryDate: observed, renderedAt: observed), "更新待ち")
         XCTAssertTrue(LAAEmployeeWidgetView.timeText(observed, at: observed.addingTimeInterval(86400)).contains("時点"))
         let future = WidgetUsageMeter(id: "future", label: "Claude Weekly", unit: .percent, amount: 42,
             observedAt: observed.addingTimeInterval(121), freshUntil: nil, resetsAt: nil, stale: false, retained: false)

@@ -795,6 +795,9 @@ struct LoginHeader: View {
     }
 
     private var iconAssetName: String {
+        #if LAA_BUILD
+        return "LAAIconPreview"
+        #else
         switch appState.themePreference {
         case .light:
             return AppIconChoice.light.previewAssetName
@@ -803,6 +806,7 @@ struct LoginHeader: View {
         case .system:
             return colorScheme == .dark ? AppIconChoice.dark.previewAssetName : AppIconChoice.light.previewAssetName
         }
+        #endif
     }
 }
 

@@ -50,6 +50,7 @@ enum LAACopy {
     static let dataAndLicenses = "Data & licenses"
     static let dataAndLicensesDetail = "Device data and open-source licenses"
     static let openSourceLicenses = "Open-source licenses"
+    static let back = "Back"
     static let close = "Close"
     static let done = "Done"
     static let call = "Call"

@@ -211,17 +211,17 @@ struct LAAEmployeeWidgetView: View {
 
     private func usageRow(_ meter: WidgetUsageMeter) -> some View {
         let past = Self.isPast(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor)
-        let hasValue = meter.hasRecordedValue(at: renderedAt)
+        let hasValue = meter.hasRecordedValue(at: renderedAt) && !past
         return HStack(spacing: LAASpacing.x1) {
             Text(verbatim: meter.label).lineLimit(1).minimumScaleFactor(0.75)
             Spacer(minLength: LAASpacing.x1)
-            Text(verbatim: hasValue ? Self.valueText(meter) : "未取得")
+            Text(verbatim: Self.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))
                 .monospacedDigit().lineLimit(1).minimumScaleFactor(0.75).layoutPriority(1)
         }
         .laaTextStyle(.section)
         .foregroundStyle(!hasValue ? LAAColor.attention : (past ? LAAColor.secondaryText : LAAColor.text))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(hasValue ? "\(meter.label), \(Self.valueText(meter)), \(Self.timeText(meter.observedAt!, at: renderedAt))" : "\(meter.label), 未取得")
+        .accessibilityLabel("\(meter.label), \(Self.displayValue(meter, entryDate: entry.date, renderedAt: renderedAt, anchor: entry.freshnessAnchor))")
     }
 
     static func timeText(_ observation: Date, at date: Date) -> String {
@@ -232,6 +232,12 @@ struct LAAEmployeeWidgetView: View {
             formatter.dateFormat = "yyyy/M/d HH:mm"
         }
         return formatter.string(from: observation) + "時点"
+    }
+
+    static func displayValue(_ meter: WidgetUsageMeter, entryDate: Date, renderedAt: Date, anchor: Date? = nil) -> String {
+        guard meter.hasRecordedValue(at: renderedAt) else { return "未取得" }
+        guard !isPast(meter, entryDate: entryDate, renderedAt: renderedAt, anchor: anchor) else { return "更新待ち" }
+        return valueText(meter)
     }
 
     static func valueText(_ meter: WidgetUsageMeter) -> String {

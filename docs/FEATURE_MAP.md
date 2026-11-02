@@ -382,13 +382,13 @@ build (keeps its own chat and call controls)
 - Call state, existing voice adapter, controls, route labels, return bar and voice settings: `Conduit/LAA/Call/LAACallModel.swift`, `Conduit/LAA/Call/LAAEmployeeVoiceControl.swift`, `Conduit/LAA/Call/LAAEmployeeCallView.swift`, `Conduit/LAA/LAAAppShell.swift`, `Conduit/Views/RootView.swift`, `Conduit/Views/VoiceSettingsView.swift`
 - Employee GPT-Live profile, subscription billing and voice selection: `Conduit/LAA/Call/LAAEmployeeGPTLive.swift`, `Conduit/Services/AppState.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Voice/GPTLive/GPTLiveClient.swift`
 - LAA-only native presentation: `Conduit/LAA/Call/LAACallKitPresentation.swift`, `Conduit/Voice/HermesNativeCalls.swift`, `Conduit/Services/AppState.swift`
-- Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAAStaffAvatarAudioTests.swift`, `ConduitTests/LAAEmployeeGPTLiveTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`
+- Fake-driven UI and state tests: `Conduit/LAA/Call/LAAStaffCallFixture.swift`, `ConduitTests/LAAStaffCallTests.swift`, `ConduitTests/LAAStaffAvatarAudioTests.swift`, `ConduitTests/LAAConversationHeaderSnapshotTests.swift`, `ConduitTests/LAAEmployeeGPTLiveTests.swift`, `ConduitUITests/LAAStaffCallUITests.swift`, `ConduitUITests/LAABackgroundAndGroupUITests.swift`
 
 **Rulings**
 - Use the adopted staff assets; use the former Ciel assets only when the staff folder is missing, then the existing avatar or initials. The default profile uses the LAA mark.
 - The muted loop runs only while visible and active, after disconnecting from system audio. Reduce Motion, Low Power Mode, scrolling and platforms unable to disconnect use the still, so opening a chat does not take over another app's audio.
 - A photo background uses the shared photo scope to give the employee header clear glass and a dim backing; other backgrounds keep the existing header appearance.
-- The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui).
+- The header uses the bar's own slots: the employee name in the title slot, bounded so the bar keeps it on the screen's center, and the call button and conversation menu as one trailing item, so the system draws one glass with Back's margin. A group room does the same with its title and call button (2026-11-02, laa/chat-ui). At 375 points and accessibility text sizes, the employee name takes priority over the decorative avatar and status; the full status stays in its accessible label and detail sheet. Back keeps its native control and interactive pop gesture.
 - The in-call screen retains its originating conversation. A native call uses the system audio-route picker and shows the current route; other calls use the existing speaker control. When no measured level is available the ring stays still.
 - The call screen follows the selected light or dark appearance using the v2 background, text, surface and control tokens; either the top back control or Chat returns to the originating conversation.
 - Voice uses the existing phone-call start and end paths. A Live provider's existing consent sheet is answered before starting.
@@ -408,7 +408,7 @@ build (keeps its own chat and call controls)
 - ChatGPT sign-in and a physical call for each employee's profile, persona and supported voice must be checked on the Hermes host and iPhone after the owner signs in again.
 - If a displayed native call ends during audio activation, the existing path does not expose whether it was hung up or timed out: the screen returns to the chat in both cases.
 
-**Checked:** 2026-11-02, laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
+**Checked:** 2026-11-02, laa/fixes (narrow header snapshots; pushed Back UI verification pending); laa/chat-ui (header in the bar's own slots); 2026-10-30, based on 7efd7f90 (Task 11c; device checks pending); c9500886 (photo header); 2026-10-29, a3cd48ef (outgoing integration).
 
 ## Switching voice mode in a call
 
@@ -499,9 +499,12 @@ App Store build · the Bridge API, Brain and Usage data contracts
   request counts stay in their own units; model names, Hermes token usage and Mac
   status are not part of this screen. The refresh button only re-reads the feed and
   never opens an external URL. Opening the tab refreshes after a 60-second quiet
-  interval; manual refresh and app foreground refresh remain available. It retains previous
-  readings and their times on failure, disables duplicate refreshes and
-  distinguishes missing, zero, stale, expired and unavailable data. Hermes'
+  interval; the shared foreground timer also refreshes while Usage is visible.
+  The screen reevaluates freshness while open. Failed refreshes clear screen
+  numbers and mark retained widget observations stale immediately; stale, reset,
+  failed and manually recorded readings show no number. Code-owned service links
+  remain available for checking unavailable readings. Duplicate refreshes are
+  suppressed, and missing, zero, stale, expired and unavailable data stay distinct. Hermes'
   existing Settings report remains available.
 - Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
   server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
@@ -621,7 +624,7 @@ App Store build · the Bridge API, Brain and Usage data contracts
 - Project version errors provide the current ETag in the 412 error details;
   callers must read the resource again if an error has no current ETag.
 
-**Checked:** 2026-11-02, laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
+**Checked:** 2026-11-02, laa/fixes (live freshness, failed widget fetches, service links, login company icon); laa/brain (local note management, Gallery, draft retention and Bridge fallback); laa/glass (shared tab heading and glass controls); 2026-10-31, laa/usage-widget (Usage state, UI and hosted screen snapshots); laa/v2-shell (design v2 common shell); laa/v2-brain-assets (Brain and Assets); f58f5896 (Brain); 3ab4a362 (general Bridge requests); 2026-11-02, based on 6224e0bd (Google API Drive, metadata cache, Office previews and uploads).
 
 ## LAA Work tab
 
@@ -3829,14 +3832,14 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
 
 **Rulings**
-- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows the LAA company icon and Ciel's name above Ciel's bare call and chat icons (no plate or glow behind them, no observation time), beside Codex Weekly, OpenCode Weekly, Claude Weekly, Venice USD balance, Magnific AI credits, GPT API, Claude API and Liquid AI, in that order as space permits. Weekly remains English in every locale. Missing or expired widget readings have no number. An open Usage screen keeps its last fetched snapshot stable until explicit refresh; automatic shell refresh is suspended while it is visible. WidgetKit controls subsequent timeline delivery.
+- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows the LAA company icon and Ciel's name above Ciel's bare call and chat icons (no plate or glow behind them, no observation time), beside Codex Weekly, OpenCode Weekly, Claude Weekly, Venice USD balance, Magnific AI credits, GPT API, Claude API and Liquid AI, in that order as space permits. Weekly remains English in every locale. Missing or expired widget readings have no number. An open Usage screen reevaluates freshness and participates in automatic refresh. Failed fetches retain observations only as stale, without displayed numbers. WidgetKit controls subsequent timeline delivery.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 
 **Open gaps**
 - Home Screen tap targets, tint and clear appearances, Lock Screen behavior and signing require an iPhone check.
 
-**Checked:** 2026-11-02, laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
+**Checked:** 2026-11-02, laa/fixes (expired and failed readings have no number); laa/glass (medium widget: company icon, bare action icons, no observation time); 2026-10-31, laa/usage-widget configuration, snapshot cache and hosted light, dark and accented view renders; based on 7efd7f90 (Task 11c routing). WidgetKit's final Home Screen tint, tap targets and device behavior remain to be checked.
 
 ## LAA conversation backgrounds and employee groups
 
@@ -3893,14 +3896,15 @@ and rollback instructions · the upstream App Store build
 
 **Rulings**
 - Sent messages use an opaque teal surface, replies an opaque card, and dates use the conversation's actual timestamps. Existing Markdown, attachment, draft, selection, call and background routes remain the sources of truth.
-- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the system Back button.
+- Employee and group transcripts and composers use the shared horizontal margin. Compact snapshots render a 440-point viewport beside the Duo's rail and measure the trailing insets of the sent bubble, header and composer. Pushed compact chats reserve room for the native Back button and keep the system back gesture.
+- The LAA transcript reserves the entire growing composer height, including Model and context controls, so an eight-line draft cannot expose message text behind that row. Group placeholders use primary ink on photo glass.
 - The LAA Markdown palette stays neutral on both paper and chat cards. Link indicators are visual only and are excluded from copied text.
 - Group file references cannot currently be opened through the room's existing renderer. They remain visible as disabled items with an explanation rather than pretending to fetch them.
 
 **Open gaps**
 - Dynamic Type, VoiceOver and actual glass contrast need physical iPhone verification.
 
-**Checked:** 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
+**Checked:** 2026-11-02, laa/fixes (growing composer, group placeholder and compact headers); 2026-10-30, based on 7d23b3ca (LAA v2 chat; physical iPhone verification pending).
 
 
 ## LAA Work session presentation

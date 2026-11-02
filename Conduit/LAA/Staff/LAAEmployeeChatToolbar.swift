@@ -9,6 +9,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     var menu: AnyView? = nil
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var bridge: LAABridgeSession
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var calls: LAAEmployeeCallCoordinator
 
     private var profile: String { appState.conversationIdentityProfile }
@@ -33,7 +34,8 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
     private var header: some View {
         LAAEmployeeHeader(profile: profile, name: name, avatarURL: appState.profileAvatarURL(for: profile),
                           status: status, isObscured: calls.isShowingCall,
-                          voiceSetting: voiceSetting(for: profile), voiceSettingEnabled: appState.isConnected)
+                          voiceSetting: voiceSetting(for: profile), voiceSettingEnabled: appState.isConnected,
+                          compact: (LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth) ?? 200) < 140 || dynamicTypeSize.isAccessibilitySize)
             .laaPhotoGlassScope()
     }
 
@@ -56,7 +58,7 @@ struct LAAEmployeeChatToolbar: ToolbarContent {
         ToolbarItem(placement: .principal) {
             header
                 .frame(maxWidth: LAAConversationHeaderLayout.nameWidth(screenWidth: screenWidth))
-                .frame(height: LAAConversationHeaderLayout.controlHeight)
+                .frame(minHeight: LAAConversationHeaderLayout.controlHeight)
         }
         ToolbarItem(placement: .topBarTrailing) {
             LAAConversationControls {
@@ -153,20 +155,26 @@ struct LAAEmployeeHeader: View {
     var isObscured = false
     var voiceSetting: Binding<String>? = nil
     var voiceSettingEnabled = true
+    var compact = false
     @Environment(\.laaClearGlassControls) private var clearGlass
     @State private var showDetails = false
 
     var body: some View {
         Button { showDetails = true } label: {
             HStack(spacing: 8) {
-                StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 38,
-                                scrolling: showDetails || isObscured)
+                if !compact {
+                    StaffAvatarView(profile: profile, name: name, fallbackURL: avatarURL, size: 38,
+                                    scrolling: showDetails || isObscured)
+                }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(name).font(.custom("Georgia", size: 16, relativeTo: .headline)).lineLimit(1)
-                    Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(name).font(.custom("Georgia", size: 16, relativeTo: .headline))
+                        .lineLimit(1).minimumScaleFactor(compact ? 0.5 : 0.8)
+                        .multilineTextAlignment(compact ? .center : .leading)
+                    if !compact { Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
                 }
             }
             .modifier(LAAEmployeeHeaderGlass(clear: clearGlass))
+            .frame(minHeight: LAASpacing.minimumTouchTarget)
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showDetails) {
@@ -174,6 +182,7 @@ struct LAAEmployeeHeader: View {
                                voiceSetting: voiceSetting, voiceSettingEnabled: voiceSettingEnabled)
         }
         .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(verbatim: name + ", " + status))
         .accessibilityIdentifier("laa.employee.header")
     }
 }
@@ -236,7 +245,7 @@ private struct LAAStaffDetailView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(action: { dismiss() }) { Text(verbatim: "閉じる") }
+                    Button(action: { dismiss() }) { Text(verbatim: LAACopy.close) }
                 }
             }
         }
