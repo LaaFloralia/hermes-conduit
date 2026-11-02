@@ -94,7 +94,8 @@ final class LAAUsageUITests: XCTestCase {
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         connect.tap()
         try pair(app, port: 19492, codeRoute: "fixture-code")
-        XCTAssertTrue(app.staticTexts["Claude Weekly"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Weekly"].firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Claude Weekly"].exists)
         XCTAssertTrue(enabled(app.buttons["laa.usage.refresh"]))
 
         let before = try XCTUnwrap(Int(helper("counts")))
@@ -129,7 +130,8 @@ final class LAAUsageUITests: XCTestCase {
             app.buttons["Connection"].tap()
         }
         try pair(app, port: 19492, codeRoute: "fixture-code")
-        XCTAssertTrue(app.staticTexts["Claude Weekly"].waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Weekly"].firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts["Claude Weekly"].exists)
         let refresh = app.buttons["laa.usage.refresh"]
         XCTAssertTrue(enabled(refresh))
         XCTAssertTrue(app.staticTexts["62%"].firstMatch.exists)

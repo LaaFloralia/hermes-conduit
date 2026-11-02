@@ -64,7 +64,10 @@ struct LAAUsageView: View {
         .onAppear {
             guard automaticallyRefresh else { return }
             state.setPresented(true)
-            Task { await state.refreshOnTabOpen(bridge: bridge) }
+        }
+        .task(id: bridge.revision) {
+            guard automaticallyRefresh else { return }
+            await state.refreshOnTabOpen(bridge: bridge)
         }
         .onDisappear { if automaticallyRefresh { state.setPresented(false) } }
     }

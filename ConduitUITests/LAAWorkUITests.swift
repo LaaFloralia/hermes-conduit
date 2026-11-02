@@ -81,7 +81,7 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Explicit address-entry diagnostic is not enabled.")
         }
         let app = launchWork()
-        let connect = app.buttons["Connect to Mac"]
+        let connect = app.buttons["work.connect"]
         XCTAssertTrue(connect.waitForExistence(timeout: 15))
         connect.tap()
         XCTAssertTrue(enterDedicatedAddress(app.textFields["laa.bridge.address"]))
@@ -145,7 +145,7 @@ final class LAAWorkUITests: XCTestCase {
             throw XCTSkip("Explicit live pairing is not enabled.")
         }
         let app = launchWork()
-        let connect = app.buttons["Connect to Mac"]
+        let connect = app.buttons["work.connect"]
         guard connect.waitForExistence(timeout: 15) else {
             if waitUntilReady(app.buttons["work.sessions.new"]) {
                 throw XCTSkip("The dedicated simulator is already paired.")
@@ -230,7 +230,7 @@ final class LAAWorkUITests: XCTestCase {
 
     func testLiveWorkSectionsAndSessionEntry() throws {
         let app = launchWork()
-        if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {
+        if app.buttons["work.connect"].waitForExistence(timeout: 3) {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
         let add = app.buttons["work.sessions.new"]
@@ -502,7 +502,7 @@ final class LAAWorkUITests: XCTestCase {
 
     func testLiveFullEditorDraftSurvivesRelaunch() throws {
         let app = launchWork()
-        if app.buttons["Connect to Mac"].waitForExistence(timeout: 3) {
+        if app.buttons["work.connect"].waitForExistence(timeout: 3) {
             throw XCTSkip("Pair the dedicated test simulator with the real Bridge before this flow.")
         }
         let add = app.buttons["work.sessions.new"]
