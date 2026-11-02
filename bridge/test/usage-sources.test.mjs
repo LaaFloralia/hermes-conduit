@@ -298,6 +298,57 @@ test('an empty cost response is an unavailable provider, not a zero', () => {
   }
 });
 
+test('an API provider with no balance field reports no balance, never its spend', () => {
+  const base = { kind: 'cost', source: 'live', available: true, updatedAt: '2026-10-29T04:59:00Z',
+    currency: 'USD', periodTimezone: 'UTC', todayAmount: 0.96, monthAmount: 21.8 };
+  const items = projection([{ ...base, id: 'openai-api', sourceLag: 'undisclosed' },
+    { ...base, id: 'claude-api', sourceLag: 'typical-5m' }]);
+  for (const id of ['openai-api', 'claude-api']) {
+    const balance = byId(items, `provider.${id}.balance`);
+    assert.equal(balance.kind, 'balance');
+    assert.equal(balance.availability, 'unavailable');
+    assert.equal(balance.value, null);
+    assert.equal(balance.unit, 'usd');
+    assert.equal(balance.nullReason, 'not_auto');
+    assert.equal(balance.observedAt, null);
+    assert.equal(balance.detail, undefined);
+    // The spend keeps its own row and its own meaning.
+    assert.equal(byId(items, `provider.${id}.cost-today`).value, 0.96);
+    assert.equal(byId(items, `provider.${id}.cost-month`).value, 21.8);
+  }
+});
+
+test('a published API balance is shown beside the spend and not replaced by it', () => {
+  const row = { id: 'openai-api', kind: 'cost', source: 'live', available: true,
+    updatedAt: '2026-10-29T04:59:00Z', currency: 'USD', amount: 21.8, periodTimezone: 'UTC',
+    todayAmount: 0.96, monthAmount: 3.4, sourceLag: 'undisclosed' };
+  const balance = byId(projection([row]), 'provider.openai-api.balance');
+  assert.equal(balance.availability, 'available');
+  assert.equal(balance.value, 21.8);
+  assert.equal(balance.unit, 'usd');
+  assert.equal(balance.detail.currency, 'USD');
+  assert.equal(Date.parse(balance.detail.freshUntil), Date.parse('2026-10-29T05:09:00Z'));
+  // Ten minutes on, the same row holds no number.
+  const aged = byId(projection([row], { now: NOW + 600_000 }), 'provider.openai-api.balance');
+  assert.equal(aged.value, null);
+  assert.equal(aged.nullReason, 'fetch_failed');
+  assert.equal(aged.detail, undefined);
+  // A balance field that is present but unreadable is a failed read, not an
+  // automatic source that does not exist.
+  const broken = byId(projection([{ ...row, amount: 'n/a' }]), 'provider.openai-api.balance');
+  assert.equal(broken.nullReason, 'fetch_failed');
+});
+
+test('a manually entered API balance is not the current balance', () => {
+  const items = projection([{ id: 'claude-api', kind: 'balance', source: 'verified', available: true,
+    updatedAt: '2026-10-29T04:58:00Z', currency: 'USD', amount: 58.51 }]);
+  const balance = byId(items, 'provider.claude-api.balance');
+  assert.equal(balance.availability, 'unavailable');
+  assert.equal(balance.value, null);
+  assert.equal(balance.nullReason, 'not_auto');
+  assert.equal(balance.detail, undefined);
+});
+
 test('the host sampler computes CPU from a tick delta and caches for 10 seconds', async () => {
   let ticks = { user: 100, sys: 0, idle: 100 };
   let calls = 0;

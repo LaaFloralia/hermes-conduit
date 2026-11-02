@@ -8,6 +8,7 @@ private extension LAACopy {
     static let usageConnect = "Connect to Mac"
     static let usageMore = "More"
     static let usageOpenService = "Open service"
+    static let usageBilling = "Check billing"
 }
 
 struct LAAUsageView: View {
@@ -190,11 +191,30 @@ struct LAAUsageView: View {
         }
     }
 
+    /// The two API providers' balance rows. Their spend is never shown here.
+    static func isAPIBalance(_ item: LAAUsageItem) -> Bool {
+        ["provider.openai-api.balance", "provider.claude-api.balance"].contains(item.id)
+    }
+
     @ViewBuilder
     private func usageItem(_ item: LAAUsageItem) -> some View {
         let warning = past(item)
         if item.availability != "available" || warning {
-            caption(item.availability == "available" ? "更新待ち・取得できません" : Self.unavailable(item))
+            if Self.isAPIBalance(item) {
+                // The amount left is never replaced by an amount used: the row
+                // stays, without a number, with the reason and the official
+                // billing page to check it by hand.
+                metric("残り", value(warning ? nil : item.availableValue, unit: item.unit), warning: true, prominent: true)
+                caption(item.availability == "available" ? "更新待ち・取得できません" : Self.unavailable(item))
+                if let url = LAAUsageGroup.billingURL(for: item.id) {
+                    Link(destination: url) { Text(verbatim: LAACopy.usageBilling) }
+                        .laaTextStyle(.secondary)
+                        .frame(minHeight: LAASpacing.minimumTouchTarget)
+                        .accessibilityIdentifier("laa.usage.billing.\(item.id)")
+                }
+            } else {
+                caption(item.availability == "available" ? "更新待ち・取得できません" : Self.unavailable(item))
+            }
         } else if item.kind == "quota", let windows = item.detail?.windows, !windows.isEmpty {
             ForEach(Array(windows.enumerated()), id: \.offset) { _, window in
                 meter(window, item: item)
@@ -207,7 +227,7 @@ struct LAAUsageView: View {
                 }
             }
         } else if item.kind == "cost" {
-            metric(item.id.hasSuffix("cost-today") ? "今日（UTC）" : "今月（UTC）", value(item.availableValue, unit: "usd"), warning: false, prominent: true)
+            metric(item.id.hasSuffix("cost-today") ? "使用額（今日・UTC）" : "使用額（今月・UTC）", value(item.availableValue, unit: "usd"), warning: false, prominent: true)
             let lag = item.id.hasPrefix("provider.claude-api.")
                 ? "反映は通常5分程度遅れ（Anthropic公表）" : "反映の遅れは非公表（OpenAI）"
             caption("取得 " + clockTimeJST(LAAUsageItem.date(item.observedAt)) + " 日本時間 · UTC 0時区切り · " + lag)
@@ -343,10 +363,11 @@ struct LAAUsageView: View {
     }
 
     static func unavailable(_ item: LAAUsageItem) -> String {
+        let balance = isAPIBalance(item)
         switch item.nullReason {
         case "not_configured": return item.kind == "cost" ? "管理者キー未設定" : "利用不可・未設定"
-        case "not_auto": return "自動取得なし"
-        case "freshness_unknown": return "使用額を確認できません"
+        case "not_auto": return balance ? "自動取得できる残高がありません" : "自動取得なし"
+        case "freshness_unknown": return balance ? "残高を確認できません" : "使用額を確認できません"
         case "fetch_failed": return "未取得・取得失敗"
         case "unsupported": return "利用不可・未対応"
         case "auth_required": return "利用不可・認証が必要"

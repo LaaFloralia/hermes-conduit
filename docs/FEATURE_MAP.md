@@ -514,6 +514,13 @@ App Store build · the Bridge API, Brain and Usage data contracts
   remain available for checking unavailable readings. Duplicate refreshes are
   suppressed, and missing, zero, stale, expired and unavailable data stay distinct. Hermes'
   existing Settings report remains available.
+- GPT API and Claude API show a balance row first and their spend after it. The
+  spend rows read 使用額 (amount used, today and this month, UTC) and never stand in
+  for the amount left: neither provider publishes an automatic balance, so the
+  balance row reads 未取得 with 自動取得できる残高がありません and a code-owned
+  billing link (`platform.openai.com` / `platform.claude.com`). A cached
+  `cost-month` from an older widget snapshot is neither drawn nor reused, and a
+  manually entered balance is not shown as current.
 - Brain owner UI requests `audience=owner` on the Mac Bridge, requiring the
   server-granted opt-in `brain:owner` scope; an ordinary token cannot widen its
   area access by naming that audience. A denied device sees a localized Mac
@@ -3876,7 +3883,7 @@ and rollback instructions · the upstream App Store build
 - Tests: `ConduitTests/LAAEmployeeWidgetTests.swift`, `ConduitTests/LAAEmployeeWidgetConfigurationTests.swift`, `ConduitTests/LAAUsageWidgetTests.swift`, `ConduitTests/LAAUsageWidgetSnapshotTests.swift`, `ConduitUITests/WidgetLaunchUITests.swift`, `Conduit/Services/WidgetLaunchUITestFixture.swift`
 
 **Rulings**
-- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows the LAA company icon and Ciel's name above Ciel's bare call and chat icons (no plate or glow behind them, no observation time), beside Codex Weekly, OpenCode Weekly, Claude Weekly, Venice USD balance, Magnific AI credits, GPT API, Claude API and Liquid AI, in that order as space permits. Weekly remains English in every locale. Missing or expired widget readings have no number. An open Usage screen reevaluates freshness and participates in automatic refresh. Failed fetches retain observations only as stale, without displayed numbers. WidgetKit controls subsequent timeline delivery.
+- The LAA build offers eight employees, with Ciel as default. The square widget shows the employee's static 3D hero and separate Call and Chat links; the rectangular Lock Screen widget shows the employee and opens a call. The existing circular Lock Screen widget remains available for installed widgets. The medium widget shows the LAA company icon and Ciel's name above Ciel's bare call and chat icons (no plate or glow behind them, no observation time), beside Codex Weekly, OpenCode Weekly, Claude Weekly, Venice USD balance, Magnific AI credits, GPT API, Claude API and Liquid AI, in that order as space permits. The two API rows read a balance only; neither provider publishes one, so they stay as 未取得 rows, and a `cost-month` meter left in an older snapshot is dropped instead of drawn. Weekly remains English in every locale. Missing or expired widget readings have no number. An open Usage screen reevaluates freshness and participates in automatic refresh. Failed fetches retain observations only as stale, without displayed numbers. WidgetKit controls subsequent timeline delivery.
 - The selected employee's profile and current dashboard travel through the existing widget router. Chat uses that profile's saved conversation or newest available conversation, creating one only after a successful empty catalog. Calls use the existing CallKit path and the employee's GPT-Live subscription plan. A missing dashboard or profile is explained in Japanese.
 - Only the LAA extension bundles the resized staff hero images. Colours, spacing, radii and type use the shared LAA design tokens. For tinted and clear appearances the image requests full color and actions use outlines; final rendering is controlled by WidgetKit. The upstream launcher and its App Store build remain unchanged.
 

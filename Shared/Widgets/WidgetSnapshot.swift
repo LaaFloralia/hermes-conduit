@@ -266,12 +266,18 @@ struct WidgetUsageSnapshot: Codable, Equatable {
     }
 
     /// Rows saved by an older build keep their bytes but never render: a retired
-    /// provider (Jev, Google Cloud, Google Flow, fal) is dropped here.
+    /// provider (Jev, Google Cloud, Google Flow, fal) is dropped here. The two
+    /// API rows are balances, so a snapshot that still holds their month spend
+    /// (`provider.<id>.cost-month`) is dropped instead of drawn or reused: that
+    /// figure is an amount used, not an amount left.
     var displayableMeters: [WidgetUsageMeter] {
         meters.filter { meter in
             let parts = meter.id.split(separator: ".")
-            return parts.count >= 2 && Self.shownProviders.contains(String(parts[1]))
-                && (parts[1] != "venice" || meter.id == "provider.venice.balance")
+            guard parts.count >= 2, Self.shownProviders.contains(String(parts[1])) else { return false }
+            let provider = String(parts[1])
+            if provider == "venice" { return meter.id == "provider.venice.balance" }
+            if provider == "openai-api" || provider == "claude-api" { return meter.id == "provider.\(provider).balance" }
+            return true
         }
     }
 }

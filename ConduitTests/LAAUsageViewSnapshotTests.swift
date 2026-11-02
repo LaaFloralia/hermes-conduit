@@ -10,15 +10,20 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         let rows: [[String: Any]] = [
             ["id": "provider.magnific.credits", "kind": "balance", "label": "Magnific", "nullReason": "not_auto"],
             ["id": "provider.openai-api.cost-today", "kind": "cost", "label": "GPT API", "nullReason": "not_configured"],
-            ["id": "provider.claude-api.cost-today", "kind": "cost", "label": "Claude API", "nullReason": "freshness_unknown"]
+            ["id": "provider.claude-api.cost-today", "kind": "cost", "label": "Claude API", "nullReason": "freshness_unknown"],
+            ["id": "provider.openai-api.balance", "kind": "balance", "label": "GPT API", "nullReason": "not_auto"]
         ].map { row in
             row.merging(["value": NSNull(), "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": NSNull(),
                          "availability": "unavailable", "stale": false, "estimated": false, "expired": false]) { original, _ in original }
         }
         let items = try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: rows))
-        XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません"])
+        XCTAssertEqual(items.map(LAAUsageView.unavailable), ["自動取得なし", "管理者キー未設定", "使用額を確認できません",
+                                                             "自動取得できる残高がありません"])
         XCTAssertEqual(LAAUsageGroup.consoleGroups(items).compactMap(\.serviceURL).map(\.scheme), ["https", "https", "https"])
         XCTAssertNil(LAAUsageGroup(id: "unknown", label: "Unknown", items: []).serviceURL)
+        XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.openai-api.balance")?.host, "platform.openai.com")
+        XCTAssertEqual(LAAUsageGroup.billingURL(for: "provider.claude-api.balance")?.host, "platform.claude.com")
+        XCTAssertNil(LAAUsageGroup.billingURL(for: "provider.venice.balance"))
         let state = LAAUsageState()
         await state.refreshUsage { items }
         try capture(state: state, paired: true, style: .light, name: "usage-unavailable-reasons-light")
@@ -63,6 +68,12 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         let venice: [String: Any] = ["id": "provider.venice.balance", "kind": "balance", "label": "Venice", "value": 14.5,
             "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
             "stale": stale, "estimated": false, "expired": false, "detail": ["freshUntil": freshUntil, "currency": "USD"]]
+        let apiBalances: [[String: Any]] = [("openai-api", "GPT API", 21.8), ("claude-api", "Claude API", 42.5)].map { id, label, amount in
+            ["id": "provider.\(id).balance", "kind": "balance", "label": label, "value": amount,
+             "unit": "usd", "source": "codexbar-usage-proxy", "observedAt": observed, "availability": "available",
+             "stale": stale, "estimated": false, "expired": false,
+             "detail": ["freshUntil": freshUntil, "currency": "USD"]] as [String: Any]
+        }
         let costs: [[String: Any]] = [("claude-api", "Claude API", "typical-5m"), ("openai-api", "GPT API", "undisclosed")].flatMap { id, label, lag in
             ["today", "month"].map { period in
                 ["id": "provider.\(id).cost-\(period)", "kind": "cost", "label": label, "value": period == "today" ? 1.23 : 17.25,
@@ -79,7 +90,7 @@ final class LAAUsageViewSnapshotTests: XCTestCase {
         if costOnly { json = costs }
         else if balanceOnly { json = [venice, balance] }
         else if extrasOnly { json = [json[0]] }
-        else { json = [d1] + json + [venice, balance] + costs }
+        else { json = [d1] + json + [venice, balance] + apiBalances + costs }
         return try JSONDecoder().decode([LAAUsageItem].self, from: JSONSerialization.data(withJSONObject: json))
     }
 
